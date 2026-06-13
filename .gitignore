@@ -17,6 +17,8 @@ dist-ssr
 auth_session
 whatsapp-server/node_modules
 whatsapp-server/auth_session
+# whatsapp-server é um repo Git separado (deploy próprio no Railway) — não embutir aqui
+/whatsapp-server
 
 # Logs
 npm-debug.log*
