@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', sans-serif; background: #0A0E1A; color: #F1F5F9;
+    /* Safe area: respeita o notch / barra de status em dispositivos nativos (Capacitor) */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  /* Teclado aberto: garante que o input em foco não fique atrás do teclado nativo */
+  body.keyboard-open { padding-bottom: 0; }
+  body.keyboard-open :focus { scroll-margin-bottom: 24px; }
+  /* Ajustes mobile / PWA */
+  body { -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+  /* font-size >= 16px evita o auto-zoom do iOS ao focar campos */
+  input, select, textarea { font-size: 16px !important; }
+  h1,h2,h3,h4,h5,h6 { font-family: 'Plus Jakarta Sans', sans-serif; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0F1629; }
+  ::-webkit-scrollbar-thumb { background: #2D3A55; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #FF6B35; }
+  ::selection { background: rgba(255,107,53,0.3); color: white; }
+  /* Dropdown nativo dark em todo o app — o popup de <option> herda branco por padrão.
+     Cobre todos os <select> do projeto em navegadores Chromium/Firefox. */
+  select option, select optgroup { background-color: #1E293B; color: #F8FAFC; }
+}
+
+@layer components {
+  .glass {
+    background: rgba(255,255,255,0.04);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .glass-orange {
+    background: rgba(255,107,53,0.08);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,107,53,0.2);
+  }
+  .glow-orange { box-shadow: 0 0 20px rgba(255,107,53,0.4); }
+  .glow-blue { box-shadow: 0 0 20px rgba(59,130,246,0.4); }
+  .gradient-text {
+    background: linear-gradient(135deg, #FF6B35, #3B82F6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-dark-500 transition-all duration-200 cursor-pointer font-body text-sm font-medium;
+  }
+  .sidebar-item.active {
+    @apply text-white bg-gradient-to-r from-brand-orange/20 to-brand-blue/10 border border-brand-orange/30;
+  }
+  .stat-card {
+    @apply glass rounded-2xl p-5 hover:border-brand-orange/30 transition-all duration-300;
+  }
+  .btn-primary {
+    @apply bg-brand-orange hover:bg-brand-orange-dark text-white font-display font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 flex items-center gap-2 text-sm;
+  }
+  .btn-secondary {
+    @apply glass text-slate-300 hover:text-white hover:border-brand-orange/40 font-display font-medium px-5 py-2.5 rounded-xl transition-all duration-200 flex items-center gap-2 text-sm;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+  .input-field {
+    @apply w-full glass rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-orange/50 focus:ring-1 focus:ring-brand-orange/30 transition-all duration-200;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
