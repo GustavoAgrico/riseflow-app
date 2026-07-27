@@ -84,9 +84,9 @@ oauthRouter.get('/callback', async (req, res) => {
 </script></body></html>`)
 
   try {
-    const { code, state, error_description } = req.query
-    if (error_description) return respond({ error: String(error_description) })
-    if (!code || !state) return respond({ error: 'code/state ausentes' })
+    const { code, state, error, error_description } = req.query
+    if (error || error_description) return respond({ error: String(error_description || error) })
+    if (!code || !state) return respond({ error: `code/state ausentes — query recebida: ${JSON.stringify(req.query)}` })
     jwt.verify(String(state), JWT_SECRET) // state assinado em /oauth/url — barra forgery
 
     const redirectUri = `${req.protocol}://${req.get('host')}${req.baseUrl}/callback`
