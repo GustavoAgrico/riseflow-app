@@ -23,6 +23,9 @@ const CATALOG = {
     ideal:'Empresas com alto volume e requisitos de suporte e API dedicados.' },
 }
 
+const maskCPF = v => v.replace(/\D/g,'').slice(0,11).replace(/(\d{3})(\d{3})(\d{3})(\d{0,2})/,'$1.$2.$3-$4').replace(/-$/,'')
+const maskPhone = v => { const d = v.replace(/\D/g,'').slice(0,11); if (d.length<=2) return d.length?`(${d}`:''; if (d.length<=7) return `(${d.slice(0,2)}) ${d.slice(2)}`; return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}` }
+
 export const PlanDetails = () => {
   const { planId } = useParams()
   const navigate = useNavigate()
@@ -30,21 +33,30 @@ export const PlanDetails = () => {
   const { plan: usage } = usePlan()
   const [loading, setLoading] = React.useState(false)
   const [err, setErr] = React.useState(null)
+  const [showForm, setShowForm] = React.useState(false)
+  const [cpf, setCpf] = React.useState('')
+  const [phone, setPhone] = React.useState('')
   const p = CATALOG[planId]
   if (!p) return <Navigate to="/plans" replace />
 
   const isCurrent = usage?.plan === planId
   const isFree = planId === 'free'
+
   const subscribe = async () => {
     setErr(null)
     setLoading(true)
     try {
-      await abacatePayService.checkout(planId, user)
+      await abacatePayService.checkout(planId, user, { cpf, phone })
     } catch (e) {
       setErr(e.message || 'Erro ao iniciar checkout. Tente novamente.')
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSubscribeClick = () => {
+    setErr(null)
+    setShowForm(true)
   }
 
   return (
@@ -76,7 +88,41 @@ export const PlanDetails = () => {
             ? <button disabled style={{ width:'100%', background:C.bd, border:'none', borderRadius:10, padding:'13px', color:C.mut, fontWeight:700, fontSize:15, cursor:'default', fontFamily:'inherit', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6 }}><Check size={16} /> Este é o seu plano atual</button>
             : isFree
               ? <button disabled style={{ width:'100%', background:C.bd, border:'none', borderRadius:10, padding:'13px', color:C.mut, fontWeight:700, fontSize:15, cursor:'default', fontFamily:'inherit', opacity:.6 }}>Plano gratuito</button>
-              : <button onClick={subscribe} disabled={loading} style={{ width:'100%', background:loading ? C.bd : C.pur, border:'none', borderRadius:10, padding:'13px', color:'#fff', fontWeight:700, fontSize:15, cursor:loading?'default':'pointer', fontFamily:'inherit', opacity:loading?.8:1 }}>{loading ? 'Aguarde...' : `Assinar ${p.name} — ${p.price}${p.period}`}</button>}
+              : <button onClick={handleSubscribeClick} disabled={loading} style={{ width:'100%', background:loading ? C.bd : C.pur, border:'none', borderRadius:10, padding:'13px', color:'#fff', fontWeight:700, fontSize:15, cursor:loading?'default':'pointer', fontFamily:'inherit', opacity:loading?.8:1 }}>{loading ? 'Aguarde...' : `Assinar ${p.name} — ${p.price}${p.period}`}</button>}
+
+          {/* Modal de dados para pagamento via PIX */}
+          {showForm && (
+            <div style={{ position:'fixed', inset:0, background:'#000b', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200 }} onClick={() => !loading && setShowForm(false)}>
+              <div style={{ background:C.card, border:`1px solid ${C.bd}`, borderRadius:16, padding:28, width:360, maxWidth:'90vw' }} onClick={e => e.stopPropagation()}>
+                <p style={{ margin:'0 0 4px', fontWeight:800, fontSize:16, color:C.tx }}>Dados para pagamento</p>
+                <p style={{ margin:'0 0 20px', fontSize:13, color:C.mut }}>Necessário para gerar o PIX via AbacatePay</p>
+
+                <label style={{ display:'block', fontSize:11, color:C.mut, fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', marginBottom:4 }}>CPF</label>
+                <input
+                  value={cpf} onChange={e => setCpf(maskCPF(e.target.value))}
+                  placeholder="000.000.000-00"
+                  style={{ width:'100%', boxSizing:'border-box', background:'#0F172A', border:`1px solid ${C.bd}`, borderRadius:8, padding:'10px 12px', color:C.tx, fontSize:14, outline:'none', fontFamily:'DM Sans,sans-serif', marginBottom:14 }}
+                />
+
+                <label style={{ display:'block', fontSize:11, color:C.mut, fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', marginBottom:4 }}>Telefone / WhatsApp</label>
+                <input
+                  value={phone} onChange={e => setPhone(maskPhone(e.target.value))}
+                  placeholder="(11) 99999-9999"
+                  style={{ width:'100%', boxSizing:'border-box', background:'#0F172A', border:`1px solid ${C.bd}`, borderRadius:8, padding:'10px 12px', color:C.tx, fontSize:14, outline:'none', fontFamily:'DM Sans,sans-serif', marginBottom:20 }}
+                />
+
+                {err && <div style={{ background:'#EF444422', border:'1px solid #EF4444', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:13, color:'#FCA5A5' }}>{err}</div>}
+
+                <div style={{ display:'flex', gap:10 }}>
+                  <button onClick={() => setShowForm(false)} disabled={loading} style={{ flex:1, background:'none', border:`1px solid ${C.bd}`, borderRadius:10, padding:'12px', color:C.mut, fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'DM Sans,sans-serif' }}>Cancelar</button>
+                  <button onClick={subscribe} disabled={loading || cpf.replace(/\D/g,'').length < 11 || phone.replace(/\D/g,'').length < 10}
+                    style={{ flex:2, background:C.pur, border:'none', borderRadius:10, padding:'12px', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'DM Sans,sans-serif', opacity:(loading || cpf.replace(/\D/g,'').length < 11 || phone.replace(/\D/g,'').length < 10) ? .5 : 1 }}>
+                    {loading ? 'Aguarde...' : 'Ir para pagamento →'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

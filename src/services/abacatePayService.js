@@ -13,7 +13,7 @@ export const ABACATE_PLANS = {
 
 export const abacatePayService = {
   // Inicia o checkout: redireciona para a página hospedada da AbacatePay.
-  async checkout(planId, user) {
+  async checkout(planId, user, { cpf, phone } = {}) {
     if (!user?.id) { window.location.href = '/login'; return }
     if (!ABACATE_PLANS[planId]) throw new Error(`Plano inválido: ${planId}`)
 
@@ -23,6 +23,8 @@ export const abacatePayService = {
         userId: user.id,
         email: user.email,
         name: user.user_metadata?.full_name ?? user.email,
+        cpf,
+        phone,
       })
 
       if (data?.admin || data?.demo) {

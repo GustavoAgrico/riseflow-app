@@ -81,12 +81,12 @@ router.post('/webhook', async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────────
    POST /api/billing/checkout  — protegido por JWT
-   Body: { planId, userId, email, name? }
+   Body: { planId, userId, email, name?, cpf, phone }
    Retorna: { url } — URL do hosted checkout ou redirect direto (admin/dev)
 ───────────────────────────────────────────────────────────────────────── */
 router.post('/checkout', async (req, res) => {
   try {
-    const { planId, userId, email, name } = req.body
+    const { planId, userId, email, name, cpf, phone } = req.body
     if (!planId || !userId || !email) {
       return res.status(400).json({ error: 'planId, userId e email são obrigatórios' })
     }
@@ -112,31 +112,19 @@ router.post('/checkout', async (req, res) => {
       return res.json({ url: successUrl, demo: true })
     }
 
-    // Produção: AbacatePay
-    console.log('[Billing] Iniciando checkout AbacatePay:', planId, email)
-
-    // 1. Cria/atualiza cliente
-    let customer
-    try {
-      const custRes = await abacate.post('/customers/create', {
-        email,
-        name: name || email,
-        metadata: { userId },
-      })
-      customer = custRes.data?.data ?? custRes.data
-      console.log('[Billing] Cliente:', customer?.id)
-    } catch (err) {
-      const detail = err.response?.data
-      console.error('[Billing] Erro ao criar cliente:', JSON.stringify(detail), err.message)
-      return res.status(502).json({ error: `Erro ao criar cliente: ${JSON.stringify(detail) || err.message}` })
+    if (!cpf || !phone) {
+      return res.status(400).json({ error: 'CPF e telefone são obrigatórios para o pagamento.' })
     }
 
-    // 2. Cria assinatura diretamente (sem produto pré-cadastrado)
-    let subscription
+    // Produção: AbacatePay — cria billing link via /billing/create
+    console.log('[Billing] Iniciando checkout AbacatePay:', planId, email)
+    const plan = PLANS[planId]
+
+    let billing
     try {
-      const plan = PLANS[planId]
-      const subRes = await abacate.post('/subscriptions/create', {
-        customer: { id: customer.id },
+      const billRes = await abacate.post('/billing/create', {
+        frequency: 'ONE_TIME',
+        methods: ['PIX'],
         products: [{
           externalId: plan.externalId,
           name: plan.name,
@@ -144,30 +132,37 @@ router.post('/checkout', async (req, res) => {
           quantity: 1,
         }],
         returnUrl: successUrl,
+        completionUrl: successUrl,
+        customer: {
+          name: name || email,
+          email,
+          cellphone: phone.replace(/\D/g, ''),
+          taxId: cpf.replace(/\D/g, ''),
+        },
         metadata: { userId, planId },
       })
-      subscription = subRes.data?.data ?? subRes.data
-      console.log('[Billing] Assinatura criada:', subscription?.id, '| URL:', subscription?.url)
+      billing = billRes.data?.data ?? billRes.data
+      console.log('[Billing] Link criado:', billing?.id, '| URL:', billing?.url)
     } catch (err) {
       const detail = err.response?.data
-      console.error('[Billing] Erro ao criar assinatura:', JSON.stringify(detail), err.message)
-      return res.status(502).json({ error: `Erro ao criar assinatura: ${JSON.stringify(detail) || err.message}` })
+      console.error('[Billing] Erro ao criar link:', JSON.stringify(detail), err.message)
+      return res.status(502).json({ error: detail?.error || err.message || 'Erro ao gerar link de pagamento.' })
     }
 
-    if (!subscription?.url) {
-      console.error('[Billing] AbacatePay não retornou URL. Resposta:', JSON.stringify(subscription))
-      return res.status(502).json({ error: 'AbacatePay não retornou URL de checkout. Verifique as credenciais.' })
+    if (!billing?.url) {
+      console.error('[Billing] AbacatePay não retornou URL. Resposta:', JSON.stringify(billing))
+      return res.status(502).json({ error: 'AbacatePay não retornou URL de pagamento.' })
     }
 
-    // Persiste referência (tabela billing — opcional)
+    // Persiste referência (tabela billing — opcional, falha silenciosa)
     if (isConfigured && supabase) {
       supabase.from('billing').upsert(
-        { user_id: userId, plan_id: planId, abacate_customer_id: customer.id, abacate_checkout_id: subscription.id, status: 'pending' },
+        { user_id: userId, plan_id: planId, abacate_checkout_id: billing.id, status: 'pending' },
         { onConflict: 'user_id' }
-      ).catch(() => {})
+      ).then(null, () => {})
     }
 
-    res.json({ url: subscription.url })
+    res.json({ url: billing.url })
   } catch (err) {
     console.error('[Billing] Erro inesperado checkout:', err.message)
     res.status(500).json({ error: err.message || 'Erro interno no checkout.' })
