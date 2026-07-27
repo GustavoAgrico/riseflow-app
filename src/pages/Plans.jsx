@@ -11,7 +11,7 @@ const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#94A3
 const CATALOG = [
   {
     id:'free', name:'Grátis', price:'R$0',
-    feats:['20 mensagens · válido por 2 dias','1 atendente','1 flow','100 contatos'],
+    feats:['50 mensagens/mês','1 atendente','1 flow','100 contatos'],
     integrations:'WhatsApp',
   },
   {
@@ -21,13 +21,13 @@ const CATALOG = [
   },
   {
     id:'pro', name:'Pro', price:'R$197',
-    feats:['10.000 mensagens/mês','5 atendentes','Flows ilimitados','5.000 contatos'],
+    feats:['10.000 mensagens/mês','5 atendentes','Flows ilimitados','Inteligência Artificial'],
     integrations:'WhatsApp + Telegram + Email',
     hot:true,
   },
   {
-    id:'enterprise', name:'Enterprise', price:'Sob consulta',
-    feats:['Mensagens ilimitadas','Atendentes ilimitados','Tudo ilimitado','Suporte dedicado'],
+    id:'enterprise', name:'Enterprise', price:'R$497',
+    feats:['Mensagens ilimitadas','Atendentes ilimitados','API dedicada','Suporte prioritário'],
     integrations:'Todos os canais (+ Instagram, Facebook, IA)',
   },
 ]
@@ -79,10 +79,11 @@ export const Plans = () => {
         {CATALOG.map(p => {
           const isCurrent = p.id === current
           return (
-            <div key={p.id} style={{ background:C.card, borderRadius:14, padding:20, border:`1px solid ${p.hot?C.pur:C.bd}`, position:'relative' }}>
-              {p.hot && <span style={{ position:'absolute', top:-10, right:16, background:C.pur, fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:6 }}>POPULAR</span>}
+            <div key={p.id} style={{ background:C.card, borderRadius:14, padding:20, border:`1px solid ${isCurrent?C.grn:p.hot?C.pur:C.bd}`, position:'relative', boxShadow:isCurrent?`0 0 0 1px ${C.grn}33`:undefined }}>
+              {isCurrent && <span style={{ position:'absolute', top:-10, right:16, background:C.grn, fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:6 }}>ATIVO</span>}
+              {!isCurrent && p.hot && <span style={{ position:'absolute', top:-10, right:16, background:C.pur, fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:6 }}>POPULAR</span>}
               <div style={{ fontWeight:800, fontSize:16 }}>{p.name}</div>
-              <div style={{ fontSize:24, fontWeight:800, margin:'6px 0 14px', color:C.pur }}>{p.price}{p.id!=='enterprise'&&p.id!=='free' && <span style={{ fontSize:12, color:C.mut, fontWeight:500 }}>/mês</span>}</div>
+              <div style={{ fontSize:24, fontWeight:800, margin:'6px 0 14px', color:C.pur }}>{p.price}{p.id!=='free' && <span style={{ fontSize:12, color:C.mut, fontWeight:500 }}>/mês</span>}</div>
               <ul style={{ listStyle:'none', padding:0, margin:'0 0 12px', display:'flex', flexDirection:'column', gap:8 }}>
                 {p.feats.map(f => <li key={f} style={{ fontSize:13, color:C.mut, display:'flex', alignItems:'center', gap:6 }}><Check size={13} color={C.grn} /> {f}</li>)}
               </ul>
