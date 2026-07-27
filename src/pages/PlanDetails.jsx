@@ -1,13 +1,12 @@
 import React from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
-import { Gem, Check } from 'lucide-react'
+import { Gem, Check, ArrowRight, Loader2 } from 'lucide-react'
 import { useAuth } from '@context/AuthContext'
 import { usePlan } from '@hooks/usePlan'
 import { abacatePayService } from '@services/abacatePayService'
 
-const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#94A3B8', pur:'#7C3AED', grn:'#059669' }
+const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#94A3B8', pur:'#7C3AED', grn:'#059669', red:'#EF4444' }
 
-// Conteúdo descritivo de cada plano.
 const CATALOG = {
   free: { name:'Grátis', price:'R$0', period:'', tagline:'Para experimentar o RiseFlow sem compromisso.',
     feats:['50 mensagens/mês','1 atendente','1 flow','100 contatos'],
@@ -23,108 +22,168 @@ const CATALOG = {
     ideal:'Empresas com alto volume e requisitos de suporte e API dedicados.' },
 }
 
-const maskCPF = v => v.replace(/\D/g,'').slice(0,11).replace(/(\d{3})(\d{3})(\d{3})(\d{0,2})/,'$1.$2.$3-$4').replace(/-$/,'')
-const maskPhone = v => { const d = v.replace(/\D/g,'').slice(0,11); if (d.length<=2) return d.length?`(${d}`:''; if (d.length<=7) return `(${d.slice(0,2)}) ${d.slice(2)}`; return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}` }
+const applyMask = (raw, type) => {
+  const d = raw.replace(/\D/g, '')
+  if (type === 'cpf') {
+    const n = d.slice(0, 11)
+    if (n.length <= 3) return n
+    if (n.length <= 6) return `${n.slice(0,3)}.${n.slice(3)}`
+    if (n.length <= 9) return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6)}`
+    return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`
+  }
+  const n = d.slice(0, 11)
+  if (n.length <= 2) return n.length ? `(${n}` : ''
+  if (n.length <= 6) return `(${n.slice(0,2)}) ${n.slice(2)}`
+  if (n.length <= 10) return `(${n.slice(0,2)}) ${n.slice(2,6)}-${n.slice(6)}`
+  return `(${n.slice(0,2)}) ${n.slice(2,7)}-${n.slice(7)}`
+}
+
+const inputStyle = (hasErr) => ({
+  width: '100%', boxSizing: 'border-box',
+  background: '#0F172A',
+  border: `1px solid ${hasErr ? C.red : C.bd}`,
+  borderRadius: 8, padding: '11px 13px',
+  color: C.tx, fontSize: 15, outline: 'none',
+  fontFamily: 'DM Sans,sans-serif',
+  transition: 'border-color .15s',
+})
 
 export const PlanDetails = () => {
   const { planId } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
   const { plan: usage } = usePlan()
-  const [loading, setLoading] = React.useState(false)
-  const [err, setErr] = React.useState(null)
-  const [showForm, setShowForm] = React.useState(false)
+
   const [cpf, setCpf] = React.useState('')
   const [phone, setPhone] = React.useState('')
+  const [fieldErr, setFieldErr] = React.useState({})
+  const [apiErr, setApiErr] = React.useState(null)
+  const [loading, setLoading] = React.useState(false)
+
   const p = CATALOG[planId]
   if (!p) return <Navigate to="/plans" replace />
 
   const isCurrent = usage?.plan === planId
   const isFree = planId === 'free'
+  const cpfDigits = cpf.replace(/\D/g, '').length
+  const phoneDigits = phone.replace(/\D/g, '').length
 
-  const subscribe = async () => {
-    setErr(null)
+  const handleSubscribe = async () => {
+    const errs = {}
+    if (cpfDigits < 11) errs.cpf = 'Digite os 11 dígitos do CPF'
+    if (phoneDigits < 10) errs.phone = 'Digite um telefone válido (com DDD)'
+    if (Object.keys(errs).length) { setFieldErr(errs); return }
+
+    setFieldErr({})
+    setApiErr(null)
     setLoading(true)
     try {
       await abacatePayService.checkout(planId, user, { cpf, phone })
     } catch (e) {
-      setErr(e.message || 'Erro ao iniciar checkout. Tente novamente.')
+      setApiErr(e.message || 'Não foi possível gerar o link de pagamento. Tente novamente.')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSubscribeClick = () => {
-    setErr(null)
-    setShowForm(true)
-  }
-
   return (
     <div style={{ minHeight:'100vh', background:C.bg, color:C.tx, fontFamily:'DM Sans,sans-serif' }}>
       <div style={{ display:'flex', alignItems:'center', gap:14, padding:'16px 24px', borderBottom:`1px solid ${C.bd}`, background:C.card }}>
-        <button onClick={()=>navigate('/plans')} style={{ background:'none', border:`1px solid ${C.bd}`, borderRadius:8, padding:'8px 12px', color:C.tx, cursor:'pointer', fontFamily:'inherit', fontSize:13 }}>← Voltar aos planos</button>
+        <button onClick={() => navigate('/plans')} style={{ background:'none', border:`1px solid ${C.bd}`, borderRadius:8, padding:'8px 12px', color:C.tx, cursor:'pointer', fontFamily:'inherit', fontSize:13 }}>← Voltar aos planos</button>
         <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}><Gem size={18} color={C.pur} /> Plano {p.name}</span>
       </div>
 
       <div style={{ maxWidth:560, margin:'0 auto', padding:'32px 24px' }}>
-        <div style={{ background:C.card, borderRadius:16, padding:28, border:`1px solid ${p.hot?C.pur:C.bd}`, position:'relative' }}>
+        <div style={{ background:C.card, borderRadius:16, padding:28, border:`1px solid ${p.hot ? C.pur : C.bd}`, position:'relative' }}>
           {p.hot && <span style={{ position:'absolute', top:-11, right:24, background:C.pur, fontSize:10, fontWeight:700, padding:'4px 12px', borderRadius:6 }}>MAIS POPULAR</span>}
+
           <h1 style={{ margin:0, fontSize:28, fontWeight:800 }}>{p.name}</h1>
           <p style={{ margin:'8px 0 0', fontSize:14, color:C.mut }}>{p.tagline}</p>
-          <div style={{ fontSize:36, fontWeight:800, margin:'20px 0', color:C.pur }}>{p.price}<span style={{ fontSize:15, color:C.mut, fontWeight:500 }}>{p.period}</span></div>
+          <div style={{ fontSize:36, fontWeight:800, margin:'20px 0', color:C.pur }}>
+            {p.price}<span style={{ fontSize:15, color:C.mut, fontWeight:500 }}>{p.period}</span>
+          </div>
 
           <p style={{ fontSize:12, fontWeight:700, color:C.mut, textTransform:'uppercase', letterSpacing:'.05em', margin:'0 0 12px' }}>O que está incluído</p>
           <ul style={{ listStyle:'none', padding:0, margin:'0 0 22px', display:'flex', flexDirection:'column', gap:10 }}>
-            {p.feats.map(f => <li key={f} style={{ fontSize:14, display:'flex', alignItems:'center', gap:10 }}><Check size={15} color={C.grn} style={{ flexShrink:0 }} />{f}</li>)}
+            {p.feats.map(f => (
+              <li key={f} style={{ fontSize:14, display:'flex', alignItems:'center', gap:10 }}>
+                <Check size={15} color={C.grn} style={{ flexShrink:0 }} />{f}
+              </li>
+            ))}
           </ul>
 
           <div style={{ background:C.pur+'18', border:`1px solid ${C.pur}55`, borderRadius:10, padding:'12px 14px', marginBottom:24 }}>
             <p style={{ margin:0, fontSize:13, color:C.tx }}><strong>Ideal para:</strong> {p.ideal}</p>
           </div>
 
-          {err && <div style={{ background:'#EF444422', border:'1px solid #EF4444', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:13, color:'#FCA5A5' }}>{err}</div>}
+          {isCurrent ? (
+            <button disabled style={{ width:'100%', background:C.bd, border:'none', borderRadius:10, padding:'13px', color:C.mut, fontWeight:700, fontSize:15, cursor:'default', fontFamily:'inherit', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+              <Check size={16} /> Este é o seu plano atual
+            </button>
+          ) : isFree ? (
+            <button disabled style={{ width:'100%', background:C.bd, border:'none', borderRadius:10, padding:'13px', color:C.mut, fontWeight:700, fontSize:15, cursor:'default', fontFamily:'inherit', opacity:.6 }}>
+              Plano gratuito
+            </button>
+          ) : (
+            <div>
+              {/* Separador */}
+              <div style={{ borderTop:`1px solid ${C.bd}`, margin:'0 0 20px' }} />
+              <p style={{ fontSize:13, fontWeight:700, color:C.mut, margin:'0 0 14px', textTransform:'uppercase', letterSpacing:'.04em' }}>
+                Dados para pagamento
+              </p>
+              <p style={{ fontSize:12, color:C.mut, margin:'-8px 0 16px', lineHeight:1.5 }}>
+                Necessário para gerar o link. Você será redirecionado para a página de pagamento com PIX e cartão.
+              </p>
 
-          {isCurrent
-            ? <button disabled style={{ width:'100%', background:C.bd, border:'none', borderRadius:10, padding:'13px', color:C.mut, fontWeight:700, fontSize:15, cursor:'default', fontFamily:'inherit', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6 }}><Check size={16} /> Este é o seu plano atual</button>
-            : isFree
-              ? <button disabled style={{ width:'100%', background:C.bd, border:'none', borderRadius:10, padding:'13px', color:C.mut, fontWeight:700, fontSize:15, cursor:'default', fontFamily:'inherit', opacity:.6 }}>Plano gratuito</button>
-              : <button onClick={handleSubscribeClick} disabled={loading} style={{ width:'100%', background:loading ? C.bd : C.pur, border:'none', borderRadius:10, padding:'13px', color:'#fff', fontWeight:700, fontSize:15, cursor:loading?'default':'pointer', fontFamily:'inherit', opacity:loading?.8:1 }}>{loading ? 'Aguarde...' : `Assinar ${p.name} — ${p.price}${p.period}`}</button>}
-
-          {/* Modal de dados para pagamento via PIX */}
-          {showForm && (
-            <div style={{ position:'fixed', inset:0, background:'#000b', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200 }} onClick={() => !loading && setShowForm(false)}>
-              <div style={{ background:C.card, border:`1px solid ${C.bd}`, borderRadius:16, padding:28, width:360, maxWidth:'90vw' }} onClick={e => e.stopPropagation()}>
-                <p style={{ margin:'0 0 4px', fontWeight:800, fontSize:16, color:C.tx }}>Dados para pagamento</p>
-                <p style={{ margin:'0 0 20px', fontSize:13, color:C.mut }}>Necessário para gerar o PIX via AbacatePay</p>
-
-                <label style={{ display:'block', fontSize:11, color:C.mut, fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', marginBottom:4 }}>CPF</label>
+              <div style={{ marginBottom:14 }}>
+                <label style={{ display:'block', fontSize:12, color:fieldErr.cpf ? C.red : C.mut, fontWeight:600, marginBottom:5 }}>CPF</label>
                 <input
-                  value={cpf} onChange={e => setCpf(maskCPF(e.target.value))}
+                  value={cpf}
+                  onChange={e => { setCpf(applyMask(e.target.value, 'cpf')); setFieldErr(p => ({ ...p, cpf: null })) }}
                   placeholder="000.000.000-00"
-                  style={{ width:'100%', boxSizing:'border-box', background:'#0F172A', border:`1px solid ${C.bd}`, borderRadius:8, padding:'10px 12px', color:C.tx, fontSize:14, outline:'none', fontFamily:'DM Sans,sans-serif', marginBottom:14 }}
+                  inputMode="numeric"
+                  style={inputStyle(fieldErr.cpf)}
                 />
-
-                <label style={{ display:'block', fontSize:11, color:C.mut, fontWeight:700, textTransform:'uppercase', letterSpacing:'.04em', marginBottom:4 }}>Telefone / WhatsApp</label>
-                <input
-                  value={phone} onChange={e => setPhone(maskPhone(e.target.value))}
-                  placeholder="(11) 99999-9999"
-                  style={{ width:'100%', boxSizing:'border-box', background:'#0F172A', border:`1px solid ${C.bd}`, borderRadius:8, padding:'10px 12px', color:C.tx, fontSize:14, outline:'none', fontFamily:'DM Sans,sans-serif', marginBottom:20 }}
-                />
-
-                {err && <div style={{ background:'#EF444422', border:'1px solid #EF4444', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:13, color:'#FCA5A5' }}>{err}</div>}
-
-                <div style={{ display:'flex', gap:10 }}>
-                  <button onClick={() => setShowForm(false)} disabled={loading} style={{ flex:1, background:'none', border:`1px solid ${C.bd}`, borderRadius:10, padding:'12px', color:C.mut, fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'DM Sans,sans-serif' }}>Cancelar</button>
-                  <button onClick={subscribe} disabled={loading || cpf.replace(/\D/g,'').length < 11 || phone.replace(/\D/g,'').length < 10}
-                    style={{ flex:2, background:C.pur, border:'none', borderRadius:10, padding:'12px', color:'#fff', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'DM Sans,sans-serif', opacity:(loading || cpf.replace(/\D/g,'').length < 11 || phone.replace(/\D/g,'').length < 10) ? .5 : 1 }}>
-                    {loading ? 'Aguarde...' : 'Ir para pagamento →'}
-                  </button>
-                </div>
+                {fieldErr.cpf && <p style={{ margin:'4px 0 0', fontSize:12, color:C.red }}>{fieldErr.cpf}</p>}
               </div>
+
+              <div style={{ marginBottom:20 }}>
+                <label style={{ display:'block', fontSize:12, color:fieldErr.phone ? C.red : C.mut, fontWeight:600, marginBottom:5 }}>WhatsApp / Telefone</label>
+                <input
+                  value={phone}
+                  onChange={e => { setPhone(applyMask(e.target.value, 'phone')); setFieldErr(p => ({ ...p, phone: null })) }}
+                  placeholder="(11) 99999-9999"
+                  inputMode="numeric"
+                  style={inputStyle(fieldErr.phone)}
+                />
+                {fieldErr.phone && <p style={{ margin:'4px 0 0', fontSize:12, color:C.red }}>{fieldErr.phone}</p>}
+              </div>
+
+              {apiErr && (
+                <div style={{ background:'#EF444422', border:`1px solid ${C.red}`, borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:13, color:'#FCA5A5' }}>
+                  {apiErr}
+                </div>
+              )}
+
+              <button
+                onClick={handleSubscribe}
+                disabled={loading}
+                style={{ width:'100%', background:loading ? C.bd : C.pur, border:'none', borderRadius:10, padding:'14px', color:'#fff', fontWeight:700, fontSize:15, cursor: loading ? 'default' : 'pointer', fontFamily:'DM Sans,sans-serif', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:8, transition:'background .15s' }}
+              >
+                {loading
+                  ? <><Loader2 size={16} style={{ animation:'spin 1s linear infinite' }} /> Gerando link de pagamento…</>
+                  : <><ArrowRight size={16} /> Ir para pagamento — {p.price}{p.period}</>}
+              </button>
+
+              <p style={{ textAlign:'center', fontSize:11, color:C.mut, margin:'10px 0 0' }}>
+                🔒 Pagamento seguro via AbacatePay · PIX e cartão aceitos
+              </p>
             </div>
           )}
         </div>
       </div>
+
+      <style>{`@keyframes spin { from { transform:rotate(0deg) } to { transform:rotate(360deg) } }`}</style>
     </div>
   )
 }

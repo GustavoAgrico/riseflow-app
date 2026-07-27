@@ -68,10 +68,10 @@ router.post('/webhook', async (req, res) => {
     const planId = meta.planId
     if (!userId || !planId) return
 
-    if (['checkout.completed', 'subscription.renewed'].includes(event.event)) {
+    if (['billing.completed', 'checkout.completed', 'subscription.completed', 'subscription.renewed'].includes(event.event)) {
       await activatePlan(userId, planId)
     }
-    if (event.event === 'subscription.cancelled') {
+    if (['subscription.cancelled', 'billing.cancelled'].includes(event.event)) {
       await downgradeFree(userId)
     }
   } catch (err) {
@@ -124,7 +124,7 @@ router.post('/checkout', async (req, res) => {
     try {
       const billRes = await abacate.post('/billing/create', {
         frequency: 'ONE_TIME',
-        methods: ['PIX'],
+        methods: ['PIX', 'CREDIT_CARD'],
         products: [{
           externalId: plan.externalId,
           name: plan.name,
