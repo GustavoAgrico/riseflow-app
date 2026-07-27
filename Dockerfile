@@ -7,7 +7,7 @@
 # VITE_API_URL/VITE_SOCKET_URL ficam vazias de propósito → same-origin.
 
 # ── Estágio 1: build do frontend ────────────────────────────────────────────
-FROM node:20-slim AS frontend
+FROM node:22-slim AS frontend
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -23,7 +23,7 @@ ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
 RUN npm run build
 
 # ── Estágio 2: runtime (proxy Express + dist) ───────────────────────────────
-FROM node:20-slim
+FROM node:22-slim
 ENV NODE_ENV=production
 WORKDIR /app/server
 COPY server/package*.json ./
