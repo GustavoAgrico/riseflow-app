@@ -20,7 +20,7 @@ services:
   - type: web
     name: riseflow-app
     runtime: docker
-    plan: starter            # free hiberna e derruba o Socket.io; starter evita isso
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
