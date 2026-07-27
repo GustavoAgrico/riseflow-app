@@ -25,6 +25,12 @@ export const abacatePayService = {
         name: user.user_metadata?.full_name ?? user.email,
       })
 
+      if (data?.admin || data?.demo) {
+        // Bypass admin ou dev mode: plano já ativado no servidor, recarrega a tela
+        console.log('[AbacatePay] Plano ativado diretamente (admin/demo):', planId)
+        window.location.href = `/plans?success=true&plan=${planId}`
+        return
+      }
       if (data?.url) {
         console.log('[AbacatePay] Redirecionando para checkout:', data.url)
         window.location.href = data.url

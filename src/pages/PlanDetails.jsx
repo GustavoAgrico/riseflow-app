@@ -28,12 +28,24 @@ export const PlanDetails = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { plan: usage } = usePlan()
+  const [loading, setLoading] = React.useState(false)
+  const [err, setErr] = React.useState(null)
   const p = CATALOG[planId]
   if (!p) return <Navigate to="/plans" replace />
 
   const isCurrent = usage?.plan === planId
   const isFree = planId === 'free'
-  const subscribe = () => abacatePayService.checkout(planId, user)
+  const subscribe = async () => {
+    setErr(null)
+    setLoading(true)
+    try {
+      await abacatePayService.checkout(planId, user)
+    } catch (e) {
+      setErr(e.message || 'Erro ao iniciar checkout. Tente novamente.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div style={{ minHeight:'100vh', background:C.bg, color:C.tx, fontFamily:'DM Sans,sans-serif' }}>
@@ -58,11 +70,13 @@ export const PlanDetails = () => {
             <p style={{ margin:0, fontSize:13, color:C.tx }}><strong>Ideal para:</strong> {p.ideal}</p>
           </div>
 
+          {err && <div style={{ background:'#EF444422', border:'1px solid #EF4444', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:13, color:'#FCA5A5' }}>{err}</div>}
+
           {isCurrent
             ? <button disabled style={{ width:'100%', background:C.bd, border:'none', borderRadius:10, padding:'13px', color:C.mut, fontWeight:700, fontSize:15, cursor:'default', fontFamily:'inherit', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:6 }}><Check size={16} /> Este é o seu plano atual</button>
             : isFree
               ? <button disabled style={{ width:'100%', background:C.bd, border:'none', borderRadius:10, padding:'13px', color:C.mut, fontWeight:700, fontSize:15, cursor:'default', fontFamily:'inherit', opacity:.6 }}>Plano gratuito</button>
-              : <button onClick={subscribe} style={{ width:'100%', background:C.pur, border:'none', borderRadius:10, padding:'13px', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer', fontFamily:'inherit' }}>Assinar {p.name} — {p.price}{p.period}</button>}
+              : <button onClick={subscribe} disabled={loading} style={{ width:'100%', background:loading ? C.bd : C.pur, border:'none', borderRadius:10, padding:'13px', color:'#fff', fontWeight:700, fontSize:15, cursor:loading?'default':'pointer', fontFamily:'inherit', opacity:loading?.8:1 }}>{loading ? 'Aguarde...' : `Assinar ${p.name} — ${p.price}${p.period}`}</button>}
         </div>
       </div>
     </div>
