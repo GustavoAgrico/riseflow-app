@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Gem, Check } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { usageService } from '@services/usageService'
-import { StripeService } from '@services/stripeService'
 import { checkoutService } from '@services/checkoutService'
 import { logger } from '@services/activityLogger'
 
 const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#94A3B8', pur:'#7C3AED', grn:'#059669', red:'#EF4444' }
-const stripe = new StripeService(supabase)
 
 const CATALOG = [
   {
@@ -60,9 +57,13 @@ export const Plans = () => {
 
   const current = usage?.plan ?? 'free'
   const subscribe = (planId) => { logger.log(user?.id, 'plan_upgraded', { category: 'billing', description: 'Plano alterado para ' + (CATALOG.find(p => p.id === planId)?.name || planId) }); navigate(`/plans/${planId}`) }
-  const portal = async () => {
-    try { await stripe.getPortalUrl(user?.id) }
-    catch (e) { flash('Erro ao abrir o portal.', false); console.error(e) }
+  const cancelPlan = async () => {
+    if (!window.confirm('Cancelar sua assinatura? Você voltará para o plano Grátis.')) return
+    try {
+      await checkoutService.cancel(user?.id)
+      flash('Assinatura cancelada. Você foi movido para o plano Grátis.')
+      setTimeout(() => window.location.reload(), 1500)
+    } catch (e) { flash('Erro ao cancelar.', false); console.error(e) }
   }
 
   return (
@@ -71,7 +72,7 @@ export const Plans = () => {
         <a href="/dashboard" style={S.ghost}>← Voltar</a>
         <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}><Gem size={18} color={C.pur} /> Planos</span>
         {usage && <span style={{ background:C.pur+'22', color:C.pur, borderRadius:6, padding:'3px 10px', fontSize:11, fontWeight:700 }}>Plano atual: {current}</span>}
-        {current !== 'free' && <button onClick={portal} style={{ ...S.ghost, marginLeft:'auto', cursor:'pointer' }}>Gerenciar assinatura</button>}
+        {current !== 'free' && <button onClick={cancelPlan} style={{ ...S.ghost, marginLeft:'auto', cursor:'pointer', color:'#EF4444', borderColor:'#EF444455' }}>Cancelar assinatura</button>}
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, padding:24 }}>

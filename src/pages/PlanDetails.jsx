@@ -3,7 +3,7 @@ import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { Gem, Check } from 'lucide-react'
 import { useAuth } from '@context/AuthContext'
 import { usePlan } from '@hooks/usePlan'
-import { checkoutService } from '@services/checkoutService'
+import { abacatePayService } from '@services/abacatePayService'
 
 const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#94A3B8', pur:'#7C3AED', grn:'#059669' }
 
@@ -33,7 +33,7 @@ export const PlanDetails = () => {
 
   const isCurrent = usage?.plan === planId
   const isFree = planId === 'free'
-  const subscribe = () => checkoutService.checkout(planId, user)
+  const subscribe = () => abacatePayService.checkout(planId, user)
 
   return (
     <div style={{ minHeight:'100vh', background:C.bg, color:C.tx, fontFamily:'DM Sans,sans-serif' }}>

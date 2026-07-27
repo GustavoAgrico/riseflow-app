@@ -19,6 +19,7 @@ const emailRoutes = require('./routes/email')
 const telegramRoutes = require('./routes/telegram')
 const metaRoutes = require('./routes/meta')
 const createWebhookRouter = require('./routes/webhook')
+const billingRoutes = require('./routes/billing')
 const telegram = require('./telegramClient')
 const metaClient = require('./metaClient')
 const { handleIncomingMessage } = require('./flowEngine')
@@ -72,6 +73,9 @@ app.post('/api/auth/login', (req, res) => {
   res.json({ token })
 })
 
+// Webhook da AbacatePay — PÚBLICO (AbacatePay não envia JWT).
+app.use('/api/billing/webhook', billingRoutes)
+
 // Webhook da Meta (Messenger/Instagram) — PÚBLICO, mas ANTES do webhook da
 // Evolution: o router da Evolution captura POST /:event e engoliria /meta.
 // GET = verificação hub.challenge; POST = eventos (assinatura HMAC).
@@ -103,6 +107,7 @@ app.use('/api/instance', auth, instanceRoutes)
 app.use('/api/email', auth, emailRoutes)
 app.use('/api/telegram', auth, telegramRoutes)
 app.use('/api/meta', auth, metaRoutes)
+app.use('/api/billing', auth, billingRoutes)
 
 // Produção (Docker/Render): serve o build do frontend (../dist) na mesma porta.
 // GET em rota não-/api cai no index.html (SPA fallback) — corrige o "Cannot GET /".
