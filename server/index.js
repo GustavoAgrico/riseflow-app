@@ -35,6 +35,11 @@ if (!JWT_SECRET) {
 const app = express()
 const server = http.createServer(app)
 
+// Render (e outros proxies como Nginx/Heroku) terminam TLS antes do Node.
+// Sem isso, req.protocol retorna 'http' mesmo em produção HTTPS, quebrando
+// o redirect_uri do OAuth da Meta.
+app.set('trust proxy', 1)
+
 // CORS: apenas as origens listadas no .env (localhost:3000 em dev).
 const allowedOrigins = CORS_ORIGIN.split(',').map((o) => o.trim())
 
