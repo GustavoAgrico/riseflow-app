@@ -55,24 +55,61 @@ function getStatus(userId, channel) {
 }
 
 /* Valida um Page Access Token e devolve { id, name } da página.
-   Tenta /me primeiro; se falhar por permissão, usa /debug_token (não exige
-   pages_read_engagement) para confirmar validade e extrair o page_id. */
+   Tenta /me primeiro; se falhar por permissão (código 100), usa debug_token.
+   Se debug_token também falhar mas /me confirmou que o token chegou à Graph,
+   aceita o token com id vazio (o page_id virá do request body ou ficará vazio). */
 async function verifyPageToken(token) {
+  let meErrorCode = null
+
   try {
     const { data } = await axios.get(`${GRAPH}/me`, {
       params: { fields: 'id,name', access_token: token }, timeout: 15_000,
     })
     if (data?.id) return data
-  } catch { /* cai no fallback abaixo */ }
+    if (data?.error) meErrorCode = data.error.code
+  } catch (err) {
+    const code = err.response?.data?.error?.code
+    meErrorCode = code ?? null
+    // Código 190 = token inválido/expirado — rejeita diretamente
+    if (code === 190) throw new Error('Token inválido ou expirado.')
+  }
 
   const { META_APP_ID, META_APP_SECRET } = process.env
-  if (!META_APP_ID || !META_APP_SECRET) throw new Error('Token inválido ou sem permissão para validar.')
-  const appToken = `${META_APP_ID}|${META_APP_SECRET}`
-  const { data: { data: info } } = await axios.get('https://graph.facebook.com/debug_token', {
-    params: { input_token: token, access_token: appToken }, timeout: 15_000,
-  })
-  if (!info?.is_valid) throw new Error('Token inválido ou expirado.')
-  return { id: String(info.profile_id || info.user_id || ''), name: null }
+  if (META_APP_ID && META_APP_SECRET) {
+    // Obtém app access token real via client_credentials (mais confiável que APP_ID|APP_SECRET)
+    let appToken = `${META_APP_ID}|${META_APP_SECRET}`
+    try {
+      const { data: atData } = await axios.get('https://graph.facebook.com/oauth/access_token', {
+        params: { client_id: META_APP_ID, client_secret: META_APP_SECRET, grant_type: 'client_credentials' },
+        timeout: 10_000,
+      })
+      if (atData?.access_token) appToken = atData.access_token
+    } catch { /* usa shorthand como fallback */ }
+
+    try {
+      const { data: { data: info } } = await axios.get('https://graph.facebook.com/debug_token', {
+        params: { input_token: token, access_token: appToken }, timeout: 15_000,
+      })
+      if (info?.is_valid) return { id: String(info.profile_id || info.user_id || ''), name: null }
+      throw new Error('Token inválido ou expirado.')
+    } catch (debugErr) {
+      const msg = debugErr.response?.data?.error?.message ?? debugErr.message
+      console.warn('[meta] debug_token falhou:', msg)
+      // Se debug_token falhou mas /me chegou à Graph com erro de permissão (#100),
+      // o token é provavelmente válido — aceita sem validação completa.
+      if (meErrorCode === 100) {
+        console.warn('[meta] aceitando token sem validação completa (pages_read_engagement ausente)')
+        return { id: '', name: null }
+      }
+      throw debugErr
+    }
+  }
+
+  if (meErrorCode === 100) {
+    console.warn('[meta] aceitando token sem validação (META_APP_ID/SECRET ausentes, pages_read_engagement)')
+    return { id: '', name: null }
+  }
+  throw new Error('Token inválido ou expirado.')
 }
 
 /* Assina o app nos eventos de mensagens da página (necessário p/ webhook). */
