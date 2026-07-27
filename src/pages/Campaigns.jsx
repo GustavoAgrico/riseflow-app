@@ -200,6 +200,97 @@ const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
   )
 }
 
+// Modal com a lista de destinatários de uma campanha
+const RecipientsModal = ({ campaign, onClose }) => {
+  const [msgs, setMsgs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    supabase.from('campaign_messages')
+      .select('contact_name, contact_company, phone, email, status, sent_at, error')
+      .eq('campaign_id', campaign.id)
+      .order('id', { ascending: true })
+      .then(({ data }) => { setMsgs(data ?? []); setLoading(false) })
+  }, [campaign.id])
+
+  const ST_COLOR = { pending:'#64748B', sent:'#059669', failed:'#EF4444', skipped:'#D97706' }
+  const ST_LABEL = { pending:'Pendente', sent:'Enviado', failed:'Falhou', skipped:'Ignorado' }
+
+  const filtered = msgs.filter(m => {
+    const q = search.toLowerCase()
+    return !q || (m.contact_name ?? '').toLowerCase().includes(q) || (m.phone ?? '').includes(q) || (m.email ?? '').toLowerCase().includes(q)
+  })
+
+  const exportRec = () => exportCSV(
+    filtered.map(m => ({
+      Nome: m.contact_name || '—',
+      Empresa: m.contact_company || '—',
+      Telefone: m.phone || '—',
+      Email: m.email || '—',
+      Status: ST_LABEL[m.status] || m.status,
+      'Enviado em': m.sent_at ? new Date(m.sent_at).toLocaleString('pt-BR') : '—',
+      Erro: m.error || '—',
+    })),
+    `destinatarios-${campaign.name}`
+  )
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'#000b', display:'flex', alignItems:'center', justifyContent:'center', zIndex:300 }} onClick={onClose}>
+      <div style={{ background:'#1E293B', border:'1px solid #334155', borderRadius:16, width:720, maxHeight:'85vh', display:'flex', flexDirection:'column' }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div style={{ padding:'16px 24px', borderBottom:'1px solid #334155', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <p style={{ fontSize:15, fontWeight:700, margin:'0 0 2px', color:'#F8FAFC', display:'flex', alignItems:'center', gap:8 }}>
+              <Users size={16} color="#7C3AED" /> Destinatários — {campaign.name}
+            </p>
+            <p style={{ fontSize:11, color:'#64748B', margin:0 }}>{msgs.length} contato(s)</p>
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={exportRec} style={{ ...S.btn('#334155','#94A3B8'), display:'inline-flex', alignItems:'center', gap:6, fontSize:12 }}><Download size={13} /> Exportar CSV</button>
+            <button onClick={onClose} style={{ background:'none', border:'none', color:'#64748B', cursor:'pointer', fontSize:22, lineHeight:1 }}>×</button>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div style={{ padding:'12px 24px', borderBottom:'1px solid #1E293B' }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nome, telefone ou email…" style={{ ...S.input, fontSize:13 }} />
+        </div>
+
+        {/* Table */}
+        <div style={{ flex:1, overflowY:'auto', padding:'0 24px 16px' }}>
+          {loading ? (
+            <div style={{ padding:32, textAlign:'center', color:'#64748B' }}><Loader2 size={18} style={{ display:'inline' }} /> Carregando…</div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding:32, textAlign:'center', color:'#64748B' }}>Nenhum destinatário encontrado.</div>
+          ) : (
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr>{['Nome','Telefone / Email','Status','Enviado em'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {filtered.map((m, i) => (
+                  <tr key={i}>
+                    <td style={{ ...S.td, color:'#F8FAFC', fontWeight:600 }}>{m.contact_name || '—'}{m.contact_company ? <span style={{ fontSize:10, color:'#64748B', display:'block', fontWeight:400 }}>{m.contact_company}</span> : null}</td>
+                    <td style={S.td}>{m.phone || m.email || '—'}</td>
+                    <td style={S.td}>
+                      <span style={{ background:(ST_COLOR[m.status]||'#64748B')+'22', color:ST_COLOR[m.status]||'#64748B', borderRadius:5, padding:'2px 8px', fontSize:11, fontWeight:600 }}>
+                        {ST_LABEL[m.status] || m.status}
+                      </span>
+                      {m.error && <span style={{ fontSize:10, color:'#EF4444', display:'block', marginTop:2 }}>{m.error}</span>}
+                    </td>
+                    <td style={{ ...S.td, color:'#64748B', fontSize:12 }}>{m.sent_at ? new Date(m.sent_at).toLocaleString('pt-BR') : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const DEMO_CAMPAIGNS = [
   { id:'d1', name:'Black Friday (exemplo)', status:'done',    total:1240, sent:1240, delivered:0, read:0, replied:0, created_at:'2024-11-29' },
   { id:'d2', name:'Reativação (exemplo)',   status:'paused',  total:380,  sent:215,  delivered:0, read:0, replied:0, created_at:'2025-01-15' },
@@ -215,6 +306,7 @@ export function Campaigns() {
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState(null)
   const [modal, setModal] = useState(false)
+  const [recipientsOf, setRecipientsOf] = useState(null)
   const [emailConnected, setEmailConnected] = useState(false)
 
   const load = useCallback(async () => {
@@ -369,7 +461,11 @@ export function Campaigns() {
                       {c.name}
                       {c.channel === 'email' && <span style={{ marginLeft:8, background:'#2563EB22', color:'#60A5FA', borderRadius:5, padding:'2px 7px', fontSize:10, fontWeight:700, verticalAlign:'middle' }}>EMAIL</span>}
                     </td>
-                    <td style={S.td}>{(c.total || 0).toLocaleString('pt-BR')}</td>
+                    <td style={S.td}>
+                      <button onClick={() => setRecipientsOf(c)} title="Ver lista de destinatários" style={{ background:'none', border:'none', color:'#A78BFA', cursor:'pointer', fontWeight:600, fontSize:13, padding:0, textDecoration:'underline dotted', textUnderlineOffset:2 }}>
+                        {(c.total || 0).toLocaleString('pt-BR')}
+                      </button>
+                    </td>
                     <td style={S.td}>{(c.sent || 0).toLocaleString('pt-BR')}</td>
                     <td style={S.td}>{(c.delivered || 0).toLocaleString('pt-BR')}</td>
                     <td style={S.td}>{(c.read || 0).toLocaleString('pt-BR')}</td>
@@ -383,7 +479,11 @@ export function Campaigns() {
                         {!isDemoMode && canSend && (
                           <button title="Enviar agora" onClick={() => sendNow(c)} disabled={isBusy} style={{ ...S.btn('#05966915','#34D399','1px solid #05966930'), padding:'6px 9px', display:'inline-flex', alignItems:'center', opacity:isBusy?0.5:1 }}>{isBusy ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}</button>
                         )}
-                        <button title="Exportar relatório (CSV)" onClick={() => exportCSV([{ Nome:c.name, Status:st.label, Destinatários:c.total||0, Enviadas:c.sent||0, Entregues:c.delivered||0, Lidas:c.read||0, Respostas:c.replied||0, Data:fmtDate(c.scheduled_at || c.created_at) }], `campanha-${c.name}`)} style={{ ...S.btn('#334155','#94A3B8'), padding:'6px 9px', display:'inline-flex', alignItems:'center' }}><Download size={15} /></button>
+                        <button title="Exportar destinatários (CSV)" onClick={async () => {
+                          const { data: msgs } = await supabase.from('campaign_messages').select('contact_name,contact_company,phone,email,status,sent_at,error').eq('campaign_id', c.id).order('id')
+                          const rows = (msgs ?? []).map(m => ({ Nome: m.contact_name||'—', Empresa: m.contact_company||'—', Telefone: m.phone||'—', Email: m.email||'—', Status: {pending:'Pendente',sent:'Enviado',failed:'Falhou',skipped:'Ignorado'}[m.status]||m.status, 'Enviado em': m.sent_at ? new Date(m.sent_at).toLocaleString('pt-BR') : '—', Erro: m.error||'—' }))
+                          exportCSV(rows.length ? rows : [{ Nome: c.name, Status: st.label, Destinatários: c.total||0, Enviadas: c.sent||0 }], `destinatarios-${c.name}`)
+                        }} style={{ ...S.btn('#334155','#94A3B8'), padding:'6px 9px', display:'inline-flex', alignItems:'center' }}><Download size={15} /></button>
                         {!isDemoMode && <button title="Duplicar" onClick={() => duplicate(c)} style={{ ...S.btn('#334155','#94A3B8'), padding:'6px 9px', display:'inline-flex', alignItems:'center' }}><Copy size={15} /></button>}
                         {!isDemoMode && <button title="Excluir" onClick={() => remove(c)} style={{ ...S.btn('#EF444415','#F87171','1px solid #EF444430'), padding:'6px 9px', display:'inline-flex', alignItems:'center' }}><Trash2 size={15} /></button>}
                       </div>
@@ -397,6 +497,7 @@ export function Campaigns() {
       </div>
 
       {modal && <CampaignModal onClose={() => setModal(false)} onCreate={create} contacts={contacts} emailConnected={emailConnected} />}
+      {recipientsOf && <RecipientsModal campaign={recipientsOf} onClose={() => setRecipientsOf(null)} />}
     </div>
   )
 }
