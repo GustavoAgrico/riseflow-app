@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Loader2, Info, Mail } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
+import { testSmtp, emailErrorMessage } from '@services/emailService'
 import { ModalBase } from './ModalBase'
 
 const PRESETS = [
@@ -31,14 +32,17 @@ export const EmailModal = ({ onClose, onSuccess }) => {
     setSaving(true)
     setError('')
     try {
-      const config = { host: host.trim(), port: port.trim(), email: email.trim() }
+      // 1) Valida as credenciais contra o servidor SMTP de verdade (verify).
+      await testSmtp({ host: host.trim(), port: port.trim(), user: email.trim(), pass })
+      // 2) Só persiste se a conexão funcionou. A senha vai junto (o envio é server-side).
+      const config = { host: host.trim(), port: port.trim(), email: email.trim(), pass }
       await supabase.from('integrations').upsert(
         { user_id: user.id, type: 'email', status: 'connected', config, connected_at: new Date().toISOString() },
         { onConflict: 'user_id,type' }
       )
       onSuccess(config)
     } catch (err) {
-      setError(err.message ?? 'Erro ao salvar')
+      setError('Falha ao validar SMTP: ' + emailErrorMessage(err))
       setSaving(false)
     }
   }
@@ -96,7 +100,7 @@ export const EmailModal = ({ onClose, onSuccess }) => {
         className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50"
       >
         {saving && <Loader2 size={14} className="animate-spin" />}
-        {saving ? 'Salvando...' : 'Salvar configuração'}
+        {saving ? 'Validando SMTP...' : 'Validar e conectar'}
       </button>
     </ModalBase>
   )

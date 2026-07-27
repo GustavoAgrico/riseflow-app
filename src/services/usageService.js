@@ -2,7 +2,19 @@
 import { supabase } from '@/lib/supabase'
 
 // Limite de mensagens por plano (-1 = ilimitado)
-export const PLANS = { free: 50, starter: 1000, pro: 10000, enterprise: -1 }
+export const PLANS = { free: 20, starter: 1000, pro: 10000, enterprise: -1 }
+
+const TRIAL_DAYS = 2
+
+// Verifica se o trial gratuito expirou pelo tempo (2 dias a partir da criação da conta)
+export const isTrialExpired = (usage) => {
+  if (!usage || usage.plan !== 'free') return false
+  const created = usage.created_at ?? usage.trial_started_at
+  if (!created) return false
+  const expiry = new Date(created)
+  expiry.setDate(expiry.getDate() + TRIAL_DAYS)
+  return new Date() > expiry
+}
 
 // Modo demonstração: sem sessão Supabase, persistimos o uso em localStorage.
 const DEMO_ID = 'demo-user'
@@ -29,6 +41,7 @@ export const usageService = {
 
   canSend: async (userId) => {
     const usage = await usageService.getUsage(userId)
+    if (isTrialExpired(usage)) return false
     return usage.messages_limit === -1 || usage.messages_sent < usage.messages_limit
   },
 

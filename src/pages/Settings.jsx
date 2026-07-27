@@ -236,6 +236,10 @@ export const Settings = () => {
   const [keysSaving, setKeysSaving]     = useState(false)
   const [keysMsg, setKeysMsg]           = useState('')
 
+  const [webhookUrl, setWebhookUrl]       = useState('')
+  const [webhookSaving, setWebhookSaving] = useState(false)
+  const [webhookMsg, setWebhookMsg]       = useState('')
+
   // Notifications
   const [notifs, setNotifs] = useState(() =>
     Object.fromEntries(notifGroups.flatMap(g => g.items.map(i => [i.id, i.defaultOn]))))
@@ -294,6 +298,7 @@ export const Settings = () => {
           if (data?.groq_key)      setGroqKey(data.groq_key)
           if (data?.openai_key)    setOpenaiKey(data.openai_key)
           if (data?.anthropic_key) setAnthropicKey(data.anthropic_key)
+          if (data?.webhook_url)   setWebhookUrl(data.webhook_url)
           const p = data?.notification_prefs
           if (p) {
             if (p.notifs)   setNotifs(n => ({ ...n, ...p.notifs }))
@@ -327,6 +332,32 @@ export const Settings = () => {
       setKeysMsg('Erro: ' + e.message)
     } finally {
       setKeysSaving(false)
+    }
+  }
+
+  const handleSaveWebhook = async () => {
+    if (!user || isDemoMode) return
+    const url = webhookUrl.trim()
+    if (url && !/^https?:\/\/.+/i.test(url)) {
+      setWebhookMsg('Erro: informe uma URL válida (começa com http:// ou https://)')
+      return
+    }
+    setWebhookSaving(true)
+    setWebhookMsg('')
+    try {
+      const { error } = await supabase.from('settings').upsert({
+        user_id:     user.id,
+        webhook_url: url || null,
+        updated_at:  new Date().toISOString(),
+      }, { onConflict: 'user_id' })
+      if (error) throw error
+      logger.log(user.id, 'webhook_updated', { category: 'settings', description: 'URL de webhook atualizada' })
+      setWebhookMsg('Webhook salvo')
+      setTimeout(() => setWebhookMsg(''), 4000)
+    } catch (e) {
+      setWebhookMsg('Erro: ' + e.message)
+    } finally {
+      setWebhookSaving(false)
     }
   }
 
@@ -1009,11 +1040,29 @@ export const Settings = () => {
               <div>
                 <h3 className="font-display font-semibold text-white text-sm mb-4">Webhook Evolution API</h3>
                 <label className="block text-xs text-slate-400 mb-2">URL do Webhook</label>
-                <input className="input-field" placeholder="https://seu-servidor.com/api/webhook" disabled={isDemoMode} />
+                <input
+                  className="input-field"
+                  placeholder="https://seu-servidor.com/api/webhook"
+                  value={webhookUrl}
+                  onChange={e => setWebhookUrl(e.target.value)}
+                  disabled={isDemoMode}
+                />
                 <p className="text-[10px] text-slate-500 mt-1.5">
                   Configure esta URL no painel da Evolution API para receber mensagens em tempo real.
                 </p>
-                <button className="btn-secondary mt-3 text-sm" disabled={isDemoMode}>Salvar Webhook</button>
+                {webhookMsg && (() => {
+                  const ok = !webhookMsg.startsWith('Erro')
+                  return (
+                    <p className={clsx('text-sm mt-3 flex items-center gap-2', ok ? 'text-brand-green' : 'text-brand-red')}>
+                      {ok ? <CheckCircle size={14} /> : <X size={14} />} {webhookMsg}
+                    </p>
+                  )
+                })()}
+                <button onClick={handleSaveWebhook} disabled={webhookSaving || isDemoMode}
+                  className="btn-secondary mt-3 text-sm disabled:opacity-50 flex items-center gap-2">
+                  {webhookSaving ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {webhookSaving ? 'Salvando...' : 'Salvar Webhook'}
+                </button>
               </div>
             </div>
           )}

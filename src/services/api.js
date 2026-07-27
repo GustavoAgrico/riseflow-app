@@ -6,7 +6,10 @@
 import axios from 'axios'
 import { supabase } from '@/lib/supabase'
 
-const BASE = `${import.meta.env.VITE_API_URL ?? 'http://localhost:3001'}/api`
+// Sem VITE_API_URL o BASE fica same-origin ('/api') — correto em produção,
+// onde o Express serve o frontend e a API na mesma porta (ver Dockerfile).
+// Em dev o .env define http://localhost:3001 e o Vite proxia /api → :3333.
+const BASE = `${import.meta.env.VITE_API_URL || ''}/api`
 const TOKEN_KEY = 'riseflow_proxy_token'
 
 export const api = axios.create({

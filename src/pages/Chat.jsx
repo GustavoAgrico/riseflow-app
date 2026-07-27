@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Paperclip, Send, Mic, Trash2, Play, Pause, Image as ImageIcon, FileText, Download, RefreshCw, Check, CheckCheck, Clock, ArrowLeft, PanelRight, ArrowRightLeft, Plus, Sparkles, Bot, Loader2, Pencil } from 'lucide-react'
+import { Paperclip, Send, Mic, Trash2, Play, Pause, Image as ImageIcon, FileText, Download, RefreshCw, Check, CheckCheck, Clock, ArrowLeft, PanelRight, ArrowRightLeft, Plus, Sparkles, Bot, Loader2, Pencil, MessageSquareText } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { usageService } from '@services/usageService'
 import { fetchConversations, fetchMessages, sendChatMessage, markConversationRead, syncWhatsAppChats, deleteConversation, loadConversationMessages, createConversation } from '@services/chatService'
+import { listTemplates, incrementTemplateUse } from '@services/templatesService'
 import { logger } from '@services/activityLogger'
 import { PaywallModal } from '@components/PaywallModal'
 import { LeadScorePanel } from '@components/LeadScorePanel'
@@ -84,6 +85,8 @@ export const Chat = () => {
   const [usage, setUsage] = useState({ messages_sent: 0, messages_limit: 50 })
   const [userId, setUserId] = useState(null)
   const [flashIds, setFlashIds] = useState(() => new Set()) // conversas com mensagem nova (badge piscando)
+  const [templates, setTemplates] = useState([])
+  const [showTemplates, setShowTemplates] = useState(false)
   const userRef = useRef(null)
   const selRef = useRef(null)
   const endRef = useRef(null)
@@ -105,6 +108,7 @@ export const Chat = () => {
   }
   const onlyDigits = (s) => String(s ?? '').replace(/\D/g, '')
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
+  useEffect(() => { if (userId) listTemplates(userId).then(setTemplates).catch(() => {}) }, [userId])
   useEffect(() => { setTyping(true); const t = setTimeout(() => setTyping(false), 2200); return () => clearTimeout(t) }, [selectedId])
 
   /* Mapeia linhas reais do Supabase para o formato que a UI já espera */
@@ -591,6 +595,26 @@ export const Chat = () => {
                     <div style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 8, background: '#233138', border: `1px solid ${C.border}`, borderRadius: 12, padding: '6px 0', zIndex: 21, boxShadow: '0 8px 24px rgba(0,0,0,.45)' }}>
                       {[[<ImageIcon size={17} color="#A78BFA" key="i" />, 'Imagem', 'image'], [<FileText size={17} color="#60A5FA" key="d" />, 'Documento', 'doc']].map(([ic, lb, k]) => (
                         <button key={lb} onClick={() => pickFile(k)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 22px 9px 16px', background: 'none', border: 'none', color: C.text, cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap', width: '100%', fontFamily: F }}>{ic} {lb}</button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <button onClick={() => setShowTemplates(v => !v)} title="Inserir template"
+                  style={{ ...iBtn, color: showTemplates ? C.purple : C.muted }}><MessageSquareText size={21} /></button>
+                {showTemplates && (
+                  <>
+                    <div onClick={() => setShowTemplates(false)} style={{ position: 'fixed', inset: 0, zIndex: 20 }} />
+                    <div style={{ position: 'absolute', bottom: '100%', left: 0, marginBottom: 8, width: 280, maxHeight: 320, overflowY: 'auto', background: '#233138', border: `1px solid ${C.border}`, borderRadius: 12, padding: '6px 0', zIndex: 21, boxShadow: '0 8px 24px rgba(0,0,0,.45)' }}>
+                      {templates.length === 0 ? (
+                        <div style={{ padding: '12px 16px', fontSize: 12, color: C.muted }}>Nenhum template. Crie em Templates.</div>
+                      ) : templates.map(t => (
+                        <button key={t.id} onClick={() => { setInput(t.msg); setShowTemplates(false); setTemplates(p => p.map(x => x.id === t.id ? { ...x, uses: x.uses + 1 } : x)); incrementTemplateUse(t.id, t.uses).catch(() => {}) }}
+                          style={{ display: 'block', textAlign: 'left', padding: '8px 16px', background: 'none', border: 'none', color: C.text, cursor: 'pointer', fontSize: 13, width: '100%', fontFamily: F }}>
+                          <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
+                          <div style={{ fontSize: 11, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.msg}</div>
+                        </button>
                       ))}
                     </div>
                   </>

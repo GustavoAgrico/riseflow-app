@@ -7,10 +7,11 @@
 // Os tipos de nó seguem o builder novo (src/pages/Flows/nodes/):
 //   gatilhos: triggerKeyword | triggerFirstContact | triggerSchedule | triggerTag
 //   ações:    actionSendText | actionSendFile | actionWaitReply |
-//             actionApplyTag | actionTransfer | actionWebhook
+//             actionApplyTag | actionTransfer | actionWebhook | actionSendEmail
 const axios = require('axios')
 const { supabase, isConfigured } = require('./supabaseClient')
 const { baileys } = require('./baileysClient')
+const { sendMailForUser } = require('./emailClient')
 
 /* ─── Utilidades ─────────────────────────────────────────────────────── */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -123,6 +124,9 @@ const updateExecution = (id, patch) =>
 const completeExecution = (id) =>
   updateExecution(id, { status: 'completed', completed_at: nowIso() })
 
+const failExecution = (id) =>
+  updateExecution(id, { status: 'failed', completed_at: nowIso() })
+
 async function startExecution(flow, triggerNode, ctx) {
   const { data, error } = await supabase.from('flow_executions')
     .insert({
@@ -169,7 +173,17 @@ async function saveSentMessage(ctx, text) {
 
 async function sendText(ctx, text) {
   if (!text) return
-  await baileys.post('/send/text', { number: jidToNumber(ctx.jid), text })
+  const number = jidToNumber(ctx.jid)
+  // Roteamento por canal pelo prefixo do contato: "tg…" = Telegram,
+  // "fb…"/"ig…" = Meta (Messenger/Instagram), senão WhatsApp (Baileys).
+  // require tardio: evita ciclo (canal → aiAttendant → flowEngine).
+  if (require('./telegramClient').isTelegramNumber(number)) {
+    await require('./telegramClient').sendTextTo(number, text, ctx.userId || null)
+  } else if (require('./metaClient').isMetaNumber(number)) {
+    await require('./metaClient').sendTextTo(number, text, ctx.userId || null)
+  } else {
+    await baileys.post('/send/text', { number, text })
+  }
   await saveSentMessage(ctx, text)
 }
 
@@ -212,6 +226,25 @@ async function transferToHuman(contact, assignTo) {
   } catch (_) { /* tabela pode não existir — ok */ }
 }
 
+/* Envia um email pela config SMTP do dono do funil. Falha não interrompe o funil.
+   `to` aceita endereço literal ou {{variavel}} (ex.: capturada por "Aguardar resposta"). */
+async function sendEmailAction(ctx, data = {}, vars = {}) {
+  const to = applyVars(data.to, vars, ctx).trim()
+  const subject = applyVars(data.subject, vars, ctx).trim()
+  const body = applyVars(data.body, vars, ctx)
+  if (!to || !subject) {
+    console.warn('[flowEngine] actionSendEmail sem destinatário/assunto — nó ignorado.')
+    return
+  }
+  try {
+    const html = data.asHtml ? body : undefined
+    const text = data.asHtml ? undefined : body
+    await sendMailForUser(ctx.userId, { to, subject, text, html })
+  } catch (e) {
+    console.warn('[flowEngine] falha ao enviar email:', e?.message ?? e)
+  }
+}
+
 async function callWebhook(data = {}, vars = {}, ctx = {}) {
   if (!data.url) return undefined
   const method = String(data.method || 'POST').toUpperCase()
@@ -224,8 +257,13 @@ async function callWebhook(data = {}, vars = {}, ctx = {}) {
     const raw = applyVars(data.body, vars, ctx)
     try { body = JSON.parse(raw) } catch { body = raw }
   }
-  const resp = await axios({ url: data.url, method, headers, data: body, timeout: 10_000 })
-  return resp.data
+  try {
+    const resp = await axios({ url: data.url, method, headers, data: body, timeout: 10_000 })
+    return resp.data
+  } catch (e) {
+    console.warn('[flowEngine] callWebhook falhou:', e?.message ?? e)
+    return undefined
+  }
 }
 
 function computeDeadline(data = {}) {
@@ -245,51 +283,61 @@ async function runFlow(flow, execution, startNodeId, ctx) {
   let currentId = startNodeId
   let steps = 0
 
-  while (currentId && steps < 100) {
-    steps++
-    const node = nodes.find((n) => n.id === currentId)
-    if (!node) break
-    const type = node.type || ''
-    const data = node.data || {}
+  try {
+    while (currentId && steps < 100) {
+      steps++
+      const node = nodes.find((n) => n.id === currentId)
+      if (!node) break
+      const type = node.type || ''
+      const data = node.data || {}
 
-    // Gatilho: ponto de partida, sem ação — apenas avança.
-    if (type.startsWith('trigger')) { currentId = nextNodeId(edges, currentId); continue }
+      // Gatilho: ponto de partida, sem ação — apenas avança.
+      if (type.startsWith('trigger')) { currentId = nextNodeId(edges, currentId); continue }
 
-    await updateExecution(execution.id, { current_node_id: currentId, variables })
+      await updateExecution(execution.id, { current_node_id: currentId, variables })
 
-    if (type === 'actionSendText') {
-      const delay = Math.min(Number(data.delay) || 0, 60)
-      if (delay) await sleep(delay * 1000)
-      await sendText(ctx, applyVars(data.text, variables, ctx))
-      currentId = nextNodeId(edges, currentId)
-    } else if (type === 'actionSendFile') {
-      const delay = Math.min(Number(data.delay) || 0, 60)
-      if (delay) await sleep(delay * 1000)
-      await sendMedia(ctx, { ...data, caption: applyVars(data.caption, variables, ctx) })
-      currentId = nextNodeId(edges, currentId)
-    } else if (type === 'actionWaitReply') {
-      // Para a execução: retoma quando o contato responder (ou no timeout).
-      variables = { ...variables, _waitNode: currentId, _saveAs: data.saveAs || null, _waitUntil: computeDeadline(data) }
-      await updateExecution(execution.id, { status: 'waiting_reply', variables, current_node_id: currentId })
-      return
-    } else if (type === 'actionApplyTag') {
-      await applyTags(ctx.contact, data.tags || [])
-      currentId = nextNodeId(edges, currentId)
-    } else if (type === 'actionTransfer') {
-      if (data.notice) await sendText(ctx, applyVars(data.notice, variables, ctx))
-      await transferToHuman(ctx.contact, data.assignTo)
-      await completeExecution(execution.id)
-      return
-    } else if (type === 'actionWebhook') {
-      const result = await callWebhook(data, variables, ctx)
-      if (data.waitResponse && result !== undefined) variables = { ...variables, webhook: result }
-      currentId = nextNodeId(edges, currentId)
-    } else {
-      currentId = nextNodeId(edges, currentId)
+      if (type === 'actionSendText') {
+        const delay = Math.min(Number(data.delay) || 0, 60)
+        if (delay) await sleep(delay * 1000)
+        await sendText(ctx, applyVars(data.text, variables, ctx))
+        currentId = nextNodeId(edges, currentId)
+      } else if (type === 'actionSendFile') {
+        const delay = Math.min(Number(data.delay) || 0, 60)
+        if (delay) await sleep(delay * 1000)
+        await sendMedia(ctx, { ...data, caption: applyVars(data.caption, variables, ctx) })
+        currentId = nextNodeId(edges, currentId)
+      } else if (type === 'actionWaitReply') {
+        // Para a execução: retoma quando o contato responder (ou no timeout).
+        variables = { ...variables, _waitNode: currentId, _saveAs: data.saveAs || null, _waitUntil: computeDeadline(data) }
+        await updateExecution(execution.id, { status: 'waiting_reply', variables, current_node_id: currentId })
+        return
+      } else if (type === 'actionApplyTag') {
+        await applyTags(ctx.contact, data.tags || [])
+        currentId = nextNodeId(edges, currentId)
+      } else if (type === 'actionTransfer') {
+        if (data.notice) await sendText(ctx, applyVars(data.notice, variables, ctx))
+        await transferToHuman(ctx.contact, data.assignTo)
+        await completeExecution(execution.id)
+        return
+      } else if (type === 'actionWebhook') {
+        const result = await callWebhook(data, variables, ctx)
+        if (data.waitResponse && result !== undefined) variables = { ...variables, webhook: result }
+        currentId = nextNodeId(edges, currentId)
+      } else if (type === 'actionSendEmail') {
+        const delay = Math.min(Number(data.delay) || 0, 60)
+        if (delay) await sleep(delay * 1000)
+        await sendEmailAction(ctx, data, variables)
+        currentId = nextNodeId(edges, currentId)
+      } else {
+        currentId = nextNodeId(edges, currentId)
+      }
     }
-  }
 
-  await completeExecution(execution.id)
+    await completeExecution(execution.id)
+  } catch (e) {
+    console.error('[flowEngine] runFlow falhou no nó', currentId, ':', e?.message ?? e)
+    try { await failExecution(execution.id) } catch {}
+  }
 }
 
 /* Retoma uma execução que aguardava resposta: salva a resposta e segue p/ 'replied'. */
@@ -365,6 +413,21 @@ if (isConfigured) {
   setInterval(() => sweepTimeouts().catch(() => {}), 60_000).unref?.()
 }
 
-// sendText/getWaitingExecution também são usados pelo aiAttendant.js
-// (envio com espelhamento no chat + checagem de funil aguardando resposta).
-module.exports = { handleIncomingMessage, sweepTimeouts, sendText, getWaitingExecution }
+/* Verifica sem mutação se algum funil ativo dispararia para esta mensagem.
+   Usado pelo aiAttendant para ceder o controle ao engine quando há match.
+   Não chama upsertContact — só lê o banco para não criar efeitos colaterais. */
+async function hasMatchingFlow(jid, text) {
+  if (!isConfigured) return false
+  try {
+    const existing = await getContactByJid(jid)
+    const isFirstContact = existing == null
+    const ctx = { jid, text: text || '', isFirstContact, now: new Date() }
+    const flows = await getActiveFlows()
+    return flows.some((flow) => findMatchingTrigger(flow, ctx) !== null)
+  } catch {
+    return false
+  }
+}
+
+// sendText/getWaitingExecution/hasMatchingFlow também são usados pelo aiAttendant.js
+module.exports = { handleIncomingMessage, sweepTimeouts, sendText, getWaitingExecution, hasMatchingFlow }

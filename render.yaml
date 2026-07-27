@@ -1,0 +1,65 @@
+# RiseFlow — Render Blueprint (app: frontend Vite + proxy Express).
+#
+# O whatsapp-server (Baileys) é um repo SEPARADO e tem o próprio Blueprint em
+# whatsapp-server/render.yaml. Este arquivo cobre só o app principal.
+#
+# Corrige a topologia da VERIFICACAO.md: hoje só o Baileys está no ar. Este
+# serviço publica o que falta — o frontend + a API — na mesma porta (Dockerfile
+# raiz, multi-stage), servindo o app e /api juntos (corrige B01).
+#
+# COMO APLICAR
+#   1. Render → New → Blueprint → aponte para este repo.
+#   2. Preencha os valores `sync: false` (o Render pergunta um a um).
+#   3. Após o 1º deploy, ajuste as vars "(2º passo)" com as URLs públicas reais
+#      (a deste app e a do serviço do Baileys, no outro repo).
+#
+# IMPORTANTE: variáveis VITE_* são de BUILD — o Render as injeta como build args
+# do Docker (o Dockerfile raiz já tem os ARG). Mudá-las exige novo build.
+
+services:
+  - type: web
+    name: riseflow-app
+    runtime: docker
+    plan: starter            # free hiberna e derruba o Socket.io; starter evita isso
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true          # segredo forte automático (corrige B13)
+      - key: WEBHOOK_TOKEN
+        generateValue: true          # protege o webhook público (corrige B11)
+      # ── Segredos do Supabase (preencher) ──
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: VITE_SUPABASE_URL         # build arg do Vite (mesmo valor de SUPABASE_URL)
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY    # build arg do Vite (a anon key, pública)
+        sync: false
+      # ── Ligação com o Baileys (repo separado) ──
+      # (2º passo) URL pública do serviço do wa, ex.: https://riseflow-wa.onrender.com
+      - key: BAILEYS_URL
+        sync: false
+      - key: BAILEYS_KEY
+        sync: false                    # MESMO valor do API_KEY do serviço do wa
+      # ── CORS ──
+      # (2º passo) URL pública deste app, ex.: https://riseflow-app.onrender.com
+      # (o frontend é same-origin; inclua domínios extras separados por vírgula)
+      - key: CORS_ORIGIN
+        sync: false
+      # ── Telegram / Meta ──
+      # (2º passo) URL pública deste app (webhook do Telegram entra aqui):
+      - key: TELEGRAM_WEBHOOK_BASE
+        sync: false
+      # Meta (opcional — preencher quando o app da Meta existir; ver META_SETUP.md):
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_VERIFY_TOKEN
+        sync: false

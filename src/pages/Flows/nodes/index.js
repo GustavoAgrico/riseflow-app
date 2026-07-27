@@ -1,7 +1,7 @@
 // Registro central dos nós customizados do builder de funis.
 // `nodeTypes` é passado direto para o <ReactFlow nodeTypes={...} />.
 // `NODE_CATALOG` alimenta a paleta lateral (label, cor e categoria de cada nó).
-import { Key, UserPlus, Clock, Tag, MessageSquare, Paperclip, Hourglass, Tags, Headphones, Webhook } from 'lucide-react'
+import { Key, UserPlus, Clock, Tag, MessageSquare, Paperclip, Hourglass, Tags, Headphones, Webhook, Mail } from 'lucide-react'
 import { T } from './_shared'
 
 import TriggerKeyword from './TriggerKeyword'
@@ -14,6 +14,7 @@ import ActionWaitReply from './ActionWaitReply'
 import ActionApplyTag from './ActionApplyTag'
 import ActionTransfer from './ActionTransfer'
 import ActionWebhook from './ActionWebhook'
+import ActionSendEmail from './ActionSendEmail'
 
 /* Mapa type → componente — registrado no React Flow. */
 export const nodeTypes = {
@@ -27,6 +28,7 @@ export const nodeTypes = {
   actionApplyTag: ActionApplyTag,
   actionTransfer: ActionTransfer,
   actionWebhook: ActionWebhook,
+  actionSendEmail: ActionSendEmail,
 }
 
 /* Catálogo para a paleta (arrastar/soltar). */
@@ -44,6 +46,7 @@ export const NODE_CATALOG = [
     { type: 'actionApplyTag',  Icon: Tags,          label: 'Aplicar tag' },
     { type: 'actionTransfer',  Icon: Headphones,    label: 'Transferir p/ humano' },
     { type: 'actionWebhook',   Icon: Webhook,       label: 'Chamar webhook' },
+    { type: 'actionSendEmail', Icon: Mail,          label: 'Enviar email' },
   ] },
 ]
 

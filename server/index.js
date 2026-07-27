@@ -1,8 +1,10 @@
 // RiseFlow — proxy seguro da Evolution API.
 // A API key da Evolution fica só no servidor; o frontend fala com este proxy via JWT.
-require('dotenv').config()
+const path = require('path')
+require('dotenv').config({ path: path.join(__dirname, '.env') })
 
 const http = require('http')
+const fs = require('fs')
 const express = require('express')
 const cors = require('cors')
 const jwt = require('jsonwebtoken')
@@ -13,7 +15,14 @@ const chatsRoutes = require('./routes/chats')
 const messagesRoutes = require('./routes/messages')
 const contactsRoutes = require('./routes/contacts')
 const instanceRoutes = require('./routes/instance')
+const emailRoutes = require('./routes/email')
+const telegramRoutes = require('./routes/telegram')
+const metaRoutes = require('./routes/meta')
 const createWebhookRouter = require('./routes/webhook')
+const telegram = require('./telegramClient')
+const metaClient = require('./metaClient')
+const { handleIncomingMessage } = require('./flowEngine')
+const { aiRespond } = require('./aiAttendant')
 
 const { PORT = 3333, JWT_SECRET, CORS_ORIGIN = 'http://localhost:3000' } = process.env
 
@@ -47,7 +56,9 @@ app.use(
   })
 )
 
-app.use(express.json())
+// rawBody: necessário para validar a assinatura X-Hub-Signature-256 da Meta
+// (o HMAC é calculado sobre o corpo CRU, antes do parse).
+app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf } }))
 
 // Healthcheck (público).
 app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now() }))
@@ -61,15 +72,46 @@ app.post('/api/auth/login', (req, res) => {
   res.json({ token })
 })
 
+// Webhook da Meta (Messenger/Instagram) — PÚBLICO, mas ANTES do webhook da
+// Evolution: o router da Evolution captura POST /:event e engoliria /meta.
+// GET = verificação hub.challenge; POST = eventos (assinatura HMAC).
+app.use('/api/webhook/meta', metaRoutes.webhookRouter)
+
 // Webhook da Evolution → Socket.io. PÚBLICO (a Evolution não envia JWT),
 // por isso é montado ANTES das rotas protegidas.
 app.use('/api/webhook', createWebhookRouter(io))
+
+// Webhook do Telegram — PÚBLICO (auth = secret_token oficial da Bot API).
+// Montado antes do router autenticado de /api/telegram.
+app.use('/api/telegram/webhook', telegramRoutes.webhookRouter)
+
+// OAuth callback da Meta — PÚBLICO (o navegador volta do login sem JWT).
+app.use('/api/meta/oauth', metaRoutes.oauthRouter)
+
+// Telegram e Meta: injetam Socket.io + a mesma cadeia IA→funis do WhatsApp.
+const incomingHandler = ({ jid, text, pushName, fromMe }) =>
+  aiRespond({ jid, text, pushName, fromMe })
+    .then((handled) => (handled ? null : handleIncomingMessage({ jid, text, pushName, fromMe })))
+telegram.init({ socketIo: io, incomingHandler })
+metaClient.init({ socketIo: io, incomingHandler })
 
 // Rotas protegidas — o middleware auth valida o JWT em todas elas.
 app.use('/api/chats', auth, chatsRoutes)
 app.use('/api/messages', auth, messagesRoutes)
 app.use('/api/contacts', auth, contactsRoutes)
 app.use('/api/instance', auth, instanceRoutes)
+app.use('/api/email', auth, emailRoutes)
+app.use('/api/telegram', auth, telegramRoutes)
+app.use('/api/meta', auth, metaRoutes)
+
+// Produção (Docker/Render): serve o build do frontend (../dist) na mesma porta.
+// GET em rota não-/api cai no index.html (SPA fallback) — corrige o "Cannot GET /".
+const distDir = path.join(__dirname, '..', 'dist')
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir))
+  app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(distDir, 'index.html')))
+  console.log(`[static] servindo frontend de ${distDir}`)
+}
 
 // Tratador de erros centralizado: repassa o status/erro do servidor WhatsApp sem vazar a API key.
 app.use((err, req, res, next) => {
@@ -90,4 +132,7 @@ server.listen(PORT, () => {
   console.log(`RiseFlow proxy rodando em http://localhost:${PORT}`)
   console.log(`WebSocket (Socket.io) ativo na mesma porta`)
   console.log(`CORS liberado para: ${allowedOrigins.join(', ')}`)
+  // Religa os canais já conectados (integrations).
+  telegram.resumeBots()
+  metaClient.resumePages()
 })

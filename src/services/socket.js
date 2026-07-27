@@ -6,7 +6,10 @@
 // VITE_SOCKET_URL com a URL pública do backend.
 import { io } from 'socket.io-client'
 
-const URL = import.meta.env.VITE_SOCKET_URL ?? 'http://localhost:3333'
+// Produção: sem VITE_SOCKET_URL conecta same-origin (o Express serve frontend
+// e Socket.io na mesma porta — ver Dockerfile). Dev: proxy roda em :3333.
+const URL = import.meta.env.VITE_SOCKET_URL
+  || (import.meta.env.DEV ? 'http://localhost:3333' : undefined)
 
 export const socket = io(URL, {
   autoConnect: true,

@@ -3,6 +3,8 @@ import { Layout } from '@components/Layout/Layout'
 import { useAuth } from '@context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { getInstanceStatus, disconnectInstance } from '@/services/evolutionApi'
+import { disconnectTelegram } from '@services/telegramService'
+import { disconnectMeta } from '@services/metaService'
 import { WhatsAppModal } from '@components/Integrations/WhatsAppModal'
 import { WhatsAppManagePanel } from '@components/Integrations/WhatsAppManagePanel'
 import { InstagramModal } from '@components/Integrations/InstagramModal'
@@ -10,9 +12,29 @@ import { FacebookModal } from '@components/Integrations/FacebookModal'
 import { TelegramModal } from '@components/Integrations/TelegramModal'
 import { EmailModal } from '@components/Integrations/EmailModal'
 import { AIModal } from '@components/Integrations/AIModal'
-import { CheckCircle, XCircle, Plug, Settings, Loader2, RefreshCw, Wifi, AlertTriangle } from 'lucide-react'
+import { CheckCircle, XCircle, Plug, Settings, Loader2, RefreshCw, Wifi, AlertTriangle, Mail, Lock } from 'lucide-react'
+import { sendEmail, emailErrorMessage } from '@services/emailService'
 import { BrandIcon } from '@components/Integrations/BrandIcons'
+import { usePlan } from '@hooks/usePlan'
 import clsx from 'clsx'
+
+/* ─── Quais integrações cada plano pode conectar ───────────────────────── */
+const INTEGRATION_ACCESS = {
+  free:       ['whatsapp'],
+  starter:    ['whatsapp', 'telegram'],
+  pro:        ['whatsapp', 'telegram', 'email'],
+  enterprise: ['whatsapp', 'instagram', 'facebook', 'telegram', 'email', 'ai'],
+}
+
+const REQUIRED_PLAN = {
+  instagram: 'enterprise',
+  facebook:  'enterprise',
+  ai:        'enterprise',
+  email:     'pro',
+  telegram:  'pro',
+}
+
+const PLAN_LABEL = { free: 'Grátis', starter: 'Starter', pro: 'Pro', enterprise: 'Enterprise' }
 
 /* ─── Card definitions ─────────────────────────────────────────────────── */
 const CARDS = [
@@ -24,26 +46,22 @@ const CARDS = [
   {
     id: 'instagram', name: 'Instagram DM', category: 'Redes Sociais',
     color: '#E1306C', bg: 'from-pink-500/20 to-pink-600/5',
-    description: 'Gerencie mensagens diretas e comentários do Instagram automaticamente',
-    comingSoon: true,
+    description: 'Conecte sua conta profissional e responda DMs no Chat, com funis e IA',
   },
   {
     id: 'facebook', name: 'Facebook Messenger', category: 'Redes Sociais',
     color: '#1877F2', bg: 'from-blue-500/20 to-blue-600/5',
-    description: 'Automatize conversas e suporte via Facebook Messenger',
-    comingSoon: true,
+    description: 'Conecte sua página e responda o Messenger no Chat, com funis e IA',
   },
   {
     id: 'telegram', name: 'Telegram', category: 'Mensageria',
     color: '#2AABEE', bg: 'from-sky-500/20 to-sky-600/5',
-    description: 'Crie bots e fluxos automáticos no Telegram',
-    comingSoon: true,
+    description: 'Conecte um bot (via @BotFather) e receba/responda conversas no Chat, com funis e IA',
   },
   {
     id: 'email', name: 'Email (SMTP)', category: 'Email',
     color: '#F59E0B', bg: 'from-yellow-500/20 to-yellow-600/5',
     description: 'Envie emails transacionais e sequências automáticas',
-    comingSoon: true,
   },
   {
     id: 'ai', name: 'OpenAI / Claude IA', category: 'Inteligência Artificial',
@@ -63,6 +81,11 @@ const formatPhone = (jid = '') => {
 /* ─── Component ─────────────────────────────────────────────────────────── */
 export const Integrations = () => {
   const { user, isDemoMode } = useAuth()
+  const { plan: usage } = usePlan()
+
+  const currentPlan = isDemoMode ? 'pro' : (usage?.plan ?? 'free')
+  const allowedIntegrations = INTEGRATION_ACCESS[currentPlan] ?? INTEGRATION_ACCESS.free
+  const canAccess = (id) => allowedIntegrations.includes(id)
 
   const [activeModal, setActiveModal] = useState(null) // null | 'whatsapp' | 'instagram' | ...
   const [manageWA, setManageWA] = useState(false)
@@ -70,6 +93,7 @@ export const Integrations = () => {
   const [waChecking, setWaChecking] = useState(false)
   const [disconnecting, setDisconnecting] = useState(null) // type being disconnected
   const [confirmDisc, setConfirmDisc] = useState(null)    // type awaiting confirmation
+  const [emailTesting, setEmailTesting] = useState(false) // enviando email de teste
 
   /* ── Load from Supabase ── */
   const loadIntegrations = useCallback(async () => {
@@ -151,6 +175,14 @@ export const Integrations = () => {
       if (type === 'whatsapp') {
         await disconnectInstance().catch(() => {})
       }
+      if (type === 'telegram') {
+        // Para o bot no servidor (o proxy também atualiza integrations).
+        await disconnectTelegram(user.id).catch(() => {})
+      }
+      if (type === 'facebook' || type === 'instagram') {
+        // Remove a página do registro do servidor.
+        await disconnectMeta(user.id, type).catch(() => {})
+      }
       await supabase.from('integrations').upsert(
         { user_id: user.id, type, status: 'disconnected', config: {} },
         { onConflict: 'user_id,type' }
@@ -163,6 +195,27 @@ export const Integrations = () => {
       // ignore
     } finally {
       setDisconnecting(null)
+    }
+  }
+
+  /* ── Enviar email de teste (prova o canal SMTP ponta-a-ponta) ── */
+  const handleTestEmail = async () => {
+    if (isDemoMode || !user) return
+    const to = window.prompt('Enviar email de teste para qual endereço?', user.email ?? '')
+    if (!to?.trim()) return
+    setEmailTesting(true)
+    try {
+      await sendEmail({
+        userId: user.id,
+        to: to.trim(),
+        subject: 'RiseFlow — email de teste',
+        text: 'Este é um email de teste enviado pela sua integração SMTP no RiseFlow. Se você recebeu, está tudo funcionando!',
+      })
+      window.alert('Email de teste enviado para ' + to.trim() + '.')
+    } catch (err) {
+      window.alert('Falha ao enviar: ' + emailErrorMessage(err))
+    } finally {
+      setEmailTesting(false)
     }
   }
 
@@ -194,11 +247,13 @@ export const Integrations = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {CARDS.map(card => {
           const comingSoon = card.comingSoon
-          const connected = !comingSoon && isConnected(card.id)
+          const locked = !comingSoon && !canAccess(card.id)
+          const connected = !comingSoon && !locked && isConnected(card.id)
           const cfg = getConfig(card.id)
           const isDisc = disconnecting === card.id
           const isWACheck = card.id === 'whatsapp' && waChecking
           const askConfirm = confirmDisc === card.id
+          const requiredPlan = REQUIRED_PLAN[card.id]
 
           return (
             <div
@@ -262,6 +317,22 @@ export const Integrations = () => {
                   </div>
                 )}
 
+                {/* Connected bot (Telegram only) */}
+                {card.id === 'telegram' && connected && cfg.username && (
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Wifi size={12} className="text-brand-green" />
+                    <span className="text-xs text-slate-300 font-mono">@{cfg.username}</span>
+                  </div>
+                )}
+
+                {/* Connected page (Meta channels) */}
+                {(card.id === 'facebook' || card.id === 'instagram') && connected && cfg.page_name && (
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Wifi size={12} className="text-brand-green" />
+                    <span className="text-xs text-slate-300 font-mono">{cfg.page_name}</span>
+                  </div>
+                )}
+
                 {/* ── Action area ── */}
                 {comingSoon ? (
                   <div className="mt-3">
@@ -271,6 +342,25 @@ export const Integrations = () => {
                     >
                       <Plug size={13} /> Em breve
                     </button>
+                  </div>
+                ) : locked ? (
+                  /* ── Locked by plan ── */
+                  <div className="mt-3">
+                    <div className="glass rounded-xl p-3 mb-2 flex items-center gap-2">
+                      <Lock size={13} className="text-brand-orange shrink-0" />
+                      <p className="text-xs text-slate-300">
+                        Disponível no plano{' '}
+                        <span className="font-semibold text-brand-orange">
+                          {PLAN_LABEL[requiredPlan] ?? requiredPlan}
+                        </span>
+                      </p>
+                    </div>
+                    <a
+                      href="/plans"
+                      className="w-full py-2 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 bg-brand-orange/15 text-brand-orange hover:bg-brand-orange/25 transition-all"
+                    >
+                      <Lock size={13} /> Fazer upgrade
+                    </a>
                   </div>
                 ) : connected ? (
                   askConfirm ? (
@@ -315,6 +405,15 @@ export const Integrations = () => {
                             className="flex-1 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-brand-green/15 text-brand-green hover:bg-brand-green/25 transition-all"
                           >
                             <Settings size={13} /> Gerenciar
+                          </button>
+                        ) : card.id === 'email' ? (
+                          <button
+                            onClick={handleTestEmail}
+                            disabled={emailTesting}
+                            className="flex-1 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-brand-orange/15 text-brand-orange hover:bg-brand-orange/25 transition-all disabled:opacity-50"
+                          >
+                            {emailTesting ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
+                            {emailTesting ? 'Enviando...' : 'Enviar teste'}
                           </button>
                         ) : (
                           <div className="flex-1 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-brand-green/10 text-brand-green cursor-default select-none">

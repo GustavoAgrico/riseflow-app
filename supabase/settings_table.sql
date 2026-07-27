@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS settings (
 
 -- Migração para bancos já existentes (idempotente)
 ALTER TABLE settings ADD COLUMN IF NOT EXISTS notification_prefs jsonb;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS webhook_url        text;
 
 -- Row Level Security
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;

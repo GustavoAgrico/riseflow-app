@@ -1,6 +1,10 @@
 // Rotas de mensagens (proxy do servidor WhatsApp interno / Baileys).
+// Prefixos de canal: "tg…" = Telegram (bot), "fb…"/"ig…" = Meta (página);
+// qualquer outro número vai pro Baileys (WhatsApp).
 const { Router } = require('express')
 const { baileys } = require('../baileysClient')
+const telegram = require('../telegramClient')
+const meta = require('../metaClient')
 
 const router = Router()
 
@@ -26,6 +30,24 @@ router.post('/send', async (req, res, next) => {
       return res
         .status(400)
         .json({ error: 'Campos obrigatórios: "number" e "text".' })
+    }
+
+    // Telegram: contato "tg<chatId>" → envia pelo bot conectado.
+    if (telegram.isTelegramNumber(number)) {
+      try {
+        return res.json(await telegram.sendTextTo(number, text))
+      } catch (err) {
+        return res.status(400).json({ error: err.message })
+      }
+    }
+
+    // Meta: contato "fb<PSID>"/"ig<IGSID>" → envia pela página conectada.
+    if (meta.isMetaNumber(number)) {
+      try {
+        return res.json(await meta.sendTextTo(number, text))
+      } catch (err) {
+        return res.status(400).json({ error: err.message })
+      }
     }
 
     // Baileys server: { number, text } → { success, key }

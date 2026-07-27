@@ -1,0 +1,16 @@
+# Nunca copiar segredos/artefatos locais para a imagem.
+# Sem isto, o .env local (com VITE_API_URL=http://localhost:3001) contamina o
+# build do Vite dentro do Docker e reintroduz o bug B04.
+.env
+**/.env
+node_modules
+**/node_modules
+dist
+auth_session
+**/auth_session
+.git
+.vercel
+android
+ios
+*.log
+BUGS.md

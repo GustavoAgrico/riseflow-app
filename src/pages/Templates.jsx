@@ -1,5 +1,7 @@
-import React, { useState } from 'react'
-import { Hand, DollarSign, Wrench, Receipt, Repeat, Flame, FileText, Copy, Trash2, Image, CheckCheck, Check } from 'lucide-react'
+import React, { useState, useEffect, useCallback } from 'react'
+import { Hand, DollarSign, Wrench, Receipt, Repeat, Flame, FileText, Copy, Trash2, Image, CheckCheck, Check, Loader2 } from 'lucide-react'
+import { useAuth } from '@context/AuthContext'
+import { listTemplates, createTemplate, updateTemplate, deleteTemplate, incrementTemplateUse } from '@services/templatesService'
 
 const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#94A3B8', pur:'#7C3AED' }
 const CATS = { 'Saudação':Hand, 'Vendas':DollarSign, 'Suporte':Wrench, 'Cobrança':Receipt, 'Follow-up':Repeat, 'Reativação':Flame }
@@ -8,19 +10,14 @@ const VARS = ['{{nome}}','{{telefone}}','{{empresa}}','{{link}}','{{valor}}']
 const EX = { '{{nome}}':'João', '{{telefone}}':'11999998888', '{{empresa}}':'Acme Ltda', '{{link}}':'acme.com/promo', '{{valor}}':'R$ 1.250,00' }
 const fill = m => m.replace(/\{\{(\w+)\}\}/g, (s) => EX[s] || s)
 
-const T = (id, name, cat, type, msg, uses) => ({ id, name, cat, type, msg, uses, media:'', opts:'' })
-const MOCK = [
-  T('1','Boas-vindas','Saudação','Texto','Olá {{nome}}! Bem-vindo à {{empresa}}! Como posso ajudar?',128),
-  T('2','Orçamento enviado','Vendas','Texto','{{nome}}, segue o orçamento solicitado no valor de {{valor}}. Qualquer dúvida estou à disposição!',47),
-  T('3','Cobrança gentil','Cobrança','Texto','Oi {{nome}}, notamos que o pagamento de {{valor}} está pendente. Pode regularizar pelo link: {{link}}',33),
-  T('4','Follow-up 3 dias','Follow-up','Texto','{{nome}}, passando para saber se teve tempo de avaliar nossa proposta. Posso ajudar em algo?',61),
-  T('5','Reativação','Reativação','Texto','{{nome}}, faz tempo que não conversamos! Temos novidades na {{empresa}} que vão te interessar 🎉',19),
-  T('6','Catálogo de produtos','Vendas','Imagem','{{nome}}, confira nosso catálogo atualizado! Acesse: {{link}}',24),
-  T('7','Opções de atendimento','Suporte','Lista','Olá {{nome}}! Como podemos ajudar hoje? Escolha uma opção:',55),
-  T('8','Lembrete de pagamento','Cobrança','Texto','{{nome}}, seu boleto de {{valor}} vence amanhã. Evite juros pagando em dia!',42),
-  T('9','Pesquisa de satisfação','Suporte','Texto','{{nome}}, sua opinião é importante! Como foi seu atendimento na {{empresa}}? Responda: {{link}}',38),
-]
 const EMPTY = { name:'', cat:'Saudação', type:'Texto', msg:'', media:'', opts:'' }
+
+// Amostra apenas para modo demo (somente leitura).
+const DEMO = [
+  { id:'d1', name:'Boas-vindas', cat:'Saudação', type:'Texto', msg:'Olá {{nome}}! Bem-vindo à {{empresa}}! Como posso ajudar?', media:'', opts:'', uses:128 },
+  { id:'d2', name:'Orçamento enviado', cat:'Vendas', type:'Texto', msg:'{{nome}}, segue o orçamento no valor de {{valor}}. Qualquer dúvida estou à disposição!', media:'', opts:'', uses:47 },
+  { id:'d3', name:'Cobrança gentil', cat:'Cobrança', type:'Texto', msg:'Oi {{nome}}, o pagamento de {{valor}} está pendente. Pode regularizar pelo link: {{link}}', media:'', opts:'', uses:33 },
+]
 
 const renderMsg = (txt) => txt.split(/(\{\{\w+\}\})/g).map((p,i) =>
   /\{\{\w+\}\}/.test(p) ? <span key={i} style={{ color:C.pur, fontWeight:700 }}>{p}</span> : p)
@@ -36,21 +33,68 @@ const S = {
 }
 
 export const Templates = () => {
-  const [items, setItems] = useState(MOCK)
+  const { user, isDemoMode } = useAuth()
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [fCat, setFCat] = useState('all')
   const [fType, setFType] = useState('all')
   const [modal, setModal] = useState(false)
+  const [editId, setEditId] = useState(null)
+  const [busy, setBusy] = useState(false)
   const [hover, setHover] = useState(null)
   const [toast, setToast] = useState('')
   const [f, setF] = useState(EMPTY)
   const set = (k,v) => setF(p => ({ ...p, [k]:v }))
 
+  const load = useCallback(async () => {
+    if (!user || isDemoMode) return
+    setItems(await listTemplates(user.id))
+    setLoading(false)
+  }, [user, isDemoMode])
+
+  useEffect(() => {
+    if (isDemoMode) { setItems(DEMO); setLoading(false); return }
+    load()
+  }, [user, isDemoMode, load])
+
   const flash = m => { setToast(m); setTimeout(()=>setToast(''), 1800) }
-  const use = t => { navigator.clipboard?.writeText(t.msg); setItems(p => p.map(x => x.id===t.id ? { ...x, uses:x.uses+1 } : x)); flash('Copiado!') }
-  const dup = t => setItems(p => [{ ...t, id:String(Date.now()), name:t.name+' (Cópia)', uses:0 }, ...p])
-  const del = id => setItems(p => p.filter(x => x.id!==id))
-  const save = () => { if(!f.name||!f.msg) return; setItems(p => [{ ...f, id:String(Date.now()), uses:0 }, ...p]); setModal(false); setF(EMPTY) }
+  const guardDemo = () => { if (isDemoMode) { flash('Modo demo — crie uma conta'); return true } return false }
+
+  const use = async t => {
+    navigator.clipboard?.writeText(t.msg)
+    flash('Copiado!')
+    if (isDemoMode) return
+    setItems(p => p.map(x => x.id===t.id ? { ...x, uses:x.uses+1 } : x)) // otimista
+    await incrementTemplateUse(t.id, t.uses)
+  }
+  const dup = async t => {
+    if (guardDemo()) return
+    await createTemplate(user.id, { ...t, name: t.name + ' (Cópia)' })
+    await load()
+  }
+  const del = async id => {
+    if (guardDemo()) return
+    if (!window.confirm('Excluir este template?')) return
+    await deleteTemplate(id)
+    await load()
+  }
+  const openNew  = () => { setF(EMPTY); setEditId(null); setModal(true) }
+  const openEdit = t => { setF({ name:t.name, cat:t.cat, type:t.type, msg:t.msg, media:t.media||'', opts:t.opts||'' }); setEditId(t.id); setModal(true) }
+  const save = async () => {
+    if (guardDemo()) return
+    if (!f.name || !f.msg || busy) return
+    setBusy(true)
+    try {
+      if (editId) { await updateTemplate(editId, f) }
+      else {
+        const { error } = await createTemplate(user.id, f)
+        if (error) { window.alert('Erro ao salvar template:\n' + error.message + '\n\n(Rode supabase/templates.sql se ainda não rodou.)'); return }
+      }
+      setModal(false); setEditId(null); setF(EMPTY)
+      await load()
+    } finally { setBusy(false) }
+  }
 
   const list = items.filter(t =>
     (!search || t.name.toLowerCase().includes(search.toLowerCase())) &&
@@ -62,8 +106,14 @@ export const Templates = () => {
         <a href="/dashboard" style={{ ...S.ghost, textDecoration:'none' }}>← Voltar</a>
         <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}><FileText size={18} color={C.pur} /> Templates</span>
         <span style={S.badge(C.pur)}>{items.length} templates</span>
-        <button onClick={()=>{ setF(EMPTY); setModal(true) }} style={{ ...S.btn(), marginLeft:'auto' }}>+ Novo Template</button>
+        <button onClick={()=>{ if(guardDemo())return; openNew() }} style={{ ...S.btn(), marginLeft:'auto' }}>+ Novo Template</button>
       </div>
+
+      {isDemoMode && (
+        <div style={{ margin:'16px 24px 0', padding:'12px 16px', borderRadius:10, background:'rgba(234,179,8,0.06)', border:'1px solid rgba(234,179,8,0.27)', color:'#EAB308', fontSize:13 }}>
+          Modo demo — os templates abaixo são apenas exemplo. Crie uma conta para salvar e usar os seus.
+        </div>
+      )}
 
       <div style={{ display:'flex', gap:10, padding:'16px 24px' }}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nome..." style={{ ...S.inp, width:260 }} />
@@ -78,7 +128,9 @@ export const Templates = () => {
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, padding:'0 24px 24px' }}>
-        {list.map(t => (
+        {loading ? (
+          <div style={{ gridColumn:'1/-1', textAlign:'center', color:C.mut, padding:40 }}><Loader2 size={20} className="animate-spin" style={{ display:'inline' }} /> Carregando…</div>
+        ) : list.map(t => (
           <div key={t.id} onMouseEnter={()=>setHover(t.id)} onMouseLeave={()=>setHover(null)}
             style={{ background:C.card, borderRadius:12, padding:16, border:`1px solid ${hover===t.id?C.pur:C.bd}`, boxShadow:hover===t.id?'0 6px 20px rgba(124,58,237,.18)':'none', transition:'all .15s' }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
@@ -92,21 +144,21 @@ export const Templates = () => {
               <span style={{ fontSize:11, color:C.mut, marginLeft:'auto' }}>Usado {t.uses}x</span>
             </div>
             <div style={{ display:'flex', gap:6 }}>
-              <button onClick={()=>use(t)} style={{ ...S.btn(), flex:1, padding:'6px' }}>Usar</button>
-              <button onClick={()=>flash('Edição em breve')} style={S.ia}>Editar</button>
+              <button onClick={()=>use(t)} style={{ ...S.btn(), flex:1, padding:'6px' }}>Copiar</button>
+              <button onClick={()=>{ if(guardDemo())return; openEdit(t) }} style={S.ia}>Editar</button>
               <button onClick={()=>dup(t)} title="Duplicar" style={{ ...S.ia, display:'inline-flex', alignItems:'center' }}><Copy size={14} /></button>
               <button onClick={()=>del(t.id)} title="Excluir" style={{ ...S.ia, color:'#F87171', borderColor:'#EF444440', display:'inline-flex', alignItems:'center' }}><Trash2 size={14} /></button>
             </div>
           </div>
         ))}
-        {list.length===0 && <div style={{ gridColumn:'1/-1', textAlign:'center', color:C.mut, padding:40 }}>Nenhum template encontrado.</div>}
+        {!loading && list.length===0 && <div style={{ gridColumn:'1/-1', textAlign:'center', color:C.mut, padding:40 }}>Nenhum template encontrado.</div>}
       </div>
 
       {modal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }} onClick={()=>setModal(false)}>
           <div style={{ background:C.card, borderRadius:16, padding:24, width:760, maxHeight:'90vh', overflowY:'auto', border:`1px solid ${C.bd}`, display:'flex', gap:24 }} onClick={e=>e.stopPropagation()}>
             <div style={{ flex:1 }}>
-              <h3 style={{ margin:'0 0 4px', fontSize:17, fontWeight:800 }}>Novo Template</h3>
+              <h3 style={{ margin:'0 0 4px', fontSize:17, fontWeight:800 }}>{editId ? 'Editar Template' : 'Novo Template'}</h3>
               <label style={S.lbl}>Nome do template</label>
               <input value={f.name} onChange={e=>set('name',e.target.value)} placeholder="Ex: Boas-vindas" style={S.inp} />
               <div style={{ display:'flex', gap:10 }}>
@@ -132,7 +184,7 @@ export const Templates = () => {
               {f.type==='Lista' && (<><label style={S.lbl}>Opções (uma por linha)</label><textarea value={f.opts} onChange={e=>set('opts',e.target.value)} rows={3} placeholder="Opção 1&#10;Opção 2" style={{ ...S.inp, resize:'vertical' }} /></>)}
               <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginTop:22 }}>
                 <button onClick={()=>setModal(false)} style={S.ghost}>Cancelar</button>
-                <button onClick={save} style={S.btn()}>Salvar Template</button>
+                <button onClick={save} disabled={busy} style={{ ...S.btn(), opacity:busy?0.6:1, display:'inline-flex', alignItems:'center', gap:6 }}>{busy && <Loader2 size={14} className="animate-spin" />}{editId ? 'Salvar' : 'Salvar Template'}</button>
               </div>
             </div>
             <div style={{ width:280, flexShrink:0 }}>

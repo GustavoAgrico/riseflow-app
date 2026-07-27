@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { ExternalLink, Loader2, Send } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
+import { connectTelegram, telegramErrorMessage } from '@services/telegramService'
 import { ModalBase, Steps } from './ModalBase'
 
 export const TelegramModal = ({ onClose, onSuccess }) => {
@@ -16,14 +16,12 @@ export const TelegramModal = ({ onClose, onSuccess }) => {
     setSaving(true)
     setError('')
     try {
-      const config = { bot_token: botToken.trim() }
-      await supabase.from('integrations').upsert(
-        { user_id: user.id, type: 'telegram', status: 'connected', config, connected_at: new Date().toISOString() },
-        { onConflict: 'user_id,type' }
-      )
-      onSuccess(config)
+      // O proxy valida o token no Telegram (getMe), sobe o bot e persiste a
+      // integração — só chega em onSuccess se o bot estiver de pé de verdade.
+      const { bot } = await connectTelegram(user.id, botToken.trim())
+      onSuccess({ username: bot?.username, name: bot?.name })
     } catch (err) {
-      setError(err.message ?? 'Erro ao salvar')
+      setError('Falha ao conectar: ' + telegramErrorMessage(err))
       setSaving(false)
     }
   }

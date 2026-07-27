@@ -13,10 +13,12 @@ create policy "campaign_messages_own" on campaign_messages for all using (campai
 
 import { usageService } from '@/services/usageService'
 import { sendMessage as evoSend } from '@/services/evolutionApi'
+import { sendEmail } from '@/services/emailService'
 
 const sub = (t, c) => (t ?? '')
   .replace(/\{+nome\}+/gi,      c.name    ?? 'Cliente')
   .replace(/\{+telefone\}+/gi,  c.phone   ?? '')
+  .replace(/\{+email\}+/gi,     c.email   ?? '')
   .replace(/\{+empresa\}+/gi,   c.company ?? '')
   .replace(/\{+data_hoje\}+/gi, new Date().toLocaleDateString('pt-BR'))
 
@@ -35,6 +37,9 @@ export class CampaignService {
 
     await this.db.from('campaigns').update({ status: 'sending' }).eq('id', campaignId)
     let i = 0; this._paused[campaignId] = false
+    // Canal email dispara pelo SMTP do próprio usuário (proxy /api/email/send);
+    // o limite do plano vale só para WhatsApp.
+    const isEmail = camp.channel === 'email'
 
     this._iv[campaignId] = setInterval(async () => {
       if (i >= msgs.length || this._paused[campaignId]) {
@@ -44,7 +49,7 @@ export class CampaignService {
       }
       // Limite do plano atingido: pausa a campanha.
       try {
-        if (camp.user_id && !(await usageService.canSend(camp.user_id))) {
+        if (!isEmail && camp.user_id && !(await usageService.canSend(camp.user_id))) {
           this._paused[campaignId] = true
           clearInterval(this._iv[campaignId])
           await this.db.from('campaigns').update({ status: 'paused_limit' }).eq('id', campaignId)
@@ -53,13 +58,18 @@ export class CampaignService {
         }
       } catch (e) { console.warn('[CAMPAIGN] checagem de limite falhou:', e?.message ?? e) }
       const m = msgs[i++]
-      const text = sub(camp.message, { name: m.contact_name, phone: m.phone, company: m.contact_company })
+      const ctx = { name: m.contact_name, phone: m.phone, email: m.email, company: m.contact_company }
+      const text = sub(camp.message, ctx)
       try {
-        let ok = false
-        try { await evoSend(m.phone, text); ok = true } catch { ok = false }
-        await this.db.from('campaign_messages').update({ status: ok ? 'sent' : 'failed', sent_at: new Date().toISOString() }).eq('id', m.id)
+        let ok = false, errMsg = null
+        try {
+          if (isEmail) await sendEmail({ userId: camp.user_id, to: m.email, subject: sub(camp.subject, ctx) || camp.name, text })
+          else await evoSend(m.phone, text)
+          ok = true
+        } catch (e) { ok = false; errMsg = e?.response?.data?.error || e?.message || null }
+        await this.db.from('campaign_messages').update({ status: ok ? 'sent' : 'failed', error: errMsg, sent_at: new Date().toISOString() }).eq('id', m.id)
         await this.db.from('campaigns').update({ sent: i }).eq('id', campaignId)
-        if (ok && camp.user_id) {
+        if (ok && !isEmail && camp.user_id) {
           try { await usageService.increment(camp.user_id) }
           catch (e) { console.warn('[CAMPAIGN] increment falhou:', e?.message ?? e) }
         }

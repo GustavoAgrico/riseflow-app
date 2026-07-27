@@ -1,0 +1,195 @@
+// Rotas dos canais Meta (Facebook Messenger + Instagram DM).
+//
+// PÚBLICAS (a Meta não envia JWT):
+//   GET  /api/webhook/meta           — verificação do webhook (hub.challenge)
+//   POST /api/webhook/meta           — eventos de mensagem (assinatura X-Hub-Signature-256)
+//   GET  /api/meta/oauth/callback    — retorno do OAuth de login da Meta
+//
+// PROTEGIDAS (JWT do proxy):
+//   GET  /api/meta/oauth/url         — monta a URL do diálogo OAuth
+//   POST /api/meta/connect           — conecta uma página (token via OAuth ou manual)
+//   POST /api/meta/disconnect        — desconecta um canal
+//   GET  /api/meta/status            — estado em memória
+//   POST /api/meta/send              — envio direto (diagnóstico)
+const crypto = require('crypto')
+const { Router } = require('express')
+const axios = require('axios')
+const jwt = require('jsonwebtoken')
+const { supabase, isConfigured } = require('../supabaseClient')
+const meta = require('../metaClient')
+
+const GRAPH = 'https://graph.facebook.com/v21.0'
+const OAUTH_DIALOG = 'https://www.facebook.com/v21.0/dialog/oauth'
+const SCOPES = 'pages_show_list,pages_messaging,pages_read_engagement,instagram_basic,instagram_manage_messages'
+
+const { META_APP_ID, META_APP_SECRET, META_VERIFY_TOKEN, JWT_SECRET } = process.env
+
+/* ─── Webhook público ──────────────────────────────────────────────────── */
+const webhookRouter = Router()
+
+// GET — verificação do webhook no painel da Meta (echo do hub.challenge).
+webhookRouter.get('/', (req, res) => {
+  const mode = req.query['hub.mode']
+  const token = req.query['hub.verify_token']
+  const challenge = req.query['hub.challenge']
+  if (mode === 'subscribe' && META_VERIFY_TOKEN && token === META_VERIFY_TOKEN) {
+    console.log('[meta] webhook verificado pelo painel da Meta')
+    return res.status(200).send(challenge)
+  }
+  res.sendStatus(403)
+})
+
+// Assinatura: X-Hub-Signature-256 = 'sha256=' + HMAC-SHA256(app_secret, corpo cru).
+// req.rawBody é capturado pelo express.json({ verify }) no index.js.
+function validSignature(req) {
+  if (!META_APP_SECRET) {
+    console.warn('[meta] META_APP_SECRET ausente — assinatura do webhook NÃO validada (só aceitável em dev)')
+    return true
+  }
+  const header = String(req.headers['x-hub-signature-256'] || '')
+  if (!header.startsWith('sha256=') || !req.rawBody) return false
+  const expected = 'sha256=' + crypto.createHmac('sha256', META_APP_SECRET).update(req.rawBody).digest('hex')
+  try {
+    return crypto.timingSafeEqual(Buffer.from(header), Buffer.from(expected))
+  } catch {
+    return false // tamanhos diferentes
+  }
+}
+
+// POST — eventos de mensagens (Messenger: object='page'; Instagram: object='instagram').
+webhookRouter.post('/', (req, res) => {
+  if (!validSignature(req)) {
+    console.warn('[meta] webhook com assinatura inválida — descartado')
+    return res.sendStatus(401)
+  }
+  // Responde 200 imediato (a Meta exige resposta < 20s) e processa async.
+  res.sendStatus(200)
+  meta.handleWebhookEvent(req.body)
+    .catch((err) => console.error('[meta] erro ao processar webhook:', err?.message ?? err))
+})
+
+/* ─── OAuth público (callback) ─────────────────────────────────────────── */
+const oauthRouter = Router()
+
+// Retorno do diálogo de login da Meta. Troca o code por token de usuário,
+// lista as páginas e devolve via postMessage para a janela que abriu o popup.
+oauthRouter.get('/callback', async (req, res) => {
+  const respond = (payload) => res.send(`<!doctype html><html><body style="font-family:sans-serif;background:#0F172A;color:#F8FAFC">
+<p style="padding:24px">${payload.error ? 'Falha na conexão: ' + payload.error : 'Conectado! Voltando ao RiseFlow…'}</p>
+<script>
+  if (window.opener) {
+    window.opener.postMessage(${JSON.stringify({ type: 'meta_oauth', ...payload })}, '*')
+    setTimeout(() => window.close(), ${payload.error ? 4000 : 800})
+  }
+</script></body></html>`)
+
+  try {
+    const { code, state, error_description } = req.query
+    if (error_description) return respond({ error: String(error_description) })
+    if (!code || !state) return respond({ error: 'code/state ausentes' })
+    jwt.verify(String(state), JWT_SECRET) // state assinado em /oauth/url — barra forgery
+
+    const redirectUri = `${req.protocol}://${req.get('host')}${req.baseUrl}/callback`
+    const { data: tok } = await axios.get(`${GRAPH}/oauth/access_token`, {
+      params: { client_id: META_APP_ID, client_secret: META_APP_SECRET, redirect_uri: redirectUri, code },
+      timeout: 15_000,
+    })
+    const { data: accounts } = await axios.get(`${GRAPH}/me/accounts`, {
+      params: { fields: 'id,name,access_token', access_token: tok.access_token },
+      timeout: 15_000,
+    })
+    const pages = (accounts.data || []).map((p) => ({ id: p.id, name: p.name, access_token: p.access_token }))
+    if (!pages.length) return respond({ error: 'Nenhuma página do Facebook encontrada nesta conta.' })
+    respond({ pages })
+  } catch (err) {
+    respond({ error: err.response?.data?.error?.message || err.message })
+  }
+})
+
+/* ─── Rotas protegidas ─────────────────────────────────────────────────── */
+const router = Router()
+
+// GET /api/meta/oauth/url?userId=… — URL do diálogo OAuth (state assinado).
+router.get('/oauth/url', (req, res) => {
+  if (!META_APP_ID || !META_APP_SECRET) {
+    return res.status(503).json({ error: 'META_APP_ID/META_APP_SECRET não configurados no server/.env — use o token manual.' })
+  }
+  const state = jwt.sign({ u: req.query.userId || '' }, JWT_SECRET, { expiresIn: '10m' })
+  const redirectUri = `${req.protocol}://${req.get('host')}/api/meta/oauth/callback`
+  const url = `${OAUTH_DIALOG}?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${SCOPES}`
+  res.json({ url })
+})
+
+// POST /api/meta/connect — conecta uma página a um canal.
+// Body: { userId, channel: 'facebook'|'instagram', pageToken, pageId?, pageName? }
+// pageToken pode vir do OAuth (postMessage) ou colado manualmente.
+router.post('/connect', async (req, res) => {
+  const { userId, channel, pageToken, pageId, pageName } = req.body || {}
+  if (!userId || !pageToken || !['facebook', 'instagram'].includes(channel)) {
+    return res.status(400).json({ error: 'userId, channel (facebook|instagram) e pageToken são obrigatórios.' })
+  }
+  if (!isConfigured) {
+    return res.status(503).json({ error: 'Backend sem SUPABASE_SERVICE_ROLE_KEY — canal Meta indisponível.' })
+  }
+  try {
+    // Valida o token de verdade na Graph (e resolve id/nome da página).
+    const page = await meta.verifyPageToken(String(pageToken).trim())
+    const finalPageId = String(pageId || page.id)
+    const finalName = pageName || page.name
+
+    // Assina o app nos eventos da página (necessário p/ receber webhook).
+    await meta.subscribePage(finalPageId, String(pageToken).trim())
+      .catch((e) => console.warn('[meta] subscribed_apps falhou (webhook pode não chegar):', e.response?.data?.error?.message ?? e.message))
+
+    const { error } = await supabase.from('integrations').upsert(
+      {
+        user_id: userId, type: channel, status: 'connected',
+        config: { page_token: String(pageToken).trim(), page_id: finalPageId, page_name: finalName },
+        connected_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,type' }
+    )
+    if (error) throw error
+
+    meta.registerPage({ pageId: finalPageId, userId, channel, token: String(pageToken).trim(), pageName: finalName })
+    res.json({ ok: true, page: { id: finalPageId, name: finalName } })
+  } catch (err) {
+    const msg = err.response?.data?.error?.message || err.message || 'Falha ao conectar a página.'
+    res.status(400).json({ ok: false, error: msg })
+  }
+})
+
+// POST /api/meta/disconnect — Body: { userId, channel }
+router.post('/disconnect', async (req, res) => {
+  const { userId, channel } = req.body || {}
+  if (!userId || !['facebook', 'instagram'].includes(channel)) {
+    return res.status(400).json({ error: 'userId e channel (facebook|instagram) são obrigatórios.' })
+  }
+  meta.unregisterPagesOf(userId, channel)
+  if (isConfigured) {
+    await supabase.from('integrations')
+      .update({ status: 'disconnected', config: {} })
+      .eq('user_id', userId).eq('type', channel)
+  }
+  res.json({ ok: true })
+})
+
+// GET /api/meta/status?userId=…&channel=…
+router.get('/status', (req, res) => {
+  res.json(meta.getStatus(req.query.userId, req.query.channel))
+})
+
+// POST /api/meta/send — envio direto (diagnóstico). Body: { number, text, userId? }
+router.post('/send', async (req, res) => {
+  const { number, text, userId } = req.body || {}
+  if (!number || !text) return res.status(400).json({ error: 'number e text são obrigatórios.' })
+  try {
+    res.json(await meta.sendTextTo(number, text, userId || null))
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+module.exports = router
+module.exports.webhookRouter = webhookRouter
+module.exports.oauthRouter = oauthRouter

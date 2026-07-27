@@ -11,7 +11,7 @@
 // API keys: tabela settings (gemini_key / groq_key / openai_key / anthropic_key) do dono da config.
 const axios = require('axios')
 const { supabase, isConfigured } = require('./supabaseClient')
-const { sendText, getWaitingExecution } = require('./flowEngine')
+const { sendText, getWaitingExecution, hasMatchingFlow } = require('./flowEngine')
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const jidToNumber = (jid) => String(jid || '').split('@')[0].split(':')[0]
@@ -151,6 +151,10 @@ async function aiRespond({ jid, text, pushName, fromMe }) {
     // Funil pausado em "Aguardar resposta" tem prioridade sobre a IA.
     const waiting = await getWaitingExecution(jid)
     if (waiting) return false
+
+    // Se algum funil ativo dispararia para esta mensagem (palavra-chave, primeiro
+    // contato, horário), a IA cede — o engine de funis responde.
+    if (await hasMatchingFlow(jid, text)) return false
 
     // Humano assumiu a conversa → IA não responde mais.
     const { data: conv } = await supabase.from('conversations')
