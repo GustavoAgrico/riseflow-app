@@ -52,6 +52,15 @@ services:
       # (o frontend é same-origin; inclua domínios extras separados por vírgula)
       - key: CORS_ORIGIN
         sync: false
+      # ── AbacatePay — pagamentos ──
+      - key: ABACATE_PAY_API_KEY
+        sync: false                    # chave de produção em app.abacatepay.com → API
+      # (2º passo) URL pública deste app (usada no returnUrl e no webhook):
+      - key: APP_URL
+        sync: false                    # ex.: https://riseflow-app.onrender.com
+      # Emails que bypassam pagamento e ativam qualquer plano diretamente:
+      - key: ADMIN_EMAILS
+        sync: false                    # ex.: gugahagrico12@gmail.com
       # ── Telegram / Meta ──
       # (2º passo) URL pública deste app (webhook do Telegram entra aqui):
       - key: TELEGRAM_WEBHOOK_BASE
