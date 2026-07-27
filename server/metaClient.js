@@ -54,12 +54,25 @@ function getStatus(userId, channel) {
   return { connected: false }
 }
 
-/* Valida um Page Access Token e devolve { id, name } da página. */
+/* Valida um Page Access Token e devolve { id, name } da página.
+   Tenta /me primeiro; se falhar por permissão, usa /debug_token (não exige
+   pages_read_engagement) para confirmar validade e extrair o page_id. */
 async function verifyPageToken(token) {
-  const { data } = await axios.get(`${GRAPH}/me`, {
-    params: { fields: 'id,name', access_token: token }, timeout: 15_000,
+  try {
+    const { data } = await axios.get(`${GRAPH}/me`, {
+      params: { fields: 'id,name', access_token: token }, timeout: 15_000,
+    })
+    if (data?.id) return data
+  } catch { /* cai no fallback abaixo */ }
+
+  const { META_APP_ID, META_APP_SECRET } = process.env
+  if (!META_APP_ID || !META_APP_SECRET) throw new Error('Token inválido ou sem permissão para validar.')
+  const appToken = `${META_APP_ID}|${META_APP_SECRET}`
+  const { data: { data: info } } = await axios.get('https://graph.facebook.com/debug_token', {
+    params: { input_token: token, access_token: appToken }, timeout: 15_000,
   })
-  return data
+  if (!info?.is_valid) throw new Error('Token inválido ou expirado.')
+  return { id: String(info.profile_id || info.user_id || ''), name: null }
 }
 
 /* Assina o app nos eventos de mensagens da página (necessário p/ webhook). */
