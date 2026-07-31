@@ -12,11 +12,12 @@ const telegram = require('../telegramClient')
 const router = Router()
 
 // POST /api/telegram/connect — valida o token (getMe), sobe o bot e persiste.
-// Body: { userId, token }
+// Body: { token }  — userId vem do JWT (B14: nunca do body)
 router.post('/connect', async (req, res) => {
-  const { userId, token } = req.body || {}
+  const { token } = req.body || {}
+  const userId = req.user?.sub || (process.env.NODE_ENV !== 'production' ? req.body?.userId : null)
   if (!userId || !token) {
-    return res.status(400).json({ error: 'userId e token são obrigatórios.' })
+    return res.status(400).json({ error: 'token é obrigatório e sessão deve estar autenticada.' })
   }
   if (!isConfigured) {
     return res.status(503).json({ error: 'Backend sem SUPABASE_SERVICE_ROLE_KEY — canal Telegram indisponível.' })
@@ -41,10 +42,10 @@ router.post('/connect', async (req, res) => {
 })
 
 // POST /api/telegram/disconnect — para o bot e marca a integração como desconectada.
-// Body: { userId }
+// userId vem do JWT (B14: nunca do body)
 router.post('/disconnect', async (req, res) => {
-  const { userId } = req.body || {}
-  if (!userId) return res.status(400).json({ error: 'userId é obrigatório.' })
+  const userId = req.user?.sub || (process.env.NODE_ENV !== 'production' ? req.body?.userId : null)
+  if (!userId) return res.status(401).json({ error: 'Usuário não identificado no token.' })
   await telegram.stopBot(userId)
   if (isConfigured) {
     await supabase.from('integrations')
@@ -54,9 +55,10 @@ router.post('/disconnect', async (req, res) => {
   res.json({ ok: true })
 })
 
-// GET /api/telegram/status?userId=… — estado do bot em memória.
+// GET /api/telegram/status — estado do bot em memória (userId do JWT).
 router.get('/status', (req, res) => {
-  res.json(telegram.getStatus(req.query.userId))
+  const userId = req.user?.sub || req.query.userId
+  res.json(telegram.getStatus(userId))
 })
 
 // POST /api/telegram/send — envio direto (uso interno/diagnóstico).

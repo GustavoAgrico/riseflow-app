@@ -4,10 +4,31 @@ const router = express.Router()
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+// Rate limiting em memória: máx 10 chamadas/minuto por usuário (evita drenagem de créditos).
+const rateMap = new Map()
+const RATE_WINDOW_MS = 60_000
+const RATE_LIMIT = 10
+function isRateLimited(userId) {
+  const now = Date.now()
+  const entry = rateMap.get(userId)
+  if (!entry || now > entry.reset) {
+    rateMap.set(userId, { count: 1, reset: now + RATE_WINDOW_MS })
+    return false
+  }
+  if (entry.count >= RATE_LIMIT) return true
+  entry.count++
+  return false
+}
+
 // POST /api/ai/generate-message
 // Body: { channel, goal, tone, audience, extraContext? }
 // Returns: { message }
 router.post('/generate-message', async (req, res) => {
+  const userId = req.user?.sub || req.user?.email || 'anon'
+  if (isRateLimited(userId)) {
+    return res.status(429).json({ error: 'Muitas requisições. Tente novamente em 1 minuto.' })
+  }
+
   const { channel = 'whatsapp', goal, tone = 'informal', audience, extraContext } = req.body ?? {}
 
   if (!goal) return res.status(400).json({ error: 'Campo "goal" obrigatório.' })

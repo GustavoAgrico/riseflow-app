@@ -252,8 +252,21 @@ async function sendEmailAction(ctx, data = {}, vars = {}) {
   }
 }
 
+// Bloqueia requisições para IPs internos/privados (SSRF).
+function isPrivateUrl(urlStr) {
+  try {
+    const { hostname, protocol } = new URL(urlStr)
+    if (!['http:', 'https:'].includes(protocol)) return true
+    return /^(localhost$|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.)/.test(hostname) || hostname === '::1'
+  } catch { return true }
+}
+
 async function callWebhook(data = {}, vars = {}, ctx = {}) {
   if (!data.url) return undefined
+  if (isPrivateUrl(data.url)) {
+    console.warn('[flowEngine] callWebhook bloqueado: URL interna/privada:', data.url)
+    return undefined
+  }
   const method = String(data.method || 'POST').toUpperCase()
   const headers = {}
   for (const h of data.headers || []) {

@@ -81,14 +81,18 @@ router.post('/webhook', async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────────
    POST /api/billing/checkout  — protegido por JWT
-   Body: { planId, userId, email, name?, cpf, phone }
+   Body: { planId, name?, cpf, phone }
+   userId e email vêm do token JWT (nunca do body — evita IDOR e admin bypass)
    Retorna: { url } — URL do hosted checkout ou redirect direto (admin/dev)
 ───────────────────────────────────────────────────────────────────────── */
 router.post('/checkout', async (req, res) => {
   try {
-    const { planId, userId, email, name, cpf, phone } = req.body
-    if (!planId || !userId || !email) {
-      return res.status(400).json({ error: 'planId, userId e email são obrigatórios' })
+    const { planId, name, cpf, phone } = req.body
+    // B14: userId e email derivados do JWT, nunca do body
+    const userId = req.user?.sub || (process.env.NODE_ENV !== 'production' ? req.body?.userId : null)
+    const email = req.user?.email || (process.env.NODE_ENV !== 'production' ? req.body?.email : null) || ''
+    if (!planId || !userId) {
+      return res.status(400).json({ error: 'planId é obrigatório e sessão deve estar autenticada.' })
     }
     if (!PLANS[planId]) {
       return res.status(400).json({ error: `Plano inválido: ${planId}` })
@@ -97,8 +101,8 @@ router.post('/checkout', async (req, res) => {
     const origin = process.env.APP_URL || 'http://localhost:3001'
     const successUrl = `${origin}/plans?success=true&plan=${planId}`
 
-    // Bypass admin: ativa direto sem pagamento
-    const isAdmin = ADMIN_EMAILS.includes((email || '').toLowerCase())
+    // Bypass admin: verifica o email do JWT (não do body — senão qualquer um injeta o email do admin)
+    const isAdmin = ADMIN_EMAILS.includes(email.toLowerCase())
     if (isAdmin) {
       console.log('[Billing] Admin bypass para:', email, planId)
       await activatePlan(userId, planId)
@@ -174,8 +178,8 @@ router.post('/checkout', async (req, res) => {
 ───────────────────────────────────────────────────────────────────────── */
 router.post('/cancel', async (req, res) => {
   try {
-    const { userId } = req.body
-    if (!userId) return res.status(400).json({ error: 'userId obrigatório' })
+    const userId = req.user?.sub || (process.env.NODE_ENV !== 'production' ? req.body?.userId : null)
+    if (!userId) return res.status(401).json({ error: 'Usuário não identificado no token.' })
 
     if (abacate && isConfigured && supabase) {
       const { data: billing } = await supabase

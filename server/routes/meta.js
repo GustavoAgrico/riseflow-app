@@ -74,20 +74,31 @@ const oauthRouter = Router()
 // Retorno do diálogo de login da Meta. Troca o code por token de usuário,
 // lista as páginas e devolve via postMessage para a janela que abriu o popup.
 oauthRouter.get('/callback', async (req, res) => {
-  const respond = (payload) => res.send(`<!doctype html><html><body style="font-family:sans-serif;background:#0F172A;color:#F8FAFC">
-<p style="padding:24px">${payload.error ? 'Falha na conexão: ' + payload.error : 'Conectado! Voltando ao RiseFlow…'}</p>
+  // Escapa HTML para evitar XSS na mensagem de erro exibida na página.
+  const escHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  // targetOrigin do postMessage: usa a origem armazenada no state JWT (definida em /oauth/url).
+  // Fallback para a primeira origem do CORS em vez de '*' — evita vazamento de page tokens.
+  const corsOrigin = (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',')[0].trim()
+  let safeOrigin = corsOrigin
+
+  const respond = (payload) => {
+    const display = payload.error ? 'Falha na conexão: ' + escHtml(String(payload.error)) : 'Conectado! Voltando ao RiseFlow…'
+    return res.send(`<!doctype html><html><body style="font-family:sans-serif;background:#0F172A;color:#F8FAFC">
+<p style="padding:24px">${display}</p>
 <script>
   if (window.opener) {
-    window.opener.postMessage(${JSON.stringify({ type: 'meta_oauth', ...payload })}, '*')
+    window.opener.postMessage(${JSON.stringify({ type: 'meta_oauth', ...payload })}, ${JSON.stringify(safeOrigin)})
     setTimeout(() => window.close(), ${payload.error ? 4000 : 800})
   }
 </script></body></html>`)
+  }
 
   try {
     const { code, state, error, error_description } = req.query
     if (error || error_description) return respond({ error: String(error_description || error) })
-    if (!code || !state) return respond({ error: `code/state ausentes — query recebida: ${JSON.stringify(req.query)}` })
-    jwt.verify(String(state), JWT_SECRET) // state assinado em /oauth/url — barra forgery
+    if (!code || !state) return respond({ error: 'code/state ausentes no retorno da Meta.' })
+    const decoded = jwt.verify(String(state), JWT_SECRET) // state assinado em /oauth/url — barra forgery
+    if (decoded?.origin) safeOrigin = decoded.origin
 
     const redirectUri = `${req.protocol}://${req.get('host')}${req.baseUrl}/callback`
     const { data: tok } = await axios.get(`${GRAPH}/oauth/access_token`, {
@@ -109,24 +120,28 @@ oauthRouter.get('/callback', async (req, res) => {
 /* ─── Rotas protegidas ─────────────────────────────────────────────────── */
 const router = Router()
 
-// GET /api/meta/oauth/url?userId=… — URL do diálogo OAuth (state assinado).
+// GET /api/meta/oauth/url — URL do diálogo OAuth (state assinado com origin para postMessage seguro).
 router.get('/oauth/url', (req, res) => {
   if (!META_APP_ID || !META_APP_SECRET) {
     return res.status(503).json({ error: 'META_APP_ID/META_APP_SECRET não configurados no server/.env — use o token manual.' })
   }
-  const state = jwt.sign({ u: req.query.userId || '' }, JWT_SECRET, { expiresIn: '10m' })
+  const userId = req.user?.sub || req.query.userId || ''
+  // Armazena a origin do app no state para o callback usar no postMessage (evita wildcard '*')
+  const origin = req.headers.origin || (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',')[0].trim()
+  const state = jwt.sign({ u: userId, origin }, JWT_SECRET, { expiresIn: '10m' })
   const redirectUri = `${req.protocol}://${req.get('host')}/api/meta/oauth/callback`
   const url = `${OAUTH_DIALOG}?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${SCOPES}`
   res.json({ url })
 })
 
 // POST /api/meta/connect — conecta uma página a um canal.
-// Body: { userId, channel: 'facebook'|'instagram', pageToken, pageId?, pageName? }
-// pageToken pode vir do OAuth (postMessage) ou colado manualmente.
+// Body: { channel: 'facebook'|'instagram', pageToken, pageId?, pageName? }
+// userId vem do JWT (B14: nunca do body)
 router.post('/connect', async (req, res) => {
-  const { userId, channel, pageToken, pageId, pageName } = req.body || {}
+  const { channel, pageToken, pageId, pageName } = req.body || {}
+  const userId = req.user?.sub || (process.env.NODE_ENV !== 'production' ? req.body?.userId : null)
   if (!userId || !pageToken || !['facebook', 'instagram'].includes(channel)) {
-    return res.status(400).json({ error: 'userId, channel (facebook|instagram) e pageToken são obrigatórios.' })
+    return res.status(400).json({ error: 'channel (facebook|instagram) e pageToken são obrigatórios, e sessão deve estar autenticada.' })
   }
   if (!isConfigured) {
     return res.status(503).json({ error: 'Backend sem SUPABASE_SERVICE_ROLE_KEY — canal Meta indisponível.' })
@@ -160,11 +175,12 @@ router.post('/connect', async (req, res) => {
   }
 })
 
-// POST /api/meta/disconnect — Body: { userId, channel }
+// POST /api/meta/disconnect — Body: { channel }  — userId vem do JWT (B14)
 router.post('/disconnect', async (req, res) => {
-  const { userId, channel } = req.body || {}
+  const { channel } = req.body || {}
+  const userId = req.user?.sub || (process.env.NODE_ENV !== 'production' ? req.body?.userId : null)
   if (!userId || !['facebook', 'instagram'].includes(channel)) {
-    return res.status(400).json({ error: 'userId e channel (facebook|instagram) são obrigatórios.' })
+    return res.status(400).json({ error: 'channel (facebook|instagram) é obrigatório, e sessão deve estar autenticada.' })
   }
   meta.unregisterPagesOf(userId, channel)
   if (isConfigured) {
@@ -175,9 +191,10 @@ router.post('/disconnect', async (req, res) => {
   res.json({ ok: true })
 })
 
-// GET /api/meta/status?userId=…&channel=…
+// GET /api/meta/status?channel=… — userId do JWT
 router.get('/status', (req, res) => {
-  res.json(meta.getStatus(req.query.userId, req.query.channel))
+  const userId = req.user?.sub || req.query.userId
+  res.json(meta.getStatus(userId, req.query.channel))
 })
 
 // POST /api/meta/send — envio direto (diagnóstico). Body: { number, text, userId? }
