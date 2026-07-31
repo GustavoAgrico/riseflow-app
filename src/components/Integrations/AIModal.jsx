@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { ExternalLink, Loader2, Eye, EyeOff, Bot, Brain } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
-import { ModalBase } from './ModalBase'
+import { ModalBase, HelpAccordion } from './ModalBase'
 import clsx from 'clsx'
 
 const PROVIDERS = [
@@ -55,7 +55,7 @@ export const AIModal = ({ onClose, onSuccess }) => {
       // o smartAttendant e o webhook realmente leem as chaves). Sem isso, "Conectar IA"
       // aqui não ativava a IA — a chave caía numa tabela que ninguém lia.
       const keyColumn = provider === 'claude' ? 'anthropic_key' : 'openai_key'
-      await Promise.all([
+      const [r1, r2] = await Promise.all([
         supabase.from('integrations').upsert(
           { user_id: user.id, type: 'ai', status: 'connected', config, connected_at: new Date().toISOString() },
           { onConflict: 'user_id,type' }
@@ -65,6 +65,8 @@ export const AIModal = ({ onClose, onSuccess }) => {
           { onConflict: 'user_id' }
         ),
       ])
+      if (r1.error) throw new Error(r1.error.message)
+      if (r2.error) throw new Error(r2.error.message)
       onSuccess(config)
     } catch (err) {
       setError(err.message ?? 'Erro ao salvar')
@@ -74,6 +76,21 @@ export const AIModal = ({ onClose, onSuccess }) => {
 
   return (
     <ModalBase onClose={onClose} title="Inteligência Artificial" icon={<Bot size={22} color="#8B5CF6" />} iconBg="rgba(139,92,246,0.15)">
+      <HelpAccordion
+        title="Como obter uma API Key de IA?"
+        steps={[
+          'OpenAI: acesse platform.openai.com e crie uma conta (tem plano gratuito com créditos iniciais)',
+          'OpenAI: vá em API Keys → "Create new secret key" → copie a chave que começa com sk-proj-...',
+          'Claude (Anthropic): acesse console.anthropic.com e crie uma conta',
+          'Claude: vá em API Keys → "Create Key" → copie a chave que começa com sk-ant-api03-...',
+          'Cole a chave no campo abaixo — ela fica armazenada de forma segura e só é usada na sua conta',
+          'Atenção: a chave da API é diferente da senha da sua conta — não as confunda',
+        ]}
+        links={[
+          { label: 'OpenAI API Keys', url: 'https://platform.openai.com/api-keys' },
+          { label: 'Anthropic Console', url: 'https://console.anthropic.com' },
+        ]}
+      />
       {/* Provider tabs */}
       <div className="flex gap-2 mb-5">
         {PROVIDERS.map(p => (

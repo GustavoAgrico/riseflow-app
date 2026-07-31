@@ -8,6 +8,31 @@ import {
   getMessages,
   findContacts,
 } from '@/services/evolutionApi'
+import api from '@/services/api'
+
+const channelOf = (phone) => {
+  const p = String(phone || '')
+  if (/^fb\d+$/.test(p)) return 'facebook'
+  if (/^ig\d+$/.test(p)) return 'instagram'
+  if (/^tg-?\d+$/.test(p)) return 'telegram'
+  return 'whatsapp'
+}
+
+const sendByChannel = async (phone, text, userId) => {
+  const ch = channelOf(phone)
+  if (ch === 'facebook' || ch === 'instagram') {
+    const r = await api.post('/meta/send', { number: phone, text, userId }).then(r => r.data)
+    if (!r.success) throw new Error(r.error || 'Falha ao enviar pela Meta')
+    return r
+  }
+  if (ch === 'telegram') {
+    const r = await api.post('/telegram/send', { number: phone, text, userId }).then(r => r.data)
+    if (!r.success) throw new Error(r.error || 'Falha ao enviar pelo Telegram')
+    return r
+  }
+  // WhatsApp — Evolution API (usa apenas dígitos)
+  return evoSend(String(phone).replace(/\D/g, ''), text)
+}
 
 /* Converte um Blob de áudio gravado em base64 puro (sem prefixo data:) */
 const blobToBase64 = (blob) => new Promise((resolve, reject) => {
@@ -43,12 +68,13 @@ export const fetchMessages = async (conversationId) => {
 }
 
 export const sendChatMessage = async (userId, conversationId, contactPhone, content) => {
-  const phone = String(contactPhone).replace(/\D/g, '')
+  const phone = String(contactPhone)
+  const ch = channelOf(phone)
 
   // Salva otimisticamente no Supabase; o status é atualizado após o envio.
   const { data: msg, error } = await supabase
     .from('messages')
-    .insert({ conversation_id: conversationId, user_id: userId, content, direction: 'outbound', status: 'sent', channel: 'whatsapp' })
+    .insert({ conversation_id: conversationId, user_id: userId, content, direction: 'outbound', status: 'sent', channel: ch })
     .select()
     .single()
   if (error) throw error
@@ -57,14 +83,14 @@ export const sendChatMessage = async (userId, conversationId, contactPhone, cont
     .update({ last_message: content, last_message_at: new Date().toISOString() })
     .eq('id', conversationId)
 
-  console.log('[Chat] Enviando para:', phone)
+  console.log('[Chat] Enviando para:', phone, '(canal:', ch + ')')
   let r
   try {
-    r = await evoSend(phone, content)
-    console.log('[Chat] Resposta WhatsApp API:', JSON.stringify(r))
+    r = await sendByChannel(phone, content, userId)
+    console.log('[Chat] Resposta canal:', JSON.stringify(r))
   } catch (e) {
     console.error('[Chat] Envio falhou:', e.message)
-    const err = new Error(e.message || 'Falha ao enviar para o WhatsApp')
+    const err = new Error(e.message || `Falha ao enviar para ${ch}`)
     err.savedMsg = msg
     throw err
   }

@@ -5,13 +5,12 @@ import { Layout } from '@components/Layout/Layout'
 import {
   MessageCircle, Users, Zap, TrendingUp, ArrowUpRight,
   CheckCircle, AlertCircle, Wifi, Sparkles, GitBranch,
-  Instagram, Facebook
+  Instagram, Facebook, Link as LinkIcon
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer
 } from 'recharts'
-import { CHART_DATA } from '@constants/config'
 import { useDashboardData } from '@hooks/useDashboardData'
 import { useOnboarding } from '@hooks/useOnboarding'
 import { OnboardingWizard } from '@components/OnboardingWizard'
@@ -136,7 +135,14 @@ const EmptyState = ({ userName, onCreateFlow }) => (
 export const Dashboard = () => {
   const { flowsVersion, setNewFlowModalOpen } = useApp()
   const { user, isDemoMode } = useAuth()
-  const { flows, clients, msgCount, activeFlows, activeClients, conversionRate, loading, isEmpty } = useDashboardData(flowsVersion)
+  const {
+    flows, clients, conversations,
+    totalMessages, totalFlows, activeFlows,
+    totalClients, activeClients, totalConversations,
+    integrations, connectedIntegrations, hasAnyIntegration,
+    chartData,
+    loading, isEmpty,
+  } = useDashboardData(flowsVersion)
 
   const { plan: usage } = usePlan()
   const { showOnboarding, completeOnboarding } = useOnboarding()
@@ -164,11 +170,23 @@ export const Dashboard = () => {
   }
 
   const stats = [
-    { icon: MessageCircle, label: 'Mensagens Total', value: msgCount.toLocaleString(), change: 'total', color: 'bg-brand-orange' },
-    { icon: Users, label: 'Clientes Ativos', value: activeClients.length.toLocaleString(), change: `${clients.length} total`, color: 'bg-brand-blue' },
-    { icon: Zap, label: 'Fluxos Ativos', value: activeFlows.length.toString(), change: `${flows.length} total`, color: 'bg-purple-500' },
-    { icon: TrendingUp, label: 'Taxa Conversão', value: `${conversionRate}%`, change: 'média', color: 'bg-brand-green' },
+    { icon: MessageCircle, label: 'Mensagens Enviadas', value: totalMessages.toLocaleString('pt-BR'), change: `últimos ${totalConversations} chats`, color: 'bg-brand-orange' },
+    { icon: Users, label: 'Clientes', value: totalClients.toLocaleString('pt-BR'), change: `${activeClients.length} ativos`, color: 'bg-brand-blue' },
+    { icon: Zap, label: 'Fluxos Criados', value: totalFlows.toString(), change: `${activeFlows.length} ativos`, color: 'bg-purple-500' },
+    { icon: TrendingUp, label: 'Conversas', value: totalConversations.toLocaleString('pt-BR'), change: 'abertas', color: 'bg-brand-green' },
   ]
+
+  const activeChannels = [
+    { id: 'whatsapp', label: 'WhatsApp', Icon: MessageCircle, colorClass: 'text-green-400' },
+    { id: 'instagram', label: 'Instagram', Icon: Instagram, colorClass: 'text-pink-400' },
+    { id: 'facebook', label: 'Facebook', Icon: Facebook, colorClass: 'text-blue-400' },
+    { id: 'telegram', label: 'Telegram', Icon: MessageCircle, colorClass: 'text-sky-400' },
+  ].map(ch => {
+    const integration = integrations.find(i => i.type === ch.id)
+    const connected = integration?.status === 'connected'
+    const flowCount = flows.filter(f => f.channel === ch.id).length
+    return { ...ch, connected, flowCount }
+  })
 
   return (
     <Layout title="Dashboard" subtitle="Visão geral do seu negócio">
@@ -180,17 +198,27 @@ export const Dashboard = () => {
             Olá{firstName ? `, ${firstName}` : ''}!
           </h2>
           <p className="text-slate-400 text-sm">
-            Você tem{' '}
-            <span className="text-brand-orange font-semibold">{activeFlows.length} fluxo{activeFlows.length !== 1 ? 's' : ''}</span>
-            {' '}ativo{activeFlows.length !== 1 ? 's' : ''} agora.
+            {totalMessages > 0
+              ? <>Você enviou <span className="text-brand-orange font-semibold">{totalMessages.toLocaleString('pt-BR')} mensagem{totalMessages !== 1 ? 's' : ''}</span> no total.</>
+              : totalFlows > 0
+                ? <>Você tem <span className="text-brand-orange font-semibold">{totalFlows} fluxo{totalFlows !== 1 ? 's' : ''}</span> criado{totalFlows !== 1 ? 's' : ''}. Conecte uma integração para começar.</>
+                : <>Configure suas integrações para começar a automatizar.</>
+            }
             {isDemoMode && <span className="ml-2 text-yellow-400 text-xs">(dados de demonstração)</span>}
           </p>
         </div>
         <div className="hidden md:flex items-center gap-2">
-          <div className="flex items-center gap-1.5 glass rounded-xl px-3 py-2">
-            <Wifi size={13} className="text-brand-green animate-pulse-slow" />
-            <span className="text-xs text-brand-green font-medium">{activeFlows.length} fluxos online</span>
-          </div>
+          {hasAnyIntegration ? (
+            <div className="flex items-center gap-1.5 glass rounded-xl px-3 py-2">
+              <Wifi size={13} className="text-brand-green animate-pulse-slow" />
+              <span className="text-xs text-brand-green font-medium">{connectedIntegrations.length} canal{connectedIntegrations.length !== 1 ? 'is' : ''} conectado{connectedIntegrations.length !== 1 ? 's' : ''}</span>
+            </div>
+          ) : (
+            <Link to="/integrations" className="flex items-center gap-1.5 glass rounded-xl px-3 py-2 hover:border-brand-orange/30 transition-colors">
+              <LinkIcon size={13} className="text-slate-400" />
+              <span className="text-xs text-slate-400">Conectar integração</span>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -238,7 +266,7 @@ export const Dashboard = () => {
             <div>
               <h3 className="font-display font-semibold text-white">Atividade</h3>
               <p className="text-xs text-slate-400">
-                {isDemoMode ? 'Dados de exemplo' : 'Últimos 7 dias'}
+                {hasAnyIntegration ? 'Últimos 7 dias · dados reais' : 'Conecte uma integração para ver dados reais'}
               </p>
             </div>
             <div className="flex gap-3 text-xs">
@@ -246,48 +274,59 @@ export const Dashboard = () => {
                 <span className="w-2 h-2 rounded-full bg-brand-orange" />Mensagens
               </span>
               <span className="flex items-center gap-1.5 text-slate-400">
-                <span className="w-2 h-2 rounded-full bg-brand-blue" />Conversões
+                <span className="w-2 h-2 rounded-full bg-brand-blue" />Saídas
               </span>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={CHART_DATA}>
-              <defs>
-                <linearGradient id="og" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#FF6B35" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#FF6B35" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="bl" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2D3A55" />
-              <XAxis dataKey="day" tick={{ fill: '#64748B', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#64748B', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area type="monotone" dataKey="messages" name="Mensagens" stroke="#FF6B35" fill="url(#og)" strokeWidth={2} dot={false} />
-              <Area type="monotone" dataKey="conversions" name="Conversões" stroke="#3B82F6" fill="url(#bl)" strokeWidth={2} dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
+          {!hasAnyIntegration ? (
+            <div className="flex flex-col items-center justify-center h-[200px] text-center">
+              <LinkIcon size={28} className="text-slate-600 mb-3" />
+              <p className="text-sm text-slate-500 mb-2">Nenhuma integração conectada</p>
+              <Link to="/integrations" className="text-xs text-brand-orange hover:underline">Conectar agora</Link>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="og" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#FF6B35" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#FF6B35" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="bl" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2D3A55" />
+                <XAxis dataKey="day" tick={{ fill: '#64748B', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#64748B', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Area type="monotone" dataKey="messages" name="Mensagens" stroke="#FF6B35" fill="url(#og)" strokeWidth={2} dot={false} />
+                <Area type="monotone" dataKey="conversions" name="Saídas" stroke="#3B82F6" fill="url(#bl)" strokeWidth={2} dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
-        {/* Quick stats */}
+        {/* Canais */}
         <div className="glass rounded-2xl p-5 flex flex-col gap-3">
-          <h3 className="font-display font-semibold text-white mb-1">Canais Ativos</h3>
-          {['whatsapp', 'instagram', 'facebook'].map(ch => {
-            const count = flows.filter(f => f.channel === ch).length
-            const labels = { whatsapp: 'WhatsApp', instagram: 'Instagram', facebook: 'Facebook' }
-            return (
-              <div key={ch} className="flex items-center justify-between glass rounded-xl px-4 py-3">
-                <div className="flex items-center gap-2.5">
-                  <ChannelIcon channel={ch} size={15} />
-                  <span className="text-sm text-slate-300">{labels[ch]}</span>
-                </div>
-                <span className="text-sm font-semibold text-white">{count} fluxo{count !== 1 ? 's' : ''}</span>
+          <h3 className="font-display font-semibold text-white mb-1">Canais</h3>
+          {activeChannels.map(({ id, label, Icon, colorClass, connected, flowCount }) => (
+            <div key={id} className="flex items-center justify-between glass rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <Icon size={15} className={connected ? colorClass : 'text-slate-600'} />
+                <span className={clsx('text-sm', connected ? 'text-slate-300' : 'text-slate-600')}>{label}</span>
               </div>
-            )
-          })}
+              {connected ? (
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-green animate-pulse-slow" />
+                  <span className="text-xs text-brand-green font-medium">{flowCount} fluxo{flowCount !== 1 ? 's' : ''}</span>
+                </div>
+              ) : (
+                <Link to="/integrations" className="text-xs text-slate-500 hover:text-brand-orange transition-colors">Conectar</Link>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 

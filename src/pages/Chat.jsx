@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Paperclip, Send, Mic, Trash2, Play, Pause, Image as ImageIcon, FileText, Download, RefreshCw, Check, CheckCheck, Clock, ArrowLeft, PanelRight, ArrowRightLeft, Plus, Sparkles, Bot, Loader2, Pencil, MessageSquareText } from 'lucide-react'
+import { Paperclip, Send, Mic, Trash2, Play, Pause, Image as ImageIcon, FileText, Download, RefreshCw, Check, CheckCheck, Clock, ArrowLeft, PanelRight, ArrowRightLeft, Plus, Sparkles, Bot, Loader2, Pencil, MessageSquareText, Save, User, Phone, Mail, Tag } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { usageService } from '@services/usageService'
 import { fetchConversations, fetchMessages, sendChatMessage, markConversationRead, syncWhatsAppChats, deleteConversation, loadConversationMessages, createConversation } from '@services/chatService'
@@ -75,6 +75,11 @@ export const Chat = () => {
   const [input, setInput] = useState('')
   const [search, setSearch] = useState('')
   const [showPanel, setShowPanel] = useState(false)
+  const [panelTab, setPanelTab] = useState('contato') // 'contato' | 'info'
+  const [clientForm, setClientForm] = useState({ name: '', phone: '', email: '', tag: 'Prospect', channel: 'whatsapp' })
+  const [clientId, setClientId] = useState(null)
+  const [savingClient, setSavingClient] = useState(false)
+  const [clientSaved, setClientSaved] = useState(false)
   const [showTransfer, setShowTransfer] = useState(false)
   const [transferMsg, setTransferMsg] = useState('')
   const [typing, setTyping] = useState(false)
@@ -108,6 +113,26 @@ export const Chat = () => {
   }
   const onlyDigits = (s) => String(s ?? '').replace(/\D/g, '')
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
+
+  /* Carrega dados do cliente vinculado à conversa selecionada */
+  useEffect(() => {
+    if (!selectedId || !userId) return
+    const phone = conversations.find(c => c.id === selectedId)?.phone
+    if (!phone) return
+    const digits = String(phone).replace(/\D/g, '')
+    ;(async () => {
+      const { data } = await supabase.from('clients').select('*').eq('user_id', userId).ilike('phone', `%${digits}%`).maybeSingle()
+      if (data) {
+        setClientId(data.id)
+        setClientForm({ name: data.name ?? '', phone: data.phone ?? '', email: data.email ?? '', tag: data.tag ?? 'Prospect', channel: data.channel ?? 'whatsapp' })
+      } else {
+        setClientId(null)
+        const convName = conversations.find(c => c.id === selectedId)?.name ?? ''
+        setClientForm({ name: convName, phone: phone ?? '', email: '', tag: 'Prospect', channel: 'whatsapp' })
+      }
+      setClientSaved(false)
+    })()
+  }, [selectedId, userId])
   useEffect(() => { if (userId) listTemplates(userId).then(setTemplates).catch(() => {}) }, [userId])
   useEffect(() => { setTyping(true); const t = setTimeout(() => setTyping(false), 2200); return () => clearTimeout(t) }, [selectedId])
 
@@ -122,26 +147,41 @@ export const Chat = () => {
     console.log(`[Chat] ${convs.length} conversas carregadas`)
   }
 
-  /* PASSO 1+2: usuário autenticado + conversas reais */
+  /* PASSO 1: usuário autenticado — conversas SÓ carregam ao clicar em Sincronizar */
   useEffect(() => {
     (async () => {
-      console.log('[Chat] Carregando conversas...')
       try {
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) { setLoading(false); return }
         userRef.current = user.id; setUserId(user.id)
         try { setUsage(await usageService.getUsage(user.id)) } catch (e) { console.warn('[Usage] indisponível:', e?.message ?? e) }
-        await loadConvs(user.id)
-      } catch (e) { console.warn('[Chat] erro ao carregar conversas:', e?.message ?? e) }
+      } catch (e) { console.warn('[Chat] erro ao autenticar:', e?.message ?? e) }
       setLoading(false)
     })()
   }, [])
 
-  /* Sincroniza conversas reais do WhatsApp (Evolution API) e recarrega a lista */
+  /* Sincroniza conversas reais do WhatsApp (Evolution API) e recarrega a lista.
+     Exige que o WhatsApp (ou outro canal) esteja conectado — caso contrário orienta
+     o usuário a ir para Integrações, evitando exibir conversas antigas do banco. */
   const doSync = async () => {
     const uid = userRef.current
     if (!uid || syncing) return
-    console.log('[Chat] Sincronizando conversas do WhatsApp...')
+
+    // Verifica se há algum canal conectado antes de buscar conversas.
+    const { data: integration } = await supabase
+      .from('integrations')
+      .select('type')
+      .eq('user_id', uid)
+      .eq('status', 'connected')
+      .maybeSingle()
+
+    if (!integration) {
+      setSyncMsg('Nenhum canal conectado. Conecte o WhatsApp (ou outro canal) em Integrações.')
+      setTimeout(() => setSyncMsg(''), 5000)
+      return
+    }
+
+    console.log('[Chat] Sincronizando conversas...')
     setSyncing(true); setSyncMsg('Iniciando...')
     try {
       const count = await syncWhatsAppChats(uid, (m) => setSyncMsg(m))
@@ -302,12 +342,20 @@ export const Chat = () => {
       }
     }
     const onNewChat = () => loadConvs(userRef.current)
+    const onIntegrationConnected = () => {
+      setConversations([])
+      setSelectedId(null)
+      setMessages({})
+      if (userRef.current) loadConvs(userRef.current)
+    }
 
     socket.on('new_message', onNewMessage)
     socket.on('new_chat', onNewChat)
+    socket.on('integration_connected', onIntegrationConnected)
     return () => {
       socket.off('new_message', onNewMessage)
       socket.off('new_chat', onNewChat)
+      socket.off('integration_connected', onIntegrationConnected)
     }
   }, [])
 
@@ -319,8 +367,12 @@ export const Chat = () => {
     // PASSO 1 — diagnóstico: mostra a conversa (e o contact_phone) usada no envio.
     console.log('[Chat] Conversa selecionada:', JSON.stringify(sel))
     // PASSO 5 — valida o número antes de enviar (evita disparar para LID/lixo).
-    const phone = onlyDigits(conversations.find(c => c.id === selectedId)?.phone)
-    if (phone.length < 10 || phone.length > 15) {
+    // Contatos Meta (fb/ig) e Telegram (tg) já têm prefixo no phone — preserva o
+    // prefixo para o roteamento multi-canal funcionar em sendChatMessage.
+    const rawPhone = String(conversations.find(c => c.id === selectedId)?.phone || '')
+    const isChannelContact = /^(fb|ig|tg)/.test(rawPhone)
+    const phone = isChannelContact ? rawPhone : onlyDigits(rawPhone)
+    if (!isChannelContact && (phone.length < 10 || phone.length > 15)) {
       window.alert(`Número inválido: ${phone || '(vazio)'}\n\nClique no lápis (✏) ao lado do nome, no topo da conversa, para corrigir o número do contato.`)
       return
     }
@@ -384,6 +436,24 @@ export const Chat = () => {
       setConversations(cs => cs.map(c => c.id === selectedId ? { ...c, auto: !on } : c)) // reverte
       window.alert('Não foi possível alterar a auto-resposta: ' + (e?.message ?? e) + '\n\n(Rode o SQL que adiciona a coluna ai_auto_reply.)')
     }
+  }
+
+  /* Salva/atualiza cliente vinculado à conversa */
+  const saveClient = async () => {
+    if (!userId || savingClient) return
+    setSavingClient(true)
+    try {
+      const row = { user_id: userId, name: clientForm.name.trim() || (sel?.name ?? 'Contato'), phone: clientForm.phone.trim() || null, email: clientForm.email.trim() || null, tag: clientForm.tag, channel: clientForm.channel, status: 'active' }
+      if (clientId) {
+        await supabase.from('clients').update(row).eq('id', clientId)
+      } else {
+        const { data } = await supabase.from('clients').insert(row).select().single()
+        if (data) setClientId(data.id)
+      }
+      setClientSaved(true)
+      setTimeout(() => setClientSaved(false), 2500)
+    } catch (e) { console.warn('[Chat] saveClient falhou:', e?.message ?? e) }
+    setSavingClient(false)
   }
 
   /* Transfere a conversa atual para outro atendente (mock) — registra auditoria. */
@@ -639,30 +709,111 @@ export const Chat = () => {
 
       {/* ── COLUNA 3: painel contato ── */}
       {showPanel && sel && (
-        <div style={{ width: 300, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.border}`, padding: 20, boxSizing: 'border-box', overflowY: 'auto' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Detalhes do contato</span>
-            <button onClick={() => setShowPanel(false)} style={iBtn}>×</button>
-          </div>
-          <div style={{ textAlign: 'center', marginBottom: 18 }}>
-            <div style={{ width: 60, height: 60, borderRadius: '50%', background: sel.av, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 22, margin: '0 auto 10px' }}>{ini(sel.name)}</div>
-            <p style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800, color: C.text }}>{sel.name}</p>
-            <p style={{ margin: 0, fontSize: 12, color: C.muted }}>{sel.phone ? `+${sel.phone}` : '—'}</p>
-            <p style={{ margin: '2px 0 0', fontSize: 12, color: C.muted }}>WhatsApp</p>
-          </div>
-          {[
-            ['Tags', <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{[['VIP', C.purple], ['Suporte', '#2563EB'], ['Ativo', C.green]].map(([t, c]) => <span key={t} style={{ background: c + '22', color: c, borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 600 }}>{t}</span>)}</div>],
-            ['CRM', <span style={{ background: '#2563EB22', color: '#60A5FA', borderRadius: 8, padding: '4px 12px', fontSize: 12, fontWeight: 600 }}>Qualificado</span>],
-            ['Mídia', <span style={{ fontSize: 12, color: C.muted }}>3 fotos, 1 documento compartilhados</span>],
-          ].map(([k, node]) => (
-            <div key={k} style={{ padding: '12px 0', borderTop: `1px solid ${C.border}` }}>
-              <p style={{ margin: '0 0 8px', fontSize: 11, color: C.dim, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>{k}</p>
-              {node}
+        <div style={{ width: 300, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+          {/* Cabeçalho fixo */}
+          <div style={{ padding: '14px 16px 0', borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ textAlign: 'center', flex: 1 }}>
+                <div style={{ width: 48, height: 48, borderRadius: '50%', background: sel.av, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 18, margin: '0 auto 6px' }}>{ini(sel.name)}</div>
+                <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 800, color: C.text }}>{sel.name}</p>
+                <p style={{ margin: 0, fontSize: 11, color: C.muted }}>{sel.phone ? (String(sel.phone).startsWith('fb') || String(sel.phone).startsWith('ig') || String(sel.phone).startsWith('tg') ? sel.phone : `+${sel.phone}`) : '—'}</p>
+              </div>
+              <button onClick={() => setShowPanel(false)} style={{ ...iBtn, alignSelf: 'flex-start' }}>×</button>
             </div>
-          ))}
-          <LeadScorePanel contactId={sel.id} userId={userId} />
-          <NotesPanel contactId={sel.id} userId={userId} />
-          <a href="/clients" style={{ display: 'block', textAlign: 'center', background: C.purple, color: '#fff', borderRadius: 10, padding: 11, fontSize: 13, fontWeight: 600, textDecoration: 'none', marginTop: 16, width: '100%', boxSizing: 'border-box' }}>Ver no CRM</a>
+            {/* Abas */}
+            <div style={{ display: 'flex', gap: 0 }}>
+              {[['contato', 'Contato'], ['info', 'Informações']].map(([tab, label]) => (
+                <button key={tab} onClick={() => setPanelTab(tab)}
+                  style={{ flex: 1, background: 'none', border: 'none', borderBottom: `2px solid ${panelTab === tab ? C.purple : 'transparent'}`, color: panelTab === tab ? C.purple : C.muted, fontWeight: panelTab === tab ? 700 : 400, fontSize: 13, padding: '8px 4px', cursor: 'pointer', fontFamily: F, transition: 'all .15s' }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Conteúdo scrollável */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+            {panelTab === 'contato' ? (
+              <>
+                <LeadScorePanel contactId={sel.id} userId={userId} />
+                <NotesPanel contactId={sel.id} userId={userId} />
+                <a href="/clients" style={{ display: 'block', textAlign: 'center', background: C.purple, color: '#fff', borderRadius: 10, padding: 11, fontSize: 13, fontWeight: 600, textDecoration: 'none', marginTop: 16, width: '100%', boxSizing: 'border-box' }}>Ver no CRM</a>
+              </>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <p style={{ margin: 0, fontSize: 11, color: C.dim, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                  {clientId ? 'Dados salvos no CRM' : 'Novo cliente — preencha e salve'}
+                </p>
+
+                {/* Nome */}
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 5 }}>
+                    <User size={12} /> Nome completo
+                  </label>
+                  <input value={clientForm.name} onChange={e => setClientForm(p => ({ ...p, name: e.target.value }))}
+                    placeholder="Nome do cliente"
+                    style={{ width: '100%', background: '#0F172A', border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13, outline: 'none', fontFamily: F, boxSizing: 'border-box' }} />
+                </div>
+
+                {/* Telefone */}
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 5 }}>
+                    <Phone size={12} /> Telefone
+                  </label>
+                  <input value={clientForm.phone} onChange={e => setClientForm(p => ({ ...p, phone: e.target.value }))}
+                    placeholder="+55 11 99999-9999" type="tel"
+                    style={{ width: '100%', background: '#0F172A', border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13, outline: 'none', fontFamily: F, boxSizing: 'border-box' }} />
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 5 }}>
+                    <Mail size={12} /> E-mail
+                  </label>
+                  <input value={clientForm.email} onChange={e => setClientForm(p => ({ ...p, email: e.target.value }))}
+                    placeholder="email@exemplo.com" type="email"
+                    style={{ width: '100%', background: '#0F172A', border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13, outline: 'none', fontFamily: F, boxSizing: 'border-box' }} />
+                </div>
+
+                {/* Status do Lead */}
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 8 }}>
+                    <Tag size={12} /> Status do Lead
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                    {['Prospect', 'Lead Quente', 'Cliente', 'VIP', 'Inativo'].map(opt => (
+                      <button key={opt} onClick={() => setClientForm(p => ({ ...p, tag: opt }))}
+                        style={{ padding: '6px 4px', borderRadius: 8, border: `1px solid ${clientForm.tag === opt ? C.purple : C.border}`, background: clientForm.tag === opt ? C.purple + '33' : 'transparent', color: clientForm.tag === opt ? '#A78BFA' : C.muted, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: F, transition: 'all .15s' }}>
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Canal */}
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 8 }}>
+                    Canal de origem
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                    {[['whatsapp','WhatsApp','#22C55E'],['instagram','Instagram','#EC4899'],['facebook','Facebook','#3B82F6'],['telegram','Telegram','#0EA5E9'],['email','E-mail','#A78BFA'],['indicação','Indicação','#F59E0B']].map(([val, lbl, clr]) => (
+                      <button key={val} onClick={() => setClientForm(p => ({ ...p, channel: val }))}
+                        style={{ padding: '6px 2px', borderRadius: 8, border: `1px solid ${clientForm.channel === val ? clr : C.border}`, background: clientForm.channel === val ? clr + '22' : 'transparent', color: clientForm.channel === val ? clr : C.muted, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: F, transition: 'all .15s' }}>
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Botão salvar */}
+                <button onClick={saveClient} disabled={savingClient}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '11px', borderRadius: 10, border: 'none', background: clientSaved ? C.green : C.purple, color: '#fff', fontSize: 13, fontWeight: 700, cursor: savingClient ? 'default' : 'pointer', fontFamily: F, transition: 'background .3s', opacity: savingClient ? 0.7 : 1 }}>
+                  {savingClient ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                  {clientSaved ? 'Salvo!' : clientId ? 'Atualizar dados' : 'Salvar no CRM'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

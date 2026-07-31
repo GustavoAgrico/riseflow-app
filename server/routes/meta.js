@@ -152,6 +152,7 @@ router.post('/connect', async (req, res) => {
     if (error) throw error
 
     meta.registerPage({ pageId: finalPageId, userId, channel, token: String(pageToken).trim(), pageName: finalName })
+    meta.emitIntegrationConnected(channel)
     res.json({ ok: true, page: { id: finalPageId, name: finalName } })
   } catch (err) {
     const msg = err.response?.data?.error?.message || err.message || 'Falha ao conectar a página.'

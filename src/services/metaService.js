@@ -24,12 +24,23 @@ export const metaErrorMessage = (err) =>
   err?.response?.data?.error || err?.message || 'Erro desconhecido'
 
 /* Abre o popup de login da Meta e resolve com { pages } (via postMessage do
-   callback) ou rejeita com o erro retornado. */
+   callback) ou rejeita com o erro retornado.
+   O popup é aberto IMEDIATAMENTE (contexto de gesto do usuário) com about:blank
+   e só depois navegado para a URL OAuth — evita bloqueio de popup nos browsers
+   quando o servidor leva 30-60 s para acordar (Render free tier). */
 export const runMetaOauth = async (userId) => {
-  const { url } = await getMetaOauthUrl(userId)
+  const popup = window.open('about:blank', 'meta_oauth', 'width=640,height=760')
+  if (!popup) throw new Error('Popup bloqueado pelo navegador. Permita popups para este site e tente novamente.')
+
+  try {
+    const { url } = await getMetaOauthUrl(userId)
+    popup.location.href = url
+  } catch (err) {
+    popup.close()
+    throw err
+  }
+
   return new Promise((resolve, reject) => {
-    const popup = window.open(url, 'meta_oauth', 'width=640,height=760')
-    if (!popup) return reject(new Error('Popup bloqueado pelo navegador.'))
     const onMsg = (ev) => {
       if (ev.data?.type !== 'meta_oauth') return
       window.removeEventListener('message', onMsg)

@@ -134,15 +134,15 @@ runtime **não tem efeito nenhum** sobre um bundle já buildado.
 - **Correção:** try/catch no `callWebhook` retornando `undefined` (e logando),
   como já é feito no envio de email.
 
-### 🟠 B11 — `POST /api/webhook` público por padrão (WEBHOOK_TOKEN vazio)
+### ✅ 🟠 B11 — `POST /api/webhook` público por padrão (WEBHOOK_TOKEN vazio)
 - **Arquivo:** `server/routes/webhook.js:49` + `server/.env:20` (`WEBHOOK_TOKEN=`)
 - **Problema:** sem token, qualquer um que alcance a URL injeta eventos falsos:
   dispara funis, aciona a IA (gasta créditos OpenAI/Anthropic do usuário) e
   planta mensagens forjadas no chat via Socket.io. Em localhost é aceitável; em
   produção é porta aberta.
-- **Correção:** tornar `WEBHOOK_TOKEN` obrigatório quando `NODE_ENV=production`
-  (recusar boot sem ele) e configurar o mesmo token no `FLOW_WEBHOOK_URL` do
-  whatsapp-server (`?token=...`).
+- **Correção (aplicada):** `server/index.js` agora recusa o boot quando
+  `NODE_ENV=production` e `WEBHOOK_TOKEN` está vazio. Falta configurar o mesmo
+  token no `FLOW_WEBHOOK_URL` do whatsapp-server (`?token=...`).
 
 ### 🔵 B12 — dotenv depende do diretório de execução; portas colidem no erro
 - **Arquivos:** `server/index.js:3`, `whatsapp-server/index.js:1` +
@@ -165,16 +165,21 @@ runtime **não tem efeito nenhum** sobre um bundle já buildado.
   `[Convert]::ToBase64String((1..48 | % { Get-Random -Max 256 }))`) antes de
   qualquer deploy. Nunca reutilizar o do exemplo.
 
-### 🔴 B14 — Autenticação decorativa: login emite JWT para qualquer email, sem senha
+### ✅ 🔴 B14 — Autenticação decorativa: login emite JWT para qualquer email, sem senha
 - **Arquivo:** `server/index.js:56-63` (`/api/auth/login`) — o próprio comentário
   admite: "Em produção, troque por validação real".
 - **Problema:** as rotas "protegidas" são efetivamente públicas — basta pedir um
   token. Combinado com `server/routes/email.js:32-35` (aceita `userId`
   arbitrário no body), permite **enviar emails pelo SMTP de qualquer usuário**
   cadastrado; idem para enviar WhatsApp pela instância conectada.
-- **Correção:** validar o access token do Supabase Auth no login (ou substituir
-  o JWT próprio pelo do Supabase via `supabase.auth.getUser(token)` no
-  middleware) e derivar `userId` do token — nunca do body.
+- **Correção (aplicada):** `/api/auth/login` agora valida o access token do
+  Supabase via `supabase.auth.getUser(token)` e emite um JWT do proxy com
+  `sub` = id real do usuário. O frontend (`src/services/api.js`) passou a enviar
+  o access token em vez do e-mail. O caminho legado por e-mail só sobrevive fora
+  de produção; em produção é recusado. `POST /api/email/send` deriva o `userId`
+  de `req.user.sub` (nunca do body) — fecha o envio de email pelo SMTP de outro
+  usuário. **Pendente:** aplicar o mesmo padrão (userId do token) às demais rotas
+  que ainda leem `userId` do body (telegram/meta/billing) numa próxima passada.
 
 ### 🟡 B15 — Credencial default hardcoded `riseflow-server-2024`
 - **Arquivos:** `whatsapp-server/index.js:10` (fallback do `API_KEY`),
@@ -189,23 +194,26 @@ runtime **não tem efeito nenhum** sobre um bundle já buildado.
 - **Problema:** `?apikey=...` fica gravada em logs/históricos de proxy.
 - **Correção:** aceitar apenas via header.
 
-### 🔵 B17 — Superfície legada da Evolution ainda ativa
+### ✅ 🔵 B17 — Superfície legada da Evolution ainda ativa
 - **Arquivos:** `vercel.json:3` (rewrite `/evolution/*` → Railway),
   `vite.config.js:52-57`
 - **Problema:** proxy morto para serviço desativado; se a URL do Railway for
   reciclada por terceiros, vira open redirect de dados.
-- **Correção:** remover os dois blocos.
+- **Correção (aplicada):** os dois blocos foram removidos (`vercel.json` e o
+  proxy `/evolution` do `vite.config.js`).
 
 ### 🔵 B18 — JWT do proxy em `localStorage`
 - **Arquivo:** `src/services/api.js:34`
 - **Problema:** qualquer XSS rouba o token (validade 7d). Risco padrão, mas
   registrado — mitigável com cookie httpOnly quando a auth real (B14) entrar.
 
-### 🔵 B19 — Headers de segurança só existem no dev server
+### ✅ 🔵 B19 — Headers de segurança só existem no dev server
 - **Arquivo:** `vite.config.js:39-44`
 - **Problema:** `X-Frame-Options` etc. são do dev server do Vite; a produção
   (Express servindo `dist/`) não os envia.
-- **Correção:** adicionar os mesmos headers (ou `helmet`) no `server/index.js`.
+- **Correção (aplicada):** middleware em `server/index.js` envia os quatro
+  headers (`X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection`,
+  `Referrer-Policy`) em todas as respostas — sem adicionar `helmet`.
 
 ### ✔️ Verificações que passaram
 - `.env`/`auth_session` corretamente fora do git (`.gitignore:11-13,21-24`).
@@ -229,7 +237,10 @@ runtime **não tem efeito nenhum** sobre um bundle já buildado.
 | B05 | 🟠 | Socket.io fallback localhost em produção | ✅ corrigido |
 | B07 | 🔴 | Sessão Baileys efêmera/relativa | pendente (precisa disco no Render) |
 | B13 | 🔴 | `JWT_SECRET` placeholder | pendente (ação sua: gerar segredo) |
-| B14 | 🔴 | Login sem senha / `userId` do body | pendente (refatoração de auth) |
-| B03, B06, B11 | 🟠 | CORS/env produção, Supabase placeholder, webhook aberto | pendente (config de deploy) |
-| B02, B08–B10, B15 | 🟡 | diversos | pendente |
-| B12, B16–B19 | 🔵 | diversos | pendente |
+| B14 | 🔴 | Login sem senha / `userId` do body | ✅ corrigido (valida token Supabase) |
+| B11 | 🟠 | Webhook aberto sem token | ✅ corrigido (obrigatório em produção) |
+| B03, B06 | 🟠 | CORS/env produção, Supabase placeholder | pendente (config de deploy) |
+| B09, B10, B12 | 🟡/🔵 | Erro no funil, dotenv (server/) | ✅ já corrigidos no código |
+| B17, B19 | 🔵 | Evolution legada, headers de segurança | ✅ corrigidos |
+| B02, B08, B15 | 🟡 | itens do `whatsapp-server/` (fora deste repo) | pendente |
+| B16, B18 | 🔵 | apikey em query (whatsapp-server), JWT em localStorage | pendente |

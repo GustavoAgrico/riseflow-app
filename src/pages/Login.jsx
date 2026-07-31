@@ -63,20 +63,19 @@ export const Login = () => {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', fontFamily: "'DM Sans',sans-serif", background: '#0F172A' }}>
       <style>{CSS}</style>
-      <div className="rf-l" style={{ width: '50vw', position: 'relative', overflow: 'hidden', background: 'linear-gradient(160deg,#0F172A,#1C1410)', padding: 48, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+      <div className="rf-l" style={{ width: '50vw', position: 'relative', overflow: 'hidden', background: 'linear-gradient(160deg,#0F172A,#1C1410)', padding: 48, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'center', textAlign: 'center' }}>
         {circles.map((c, i) => <div key={i} style={{ position: 'absolute', width: c.s, height: c.s, top: c.t, left: c.l, borderRadius: '50%', background: c.c, opacity: 0.15, filter: 'blur(8px)', animation: `rfFloat 6s ease-in-out ${c.d} infinite alternate` }} />)}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 14, background: 'linear-gradient(135deg,#FF6B35,#E55100)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, fontWeight: 700, color: '#fff' }}>R</div>
+          <div style={{ width: 56, height: 56, borderRadius: 14, background: 'linear-gradient(135deg,#FF6B35,#E55100)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 900, color: '#fff', letterSpacing: '-1px', fontFamily: "'DM Sans',sans-serif" }}>RF</div>
           <span style={{ fontSize: 28, fontWeight: 700, color: '#fff' }}>RiseFlow</span>
         </div>
         <div style={{ position: 'relative' }}>
           <h1 style={{ fontSize: 32, fontWeight: 700, color: '#F8FAFC', lineHeight: 1.2, margin: '0 0 16px' }}>Automatize suas plataformas digitais com inteligência artificial</h1>
           <p style={{ fontSize: 16, color: '#94A3B8', margin: '0 0 28px' }}>CRM, chatbot com IA, campanhas em massa e muito mais.</p>
-          {bullets.map(([Ic, t], i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, color: '#E2E8F0', fontSize: 15 }}><Ic size={20} color="#FF6B35" />{t}</div>)}
+          {bullets.map(([Ic, t], i) => <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 14, color: '#E2E8F0', fontSize: 15 }}><Ic size={20} color="#FF6B35" />{t}</div>)}
         </div>
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ display: 'flex' }}>{[0, 1, 2, 3, 4].map(i => <div key={i} style={{ width: 32, height: 32, borderRadius: '50%', background: '#475569', border: '2px solid #1C1410', marginLeft: i ? -10 : 0 }} />)}</div>
-          <span style={{ color: '#94A3B8', fontSize: 14 }}>Usado por +500 empresas</span>
+        <div style={{ position: 'relative' }}>
+          <span style={{ color: '#475569', fontSize: 13 }}>Created by <span style={{ color: '#FF6B35', fontWeight: 600 }}>Rise Creative</span></span>
         </div>
       </div>
 

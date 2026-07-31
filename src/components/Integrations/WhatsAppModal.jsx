@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X, Wifi, WifiOff, RefreshCw, CheckCircle, Loader2, MessageCircle } from 'lucide-react'
+import { X, Wifi, WifiOff, RefreshCw, CheckCircle, Loader2, MessageCircle, HelpCircle, ChevronDown } from 'lucide-react'
 import { connectInstance, getInstanceStatus } from '@/services/evolutionApi'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
@@ -65,6 +65,7 @@ export const WhatsAppModal = ({ onClose, onSuccess }) => {
 
   // steps: loading | qrcode | syncing | connected | error
   const [step, setStep]             = useState('loading')
+  const [helpOpen, setHelpOpen]     = useState(false)
   const [qrCode, setQrCode]         = useState(null)
   const [timer, setTimer]           = useState(45)
   const [phoneNumber, setPhoneNumber] = useState('')
@@ -260,6 +261,37 @@ export const WhatsAppModal = ({ onClose, onSuccess }) => {
         {/* ── QR Code ── */}
         {step === 'qrcode' && qrCode && (
           <div className="flex flex-col items-center">
+            {/* Ajuda colapsável */}
+            <div className="w-full rounded-xl border border-white/10 overflow-hidden mb-4">
+              <button
+                type="button"
+                onClick={() => setHelpOpen(o => !o)}
+                className="w-full flex items-center justify-between px-3 py-2.5 text-xs text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+              >
+                <span className="flex items-center gap-2">
+                  <HelpCircle size={12} className="text-green-400 shrink-0" />
+                  <span className="font-medium">Como escanear o QR Code?</span>
+                </span>
+                <ChevronDown size={12} className={`transition-transform duration-200 shrink-0 ${helpOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {helpOpen && (
+                <div className="px-3 pb-3 border-t border-white/10 space-y-2 mt-3">
+                  {[
+                    'Abra o WhatsApp no seu celular',
+                    'Toque nos três pontos ⋮ (Android) ou em Configurações ⚙️ (iPhone)',
+                    'Selecione "Aparelhos conectados"',
+                    'Toque em "Conectar um aparelho"',
+                    'Aponte a câmera para o QR Code abaixo — a conexão é automática',
+                  ].map((s, i) => (
+                    <div key={i} className="flex items-start gap-2.5">
+                      <div className="w-4 h-4 rounded-full bg-green-500/20 text-green-400 text-[9px] flex items-center justify-center font-bold shrink-0 mt-0.5">{i + 1}</div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">{s}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="relative mb-4">
               <div className="bg-white p-3 rounded-2xl inline-block">
                 <img

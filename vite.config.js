@@ -48,13 +48,6 @@ export default defineConfig({
         target: 'http://localhost:3333',
         changeOrigin: true,
       },
-      // Mantido como fallback temporário; o app agora usa /api. Pode ser removido.
-      '/evolution': {
-        target: 'https://evolution-api-production-7eaf.up.railway.app',
-        changeOrigin: true,
-        secure: true,
-        rewrite: (path) => path.replace(/^\/evolution/, ''),
-      },
     },
   },
 })

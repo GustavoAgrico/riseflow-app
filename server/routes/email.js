@@ -28,11 +28,19 @@ router.post('/test', async (req, res) => {
 })
 
 // POST /api/email/send — envia um email usando a config salva do usuário.
-// Body: { userId, to, subject, text?, html?, from? }
+// Body: { to, subject, text?, html?, from? }
+// B14: o dono do envio vem do token (req.user.sub), NÃO do body — senão qualquer
+// um autenticado enviaria pelo SMTP de outro usuário. O userId do body só é aceito
+// como fallback fora de produção (tokens legados por e-mail não têm `sub`).
 router.post('/send', async (req, res) => {
-  const { userId, to, subject, text, html, from } = req.body || {}
-  if (!userId || !to || !subject || (!text && !html)) {
-    return res.status(400).json({ error: 'userId, to, subject e text|html são obrigatórios.' })
+  const { to, subject, text, html, from } = req.body || {}
+  const userId =
+    req.user?.sub || (process.env.NODE_ENV !== 'production' ? req.body?.userId : null)
+  if (!userId) {
+    return res.status(401).json({ error: 'Usuário não identificado no token.' })
+  }
+  if (!to || !subject || (!text && !html)) {
+    return res.status(400).json({ error: 'to, subject e text|html são obrigatórios.' })
   }
   if (!isConfigured) {
     return res.status(503).json({ error: 'Backend sem SUPABASE_SERVICE_ROLE_KEY — envio de email indisponível.' })

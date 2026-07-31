@@ -11,6 +11,7 @@ const jwt = require('jsonwebtoken')
 const { Server } = require('socket.io')
 
 const auth = require('./middleware/auth')
+const { supabase, isConfigured } = require('./supabaseClient')
 const chatsRoutes = require('./routes/chats')
 const messagesRoutes = require('./routes/messages')
 const contactsRoutes = require('./routes/contacts')
@@ -20,15 +21,32 @@ const telegramRoutes = require('./routes/telegram')
 const metaRoutes = require('./routes/meta')
 const createWebhookRouter = require('./routes/webhook')
 const billingRoutes = require('./routes/billing')
+const aiRoutes = require('./routes/ai')
 const telegram = require('./telegramClient')
 const metaClient = require('./metaClient')
 const { handleIncomingMessage } = require('./flowEngine')
 const { aiRespond } = require('./aiAttendant')
 
-const { PORT = 3333, JWT_SECRET, CORS_ORIGIN = 'http://localhost:3000' } = process.env
+const {
+  PORT = 3333,
+  JWT_SECRET,
+  CORS_ORIGIN = 'http://localhost:3000',
+  NODE_ENV,
+  WEBHOOK_TOKEN,
+} = process.env
+
+const IS_PROD = NODE_ENV === 'production'
 
 if (!JWT_SECRET) {
   console.error('[fatal] JWT_SECRET ausente no .env. Encerrando.')
+  process.exit(1)
+}
+
+// B11: em produção o webhook público da Evolution NÃO pode ficar sem token —
+// senão qualquer um injeta eventos falsos (dispara funis, gasta créditos de IA,
+// forja mensagens no chat). Exige WEBHOOK_TOKEN antes de subir.
+if (IS_PROD && !WEBHOOK_TOKEN) {
+  console.error('[fatal] WEBHOOK_TOKEN obrigatório em produção (protege POST /api/webhook). Encerrando.')
   process.exit(1)
 }
 
@@ -39,6 +57,17 @@ const server = http.createServer(app)
 // Sem isso, req.protocol retorna 'http' mesmo em produção HTTPS, quebrando
 // o redirect_uri do OAuth da Meta.
 app.set('trust proxy', 1)
+
+// B19: headers de segurança em TODAS as respostas (o dev server do Vite já os
+// enviava, mas a produção — Express servindo dist/ + API — não). Sem helmet para
+// não adicionar dependência; os mesmos quatro headers do vite.config.js.
+app.use((req, res, next) => {
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-XSS-Protection', '1; mode=block')
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  next()
+})
 
 // CORS: apenas as origens listadas no .env (localhost:3000 em dev).
 const allowedOrigins = CORS_ORIGIN.split(',').map((o) => o.trim())
@@ -69,13 +98,41 @@ app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf } }))
 // Healthcheck (público).
 app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now() }))
 
-// Login de desenvolvimento: emite um JWT para o frontend.
-// Em produção, troque por validação real de usuário (ex.: Supabase Auth).
-app.post('/api/auth/login', (req, res) => {
-  const { email } = req.body || {}
-  if (!email) return res.status(400).json({ error: 'Campo "email" obrigatório.' })
-  const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' })
-  res.json({ token })
+// Login do proxy: troca um access token do Supabase Auth por um JWT curto do
+// proxy. O JWT carrega `sub` = id real do usuário no Supabase; as rotas derivam
+// o dono a partir dele, nunca do body (ver B14 na auditoria).
+//
+// O caminho legado por e-mail (sem senha, sem validação) só continua ativo FORA
+// de produção, como conveniência de dev. Em produção ele é recusado.
+app.post('/api/auth/login', async (req, res) => {
+  const { token: supabaseToken, email } = req.body || {}
+
+  // Caminho seguro: valida o token do Supabase e deriva o usuário dele.
+  if (supabaseToken && isConfigured) {
+    try {
+      const { data, error } = await supabase.auth.getUser(supabaseToken)
+      if (error || !data?.user) {
+        return res.status(401).json({ error: 'Sessão do Supabase inválida ou expirada.' })
+      }
+      const proxyToken = jwt.sign(
+        { sub: data.user.id, email: data.user.email },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      )
+      return res.json({ token: proxyToken })
+    } catch (err) {
+      console.error('[auth] falha ao validar token Supabase:', err?.message ?? err)
+      return res.status(401).json({ error: 'Falha ao validar a sessão.' })
+    }
+  }
+
+  // Sem token válido: em produção, recusa. Em dev, aceita o e-mail (legado).
+  if (IS_PROD) {
+    return res.status(401).json({ error: 'Autenticação via Supabase obrigatória.' })
+  }
+  if (!email) return res.status(400).json({ error: 'Campo "token" (Supabase) obrigatório.' })
+  const proxyToken = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' })
+  return res.json({ token: proxyToken })
 })
 
 // Webhook da AbacatePay — PÚBLICO (AbacatePay não envia JWT).
@@ -113,6 +170,7 @@ app.use('/api/email', auth, emailRoutes)
 app.use('/api/telegram', auth, telegramRoutes)
 app.use('/api/meta', auth, metaRoutes)
 app.use('/api/billing', auth, billingRoutes)
+app.use('/api/ai', auth, aiRoutes)
 
 // Produção (Docker/Render): serve o build do frontend (../dist) na mesma porta.
 // GET em rota não-/api cai no index.html (SPA fallback) — corrige o "Cannot GET /".

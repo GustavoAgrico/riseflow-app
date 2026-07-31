@@ -1,16 +1,16 @@
 import React from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import {
-  LayoutDashboard, GitBranch, Users, Plug, Zap, MessageSquare,
+  LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, MessageSquare,
   BarChart3, Settings, ChevronLeft, ChevronRight,
-  Sparkles, Crown, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Menu, Bot
+  Crown, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Menu, Bot
 } from 'lucide-react'
 import { useApp } from '@context/AppContext'
 import { useAuth } from '@context/AuthContext'
 import { NAV_ITEMS } from '@constants/config'
 import clsx from 'clsx'
 
-const ICONS = { LayoutDashboard, GitBranch, Users, Plug, Zap, MessageSquare, BarChart3, Settings, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Crown, Bot }
+const ICONS = { LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, MessageSquare, BarChart3, Settings, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Crown, Bot }
 
 const getInitials = (name = '') =>
   name.split(' ').slice(0, 2).map(w => w[0] ?? '').join('').toUpperCase() || 'U'
@@ -43,15 +43,15 @@ export const Sidebar = ({ mobile = false, drawerOpen = false, onNavigate }) => {
       <div className="flex items-center justify-between px-5 py-5 border-b border-dark-400">
         {expanded && (
           <div className="flex items-center gap-2 animate-fade-in">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-orange to-brand-blue flex items-center justify-center">
-              <Sparkles size={16} className="text-white" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#FF6B35,#E55100)' }}>
+              <span style={{ fontSize: 13, fontWeight: 900, color: '#fff', letterSpacing: '-0.5px', fontFamily: 'DM Sans, sans-serif' }}>RF</span>
             </div>
             <span className="font-display font-bold text-lg gradient-text">RiseFlow</span>
           </div>
         )}
         {!expanded && (
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-orange to-brand-blue flex items-center justify-center mx-auto">
-            <Sparkles size={16} className="text-white" />
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center mx-auto" style={{ background: 'linear-gradient(135deg,#FF6B35,#E55100)' }}>
+            <span style={{ fontSize: 13, fontWeight: 900, color: '#fff', letterSpacing: '-0.5px', fontFamily: 'DM Sans, sans-serif' }}>RF</span>
           </div>
         )}
         {expanded && !mobile && (

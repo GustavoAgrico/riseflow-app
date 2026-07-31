@@ -124,8 +124,15 @@ const updateExecution = (id, patch) =>
 const completeExecution = (id) =>
   updateExecution(id, { status: 'completed', completed_at: nowIso() })
 
-const failExecution = (id) =>
-  updateExecution(id, { status: 'failed', completed_at: nowIso() })
+// Marca a execução como 'failed' e guarda a mensagem de erro em variables._error
+// (não há coluna dedicada `error`; usamos o JSON já existente para não exigir
+// migração). Trunca em 500 chars para não inflar a linha.
+const failExecution = (id, errorMsg, vars = {}) =>
+  updateExecution(id, {
+    status: 'failed',
+    completed_at: nowIso(),
+    variables: { ...vars, _error: String(errorMsg ?? '').slice(0, 500) },
+  })
 
 async function startExecution(flow, triggerNode, ctx) {
   const { data, error } = await supabase.from('flow_executions')
@@ -336,7 +343,7 @@ async function runFlow(flow, execution, startNodeId, ctx) {
     await completeExecution(execution.id)
   } catch (e) {
     console.error('[flowEngine] runFlow falhou no nó', currentId, ':', e?.message ?? e)
-    try { await failExecution(execution.id) } catch {}
+    try { await failExecution(execution.id, e?.message ?? e, variables) } catch {}
   }
 }
 

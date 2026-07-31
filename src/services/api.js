@@ -21,19 +21,27 @@ export const api = axios.create({
 /* ─── Token JWT ──────────────────────────────────────────────────────── */
 let inFlightToken = null // deduplica logins concorrentes
 
-const resolveEmail = async () => {
+// Access token do Supabase (preferido) + e-mail como fallback de dev. O backend
+// valida o token e deriva o usuário dele; sem token, só o dev aceita o e-mail.
+const resolveAuth = async () => {
   try {
     const { data } = await supabase.auth.getSession()
-    return data?.session?.user?.email ?? 'app@riseflow.local'
+    return {
+      token: data?.session?.access_token ?? null,
+      email: data?.session?.user?.email ?? 'app@riseflow.local',
+    }
   } catch {
-    return 'app@riseflow.local'
+    return { token: null, email: 'app@riseflow.local' }
   }
 }
 
 const fetchToken = async () => {
-  const email = await resolveEmail()
+  const { token, email } = await resolveAuth()
+  // Com sessão Supabase, manda o access token (caminho seguro); sem ela, cai no
+  // e-mail (aceito só fora de produção pelo backend).
+  const payload = token ? { token } : { email }
   // axios "cru" (sem os interceptors abaixo) para não entrar em loop de token.
-  const { data } = await axios.post(`${BASE}/auth/login`, { email }, { timeout: 10000 })
+  const { data } = await axios.post(`${BASE}/auth/login`, payload, { timeout: 10000 })
   localStorage.setItem(TOKEN_KEY, data.token)
   return data.token
 }

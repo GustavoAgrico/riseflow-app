@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Layout } from '@components/Layout/Layout'
 import {
   Search, Plus, MessageCircle, Phone, Mail, Tag,
-  Trash2, Users, Loader2, X, ChevronRight
+  Trash2, Users, Loader2, X, ChevronRight, Pencil
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
@@ -11,8 +11,8 @@ import { logger } from '@services/activityLogger'
 import { MOCK_CLIENTS } from '@constants/config'
 import clsx from 'clsx'
 
-const TAG_OPTIONS = ['Lead Quente', 'Prospect', 'Cliente', 'VIP', 'Inativo']
-const CHANNEL_OPTIONS = ['whatsapp', 'instagram', 'facebook', 'telegram']
+const LEAD_STATUS_OPTIONS = ['Prospect', 'Lead Quente', 'Cliente', 'VIP', 'Inativo']
+const CHANNEL_OPTIONS = ['whatsapp', 'instagram', 'facebook', 'telegram', 'email', 'indicação']
 
 const tagColors = {
   'Lead Quente': 'bg-brand-orange/15 text-brand-orange',
@@ -23,42 +23,55 @@ const tagColors = {
 }
 
 const channelMeta = {
-  whatsapp: { bg: 'bg-green-500/10', text: 'text-green-400', label: 'WhatsApp' },
-  instagram: { bg: 'bg-pink-500/10', text: 'text-pink-400', label: 'Instagram' },
-  facebook: { bg: 'bg-blue-500/10', text: 'text-blue-400', label: 'Facebook' },
-  telegram: { bg: 'bg-sky-500/10', text: 'text-sky-400', label: 'Telegram' },
+  whatsapp:   { bg: 'bg-green-500/10',  text: 'text-green-400',  label: 'WhatsApp' },
+  instagram:  { bg: 'bg-pink-500/10',   text: 'text-pink-400',   label: 'Instagram' },
+  facebook:   { bg: 'bg-blue-500/10',   text: 'text-blue-400',   label: 'Facebook' },
+  telegram:   { bg: 'bg-sky-500/10',    text: 'text-sky-400',    label: 'Telegram' },
+  email:      { bg: 'bg-purple-500/10', text: 'text-purple-400', label: 'E-mail' },
+  'indicação':{ bg: 'bg-yellow-500/10', text: 'text-yellow-400', label: 'Indicação' },
 }
 
 const initials = (name = '') =>
   name.split(' ').map(x => x[0]).slice(0, 2).join('').toUpperCase() || '?'
 
-// ── Add Client Modal ──────────────────────────────────────────────────────────
-const AddClientModal = ({ userId, onClose, onAdded }) => {
-  const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [channel, setChannel] = useState('whatsapp')
-  const [tag, setTag] = useState('Prospect')
+// ── Client Form Modal ─────────────────────────────────────────────────────────
+const ClientFormModal = ({ userId, initial, onClose, onSaved }) => {
+  const isEdit = !!initial
+  const [form, setForm] = useState({
+    name: initial?.name ?? '',
+    phone: initial?.phone ?? '',
+    email: initial?.email ?? '',
+    tag: initial?.tag ?? 'Prospect',
+    channel: initial?.channel ?? 'whatsapp',
+  })
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!name.trim()) { setError('Nome é obrigatório'); return }
+    if (!form.name.trim()) { setError('Nome é obrigatório'); return }
     setLoading(true)
     setError('')
     try {
-      const { error: sbErr } = await supabase.from('clients').insert({
-        user_id: userId,
-        name: name.trim(),
-        phone: phone.trim() || null,
-        channel,
-        tag,
+      const row = {
+        name: form.name.trim(),
+        phone: form.phone.trim() || null,
+        email: form.email.trim() || null,
+        tag: form.tag,
+        channel: form.channel,
         status: 'active',
-      })
-      if (sbErr) throw sbErr
-      onAdded()
+      }
+      if (isEdit) {
+        const { error: sbErr } = await supabase.from('clients').update(row).eq('id', initial.id)
+        if (sbErr) throw sbErr
+      } else {
+        const { error: sbErr } = await supabase.from('clients').insert({ ...row, user_id: userId })
+        if (sbErr) throw sbErr
+      }
+      onSaved()
     } catch (err) {
-      setError(err.message || 'Erro ao adicionar cliente')
+      setError(err.message || 'Erro ao salvar cliente')
     } finally {
       setLoading(false)
     }
@@ -70,15 +83,16 @@ const AddClientModal = ({ userId, onClose, onAdded }) => {
       style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}
       onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-md glass rounded-2xl border border-dark-300 shadow-2xl animate-slide-up">
+      <div className="w-full max-w-lg glass rounded-2xl border border-dark-300 shadow-2xl animate-slide-up">
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-dark-400">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-brand-orange/20 border border-brand-orange/40 flex items-center justify-center">
               <Users size={17} className="text-brand-orange" />
             </div>
             <div>
-              <h2 className="font-display font-bold text-white text-base">Novo Cliente</h2>
-              <p className="text-xs text-slate-500">Adicione ao CRM</p>
+              <h2 className="font-display font-bold text-white text-base">{isEdit ? 'Editar Cliente' : 'Novo Cliente'}</h2>
+              <p className="text-xs text-slate-500">{isEdit ? 'Atualize as informações' : 'Preencha os dados do lead'}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-dark-500 text-slate-400 hover:text-white transition-all">
@@ -88,42 +102,83 @@ const AddClientModal = ({ userId, onClose, onAdded }) => {
 
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
           {error && (
-            <div className="px-4 py-3 rounded-xl bg-brand-red/10 border border-brand-red/30 text-brand-red text-sm">
+            <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
               {error}
             </div>
           )}
+
+          {/* Nome */}
           <div>
-            <label className="block text-xs text-slate-400 mb-2">Nome completo *</label>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">Nome completo *</label>
             <input
-              value={name}
-              onChange={e => setName(e.target.value)}
+              value={form.name}
+              onChange={e => set('name', e.target.value)}
               className="input-field"
-              placeholder="Nome do cliente"
+              placeholder="Ex: João da Silva"
               autoFocus
             />
           </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-2">Telefone</label>
-            <input
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              className="input-field"
-              placeholder="+55 11 99999-9999"
-            />
+
+          {/* Telefone + Email */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">Telefone</label>
+              <input
+                value={form.phone}
+                onChange={e => set('phone', e.target.value)}
+                className="input-field"
+                placeholder="+55 11 99999-9999"
+                type="tel"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">E-mail</label>
+              <input
+                value={form.email}
+                onChange={e => set('email', e.target.value)}
+                className="input-field"
+                placeholder="contato@email.com"
+                type="email"
+              />
+            </div>
           </div>
+
+          {/* Status do Lead */}
           <div>
-            <label className="block text-xs text-slate-400 mb-3">Canal de contato</label>
-            <div className="grid grid-cols-4 gap-2">
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">Status do Lead</label>
+            <div className="grid grid-cols-5 gap-2">
+              {LEAD_STATUS_OPTIONS.map(opt => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => set('tag', opt)}
+                  className={clsx(
+                    'py-2 px-1 rounded-xl border text-xs font-medium transition-all text-center',
+                    form.tag === opt
+                      ? clsx(tagColors[opt] || 'bg-brand-orange/15 text-brand-orange', 'border-transparent')
+                      : 'glass text-slate-500 border-dark-400 hover:text-slate-300'
+                  )}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Canal */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">Canal de origem</label>
+            <div className="grid grid-cols-3 gap-2">
               {CHANNEL_OPTIONS.map(ch => {
                 const meta = channelMeta[ch]
                 return (
                   <button
                     key={ch}
                     type="button"
-                    onClick={() => setChannel(ch)}
+                    onClick={() => set('channel', ch)}
                     className={clsx(
-                      'py-2 px-1 rounded-xl border text-xs font-medium transition-all',
-                      channel === ch
+                      'py-2 px-2 rounded-xl border text-xs font-medium transition-all',
+                      form.channel === ch
                         ? `${meta.bg} ${meta.text} border-transparent`
                         : 'glass text-slate-500 border-dark-400 hover:text-slate-300'
                     )}
@@ -134,23 +189,15 @@ const AddClientModal = ({ userId, onClose, onAdded }) => {
               })}
             </div>
           </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-2">Tag</label>
-            <select
-              value={tag}
-              onChange={e => setTag(e.target.value)}
-              className="input-field"
-            >
-              {TAG_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div className="flex gap-3 pt-1">
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1 justify-center" disabled={loading}>
               Cancelar
             </button>
-            <button type="submit" disabled={loading || !name.trim()} className="btn-primary flex-1 justify-center disabled:opacity-50">
+            <button type="submit" disabled={loading || !form.name.trim()} className="btn-primary flex-1 justify-center disabled:opacity-50">
               {loading ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
-              {loading ? 'Salvando...' : 'Adicionar'}
+              {loading ? 'Salvando...' : isEdit ? 'Salvar alterações' : 'Adicionar cliente'}
             </button>
           </div>
         </form>
@@ -167,7 +214,8 @@ export const Clients = () => {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null)
-  const [addOpen, setAddOpen] = useState(false)
+  const [formOpen, setFormOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState(null)
   const [deleting, setDeleting] = useState(null)
 
   const fetchClients = useCallback(async () => {
@@ -213,11 +261,12 @@ export const Clients = () => {
       title="Clientes CRM"
       subtitle={`${clients.length} cliente${clients.length !== 1 ? 's' : ''} cadastrado${clients.length !== 1 ? 's' : ''}`}
     >
-      {addOpen && !isDemoMode && (
-        <AddClientModal
+      {formOpen && !isDemoMode && (
+        <ClientFormModal
           userId={user?.id}
-          onClose={() => setAddOpen(false)}
-          onAdded={() => { setAddOpen(false); fetchClients() }}
+          initial={editTarget}
+          onClose={() => { setFormOpen(false); setEditTarget(null) }}
+          onSaved={() => { setFormOpen(false); setEditTarget(null); fetchClients() }}
         />
       )}
 
@@ -236,7 +285,7 @@ export const Clients = () => {
               />
             </div>
             <button
-              onClick={() => !isDemoMode && setAddOpen(true)}
+              onClick={() => { if (!isDemoMode) { setEditTarget(null); setFormOpen(true) } }}
               className={clsx('btn-primary', isDemoMode && 'opacity-50 cursor-not-allowed')}
               title={isDemoMode ? 'Indisponível no modo demo' : 'Adicionar cliente'}
             >
@@ -265,7 +314,7 @@ export const Clients = () => {
                   {search ? 'Nenhum resultado para a busca' : 'Nenhum cliente ainda'}
                 </p>
                 {!search && !isDemoMode && (
-                  <button onClick={() => setAddOpen(true)} className="text-xs text-brand-orange hover:underline">
+                  <button onClick={() => { setEditTarget(null); setFormOpen(true) }} className="text-xs text-brand-orange hover:underline">
                     Adicionar primeiro cliente
                   </button>
                 )}
@@ -328,35 +377,43 @@ export const Clients = () => {
               </div>
               <h3 className="font-display font-bold text-white text-lg">{selected.name}</h3>
               <span className={clsx('badge mt-2', tagColors[selected.tag] || 'bg-slate-500/15 text-slate-400')}>
-                {selected.tag}
+                {selected.tag ?? '—'}
               </span>
             </div>
 
-            <div className="space-y-3 mb-5">
+            <div className="space-y-2 mb-4">
               {selected.phone && (
                 <div className="glass rounded-xl p-3 flex items-center gap-3">
-                  <Phone size={14} className="text-brand-orange" />
-                  <span className="text-sm text-slate-300">{selected.phone}</span>
+                  <Phone size={14} className="text-brand-orange flex-shrink-0" />
+                  <span className="text-sm text-slate-300 truncate">{selected.phone}</span>
+                </div>
+              )}
+              {selected.email && (
+                <div className="glass rounded-xl p-3 flex items-center gap-3">
+                  <Mail size={14} className="text-purple-400 flex-shrink-0" />
+                  <span className="text-sm text-slate-300 truncate">{selected.email}</span>
                 </div>
               )}
               <div className="glass rounded-xl p-3 flex items-center gap-3">
-                <MessageCircle size={14} className="text-brand-blue" />
-                <span className="text-sm text-slate-300">
-                  {channelMeta[selected.channel]?.label ?? selected.channel}
-                </span>
-              </div>
-              {selected.last_message && (
-                <div className="glass rounded-xl p-3 flex items-center gap-3">
-                  <Mail size={14} className="text-brand-green" />
-                  <span className="text-sm text-slate-400 truncate">{selected.last_message}</span>
+                <MessageCircle size={14} className="text-brand-blue flex-shrink-0" />
+                <div>
+                  <p className="text-xs text-slate-500">Canal de origem</p>
+                  <p className="text-sm text-slate-300">{channelMeta[selected.channel]?.label ?? selected.channel ?? '—'}</p>
                 </div>
-              )}
+              </div>
+              <div className="glass rounded-xl p-3 flex items-center gap-3">
+                <Tag size={14} className="text-brand-green flex-shrink-0" />
+                <div>
+                  <p className="text-xs text-slate-500">Status do lead</p>
+                  <p className="text-sm text-slate-300">{selected.tag ?? '—'}</p>
+                </div>
+              </div>
             </div>
 
-            <p className="text-xs text-slate-500 mb-3">
+            <p className="text-xs text-slate-500 mb-4">
               {selected.created_at
                 ? `Adicionado em ${new Date(selected.created_at).toLocaleDateString('pt-BR')}`
-                : selected.lastMessage ?? ''}
+                : ''}
             </p>
 
             <div className="mt-auto space-y-2">
@@ -366,6 +423,14 @@ export const Clients = () => {
               >
                 <MessageCircle size={14} /> Enviar Mensagem
               </button>
+              {!isDemoMode && (
+                <button
+                  onClick={() => { setEditTarget(selected); setFormOpen(true) }}
+                  className="btn-secondary w-full justify-center"
+                >
+                  <Pencil size={14} /> Editar informações
+                </button>
+              )}
               {selected.phone && (
                 <a
                   href={`tel:${selected.phone.replace(/\D/g, '')}`}
@@ -378,7 +443,7 @@ export const Clients = () => {
                 <button
                   onClick={() => handleDelete(selected.id)}
                   disabled={deleting === selected.id}
-                  className="btn-secondary w-full justify-center text-brand-red border-brand-red/30 hover:bg-brand-red/10 disabled:opacity-50"
+                  className="btn-secondary w-full justify-center text-red-400 border-red-500/30 hover:bg-red-500/10 disabled:opacity-50"
                 >
                   {deleting === selected.id
                     ? <Loader2 size={14} className="animate-spin" />

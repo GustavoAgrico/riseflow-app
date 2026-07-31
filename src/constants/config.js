@@ -67,6 +67,7 @@ export const NAV_ITEMS = [
   { id: 'smart-attendant', label: 'Atendimento IA', icon: 'Bot', path: '/smart-attendant', badge: 'IA' },
   { id: 'flows', label: 'Funis', icon: 'GitBranch', path: '/flows', badge: 'NEW' },
   { id: 'crm', label: 'CRM', icon: 'Users', path: '/crm' },
+  { id: 'clients', label: 'Clientes', icon: 'ContactRound', path: '/clients' },
   { id: 'analytics', label: 'Analytics', icon: 'BarChart3', path: '/analytics' },
   { id: 'funnel', label: 'Funil', icon: 'Filter', path: '/funnel' },
   { id: 'campaigns', label: 'Campanhas', icon: 'Megaphone', path: '/campaigns' },

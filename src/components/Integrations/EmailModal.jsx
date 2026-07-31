@@ -3,7 +3,7 @@ import { Loader2, Info, Mail } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { testSmtp, emailErrorMessage } from '@services/emailService'
-import { ModalBase } from './ModalBase'
+import { ModalBase, HelpAccordion } from './ModalBase'
 
 const PRESETS = [
   { label: 'Gmail', host: 'smtp.gmail.com', port: '587' },
@@ -36,10 +36,11 @@ export const EmailModal = ({ onClose, onSuccess }) => {
       await testSmtp({ host: host.trim(), port: port.trim(), user: email.trim(), pass })
       // 2) Só persiste se a conexão funcionou. A senha vai junto (o envio é server-side).
       const config = { host: host.trim(), port: port.trim(), email: email.trim(), pass }
-      await supabase.from('integrations').upsert(
+      const { error: dbError } = await supabase.from('integrations').upsert(
         { user_id: user.id, type: 'email', status: 'connected', config, connected_at: new Date().toISOString() },
         { onConflict: 'user_id,type' }
       )
+      if (dbError) throw new Error(dbError.message)
       onSuccess(config)
     } catch (err) {
       setError('Falha ao validar SMTP: ' + emailErrorMessage(err))
@@ -49,6 +50,22 @@ export const EmailModal = ({ onClose, onSuccess }) => {
 
   return (
     <ModalBase onClose={onClose} title="Email (SMTP)" icon={<Mail size={22} color="#F59E0B" />} iconBg="rgba(245,158,11,0.15)">
+      <HelpAccordion
+        title="Como configurar o email para envio?"
+        steps={[
+          'Gmail: acesse myaccount.google.com → Segurança → ative Verificação em duas etapas',
+          'Gmail: vá em myaccount.google.com/apppasswords → crie uma senha de app com o nome "RiseFlow"',
+          'Gmail: use os 16 caracteres gerados como "Senha" abaixo — NÃO use sua senha normal',
+          'Outlook: acesse account.microsoft.com → Segurança → Senha de aplicativo → Criar nova',
+          'SendGrid: crie uma API Key em app.sendgrid.com → Settings → API Keys → use como senha',
+          'Clique no botão Gmail/Outlook/SendGrid para preencher o servidor automaticamente',
+        ]}
+        links={[
+          { label: 'Senhas de app do Gmail', url: 'https://myaccount.google.com/apppasswords' },
+          { label: 'Senha de app Outlook', url: 'https://account.microsoft.com/security' },
+          { label: 'API Keys SendGrid', url: 'https://app.sendgrid.com/settings/api_keys' },
+        ]}
+      />
       {/* Quick presets */}
       <p className="text-xs text-slate-500 mb-2">Configuração rápida:</p>
       <div className="flex gap-2 mb-4">

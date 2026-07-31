@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Megaphone, Send, Users, CheckCircle2, AlertTriangle, Rocket, Download, Copy, Trash2, Play, Pause, Loader2 } from 'lucide-react'
+import { ArrowLeft, Megaphone, Send, Users, CheckCircle2, AlertTriangle, Rocket, Download, Copy, Trash2, Play, Pause, Loader2, Sparkles, RefreshCw } from 'lucide-react'
 import { exportCSV } from '@utils/exportUtils'
 import { logger } from '@services/activityLogger'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { CampaignService } from '@services/campaignService'
+import { api } from '@services/api'
 
 const STATUS = {
   draft:        { label: 'Rascunho',         color: '#6B7280', bg: '#6B728020' },
@@ -73,6 +74,11 @@ const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
   const [form, setForm] = useState({ name:'', channel:'whatsapp', subject:'', type:'text', message:'', mediaUrl:'', audience:'all', tags:[], stages:[], excludeTags:[], schedule:'now', date:'', time:'', interval:'3', businessHours:false })
   const [csvRows, setCsvRows] = useState([])
   const [submitting, setSubmitting] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiGoal, setAiGoal] = useState('')
+  const [aiTone, setAiTone] = useState('informal')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
   const msgRef = useRef(null)
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
   const tog = (k, v) => set(k, form[k].includes(v) ? form[k].filter(x => x !== v) : [...form[k], v])
@@ -87,6 +93,20 @@ const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
     finally { setSubmitting(false) }
   }
   const Pill = ({ k, v, activeColor='#7C3AED' }) => { const on = form[k].includes(v); return <button onClick={() => tog(k, v)} style={{ ...S.btn(on ? activeColor : '#0F172A', on ? '#fff' : '#94A3B8', `1px solid ${on ? activeColor : '#334155'}`), fontSize:11, padding:'4px 10px' }}>{v}</button> }
+
+  const generateWithAI = async () => {
+    if (!aiGoal.trim()) return
+    setAiLoading(true); setAiError('')
+    try {
+      const { data } = await api.post('/ai/generate-message', { channel: form.channel, goal: aiGoal, tone: aiTone })
+      set('message', data.message)
+      setAiOpen(false)
+    } catch (e) {
+      setAiError(e?.response?.data?.error ?? e.message ?? 'Erro ao gerar.')
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   return (
     <div style={{ position:'fixed', inset:0, background:'#000a', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200 }} onClick={onClose}>
@@ -130,9 +150,37 @@ const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
               <label style={S.label}>Mensagem <span style={{ color:'#475569', textTransform:'none', fontWeight:400 }}>{form.message.length}/1024 caracteres</span></label>
               <textarea ref={msgRef} value={form.message} onChange={e => set('message', e.target.value)} placeholder="Olá {{nome}}, temos algo especial para você! 🎉" rows={5} maxLength={1024} style={{ ...S.input, resize:'vertical' }} />
             </div>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:10 }}>
               {[...VARS, ...(form.channel==='email' ? ['{{email}}'] : [])].map(v => <button key={v} onClick={() => ins(v)} style={{ ...S.btn('#7C3AED22','#A78BFA','1px solid #7C3AED44'), fontSize:11, padding:'3px 8px' }}>{v}</button>)}
             </div>
+
+            {/* Botão IA */}
+            <button onClick={() => setAiOpen(o => !o)} style={{ ...S.btn(aiOpen ? '#7C3AED' : '#7C3AED22', aiOpen ? '#fff' : '#A78BFA', '1px solid #7C3AED55'), display:'inline-flex', alignItems:'center', gap:6, fontSize:12, marginBottom: aiOpen ? 0 : 0 }}>
+              <Sparkles size={13} /> Gerar com IA
+            </button>
+
+            {/* Painel IA */}
+            {aiOpen && (
+              <div style={{ background:'#0F172A', border:'1px solid #7C3AED55', borderRadius:10, padding:'14px 16px', marginTop:10 }}>
+                <p style={{ fontSize:12, fontWeight:700, color:'#A78BFA', margin:'0 0 10px', display:'flex', alignItems:'center', gap:6 }}><Sparkles size={13} /> Gerar mensagem com Claude AI</p>
+                <div style={{ marginBottom:10 }}>
+                  <label style={S.label}>Objetivo da campanha</label>
+                  <input value={aiGoal} onChange={e => setAiGoal(e.target.value)} placeholder="Ex: Oferta Black Friday 50% de desconto nos planos anuais" style={S.input} onKeyDown={e => e.key === 'Enter' && generateWithAI()} />
+                </div>
+                <div style={{ marginBottom:12 }}>
+                  <label style={S.label}>Tom</label>
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                    {[['informal','Casual'],['formal','Formal'],['urgente','Urgente'],['empático','Empático']].map(([val,lbl]) => (
+                      <button key={val} onClick={() => setAiTone(val)} style={{ ...S.btn(aiTone===val?'#7C3AED':'#1E293B', aiTone===val?'#fff':'#94A3B8', `1px solid ${aiTone===val?'#7C3AED':'#334155'}`), fontSize:11, padding:'4px 10px' }}>{lbl}</button>
+                    ))}
+                  </div>
+                </div>
+                {aiError && <p style={{ fontSize:11, color:'#EF4444', marginBottom:8 }}>{aiError}</p>}
+                <button onClick={generateWithAI} disabled={aiLoading || !aiGoal.trim()} style={{ ...S.btn('#7C3AED'), display:'inline-flex', alignItems:'center', gap:6, fontSize:12, opacity: aiLoading || !aiGoal.trim() ? 0.6 : 1, cursor: aiLoading || !aiGoal.trim() ? 'not-allowed' : 'pointer' }}>
+                  {aiLoading ? <><Loader2 size={13} className="animate-spin" /> Gerando...</> : <><RefreshCw size={13} /> Gerar mensagem</>}
+                </button>
+              </div>
+            )}
           </>}
 
           {step === 2 && <>

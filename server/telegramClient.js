@@ -89,6 +89,7 @@ async function startBot(userId, token) {
   }
 
   bots.set(userId, { bot, username: me.username, secret })
+  io?.emit('integration_connected', { channel: 'telegram' })
   return { username: me.username, name: me.first_name }
 }
 

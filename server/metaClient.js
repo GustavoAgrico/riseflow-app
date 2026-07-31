@@ -34,6 +34,10 @@ function init({ socketIo, incomingHandler }) {
   onIncoming = incomingHandler
 }
 
+function emitIntegrationConnected(channel) {
+  io?.emit('integration_connected', { channel })
+}
+
 /* Registra uma página conectada (boot ou connect). */
 function registerPage({ pageId, userId, channel, token, pageName }) {
   pages.set(String(pageId), { userId, channel, token, pageName })
@@ -129,7 +133,13 @@ async function handleWebhookEvent(body) {
   const domain = channel === 'instagram' ? 'instagram' : 'messenger'
 
   for (const entry of body.entry || []) {
-    const page = pages.get(String(entry.id))
+    let page = pages.get(String(entry.id))
+    // Instagram webhooks arrive with the IG Account ID in entry.id, but we may
+    // have registered the page under the Facebook Page ID — fall back to the
+    // first connected Instagram page so messages are not silently dropped.
+    if (!page && channel === 'instagram') {
+      page = [...pages.values()].find((p) => p.channel === 'instagram') ?? null
+    }
     for (const ev of entry.messaging || []) {
       const msg = ev.message
       if (!msg || msg.is_echo) continue // ecos são as nossas próprias mensagens
@@ -250,5 +260,5 @@ async function resumePages() {
 
 module.exports = {
   init, registerPage, unregisterPagesOf, getStatus, verifyPageToken, subscribePage,
-  handleWebhookEvent, sendTextTo, resumePages, isMetaNumber,
+  handleWebhookEvent, sendTextTo, resumePages, isMetaNumber, emitIntegrationConnected,
 }

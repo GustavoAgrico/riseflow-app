@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Phone, Mail, DollarSign, Target, ArrowLeft } from 'lucide-react'
+import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { LeadScorePanel } from '@components/LeadScorePanel'
@@ -46,16 +46,28 @@ const rel = t => { if (!t) return 'agora'; const m = Math.max(1, Math.round((Dat
 /* linha da tabela clients -> formato do card do CRM */
 const mapRow = r => ({ id: r.id, name: r.name || '', phone: r.phone || '', email: r.email || '', company: r.company || '', value: Number(r.value) || 0, stage: r.stage || 'lead', tags: r.tags || [], lastMsg: r.last_message || '', time: rel(r.created_at) })
 
-const ContactCard = ({ contact, onDragStart, onClick }) => {
+const ContactCard = ({ contact, onDragStart, onClick, onDelete }) => {
+  const [hov, setHov] = useState(false)
   const st = STAGES.find(s => s.id === contact.stage)
   return (
-    <div draggable onDragStart={e => onDragStart(e, contact.id)} onClick={() => onClick(contact)} style={S.card}>
+    <div draggable onDragStart={e => onDragStart(e, contact.id)} onClick={() => onClick(contact)}
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ ...S.card, position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <div style={{ width: 32, height: 32, borderRadius: '50%', background: st.color + '22', color: st.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{ini(contact.name)}</div>
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: C.tx, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</p>
           <p style={{ fontSize: 11, color: C.mut, margin: 0 }}>{contact.company}</p>
         </div>
+        {hov && (
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(contact) }}
+            title="Excluir lead"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#F87171', padding: 2, display: 'flex', flexShrink: 0 }}
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
       </div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 7, fontSize: 11, color: C.mut }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Phone size={12} /> {contact.phone.slice(-9)}</span>
@@ -80,7 +92,7 @@ const MOCK_MSGS = [
   { sent: false, text: 'Interessante! Pode me enviar mais detalhes por email?', time: '10:30' },
 ]
 
-const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, userId }) => {
+const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, userId }) => {
   const st = STAGES.find(s => s.id === contact.stage)
   return (
     <div style={{ width: 320, flexShrink: 0, borderLeft: `1px solid ${C.bd}`, background: C.card, display: 'flex', flexDirection: 'column', fontFamily: 'DM Sans,sans-serif', overflow: 'hidden' }}>
@@ -125,6 +137,12 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, userId }) =
         </div>
         <NotesPanel contactId={contact.id} userId={userId} />
         <a href="/chat" style={{ ...S.btn('#7C3AED'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, textDecoration: 'none', marginTop: 14 }}>Abrir conversa</a>
+        <button
+          onClick={() => onDelete(contact)}
+          style={{ ...S.btn('#EF444420', '#F87171'), width: '100%', marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: '1px solid #EF444440' }}
+        >
+          <Trash2 size={13} /> Excluir lead
+        </button>
       </div>
     </div>
   )
@@ -225,6 +243,24 @@ export function CRM() {
     catch (e) { console.warn('[CRM] erro ao atualizar tags:', e?.message ?? e) }
   }
 
+  /* Exclui contato — remove de clients + estado local + loga. */
+  const deleteContact = async (contact) => {
+    if (!window.confirm(`Excluir "${contact.name}" do pipeline?\n\nEsta ação não pode ser desfeita.`)) return
+    setContacts(p => p.filter(c => c.id !== contact.id))
+    if (selected?.id === contact.id) setSelected(null)
+    logger.log(user?.id, 'contact_deleted', { category: 'crm', description: 'Lead excluído: ' + contact.name })
+    if (isDemoMode) return
+    try {
+      const { error } = await supabase.from('clients').delete().eq('id', contact.id)
+      if (error) throw error
+      console.log('[CRM] Lead excluído:', contact.id)
+    } catch (e) {
+      console.warn('[CRM] erro ao excluir contato:', e?.message ?? e)
+      setContacts(p => [contact, ...p]) // reverte
+      alert('Erro ao excluir o lead: ' + (e?.message ?? e))
+    }
+  }
+
   /* Cria contato — grava em clients para sincronizar com o Funil. */
   const addContact = async (form) => {
     const base = { name: form.name.trim(), phone: form.phone.trim() || null, email: form.email.trim() || null, company: form.company.trim() || null, value: Number(form.value) || 0, stage: form.stage, tags: form.tags }
@@ -269,14 +305,15 @@ export function CRM() {
                 <div style={{ minHeight: 60, borderRadius: 12, border: over ? '2px dashed #2563EB66' : '2px dashed transparent', background: over ? '#2563EB06' : 'transparent', padding: over ? 4 : 0, transition: 'all .15s' }}>
                   {cols.map(c => (
                     <ContactCard key={c.id} contact={c} onClick={setSelected}
-                      onDragStart={(e, id) => e.dataTransfer.setData('cid', id)} />
+                      onDragStart={(e, id) => e.dataTransfer.setData('cid', id)}
+                      onDelete={deleteContact} />
                   ))}
                 </div>
               </div>
             )
           })}
         </div>
-        {selected && <DetailPanel key={selected.id} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} userId={user?.id} />}
+        {selected && <DetailPanel key={selected.id} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} onDelete={deleteContact} userId={user?.id} />}
       </div>
       {modal && <NewContactModal onSave={addContact} onClose={() => setModal(false)} />}
     </div>

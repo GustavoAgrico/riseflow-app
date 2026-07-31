@@ -1,6 +1,5 @@
 {
   "rewrites": [
-    { "source": "/evolution/:path*", "destination": "https://evolution-api-production-7eaf.up.railway.app/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

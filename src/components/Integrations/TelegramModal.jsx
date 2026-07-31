@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { ExternalLink, Loader2, Send } from 'lucide-react'
 import { useAuth } from '@context/AuthContext'
 import { connectTelegram, telegramErrorMessage } from '@services/telegramService'
-import { ModalBase, Steps } from './ModalBase'
+import { ModalBase, Steps, HelpAccordion } from './ModalBase'
 
 export const TelegramModal = ({ onClose, onSuccess }) => {
   const { user } = useAuth()
@@ -28,6 +28,22 @@ export const TelegramModal = ({ onClose, onSuccess }) => {
 
   return (
     <ModalBase onClose={onClose} title="Telegram" icon={<Send size={22} color="#2AABEE" />} iconBg="rgba(42,171,238,0.15)">
+      <HelpAccordion
+        title="Como criar um bot no Telegram?"
+        steps={[
+          'Abra o Telegram (celular ou computador)',
+          'Na barra de pesquisa, busque por @BotFather — selecione o oficial (tem o ✓ azul)',
+          'Envie o comando: /newbot',
+          'Escolha um nome para o bot (ex: "Suporte Meu Negócio")',
+          'Escolha um username — deve terminar em "bot" (ex: meunegocie_bot)',
+          'O BotFather vai responder com um token parecido com: 7123456789:AABBCCxxxx',
+          'Copie esse token completo e cole no campo abaixo',
+        ]}
+        links={[
+          { label: 'Abrir @BotFather no Telegram', url: 'https://t.me/botfather' },
+        ]}
+      />
+
       <Steps items={[
         'Abra o Telegram e pesquise por @BotFather',
         'Envie /newbot e escolha um nome para o bot',

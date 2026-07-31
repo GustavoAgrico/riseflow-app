@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { Calendar, Repeat, Pencil, Ban, Copy, X, Loader2 } from 'lucide-react'
+import { Calendar, Repeat, Pencil, Ban, Copy, X, Loader2, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { sendMessage as evoSend } from '@/services/evolutionApi'
@@ -136,6 +136,12 @@ export const Schedules = () => {
   const guardDemo = () => { if (isDemoMode) { window.alert('Modo demo: crie uma conta para agendar mensagens reais.'); return true } return false }
 
   const cancel = async id => { if (guardDemo()) return; await supabase.from('schedules').update({ status: 'cancelado' }).eq('id', id); await load() }
+  const del = async id => {
+    if (guardDemo()) return
+    if (!window.confirm('Excluir este agendamento permanentemente?')) return
+    await supabase.from('schedules').delete().eq('id', id)
+    await load()
+  }
   const dup = async s => {
     if (guardDemo()) return
     await supabase.from('schedules').insert({ user_id: user.id, name: s.name, phone: onlyDigits(s.phone), msg: s.msg,
@@ -231,6 +237,7 @@ export const Schedules = () => {
                   <button onClick={()=>openEdit(s)} style={{ ...S.ia, display:'inline-flex', alignItems:'center' }} title="Editar"><Pencil size={14} /></button>
                   <button onClick={()=>cancel(s.id)} disabled={s.status==='cancelado'} style={{ ...S.ia, opacity:s.status==='cancelado'?.3:1, display:'inline-flex', alignItems:'center' }} title="Cancelar"><Ban size={14} /></button>
                   <button onClick={()=>dup(s)} style={{ ...S.ia, display:'inline-flex', alignItems:'center' }} title="Duplicar"><Copy size={14} /></button>
+                  <button onClick={()=>del(s.id)} style={{ ...S.ia, display:'inline-flex', alignItems:'center', color:'#EF4444' }} title="Excluir"><Trash2 size={14} /></button>
                 </td>
               </tr>
             ))}

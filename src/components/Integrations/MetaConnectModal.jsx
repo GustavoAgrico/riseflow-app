@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { ExternalLink, Loader2 } from 'lucide-react'
 import { useAuth } from '@context/AuthContext'
 import { runMetaOauth, connectMeta, metaErrorMessage } from '@services/metaService'
-import { ModalBase, Steps } from './ModalBase'
+import { ModalBase, Steps, HelpAccordion } from './ModalBase'
 
 /* Modal compartilhado dos canais Meta (Messenger/Instagram DM).
    Dois caminhos para o Page Access Token:
@@ -67,10 +67,45 @@ export const MetaConnectModal = ({ channel, title, icon, iconBg, onClose, onSucc
         </>
       ) : (
         <>
+          {channel === 'instagram' ? (
+            <HelpAccordion
+              title="Como conectar o Instagram DM?"
+              steps={[
+                'Sua conta do Instagram DEVE ser Profissional (Criador ou Empresa) — não funciona com conta pessoal',
+                'No app do Instagram: vá em Configurações → Conta → Compartilhamento entre contas → vincule ao Facebook',
+                'Acesse developers.facebook.com e crie uma conta de desenvolvedor (gratuito)',
+                'Crie um app do tipo "Empresa" e adicione o produto "Instagram" e "Messenger"',
+                'Configure o webhook apontando para a URL do RiseFlow (já preenchida automaticamente)',
+                'Use "Entrar com a Meta" abaixo — selecione sua Página do Facebook vinculada ao Instagram',
+              ]}
+              links={[
+                { label: 'Meta for Developers', url: 'https://developers.facebook.com' },
+                { label: 'Converter conta para Profissional', url: 'https://help.instagram.com/502981923235522' },
+              ]}
+            />
+          ) : (
+            <HelpAccordion
+              title="Como conectar o Facebook Messenger?"
+              steps={[
+                'Você precisa ter uma Página do Facebook (não perfil pessoal) para receber mensagens',
+                'Acesse developers.facebook.com e crie uma conta de desenvolvedor (gratuito)',
+                'Clique em "Criar app" → escolha o tipo "Empresa"',
+                'Dentro do app, vá em "Adicionar produtos" e selecione "Messenger"',
+                'Na seção Messenger → Tokens de acesso, conecte sua Página do Facebook',
+                'Use "Entrar com a Meta" abaixo para autorizar automaticamente — é mais fácil',
+                'Ou cole manualmente o "Token de Acesso à Página" gerado no painel',
+              ]}
+              links={[
+                { label: 'Meta for Developers', url: 'https://developers.facebook.com' },
+                { label: 'Criar Página no Facebook', url: 'https://www.facebook.com/pages/create' },
+              ]}
+            />
+          )}
           <Steps items={[
-            'Crie um app em developers.facebook.com (ver META_SETUP.md no projeto)',
-            'Adicione o produto Messenger (e Instagram, se for o caso) ao app',
-            'Conecte com o login da Meta abaixo — ou cole um Page Access Token',
+            channel === 'instagram'
+              ? 'Conta Instagram Profissional vinculada a uma Página do Facebook'
+              : 'Página do Facebook criada e ativa',
+            'Entrar com a Meta abaixo (recomendado) — ou colar token manualmente',
             channel === 'instagram'
               ? 'A conta do Instagram deve ser profissional e vinculada à página do Facebook'
               : 'Escolha a página do Facebook que vai receber as mensagens',
