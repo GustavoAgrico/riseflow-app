@@ -19,6 +19,53 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   </head>
   <body class="bg-dark-900 text-white">
+    <!-- Splash screen: visível até o React montar. Removido por main.jsx. -->
+    <div id="rf-splash" style="
+      position:fixed;inset:0;z-index:99999;
+      background:#060914;
+      display:flex;align-items:center;justify-content:center;
+      transition:opacity .35s ease;
+    ">
+      <div style="position:relative;display:flex;align-items:center;justify-content:center;">
+        <!-- Anel externo -->
+        <div style="
+          position:absolute;width:160px;height:160px;border-radius:50%;
+          border:1px solid rgba(255,107,53,.3);
+          animation:rf-splash-ring 1.8s ease-out infinite;
+        "></div>
+        <!-- Anel interno -->
+        <div style="
+          position:absolute;width:118px;height:118px;border-radius:50%;
+          border:1.5px solid rgba(255,107,53,.18);
+          animation:rf-splash-ring 1.8s .3s ease-out infinite;
+        "></div>
+        <!-- Logo RF -->
+        <div style="
+          width:72px;height:72px;border-radius:20px;
+          background:linear-gradient(138deg,#FF6B35 0%,#D94F1A 100%);
+          display:flex;align-items:center;justify-content:center;
+          font-size:27px;font-weight:900;color:#fff;
+          letter-spacing:-1.5px;font-family:'Arial Black',Arial,sans-serif;
+          box-shadow:0 0 0 1px rgba(255,255,255,.10) inset,
+                     0 0 30px rgba(255,107,53,.60),
+                     0 0 70px rgba(255,107,53,.22),
+                     0 4px 24px rgba(0,0,0,.5);
+          animation:rf-splash-logo 1.2s cubic-bezier(.22,1,.36,1) forwards;
+        ">RF</div>
+      </div>
+    </div>
+    <style>
+      @keyframes rf-splash-ring {
+        0%   { opacity:0; transform:scale(.7); }
+        30%  { opacity:1; }
+        100% { opacity:0; transform:scale(1.5); }
+      }
+      @keyframes rf-splash-logo {
+        0%   { opacity:0; transform:scale(.6) translateY(12px); }
+        100% { opacity:1; transform:scale(1) translateY(0); }
+      }
+    </style>
+
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

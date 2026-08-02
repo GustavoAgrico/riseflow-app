@@ -9,6 +9,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>
 )
 
+// Remove o splash após o React montar
+const splash = document.getElementById('rf-splash')
+if (splash) {
+  splash.style.opacity = '0'
+  splash.style.pointerEvents = 'none'
+  setTimeout(() => splash.remove(), 400)
+}
+
 // Service worker: registra só em produção. Em dev, o SW cacheia os módulos do
 // Vite com hash antigo e, após re-otimização de deps, serve uma cópia stale do
 // React → "Cannot read properties of null (reading 'useState')". Por isso, em
