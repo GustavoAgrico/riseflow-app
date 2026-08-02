@@ -1,7 +1,27 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
-// Phase flow: hidden → in (logo enters + rings expand) → out (logo scales up + fades) → hidden
+// Singleton fetch interceptor — tracks pending HTTP requests globally
+let _intercepted = false
+let _pending = 0
+const _subs = new Set()
+
+function _notify() { _subs.forEach(fn => fn(_pending)) }
+
+if (!_intercepted && typeof window !== 'undefined') {
+  _intercepted = true
+  const _origFetch = window.fetch
+  window.fetch = async function (...args) {
+    _pending++
+    _notify()
+    try { return await _origFetch.apply(this, args) }
+    finally { _pending = Math.max(0, _pending - 1); _notify() }
+  }
+}
+
+// Only show overlay if requests are still pending after this many ms
+const THRESHOLD_MS = 300
+
 export const PageTransition = () => {
   const location = useLocation()
   const [phase, setPhase] = useState('hidden')
@@ -9,16 +29,33 @@ export const PageTransition = () => {
   const timers = useRef([])
 
   useEffect(() => {
-    // Skip the very first render (initial page load has its own auth spinner)
     if (isFirst.current) { isFirst.current = false; return }
 
     timers.current.forEach(clearTimeout)
-    setPhase('in')
-    timers.current = [
-      setTimeout(() => setPhase('out'),    400),
-      setTimeout(() => setPhase('hidden'), 700),
-    ]
-    return () => timers.current.forEach(clearTimeout)
+
+    // Called when pending count reaches 0 while overlay is active
+    const onDone = (count) => {
+      if (count === 0) {
+        _subs.delete(onDone)
+        setPhase('out')
+        timers.current = [setTimeout(() => setPhase('hidden'), 300)]
+      }
+    }
+
+    // After threshold: only show if there are still pending requests
+    const thresholdTimer = setTimeout(() => {
+      if (_pending > 0) {
+        setPhase('in')
+        _subs.add(onDone)
+      }
+    }, THRESHOLD_MS)
+
+    timers.current = [thresholdTimer]
+
+    return () => {
+      timers.current.forEach(clearTimeout)
+      _subs.delete(onDone)
+    }
   }, [location.pathname])
 
   if (phase === 'hidden') return null
@@ -79,7 +116,6 @@ export const PageTransition = () => {
       }}>
         RF
 
-        {/* Shimmer sweep — only on entry */}
         {entering && (
           <div style={{
             position: 'absolute', inset: 0,
@@ -88,7 +124,6 @@ export const PageTransition = () => {
           }} />
         )}
 
-        {/* Top-left highlight */}
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: '45%',
           background: 'linear-gradient(to bottom, rgba(255,255,255,0.12), transparent)',
