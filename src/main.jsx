@@ -14,7 +14,7 @@ const splash = document.getElementById('rf-splash')
 if (splash) {
   const _t0 = window._rfSplashStart || Date.now()
   const elapsed = Date.now() - _t0
-  const delay = Math.max(0, 1400 - elapsed)
+  const delay = Math.max(0, 2700 - elapsed)
   setTimeout(() => {
     splash.style.opacity = '0'
     splash.style.pointerEvents = 'none'

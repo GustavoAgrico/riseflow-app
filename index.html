@@ -89,7 +89,7 @@
         height:100%;width:0;
         background:linear-gradient(90deg,#FF6B35 0%,#FF9566 100%);
         border-radius:2px;
-        animation:rfs-bar 3.2s cubic-bezier(.25,.46,.45,.94) .5s forwards;
+        animation:rfs-bar 2s cubic-bezier(.4,0,.2,1) .4s forwards;
       }
       @keyframes rfs-logo-in {
         0%   { opacity:0; transform:scale(.72) translateY(10px); }
@@ -109,9 +109,10 @@
       }
       @keyframes rfs-bar {
         0%   { width:0; }
-        45%  { width:55%; }
-        78%  { width:79%; }
-        100% { width:88%; }
+        50%  { width:65%; }
+        80%  { width:88%; }
+        95%  { width:97%; }
+        100% { width:100%; }
       }
     </style>
   </head>
