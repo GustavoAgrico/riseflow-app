@@ -15,7 +15,7 @@ const TEMPLATES = [
   ['Suporte', 'Você é um agente de suporte técnico paciente e didático. Resolva o problema do cliente passo a passo e confirme se a solução funcionou.'],
   ['Recepcionista', 'Você é uma recepcionista cordial. Entenda o que o cliente precisa e direcione-o para o setor certo, coletando nome e assunto.'],
 ]
-const STATS = [['Respondidas hoje','47'],['Resolvidas sem humano','82%'],['Tempo médio','3.2s'],['Transferências','9']]
+const STATS_LOADING = [['Respondidas hoje','—'],['Resolvidas sem humano','—'],['Total com IA','—'],['Transferências','—']]
 
 const S = {
   top:{ display:'flex',alignItems:'center',gap:14,padding:'16px 24px',borderBottom:`1px solid ${C.bd}`,background:C.card },
@@ -44,18 +44,46 @@ export const SmartAttendant = () => {
   const [faqs, setFaqs] = useState([])
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState('')
+  const [stats, setStats] = useState(STATS_LOADING)
   const fileRef = useRef(null)
   const set = (k, v) => setCfg(p => ({ ...p, [k]: v }))
 
   useEffect(() => {
     if (!user?.id || isDemoMode) return
     ;(async () => {
-      const [{ data: c }, { data: kb }] = await Promise.all([
+      const todayIso = new Date(new Date().setHours(0,0,0,0)).toISOString()
+
+      const [{ data: c }, { data: kb }, { count: aiTotal }, { count: xferTotal }] = await Promise.all([
         supabase.from('attendant_config').select('*').eq('user_id', user.id).maybeSingle(),
         supabase.from('knowledge_base').select('id, question, answer').eq('user_id', user.id),
+        supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('ai_auto_reply', true),
+        supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('user_id', user.id).not('assigned_to', 'is', null).neq('assigned_to', ''),
       ])
+
       if (c) setCfg({ ...DEFAULTS, ...c })
       if (kb) setFaqs(kb)
+
+      // Mensagens de saída hoje em conversas com IA
+      let todayResponded = 0
+      if (aiTotal > 0) {
+        const { data: aiConvs } = await supabase.from('conversations').select('id').eq('user_id', user.id).eq('ai_auto_reply', true)
+        const ids = aiConvs?.map(r => r.id) || []
+        if (ids.length) {
+          const { count } = await supabase.from('messages').select('*', { count: 'exact', head: true })
+            .in('conversation_id', ids).eq('from_me', true).gte('created_at', todayIso)
+          todayResponded = count || 0
+        }
+      }
+
+      const resolved = Math.max(0, (aiTotal || 0) - (xferTotal || 0))
+      const resolvedPct = aiTotal > 0 ? Math.round(resolved / aiTotal * 100) : 0
+
+      setStats([
+        ['Respondidas hoje', String(todayResponded)],
+        ['Resolvidas sem humano', resolvedPct + '%'],
+        ['Total com IA', String(aiTotal || 0)],
+        ['Transferências', String(xferTotal || 0)],
+      ])
     })()
   }, [user, isDemoMode])
 
@@ -171,9 +199,9 @@ export const SmartAttendant = () => {
 
         {/* 5 — Estatísticas */}
         <div style={S.card}>
-          <h3 style={S.h}>Estatísticas (hoje)</h3>
+          <h3 style={S.h}>Estatísticas</h3>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12 }}>
-            {STATS.map(([label, val]) => (
+            {stats.map(([label, val]) => (
               <div key={label} style={{ background:C.bg, border:`1px solid ${C.bd}`, borderRadius:10, padding:14 }}>
                 <div style={{ fontSize:22, fontWeight:800, color:C.pur }}>{val}</div>
                 <div style={{ fontSize:12, color:C.mut, marginTop:4 }}>{label}</div>
