@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Hand, DollarSign, Wrench, Receipt, Repeat, Flame, FileText, Copy, Trash2, Image, CheckCheck, Check, Loader2 } from 'lucide-react'
 import { useAuth } from '@context/AuthContext'
 import { listTemplates, createTemplate, updateTemplate, deleteTemplate, incrementTemplateUse } from '@services/templatesService'
@@ -34,6 +35,7 @@ const S = {
 
 export const Templates = () => {
   const { user, isDemoMode } = useAuth()
+  const navigate = useNavigate()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -103,7 +105,7 @@ export const Templates = () => {
   return (
     <div style={{ minHeight:'100vh', background:C.bg, color:C.tx, fontFamily:'DM Sans,sans-serif' }}>
       <div style={S.top}>
-        <a href="/dashboard" style={{ ...S.ghost, textDecoration:'none' }}>← Voltar</a>
+        <button onClick={() => navigate(-1)} style={S.ghost}>← Voltar</button>
         <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}><FileText size={18} color={C.pur} /> Templates</span>
         <span style={S.badge(C.pur)}>{items.length} templates</span>
         <button onClick={()=>{ if(guardDemo())return; openNew() }} style={{ ...S.btn(), marginLeft:'auto' }}>+ Novo Template</button>

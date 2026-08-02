@@ -69,7 +69,7 @@ export const Plans = () => {
   return (
     <div style={{ minHeight:'100vh', background:C.bg, color:C.tx, fontFamily:'DM Sans,sans-serif' }}>
       <div style={{ display:'flex', alignItems:'center', gap:14, padding:'16px 24px', borderBottom:`1px solid ${C.bd}`, background:C.card }}>
-        <a href="/dashboard" style={S.ghost}>← Voltar</a>
+        <button onClick={() => navigate(-1)} style={S.ghost}>← Voltar</button>
         <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}><Gem size={18} color={C.pur} /> Planos</span>
         {usage && <span style={{ background:C.pur+'22', color:C.pur, borderRadius:6, padding:'3px 10px', fontSize:11, fontWeight:700 }}>Plano atual: {current}</span>}
         {current !== 'free' && <button onClick={cancelPlan} style={{ ...S.ghost, marginLeft:'auto', cursor:'pointer', color:'#EF4444', borderColor:'#EF444455' }}>Cancelar assinatura</button>}

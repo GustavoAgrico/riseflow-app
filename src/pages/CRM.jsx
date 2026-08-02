@@ -94,6 +94,7 @@ const MOCK_MSGS = [
 
 const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, userId }) => {
   const st = STAGES.find(s => s.id === contact.stage)
+  const navigate = useNavigate()
   return (
     <div style={{ width: 320, flexShrink: 0, borderLeft: `1px solid ${C.bd}`, background: C.card, display: 'flex', flexDirection: 'column', fontFamily: 'DM Sans,sans-serif', overflow: 'hidden' }}>
       <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.bd}`, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -136,7 +137,7 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, u
           ))}
         </div>
         <NotesPanel contactId={contact.id} userId={userId} />
-        <a href="/chat" style={{ ...S.btn('#7C3AED'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, textDecoration: 'none', marginTop: 14 }}>Abrir conversa</a>
+        <button onClick={() => navigate('/chat')} style={{ ...S.btn('#7C3AED'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, marginTop: 14 }}>Abrir conversa</button>
         <button
           onClick={() => onDelete(contact)}
           style={{ ...S.btn('#EF444420', '#F87171'), width: '100%', marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: '1px solid #EF444440' }}

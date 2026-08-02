@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Calendar, Repeat, Pencil, Ban, Copy, X, Loader2, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
@@ -59,6 +60,7 @@ const S = {
 
 export const Schedules = () => {
   const { user, isDemoMode } = useAuth()
+  const navigate = useNavigate()
   const [items, setItems]   = useState([])
   const [contacts, setContacts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -180,7 +182,7 @@ export const Schedules = () => {
   return (
     <div style={{ minHeight:'100vh', background:C.bg, color:C.tx, fontFamily:'DM Sans,sans-serif' }}>
       <div style={S.top}>
-        <a href="/dashboard" style={{ ...S.ghost, textDecoration:'none' }}>← Voltar</a>
+        <button onClick={() => navigate(-1)} style={S.ghost}>← Voltar</button>
         <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}><Calendar size={18} color={C.pur} /> Agendamentos</span>
         <span style={S.badge(C.pur)}>{items.filter(s => s.status==='agendado').length} ativos</span>
         <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>

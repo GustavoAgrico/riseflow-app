@@ -871,7 +871,7 @@ export const Chat = () => {
               <>
                 <LeadScorePanel contactId={sel.id} userId={userId} />
                 <NotesPanel contactId={sel.id} userId={userId} />
-                <a href="/clients" style={{ display: 'block', textAlign: 'center', background: C.purple, color: '#fff', borderRadius: 10, padding: 11, fontSize: 13, fontWeight: 600, textDecoration: 'none', marginTop: 16, width: '100%', boxSizing: 'border-box' }}>Ver no CRM</a>
+                <button onClick={() => nav('/clients')} style={{ display: 'block', textAlign: 'center', background: C.purple, color: '#fff', borderRadius: 10, padding: 11, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', marginTop: 16, width: '100%', boxSizing: 'border-box' }}>Ver no CRM</button>
               </>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
