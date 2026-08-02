@@ -29,6 +29,7 @@ import { Templates } from '@pages/Templates'
 import { Plans } from '@pages/Plans'
 import { PlanDetails } from '@pages/PlanDetails'
 import { ActivityLogs } from '@pages/ActivityLogs'
+import { PageTransition } from '@components/PageTransition'
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -108,6 +109,7 @@ function App() {
           <GlobalToasts />
           <InstallPrompt />
           <BrowserRouter>
+            <PageTransition />
             <Routes>
               {/* Public routes */}
               <Route path="/login" element={<Login />} />

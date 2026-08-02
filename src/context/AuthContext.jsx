@@ -13,13 +13,16 @@ const DEMO_USER = {
 async function resolveMember(user) {
   if (!user?.email) return null
   try {
-    const { data } = await supabase
+    const timeout = new Promise(res => setTimeout(() => res(null), 5000))
+    const query = supabase
       .from('team_members')
       .select('id, user_id, name, email, role')
       .eq('email', user.email)
       .neq('user_id', user.id)
       .maybeSingle()
-    return data ?? null
+      .then(({ data }) => data ?? null)
+      .catch(() => null)
+    return await Promise.race([query, timeout])
   } catch {
     return null
   }
@@ -37,7 +40,8 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     let mounted = true
 
-    supabase.auth.getSession().then(async (result) => {
+    const sessionTimeout = new Promise(res => setTimeout(() => res(null), 8000))
+    Promise.race([supabase.auth.getSession(), sessionTimeout]).then(async (result) => {
       if (!mounted || isDemoRef.current) return
       const s = result?.data?.session ?? null
       setSession(s)
