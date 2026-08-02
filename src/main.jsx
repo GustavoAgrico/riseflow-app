@@ -9,12 +9,17 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>
 )
 
-// Remove o splash após o React montar
+// Remove o splash após o React montar, com mínimo de 1.4s para a animação ser vista
 const splash = document.getElementById('rf-splash')
 if (splash) {
-  splash.style.opacity = '0'
-  splash.style.pointerEvents = 'none'
-  setTimeout(() => splash.remove(), 400)
+  const _t0 = window._rfSplashStart || Date.now()
+  const elapsed = Date.now() - _t0
+  const delay = Math.max(0, 1400 - elapsed)
+  setTimeout(() => {
+    splash.style.opacity = '0'
+    splash.style.pointerEvents = 'none'
+    setTimeout(() => splash.remove(), 520)
+  }, delay)
 }
 
 // Service worker: registra só em produção. Em dev, o SW cacheia os módulos do
