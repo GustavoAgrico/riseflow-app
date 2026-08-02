@@ -11,7 +11,6 @@ const jwt = require('jsonwebtoken')
 const { Server } = require('socket.io')
 
 const auth = require('./middleware/auth')
-const adminOnly = require('./middleware/adminOnly')
 const { supabase, isConfigured } = require('./supabaseClient')
 const chatsRoutes = require('./routes/chats')
 const messagesRoutes = require('./routes/messages')
@@ -191,16 +190,16 @@ const incomingHandler = ({ jid, text, pushName, fromMe }) =>
 telegram.init({ socketIo: io, incomingHandler })
 metaClient.init({ socketIo: io, incomingHandler })
 
-// Rotas protegidas — auth valida o JWT; adminOnly restringe ao admin durante testes.
-app.use('/api/chats', auth, adminOnly, chatsRoutes)
-app.use('/api/messages', auth, adminOnly, messagesRoutes)
-app.use('/api/contacts', auth, adminOnly, contactsRoutes)
-app.use('/api/instance', auth, adminOnly, instanceRoutes)
-app.use('/api/email', auth, adminOnly, emailRoutes)
-app.use('/api/telegram', auth, adminOnly, telegramRoutes)
-app.use('/api/meta', auth, adminOnly, metaRoutes)
-app.use('/api/billing', auth, adminOnly, billingRoutes)
-app.use('/api/ai', auth, adminOnly, aiRoutes)
+// Rotas protegidas — auth valida o JWT; dados já são isolados por req.user.sub.
+app.use('/api/chats', auth, chatsRoutes)
+app.use('/api/messages', auth, messagesRoutes)
+app.use('/api/contacts', auth, contactsRoutes)
+app.use('/api/instance', auth, instanceRoutes)
+app.use('/api/email', auth, emailRoutes)
+app.use('/api/telegram', auth, telegramRoutes)
+app.use('/api/meta', auth, metaRoutes)
+app.use('/api/billing', auth, billingRoutes)
+app.use('/api/ai', auth, aiRoutes)
 
 // Produção (Docker/Render): serve o build do frontend (../dist) na mesma porta.
 // GET em rota não-/api cai no index.html (SPA fallback) — corrige o "Cannot GET /".
