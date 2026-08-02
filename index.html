@@ -20,49 +20,113 @@
   </head>
   <body class="bg-dark-900 text-white">
     <!-- Splash screen: visível até o React montar. Removido por main.jsx. -->
-    <div id="rf-splash" style="
-      position:fixed;inset:0;z-index:99999;
-      background:#060914;
-      display:flex;align-items:center;justify-content:center;
-      transition:opacity .35s ease;
-    ">
-      <div style="position:relative;display:flex;align-items:center;justify-content:center;">
-        <!-- Anel externo -->
-        <div style="
-          position:absolute;width:160px;height:160px;border-radius:50%;
-          border:1px solid rgba(255,107,53,.3);
-          animation:rf-splash-ring 1.8s ease-out infinite;
-        "></div>
-        <!-- Anel interno -->
-        <div style="
-          position:absolute;width:118px;height:118px;border-radius:50%;
-          border:1.5px solid rgba(255,107,53,.18);
-          animation:rf-splash-ring 1.8s .3s ease-out infinite;
-        "></div>
-        <!-- Logo RF -->
-        <div style="
-          width:72px;height:72px;border-radius:20px;
-          background:linear-gradient(138deg,#FF6B35 0%,#D94F1A 100%);
-          display:flex;align-items:center;justify-content:center;
-          font-size:27px;font-weight:900;color:#fff;
-          letter-spacing:-1.5px;font-family:'Arial Black',Arial,sans-serif;
-          box-shadow:0 0 0 1px rgba(255,255,255,.10) inset,
-                     0 0 30px rgba(255,107,53,.60),
-                     0 0 70px rgba(255,107,53,.22),
-                     0 4px 24px rgba(0,0,0,.5);
-          animation:rf-splash-logo 1.2s cubic-bezier(.22,1,.36,1) forwards;
-        ">RF</div>
+    <div id="rf-splash">
+      <div class="rfs-bg"></div>
+      <div class="rfs-content">
+        <div class="rfs-logo-wrap">
+          <div class="rfs-ring"></div>
+          <div class="rfs-glow"></div>
+          <div class="rfs-logo">RF<span class="rfs-shine"></span></div>
+        </div>
+        <div class="rfs-wordmark">RiseFlow</div>
+        <div class="rfs-track"><div class="rfs-fill"></div></div>
       </div>
     </div>
     <style>
-      @keyframes rf-splash-ring {
-        0%   { opacity:0; transform:scale(.7); }
-        30%  { opacity:1; }
-        100% { opacity:0; transform:scale(1.5); }
+      #rf-splash {
+        position:fixed;inset:0;z-index:99999;
+        background:#060914;
+        display:flex;align-items:center;justify-content:center;
+        transition:opacity .45s ease;
       }
-      @keyframes rf-splash-logo {
-        0%   { opacity:0; transform:scale(.6) translateY(12px); }
+      .rfs-bg {
+        position:absolute;inset:0;pointer-events:none;
+        background:radial-gradient(ellipse 700px 500px at 50% 44%,rgba(255,107,53,.08) 0%,transparent 70%);
+      }
+      .rfs-content {
+        position:relative;
+        display:flex;flex-direction:column;align-items:center;
+      }
+      .rfs-logo-wrap {
+        position:relative;
+        display:flex;align-items:center;justify-content:center;
+        margin-bottom:22px;
+      }
+      .rfs-ring {
+        position:absolute;
+        width:136px;height:136px;border-radius:50%;
+        border:1px solid rgba(255,107,53,.22);
+        animation:rfs-ring-pulse 2.8s ease-in-out infinite;
+      }
+      .rfs-glow {
+        position:absolute;
+        width:96px;height:96px;border-radius:26px;
+        background:rgba(255,107,53,.18);
+        filter:blur(22px);
+        animation:rfs-logo-in .9s cubic-bezier(.22,1,.36,1) both;
+      }
+      .rfs-logo {
+        position:relative;overflow:hidden;
+        width:84px;height:84px;border-radius:23px;
+        background:linear-gradient(148deg,#FF7C44 0%,#FF6B35 52%,#D14B1A 100%);
+        display:flex;align-items:center;justify-content:center;
+        font-size:29px;font-weight:900;color:#fff;
+        letter-spacing:-2px;
+        font-family:'Arial Black',Arial,sans-serif;
+        box-shadow:
+          0 0 0 1px rgba(255,255,255,.14) inset,
+          0 1px 0 rgba(255,255,255,.24) inset,
+          0 22px 64px rgba(255,107,53,.55),
+          0 6px 20px rgba(0,0,0,.55);
+        animation:rfs-logo-in .9s cubic-bezier(.22,1,.36,1) both;
+      }
+      .rfs-shine {
+        position:absolute;inset:0;
+        background:linear-gradient(108deg,transparent 32%,rgba(255,255,255,.3) 50%,transparent 68%);
+        transform:translateX(-120%);
+        animation:rfs-shine .72s ease 1.05s forwards;
+      }
+      .rfs-wordmark {
+        font-family:Arial,sans-serif;
+        font-size:11px;font-weight:700;
+        letter-spacing:5.5px;text-transform:uppercase;
+        color:rgba(148,163,184,.55);
+        margin-bottom:38px;
+        animation:rfs-fade-up .6s ease .38s both;
+      }
+      .rfs-track {
+        width:96px;height:2px;
+        background:rgba(255,255,255,.07);
+        border-radius:2px;overflow:hidden;
+        animation:rfs-fade-up .5s ease .46s both;
+      }
+      .rfs-fill {
+        height:100%;width:0;
+        background:linear-gradient(90deg,#FF6B35 0%,#FF9566 100%);
+        border-radius:2px;
+        animation:rfs-bar 3.2s cubic-bezier(.25,.46,.45,.94) .5s forwards;
+      }
+      @keyframes rfs-logo-in {
+        0%   { opacity:0; transform:scale(.7) translateY(10px); }
         100% { opacity:1; transform:scale(1) translateY(0); }
+      }
+      @keyframes rfs-fade-up {
+        0%   { opacity:0; transform:translateY(7px); }
+        100% { opacity:1; transform:translateY(0); }
+      }
+      @keyframes rfs-shine {
+        0%   { transform:translateX(-120%); }
+        100% { transform:translateX(220%); }
+      }
+      @keyframes rfs-ring-pulse {
+        0%,100% { opacity:.5; transform:scale(1); }
+        50%     { opacity:.14; transform:scale(1.11); }
+      }
+      @keyframes rfs-bar {
+        0%   { width:0; }
+        45%  { width:55%; }
+        78%  { width:78%; }
+        100% { width:88%; }
       }
     </style>
 
