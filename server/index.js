@@ -25,7 +25,7 @@ const billingRoutes = require('./routes/billing')
 const aiRoutes = require('./routes/ai')
 const telegram = require('./telegramClient')
 const metaClient = require('./metaClient')
-const { handleIncomingMessage } = require('./flowEngine')
+const { handleIncomingMessage, setIo: setFlowEngineIo } = require('./flowEngine')
 const { aiRespond } = require('./aiAttendant')
 
 const {
@@ -77,9 +77,19 @@ const allowedOrigins = CORS_ORIGIN.split(',').map((o) => o.trim())
 const io = new Server(server, {
   cors: { origin: allowedOrigins, credentials: true },
 })
+setFlowEngineIo(io)
 io.on('connection', (socket) => {
   console.log(`[socket] cliente conectado: ${socket.id}`)
   socket.on('disconnect', () => console.log(`[socket] cliente saiu: ${socket.id}`))
+  // Transferência manual disparada pelo frontend: rebroadcast para todos os clientes.
+  socket.on('transfer_request', (data) => {
+    console.log('[socket] transfer_request recebido de', socket.id, '→', data?.agentName)
+    io.emit('transfer_notification', {
+      ...data,
+      source: 'manual',
+      timestamp: data.timestamp || new Date().toISOString(),
+    })
+  })
 })
 app.use(
   cors({

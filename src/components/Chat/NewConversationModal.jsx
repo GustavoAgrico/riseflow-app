@@ -8,9 +8,9 @@ const CHANNELS = [
   { id: 'telegram',  label: 'Telegram',  Icon: Send },
 ]
 
-export const NewConversationModal = ({ onClose, onCreate }) => {
-  const [name, setName]               = useState('')
-  const [phone, setPhone]             = useState('')
+export const NewConversationModal = ({ onClose, onCreate, initialName = '', initialPhone = '' }) => {
+  const [name, setName]               = useState(initialName)
+  const [phone, setPhone]             = useState(initialPhone)
   const [channel, setChannel]         = useState('whatsapp')
   const [firstMessage, setFirstMessage] = useState('')
   const [loading, setLoading]         = useState(false)

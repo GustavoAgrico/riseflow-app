@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { Layout } from '@components/Layout/Layout'
 import {
   Search, Plus, MessageCircle, Phone, Mail, Tag,
-  Trash2, Users, Loader2, X, ChevronRight, Pencil
+  Trash2, Users, Loader2, X, ChevronRight, Pencil, Download
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { api } from '@services/api'
 import { useAuth } from '@context/AuthContext'
 import { logger } from '@services/activityLogger'
 import { MOCK_CLIENTS } from '@constants/config'
@@ -217,6 +218,8 @@ export const Clients = () => {
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState(null)
   const [deleting, setDeleting] = useState(null)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState(null)
 
   const fetchClients = useCallback(async () => {
     if (isDemoMode) {
@@ -249,6 +252,38 @@ export const Clients = () => {
     setClients(prev => prev.filter(c => c.id !== clientId))
     if (selected?.id === clientId) setSelected(null)
     setDeleting(null)
+  }
+
+  const handleImportWhatsApp = async () => {
+    if (isDemoMode || importing) return
+    setImporting(true)
+    setImportResult(null)
+    try {
+      // 1. Busca contatos do WA server via backend (requer JWT — api interceptor adiciona)
+      const { data: waContacts } = await api.get('/contacts')
+      if (!waContacts.length) {
+        setImportResult({ ok: false, msg: 'Nenhum contato disponível no WhatsApp ainda.' })
+        return
+      }
+      // 2. Insere na tabela clients (sem duplicatas por phone)
+      const { data: existing } = await supabase.from('clients').select('phone').eq('user_id', user.id)
+      const existingPhones = new Set((existing || []).map(c => c.phone).filter(Boolean))
+      const toInsert = waContacts
+        .filter(c => c.name && c.phone && !existingPhones.has(c.phone))
+        .map(c => ({ name: c.name, phone: c.phone, channel: 'whatsapp', tag: 'Prospect', status: 'active', user_id: user.id }))
+      if (!toInsert.length) {
+        setImportResult({ ok: true, msg: `${waContacts.length} contatos já estão importados.` })
+      } else {
+        const { error } = await supabase.from('clients').insert(toInsert)
+        if (error) throw error
+        setImportResult({ ok: true, msg: `${toInsert.length} contato${toInsert.length !== 1 ? 's' : ''} importado${toInsert.length !== 1 ? 's' : ''} do WhatsApp!` })
+        fetchClients()
+      }
+    } catch (e) {
+      setImportResult({ ok: false, msg: e.message })
+    } finally {
+      setImporting(false)
+    }
   }
 
   const filtered = clients.filter(c =>
@@ -285,12 +320,26 @@ export const Clients = () => {
               />
             </div>
             <button
+              onClick={handleImportWhatsApp}
+              disabled={isDemoMode || importing}
+              className={clsx('btn-secondary flex items-center gap-1.5', (isDemoMode || importing) && 'opacity-50 cursor-not-allowed')}
+              title="Importar contatos do WhatsApp"
+            >
+              {importing ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              {importing ? 'Importando...' : 'WhatsApp'}
+            </button>
+            <button
               onClick={() => { if (!isDemoMode) { setEditTarget(null); setFormOpen(true) } }}
               className={clsx('btn-primary', isDemoMode && 'opacity-50 cursor-not-allowed')}
               title={isDemoMode ? 'Indisponível no modo demo' : 'Adicionar cliente'}
             >
               <Plus size={14} />Novo
             </button>
+            {importResult && (
+              <div className={clsx('text-xs px-2 py-1 rounded', importResult.ok ? 'text-green-400 bg-green-400/10' : 'text-red-400 bg-red-400/10')}>
+                {importResult.msg}
+              </div>
+            )}
           </div>
 
           {/* Table Header */}
@@ -433,10 +482,12 @@ export const Clients = () => {
               )}
               {selected.phone && (
                 <a
-                  href={`tel:${selected.phone.replace(/\D/g, '')}`}
+                  href={`https://wa.me/${selected.phone.replace(/\D/g, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="btn-secondary w-full justify-center"
                 >
-                  <Phone size={14} /> Ligar
+                  <Phone size={14} /> Abrir no WhatsApp
                 </a>
               )}
               {!isDemoMode && (

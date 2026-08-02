@@ -21,5 +21,6 @@ export const socket = io(URL, {
 socket.on('connect', () => console.log('[socket] conectado:', socket.id))
 socket.on('disconnect', (reason) => console.log('[socket] desconectado:', reason))
 socket.on('connect_error', (err) => console.warn('[socket] erro de conexão:', err.message))
+socket.onAny((event, ...args) => console.log('[socket:recv]', event, JSON.stringify(args).slice(0, 120)))
 
 export default socket

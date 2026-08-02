@@ -63,3 +63,5 @@ ios/App/App/public
 ios/DerivedData
 *.mobileprovision
 *.p12
+
+*.patch

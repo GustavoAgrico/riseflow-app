@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Paperclip, Send, Mic, Trash2, Play, Pause, Image as ImageIcon, FileText, Download, RefreshCw, Check, CheckCheck, Clock, ArrowLeft, PanelRight, ArrowRightLeft, Plus, Sparkles, Bot, Loader2, Pencil, MessageSquareText, Save, User, Phone, Mail, Tag } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { Paperclip, Send, Mic, Trash2, Play, Pause, Image as ImageIcon, FileText, Download, RefreshCw, Check, CheckCheck, Clock, ArrowLeft, PanelRight, ArrowRightLeft, Plus, Sparkles, Bot, Loader2, Pencil, MessageSquareText, Save, User, Phone, Mail, Tag, Bell, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { usageService } from '@services/usageService'
 import { fetchConversations, fetchMessages, sendChatMessage, markConversationRead, syncWhatsAppChats, deleteConversation, loadConversationMessages, createConversation } from '@services/chatService'
@@ -37,9 +37,6 @@ const Tick = ({ s }) => s === 'sending'
 
 const iBtn = { background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 20, padding: 4, lineHeight: 1, display: 'inline-flex', alignItems: 'center' }
 
-/* Atendentes disponíveis para transferência de conversa */
-const AGENTS = ['Ana Paula Silva', 'Carlos Eduardo Souza', 'Mariana Oliveira', 'Roberto Santos', 'Juliana Costa']
-
 const fmtDur = (s, fb) => isFinite(s) && s > 0 ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : (fb || '0:00')
 const Audio = ({ src, out, dur }) => {
   const ref = useRef(null)
@@ -62,6 +59,7 @@ const Audio = ({ src, out, dur }) => {
 
 export const Chat = () => {
   const nav = useNavigate()
+  const location = useLocation()
   const [conversations, setConversations] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [messages, setMessages] = useState({})
@@ -70,6 +68,7 @@ export const Chat = () => {
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
   const [showNew, setShowNew] = useState(false)
+  const [newContactPrefill, setNewContactPrefill] = useState(null) // { name, phone } do Clients
   const [aiBusy, setAiBusy] = useState(false)
   const [hoverId, setHoverId] = useState(null)
   const [input, setInput] = useState('')
@@ -82,6 +81,10 @@ export const Chat = () => {
   const [clientSaved, setClientSaved] = useState(false)
   const [showTransfer, setShowTransfer] = useState(false)
   const [transferMsg, setTransferMsg] = useState('')
+  const [teamMembers, setTeamMembers] = useState([])
+  const [notifications, setNotifications] = useState([])
+  const [showNotifs, setShowNotifs] = useState(false)
+  const [transferToast, setTransferToast] = useState(null)
   const [typing, setTyping] = useState(false)
   const [recording, setRecording] = useState(false)
   const [recSecs, setRecSecs] = useState(0)
@@ -99,6 +102,7 @@ export const Chat = () => {
   const convsRef = useRef([]) // espelho de `conversations` para os handlers do socket (sem closure stale)
   const recRef = useRef(null), chunksRef = useRef([]), streamRef = useRef(null), recTimer = useRef(null), sendOnStop = useRef(true)
   const fileRef = useRef(null), attachKind = useRef('image')
+  const pendingContactRef = useRef(location.state?.contact ?? null) // contato pré-selecionado vindo do CRM
   const fmtSecs = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
   const sel = conversations.find(c => c.id === selectedId)
@@ -136,6 +140,26 @@ export const Chat = () => {
   useEffect(() => { if (userId) listTemplates(userId).then(setTemplates).catch(() => {}) }, [userId])
   useEffect(() => { setTyping(true); const t = setTimeout(() => setTyping(false), 2200); return () => clearTimeout(t) }, [selectedId])
 
+  // Carrega membros da equipe (para painel de transferência real)
+  useEffect(() => {
+    if (!userId) return
+    supabase.from('team_members').select('id, name, email, role').eq('user_id', userId)
+      .then(({ data }) => { if (data) setTeamMembers(data) })
+  }, [userId])
+
+  // Escuta notificações de transferência via Socket.io
+  useEffect(() => {
+    const onTransfer = (data) => {
+      console.log('[transfer_notification] recebido:', JSON.stringify(data).slice(0, 100))
+      setNotifications(prev => [{ ...data, id: Date.now(), read: false }, ...prev])
+      setTransferToast(data)
+      setTimeout(() => setTransferToast(null), 4500)
+    }
+    socket.on('transfer_notification', onTransfer)
+    console.log('[transfer_notification] listener registrado no socket', socket.id)
+    return () => { socket.off('transfer_notification', onTransfer) }
+  }, [])
+
   /* Mapeia linhas reais do Supabase para o formato que a UI já espera */
   const mapConv = c => ({ id: c.id, name: c.contact_name || `+${c.contact_phone ?? '?'}`, phone: c.contact_phone, preview: c.last_message ?? '', lt: c.last_message_at ? new Date(c.last_message_at).getTime() : Date.now(), unread: c.unread_count ?? 0, online: false, auto: c.ai_auto_reply ?? false, av: colorFor(c.contact_name || c.contact_phone) })
   const mapMsg = m => ({ id: m.id, dir: m.direction === 'outbound' ? 'out' : 'in', type: 'text', text: m.content ?? m.text ?? m.body ?? '', t: m.created_at ? new Date(m.created_at).getTime() : Date.now(), s: m.status || 'delivered' })
@@ -143,11 +167,32 @@ export const Chat = () => {
   const loadConvs = async (uid) => {
     const convs = (await fetchConversations(uid)).map(mapConv)
     setConversations(convs)
+
+    // Processa contato pré-selecionado vindo do CRM (navigate state)
+    const pending = pendingContactRef.current
+    if (pending) {
+      pendingContactRef.current = null
+      window.history.replaceState({}, document.title) // limpa state para não reabrir
+      const phone = String(pending.phone ?? '').replace(/\D/g, '')
+      if (phone) {
+        const existing = convs.find(c => String(c.phone ?? '').replace(/\D/g, '') === phone)
+        if (existing) {
+          setSelectedId(existing.id)
+          return convs
+        }
+        // Abre modal pré-preenchido para criar nova conversa
+        setNewContactPrefill({ name: pending.name || '', phone })
+        setShowNew(true)
+        return convs
+      }
+    }
+
     if (convs.length && !selRef.current) setSelectedId(convs[0].id)
     console.log(`[Chat] ${convs.length} conversas carregadas`)
+    return convs
   }
 
-  /* PASSO 1: usuário autenticado — conversas SÓ carregam ao clicar em Sincronizar */
+  /* PASSO 1: usuário autenticado. Se vier com contato do CRM, carrega conversas de imediato. */
   useEffect(() => {
     (async () => {
       try {
@@ -155,6 +200,8 @@ export const Chat = () => {
         if (!user) { setLoading(false); return }
         userRef.current = user.id; setUserId(user.id)
         try { setUsage(await usageService.getUsage(user.id)) } catch (e) { console.warn('[Usage] indisponível:', e?.message ?? e) }
+        // Se chegou com contato pré-selecionado (vindo do CRM), carrega conversas automaticamente
+        if (pendingContactRef.current) await loadConvs(user.id)
       } catch (e) { console.warn('[Chat] erro ao autenticar:', e?.message ?? e) }
       setLoading(false)
     })()
@@ -456,12 +503,35 @@ export const Chat = () => {
     setSavingClient(false)
   }
 
-  /* Transfere a conversa atual para outro atendente (mock) — registra auditoria. */
-  const transferTo = (agent) => {
+  /* Transfere a conversa atual para um atendente real (persiste no banco + notifica via socket). */
+  const transferTo = async (agent) => {
     setShowTransfer(false)
-    const contactName = conversations.find(c => c.id === selectedId)?.name || 'contato'
-    logger.log(userRef.current, 'conversation_transferred', { category: 'team', description: `Conversa com ${contactName} transferida para ${agent}` })
-    setTransferMsg(`Conversa transferida para ${agent}`)
+    const currentId = selRef.current
+    const conv = convsRef.current.find(c => c.id === currentId)
+    console.log('[transferTo] agent:', agent?.name, '| currentId:', currentId, '| conv:', conv?.name ?? 'NOT FOUND', '| convsRef.len:', convsRef.current.length)
+    if (!conv) return
+    const agentName = agent.name
+    const agentEmail = agent.email || null
+
+    // Persiste a atribuição no Supabase
+    try {
+      await supabase.from('conversations').update({ assigned_to: agentName }).eq('id', currentId)
+    } catch (e) { console.warn('[Chat] transferTo update falhou:', e?.message ?? e) }
+
+    // Emite evento socket para notificar em tempo real todos os clientes conectados
+    console.log('[transferTo] emitindo transfer_request | socket.id:', socket.id, '| connected:', socket.connected)
+    socket.emit('transfer_request', {
+      conversationId: currentId,
+      contactName: conv.name,
+      contactPhone: conv.phone,
+      assignTo: agentName,
+      agentName,
+      agentEmail,
+      timestamp: new Date().toISOString(),
+    })
+
+    logger.log(userRef.current, 'conversation_transferred', { category: 'team', description: `Conversa com ${conv.name} transferida para ${agentName}` })
+    setTransferMsg(`Conversa transferida para ${agentName}`)
     setTimeout(() => setTransferMsg(''), 2800)
   }
 
@@ -512,14 +582,66 @@ export const Chat = () => {
 
   return (
     <div style={{ display: 'flex', fontFamily: F, height: '100vh', overflow: 'hidden' }}>
+
+      {/* Toast de transferência — aparece no canto superior direito para todos os clientes */}
+      {transferToast && (
+        <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 1000, background: '#7C3AED', color: '#fff', borderRadius: 12, padding: '12px 16px', boxShadow: '0 8px 28px rgba(124,58,237,.5)', fontSize: 13, fontWeight: 600, maxWidth: 290, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <Bell size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ margin: 0 }}>Conversa atribuída</p>
+            <p style={{ margin: '3px 0 0', fontWeight: 400, fontSize: 12, opacity: .85 }}>
+              {transferToast.contactName} → {transferToast.agentName || transferToast.assignTo}
+            </p>
+          </div>
+          <button onClick={() => setTransferToast(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', opacity: .7, padding: 0, display: 'flex', flexShrink: 0 }}><X size={14} /></button>
+        </div>
+      )}
+
       {/* ── COLUNA 1 ── */}
       <div style={{ width: 320, flexShrink: 0, background: C.panel, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, position: 'relative' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <button onClick={() => nav('/dashboard')} title="Voltar" style={iBtn}><ArrowLeft size={20} /></button>
             <span style={{ fontSize: 18, fontWeight: 800, color: C.text }}>Conversas</span>
-            <button onClick={() => setShowNew(true)} title="Nova conversa" style={{ ...iBtn, marginLeft: 'auto', color: C.purple }}><Plus size={22} /></button>
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ position: 'relative' }}>
+                <button onClick={() => { setShowNotifs(v => !v); setNotifications(prev => prev.map(n => ({ ...n, read: true }))) }}
+                  title="Notificações de transferência"
+                  style={{ ...iBtn, color: notifications.some(n => !n.read) ? C.purple : C.muted }}>
+                  <Bell size={20} />
+                  {notifications.filter(n => !n.read).length > 0 && (
+                    <span style={{ position: 'absolute', top: 0, right: 0, background: '#EF4444', color: '#fff', borderRadius: '50%', width: 15, height: 15, fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                      {notifications.filter(n => !n.read).length}
+                    </span>
+                  )}
+                </button>
+              </div>
+              <button onClick={() => setShowNew(true)} title="Nova conversa" style={{ ...iBtn, color: C.purple }}><Plus size={22} /></button>
+            </div>
           </div>
+          {showNotifs && (
+            <div style={{ position: 'absolute', top: 60, left: 0, right: 0, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10, padding: 8, maxHeight: 280, overflowY: 'auto', zIndex: 100, boxShadow: '0 8px 24px rgba(0,0,0,.5)', margin: '0 8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 4px 8px', borderBottom: `1px solid ${C.border}`, marginBottom: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>Transferências recebidas</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {notifications.length > 0 && <button onClick={() => setNotifications([])} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 11, cursor: 'pointer', fontFamily: F }}>Limpar</button>}
+                  <button onClick={() => setShowNotifs(false)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 0, display: 'flex' }}><X size={14} /></button>
+                </div>
+              </div>
+              {notifications.length === 0 ? (
+                <p style={{ margin: '12px 4px', fontSize: 12, color: C.dim }}>Nenhuma notificação ainda</p>
+              ) : notifications.map(n => (
+                <div key={n.id} style={{ padding: '8px 6px', borderRadius: 6, marginBottom: 2, background: n.read ? 'transparent' : C.purple + '18' }}>
+                  <p style={{ margin: 0, fontSize: 12.5, color: C.text, fontWeight: n.read ? 400 : 600 }}>
+                    <strong>{n.contactName}</strong> → <strong>{n.agentName || n.assignTo}</strong>
+                  </p>
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: C.dim }}>
+                    {n.source === 'flow' ? '⚡ Funil automático' : '👤 Transferência manual'} · {n.timestamp ? new Date(n.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'agora'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar conversa"
             style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', color: C.text, fontSize: 13, outline: 'none', fontFamily: F, boxSizing: 'border-box' }} />
           <button onClick={doSync} disabled={syncing} title="Sincronizar conversas do WhatsApp"
@@ -591,11 +713,17 @@ export const Chat = () => {
           <div style={{ position: 'relative' }}>
             <button onClick={() => setShowTransfer(v => !v)} title="Transferir conversa" style={{ ...iBtn, color: showTransfer ? C.purple : C.muted }}><ArrowRightLeft size={19} /></button>
             {showTransfer && (
-              <div style={{ position: 'absolute', top: 38, right: 0, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10, padding: 6, width: 210, zIndex: 50, boxShadow: '0 8px 24px rgba(0,0,0,.4)' }}>
+              <div style={{ position: 'absolute', top: 38, right: 0, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10, padding: 6, width: 220, zIndex: 50, boxShadow: '0 8px 24px rgba(0,0,0,.4)', maxHeight: 240, overflowY: 'auto' }}>
                 <p style={{ margin: '4px 8px 6px', fontSize: 11, color: C.muted, fontWeight: 700 }}>Transferir para</p>
-                {AGENTS.map(a => (
-                  <button key={a} onClick={() => transferTo(a)} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', color: C.text, fontSize: 13, padding: '8px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}
-                    onMouseEnter={e => e.currentTarget.style.background = C.border} onMouseLeave={e => e.currentTarget.style.background = 'none'}>{a}</button>
+                {teamMembers.length === 0 ? (
+                  <p style={{ margin: '8px', fontSize: 12, color: C.dim }}>Nenhum membro na equipe.<br/>Adicione em Equipe.</p>
+                ) : teamMembers.map(a => (
+                  <button key={a.id} onClick={() => transferTo(a)}
+                    style={{ display: 'flex', flexDirection: 'column', width: '100%', textAlign: 'left', background: 'none', border: 'none', color: C.text, fontSize: 13, padding: '8px', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}
+                    onMouseEnter={e => e.currentTarget.style.background = C.border} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                    <span>{a.name}</span>
+                    {a.role && <span style={{ fontSize: 10, color: C.muted, marginTop: 1 }}>{a.role}</span>}
+                  </button>
                 ))}
               </div>
             )}
@@ -817,7 +945,12 @@ export const Chat = () => {
         </div>
       )}
 
-      {showNew && <NewConversationModal onClose={() => setShowNew(false)} onCreate={handleCreateConversation} />}
+      {showNew && <NewConversationModal
+        onClose={() => { setShowNew(false); setNewContactPrefill(null) }}
+        onCreate={handleCreateConversation}
+        initialName={newContactPrefill?.name ?? ''}
+        initialPhone={newContactPrefill?.phone ?? ''}
+      />}
 
       <PaywallModal isOpen={showPaywall} onClose={() => setShowPaywall(false)} used={usage.messages_sent} limit={usage.messages_limit} />
     </div>

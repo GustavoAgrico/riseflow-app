@@ -13,6 +13,10 @@ const { supabase, isConfigured } = require('./supabaseClient')
 const { baileys } = require('./baileysClient')
 const { sendMailForUser } = require('./emailClient')
 
+/* ─── Socket.io (injetado por index.js via setIo) ───────────────────── */
+let _io = null
+const setIo = (io) => { _io = io }
+
 /* ─── Utilidades ─────────────────────────────────────────────────────── */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const nowIso = () => new Date().toISOString()
@@ -231,6 +235,18 @@ async function transferToHuman(contact, assignTo) {
       await supabase.from('conversations').update({ assigned_to: assignTo }).eq('contact_jid', contact.jid)
     }
   } catch (_) { /* tabela pode não existir — ok */ }
+
+  // Notificação em tempo real para o atendente designado.
+  if (_io) {
+    _io.emit('transfer_notification', {
+      contactName: contact?.name || jidToNumber(contact?.jid || '') || 'Contato',
+      contactPhone: contact?.phone || jidToNumber(contact?.jid || ''),
+      assignTo,
+      agentName: assignTo,
+      timestamp: new Date().toISOString(),
+      source: 'flow',
+    })
+  }
 }
 
 /* Envia um email pela config SMTP do dono do funil. Falha não interrompe o funil.
@@ -450,4 +466,4 @@ async function hasMatchingFlow(jid, text) {
 }
 
 // sendText/getWaitingExecution/hasMatchingFlow também são usados pelo aiAttendant.js
-module.exports = { handleIncomingMessage, sweepTimeouts, sendText, getWaitingExecution, hasMatchingFlow }
+module.exports = { handleIncomingMessage, sweepTimeouts, sendText, getWaitingExecution, hasMatchingFlow, setIo }
