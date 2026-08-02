@@ -84,17 +84,32 @@ const ContactCard = ({ contact, onDragStart, onClick, onDelete }) => {
   )
 }
 
-const MOCK_MSGS = [
-  { sent: false, text: 'Olá! Vi seu anúncio e quero saber mais.', time: '10:23' },
-  { sent: true,  text: 'Oi! Fico feliz em ajudar. O que você deseja saber?', time: '10:25' },
-  { sent: false, text: 'Qual o valor do plano mensal?', time: '10:26' },
-  { sent: true,  text: 'Temos planos a partir de R$ 97/mês com 7 dias grátis!', time: '10:28' },
-  { sent: false, text: 'Interessante! Pode me enviar mais detalhes por email?', time: '10:30' },
-]
-
 const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, userId }) => {
   const st = STAGES.find(s => s.id === contact.stage)
   const navigate = useNavigate()
+  const [msgs, setMsgs] = useState(null)
+
+  useEffect(() => {
+    if (!userId || !contact.phone) { setMsgs([]); return }
+    const phone = String(contact.phone).replace(/\D/g, '').slice(-10)
+    ;(async () => {
+      const { data: convs } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('user_id', userId)
+        .ilike('contact_phone', `%${phone}%`)
+        .limit(1)
+      if (!convs?.length) { setMsgs([]); return }
+      const { data: rows } = await supabase
+        .from('messages')
+        .select('id, body, text, from_me, created_at, timestamp')
+        .eq('conversation_id', convs[0].id)
+        .order('created_at', { ascending: true })
+        .limit(50)
+      setMsgs(rows || [])
+    })()
+  }, [userId, contact.phone])
+
   return (
     <div style={{ width: 320, flexShrink: 0, borderLeft: `1px solid ${C.bd}`, background: C.card, display: 'flex', flexDirection: 'column', fontFamily: 'DM Sans,sans-serif', overflow: 'hidden' }}>
       <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.bd}`, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -127,14 +142,24 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, u
         </div>
         <p style={{ fontSize: 12, fontWeight: 700, color: C.tx, marginBottom: 8 }}>Histórico de conversas</p>
         <div style={{ background: C.bg, borderRadius: 8, padding: 10, marginBottom: 14, maxHeight: 200, overflowY: 'auto' }}>
-          {MOCK_MSGS.map((m, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: m.sent ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
-              <div style={{ maxWidth: '80%', background: m.sent ? st.color : C.bd, color: m.sent ? '#fff' : C.tx, borderRadius: 8, padding: '5px 10px', fontSize: 12 }}>
-                <p style={{ margin: 0 }}>{m.text}</p>
-                <p style={{ margin: 0, fontSize: 10, opacity: .6, textAlign: 'right' }}>{m.time}</p>
+          {msgs === null && (
+            <p style={{ fontSize: 12, color: C.mut, textAlign: 'center', margin: '8px 0' }}>Carregando…</p>
+          )}
+          {msgs?.length === 0 && (
+            <p style={{ fontSize: 12, color: C.mut, textAlign: 'center', margin: '8px 0' }}>Nenhuma mensagem encontrada</p>
+          )}
+          {msgs?.map((m, i) => {
+            const d = m.created_at ? new Date(m.created_at) : m.timestamp ? new Date(m.timestamp * 1000) : null
+            const time = d ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''
+            return (
+              <div key={m.id || i} style={{ display: 'flex', justifyContent: m.from_me ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+                <div style={{ maxWidth: '80%', background: m.from_me ? st.color : C.bd, color: m.from_me ? '#fff' : C.tx, borderRadius: 8, padding: '5px 10px', fontSize: 12 }}>
+                  <p style={{ margin: 0 }}>{m.body || m.text || ''}</p>
+                  {time && <p style={{ margin: 0, fontSize: 10, opacity: .6, textAlign: 'right' }}>{time}</p>}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
         <NotesPanel contactId={contact.id} userId={userId} />
         <button onClick={() => navigate('/chat')} style={{ ...S.btn('#7C3AED'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, marginTop: 14 }}>Abrir conversa</button>
