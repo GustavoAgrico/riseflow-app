@@ -5,7 +5,6 @@ import { exportCSV } from '@utils/exportUtils'
 import { logger } from '@services/activityLogger'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
-import { CampaignService } from '@services/campaignService'
 import { api } from '@services/api'
 
 const STATUS = {
@@ -347,7 +346,6 @@ const DEMO_CAMPAIGNS = [
 export function Campaigns() {
   const navigate = useNavigate()
   const { user, isDemoMode } = useAuth()
-  const service = useMemo(() => new CampaignService(supabase), [])
 
   const [campaigns, setCampaigns] = useState([])
   const [contacts, setContacts] = useState([])
@@ -414,12 +412,13 @@ export function Campaigns() {
     }
 
     logger.log(user.id, 'campaign_sent', { category: 'messages', description: 'Campanha criada: ' + camp.name })
-    if (form.schedule !== 'later') await service.sendCampaign(camp.id)
+    // Disparo imediato: pede ao servidor para iniciar (não depende do browser ficar aberto)
+    if (form.schedule !== 'later') await api.post(`/campaigns/${camp.id}/send`).catch(() => {})
     await load()
   }
 
-  const sendNow  = async (c) => { setBusyId(c.id); try { await service.sendCampaign(c.id); await load() } finally { setBusyId(null) } }
-  const pause    = async (c) => { setBusyId(c.id); try { await service.pauseCampaign(c.id); await load() } finally { setBusyId(null) } }
+  const sendNow  = async (c) => { setBusyId(c.id); try { await api.post(`/campaigns/${c.id}/send`); await load() } finally { setBusyId(null) } }
+  const pause    = async (c) => { setBusyId(c.id); try { await api.post(`/campaigns/${c.id}/pause`); await load() } finally { setBusyId(null) } }
   const remove   = async (c) => { if (!window.confirm(`Excluir a campanha "${c.name}"?`)) return; await supabase.from('campaigns').delete().eq('id', c.id); await load() }
   const duplicate = async (c) => {
     const { data: copy } = await supabase.from('campaigns').insert({

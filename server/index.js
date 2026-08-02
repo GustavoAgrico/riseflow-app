@@ -26,6 +26,7 @@ const telegram = require('./telegramClient')
 const metaClient = require('./metaClient')
 const { handleIncomingMessage, setIo: setFlowEngineIo } = require('./flowEngine')
 const { aiRespond } = require('./aiAttendant')
+const campaignEngine = require('./campaignEngine')
 
 const {
   PORT = 3333,
@@ -190,6 +191,24 @@ const incomingHandler = ({ jid, text, pushName, fromMe }) =>
 telegram.init({ socketIo: io, incomingHandler })
 metaClient.init({ socketIo: io, incomingHandler })
 
+// Rotas de campanhas (pause server-side)
+app.post('/api/campaigns/:id/pause', auth, async (req, res) => {
+  try {
+    await campaignEngine.pauseCampaign(req.params.id)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/campaigns/:id/send', auth, async (req, res) => {
+  try {
+    if (!isConfigured) return res.status(503).json({ error: 'Supabase não configurado' })
+    const { data: camp } = await supabase.from('campaigns').select('*').eq('id', req.params.id).eq('user_id', req.user.sub).single()
+    if (!camp) return res.status(404).json({ error: 'Campanha não encontrada' })
+    campaignEngine.runCampaign(camp).catch(() => {})
+    res.json({ ok: true, message: 'Campanha iniciada no servidor' })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // Rotas protegidas — auth valida o JWT; dados já são isolados por req.user.sub.
 app.use('/api/chats', auth, chatsRoutes)
 app.use('/api/messages', auth, messagesRoutes)
@@ -232,4 +251,6 @@ server.listen(PORT, () => {
   // Religa os canais já conectados (integrations).
   telegram.resumeBots()
   metaClient.resumePages()
+  // Inicia motor de campanhas: retoma envios interrompidos e verifica agendamentos.
+  campaignEngine.start()
 })
