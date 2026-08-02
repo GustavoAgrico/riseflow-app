@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { Calendar, Repeat, Pencil, Ban, Copy, X, Loader2, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
-import { sendMessage as evoSend } from '@/services/evolutionApi'
-import { usageService } from '@/services/usageService'
 import { logger } from '@services/activityLogger'
 
 const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#64748B', pur:'#7C3AED' }
@@ -92,47 +90,6 @@ export const Schedules = () => {
 
   // ── Despachante client-side ──────────────────────────────────────────────
   // Sem cron no servidor: enquanto a aba estiver aberta, verifica a cada 30s os
-  // agendamentos vencidos e dispara pela Evolution. Recorrentes reagendam sozinhos.
-  const dispatchDue = useCallback(async () => {
-    if (!user || isDemoMode) return
-    const { data } = await supabase.from('schedules').select('*').eq('user_id', user.id).eq('status', 'agendado')
-    const now = new Date()
-    const due = (data ?? []).map(mapRow).filter(s => {
-      const dt = new Date(`${s.date}T${s.time || '00:00'}`)
-      if (isNaN(dt) || dt > now) return false
-      if (s.business) { const h = now.getHours(); if (h < 8 || h >= 18) return false }
-      return true
-    })
-    if (!due.length) return
-    let changed = false
-    for (const s of due) {
-      try {
-        if (user?.id && !(await usageService.canSend(user.id))) continue
-        const ctx = contacts.find(c => onlyDigits(c.phone) === onlyDigits(s.phone)) ?? {}
-        await evoSend(onlyDigits(s.phone), substitute(s.msg, { name: s.name, phone: s.phone, company: ctx.company }))
-        try { await usageService.increment(user.id) } catch {}
-        if (s.type === 'recorrente') {
-          const nd = nextDate(s.date, s.freq)
-          if (s.end && nd > s.end) await supabase.from('schedules').update({ status: 'enviado', last_sent_at: now.toISOString() }).eq('id', s.id)
-          else await supabase.from('schedules').update({ send_date: nd, last_sent_at: now.toISOString() }).eq('id', s.id)
-        } else {
-          await supabase.from('schedules').update({ status: 'enviado', last_sent_at: now.toISOString() }).eq('id', s.id)
-        }
-        logger.log(user.id, 'schedule_sent', { category: 'messages', description: 'Agendamento enviado: ' + (s.name || s.phone) })
-      } catch {
-        await supabase.from('schedules').update({ status: 'falhou' }).eq('id', s.id)
-      }
-      changed = true
-    }
-    if (changed) await load()
-  }, [user, isDemoMode, contacts, load])
-
-  useEffect(() => {
-    if (isDemoMode || !user) return
-    dispatchDue()
-    const iv = setInterval(dispatchDue, 30000)
-    return () => clearInterval(iv)
-  }, [user, isDemoMode, dispatchDue])
 
   // ── Ações ────────────────────────────────────────────────────────────────
   const guardDemo = () => { if (isDemoMode) { window.alert('Modo demo: crie uma conta para agendar mensagens reais.'); return true } return false }

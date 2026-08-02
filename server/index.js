@@ -27,6 +27,7 @@ const metaClient = require('./metaClient')
 const { handleIncomingMessage, setIo: setFlowEngineIo } = require('./flowEngine')
 const { aiRespond } = require('./aiAttendant')
 const campaignEngine = require('./campaignEngine')
+const scheduleEngine = require('./scheduleEngine')
 
 const {
   PORT = 3333,
@@ -253,4 +254,5 @@ server.listen(PORT, () => {
   metaClient.resumePages()
   // Inicia motor de campanhas: retoma envios interrompidos e verifica agendamentos.
   campaignEngine.start()
+  scheduleEngine.start()
 })
