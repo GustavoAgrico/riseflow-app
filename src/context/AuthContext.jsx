@@ -10,31 +10,49 @@ const DEMO_USER = {
   user_metadata: { full_name: 'Usuário Demo' },
 }
 
+async function resolveMember(user) {
+  if (!user?.email) return null
+  try {
+    const { data } = await supabase
+      .from('team_members')
+      .select('id, user_id, name, email, role')
+      .eq('email', user.email)
+      .neq('user_id', user.id)
+      .maybeSingle()
+    return data ?? null
+  } catch {
+    return null
+  }
+}
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const [isDemoMode, setIsDemoMode] = useState(false)
+  const [member, setMember] = useState(null)
   // Ref lets the onAuthStateChange closure see the live value without re-subscribing
   const isDemoRef = useRef(false)
 
   useEffect(() => {
     let mounted = true
 
-    supabase.auth.getSession().then((result) => {
+    supabase.auth.getSession().then(async (result) => {
       if (!mounted || isDemoRef.current) return
       const s = result?.data?.session ?? null
       setSession(s)
       setUser(s?.user ?? null)
+      setMember(await resolveMember(s?.user ?? null))
       setLoading(false)
     }).catch(() => {
       if (mounted && !isDemoRef.current) setLoading(false)
     })
 
-    const { data } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data } = supabase.auth.onAuthStateChange(async (_event, s) => {
       if (!mounted || isDemoRef.current) return
       setSession(s ?? null)
       setUser(s?.user ?? null)
+      setMember(await resolveMember(s?.user ?? null))
       setLoading(false)
     })
 
@@ -91,6 +109,7 @@ export const AuthProvider = ({ children }) => {
       setIsDemoMode(false)
       setUser(null)
       setSession(null)
+      setMember(null)
       localStorage.clear()
       sessionStorage.clear()
       return
@@ -100,11 +119,15 @@ export const AuthProvider = ({ children }) => {
     sessionStorage.clear()
     setUser(null)
     setSession(null)
+    setMember(null)
   }
 
   return (
     <AuthContext.Provider value={{
       user, session, loading, isDemoMode,
+      isMember: !!member,
+      memberRecord: member,
+      ownerUserId: member ? member.user_id : (user?.id ?? null),
       signUp, signIn, signOut, signInWithGoogle, resetPassword, loginDemo,
     }}>
       {children}

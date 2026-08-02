@@ -17,8 +17,10 @@ const getInitials = (name = '') =>
 
 export const Sidebar = ({ mobile = false, drawerOpen = false, onNavigate }) => {
   const { sidebarOpen, setSidebarOpen } = useApp()
-  const { user, isDemoMode } = useAuth()
+  const { user, isDemoMode, isMember } = useAuth()
   const location = useLocation()
+
+  const MEMBER_PATHS = new Set(['/chat', '/clients'])
   // No mobile a sidebar vira um drawer sempre expandido (controlado por drawerOpen)
   const expanded = mobile || sidebarOpen
 
@@ -66,7 +68,7 @@ export const Sidebar = ({ mobile = false, drawerOpen = false, onNavigate }) => {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto no-scrollbar">
-        {NAV_ITEMS.map(item => {
+        {NAV_ITEMS.filter(item => !isMember || MEMBER_PATHS.has(item.path)).map(item => {
           const Icon = ICONS[item.icon]
           const isActive = location.pathname === item.path
           return (

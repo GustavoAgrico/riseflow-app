@@ -14,6 +14,7 @@ import { leadQualification } from '@services/leadQualificationService'
 import { generateReply } from '@services/attendanceAI'
 import { socket } from '@services/socket'
 import { sanitizeMessage } from '@utils/sanitize'
+import { useAuth } from '@context/AuthContext'
 
 const C = { bg: '#0F172A', panel: '#1E293B', border: '#334155', text: '#F8FAFC',
   muted: '#94A3B8', dim: '#64748B', purple: '#7C3AED', green: '#22C55E', blue: '#53BDEB' }
@@ -60,6 +61,7 @@ const Audio = ({ src, out, dur }) => {
 export const Chat = () => {
   const nav = useNavigate()
   const location = useLocation()
+  const { isMember, memberRecord, ownerUserId, loading: authLoading } = useAuth()
   const [conversations, setConversations] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [messages, setMessages] = useState({})
@@ -165,7 +167,8 @@ export const Chat = () => {
   const mapMsg = m => ({ id: m.id, dir: m.direction === 'outbound' ? 'out' : 'in', type: 'text', text: m.content ?? m.text ?? m.body ?? '', t: m.created_at ? new Date(m.created_at).getTime() : Date.now(), s: m.status || 'delivered' })
 
   const loadConvs = async (uid) => {
-    const convs = (await fetchConversations(uid)).map(mapConv)
+    const filter = isMember && memberRecord ? { assignedTo: memberRecord.name } : {}
+    const convs = (await fetchConversations(uid, filter)).map(mapConv)
     setConversations(convs)
 
     // Processa contato pré-selecionado vindo do CRM (navigate state)
@@ -192,20 +195,21 @@ export const Chat = () => {
     return convs
   }
 
-  /* PASSO 1: usuário autenticado. Se vier com contato do CRM, carrega conversas de imediato. */
+  /* PASSO 1: aguarda AuthContext resolver ownerUserId (dono ou membro de equipe). */
   useEffect(() => {
-    (async () => {
+    if (authLoading) return
+    if (!ownerUserId) { setLoading(false); return }
+    let cancelled = false
+    ;(async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setLoading(false); return }
-        userRef.current = user.id; setUserId(user.id)
-        try { setUsage(await usageService.getUsage(user.id)) } catch (e) { console.warn('[Usage] indisponível:', e?.message ?? e) }
-        // Se chegou com contato pré-selecionado (vindo do CRM), carrega conversas automaticamente
-        if (pendingContactRef.current) await loadConvs(user.id)
-      } catch (e) { console.warn('[Chat] erro ao autenticar:', e?.message ?? e) }
-      setLoading(false)
+        userRef.current = ownerUserId; setUserId(ownerUserId)
+        try { setUsage(await usageService.getUsage(ownerUserId)) } catch (e) { console.warn('[Usage] indisponível:', e?.message ?? e) }
+        if (pendingContactRef.current) await loadConvs(ownerUserId)
+      } catch (e) { console.warn('[Chat] erro ao inicializar:', e?.message ?? e) }
+      if (!cancelled) setLoading(false)
     })()
-  }, [])
+    return () => { cancelled = true }
+  }, [authLoading, ownerUserId])
 
   /* Sincroniza conversas reais do WhatsApp (Evolution API) e recarrega a lista.
      Exige que o WhatsApp (ou outro canal) esteja conectado — caso contrário orienta
@@ -602,7 +606,9 @@ export const Chat = () => {
         <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, position: 'relative' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <button onClick={() => nav('/dashboard')} title="Voltar" style={iBtn}><ArrowLeft size={20} /></button>
-            <span style={{ fontSize: 18, fontWeight: 800, color: C.text }}>Conversas</span>
+            <span style={{ fontSize: 18, fontWeight: 800, color: C.text }}>
+              {isMember ? `Meu Atendimento` : 'Conversas'}
+            </span>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
               <div style={{ position: 'relative' }}>
                 <button onClick={() => { setShowNotifs(v => !v); setNotifications(prev => prev.map(n => ({ ...n, read: true }))) }}
@@ -644,15 +650,15 @@ export const Chat = () => {
           )}
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar conversa"
             style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', color: C.text, fontSize: 13, outline: 'none', fontFamily: F, boxSizing: 'border-box' }} />
-          <button onClick={doSync} disabled={syncing} title="Sincronizar conversas do WhatsApp"
+          {!isMember && <button onClick={doSync} disabled={syncing} title="Sincronizar conversas do WhatsApp"
             style={{ width: '100%', boxSizing: 'border-box', marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               background: syncing ? C.border : 'linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)', border: 'none', borderRadius: 10, padding: '11px 14px',
               color: '#fff', fontSize: 13, fontWeight: 700, fontFamily: F, cursor: syncing ? 'default' : 'pointer',
               boxShadow: syncing ? 'none' : '0 4px 14px rgba(124,58,237,.35)', transition: 'opacity .15s, box-shadow .15s' }}>
             <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
             {syncing ? 'Sincronizando...' : 'Sincronizar conversas'}
-          </button>
-          {(syncing || syncMsg) && <p style={{ margin: '8px 0 0', fontSize: 11, color: C.muted, textAlign: 'center' }}>{syncMsg}</p>}
+          </button>}
+          {!isMember && (syncing || syncMsg) && <p style={{ margin: '8px 0 0', fontSize: 11, color: C.muted, textAlign: 'center' }}>{syncMsg}</p>}
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {loading ? (

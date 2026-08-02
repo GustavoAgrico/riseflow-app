@@ -125,8 +125,27 @@ app.post('/api/auth/login', async (req, res) => {
       if (error || !data?.user) {
         return res.status(401).json({ error: 'Sessão do Supabase inválida ou expirada.' })
       }
+
+      // Verifica se o usuário é membro de equipe (não o dono da conta).
+      // Se for, o JWT carrega sub = user_id do dono para que todas as rotas
+      // continuem funcionando com o mesmo escopo de dados.
+      let sub = data.user.id
+      let extraClaims = {}
+      if (isConfigured) {
+        const { data: memberRow } = await supabase
+          .from('team_members')
+          .select('id, user_id')
+          .eq('email', data.user.email)
+          .neq('user_id', data.user.id)
+          .maybeSingle()
+        if (memberRow) {
+          sub = memberRow.user_id
+          extraClaims = { member_id: memberRow.id, member_email: data.user.email }
+        }
+      }
+
       const proxyToken = jwt.sign(
-        { sub: data.user.id, email: data.user.email },
+        { sub, email: data.user.email, ...extraClaims },
         JWT_SECRET,
         { expiresIn: '7d' }
       )

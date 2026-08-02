@@ -47,12 +47,10 @@ const blobToBase64 = (blob) => new Promise((resolve, reject) => {
 
 /* ─── Supabase CRUD ───────────────────────────────────────────────────── */
 
-export const fetchConversations = async (userId) => {
-  const { data, error } = await supabase
-    .from('conversations')
-    .select('*')
-    .eq('user_id', userId)
-    .order('last_message_at', { ascending: false })
+export const fetchConversations = async (userId, { assignedTo } = {}) => {
+  let q = supabase.from('conversations').select('*').eq('user_id', userId)
+  if (assignedTo) q = q.eq('assigned_to', assignedTo)
+  const { data, error } = await q.order('last_message_at', { ascending: false })
   if (error) throw error
   return data ?? []
 }
