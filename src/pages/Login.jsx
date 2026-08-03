@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, Navigate } from 'react-router-dom'
 import { Zap, Bot, BarChart3, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '@context/AuthContext'
 
@@ -43,8 +43,10 @@ export const Login = () => {
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState('')
-  const { signIn, signInWithGoogle, loginDemo } = useAuth()
+  const { signIn, signInWithGoogle, loginDemo, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+
+  if (!authLoading && user) return <Navigate to="/" replace />
 
   const handleDemo = () => { loginDemo(); navigate('/') }
 

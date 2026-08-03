@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, Navigate } from 'react-router-dom'
 import { Zap, Bot, BarChart3, User, Mail, Lock, Eye, EyeOff, Check, CheckCircle2 } from 'lucide-react'
 import { useAuth } from '@context/AuthContext'
 
@@ -47,8 +47,10 @@ export const Register = () => {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
-  const { signUp, signInWithGoogle } = useAuth()
+  const { signUp, signInWithGoogle, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+
+  if (!authLoading && user) return <Navigate to="/" replace />
 
   const validate = () => {
     if (!fullName.trim() || fullName.trim().length < 2) return 'Nome deve ter no mínimo 2 caracteres'
