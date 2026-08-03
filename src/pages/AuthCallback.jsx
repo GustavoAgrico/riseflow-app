@@ -1,43 +1,41 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { useAuth } from '@context/AuthContext'
 
 export const AuthCallback = () => {
   const navigate = useNavigate()
-  const [error, setError] = useState(null)
+  const { user, loading } = useAuth()
+  const timedOut = useRef(false)
 
+  // Check for OAuth error params immediately (before Supabase processes anything)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const code = params.get('code')
     const errorParam = params.get('error')
     const errorDesc = params.get('error_description')
-
     if (errorParam || errorDesc) {
       const msg = errorDesc || errorParam || 'Erro ao autenticar com Google'
       navigate(`/login?oauth_error=${encodeURIComponent(msg)}`, { replace: true })
-      return
     }
-
-    if (code) {
-      supabase.auth.exchangeCodeForSession(code)
-        .then(({ error: exchErr }) => {
-          if (exchErr) {
-            navigate(`/login?oauth_error=${encodeURIComponent(exchErr.message)}`, { replace: true })
-          } else {
-            navigate('/', { replace: true })
-          }
-        })
-        .catch((e) => {
-          navigate(`/login?oauth_error=${encodeURIComponent(e?.message || 'Falha na troca do código')}`, { replace: true })
-        })
-      return
-    }
-
-    // No code or error — redirect to login
-    navigate('/login', { replace: true })
   }, [navigate])
 
-  if (error) return null
+  // Once auth resolves (loading=false), redirect based on result
+  useEffect(() => {
+    if (loading) return
+    if (user) {
+      navigate('/', { replace: true })
+    } else if (!timedOut.current) {
+      navigate('/login?oauth_error=N%C3%A3o%20foi%20poss%C3%ADvel%20autenticar.%20Tente%20novamente.', { replace: true })
+    }
+  }, [loading, user, navigate])
+
+  // Safety timeout: if loading never resolves in 30s, give up
+  useEffect(() => {
+    const id = setTimeout(() => {
+      timedOut.current = true
+      navigate('/login?oauth_error=Tempo%20esgotado.%20Tente%20novamente.', { replace: true })
+    }, 30000)
+    return () => clearTimeout(id)
+  }, [navigate])
 
   return (
     <div style={{
@@ -51,7 +49,7 @@ export const AuthCallback = () => {
           animation: 'spin 0.8s linear infinite', margin: '0 auto 16px',
         }} />
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-        <p style={{ fontSize: 14 }}>Autenticando...</p>
+        <p style={{ fontSize: 14 }}>Autenticando com Google...</p>
       </div>
     </div>
   )
