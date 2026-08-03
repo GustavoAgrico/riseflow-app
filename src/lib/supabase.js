@@ -9,5 +9,12 @@ if (!url || !url.startsWith('https://')) {
 
 export const supabase = createClient(
   url ?? 'https://placeholder.supabase.co',
-  key ?? 'placeholder'
+  key ?? 'placeholder',
+  {
+    auth: {
+      flowType: 'pkce',
+      detectSessionInUrl: true,
+      persistSession: true,
+    },
+  }
 )
