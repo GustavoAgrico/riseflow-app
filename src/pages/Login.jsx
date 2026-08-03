@@ -46,6 +46,15 @@ export const Login = () => {
   const { signIn, signInWithGoogle, loginDemo, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
 
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const oauthError = params.get('oauth_error')
+    if (oauthError) {
+      setError(oauthError)
+      window.history.replaceState({}, '', '/login')
+    }
+  }, [])
+
   if (!authLoading && user) return <Navigate to="/" replace />
 
   const handleDemo = () => { loginDemo(); navigate('/') }

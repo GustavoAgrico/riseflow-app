@@ -30,6 +30,7 @@ import { Plans } from '@pages/Plans'
 import { PlanDetails } from '@pages/PlanDetails'
 import { ActivityLogs } from '@pages/ActivityLogs'
 import { PageTransition } from '@components/PageTransition'
+import { AuthCallback } from '@pages/AuthCallback'
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -116,6 +117,7 @@ function App() {
               <Route path="/register" element={<Register />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
 
               {/* Root: redireciona conforme estado de login */}
               <Route path="/" element={<RootRedirect />} />

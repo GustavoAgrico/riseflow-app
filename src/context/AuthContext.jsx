@@ -40,7 +40,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     let mounted = true
 
-    const sessionTimeout = new Promise(res => setTimeout(() => res(null), 8000))
+    const sessionTimeout = new Promise(res => setTimeout(() => res(null), 30000))
     Promise.race([supabase.auth.getSession(), sessionTimeout]).then(async (result) => {
       if (!mounted || isDemoRef.current) return
       const s = result?.data?.session ?? null
@@ -86,7 +86,7 @@ export const AuthProvider = ({ children }) => {
   const signInWithGoogle = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
     })
     if (error) throw error
   }
