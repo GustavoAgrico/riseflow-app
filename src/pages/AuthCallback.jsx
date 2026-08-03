@@ -8,6 +8,8 @@ export const AuthCallback = () => {
   const { user, loading } = useAuth()
   const timedOut = useRef(false)
   const handled = useRef(false)
+  // Prevents error-redirect while setSession is still resolving
+  const isHandlingImplicit = useRef(false)
 
   useEffect(() => {
     if (handled.current) return
@@ -16,7 +18,6 @@ export const AuthCallback = () => {
     const search = new URLSearchParams(window.location.search)
     const hash = new URLSearchParams(window.location.hash.slice(1))
 
-    // OAuth error from Supabase/Google
     const errorParam = search.get('error') || hash.get('error')
     const errorDesc = search.get('error_description') || hash.get('error_description')
     if (errorParam || errorDesc) {
@@ -25,41 +26,48 @@ export const AuthCallback = () => {
       return
     }
 
-    // Implicit flow: Supabase returned #access_token=... in the hash
-    // Set the session manually to avoid the _getUser fetch bug
+    // Implicit flow: #access_token=... in hash
     const accessToken = hash.get('access_token')
     const refreshToken = hash.get('refresh_token')
     if (accessToken && refreshToken) {
+      // Block the error-navigation below until this resolves
+      isHandlingImplicit.current = true
+      // Clear tokens from URL immediately
+      window.history.replaceState({}, '', window.location.pathname)
+
       supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
         .then(({ error: sessErr }) => {
           if (sessErr) {
+            isHandlingImplicit.current = false
             navigate(`/login?oauth_error=${encodeURIComponent(sessErr.message)}`, { replace: true })
           }
-          // onAuthStateChange fires → user gets set → loading=false effect handles redirect
+          // Success: onAuthStateChange fires → AuthContext sets user → loading/user effect redirects
         })
         .catch((e) => {
+          isHandlingImplicit.current = false
           navigate(`/login?oauth_error=${encodeURIComponent(e?.message || 'Falha ao criar sessão')}`, { replace: true })
         })
-      // Clear the hash from the URL so the tokens don't stay visible
-      window.history.replaceState({}, '', window.location.pathname)
       return
     }
 
-    // PKCE flow: Supabase returned ?code=... — handled automatically by getSession()
-    // Just wait for AuthContext to resolve (loading=false effect below)
+    // PKCE flow: ?code=... is handled automatically by supabase _initialize()
+    // Just wait for AuthContext (loading=false + user set)
   }, [navigate])
 
-  // Once auth resolves, redirect based on result
+  // Redirect once auth resolves — but never on error if implicit flow is still in progress
   useEffect(() => {
     if (loading) return
     if (user) {
       navigate('/', { replace: true })
-    } else if (!timedOut.current) {
+      return
+    }
+    if (isHandlingImplicit.current) return   // setSession still running, wait
+    if (!timedOut.current) {
       navigate('/login?oauth_error=N%C3%A3o%20foi%20poss%C3%ADvel%20autenticar.%20Tente%20novamente.', { replace: true })
     }
   }, [loading, user, navigate])
 
-  // Safety timeout
+  // Safety timeout (30 s)
   useEffect(() => {
     const id = setTimeout(() => {
       timedOut.current = true
