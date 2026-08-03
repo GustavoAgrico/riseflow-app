@@ -14,7 +14,6 @@ const axios = require('axios')
 const { supabase, isConfigured } = require('./supabaseClient')
 const { saveIncomingMessage } = require('./inbox')
 const metaLeads = require('./metaLeads')
-const metaLeads = require('./metaLeads')
 
 const GRAPH = 'https://graph.facebook.com/v21.0'
 const WINDOW_24H_MS = 24 * 60 * 60 * 1000
@@ -131,14 +130,6 @@ async function subscribePage(pageId, token) {
   try {
     await sub('messages,messaging_postbacks,leadgen')
   } catch (e) {
-    console.warn('[meta] assinatura com leadgen falhou; assinando so mensagens:',
-      e.response?.data?.error?.message ?? e.message)
-    await sub('messages,messaging_postbacks')
-  }
-}
-  try {
-    await sub('messages,messaging_postbacks,leadgen')
-  } catch (e) {
     console.warn('[meta] assinatura com leadgen falhou; assinando só mensagens:',
       e.response?.data?.error?.message ?? e.message)
     await sub('messages,messaging_postbacks')
@@ -154,32 +145,12 @@ async function handleWebhookEvent(body) {
   const domain = channel === 'instagram' ? 'instagram' : 'messenger'
 
   for (const entry of body.entry || []) {
-<<<<<<< ours
     let page = pages.get(String(entry.id))
     // Instagram webhooks arrive with the IG Account ID in entry.id, but we may
     // have registered the page under the Facebook Page ID — fall back to the
     // first connected Instagram page so messages are not silently dropped.
     if (!page && channel === 'instagram') {
       page = [...pages.values()].find((p) => p.channel === 'instagram') ?? null
-    }
-=======
-    const page = pages.get(String(entry.id))
-    
-    // Lead Ads (formulario do trafego pago) chegam em entry.changes[] com
-    // field='leadgen'. Busca os dados e salva no CRM (fire-and-forget).
-    for (const change of entry.changes || []) {
-      if (change.field !== 'leadgen') continue
-      const v = change.value || {}
-      if (page?.userId && page?.token) {
-        metaLeads.ingestLead({
-          leadgenId: v.leadgen_id,
-          pageToken: page.token,
-          userId: page.userId,
-          adId: v.ad_id,
-          formId: v.form_id,
-          createdTime: v.created_time,
-        }).catch((e) => console.error('[meta-leads] ingest:', e?.message ?? e))
-      }
     }
 
     // Lead Ads (formulário do tráfego pago) chegam em entry.changes[] com
@@ -200,8 +171,6 @@ async function handleWebhookEvent(body) {
         console.warn('[meta-leads] leadgen recebido de página não registrada:', entry.id)
       }
     }
-
->>>>>>> theirs
     for (const ev of entry.messaging || []) {
       const msg = ev.message
       if (!msg || msg.is_echo) continue // ecos são as nossas próprias mensagens
