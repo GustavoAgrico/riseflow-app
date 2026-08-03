@@ -1,24 +1,55 @@
 import React, { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
+import { supabase } from '@/lib/supabase'
 
 export const AuthCallback = () => {
   const navigate = useNavigate()
   const { user, loading } = useAuth()
   const timedOut = useRef(false)
+  const handled = useRef(false)
 
-  // Check for OAuth error params immediately (before Supabase processes anything)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const errorParam = params.get('error')
-    const errorDesc = params.get('error_description')
+    if (handled.current) return
+    handled.current = true
+
+    const search = new URLSearchParams(window.location.search)
+    const hash = new URLSearchParams(window.location.hash.slice(1))
+
+    // OAuth error from Supabase/Google
+    const errorParam = search.get('error') || hash.get('error')
+    const errorDesc = search.get('error_description') || hash.get('error_description')
     if (errorParam || errorDesc) {
       const msg = errorDesc || errorParam || 'Erro ao autenticar com Google'
       navigate(`/login?oauth_error=${encodeURIComponent(msg)}`, { replace: true })
+      return
     }
+
+    // Implicit flow: Supabase returned #access_token=... in the hash
+    // Set the session manually to avoid the _getUser fetch bug
+    const accessToken = hash.get('access_token')
+    const refreshToken = hash.get('refresh_token')
+    if (accessToken && refreshToken) {
+      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .then(({ error: sessErr }) => {
+          if (sessErr) {
+            navigate(`/login?oauth_error=${encodeURIComponent(sessErr.message)}`, { replace: true })
+          }
+          // onAuthStateChange fires → user gets set → loading=false effect handles redirect
+        })
+        .catch((e) => {
+          navigate(`/login?oauth_error=${encodeURIComponent(e?.message || 'Falha ao criar sessão')}`, { replace: true })
+        })
+      // Clear the hash from the URL so the tokens don't stay visible
+      window.history.replaceState({}, '', window.location.pathname)
+      return
+    }
+
+    // PKCE flow: Supabase returned ?code=... — handled automatically by getSession()
+    // Just wait for AuthContext to resolve (loading=false effect below)
   }, [navigate])
 
-  // Once auth resolves (loading=false), redirect based on result
+  // Once auth resolves, redirect based on result
   useEffect(() => {
     if (loading) return
     if (user) {
@@ -28,7 +59,7 @@ export const AuthCallback = () => {
     }
   }, [loading, user, navigate])
 
-  // Safety timeout: if loading never resolves in 30s, give up
+  // Safety timeout
   useEffect(() => {
     const id = setTimeout(() => {
       timedOut.current = true
