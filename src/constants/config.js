@@ -51,16 +51,6 @@ export const MOCK_FLOWS = [
   { id: 4, name: 'Pós-venda Satisfação', channel: 'whatsapp', status: 'active', triggers: 2891, conversions: 2341, rate: 81.0 },
 ]
 
-export const CHART_DATA = [
-  { day: 'Seg', messages: 240, conversions: 87 },
-  { day: 'Ter', messages: 380, conversions: 145 },
-  { day: 'Qua', messages: 290, conversions: 112 },
-  { day: 'Qui', messages: 520, conversions: 198 },
-  { day: 'Sex', messages: 680, conversions: 267 },
-  { day: 'Sáb', messages: 410, conversions: 183 },
-  { day: 'Dom', messages: 190, conversions: 74 },
-]
-
 export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/dashboard' },
   { id: 'chat', label: 'Chat', icon: 'MessageSquare', path: '/chat' },

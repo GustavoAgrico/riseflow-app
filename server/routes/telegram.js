@@ -57,7 +57,7 @@ router.post('/disconnect', async (req, res) => {
 
 // GET /api/telegram/status — estado do bot em memória (userId do JWT).
 router.get('/status', (req, res) => {
-  const userId = req.user?.sub || req.query.userId
+  const userId = req.user?.sub || (process.env.NODE_ENV !== 'production' ? req.query.userId : null)
   res.json(telegram.getStatus(userId))
 })
 

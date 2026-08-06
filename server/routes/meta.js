@@ -125,7 +125,7 @@ router.get('/oauth/url', (req, res) => {
   if (!META_APP_ID || !META_APP_SECRET) {
     return res.status(503).json({ error: 'META_APP_ID/META_APP_SECRET não configurados no server/.env — use o token manual.' })
   }
-  const userId = req.user?.sub || req.query.userId || ''
+  const userId = req.user?.sub || (process.env.NODE_ENV !== 'production' ? req.query.userId : null) || ''
   // Armazena a origin do app no state para o callback usar no postMessage (evita wildcard '*')
   const origin = req.headers.origin || (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',')[0].trim()
   const state = jwt.sign({ u: userId, origin }, JWT_SECRET, { expiresIn: '10m' })
@@ -193,7 +193,7 @@ router.post('/disconnect', async (req, res) => {
 
 // GET /api/meta/status?channel=… — userId do JWT
 router.get('/status', (req, res) => {
-  const userId = req.user?.sub || req.query.userId
+  const userId = req.user?.sub || (process.env.NODE_ENV !== 'production' ? req.query.userId : null)
   res.json(meta.getStatus(userId, req.query.channel))
 })
 

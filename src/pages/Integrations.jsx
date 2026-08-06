@@ -94,6 +94,7 @@ export const Integrations = () => {
   const [disconnecting, setDisconnecting] = useState(null) // type being disconnected
   const [confirmDisc, setConfirmDisc] = useState(null)    // type awaiting confirmation
   const [emailTesting, setEmailTesting] = useState(false) // enviando email de teste
+  const [monthlyMessages, setMonthlyMessages] = useState(0) // mensagens no mês corrente (real)
 
   /* ── Load from Supabase ── */
   const loadIntegrations = useCallback(async () => {
@@ -141,13 +142,29 @@ export const Integrations = () => {
     }
   }, [user, isDemoMode])
 
+  /* ── Contagem real de mensagens do mês corrente ── */
+  const fetchMonthlyMessages = useCallback(async () => {
+    if (!user || isDemoMode) return
+    const startOfMonth = new Date()
+    startOfMonth.setDate(1)
+    startOfMonth.setHours(0, 0, 0, 0)
+    const { count } = await supabase
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('created_at', startOfMonth.toISOString())
+    setMonthlyMessages(count ?? 0)
+  }, [user, isDemoMode])
+
   /* ── On mount ── */
   useEffect(() => {
     if (isDemoMode) {
       setIntegrations({ whatsapp: { status: 'connected', config: { number: '+55 11 99774-0712' } } })
+      setMonthlyMessages(12847)
       return
     }
     loadIntegrations().then(checkWhatsApp)
+    fetchMonthlyMessages()
   }, [user, isDemoMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Helpers ── */
@@ -237,7 +254,7 @@ export const Integrations = () => {
         </div>
         <div className="stat-card text-center">
           <p className="text-3xl font-display font-bold text-brand-orange mb-1">
-            {connectedCount > 0 ? (connectedCount * 1000).toLocaleString() : '0'}
+            {monthlyMessages.toLocaleString('pt-BR')}
           </p>
           <p className="text-sm text-slate-400">Mensagens/mês</p>
         </div>
