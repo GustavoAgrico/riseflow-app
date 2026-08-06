@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Layout } from '@components/Layout/Layout'
 import {
   Search, Plus, MessageCircle, Phone, Mail, Tag,
-  Trash2, Users, Loader2, X, ChevronRight, Pencil, Download
+  Trash2, Users, Loader2, X, ChevronRight, Pencil, Download,
+  CheckSquare, Square, FileDown, AlertTriangle
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { api } from '@services/api'
@@ -220,6 +221,9 @@ export const Clients = () => {
   const [deleting, setDeleting] = useState(null)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState(null)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [confirmBulk, setConfirmBulk] = useState(false)
 
   const fetchClients = useCallback(async () => {
     if (isDemoMode) {
@@ -250,8 +254,56 @@ export const Clients = () => {
     await supabase.from('clients').delete().eq('id', clientId)
     logger.log(user?.id, 'contact_deleted', { category: 'contacts', description: 'Contato excluído: ' + (clients.find(c => c.id === clientId)?.name || clientId) })
     setClients(prev => prev.filter(c => c.id !== clientId))
+    setSelectedIds(prev => { const n = new Set(prev); n.delete(clientId); return n })
     if (selected?.id === clientId) setSelected(null)
     setDeleting(null)
+  }
+
+  // ── Seleção múltipla ──────────────────────────────────────────────────────
+  const toggleOne = (id) => setSelectedIds(prev => {
+    const n = new Set(prev)
+    n.has(id) ? n.delete(id) : n.add(id)
+    return n
+  })
+  const clearSelection = () => setSelectedIds(new Set())
+
+  // ── Excluir em massa ──────────────────────────────────────────────────────
+  const handleBulkDelete = async () => {
+    if (isDemoMode || selectedIds.size === 0) return
+    setBulkDeleting(true)
+    const ids = [...selectedIds]
+    const { error } = await supabase.from('clients').delete().in('id', ids).eq('user_id', user.id)
+    if (!error) {
+      logger.log(user?.id, 'contacts_bulk_deleted', { category: 'contacts', description: `${ids.length} contato(s) excluído(s) em massa` })
+      const idSet = new Set(ids)
+      setClients(prev => prev.filter(c => !idSet.has(c.id)))
+      if (selected && idSet.has(selected.id)) setSelected(null)
+      clearSelection()
+    }
+    setBulkDeleting(false)
+    setConfirmBulk(false)
+  }
+
+  // ── Exportar CSV ──────────────────────────────────────────────────────────
+  const exportCsv = (rows) => {
+    if (!rows.length) return
+    const cols = ['name', 'phone', 'email', 'channel', 'tag', 'status', 'created_at']
+    const header = ['Nome', 'Telefone', 'Email', 'Canal', 'Tag', 'Status', 'Criado em']
+    const esc = (v) => {
+      const s = v == null ? '' : String(v)
+      return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+    }
+    const lines = [header.join(','), ...rows.map(r => cols.map(c => esc(r[c])).join(','))]
+    const csv = '﻿' + lines.join('\r\n') // BOM p/ acentos no Excel
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `clientes-riseflow-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   }
 
   const handleImportWhatsApp = async () => {
@@ -291,6 +343,15 @@ export const Clients = () => {
     (c.phone ?? '').includes(search)
   )
 
+  const allFilteredSelected = filtered.length > 0 && filtered.every(c => selectedIds.has(c.id))
+  const toggleAll = () => setSelectedIds(prev => {
+    const n = new Set(prev)
+    if (allFilteredSelected) filtered.forEach(c => n.delete(c.id))
+    else filtered.forEach(c => n.add(c.id))
+    return n
+  })
+  const selectedClients = clients.filter(c => selectedIds.has(c.id))
+
   return (
     <Layout
       title="Clientes CRM"
@@ -303,6 +364,40 @@ export const Clients = () => {
           onClose={() => { setFormOpen(false); setEditTarget(null) }}
           onSaved={() => { setFormOpen(false); setEditTarget(null); fetchClients() }}
         />
+      )}
+
+      {/* Confirmação de exclusão em massa */}
+      {confirmBulk && !isDemoMode && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
+          style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}
+          onClick={e => e.target === e.currentTarget && !bulkDeleting && setConfirmBulk(false)}
+        >
+          <div className="w-full max-w-sm glass rounded-2xl border border-dark-300 shadow-2xl animate-slide-up p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle size={18} className="text-red-400" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-white text-base">Excluir {selectedIds.size} cliente{selectedIds.size !== 1 ? 's' : ''}?</h3>
+                <p className="text-xs text-slate-500">Esta ação não pode ser desfeita.</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmBulk(false)} disabled={bulkDeleting} className="btn-secondary flex-1 justify-center">
+                Cancelar
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="flex-1 justify-center flex items-center gap-1.5 py-2 rounded-xl text-sm font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all disabled:opacity-50"
+              >
+                {bulkDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {bulkDeleting ? 'Excluindo...' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="flex gap-4 h-[calc(100vh-10rem)]">
@@ -319,6 +414,15 @@ export const Clients = () => {
                 className="bg-transparent text-sm text-white placeholder-slate-500 outline-none flex-1"
               />
             </div>
+            <button
+              onClick={() => exportCsv(filtered)}
+              disabled={filtered.length === 0}
+              className={clsx('btn-secondary flex items-center gap-1.5', filtered.length === 0 && 'opacity-50 cursor-not-allowed')}
+              title="Exportar clientes (CSV)"
+            >
+              <FileDown size={14} />
+              Exportar
+            </button>
             <button
               onClick={handleImportWhatsApp}
               disabled={isDemoMode || importing}
@@ -342,9 +446,49 @@ export const Clients = () => {
             )}
           </div>
 
+          {/* Barra de ações em massa */}
+          {selectedIds.size > 0 && !isDemoMode && (
+            <div className="px-4 py-2.5 flex items-center gap-3 bg-brand-orange/10 border-b border-brand-orange/20 animate-fade-in">
+              <span className="text-sm font-semibold text-brand-orange">
+                {selectedIds.size} selecionado{selectedIds.size !== 1 ? 's' : ''}
+              </span>
+              <div className="flex-1" />
+              <button
+                onClick={() => exportCsv(selectedClients)}
+                className="btn-secondary flex items-center gap-1.5 py-1.5 text-xs"
+              >
+                <FileDown size={13} /> Exportar
+              </button>
+              <button
+                onClick={() => setConfirmBulk(true)}
+                className="btn-secondary flex items-center gap-1.5 py-1.5 text-xs text-red-400 border-red-500/30 hover:bg-red-500/10"
+              >
+                <Trash2 size={13} /> Excluir
+              </button>
+              <button
+                onClick={clearSelection}
+                className="p-1.5 rounded-lg hover:bg-dark-500 text-slate-400 hover:text-white transition-colors"
+                title="Limpar seleção"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          )}
+
           {/* Table Header */}
           <div className="px-4 py-2 grid grid-cols-5 text-xs text-slate-500 uppercase tracking-wider border-b border-dark-400">
-            <span className="col-span-2">Cliente</span>
+            <span className="col-span-2 flex items-center gap-3">
+              {!isDemoMode && (
+                <button
+                  onClick={toggleAll}
+                  className="text-slate-400 hover:text-brand-orange transition-colors"
+                  title={allFilteredSelected ? 'Desmarcar todos' : 'Selecionar todos'}
+                >
+                  {allFilteredSelected ? <CheckSquare size={16} className="text-brand-orange" /> : <Square size={16} />}
+                </button>
+              )}
+              Cliente
+            </span>
             <span>Canal</span>
             <span>Status</span>
             <span>Tag</span>
@@ -377,10 +521,22 @@ export const Clients = () => {
                     onClick={() => setSelected(c)}
                     className={clsx(
                       'px-4 py-3 grid grid-cols-5 items-center hover:bg-dark-500 transition-colors cursor-pointer border-b border-dark-400/50 group',
-                      selected?.id === c.id && 'bg-dark-500 border-l-2 border-brand-orange'
+                      selected?.id === c.id && 'bg-dark-500 border-l-2 border-brand-orange',
+                      selectedIds.has(c.id) && 'bg-brand-orange/5'
                     )}
                   >
                     <div className="col-span-2 flex items-center gap-3">
+                      {!isDemoMode && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleOne(c.id) }}
+                          className="text-slate-500 hover:text-brand-orange transition-colors flex-shrink-0"
+                          title={selectedIds.has(c.id) ? 'Desmarcar' : 'Selecionar'}
+                        >
+                          {selectedIds.has(c.id)
+                            ? <CheckSquare size={16} className="text-brand-orange" />
+                            : <Square size={16} />}
+                        </button>
+                      )}
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-orange/20 to-brand-blue/20 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
                         {initials(c.name)}
                       </div>
