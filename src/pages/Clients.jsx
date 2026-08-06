@@ -4,7 +4,7 @@ import { Layout } from '@components/Layout/Layout'
 import {
   Search, Plus, MessageCircle, Phone, Mail, Tag,
   Trash2, Users, Loader2, X, ChevronRight, Pencil, Download,
-  CheckSquare, Square, FileDown, AlertTriangle
+  CheckSquare, Square, FileDown, AlertTriangle, UserX
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { api } from '@services/api'
@@ -352,6 +352,16 @@ export const Clients = () => {
   })
   const selectedClients = clients.filter(c => selectedIds.has(c.id))
 
+  // "Sem nome": o nome não tem nenhuma letra (só número/símbolos) — típico de
+  // contato importado do WhatsApp que ainda não recebeu nome via contacts.update.
+  const isUnnamed = (c) => !/\p{L}/u.test(c.name || '')
+  const unnamedFiltered = filtered.filter(isUnnamed)
+  const selectUnnamed = () => setSelectedIds(prev => {
+    const n = new Set(prev)
+    unnamedFiltered.forEach(c => n.add(c.id))
+    return n
+  })
+
   return (
     <Layout
       title="Clientes CRM"
@@ -414,6 +424,16 @@ export const Clients = () => {
                 className="bg-transparent text-sm text-white placeholder-slate-500 outline-none flex-1"
               />
             </div>
+            {!isDemoMode && unnamedFiltered.length > 0 && (
+              <button
+                onClick={selectUnnamed}
+                className="btn-secondary flex items-center gap-1.5"
+                title="Selecionar contatos sem nome (só número) — importados do WhatsApp"
+              >
+                <UserX size={14} />
+                Sem nome ({unnamedFiltered.length})
+              </button>
+            )}
             <button
               onClick={() => exportCsv(filtered)}
               disabled={filtered.length === 0}
