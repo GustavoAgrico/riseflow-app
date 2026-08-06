@@ -106,7 +106,14 @@ app.use(
     origin: (origin, cb) => {
       // Permite ferramentas sem Origin (curl, Postman) e as origens da allowlist.
       if (!origin || allowedOrigins.includes(origin)) return cb(null, true)
-      cb(new Error(`Origem não permitida pelo CORS: ${origin}`))
+      // Origem fora da allowlist: NÃO lança erro. O Vite marca todos os assets
+      // como crossorigin (`<script type=module crossorigin>`, `<link crossorigin>`),
+      // então o browser pede o próprio frontend em modo CORS, enviando a Origin
+      // do app. Se CORS_ORIGIN não incluir essa Origin, um `throw` aqui virava
+      // 500 em TODO asset → React não montava → tela branca no Render.
+      // `cb(null, false)` segue sem cabeçalho ACAO: requisições same-origin (o
+      // próprio app) passam; leitura cross-origin real continua barrada pelo browser.
+      cb(null, false)
     },
     credentials: true,
   })
