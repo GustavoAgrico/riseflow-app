@@ -6,6 +6,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env') })
 const http = require('http')
 const fs = require('fs')
 const express = require('express')
+const compression = require('compression')
 const cors = require('cors')
 const jwt = require('jsonwebtoken')
 const { Server } = require('socket.io')
@@ -59,6 +60,14 @@ const server = http.createServer(app)
 // Sem isso, req.protocol retorna 'http' mesmo em produção HTTPS, quebrando
 // o redirect_uri do OAuth da Meta.
 app.set('trust proxy', 1)
+
+// Compressão gzip de TODAS as respostas. Sem isto, o bundle principal (~817 KB)
+// e os chunks (charts/reactflow) trafegam crus; no instance free do Render
+// (0.1 CPU / 512 MB) o burst de ~1,5 MB no load da página abortava requisições
+// intermitentemente (assets voltavam 500 → React não montava → tela branca).
+// Com gzip o payload cai ~4x (~400 KB) e o instance dá conta. Comprime só a
+// resposta — não toca no req.rawBody usado no HMAC do webhook da Meta.
+app.use(compression())
 
 // B19: headers de segurança em TODAS as respostas (o dev server do Vite já os
 // enviava, mas a produção — Express servindo dist/ + API — não). Sem helmet para
