@@ -92,7 +92,30 @@ const io = new Server(server, {
 setFlowEngineIo(io)
 io.on('connection', (socket) => {
   console.log(`[socket] cliente conectado: ${socket.id}`)
-  socket.on('disconnect', () => console.log(`[socket] cliente saiu: ${socket.id}`))
+  let presenceMemberId = null
+
+  // Presença automática: um MEMBRO da equipe anuncia 'online' ao conectar; ao
+  // cair a conexão, volta a 'offline'. O dono (tela Equipe) recebe 'team_status'
+  // em tempo real. (MVP: não conta múltiplas abas — última desconexão = offline.)
+  socket.on('presence_online', async ({ memberId } = {}) => {
+    if (!memberId || !isConfigured) return
+    presenceMemberId = memberId
+    try {
+      await supabase.from('team_members').update({ status: 'online' }).eq('id', memberId)
+      io.emit('team_status', { memberId, status: 'online' })
+    } catch (e) { console.warn('[presence] online falhou:', e?.message ?? e) }
+  })
+
+  socket.on('disconnect', async () => {
+    console.log(`[socket] cliente saiu: ${socket.id}`)
+    if (presenceMemberId && isConfigured) {
+      try {
+        await supabase.from('team_members').update({ status: 'offline' }).eq('id', presenceMemberId)
+        io.emit('team_status', { memberId: presenceMemberId, status: 'offline' })
+      } catch (e) { console.warn('[presence] offline falhou:', e?.message ?? e) }
+    }
+  })
+
   // Transferência manual disparada pelo frontend: rebroadcast para todos os clientes.
   socket.on('transfer_request', (data) => {
     console.log('[socket] transfer_request recebido de', socket.id, '→', data?.agentName)

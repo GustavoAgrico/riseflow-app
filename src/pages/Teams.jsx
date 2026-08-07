@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Users, UserCheck, Layers, Gauge, Pencil, Trash2, Plus, Loader2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { socket } from '@services/socket'
 import { useAuth } from '@context/AuthContext'
 import { logger } from '@services/activityLogger'
 
@@ -60,6 +61,16 @@ export const Teams = () => {
     if (isDemoMode) { setMembers(DEMO_MEMBERS); setQueues(DEMO_QUEUES); setLoading(false); return }
     load()
   }, [user, isDemoMode, load])
+
+  // Presença ao vivo: o servidor emite 'team_status' quando um membro conecta/cai.
+  useEffect(() => {
+    if (isDemoMode) return
+    const onStatus = ({ memberId, status }) => {
+      setMembers(prev => prev.map(m => (m.id === memberId ? { ...m, status } : m)))
+    }
+    socket.on('team_status', onStatus)
+    return () => socket.off('team_status', onStatus)
+  }, [isDemoMode])
 
   const guardDemo = () => { if (isDemoMode) { window.alert('Modo demo: crie uma conta para gerenciar sua equipe.'); return true } return false }
 

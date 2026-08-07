@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { socket } from '@services/socket'
 import { logger } from '@services/activityLogger'
 
 const AuthContext = createContext(null)
@@ -36,6 +37,16 @@ export const AuthProvider = ({ children }) => {
   const [member, setMember] = useState(null)
   // Ref lets the onAuthStateChange closure see the live value without re-subscribing
   const isDemoRef = useRef(false)
+
+  // Presença automática: quando um MEMBRO da equipe está logado, anuncia 'online'
+  // no socket (e re-anuncia ao reconectar). O servidor marca 'offline' ao cair.
+  useEffect(() => {
+    if (!member?.id) return
+    const announce = () => socket.emit('presence_online', { memberId: member.id })
+    announce()
+    socket.on('connect', announce)
+    return () => socket.off('connect', announce)
+  }, [member])
 
   useEffect(() => {
     let mounted = true
