@@ -216,6 +216,7 @@ export const Clients = () => {
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [tagFilter, setTagFilter] = useState(null)
   const [selected, setSelected] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState(null)
@@ -351,10 +352,25 @@ export const Clients = () => {
     }
   }
 
+  // Tags/nichos distintos (campo `tag` singular + array `tags`) p/ o filtro rápido.
+  const allTags = Array.from(new Set(
+    clients.flatMap(c => [c.tag, ...(c.tags || [])]).filter(Boolean)
+  )).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+
+  const matchesTag = (c) => !tagFilter || c.tag === tagFilter || (c.tags || []).includes(tagFilter)
   const filtered = clients.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.phone ?? '').includes(search)
+    matchesTag(c) &&
+    (c.name.toLowerCase().includes(search.toLowerCase()) || (c.phone ?? '').includes(search))
   )
+
+  const chipStyle = (active) => ({
+    flexShrink: 0, cursor: 'pointer', borderRadius: 999, padding: '4px 12px',
+    fontSize: 12, fontWeight: 600, fontFamily: 'inherit', whiteSpace: 'nowrap',
+    border: `1px solid ${active ? 'rgba(255,107,53,0.4)' : 'rgba(255,255,255,0.08)'}`,
+    background: active ? 'rgba(255,107,53,0.16)' : 'rgba(255,255,255,0.03)',
+    color: active ? '#FF6B35' : '#94A3B8',
+    transition: 'all .15s',
+  })
 
   const allFilteredSelected = filtered.length > 0 && filtered.every(c => selectedIds.has(c.id))
   const toggleAll = () => setSelectedIds(prev => {
@@ -508,6 +524,23 @@ export const Clients = () => {
             </div>
           )}
 
+          {/* Filtro rápido por tag / nicho */}
+          {allTags.length > 0 && (
+            <div className="no-scrollbar" style={{ display: 'flex', gap: 6, padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)', overflowX: 'auto' }}>
+              <button onClick={() => setTagFilter(null)} style={chipStyle(!tagFilter)}>
+                Todos ({clients.length})
+              </button>
+              {allTags.map(t => {
+                const count = clients.filter(c => c.tag === t || (c.tags || []).includes(t)).length
+                return (
+                  <button key={t} onClick={() => setTagFilter(tagFilter === t ? null : t)} style={chipStyle(tagFilter === t)}>
+                    {t} ({count})
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
           {/* Table Header */}
           <div className="px-4 py-2 grid grid-cols-5 text-xs text-slate-500 uppercase tracking-wider border-b border-dark-400">
             <span className="col-span-2 flex items-center gap-3">
@@ -537,7 +570,7 @@ export const Clients = () => {
               <div className="flex flex-col items-center justify-center h-48 text-center gap-3">
                 <Users size={30} className="text-slate-600" />
                 <p className="text-sm text-slate-500">
-                  {search ? 'Nenhum resultado para a busca' : 'Nenhum cliente ainda'}
+                  {search || tagFilter ? 'Nenhum resultado para o filtro' : 'Nenhum cliente ainda'}
                 </p>
                 {!search && !isDemoMode && (
                   <button onClick={() => { setEditTarget(null); setFormOpen(true) }} className="text-xs text-brand-orange hover:underline">
