@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { api } from '@services/api'
+import { socket } from '@services/socket'
 import { useAuth } from '@context/AuthContext'
 import { logger } from '@services/activityLogger'
 import { MOCK_CLIENTS } from '@constants/config'
@@ -247,6 +248,18 @@ export const Clients = () => {
   }, [user, isDemoMode])
 
   useEffect(() => { fetchClients() }, [fetchClients])
+
+  // Tempo real: novo lead do Meta Lead Ads → atualiza a lista + avisa.
+  useEffect(() => {
+    if (isDemoMode) return
+    const onNewLead = (lead) => {
+      fetchClients()
+      setImportResult({ ok: true, msg: `Novo lead${lead?.niche ? ` · ${lead.niche}` : ''}: ${lead?.name || 'recebido'} 🎯` })
+      setTimeout(() => setImportResult(null), 6000)
+    }
+    socket.on('new_lead', onNewLead)
+    return () => socket.off('new_lead', onNewLead)
+  }, [fetchClients, isDemoMode])
 
   const handleDelete = async (clientId) => {
     if (isDemoMode) return

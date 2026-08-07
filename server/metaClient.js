@@ -166,6 +166,7 @@ async function handleWebhookEvent(body) {
           adId: v.ad_id,
           formId: v.form_id,
           createdTime: v.created_time,
+          channel: page.channel, // 'facebook' | 'instagram' (atribui o canal do lead)
         }).catch((e) => console.error('[meta-leads] ingest:', e?.message ?? e))
       } else {
         console.warn('[meta-leads] leadgen recebido de página não registrada:', entry.id)

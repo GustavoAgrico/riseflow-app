@@ -213,6 +213,8 @@ const incomingHandler = ({ jid, text, pushName, fromMe }) =>
 telegram.init({ socketIo: io, incomingHandler })
 metaClient.init({ socketIo: io, incomingHandler })
 whatsappCloud.init({ socketIo: io, incomingHandler })
+// Injeta o Socket.io no motor de Lead Ads (emite 'new_lead' para o CRM ao vivo).
+require('./metaLeads').setIo(io)
 
 // Rotas de campanhas (pause server-side)
 app.post('/api/campaigns/:id/pause', auth, async (req, res) => {
