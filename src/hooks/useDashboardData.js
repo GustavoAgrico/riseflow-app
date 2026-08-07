@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { socket } from '@services/socket'
 import { useAuth } from '@context/AuthContext'
 
 const DAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -30,6 +31,7 @@ export const useDashboardData = (version = 0) => {
   const [recentMessages, setRecentMessages] = useState([])
   const [integrations, setIntegrations] = useState([])
   const [totalMessages, setTotalMessages] = useState(0)
+  const [totalConvs, setTotalConvs] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -41,7 +43,7 @@ export const useDashboardData = (version = 0) => {
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
-      const [flowsRes, clientsRes, convsRes, msgsRes, intRes, countRes] = await Promise.all([
+      const [flowsRes, clientsRes, convsRes, msgsRes, intRes, countRes, convCountRes] = await Promise.all([
         supabase.from('flows').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
         supabase.from('clients').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
         supabase
@@ -57,6 +59,7 @@ export const useDashboardData = (version = 0) => {
           .gte('created_at', sevenDaysAgo.toISOString()),
         supabase.from('integrations').select('type,status,connected_at').eq('user_id', user.id),
         supabase.from('messages').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+        supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
       ])
 
       if (flowsRes.error) throw flowsRes.error
@@ -68,6 +71,7 @@ export const useDashboardData = (version = 0) => {
       setRecentMessages(msgsRes.data ?? [])
       setIntegrations(intRes.data ?? [])
       setTotalMessages(countRes.count ?? 0)
+      setTotalConvs(convCountRes.count ?? 0)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -77,12 +81,28 @@ export const useDashboardData = (version = 0) => {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // Tempo real: recarrega os números quando chega conversa/mensagem/lead.
+  // Debounce para não refazer as queries a cada mensagem num burst.
+  useEffect(() => {
+    let t
+    const refresh = () => { clearTimeout(t); t = setTimeout(() => fetchData(), 800) }
+    socket.on('new_chat', refresh)
+    socket.on('new_message', refresh)
+    socket.on('new_lead', refresh)
+    return () => {
+      clearTimeout(t)
+      socket.off('new_chat', refresh)
+      socket.off('new_message', refresh)
+      socket.off('new_lead', refresh)
+    }
+  }, [fetchData])
+
   // Dados reais sempre — sem fallback para campos fake (triggers/conversions)
   const activeFlows = flows.filter(f => f.status === 'active')
   const totalFlows = flows.length
   const totalClients = clients.length
   const activeClients = clients.filter(c => c.status === 'active')
-  const totalConversations = conversations.length
+  const totalConversations = totalConvs
 
   const connectedIntegrations = integrations.filter(i => i.status === 'connected')
   const hasAnyIntegration = connectedIntegrations.length > 0
