@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePlan } from '@hooks/usePlan'
 import { Layout } from '@components/Layout/Layout'
@@ -8,7 +8,7 @@ import {
   Instagram, Facebook, Link as LinkIcon, Activity,
 } from 'lucide-react'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts'
 import { useDashboardData } from '@hooks/useDashboardData'
@@ -210,6 +210,8 @@ export const Dashboard = () => {
 
   const { plan: usage } = usePlan()
   const { showOnboarding, completeOnboarding } = useOnboarding()
+  // Dois tipos de gráfico premium no card de Atividade (Área / Barras).
+  const [chartType, setChartType] = useState('area')
 
   const fullName = user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? ''
   const firstName = fullName.split(' ')[0]
@@ -342,13 +344,38 @@ export const Dashboard = () => {
                 {hasAnyIntegration ? 'Últimos 7 dias · dados reais' : 'Conecte uma integração para ver dados'}
               </p>
             </div>
-            <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-              {[{ color: '#FF6B35', label: 'Total' }, { color: '#3B82F6', label: 'Enviadas' }].map(({ color, label }) => (
-                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 22, height: 2.5, background: color, borderRadius: 2, boxShadow: `0 0 6px ${color}` }} />
-                  <span style={{ fontSize: 11, color: '#475569' }}>{label}</span>
-                </div>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
+              {/* Seletor de tipo de gráfico (dois estilos premium) */}
+              <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: 2 }}>
+                {[{ id: 'area', label: 'Área' }, { id: 'bar', label: 'Barras' }].map(opt => {
+                  const on = chartType === opt.id
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => setChartType(opt.id)}
+                      style={{
+                        border: 'none', cursor: 'pointer', borderRadius: 8, padding: '4px 12px',
+                        fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+                        background: on ? 'rgba(255,107,53,0.16)' : 'transparent',
+                        color: on ? '#FF6B35' : '#64748B',
+                        boxShadow: on ? '0 0 0 1px rgba(255,107,53,0.28)' : 'none',
+                        transition: 'all .15s',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+              {/* Legenda */}
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                {[{ color: '#FF6B35', label: 'Total' }, { color: '#3B82F6', label: 'Enviadas' }].map(({ color, label }) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 22, height: 2.5, background: color, borderRadius: 2, boxShadow: `0 0 6px ${color}` }} />
+                    <span style={{ fontSize: 11, color: '#475569' }}>{label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -360,37 +387,61 @@ export const Dashboard = () => {
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={chartData} margin={{ top: 5, right: 4, bottom: 0, left: -22 }}>
-                <defs>
-                  <linearGradient id="gOrange" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%"   stopColor="#FF6B35" stopOpacity={.38} />
-                    <stop offset="55%"  stopColor="#FF6B35" stopOpacity={.08} />
-                    <stop offset="100%" stopColor="#FF6B35" stopOpacity={0}   />
-                  </linearGradient>
-                  <linearGradient id="gBlue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%"   stopColor="#3B82F6" stopOpacity={.28} />
-                    <stop offset="55%"  stopColor="#3B82F6" stopOpacity={.05} />
-                    <stop offset="100%" stopColor="#3B82F6" stopOpacity={0}   />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="2 8" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="day" tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} dy={7} />
-                <YAxis tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} width={28} />
-                <Tooltip
-                  content={<CustomTooltip />}
-                  cursor={{ stroke: 'rgba(255,255,255,0.07)', strokeWidth: 1, strokeDasharray: '4 4' }}
-                />
-                <Area
-                  type="monotone" dataKey="messages" name="Total"
-                  stroke="#FF6B35" fill="url(#gOrange)" strokeWidth={2.5}
-                  dot={false} activeDot={<ActiveDot fill="#FF6B35" />}
-                />
-                <Area
-                  type="monotone" dataKey="sent" name="Enviadas"
-                  stroke="#3B82F6" fill="url(#gBlue)" strokeWidth={2}
-                  dot={false} activeDot={<ActiveDot fill="#3B82F6" />}
-                />
-              </AreaChart>
+              {chartType === 'area' ? (
+                <AreaChart data={chartData} margin={{ top: 5, right: 4, bottom: 0, left: -22 }}>
+                  <defs>
+                    <linearGradient id="gOrange" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"   stopColor="#FF6B35" stopOpacity={.38} />
+                      <stop offset="55%"  stopColor="#FF6B35" stopOpacity={.08} />
+                      <stop offset="100%" stopColor="#FF6B35" stopOpacity={0}   />
+                    </linearGradient>
+                    <linearGradient id="gBlue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"   stopColor="#3B82F6" stopOpacity={.28} />
+                      <stop offset="55%"  stopColor="#3B82F6" stopOpacity={.05} />
+                      <stop offset="100%" stopColor="#3B82F6" stopOpacity={0}   />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="2 8" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="day" tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} dy={7} />
+                  <YAxis tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} width={28} />
+                  <Tooltip
+                    content={<CustomTooltip />}
+                    cursor={{ stroke: 'rgba(255,255,255,0.07)', strokeWidth: 1, strokeDasharray: '4 4' }}
+                  />
+                  <Area
+                    type="monotone" dataKey="messages" name="Total"
+                    stroke="#FF6B35" fill="url(#gOrange)" strokeWidth={2.5}
+                    dot={false} activeDot={<ActiveDot fill="#FF6B35" />}
+                  />
+                  <Area
+                    type="monotone" dataKey="sent" name="Enviadas"
+                    stroke="#3B82F6" fill="url(#gBlue)" strokeWidth={2}
+                    dot={false} activeDot={<ActiveDot fill="#3B82F6" />}
+                  />
+                </AreaChart>
+              ) : (
+                <BarChart data={chartData} margin={{ top: 5, right: 4, bottom: 0, left: -22 }} barGap={4} barCategoryGap="26%">
+                  <defs>
+                    <linearGradient id="bOrange" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"   stopColor="#FF8C5A" stopOpacity={1}   />
+                      <stop offset="100%" stopColor="#FF6B35" stopOpacity={.5}  />
+                    </linearGradient>
+                    <linearGradient id="bBlue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"   stopColor="#60A5FA" stopOpacity={1}   />
+                      <stop offset="100%" stopColor="#3B82F6" stopOpacity={.5}  />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="2 8" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <XAxis dataKey="day" tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} dy={7} />
+                  <YAxis tick={{ fill: '#475569', fontSize: 11 }} axisLine={false} tickLine={false} width={28} />
+                  <Tooltip
+                    content={<CustomTooltip />}
+                    cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                  />
+                  <Bar dataKey="messages" name="Total"    fill="url(#bOrange)" radius={[5, 5, 0, 0]} maxBarSize={18} />
+                  <Bar dataKey="sent"     name="Enviadas" fill="url(#bBlue)"   radius={[5, 5, 0, 0]} maxBarSize={18} />
+                </BarChart>
+              )}
             </ResponsiveContainer>
           )}
         </div>
