@@ -5,6 +5,7 @@ const { Router } = require('express')
 const { baileys } = require('../baileysClient')
 const telegram = require('../telegramClient')
 const meta = require('../metaClient')
+const waCloud = require('../whatsappCloudClient')
 
 const router = Router()
 
@@ -45,6 +46,16 @@ router.post('/send', async (req, res, next) => {
     if (meta.isMetaNumber(number)) {
       try {
         return res.json(await meta.sendTextTo(number, text))
+      } catch (err) {
+        return res.status(400).json({ error: err.message })
+      }
+    }
+
+    // WhatsApp Cloud (oficial): usuário com número Cloud conectado envia por ele
+    // em vez do Baileys (mesmo número/contato, provider diferente).
+    if (waCloud.isActiveFor(req.user?.sub)) {
+      try {
+        return res.json(await waCloud.sendTextTo(number, text, req.user.sub))
       } catch (err) {
         return res.status(400).json({ error: err.message })
       }

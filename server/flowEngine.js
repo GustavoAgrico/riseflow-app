@@ -192,6 +192,9 @@ async function sendText(ctx, text) {
     await require('./telegramClient').sendTextTo(number, text, ctx.userId || null)
   } else if (require('./metaClient').isMetaNumber(number)) {
     await require('./metaClient').sendTextTo(number, text, ctx.userId || null)
+  } else if (require('./whatsappCloudClient').isActiveFor(ctx.userId)) {
+    // WhatsApp Cloud (oficial): usuário com número Cloud conectado envia por ele.
+    await require('./whatsappCloudClient').sendTextTo(number, text, ctx.userId || null)
   } else {
     await baileys.post('/send/text', { number, text })
   }

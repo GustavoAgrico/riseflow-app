@@ -25,6 +25,8 @@ const billingRoutes = require('./routes/billing')
 const aiRoutes = require('./routes/ai')
 const telegram = require('./telegramClient')
 const metaClient = require('./metaClient')
+const whatsappCloud = require('./whatsappCloudClient')
+const whatsappCloudRoutes = require('./routes/whatsappCloud')
 const { handleIncomingMessage, setIo: setFlowEngineIo } = require('./flowEngine')
 const { aiRespond } = require('./aiAttendant')
 const campaignEngine = require('./campaignEngine')
@@ -190,6 +192,9 @@ app.use('/api/billing/webhook', billingRoutes)
 // GET = verificação hub.challenge; POST = eventos (assinatura HMAC).
 app.use('/api/webhook/meta', metaRoutes.webhookRouter)
 
+// Webhook do WhatsApp Cloud (oficial) — PÚBLICO, antes do catch-all da Evolution.
+app.use('/api/webhook/whatsapp', whatsappCloudRoutes.webhookRouter)
+
 // Webhook da Evolution → Socket.io. PÚBLICO (a Evolution não envia JWT),
 // por isso é montado ANTES das rotas protegidas.
 app.use('/api/webhook', createWebhookRouter(io))
@@ -207,6 +212,7 @@ const incomingHandler = ({ jid, text, pushName, fromMe }) =>
     .then((handled) => (handled ? null : handleIncomingMessage({ jid, text, pushName, fromMe })))
 telegram.init({ socketIo: io, incomingHandler })
 metaClient.init({ socketIo: io, incomingHandler })
+whatsappCloud.init({ socketIo: io, incomingHandler })
 
 // Rotas de campanhas (pause server-side)
 app.post('/api/campaigns/:id/pause', auth, async (req, res) => {
@@ -234,6 +240,7 @@ app.use('/api/instance', auth, instanceRoutes)
 app.use('/api/email', auth, emailRoutes)
 app.use('/api/telegram', auth, telegramRoutes)
 app.use('/api/meta', auth, metaRoutes)
+app.use('/api/whatsapp-cloud', auth, whatsappCloudRoutes)
 app.use('/api/billing', auth, billingRoutes)
 app.use('/api/ai', auth, aiRoutes)
 
@@ -268,6 +275,7 @@ server.listen(PORT, () => {
   // Religa os canais já conectados (integrations).
   telegram.resumeBots()
   metaClient.resumePages()
+  whatsappCloud.resumeNumbers()
   // Inicia motor de campanhas: retoma envios interrompidos e verifica agendamentos.
   campaignEngine.start()
   scheduleEngine.start()

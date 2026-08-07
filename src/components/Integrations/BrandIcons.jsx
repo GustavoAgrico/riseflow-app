@@ -65,6 +65,7 @@ const AIIcon = ({ size = 24 }) => (
 
 const ICON_MAP = {
   whatsapp: WhatsAppIcon,
+  whatsapp_cloud: WhatsAppIcon,
   instagram: InstagramIcon,
   facebook: FacebookIcon,
   telegram: TelegramIcon,

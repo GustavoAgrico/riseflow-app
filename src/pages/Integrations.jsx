@@ -5,11 +5,13 @@ import { supabase } from '@/lib/supabase'
 import { getInstanceStatus, disconnectInstance } from '@/services/evolutionApi'
 import { disconnectTelegram } from '@services/telegramService'
 import { disconnectMeta } from '@services/metaService'
+import { disconnectWhatsAppCloud } from '@services/whatsappCloudService'
 import { WhatsAppModal } from '@components/Integrations/WhatsAppModal'
 import { WhatsAppManagePanel } from '@components/Integrations/WhatsAppManagePanel'
 import { InstagramModal } from '@components/Integrations/InstagramModal'
 import { FacebookModal } from '@components/Integrations/FacebookModal'
 import { TelegramModal } from '@components/Integrations/TelegramModal'
+import { WhatsAppCloudModal } from '@components/Integrations/WhatsAppCloudModal'
 import { EmailModal } from '@components/Integrations/EmailModal'
 import { AIModal } from '@components/Integrations/AIModal'
 import { CheckCircle, XCircle, Plug, Settings, Loader2, RefreshCw, Wifi, AlertTriangle, Mail, Lock } from 'lucide-react'
@@ -20,10 +22,10 @@ import clsx from 'clsx'
 
 /* ─── Quais integrações cada plano pode conectar ───────────────────────── */
 const INTEGRATION_ACCESS = {
-  free:       ['whatsapp'],
-  starter:    ['whatsapp', 'telegram'],
-  pro:        ['whatsapp', 'telegram', 'email'],
-  enterprise: ['whatsapp', 'instagram', 'facebook', 'telegram', 'email', 'ai'],
+  free:       ['whatsapp', 'whatsapp_cloud'],
+  starter:    ['whatsapp', 'whatsapp_cloud', 'telegram'],
+  pro:        ['whatsapp', 'whatsapp_cloud', 'telegram', 'email'],
+  enterprise: ['whatsapp', 'whatsapp_cloud', 'instagram', 'facebook', 'telegram', 'email', 'ai'],
 }
 
 const REQUIRED_PLAN = {
@@ -42,6 +44,11 @@ const CARDS = [
     id: 'whatsapp', name: 'WhatsApp Business', category: 'Mensageria',
     color: '#25D366', bg: 'from-green-500/20 to-green-600/5',
     description: 'Automatize mensagens, respostas e fluxos no WhatsApp Business API via Evolution API',
+  },
+  {
+    id: 'whatsapp_cloud', name: 'WhatsApp API Oficial', category: 'Mensageria',
+    color: '#128C7E', bg: 'from-emerald-500/20 to-emerald-600/5',
+    description: 'API oficial da Meta (Cloud API) — sem servidor sempre-ligado, via webhook. Número dedicado + verificação de negócio.',
   },
   {
     id: 'instagram', name: 'Instagram DM', category: 'Redes Sociais',
@@ -199,6 +206,10 @@ export const Integrations = () => {
       if (type === 'facebook' || type === 'instagram') {
         // Remove a página do registro do servidor.
         await disconnectMeta(user.id, type).catch(() => {})
+      }
+      if (type === 'whatsapp_cloud') {
+        // Remove o número Cloud do registro do servidor.
+        await disconnectWhatsAppCloud().catch(() => {})
       }
       await supabase.from('integrations').upsert(
         { user_id: user.id, type, status: 'disconnected', config: {} },
@@ -504,6 +515,12 @@ export const Integrations = () => {
         <TelegramModal
           onClose={() => setActiveModal(null)}
           onSuccess={(cfg) => handleSuccess('telegram', cfg)}
+        />
+      )}
+      {activeModal === 'whatsapp_cloud' && (
+        <WhatsAppCloudModal
+          onClose={() => setActiveModal(null)}
+          onSuccess={(cfg) => handleSuccess('whatsapp_cloud', cfg)}
         />
       )}
       {activeModal === 'email' && (
