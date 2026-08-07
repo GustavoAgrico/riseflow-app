@@ -32,6 +32,7 @@ export const useDashboardData = (version = 0) => {
   const [integrations, setIntegrations] = useState([])
   const [totalMessages, setTotalMessages] = useState(0)
   const [totalConvs, setTotalConvs] = useState(0)
+  const [totalTeam, setTotalTeam] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -43,7 +44,7 @@ export const useDashboardData = (version = 0) => {
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
-      const [flowsRes, clientsRes, convsRes, msgsRes, intRes, countRes, convCountRes] = await Promise.all([
+      const [flowsRes, clientsRes, convsRes, msgsRes, intRes, countRes, convCountRes, teamCountRes] = await Promise.all([
         supabase.from('flows').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
         supabase.from('clients').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
         supabase
@@ -60,6 +61,7 @@ export const useDashboardData = (version = 0) => {
         supabase.from('integrations').select('type,status,connected_at').eq('user_id', user.id),
         supabase.from('messages').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
         supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+        supabase.from('team_members').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
       ])
 
       if (flowsRes.error) throw flowsRes.error
@@ -72,6 +74,7 @@ export const useDashboardData = (version = 0) => {
       setIntegrations(intRes.data ?? [])
       setTotalMessages(countRes.count ?? 0)
       setTotalConvs(convCountRes.count ?? 0)
+      setTotalTeam(teamCountRes.count ?? 0)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -119,6 +122,7 @@ export const useDashboardData = (version = 0) => {
     totalClients,            // total de clientes
     activeClients,           // clientes com status='active'
     totalConversations,      // conversas abertas
+    totalTeam,               // total de membros da equipe
     integrations,
     connectedIntegrations,
     hasAnyIntegration,

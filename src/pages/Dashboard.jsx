@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { usePlan } from '@hooks/usePlan'
 import { Layout } from '@components/Layout/Layout'
 import {
-  MessageCircle, Users, Zap, TrendingUp, ArrowUpRight,
+  MessageCircle, Users, Users2, Zap, TrendingUp, ArrowUpRight,
   CheckCircle, AlertCircle, Wifi, Sparkles, GitBranch,
   Instagram, Facebook, Link as LinkIcon, Activity,
 } from 'lucide-react'
@@ -205,6 +205,7 @@ export const Dashboard = () => {
     totalMessages, totalFlows, activeFlows,
     totalClients, activeClients, totalConversations,
     integrations, connectedIntegrations, hasAnyIntegration,
+    totalTeam,
     chartData, loading, isEmpty,
   } = useDashboardData(flowsVersion)
 
@@ -244,6 +245,7 @@ export const Dashboard = () => {
     { icon: Users,         label: 'Clientes',            value: totalClients.toLocaleString('pt-BR'),       change: `${activeClients.length} ativos`,         color: 'bg-brand-blue',   hex: '#3B82F6' },
     { icon: Zap,           label: 'Fluxos Criados',      value: totalFlows.toString(),                      change: `${activeFlows.length} ativos`,            color: 'bg-purple-500',   hex: '#A855F7' },
     { icon: TrendingUp,    label: 'Conversas',           value: totalConversations.toLocaleString('pt-BR'), change: 'abertas agora',                           color: 'bg-brand-green',  hex: '#10B981' },
+    { icon: Users2,        label: 'Equipe',              value: totalTeam.toString(),                       change: `${totalTeam === 1 ? 'membro' : 'membros'}`, color: 'bg-cyan-500',     hex: '#06B6D4' },
   ]
 
   const channels = [
@@ -335,7 +337,7 @@ export const Dashboard = () => {
       })()}
 
       {/* ── Stat cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
         {stats.map((s, i) => <StatCard key={i} {...s} sparkData={sparkline} />)}
       </div>
 
