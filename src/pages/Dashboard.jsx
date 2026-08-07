@@ -56,31 +56,45 @@ const Sparkline = ({ data = [], color = '#FF6B35', w = 72, h = 30 }) => {
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
-const StatCard = ({ icon: Icon, label, value, change, color, hex = '#FF6B35', sparkData }) => (
-  <div className="stat-card group" style={{ position: 'relative', overflow: 'hidden' }}>
-    {/* Radial color glow */}
-    <div style={{
-      position: 'absolute', inset: 0, pointerEvents: 'none',
-      background: `radial-gradient(ellipse at 110% -10%, ${hex}22 0%, transparent 65%)`,
-    }} />
-    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
-      <div className={clsx('w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0', color)}
-           style={{ boxShadow: `0 4px 18px ${hex}55` }}>
-        <Icon size={18} className="text-white" />
+const StatCard = ({ icon: Icon, label, value, change, color, hex = '#FF6B35', sparkData, to }) => {
+  const content = (
+    <>
+      {/* Radial color glow */}
+      <div style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        background: `radial-gradient(ellipse at 110% -10%, ${hex}22 0%, transparent 65%)`,
+      }} />
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div className={clsx('w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0', color)}
+             style={{ boxShadow: `0 4px 18px ${hex}55` }}>
+          <Icon size={18} className="text-white" />
+        </div>
+        <Sparkline data={sparkData} color={hex} />
       </div>
-      <Sparkline data={sparkData} color={hex} />
-    </div>
-    <p className="font-display font-bold text-white"
-       style={{ fontSize: 26, fontVariantNumeric: 'tabular-nums', letterSpacing: '-.03em', lineHeight: 1, marginBottom: 5 }}>
-      {value}
-    </p>
-    <p style={{ fontSize: 11, color: '#64748B', marginBottom: 10 }}>{label}</p>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      <ArrowUpRight size={11} style={{ color: hex }} />
-      <span style={{ fontSize: 11, color: '#475569' }}>{change}</span>
-    </div>
-  </div>
-)
+      <p className="font-display font-bold text-white"
+         style={{ fontSize: 26, fontVariantNumeric: 'tabular-nums', letterSpacing: '-.03em', lineHeight: 1, marginBottom: 5 }}>
+        {value}
+      </p>
+      <p style={{ fontSize: 11, color: '#64748B', marginBottom: 10 }}>{label}</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <ArrowUpRight size={11} style={{ color: hex }} />
+        <span style={{ fontSize: 11, color: '#475569' }}>{change}</span>
+      </div>
+      {/* Hint "Acessar" no hover (só quando o card é clicável) */}
+      {to && (
+        <div className="opacity-0 group-hover:opacity-100"
+             style={{ position: 'absolute', bottom: 12, right: 14, display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: hex, transition: 'opacity .15s' }}>
+          Acessar <ArrowUpRight size={12} />
+        </div>
+      )}
+    </>
+  )
+  const cls = clsx('stat-card group', to && 'cursor-pointer hover:border-white/15 transition-colors')
+  if (to) {
+    return <Link to={to} className={cls} style={{ position: 'relative', overflow: 'hidden', display: 'block', textDecoration: 'none' }}>{content}</Link>
+  }
+  return <div className={cls} style={{ position: 'relative', overflow: 'hidden' }}>{content}</div>
+}
 
 // ── Channel dot (inline style) ────────────────────────────────────────────────
 const ChDot = ({ channel }) => (
@@ -241,11 +255,11 @@ export const Dashboard = () => {
   const sparkline = chartData.map(d => d.messages)
 
   const stats = [
-    { icon: MessageCircle, label: 'Mensagens Enviadas',  value: totalMessages.toLocaleString('pt-BR'),      change: `${totalConversations} conversas ativas`, color: 'bg-brand-orange', hex: '#FF6B35' },
-    { icon: Users,         label: 'Clientes',            value: totalClients.toLocaleString('pt-BR'),       change: `${activeClients.length} ativos`,         color: 'bg-brand-blue',   hex: '#3B82F6' },
-    { icon: Zap,           label: 'Fluxos Criados',      value: totalFlows.toString(),                      change: `${activeFlows.length} ativos`,            color: 'bg-purple-500',   hex: '#A855F7' },
-    { icon: TrendingUp,    label: 'Conversas',           value: totalConversations.toLocaleString('pt-BR'), change: 'abertas agora',                           color: 'bg-brand-green',  hex: '#10B981' },
-    { icon: Users2,        label: 'Equipe',              value: totalTeam.toString(),                       change: `${totalTeam === 1 ? 'membro' : 'membros'}`, color: 'bg-cyan-500',     hex: '#06B6D4' },
+    { icon: MessageCircle, label: 'Mensagens Enviadas',  value: totalMessages.toLocaleString('pt-BR'),      change: `${totalConversations} conversas ativas`, color: 'bg-brand-orange', hex: '#FF6B35', to: '/analytics' },
+    { icon: Users,         label: 'Clientes',            value: totalClients.toLocaleString('pt-BR'),       change: `${activeClients.length} ativos`,         color: 'bg-brand-blue',   hex: '#3B82F6', to: '/clients' },
+    { icon: Zap,           label: 'Fluxos Criados',      value: totalFlows.toString(),                      change: `${activeFlows.length} ativos`,            color: 'bg-purple-500',   hex: '#A855F7', to: '/automation' },
+    { icon: TrendingUp,    label: 'Conversas',           value: totalConversations.toLocaleString('pt-BR'), change: 'abertas agora',                           color: 'bg-brand-green',  hex: '#10B981', to: '/chat' },
+    { icon: Users2,        label: 'Equipe',              value: totalTeam.toString(),                       change: `${totalTeam === 1 ? 'membro' : 'membros'}`, color: 'bg-cyan-500',     hex: '#06B6D4', to: '/teams' },
   ]
 
   const channels = [
