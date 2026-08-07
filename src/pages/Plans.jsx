@@ -48,7 +48,12 @@ export const Plans = () => {
     if (!user?.id) return
     const run = async () => {
       const result = await checkoutService.handleReturn(user)
-      if (result.status === 'success') flash(`Plano ${result.plan} ativado com sucesso!`)
+      if (result.status === 'success') {
+        flash(`Plano ${result.plan} ativado com sucesso!`)
+        // Após ativar (inclui bypass admin, que volta para /plans?success), leva
+        // o usuário de volta à página inicial em vez de deixá-lo preso em /plans.
+        setTimeout(() => navigate('/dashboard'), 2000)
+      }
       if (result.status === 'canceled') flash('Pagamento cancelado.', false)
       try { setUsage(await usageService.getUsage(user.id)) } catch {}
     }
