@@ -211,7 +211,14 @@ export const Dashboard = () => {
   const { plan: usage } = usePlan()
   const { showOnboarding, completeOnboarding } = useOnboarding()
   // Dois tipos de gráfico premium no card de Atividade (Área / Barras).
-  const [chartType, setChartType] = useState('area')
+  // A preferência persiste no localStorage entre sessões.
+  const [chartType, setChartType] = useState(() => {
+    try { return localStorage.getItem('rf_dash_chart') || 'area' } catch { return 'area' }
+  })
+  const changeChart = (id) => {
+    setChartType(id)
+    try { localStorage.setItem('rf_dash_chart', id) } catch {}
+  }
 
   const fullName = user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? ''
   const firstName = fullName.split(' ')[0]
@@ -352,7 +359,7 @@ export const Dashboard = () => {
                   return (
                     <button
                       key={opt.id}
-                      onClick={() => setChartType(opt.id)}
+                      onClick={() => changeChart(opt.id)}
                       style={{
                         border: 'none', cursor: 'pointer', borderRadius: 8, padding: '4px 12px',
                         fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
