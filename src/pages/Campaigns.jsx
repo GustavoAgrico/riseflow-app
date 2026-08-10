@@ -452,7 +452,7 @@ export function Campaigns() {
     <div style={S.page}>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}`}</style>
 
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24, flexWrap:'wrap', gap:12 }}>
         <div style={{ display:'flex', alignItems:'center', gap:14 }}>
           <button onClick={() => navigate('/dashboard')} style={{ background:'none', border:'none', color:'#64748B', cursor:'pointer', padding:'4px 8px', lineHeight:1, display:'inline-flex', alignItems:'center' }}><ArrowLeft size={20} /></button>
           <div>
@@ -470,7 +470,7 @@ export function Campaigns() {
         </div>
       )}
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:24 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', gap:14, marginBottom:24 }}>
         {kpis.map(k => (
           <div key={k.label} style={S.card}>
             <div style={{ marginBottom:8 }}><k.Icon size={22} color="#7C3AED" /></div>

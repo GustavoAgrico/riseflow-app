@@ -182,7 +182,7 @@ export const Teams = () => {
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, fontFamily: F, color: C.text, padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24, flexWrap: 'wrap' }}>
         <button onClick={() => navigate('/dashboard')} style={{ ...iBtn(C.text), padding: '7px 12px', fontSize: 16 }}>←</button>
         <h1 style={{ fontSize: 22, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><Users size={20} color={C.purple} /> Equipe</h1>
         <span style={{ background: 'rgba(124,58,237,0.15)', color: C.purple, fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 999 }}>{members.length} membros</span>
@@ -195,7 +195,7 @@ export const Teams = () => {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 14, marginBottom: 24 }}>
         {kpis.map(k => (
           <div key={k.label} style={cardS}>
             <div><k.Icon size={22} color={C.purple} /></div>
@@ -205,8 +205,8 @@ export const Teams = () => {
         ))}
       </div>
 
-      <div style={{ ...cardS, padding: 0, marginBottom: 24, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div style={{ ...cardS, padding: 0, marginBottom: 24, overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
           <thead><tr>{['Membro', 'Email', 'Cargo', 'Status', 'Limite', 'Ações'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
           <tbody>
             {loading ? (
@@ -241,7 +241,7 @@ export const Teams = () => {
       {queues.length === 0 && !loading ? (
         <div style={{ ...cardS, color: C.muted, fontSize: 13 }}>Nenhuma fila criada. Clique em <strong style={{ color: C.purple }}>Nova Fila</strong> para distribuir os atendimentos.</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
           {queues.map(q => (
             <div key={q.id} style={cardS}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>

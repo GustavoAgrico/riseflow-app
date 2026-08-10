@@ -129,7 +129,7 @@ export const Templates = () => {
         </select>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, padding:'0 24px 24px' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(240px, 1fr))', gap:12, padding:'0 24px 24px' }}>
         {loading ? (
           <div style={{ gridColumn:'1/-1', textAlign:'center', color:C.mut, padding:40 }}><Loader2 size={20} className="animate-spin" style={{ display:'inline' }} /> Carregando…</div>
         ) : list.map(t => (
