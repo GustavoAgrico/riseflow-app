@@ -78,7 +78,7 @@ export const PALETTE = [
   },
 ]
 
-export const NodePalette = () => {
+export const NodePalette = ({ mobile, open, onClose, onPick } = {}) => {
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState({})
 
@@ -96,10 +96,19 @@ export const NodePalette = () => {
       })).filter(cat => cat.items.length > 0)
     : PALETTE
 
+  if (mobile && !open) return null
+
   return (
-    <div className="w-56 flex-shrink-0 border-r border-dark-400 flex flex-col bg-dark-800 overflow-hidden">
+    <>
+      {mobile && open && <div onClick={onClose} className="fixed inset-0 bg-black/55 z-[69]" />}
+      <div className={clsx('border-r border-dark-400 flex flex-col bg-dark-800 overflow-hidden',
+        mobile ? 'fixed top-0 left-0 bottom-0 w-64 z-[70] shadow-2xl' : 'w-56 flex-shrink-0')}>
       <div className="px-3 py-3 border-b border-dark-400">
-        <p className="text-xs font-semibold text-white mb-2">Componentes</p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-white">Componentes</p>
+          {mobile && <button onClick={onClose} className="text-slate-400 hover:text-white text-lg leading-none px-1">×</button>}
+        </div>
+        {mobile && <p className="text-[10px] text-slate-500 mb-2">Toque para adicionar ao canvas</p>}
         <div className="flex items-center gap-2 glass rounded-xl px-2.5 py-1.5">
           <Search size={11} className="text-slate-500 flex-shrink-0" />
           <input
@@ -130,8 +139,9 @@ export const NodePalette = () => {
                 key={`${item.type}-${item.sub}`}
                 draggable
                 onDragStart={e => onDragStart(e, item)}
+                onClick={() => onPick?.(item)}
                 className={clsx(
-                  'mx-2 mb-1 px-2.5 py-2 rounded-xl cursor-grab active:cursor-grabbing',
+                  'mx-2 mb-1 px-2.5 py-2 rounded-xl cursor-pointer active:cursor-grabbing',
                   'flex items-center gap-2',
                   'border transition-all hover:scale-[1.02]',
                   cat.bg, cat.border,
@@ -146,5 +156,6 @@ export const NodePalette = () => {
         ))}
       </div>
     </div>
+    </>
   )
 }

@@ -11,6 +11,7 @@ import 'reactflow/dist/style.css'
 import { Save, Check, Zap, ZapOff, Loader2, ArrowLeft, LayoutTemplate, X, Hand, Target, Bot, ShoppingCart, Star, Rocket } from 'lucide-react'
 import clsx from 'clsx'
 import { NodePalette } from '@components/FlowBuilder/NodePalette'
+import { useIsMobile } from '@hooks/useIsMobile'
 import { ConfigPanel } from '@components/FlowBuilder/ConfigPanel'
 import { NODE_DEFS } from '@components/FlowBuilder/nodeDefs'
 import { logger } from '@services/activityLogger'
@@ -213,6 +214,8 @@ export function FlowBuilder() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNode, setSelectedNode]   = useState(null)
   const [flowName, setFlowName]           = useState('Novo Fluxo')
+  const isMobile = useIsMobile()
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [channel, setChannel]             = useState('whatsapp')
   const [active, setActive]               = useState(false)
   const [saving, setSaving]               = useState(false)
@@ -250,6 +253,14 @@ export function FlowBuilder() {
     if (!type || !rfInstance.current) return
     const pos = rfInstance.current.screenToFlowPosition({ x: e.clientX, y: e.clientY })
     setNodes(n => [...n, { id: `${type}-${Date.now()}`, type, position: pos, data: makeData(type, sub, label) }])
+  }, [setNodes])
+
+  // Mobile: toque adiciona o nó no centro do canvas (touch não tem drag nativo).
+  const addNodeAtCenter = useCallback((item) => {
+    if (!rfInstance.current) return
+    const pos = rfInstance.current.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+    setNodes(n => [...n, { id: `${item.type}-${Date.now()}`, type: item.type, position: pos, data: makeData(item.type, item.sub, item.label) }])
+    setPaletteOpen(false)
   }, [setNodes])
 
   const onConfigChange = useCallback((id, newData) => {
@@ -327,12 +338,15 @@ export function FlowBuilder() {
     <div className="flex flex-col h-screen bg-dark-900 overflow-hidden">
 
       {/* ── Topbar ── */}
-      <div className="h-14 flex items-center justify-between px-4 border-b border-dark-400 bg-dark-800 flex-shrink-0 z-10">
-        <div className="flex items-center gap-3">
+      <div className="min-h-[3.5rem] flex items-center justify-between flex-wrap gap-2 px-4 py-2 border-b border-dark-400 bg-dark-800 flex-shrink-0 z-10">
+        <div className="flex items-center gap-3 min-w-0">
           <button onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-sm">
-            <ArrowLeft size={16} /> Voltar
+            className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-sm flex-shrink-0">
+            <ArrowLeft size={16} /> {!isMobile && 'Voltar'}
           </button>
+          {isMobile && (
+            <button onClick={() => setPaletteOpen(true)} className="text-xs bg-brand-orange/15 text-brand-orange border border-brand-orange/30 rounded-lg px-2.5 py-1 flex-shrink-0 whitespace-nowrap">+ Nós</button>
+          )}
           {editingName
             ? <input autoFocus value={flowName}
                 onChange={e => setFlowName(e.target.value)}
@@ -374,7 +388,7 @@ export function FlowBuilder() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* Paleta de nodes */}
-        <NodePalette />
+        <NodePalette mobile={isMobile} open={paletteOpen} onClose={() => setPaletteOpen(false)} onPick={addNodeAtCenter} />
 
         {/* Canvas ReactFlow */}
         <div className="flex-1 relative" style={{ background: '#0A0E1A' }}>
