@@ -315,7 +315,7 @@ export function CRM() {
         <button onClick={() => setModal(true)} style={{ ...S.btn('#7C3AED'), marginLeft: 'auto', whiteSpace: 'nowrap' }}>+ Novo Contato</button>
       </div>
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div style={{ flex: 1, display: 'flex', gap: 12, padding: '16px 20px', overflowX: 'auto', alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12, padding: '16px 20px', overflowX: isMobile ? 'hidden' : 'auto', overflowY: isMobile ? 'auto' : 'visible', alignItems: isMobile ? 'stretch' : 'flex-start' }}>
           {STAGES.map(stage => {
             const cols = filtered.filter(c => c.stage === stage.id)
             const over = dragOver === stage.id
@@ -324,7 +324,7 @@ export function CRM() {
                 onDragOver={e => { e.preventDefault(); setDragOver(stage.id) }}
                 onDragLeave={() => setDragOver(null)}
                 onDrop={e => { const id = e.dataTransfer.getData('cid'); if (id) moveContact(id, stage.id); setDragOver(null) }}
-                style={{ minWidth: 240, flexShrink: 0 }}>
+                style={{ minWidth: isMobile ? 0 : 240, width: isMobile ? '100%' : undefined, flexShrink: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color, flexShrink: 0 }} />
                   <span style={{ fontSize: 13, fontWeight: 700, color: C.tx, flex: 1 }}>{stage.label}</span>

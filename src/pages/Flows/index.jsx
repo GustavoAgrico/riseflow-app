@@ -75,7 +75,7 @@ function FlowsList({ onNew, onEdit }) {
 
   return (
     <div className="min-h-screen bg-dark-900 p-6">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="font-display font-bold text-white text-xl">Funis</h1>
@@ -106,7 +106,7 @@ function FlowsList({ onNew, onEdit }) {
             <button onClick={onNew} className="btn-primary text-xs mx-auto"><Plus size={13} /> Criar funil</button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             {flows.map((flow) => (
               <FlowCard key={flow.id} flow={flow} onEdit={onEdit} onDelete={handleDelete} />
             ))}
