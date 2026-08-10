@@ -441,7 +441,7 @@ export function FlowBuilder() {
                 <X size={16} className="text-slate-400" />
               </button>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-4 max-h-[60vh] overflow-y-auto pr-1 no-scrollbar">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4 max-h-[60vh] overflow-y-auto pr-1 no-scrollbar">
               {TEMPLATES.map(tpl => (
                 <button key={tpl.id} onClick={() => loadTemplate(tpl)}
                   className="glass rounded-xl p-4 text-left hover:border-brand-orange/40 transition-all group">
