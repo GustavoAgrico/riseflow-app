@@ -68,29 +68,29 @@ export const Topbar = ({ title, subtitle, onMenu }) => {
           </Link>
         </div>
       )}
-    <header className="h-16 border-b border-dark-400 flex items-center justify-between px-6 bg-dark-800/80 backdrop-blur-md">
-      <div className="flex items-center gap-2">
+    <header className="h-16 border-b border-dark-400 flex items-center justify-between gap-2 px-3 sm:px-6 bg-dark-800/80 backdrop-blur-md">
+      <div className="flex items-center gap-1 sm:gap-2 min-w-0">
         {onMenu && (
           <button
             onClick={onMenu}
             aria-label="Abrir menu"
-            className="text-slate-400 hover:text-white transition-colors"
+            className="text-slate-400 hover:text-white transition-colors flex-shrink-0"
             style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center' }}
           ><Menu size={20} /></button>
         )}
         <button
           onClick={() => navigate('/dashboard')}
-          className="text-slate-400 hover:text-white transition-colors"
+          className="hidden md:inline-flex text-slate-400 hover:text-white transition-colors flex-shrink-0"
           style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer', padding: '4px 8px', borderRadius: 6 }}
         >←</button>
-        <div>
-          <h1 className="font-display font-bold text-lg text-white">{title}</h1>
-          {subtitle && <p className="text-xs text-slate-400">{subtitle}</p>}
+        <div className="min-w-0">
+          <h1 className="font-display font-bold text-base sm:text-lg text-white truncate">{title}</h1>
+          {subtitle && <p className="text-xs text-slate-400 truncate">{subtitle}</p>}
         </div>
       </div>
 
       {/* Right */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
         {/* Search */}
         <div className="hidden md:flex items-center gap-2 glass rounded-xl px-3 py-2 w-52">
           <Search size={14} className="text-slate-400" />
