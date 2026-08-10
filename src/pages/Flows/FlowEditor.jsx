@@ -11,6 +11,7 @@ import { nodeTypes, NODE_CATALOG } from './nodes'
 import { FlowsMetaContext, T } from './nodes/_shared'
 import { useFlow, canActivate } from '@hooks/useFlow'
 import { flowsService } from '@services/flowsService'
+import { useIsMobile } from '@hooks/useIsMobile'
 
 const EDGE_DEF = {
   type: 'smoothstep', animated: true,
@@ -18,32 +19,48 @@ const EDGE_DEF = {
   markerEnd: { type: MarkerType.ArrowClosed, color: T.orange },
 }
 
-/* ── Paleta lateral: arrasta nós para o canvas ── */
-function Palette() {
+/* ── Paleta lateral: arrasta (desktop) ou TOCA (mobile) nós para o canvas ──
+   No mobile vira um drawer sobreposto e cada item é clicável (touch não suporta
+   drag-and-drop nativo, então tocar adiciona o nó no centro do canvas). ── */
+function Palette({ mobile, open, onClose, onPick }) {
   const onDragStart = (e, type) => {
     e.dataTransfer.setData('application/reactflow', type)
     e.dataTransfer.effectAllowed = 'move'
   }
+  if (mobile && !open) return null
+  const rootStyle = mobile
+    ? { position: 'fixed', top: 0, left: 0, bottom: 0, width: 250, zIndex: 70, boxShadow: '6px 0 30px rgba(0,0,0,.6)' }
+    : { width: 200, flexShrink: 0 }
   return (
-    <div style={{ width: 200, flexShrink: 0, background: '#0B1220', borderRight: `1px solid ${T.border}`,
-      overflowY: 'auto', padding: 12, fontFamily: 'DM Sans, sans-serif' }}>
-      {NODE_CATALOG.map((g) => (
-        <div key={g.group} style={{ marginBottom: 16 }}>
-          <p style={{ fontSize: 10, fontWeight: 700, color: g.color, textTransform: 'uppercase',
-            letterSpacing: '0.06em', margin: '0 0 8px' }}>{g.group}</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {g.items.map(({ type, Icon, label }) => (
-              <div key={type} draggable onDragStart={(e) => onDragStart(e, type)}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 9,
-                  background: '#111827', border: `1px solid ${g.color}33`, color: T.text, fontSize: 12,
-                  cursor: 'grab', userSelect: 'none' }}>
-                <Icon size={14} color={g.color} style={{ flexShrink: 0 }} /> {label}
-              </div>
-            ))}
+    <>
+      {mobile && open && <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 69 }} />}
+      <div style={{ ...rootStyle, background: '#0B1220', borderRight: `1px solid ${T.border}`,
+        overflowY: 'auto', padding: 12, fontFamily: 'DM Sans, sans-serif' }}>
+        {mobile && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>Toque para adicionar</span>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: T.muted, cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
           </div>
-        </div>
-      ))}
-    </div>
+        )}
+        {NODE_CATALOG.map((g) => (
+          <div key={g.group} style={{ marginBottom: 16 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: g.color, textTransform: 'uppercase',
+              letterSpacing: '0.06em', margin: '0 0 8px' }}>{g.group}</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {g.items.map(({ type, Icon, label }) => (
+                <div key={type} draggable onDragStart={(e) => onDragStart(e, type)}
+                  onClick={() => onPick?.(type)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 9,
+                    background: '#111827', border: `1px solid ${g.color}33`, color: T.text, fontSize: 12,
+                    cursor: 'pointer', userSelect: 'none' }}>
+                  <Icon size={14} color={g.color} style={{ flexShrink: 0 }} /> {label}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   )
 }
 
@@ -68,6 +85,8 @@ function EditorInner({ flowId, onBack }) {
   const [agents] = useState([])
   const [activateError, setActivateError] = useState('')
   const wrapRef = useRef(null)
+  const isMobile = useIsMobile()
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   const addTag = useCallback((t) => setTags((prev) => (prev.includes(t) ? prev : [...prev, t])), [])
   const meta = useMemo(() => ({ tags, agents, addTag }), [tags, agents, addTag])
@@ -79,6 +98,17 @@ function EditorInner({ flowId, onBack }) {
     if (!type) return
     const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
     flow.addNode({ id: `${type}-${Date.now()}`, type, position, data: {} })
+  }, [screenToFlowPosition, flow])
+
+  // Mobile: toque adiciona o nó no centro do canvas (touch não tem drag nativo).
+  const addAtCenter = useCallback((type) => {
+    const w = wrapRef.current
+    const r = w?.getBoundingClientRect()
+    const cx = r ? r.left + r.width / 2 : window.innerWidth / 2
+    const cy = r ? r.top + r.height / 2 : window.innerHeight / 2
+    const position = screenToFlowPosition({ x: cx, y: cy })
+    flow.addNode({ id: `${type}-${Date.now()}`, type, position, data: {} })
+    setPaletteOpen(false)
   }, [screenToFlowPosition, flow])
 
   const handleSave = async () => {
@@ -117,14 +147,17 @@ function EditorInner({ flowId, onBack }) {
   return (
     <div className="flex flex-col h-screen bg-dark-900 overflow-hidden">
       {/* Topbar */}
-      <div className="h-14 flex items-center justify-between px-4 border-b border-dark-400 bg-dark-800 flex-shrink-0 z-10">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-sm">
-            <ArrowLeft size={16} /> Funis
+      <div className="h-14 flex items-center justify-between gap-2 px-4 border-b border-dark-400 bg-dark-800 flex-shrink-0 z-10">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <button onClick={onBack} className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-sm flex-shrink-0">
+            <ArrowLeft size={16} /> {!isMobile && 'Funis'}
           </button>
+          {isMobile && (
+            <button onClick={() => setPaletteOpen(true)} className="text-xs bg-brand-orange/15 text-brand-orange border border-brand-orange/30 rounded-lg px-2.5 py-1 flex-shrink-0 whitespace-nowrap">+ Nós</button>
+          )}
           <input value={flow.name} onChange={(e) => flow.setName(e.target.value)}
-            className="font-display font-bold text-white bg-transparent border-b border-transparent hover:border-dark-400 focus:border-brand-orange/60 outline-none text-sm px-1 min-w-[140px] transition-colors" />
-          <SaveStatus isSaving={flow.isSaving} hasChanges={flow.hasChanges} lastSaved={flow.lastSaved} />
+            className="font-display font-bold text-white bg-transparent border-b border-transparent hover:border-dark-400 focus:border-brand-orange/60 outline-none text-sm px-1 min-w-0 w-full transition-colors" />
+          {!isMobile && <SaveStatus isSaving={flow.isSaving} hasChanges={flow.hasChanges} lastSaved={flow.lastSaved} />}
         </div>
         <div className="flex items-center gap-2">
           {activateError && (
@@ -146,7 +179,7 @@ function EditorInner({ flowId, onBack }) {
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        <Palette />
+        <Palette mobile={isMobile} open={paletteOpen} onClose={() => setPaletteOpen(false)} onPick={addAtCenter} />
         <div ref={wrapRef} className="flex-1 relative" style={{ background: '#0A0E1A' }}>
           <FlowsMetaContext.Provider value={meta}>
             <ReactFlow

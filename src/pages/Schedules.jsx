@@ -172,15 +172,15 @@ export const Schedules = () => {
       )}
 
       <div style={{ padding:'0 24px 24px' }}>
-        <div style={{ display:'flex', gap:10, alignItems:'center', padding:'16px 0' }}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nome..." style={{ ...S.inp, width:240 }} />
+        <div style={{ display:'flex', gap:10, alignItems:'center', padding:'16px 0', flexWrap:'wrap' }}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nome..." style={{ ...S.inp, flex:1, minWidth:140 }} />
           <select value={fStatus} onChange={e=>setFStatus(e.target.value)} style={{ ...S.inp, width:160 }}>
             <option value="all">Todos status</option>
             {Object.entries(ST).map(([k,v]) => <option key={k} value={k}>{v.l}</option>)}
           </select>
           {selDay && <button onClick={()=>setSelDay(null)} style={{ ...S.ghost, display:'inline-flex', alignItems:'center', gap:5 }}>Limpar dia: {fdate(selDay,'').trim()} <X size={13} /></button>}
         </div>
-        <table style={{ width:'100%', borderCollapse:'collapse', background:C.card, borderRadius:12, overflow:'hidden' }}>
+        <div style={{ overflowX:'auto' }}><table style={{ width:'100%', borderCollapse:'collapse', background:C.card, borderRadius:12, overflow:'hidden', minWidth:640 }}>
           <thead><tr>{['Status','Destinatário','Mensagem','Data/Hora','Tipo','Ações'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
             {loading ? (
@@ -202,7 +202,7 @@ export const Schedules = () => {
             ))}
             {!loading && list.length===0 && <tr><td colSpan={6} style={{ ...S.td, textAlign:'center', color:C.mut }}>Nenhum agendamento encontrado.</td></tr>}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       {modal && (

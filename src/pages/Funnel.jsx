@@ -87,7 +87,7 @@ export const Funnel = () => {
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, color: C.tx, fontFamily: F, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ height: 56, background: C.card, borderBottom: `1px solid ${C.bd}`, display: 'flex', alignItems: 'center', gap: 12, padding: '0 20px', flexShrink: 0 }}>
+      <div style={{ minHeight: 56, background: C.card, borderBottom: `1px solid ${C.bd}`, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '8px 20px', flexShrink: 0 }}>
         <button onClick={() => nav('/dashboard')} title="Voltar" style={iBtn}><ArrowLeft size={20} /></button>
         <span style={{ fontSize: 18, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 8 }}><BarChart3 size={20} color={C.pur} /> Funil de Vendas</span>
         <select value={period} onChange={e => setPeriod(e.target.value)} style={{ ...sel, marginLeft: 'auto' }}>
@@ -124,7 +124,7 @@ export const Funnel = () => {
               </div>
 
               {/* SEÇÃO 2 — KPIs */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginTop: 28 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginTop: 28 }}>
                 {[[Users, 'Total de Contatos', total.toLocaleString('pt-BR')], [TrendingUp, 'Taxa Geral', geral + '%'], [DollarSign, 'Valor Total Pipeline', brl(pipeline)], [Ticket, 'Ticket Médio', brl(ticket)]].map(([Ic, lb, v]) => (
                   <div key={lb} style={{ background: C.card, border: `1px solid ${C.bd}`, borderRadius: 12, padding: 16 }}>
                     <Ic size={22} color={C.pur} />
@@ -151,7 +151,7 @@ export const Funnel = () => {
               {/* SEÇÃO 4 — TABELA */}
               <div style={panel}>
                 <p style={h2}>Detalhamento por etapa</p>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
                   <thead><tr>{['Etapa', 'Quantidade', 'Valor Total', '% do Total', 'Tempo Médio'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
                   <tbody>
                     {STAGES.map(st => { const cl = st.id === 'closed' ? '#22C55E' : st.id === 'lost' ? '#F87171' : C.tx; return (
@@ -170,7 +170,7 @@ export const Funnel = () => {
                     <td style={{ ...td, fontWeight: 800 }}>{brl(pipeline)}</td>
                     <td style={td}>—</td><td style={td}>—</td>
                   </tr></tfoot>
-                </table>
+                </table></div>
               </div>
             </>
           )}

@@ -76,7 +76,7 @@ export function ActivityLogs() {
   }
 
   const st = {
-    top: { height: 56, background: C.card, borderBottom: `1px solid ${C.bd}`, display: 'flex', alignItems: 'center', gap: 12, padding: '0 20px', flexShrink: 0 },
+    top: { minHeight: 56, background: C.card, borderBottom: `1px solid ${C.bd}`, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '8px 20px', flexShrink: 0 },
     ic: { background: 'none', border: 'none', color: C.mut, cursor: 'pointer', display: 'inline-flex', padding: 4 },
     btn: bg => ({ background: bg, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, padding: '8px 14px', cursor: 'pointer', fontFamily: F, display: 'inline-flex', alignItems: 'center', gap: 6 }),
     inp: { background: C.bg, border: `1px solid ${C.bd}`, borderRadius: 8, color: C.tx, fontSize: 13, padding: '7px 10px', fontFamily: F, outline: 'none' },
@@ -96,7 +96,7 @@ export function ActivityLogs() {
       <div style={{ display: 'flex', gap: 10, padding: '12px 20px', borderBottom: `1px solid ${C.bd}`, flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
           <Search size={15} color={C.mut} style={{ position: 'absolute', left: 9 }} />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar por descrição..." style={{ ...st.inp, paddingLeft: 30, width: 240 }} />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar por descrição..." style={{ ...st.inp, paddingLeft: 30, width: '100%', minWidth: 180 }} />
         </div>
         <select value={cat} onChange={e => setCat(e.target.value)} style={st.inp}>
           {CATS.map(c => <option key={c.id} value={c.id} style={{ background: C.card }}>{c.label}</option>)}
