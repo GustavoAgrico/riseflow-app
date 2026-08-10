@@ -6,6 +6,7 @@ import { useAuth } from '@context/AuthContext'
 import { LeadScorePanel } from '@components/LeadScorePanel'
 import { NotesPanel } from '@components/NotesPanel'
 import { logger } from '@services/activityLogger'
+import { useIsMobile } from '@hooks/useIsMobile'
 
 const STAGES = [
   { id: 'lead',   label: 'Novo Lead',   color: '#7C3AED' },
@@ -84,7 +85,7 @@ const ContactCard = ({ contact, onDragStart, onClick, onDelete }) => {
   )
 }
 
-const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, userId }) => {
+const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, userId, mobile }) => {
   const st = STAGES.find(s => s.id === contact.stage)
   const navigate = useNavigate()
   const [msgs, setMsgs] = useState(null)
@@ -111,7 +112,7 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, u
   }, [userId, contact.phone])
 
   return (
-    <div style={{ width: 320, flexShrink: 0, borderLeft: `1px solid ${C.bd}`, background: C.card, display: 'flex', flexDirection: 'column', fontFamily: 'DM Sans,sans-serif', overflow: 'hidden' }}>
+    <div style={{ width: mobile ? '100%' : 320, flexShrink: 0, borderLeft: `1px solid ${C.bd}`, background: C.card, display: 'flex', flexDirection: 'column', fontFamily: 'DM Sans,sans-serif', overflow: 'hidden', ...(mobile ? { position: 'fixed', inset: 0, zIndex: 60 } : {}) }}>
       <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.bd}`, display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ width: 42, height: 42, borderRadius: '50%', background: st.color + '22', color: st.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, flexShrink: 0 }}>{ini(contact.name)}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -219,6 +220,7 @@ export function CRM() {
   const [navHov, setNavHov] = useState(false)
   const [contacts, setContacts] = useState([])
   const [selected, setSelected] = useState(null)
+  const isMobile = useIsMobile()
   const [modal, setModal] = useState(false)
   const [search, setSearch] = useState('')
   const [filterTag, setFilterTag] = useState('')
@@ -302,10 +304,10 @@ export function CRM() {
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: C.bg, color: C.tx, fontFamily: 'DM Sans,sans-serif' }}>
-      <div style={{ height: 56, background: C.card, borderBottom: `1px solid ${C.bd}`, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 10, flexShrink: 0 }}>
+      <div style={{ minHeight: 56, background: C.card, borderBottom: `1px solid ${C.bd}`, display: 'flex', alignItems: 'center', flexWrap: 'wrap', padding: '8px 20px', gap: 10, flexShrink: 0 }}>
         <button onClick={() => navigate('/dashboard')} onMouseEnter={() => setNavHov(true)} onMouseLeave={() => setNavHov(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: navHov ? C.tx : C.mut, padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center' }}><ArrowLeft size={18} /></button>
         <span style={{ fontSize: 15, fontWeight: 800, color: C.tx, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Target size={18} color={C.pur} /> CRM Pipeline</span>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar contato ou empresa..." style={{ ...S.input, width: 220, height: 34 }} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar contato ou empresa..." style={{ ...S.input, flex: 1, minWidth: 140, height: 34 }} />
         <select value={filterTag} onChange={e => setFilterTag(e.target.value)} style={{ ...S.select, width: 130, height: 34 }}>
           <option value="" style={S.opt}>Todas as tags</option>
           {allTags.map(t => <option key={t} value={t} style={S.opt}>{t}</option>)}
@@ -339,7 +341,7 @@ export function CRM() {
             )
           })}
         </div>
-        {selected && <DetailPanel key={selected.id} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} onDelete={deleteContact} userId={user?.id} />}
+        {selected && <DetailPanel key={selected.id} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} onDelete={deleteContact} userId={user?.id} mobile={isMobile} />}
       </div>
       {modal && <NewContactModal onSave={addContact} onClose={() => setModal(false)} />}
     </div>

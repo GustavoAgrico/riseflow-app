@@ -12,6 +12,7 @@ import { NotesPanel } from '@components/NotesPanel'
 import { NewConversationModal } from '@components/Chat/NewConversationModal'
 import { leadQualification } from '@services/leadQualificationService'
 import { generateReply } from '@services/attendanceAI'
+import { useIsMobile } from '@hooks/useIsMobile'
 import { socket } from '@services/socket'
 import { sanitizeMessage } from '@utils/sanitize'
 import { useAuth } from '@context/AuthContext'
@@ -64,6 +65,7 @@ export const Chat = () => {
   const { isMember, memberRecord, ownerUserId, loading: authLoading } = useAuth()
   const [conversations, setConversations] = useState([])
   const [selectedId, setSelectedId] = useState(null)
+  const isMobile = useIsMobile()
   const [messages, setMessages] = useState({})
   const [loading, setLoading] = useState(true)
   const [loadingMsgs, setLoadingMsgs] = useState(false)
@@ -602,7 +604,7 @@ export const Chat = () => {
       )}
 
       {/* ── COLUNA 1 ── */}
-      <div style={{ width: 320, flexShrink: 0, background: C.panel, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ width: isMobile ? '100%' : 320, flexShrink: 0, background: C.panel, borderRight: `1px solid ${C.border}`, display: (isMobile && sel) ? 'none' : 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, position: 'relative' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <button onClick={() => nav('/dashboard')} title="Voltar" style={iBtn}><ArrowLeft size={20} /></button>
@@ -701,7 +703,7 @@ export const Chat = () => {
       </div>
 
       {/* ── COLUNA 2 ── */}
-      <div style={{ flex: 1, background: C.bg, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div style={{ flex: 1, background: C.bg, display: (isMobile && !sel) ? 'none' : 'flex', flexDirection: 'column', minWidth: 0 }}>
         {!sel ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontSize: 14 }}>
             {loading ? 'Carregando...' : 'Nenhuma conversa ainda'}
@@ -709,6 +711,9 @@ export const Chat = () => {
         ) : (
         <>
         <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, background: C.panel, display: 'flex', alignItems: 'center', gap: 12 }}>
+          {isMobile && (
+            <button onClick={() => setSelectedId(null)} title="Voltar à lista" style={iBtn}><ArrowLeft size={20} /></button>
+          )}
           <div style={{ width: 40, height: 40, borderRadius: '50%', background: sel.av, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>{ini(sel.name)}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.text }}>{sel.name}</p>
@@ -843,7 +848,7 @@ export const Chat = () => {
 
       {/* ── COLUNA 3: painel contato ── */}
       {showPanel && sel && (
-        <div style={{ width: 300, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+        <div style={{ width: 300, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.border}`, display: isMobile ? 'none' : 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
           {/* Cabeçalho fixo */}
           <div style={{ padding: '14px 16px 0', borderBottom: `1px solid ${C.border}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
