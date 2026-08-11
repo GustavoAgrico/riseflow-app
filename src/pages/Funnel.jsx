@@ -22,9 +22,39 @@ const STAGES = [
 const brl = n => 'R$ ' + Math.round(n).toLocaleString('pt-BR')
 const daysAgo = t => Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 864e5))
 
+// Contatos de exemplo p/ o modo demo (mesmo shape das linhas de `clients` que o
+// funil consome: stage/value/created_at/name/phone/tags/channel). Distribuídos
+// pelas etapas e espalhados nos últimos 90 dias para popular todos os períodos.
+const DEMO_CLIENTS = (() => {
+  const names = ['Ana Paula Silva', 'Carlos Eduardo', 'Marina Rodrigues', 'Roberto Santos', 'Julia Ferreira', 'Marcos Lima', 'Beatriz Costa', 'Felipe Almeida', 'Camila Souza', 'Rafael Nunes', 'Larissa Melo', 'Bruno Cardoso', 'Patrícia Gomes', 'Thiago Ramos', 'Aline Barbosa', 'Gustavo Pinto', 'Renata Dias', 'Diego Fernandes', 'Vanessa Lopes', 'Eduardo Rocha', 'Priscila Araújo', 'Leonardo Martins', 'Fernanda Castro', 'Rodrigo Teixeira']
+  const chans = ['whatsapp', 'instagram', 'facebook', 'telegram']
+  const dist = [['lead', 10], ['qual', 8], ['prop', 6], ['neg', 4], ['closed', 3], ['lost', 2]]
+  const out = []
+  let i = 0
+  dist.forEach(([stage, n]) => {
+    for (let k = 0; k < n; k++) {
+      // Data descorrelacionada da etapa (passo primo em 90d) → cada período
+      // recebe uma amostra de todas as etapas e o funil mantém a proporção.
+      const daysBack = (i * 37) % 90
+      out.push({
+        id: 'demo-' + i,
+        name: names[i % names.length],
+        phone: '+55 11 9' + String(80000000 + i * 137013).slice(0, 8),
+        channel: chans[i % chans.length],
+        tags: [],
+        stage,
+        value: 800 + (i % 9) * 640,
+        created_at: new Date(Date.now() - daysBack * 864e5).toISOString(),
+      })
+      i++
+    }
+  })
+  return out
+})()
+
 export const Funnel = () => {
   const nav = useNavigate()
-  const { user } = useAuth()
+  const { user, isDemoMode } = useAuth()
   const [period, setPeriod] = useState('30d')
   const [loading, setLoading] = useState(true)
   const [clients, setClients] = useState([])
@@ -36,6 +66,8 @@ export const Funnel = () => {
     let on = true
     ;(async () => {
       setLoading(true); setErr('')
+      // Modo demo: usa contatos de exemplo (não bate no banco), como CRM/Campanhas.
+      if (isDemoMode) { if (on) { setClients(DEMO_CLIENTS); setLoading(false) } return }
       try {
         if (!user?.id) throw new Error('sem usuário')
         // select('*') evita falhar se a migração (stage/value) ainda não foi rodada
@@ -49,7 +81,7 @@ export const Funnel = () => {
       if (on) setLoading(false)
     })()
     return () => { on = false }
-  }, [user])
+  }, [user, isDemoMode])
 
   const start = Date.now() - DAYS[period] * 864e5
   const inPeriod = clients.filter(c => new Date(c.created_at).getTime() >= start)
@@ -100,6 +132,11 @@ export const Funnel = () => {
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
         <div style={{ maxWidth: 980, margin: '0 auto' }}>
+          {isDemoMode && (
+            <p style={{ margin: '0 0 20px', padding: '10px 14px', background: '#7C3AED22', border: `1px solid ${C.pur}55`, borderRadius: 10, color: '#C4B5FD', fontSize: 13 }}>
+              Modo demo — o funil abaixo usa contatos de exemplo. Crie uma conta para ver o funil real dos seus contatos.
+            </p>
+          )}
           {loading ? (
             <div style={{ maxWidth: 760, margin: '0 auto' }}>
               {STAGES.map(st => <div key={st.k} className="animate-pulse" style={{ width: st.w + '%', height: 56, margin: '0 auto 12px', background: C.card, borderRadius: 10 }} />)}

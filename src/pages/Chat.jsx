@@ -62,7 +62,7 @@ const Audio = ({ src, out, dur }) => {
 export const Chat = () => {
   const nav = useNavigate()
   const location = useLocation()
-  const { isMember, memberRecord, ownerUserId, loading: authLoading } = useAuth()
+  const { isMember, memberRecord, ownerUserId, loading: authLoading, isDemoMode } = useAuth()
   const [conversations, setConversations] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const isMobile = useIsMobile()
@@ -72,6 +72,7 @@ export const Chat = () => {
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
   const [showNew, setShowNew] = useState(false)
+  const [connectedChannels, setConnectedChannels] = useState(['whatsapp']) // canais habilitados no modal Nova Conversa (WhatsApp é o primário, sempre disponível)
   const [newContactPrefill, setNewContactPrefill] = useState(null) // { name, phone } do Clients
   const [aiBusy, setAiBusy] = useState(false)
   const [hoverId, setHoverId] = useState(null)
@@ -206,12 +207,33 @@ export const Chat = () => {
       try {
         userRef.current = ownerUserId; setUserId(ownerUserId)
         try { setUsage(await usageService.getUsage(ownerUserId)) } catch (e) { console.warn('[Usage] indisponível:', e?.message ?? e) }
+        // Canais conectados → habilita as abas correspondentes no modal Nova Conversa.
+        // No demo, espelha a tela de Integrações (só WhatsApp conectado).
+        if (isDemoMode) {
+          if (!cancelled) setConnectedChannels(['whatsapp'])
+        } else {
+          try {
+            const { data: integ } = await supabase.from('integrations')
+              .select('type').eq('user_id', ownerUserId).eq('status', 'connected')
+            if (!cancelled && Array.isArray(integ)) {
+              const t = new Set(integ.map(r => r.type))
+              // WhatsApp é o canal primário — sempre disponível (evita travar o
+              // usuário caso a linha de integração não esteja sincronizada).
+              // Instagram/Facebook/Telegram só liberam se conectados de fato.
+              const avail = ['whatsapp']
+              if (t.has('instagram')) avail.push('instagram')
+              if (t.has('facebook'))  avail.push('facebook')
+              if (t.has('telegram'))  avail.push('telegram')
+              setConnectedChannels(avail)
+            }
+          } catch (e) { console.warn('[Chat] canais conectados indisponíveis:', e?.message ?? e) }
+        }
         if (pendingContactRef.current) await loadConvs(ownerUserId)
       } catch (e) { console.warn('[Chat] erro ao inicializar:', e?.message ?? e) }
       if (!cancelled) setLoading(false)
     })()
     return () => { cancelled = true }
-  }, [authLoading, ownerUserId])
+  }, [authLoading, ownerUserId, isDemoMode])
 
   /* Sincroniza conversas reais do WhatsApp (Evolution API) e recarrega a lista.
      Exige que o WhatsApp (ou outro canal) esteja conectado — caso contrário orienta
@@ -959,6 +981,8 @@ export const Chat = () => {
       {showNew && <NewConversationModal
         onClose={() => { setShowNew(false); setNewContactPrefill(null) }}
         onCreate={handleCreateConversation}
+        onGoToIntegrations={() => nav('/integrations')}
+        availableChannels={connectedChannels}
         initialName={newContactPrefill?.name ?? ''}
         initialPhone={newContactPrefill?.phone ?? ''}
       />}

@@ -32,17 +32,28 @@ const CHANNELS = [
   },
 ]
 
-export const NewConversationModal = ({ onClose, onCreate, initialName = '', initialPhone = '' }) => {
+export const NewConversationModal = ({ onClose, onCreate, onGoToIntegrations, availableChannels, initialName = '', initialPhone = '' }) => {
+  // Um canal está disponível se conectado em Integrações. Sem a prop, libera
+  // todos (compat.). Só é possível iniciar conversa por canais conectados —
+  // caso contrário o envio falharia silenciosamente no backend.
+  const isAvail = (id) => !availableChannels || availableChannels.includes(id)
+  const firstAvail = CHANNELS.find(c => isAvail(c.id))?.id ?? 'whatsapp'
+
   const [name, setName]               = useState(initialName)
   const [phone, setPhone]             = useState(initialPhone)
-  const [channel, setChannel]         = useState('whatsapp')
+  const [channel, setChannel]         = useState(firstAvail)
   const [firstMessage, setFirstMessage] = useState('')
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState('')
 
   const cfg = CHANNELS.find(c => c.id === channel) ?? CHANNELS[0]
+  const channelAvail = isAvail(channel)
 
   const handleCreate = async () => {
+    if (!channelAvail) {
+      setError(`${cfg.label} não está conectado. Conecte em Integrações para usar este canal.`)
+      return
+    }
     if (!name.trim())  { setError('Informe o nome do contato'); return }
     // Telegram aceita chat_id negativo (grupos); os demais são só dígitos.
     const neg = channel === 'telegram' && phone.trim().startsWith('-')
@@ -84,24 +95,49 @@ export const NewConversationModal = ({ onClose, onCreate, initialName = '', init
           </button>
         </div>
 
-        {/* Channel selector */}
+        {/* Channel selector — só canais conectados são selecionáveis */}
         <p className="text-xs text-slate-500 mb-2">Canal de comunicação</p>
-        <div className="flex gap-2 mb-5">
-          {CHANNELS.map(c => (
-            <button
-              key={c.id}
-              onClick={() => { setChannel(c.id); setPhone(''); setError('') }}
-              className={`flex-1 py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all border ${
-                channel === c.id
-                  ? 'text-white border-brand-orange/50 bg-brand-orange/15'
-                  : 'text-slate-400 border-transparent glass hover:text-white'
-              }`}
-            >
-              <c.Icon size={16} />
-              <span className="hidden sm:inline">{c.label}</span>
-            </button>
-          ))}
+        <div className="flex gap-2 mb-3">
+          {CHANNELS.map(c => {
+            const avail = isAvail(c.id)
+            return (
+              <button
+                key={c.id}
+                onClick={() => { if (!avail) return; setChannel(c.id); setPhone(''); setError('') }}
+                disabled={!avail}
+                title={avail ? c.label : `${c.label} não conectado — conecte em Integrações`}
+                className={`flex-1 py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all border ${
+                  channel === c.id
+                    ? 'text-white border-brand-orange/50 bg-brand-orange/15'
+                    : avail
+                      ? 'text-slate-400 border-transparent glass hover:text-white'
+                      : 'text-slate-600 border-transparent glass opacity-40 cursor-not-allowed'
+                }`}
+              >
+                <c.Icon size={16} />
+                <span className="hidden sm:inline">{c.label}</span>
+              </button>
+            )
+          })}
         </div>
+
+        {/* Aviso quando o canal selecionado não está conectado */}
+        {!channelAvail && (
+          <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
+            <p className="text-xs text-amber-300">
+              {cfg.label} não está conectado. Conecte-o em Integrações para iniciar conversas por este canal.
+            </p>
+            {onGoToIntegrations && (
+              <button
+                onClick={onGoToIntegrations}
+                className="mt-2 text-xs font-medium text-brand-orange hover:underline"
+              >
+                Ir para Integrações →
+              </button>
+            )}
+          </div>
+        )}
+        {channelAvail && <div className="mb-2" />}
 
         {/* Fields */}
         <div className="space-y-3">
@@ -155,8 +191,8 @@ export const NewConversationModal = ({ onClose, onCreate, initialName = '', init
           </button>
           <button
             onClick={handleCreate}
-            disabled={loading}
-            className="flex-1 btn-primary flex items-center justify-center gap-2 disabled:opacity-50"
+            disabled={loading || !channelAvail}
+            className="flex-1 btn-primary flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading && <Loader2 size={14} className="animate-spin" />}
             {loading ? 'Criando...' : 'Iniciar conversa'}
