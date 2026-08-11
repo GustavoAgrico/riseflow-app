@@ -18,7 +18,7 @@ const CSS = `
 .rf-in::placeholder{color:#64748B}
 .rf-g:hover{box-shadow:0 4px 14px rgba(0,0,0,.25)}
 .rf-s:hover{filter:brightness(1.1)}
-@media(max-width:767px){.rf-l{display:none!important}.rf-r{width:100%!important}.rf-c{box-shadow:none!important}}
+@media(max-width:767px){.rf-l{display:none!important}.rf-r{width:100%!important}.rf-c{box-shadow:none!important}.rf-mb{display:flex!important}}
 @media(min-width:768px) and (max-width:1024px){.rf-l{width:40%!important}.rf-r{width:60%!important}}
 `
 const lbl = { display: 'block', fontSize: 12, fontWeight: 600, color: '#94A3B8', marginBottom: 6 }
@@ -109,6 +109,14 @@ export const Register = () => {
 
       <div className="rf-r" style={{ width: '50vw', background: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
         <div className="rf-c" style={{ width: '100%', maxWidth: 400, background: '#1E293B', borderRadius: 16, padding: 32, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', animation: 'rfIn .5s ease-out' }}>
+          {/* Branding no topo — só no mobile (a coluna lateral fica escondida) */}
+          <div className="rf-mb" style={{ display: 'none', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg,#FF6B35,#E55100)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, fontWeight: 900, color: '#fff' }}>RF</div>
+              <span style={{ fontSize: 23, fontWeight: 700, color: '#fff' }}>RiseFlow</span>
+            </div>
+            <span style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center' }}>Automação de WhatsApp com inteligência artificial</span>
+          </div>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: '#F8FAFC', margin: '0 0 4px' }}>Criar sua conta</h2>
           <p style={{ fontSize: 14, color: '#94A3B8', margin: '0 0 24px' }}>Comece a automatizar agora</p>
           {error && <div style={{ background: '#EF444420', border: '1px solid #EF4444', color: '#FCA5A5', padding: '10px 14px', borderRadius: 10, fontSize: 13, marginBottom: 16 }}>{error}</div>}
