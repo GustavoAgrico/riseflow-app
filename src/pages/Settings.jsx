@@ -497,7 +497,7 @@ export const Settings = () => {
               )}
 
               {/* Avatar */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 32 }}>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 20, marginBottom: 32 }}>
                 <div style={{
                   width: 80, height: 80, borderRadius: '50%',
                   background: `linear-gradient(135deg, ${C.purple}, #4F46E5)`,
@@ -630,7 +630,7 @@ export const Settings = () => {
               </div>
 
               {/* 2FA */}
-              <div style={{ ...cardStyle, marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+              <div style={{ ...cardStyle, marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
                 <div>
                   <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 4 }}>Autenticação de 2 fatores</h3>
                   <p style={{ fontSize: 13, color: C.muted, maxWidth: 520 }}>
@@ -1088,7 +1088,7 @@ export const Settings = () => {
                   <div style={{ display: 'grid', gap: 4 }}>
                     {group.items.map((item, idx) => (
                       <div key={item.id} style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16,
                         padding: '12px 0',
                         borderTop: idx === 0 ? 'none' : `1px solid ${C.border}`,
                       }}>
@@ -1133,7 +1133,7 @@ export const Settings = () => {
 
               {/* Horário silencioso */}
               <div style={{ ...cardStyle, marginBottom: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
                   <div>
                     <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 4 }}>Horário silencioso</h3>
                     <p style={{ fontSize: 13, color: C.muted, maxWidth: 460 }}>
