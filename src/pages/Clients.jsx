@@ -441,6 +441,12 @@ export const Clients = () => {
         </div>
       )}
 
+      {isDemoMode && (
+        <div className="mb-4 px-4 py-2.5 rounded-xl text-sm text-amber-300 bg-amber-500/10 border border-amber-500/30">
+          Modo demo — os clientes abaixo são apenas exemplo. Crie uma conta para gerenciar seus clientes de verdade.
+        </div>
+      )}
+
       <div className="flex gap-4 h-[calc(100vh-10rem)]">
         {/* List */}
         <div className="flex-1 min-w-0 flex flex-col glass rounded-2xl overflow-hidden">

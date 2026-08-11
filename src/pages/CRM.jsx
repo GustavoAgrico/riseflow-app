@@ -314,6 +314,11 @@ export function CRM() {
         </select>
         <button onClick={() => setModal(true)} style={{ ...S.btn('#7C3AED'), marginLeft: 'auto', whiteSpace: 'nowrap' }}>+ Novo Contato</button>
       </div>
+      {isDemoMode && (
+        <div style={{ margin: '12px 20px 0', padding: '10px 14px', background: '#EAB30810', border: '1px solid #EAB30844', borderRadius: 10, color: '#EAB308', fontSize: 13, flexShrink: 0 }}>
+          Modo demo — os contatos abaixo são apenas exemplo. Crie uma conta para gerenciar seu CRM de verdade.
+        </div>
+      )}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12, padding: '16px 20px', overflowX: isMobile ? 'hidden' : 'auto', overflowY: isMobile ? 'auto' : 'visible', alignItems: isMobile ? 'stretch' : 'flex-start' }}>
           {STAGES.map(stage => {
