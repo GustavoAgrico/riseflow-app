@@ -484,7 +484,7 @@ export const Settings = () => {
         </div>
 
         {/* Content */}
-        <div className="flex-1 glass rounded-2xl p-6 animate-fade-in">
+        <div className="flex-1 min-w-0 w-full glass rounded-2xl p-4 sm:p-6 animate-fade-in">
 
           {/* ── Profile ── */}
           {active === 'profile' && (
