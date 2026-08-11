@@ -456,9 +456,9 @@ export const Settings = () => {
         </div>
       )}
 
-      <div className="flex gap-6">
-        {/* Sidebar */}
-        <div className="w-56 shrink-0 space-y-1">
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+        {/* Sidebar (vira abas horizontais roláveis no mobile) */}
+        <div className="w-full md:w-56 shrink-0 flex flex-row md:flex-col gap-1 overflow-x-auto no-scrollbar">
           {sections.map(s => {
             const Icon = s.icon
             return (
@@ -466,7 +466,7 @@ export const Settings = () => {
                 key={s.id}
                 onClick={() => setActive(s.id)}
                 className={clsx(
-                  'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all',
+                  'flex-shrink-0 md:w-full flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 rounded-xl text-sm whitespace-nowrap transition-all',
                   active === s.id
                     ? 'bg-brand-orange/15 text-brand-orange border border-brand-orange/30'
                     : 'text-slate-400 hover:text-white hover:bg-dark-500'
