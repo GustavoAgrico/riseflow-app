@@ -126,7 +126,10 @@ export const sendChatAudio = async (userId, conversationId, contactPhone, blob) 
 }
 
 export const createConversation = async (userId, { contactName, contactPhone, contactChannel, initialMessage }) => {
-  const phone = String(contactPhone).replace(/\D/g, '')
+  // Preserva o prefixo de canal (fb/ig/tg) — é ele que faz channelOf rotear o
+  // envio. Só limpa para dígitos quando é um telefone puro (WhatsApp).
+  const raw = String(contactPhone).trim()
+  const phone = /^(fb|ig|tg)-?\d+$/i.test(raw) ? raw.toLowerCase() : raw.replace(/\D/g, '')
   let { data: conv, error } = await supabase
     .from('conversations')
     .upsert({

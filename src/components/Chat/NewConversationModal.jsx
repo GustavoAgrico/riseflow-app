@@ -1,11 +1,35 @@
 import React, { useState } from 'react'
 import { X, Loader2, MessageCircle, Instagram, Facebook, Send } from 'lucide-react'
 
+// Cada canal define o rótulo/placeholder do identificador, o prefixo que o
+// backend usa para rotear (channelOf) e a validação mínima. O identificador
+// final é `prefix + dígitos` — é ele que faz o envio ir pra Evolution (WA),
+// Meta (fb/ig) ou grammY (tg). Sem o prefixo, tudo cai no WhatsApp.
 const CHANNELS = [
-  { id: 'whatsapp',  label: 'WhatsApp',  Icon: MessageCircle },
-  { id: 'instagram', label: 'Instagram', Icon: Instagram },
-  { id: 'facebook',  label: 'Facebook',  Icon: Facebook },
-  { id: 'telegram',  label: 'Telegram',  Icon: Send },
+  {
+    id: 'whatsapp', label: 'WhatsApp', Icon: MessageCircle, prefix: '', minDigits: 10,
+    idLabel: 'Telefone', idHint: '(com código do país + DDD)',
+    placeholder: '5511999999999',
+    help: 'Ex: 55 (Brasil) + 11 (SP) + número',
+  },
+  {
+    id: 'instagram', label: 'Instagram', Icon: Instagram, prefix: 'ig', minDigits: 5,
+    idLabel: 'ID do Instagram', idHint: '(IGSID numérico)',
+    placeholder: '17841400000000000',
+    help: 'Instagram-scoped ID do contato. Só é possível responder dentro da janela de 24h após ele te escrever.',
+  },
+  {
+    id: 'facebook', label: 'Facebook', Icon: Facebook, prefix: 'fb', minDigits: 5,
+    idLabel: 'PSID do Facebook', idHint: '(Page-scoped ID)',
+    placeholder: '6240000000000000',
+    help: 'Page-scoped ID do contato na sua página. Só é possível responder dentro da janela de 24h após ele te escrever.',
+  },
+  {
+    id: 'telegram', label: 'Telegram', Icon: Send, prefix: 'tg', minDigits: 5,
+    idLabel: 'Chat ID', idHint: '(numérico)',
+    placeholder: '123456789',
+    help: 'Chat ID numérico do contato. O bot só consegue iniciar depois que o contato já interagiu com ele.',
+  },
 ]
 
 export const NewConversationModal = ({ onClose, onCreate, initialName = '', initialPhone = '' }) => {
@@ -16,16 +40,25 @@ export const NewConversationModal = ({ onClose, onCreate, initialName = '', init
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState('')
 
+  const cfg = CHANNELS.find(c => c.id === channel) ?? CHANNELS[0]
+
   const handleCreate = async () => {
     if (!name.trim())  { setError('Informe o nome do contato'); return }
-    const clean = phone.replace(/\D/g, '')
-    if (clean.length < 10) { setError('Telefone inválido — inclua código do país + DDD'); return }
+    // Telegram aceita chat_id negativo (grupos); os demais são só dígitos.
+    const neg = channel === 'telegram' && phone.trim().startsWith('-')
+    const digits = phone.replace(/\D/g, '')
+    if (digits.length < cfg.minDigits) {
+      setError(`${cfg.idLabel} inválido — informe um valor válido`)
+      return
+    }
+    // Identificador roteável: prefixo do canal + dígitos (channelOf no backend).
+    const identifier = cfg.prefix + (neg ? '-' : '') + digits
     setLoading(true)
     setError('')
     try {
       await onCreate({
         contactName: name.trim(),
-        contactPhone: clean,
+        contactPhone: identifier,
         contactChannel: channel,
         initialMessage: firstMessage.trim() || null,
       })
@@ -57,7 +90,7 @@ export const NewConversationModal = ({ onClose, onCreate, initialName = '', init
           {CHANNELS.map(c => (
             <button
               key={c.id}
-              onClick={() => setChannel(c.id)}
+              onClick={() => { setChannel(c.id); setPhone(''); setError('') }}
               className={`flex-1 py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all border ${
                 channel === c.id
                   ? 'text-white border-brand-orange/50 bg-brand-orange/15'
@@ -85,15 +118,16 @@ export const NewConversationModal = ({ onClose, onCreate, initialName = '', init
 
           <div>
             <label className="block text-xs text-slate-400 mb-1.5">
-              Telefone <span className="text-slate-600">(com código do país + DDD)</span>
+              {cfg.idLabel} <span className="text-slate-600">{cfg.idHint}</span>
             </label>
             <input
               value={phone}
               onChange={e => setPhone(e.target.value)}
-              placeholder="5511999999999"
+              placeholder={cfg.placeholder}
               className="input-field w-full text-sm font-mono"
+              inputMode={channel === 'whatsapp' ? 'tel' : 'numeric'}
             />
-            <p className="text-[10px] text-slate-600 mt-1">Ex: 55 (Brasil) + 11 (SP) + número</p>
+            <p className="text-[10px] text-slate-600 mt-1">{cfg.help}</p>
           </div>
 
           <div>
