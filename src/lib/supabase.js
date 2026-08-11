@@ -13,7 +13,9 @@ export const supabase = createClient(
   {
     auth: {
       flowType: 'pkce',
-      detectSessionInUrl: true,
+      // false: o AuthCallback troca o código explicitamente (evita corrida com o
+      // auto-exchange e é mais robusto no Safari mobile).
+      detectSessionInUrl: false,
       persistSession: true,
     },
   }

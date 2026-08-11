@@ -8,8 +8,9 @@ export const AuthCallback = () => {
   const { user, loading } = useAuth()
   const timedOut = useRef(false)
   const handled = useRef(false)
-  // Prevents error-redirect while setSession is still resolving
+  // Prevents error-redirect while setSession/exchange is still resolving
   const isHandlingImplicit = useRef(false)
+  const isHandlingPkce = useRef(false)
 
   useEffect(() => {
     if (handled.current) return
@@ -50,8 +51,25 @@ export const AuthCallback = () => {
       return
     }
 
-    // PKCE flow: ?code=... is handled automatically by supabase _initialize()
-    // Just wait for AuthContext (loading=false + user set)
+    // PKCE flow: ?code=... — troca EXPLÍCITA do código por sessão. Bloqueia o
+    // error-redirect abaixo até resolver (no mobile a troca é mais lenta e havia
+    // corrida que devolvia pro login). Em erro, mostra a mensagem real.
+    const code = search.get('code')
+    if (code) {
+      isHandlingPkce.current = true
+      supabase.auth.exchangeCodeForSession(code)
+        .then(({ error: exErr }) => {
+          if (exErr) {
+            isHandlingPkce.current = false
+            navigate(`/login?oauth_error=${encodeURIComponent(exErr.message)}`, { replace: true })
+          }
+          // Sucesso: onAuthStateChange → AuthContext seta user → effect abaixo vai para /
+        })
+        .catch((e) => {
+          isHandlingPkce.current = false
+          navigate(`/login?oauth_error=${encodeURIComponent(e?.message || 'Falha ao trocar o código do Google')}`, { replace: true })
+        })
+    }
   }, [navigate])
 
   // Redirect once auth resolves — but never on error if implicit flow is still in progress
@@ -61,7 +79,7 @@ export const AuthCallback = () => {
       navigate('/', { replace: true })
       return
     }
-    if (isHandlingImplicit.current) return   // setSession still running, wait
+    if (isHandlingImplicit.current || isHandlingPkce.current) return   // troca em andamento, aguarda
     if (!timedOut.current) {
       navigate('/login?oauth_error=N%C3%A3o%20foi%20poss%C3%ADvel%20autenticar.%20Tente%20novamente.', { replace: true })
     }
