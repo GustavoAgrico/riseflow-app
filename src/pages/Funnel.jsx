@@ -113,7 +113,7 @@ export const Funnel = () => {
                 {STAGES.map((st, i) => (
                   <React.Fragment key={st.k}>
                     <div onMouseEnter={() => setHover(st.k)} onMouseLeave={() => setHover(null)} onClick={() => setModal(st)}
-                      style={{ width: st.w + '%', margin: '0 auto', height: 56, background: st.color, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 18px', boxSizing: 'border-box', color: '#fff', cursor: 'pointer', filter: hover === st.k ? 'brightness(1.18)' : 'none', transition: 'filter .15s' }}>
+                      style={{ width: st.w + '%', minWidth: 200, maxWidth: '100%', margin: '0 auto', height: 56, background: st.color, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '0 14px', boxSizing: 'border-box', color: '#fff', cursor: 'pointer', filter: hover === st.k ? 'brightness(1.18)' : 'none', transition: 'filter .15s' }}>
                       <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>{st.k}</span>
                       <span style={{ fontSize: 18, fontWeight: 800 }}>{count(st.id).toLocaleString('pt-BR')}</span>
                       <span style={{ fontSize: 12, opacity: .85 }}>{share(st.id)}</span>
