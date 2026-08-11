@@ -162,6 +162,8 @@ const C = {
 const FONT = "'DM Sans', sans-serif"
 
 const labelStyle = { display: 'block', fontSize: 12, color: C.muted, marginBottom: 6, fontFamily: FONT }
+import { useIsMobile } from '@hooks/useIsMobile'
+
 const inputStyle = {
   width: '100%',
   padding: '10px 12px',
@@ -198,6 +200,7 @@ const getStrength = (pwd) => {
 export const Settings = () => {
   const { user, isDemoMode } = useAuth()
   const navigate = useNavigate()
+  const isMobile = useIsMobile()
   const { plan: usagePlan } = usePlan()
   const [active, setActive]         = useState('profile')
   const [name, setName]             = useState('')
@@ -527,7 +530,7 @@ export const Settings = () => {
               )}
 
               {/* Fields */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 16 }}>
                 <div>
                   <label style={labelStyle}>Nome completo</label>
                   <input value={name} onChange={e => setName(e.target.value)}
@@ -736,7 +739,7 @@ export const Settings = () => {
                     <span style={{ fontSize: 14, color: C.muted }}>{current.period}</span>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px 20px', marginTop: 18 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px 20px', marginTop: 18 }}>
                   {current.features.filter(f => f.ok).map((f, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: C.text }}>
                       <Check size={15} color="#22C55E" style={{ flexShrink: 0 }} />{f.label}
@@ -746,7 +749,7 @@ export const Settings = () => {
               </div>
 
               {/* Grid de planos */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 32 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 32 }}>
                 {billingPlans.map((p, idx) => {
                   const isCurrent = p.id === current.id
                   const isUpgrade = idx > currentIdx
