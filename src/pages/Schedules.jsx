@@ -4,6 +4,7 @@ import { Calendar, Repeat, Pencil, Ban, Copy, X, Loader2, Trash2 } from 'lucide-
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { logger } from '@services/activityLogger'
+import { useIsMobile } from '@hooks/useIsMobile'
 
 const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#64748B', pur:'#7C3AED' }
 const ST = { agendado:{ l:'Agendado', c:'#2563EB' }, enviado:{ l:'Enviado', c:'#059669' }, cancelado:{ l:'Cancelado', c:'#EF4444' }, falhou:{ l:'Falhou', c:'#D97706' } }
@@ -44,7 +45,7 @@ const nextDate = (dateStr, freq) => {
 }
 
 const S = {
-  top:{ display:'flex',alignItems:'center',gap:14,padding:'16px 24px',borderBottom:`1px solid ${C.bd}`,background:C.card },
+  top:{ display:'flex',alignItems:'center',flexWrap:'wrap',gap:12,padding:'12px 24px',borderBottom:`1px solid ${C.bd}`,background:C.card },
   btn:(bg=C.pur)=>({ background:bg,border:'none',borderRadius:8,padding:'9px 16px',color:'#fff',fontWeight:600,fontSize:13,cursor:'pointer',fontFamily:'inherit' }),
   ghost:{ background:'none',border:`1px solid ${C.bd}`,borderRadius:8,padding:'8px 12px',color:C.tx,cursor:'pointer',fontFamily:'inherit',fontSize:13 },
   inp:{ background:C.bg,border:`1px solid ${C.bd}`,borderRadius:8,padding:'9px 12px',color:C.tx,fontSize:13,outline:'none',fontFamily:'inherit',width:'100%',boxSizing:'border-box' },
@@ -128,6 +129,8 @@ export const Schedules = () => {
     } finally { setBusy(false) }
   }
 
+  const isMobile = useIsMobile()
+
   const list = useMemo(() => items
     .filter(s => (fStatus==='all' || s.status===fStatus) && (!search || s.name.toLowerCase().includes(search.toLowerCase())) && (!selDay || s.date===selDay))
     .sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time)), [items, fStatus, search, selDay])
@@ -180,6 +183,36 @@ export const Schedules = () => {
           </select>
           {selDay && <button onClick={()=>setSelDay(null)} style={{ ...S.ghost, display:'inline-flex', alignItems:'center', gap:5 }}>Limpar dia: {fdate(selDay,'').trim()} <X size={13} /></button>}
         </div>
+        {isMobile ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {loading && <div style={{ textAlign:'center', color:C.mut, padding:24 }}><Loader2 size={18} className="animate-spin" style={{ display:'inline' }} /> Carregando…</div>}
+            {!loading && list.length===0 && <div style={{ textAlign:'center', color:C.mut, padding:24, fontSize:13 }}>Nenhum agendamento encontrado.</div>}
+            {list.map(s => (
+              <div key={s.id} style={{ background:C.card, border:`1px solid ${C.bd}`, borderRadius:12, padding:14 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8, marginBottom:8 }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontWeight:700, fontSize:14 }}>{s.name}</div>
+                    <div style={{ fontSize:12, color:C.mut }}>+{s.phone}</div>
+                  </div>
+                  <span style={S.badge(ST[s.status]?.c ?? C.mut)}>{ST[s.status]?.l ?? s.status}</span>
+                </div>
+                <div style={{ fontSize:13, color:C.mut, marginBottom:10 }}>{s.msg.length>90 ? s.msg.slice(0,90)+'…' : s.msg}</div>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12 }}>
+                    <Calendar size={13} color={C.mut} /> {fdate(s.date, s.time)}
+                    {s.type==='recorrente' && <span style={{ display:'inline-flex', alignItems:'center', gap:4, color:C.mut, marginLeft:6 }}><Repeat size={12} /> Recorrente</span>}
+                  </div>
+                  <div style={{ display:'flex', gap:2 }}>
+                    <button onClick={()=>openEdit(s)} style={{ ...S.ia, display:'inline-flex' }} title="Editar"><Pencil size={16} /></button>
+                    <button onClick={()=>cancel(s.id)} disabled={s.status==='cancelado'} style={{ ...S.ia, opacity:s.status==='cancelado'?.3:1, display:'inline-flex' }} title="Cancelar"><Ban size={16} /></button>
+                    <button onClick={()=>dup(s)} style={{ ...S.ia, display:'inline-flex' }} title="Duplicar"><Copy size={16} /></button>
+                    <button onClick={()=>del(s.id)} style={{ ...S.ia, display:'inline-flex', color:'#EF4444' }} title="Excluir"><Trash2 size={16} /></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
         <div style={{ overflowX:'auto' }}><table style={{ width:'100%', borderCollapse:'collapse', background:C.card, borderRadius:12, overflow:'hidden', minWidth:640 }}>
           <thead><tr>{['Status','Destinatário','Mensagem','Data/Hora','Tipo','Ações'].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
           <tbody>
@@ -203,11 +236,12 @@ export const Schedules = () => {
             {!loading && list.length===0 && <tr><td colSpan={6} style={{ ...S.td, textAlign:'center', color:C.mut }}>Nenhum agendamento encontrado.</td></tr>}
           </tbody>
         </table></div>
+        )}
       </div>
 
       {modal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }} onClick={()=>setModal(false)}>
-          <div style={{ background:C.card, borderRadius:16, padding:24, width:480, maxHeight:'90vh', overflowY:'auto', border:`1px solid ${C.bd}` }} onClick={e=>e.stopPropagation()}>
+          <div style={{ background:C.card, borderRadius:16, padding:24, width:480, maxWidth:'95vw', boxSizing:'border-box', maxHeight:'90vh', overflowY:'auto', border:`1px solid ${C.bd}` }} onClick={e=>e.stopPropagation()}>
             <h3 style={{ margin:'0 0 4px', fontSize:17, fontWeight:800 }}>{editId ? 'Editar Agendamento' : 'Agendar Mensagem'}</h3>
             <label style={S.lbl}>Destinatário</label>
             <select onChange={e=>{ const c = contacts.find(x=>x.name===e.target.value); if(c){ set('name',c.name); set('phone',c.phone) } }} value={f.name} style={{ ...S.inp, marginBottom:8 }}>
