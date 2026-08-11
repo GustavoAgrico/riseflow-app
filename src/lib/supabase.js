@@ -17,6 +17,10 @@ export const supabase = createClient(
       // auto-exchange e é mais robusto no Safari mobile).
       detectSessionInUrl: false,
       persistSession: true,
+      // Web Locks (navigator.locks) DÁ DEADLOCK no Safari mobile → operações de
+      // auth (getSession/exchange) travam por 30s ("Tempo esgotado"). Substitui
+      // por um lock no-op (seguro num SPA de aba única).
+      lock: async (_name, _acquireTimeout, fn) => await fn(),
     },
   }
 )

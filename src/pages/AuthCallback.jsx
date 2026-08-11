@@ -58,14 +58,20 @@ export const AuthCallback = () => {
     if (code) {
       isHandlingPkce.current = true
       supabase.auth.exchangeCodeForSession(code)
-        .then(({ error: exErr }) => {
+        .then(({ data, error: exErr }) => {
           if (exErr) {
+            console.error('[auth] exchangeCodeForSession erro:', exErr)
             isHandlingPkce.current = false
             navigate(`/login?oauth_error=${encodeURIComponent(exErr.message)}`, { replace: true })
+          } else if (data?.session) {
+            navigate('/', { replace: true })   // sessão criada — vai direto (não espera o evento)
+          } else {
+            isHandlingPkce.current = false
+            navigate('/login?oauth_error=Sess%C3%A3o%20n%C3%A3o%20criada', { replace: true })
           }
-          // Sucesso: onAuthStateChange → AuthContext seta user → effect abaixo vai para /
         })
         .catch((e) => {
+          console.error('[auth] exchangeCodeForSession exceção:', e)
           isHandlingPkce.current = false
           navigate(`/login?oauth_error=${encodeURIComponent(e?.message || 'Falha ao trocar o código do Google')}`, { replace: true })
         })
