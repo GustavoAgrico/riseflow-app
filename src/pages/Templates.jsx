@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Hand, DollarSign, Wrench, Receipt, Repeat, Flame, FileText, Copy, Trash2, Image, CheckCheck, Check, Loader2 } from 'lucide-react'
 import { useAuth } from '@context/AuthContext'
 import { listTemplates, createTemplate, updateTemplate, deleteTemplate, incrementTemplateUse } from '@services/templatesService'
+import { useIsMobile } from '@hooks/useIsMobile'
 
 const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#94A3B8', pur:'#7C3AED' }
 const CATS = { 'Saudação':Hand, 'Vendas':DollarSign, 'Suporte':Wrench, 'Cobrança':Receipt, 'Follow-up':Repeat, 'Reativação':Flame }
@@ -24,7 +25,7 @@ const renderMsg = (txt) => txt.split(/(\{\{\w+\}\})/g).map((p,i) =>
   /\{\{\w+\}\}/.test(p) ? <span key={i} style={{ color:C.pur, fontWeight:700 }}>{p}</span> : p)
 
 const S = {
-  top:{ display:'flex',alignItems:'center',gap:14,padding:'16px 24px',borderBottom:`1px solid ${C.bd}`,background:C.card },
+  top:{ display:'flex',alignItems:'center',flexWrap:'wrap',gap:12,padding:'12px 24px',borderBottom:`1px solid ${C.bd}`,background:C.card },
   btn:(bg=C.pur)=>({ background:bg,border:'none',borderRadius:8,padding:'9px 16px',color:'#fff',fontWeight:600,fontSize:13,cursor:'pointer',fontFamily:'inherit' }),
   ghost:{ background:'none',border:`1px solid ${C.bd}`,borderRadius:8,padding:'8px 12px',color:C.tx,cursor:'pointer',fontFamily:'inherit',fontSize:13 },
   inp:{ background:C.bg,border:`1px solid ${C.bd}`,borderRadius:8,padding:'9px 12px',color:C.tx,fontSize:13,outline:'none',fontFamily:'inherit',width:'100%',boxSizing:'border-box' },
@@ -36,6 +37,7 @@ const S = {
 export const Templates = () => {
   const { user, isDemoMode } = useAuth()
   const navigate = useNavigate()
+  const isMobile = useIsMobile()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -117,8 +119,8 @@ export const Templates = () => {
         </div>
       )}
 
-      <div style={{ display:'flex', gap:10, padding:'16px 24px' }}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nome..." style={{ ...S.inp, width:260 }} />
+      <div style={{ display:'flex', flexWrap:'wrap', gap:10, padding:'16px 24px' }}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nome..." style={{ ...S.inp, flex:1, minWidth:140 }} />
         <select value={fCat} onChange={e=>setFCat(e.target.value)} style={{ ...S.inp, width:170 }}>
           <option value="all">Todas categorias</option>
           {Object.keys(CATS).map(c => <option key={c} value={c}>{c}</option>)}
@@ -129,7 +131,7 @@ export const Templates = () => {
         </select>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(240px, 1fr))', gap:12, padding:'0 24px 24px' }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(240px, 1fr))', gap:12, padding:'0 24px 24px' }}>
         {loading ? (
           <div style={{ gridColumn:'1/-1', textAlign:'center', color:C.mut, padding:40 }}><Loader2 size={20} className="animate-spin" style={{ display:'inline' }} /> Carregando…</div>
         ) : list.map(t => (
@@ -158,7 +160,7 @@ export const Templates = () => {
 
       {modal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }} onClick={()=>setModal(false)}>
-          <div style={{ background:C.card, borderRadius:16, padding:24, width:760, maxHeight:'90vh', overflowY:'auto', border:`1px solid ${C.bd}`, display:'flex', gap:24 }} onClick={e=>e.stopPropagation()}>
+          <div style={{ background:C.card, borderRadius:16, padding:24, width:760, maxWidth:'95vw', boxSizing:'border-box', maxHeight:'90vh', overflowY:'auto', border:`1px solid ${C.bd}`, display:'flex', flexDirection: isMobile ? 'column' : 'row', gap:24 }} onClick={e=>e.stopPropagation()}>
             <div style={{ flex:1 }}>
               <h3 style={{ margin:'0 0 4px', fontSize:17, fontWeight:800 }}>{editId ? 'Editar Template' : 'Novo Template'}</h3>
               <label style={S.lbl}>Nome do template</label>
@@ -189,7 +191,7 @@ export const Templates = () => {
                 <button onClick={save} disabled={busy} style={{ ...S.btn(), opacity:busy?0.6:1, display:'inline-flex', alignItems:'center', gap:6 }}>{busy && <Loader2 size={14} className="animate-spin" />}{editId ? 'Salvar' : 'Salvar Template'}</button>
               </div>
             </div>
-            <div style={{ width:280, flexShrink:0 }}>
+            <div style={{ width: isMobile ? '100%' : 280, flexShrink:0 }}>
               <label style={S.lbl}>Preview</label>
               <div style={{ background:C.bg, borderRadius:12, padding:16, minHeight:300 }}>
                 <div style={{ background:C.card, borderRadius:16, padding:'12px 14px', fontSize:13, lineHeight:1.5, color:C.tx, boxShadow:'0 2px 8px rgba(0,0,0,.3)' }}>
