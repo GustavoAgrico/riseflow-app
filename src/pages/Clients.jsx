@@ -9,6 +9,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { api } from '@services/api'
 import { socket } from '@services/socket'
+import { useIsMobile } from '@hooks/useIsMobile'
 import { useAuth } from '@context/AuthContext'
 import { logger } from '@services/activityLogger'
 import { MOCK_CLIENTS } from '@constants/config'
@@ -217,6 +218,7 @@ export const Clients = () => {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState(null)
+  const isMobile = useIsMobile()
   const [selected, setSelected] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState(null)
@@ -441,9 +443,9 @@ export const Clients = () => {
 
       <div className="flex gap-4 h-[calc(100vh-10rem)]">
         {/* List */}
-        <div className="flex-1 flex flex-col glass rounded-2xl overflow-hidden">
+        <div className="flex-1 min-w-0 flex flex-col glass rounded-2xl overflow-hidden">
           {/* Toolbar */}
-          <div className="p-4 border-b border-dark-400 flex items-center gap-3">
+          <div className="p-4 border-b border-dark-400 flex items-center flex-wrap gap-3">
             <div className="flex-1 flex items-center gap-2 glass rounded-xl px-3 py-2">
               <Search size={14} className="text-slate-400" />
               <input
@@ -634,7 +636,7 @@ export const Clients = () => {
 
         {/* Detail Panel */}
         {selected ? (
-          <div className="w-80 glass rounded-2xl p-5 flex flex-col animate-slide-in-left">
+          <div className={clsx('glass rounded-2xl p-5 flex flex-col', isMobile ? 'fixed inset-0 z-50 rounded-none overflow-y-auto' : 'w-80 animate-slide-in-left')}>
             <div className="flex items-center justify-between mb-5">
               <span className="text-xs text-slate-400 uppercase tracking-wider">Detalhes</span>
               <button onClick={() => setSelected(null)} className="p-1 hover:bg-dark-500 rounded-lg transition-colors">
@@ -727,7 +729,7 @@ export const Clients = () => {
               )}
             </div>
           </div>
-        ) : (
+        ) : isMobile ? null : (
           <div className="w-80 glass rounded-2xl flex items-center justify-center text-center p-6">
             <div>
               <Users className="mx-auto mb-3 text-slate-500" size={32} />
