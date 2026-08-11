@@ -255,7 +255,7 @@ export function Analytics() {
             <div className="lg:col-span-3 glass rounded-2xl p-5">
               <h3 className="font-display font-semibold text-white text-sm mb-4">Conversas mais ativas</h3>
               {topConvs.length ? (
-                <table className="w-full">
+                <div className="overflow-x-auto"><table className="w-full min-w-[380px]">
                   <thead><tr className="border-b border-dark-400">
                     {['', 'Contato', 'Msgs', 'Última atividade'].map(h => (
                       <th key={h} className="text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wider pb-3 px-2">{h}</th>
@@ -271,7 +271,7 @@ export function Analytics() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               ) : empty}
             </div>
             <div className="lg:col-span-2 glass rounded-2xl p-5">

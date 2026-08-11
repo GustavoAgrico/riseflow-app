@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Users, UserCheck, Layers, Gauge, Pencil, Trash2, Plus, Loader2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { socket } from '@services/socket'
+import { useIsMobile } from '@hooks/useIsMobile'
 import { useAuth } from '@context/AuthContext'
 import { logger } from '@services/activityLogger'
 
@@ -38,6 +39,7 @@ export const Teams = () => {
   const navigate = useNavigate()
   const { user, isDemoMode } = useAuth()
 
+  const isMobile = useIsMobile()
   const [members, setMembers] = useState([])
   const [queues, setQueues] = useState([])
   const [loading, setLoading] = useState(true)
@@ -205,6 +207,41 @@ export const Teams = () => {
         ))}
       </div>
 
+      {isMobile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+          {loading && <div style={{ textAlign: 'center', color: C.muted, padding: 24 }}><Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /> Carregando…</div>}
+          {!loading && members.length === 0 && <div style={{ ...cardS, textAlign: 'center', color: C.muted }}>Nenhum membro ainda. Toque em <strong style={{ color: C.purple }}>Adicionar Membro</strong>.</div>}
+          {members.map(m => {
+            const isAdmin = m.role === 'Admin'
+            return (
+              <div key={m.id} style={{ ...cardS, padding: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                    <Avatar name={m.name} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700 }}>{m.name}</div>
+                      <div style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>{m.email}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button title="Editar" onClick={() => openEdit(m)} style={{ ...iBtn(C.muted), display: 'inline-flex', alignItems: 'center' }}><Pencil size={15} /></button>
+                    <button title={isAdmin ? 'Admin não pode ser removido' : 'Remover'} onClick={() => removeMember(m)} disabled={isAdmin} style={{ ...iBtn(C.red), opacity: isAdmin ? 0.3 : 1, display: 'inline-flex', alignItems: 'center' }}><Trash2 size={15} /></button>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <label style={{ fontSize: 11, color: C.muted }}>Cargo
+                    <select value={m.role} onChange={e => patchMember(m.id, 'role', e.target.value)} style={{ ...inp, width: '100%', marginTop: 4 }}>{ROLES.map(r => <option key={r}>{r}</option>)}</select>
+                  </label>
+                  <label style={{ fontSize: 11, color: C.muted }}>Status
+                    <select value={m.status} onChange={e => patchMember(m.id, 'status', e.target.value)} style={{ ...inp, width: '100%', marginTop: 4, color: ST[m.status]?.c ?? C.text, fontWeight: 600 }}>{Object.entries(ST).map(([k, v]) => <option key={k} value={k} style={{ color: C.text }}>{v.l}</option>)}</select>
+                  </label>
+                </div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>Limite: {m.conv_limit} conversas</div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
       <div style={{ ...cardS, padding: 0, marginBottom: 24, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
           <thead><tr>{['Membro', 'Email', 'Cargo', 'Status', 'Limite', 'Ações'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
@@ -233,6 +270,7 @@ export const Teams = () => {
           </tbody>
         </table>
       </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
         <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Filas de Atendimento</h2>
