@@ -125,7 +125,7 @@ export const Topbar = ({ title, subtitle, onMenu }) => {
             )}
           </button>
           {showNotif && (
-            <div className="absolute right-0 top-12 w-80 glass rounded-2xl border border-dark-300 shadow-xl overflow-hidden animate-slide-up z-50">
+            <div className="absolute right-0 top-12 w-80 max-w-[calc(100vw-1.5rem)] glass-solid rounded-2xl border border-dark-300 shadow-xl overflow-hidden animate-slide-up z-50">
               <div className="px-4 py-3 border-b border-dark-400 flex justify-between items-center">
                 <span className="font-display font-semibold text-sm">Notificações</span>
                 <span className="text-xs text-brand-orange cursor-pointer" onClick={markAllRead}>Marcar lidas</span>
@@ -166,7 +166,7 @@ export const Topbar = ({ title, subtitle, onMenu }) => {
           </button>
 
           {showUserMenu && (
-            <div className="absolute right-0 top-12 w-52 glass rounded-2xl border border-dark-300 shadow-xl overflow-hidden animate-slide-up z-50">
+            <div className="absolute right-0 top-12 w-52 glass-solid rounded-2xl border border-dark-300 shadow-xl overflow-hidden animate-slide-up z-50">
               <div className="px-4 py-3 border-b border-dark-400">
                 <p className="text-sm font-medium text-white truncate">{fullName}</p>
                 <p className="text-xs text-slate-500 truncate">{user?.email}</p>

@@ -47,7 +47,7 @@ export const NewFlowModal = ({ onClose, onCreated }) => {
       style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-md glass rounded-2xl border border-dark-300 shadow-2xl animate-slide-up">
+      <div className="w-full max-w-md glass-solid rounded-2xl border border-dark-300 shadow-2xl animate-slide-up">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-dark-400">
           <div className="flex items-center gap-3">

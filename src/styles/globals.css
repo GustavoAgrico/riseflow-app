@@ -36,6 +36,13 @@
     backdrop-filter: blur(12px);
     border: 1px solid rgba(255,255,255,0.08);
   }
+  /* Variante OPACA para dropdowns/menus/modais — o glass translúcido deixa o
+     conteúdo de trás vazar e atrapalha a leitura. */
+  .glass-solid {
+    background: rgba(15,20,34,0.98);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.10);
+  }
   .glass-orange {
     background: rgba(255,107,53,0.08);
     backdrop-filter: blur(12px);

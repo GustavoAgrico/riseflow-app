@@ -3,7 +3,7 @@ import { X, HelpCircle, ChevronDown, ExternalLink } from 'lucide-react'
 
 export const ModalBase = ({ onClose, title, icon, iconBg, children }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-    <div className="glass rounded-2xl w-full max-w-md relative animate-fade-in">
+    <div className="glass-solid rounded-2xl w-full max-w-md relative animate-fade-in">
       <div className="flex items-center justify-between p-6 pb-4">
         <div className="flex items-center gap-3">
           <div

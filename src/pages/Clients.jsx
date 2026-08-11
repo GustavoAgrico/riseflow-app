@@ -86,7 +86,7 @@ const ClientFormModal = ({ userId, initial, onClose, onSaved }) => {
       style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}
       onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-lg glass rounded-2xl border border-dark-300 shadow-2xl animate-slide-up">
+      <div className="w-full max-w-lg glass-solid rounded-2xl border border-dark-300 shadow-2xl animate-slide-up">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-dark-400">
           <div className="flex items-center gap-3">
@@ -412,7 +412,7 @@ export const Clients = () => {
           style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}
           onClick={e => e.target === e.currentTarget && !bulkDeleting && setConfirmBulk(false)}
         >
-          <div className="w-full max-w-sm glass rounded-2xl border border-dark-300 shadow-2xl animate-slide-up p-6">
+          <div className="w-full max-w-sm glass-solid rounded-2xl border border-dark-300 shadow-2xl animate-slide-up p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center flex-shrink-0">
                 <AlertTriangle size={18} className="text-red-400" />

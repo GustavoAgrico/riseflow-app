@@ -38,7 +38,7 @@ export const NewConversationModal = ({ onClose, onCreate, initialName = '', init
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="glass rounded-2xl p-6 w-full max-w-md animate-fade-in">
+      <div className="glass-solid rounded-2xl p-6 w-full max-w-md animate-fade-in">
 
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
