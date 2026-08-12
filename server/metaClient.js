@@ -243,7 +243,8 @@ async function within24h(number, userId) {
   if (known?.lastIncomingAt) return Date.now() - known.lastIncomingAt < WINDOW_24H_MS
   if (!isConfigured) return false
   const { data } = await supabase.from('messages')
-    .select('created_at').eq('contact_phone', String(number)).eq('direction', 'received')
+    .select('created_at').eq('contact_phone', String(number))
+    .in('direction', ['inbound', 'received']) // aceita vocabulário novo e antigo
     .order('created_at', { ascending: false }).limit(1)
   const last = data?.[0]?.created_at
   return last ? Date.now() - new Date(last).getTime() < WINDOW_24H_MS : false

@@ -22,7 +22,7 @@ async function saveIncomingMessage({ userId, phone, name, text, channel = 'chat'
       conversation_id: conv?.id,
       contact_phone: phone,
       content: text,
-      direction: 'received',
+      direction: 'inbound',
       type: 'text',
       external_id: `${channel}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       status: 'delivered',

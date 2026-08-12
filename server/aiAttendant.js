@@ -180,8 +180,10 @@ async function aiRespond({ jid, text, pushName, fromMe }) {
     const { data: history } = await supabase.from('messages')
       .select('content, direction').eq('contact_phone', phone)
       .order('created_at', { ascending: false }).limit(10)
+    // direction pode vir como 'outbound'/'sent' (dados antigos) — trata os dois.
+    const isOut = (d) => d === 'outbound' || d === 'sent'
     const historyText = (history || []).reverse()
-      .map((m) => `${m.direction === 'sent' ? 'Atendente' : 'Cliente'}: ${m.content}`)
+      .map((m) => `${isOut(m.direction) ? 'Atendente' : 'Cliente'}: ${m.content}`)
       .join('\n')
     const { data: faqs } = await supabase.from('knowledge_base')
       .select('question, answer').eq('user_id', userId).limit(20)

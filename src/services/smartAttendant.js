@@ -44,7 +44,7 @@ export const smartAttendant = {
       .order('created_at', { ascending: false })
       .limit(10)
     const historyText = (history || []).reverse()
-      .map(m => `${m.direction === 'sent' ? 'Atendente' : 'Cliente'}: ${m.content}`).join('\n')
+      .map(m => `${(m.direction === 'outbound' || m.direction === 'sent') ? 'Atendente' : 'Cliente'}: ${m.content}`).join('\n')
 
     const { data: faqs } = await supabase
       .from('knowledge_base').select('question, answer').eq('user_id', userId).limit(20)

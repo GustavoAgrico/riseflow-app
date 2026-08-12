@@ -170,7 +170,7 @@ async function saveSentMessage(ctx, text) {
       conversation_id: conv?.id,
       contact_phone: phone,
       content: text,
-      direction: 'sent',
+      direction: 'outbound',
       type: 'text',
       external_id: `flow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       status: 'sent',
