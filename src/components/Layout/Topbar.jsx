@@ -55,14 +55,14 @@ export const Topbar = ({ title, subtitle, onMenu }) => {
   return (
     <div className="sticky top-0 z-30">
       {isDemoMode && (
-        <div className="bg-brand-orange flex items-center justify-between px-6 py-2">
-          <div className="flex items-center gap-2 text-white text-xs font-medium">
+        <div className="bg-brand-orange flex items-center justify-between gap-2 px-3 sm:px-6 py-2">
+          <div className="flex items-center gap-2 text-white text-xs font-medium min-w-0">
             <Zap size={13} className="flex-shrink-0" />
-            <span>Modo Demo — Cadastre-se para salvar seus dados</span>
+            <span className="truncate"><span className="hidden sm:inline">Modo Demo — </span>Cadastre-se para salvar seus dados</span>
           </div>
           <Link
             to="/register"
-            className="text-xs font-semibold bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-lg transition-colors whitespace-nowrap"
+            className="text-xs font-semibold bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
           >
             Criar conta grátis
           </Link>

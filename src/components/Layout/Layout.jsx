@@ -17,7 +17,7 @@ export const Layout = ({ children, title, subtitle }) => {
       {isMobile && drawerOpen && (
         <div onClick={() => setDrawerOpen(false)} className="fixed inset-0 bg-black/50 z-40" />
       )}
-      <div className={clsx('flex-1 flex flex-col transition-all duration-300', isMobile ? 'ml-0' : (sidebarOpen ? 'ml-64' : 'ml-20'))}>
+      <div className={clsx('flex-1 min-w-0 flex flex-col transition-all duration-300 overflow-x-hidden', isMobile ? 'ml-0' : (sidebarOpen ? 'ml-64' : 'ml-20'))}>
         <Topbar title={title} subtitle={subtitle} onMenu={isMobile ? () => setDrawerOpen(true) : null} />
         <main className="flex-1 p-4 sm:p-6 overflow-y-auto overflow-x-hidden animate-fade-in">
           {children}
