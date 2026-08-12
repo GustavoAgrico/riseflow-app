@@ -110,7 +110,23 @@ oauthRouter.get('/callback', async (req, res) => {
       timeout: 15_000,
     })
     const pages = (accounts.data || []).map((p) => ({ id: p.id, name: p.name, access_token: p.access_token }))
-    if (!pages.length) return respond({ error: 'Nenhuma página do Facebook encontrada nesta conta.' })
+    if (!pages.length) {
+      // Diagnóstico: descobre quais permissões o usuário realmente concedeu.
+      // Distingue "faltou conceder pages_show_list" de "concedeu mas nenhuma
+      // Página foi selecionada/apareceu".
+      let granted = []
+      try {
+        const { data: perms } = await axios.get(`${GRAPH}/me/permissions`, {
+          params: { access_token: tok.access_token }, timeout: 10_000,
+        })
+        granted = (perms.data || []).filter((p) => p.status === 'granted').map((p) => p.permission)
+      } catch { /* segue sem o detalhe */ }
+      console.warn('[meta oauth] /me/accounts vazio — permissões concedidas:', granted.join(', ') || '(nenhuma)')
+      const hint = granted.includes('pages_show_list')
+        ? 'A permissão de Páginas foi concedida, mas nenhuma Página aparece — no consentimento você precisa SELECIONAR a Página (marque a caixa dela) e conceder o acesso.'
+        : 'A permissão "pages_show_list" NÃO foi concedida. Remova o app em Facebook → Configurações → Apps e sites, refaça o login e MARQUE a Página + aceite todas as permissões.'
+      return respond({ error: `Nenhuma página encontrada. ${hint} (concedidas: ${granted.join(', ') || 'nenhuma'})` })
+    }
     respond({ pages })
   } catch (err) {
     respond({ error: err.response?.data?.error?.message || err.message })
