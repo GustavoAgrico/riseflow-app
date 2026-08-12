@@ -23,6 +23,16 @@ export const getMetaStatus = (userId, channel) =>
 export const metaErrorMessage = (err) =>
   err?.response?.data?.error || err?.message || 'Erro desconhecido'
 
+// Total de seguidores do perfil (a Meta não expõe a lista, só o número).
+// Retorna { channel, count, username, mediaCount? }.
+export const getMetaFollowers = (userId, channel) =>
+  api.get('/meta/followers', { params: { userId, channel } }).then((r) => r.data)
+
+// Puxa o histórico do Direct/Messenger para conversations/messages.
+// Retorna { ok, conversations, messages }.
+export const syncMetaConversations = (userId, channel) =>
+  api.post('/meta/sync-conversations', { userId, channel }).then((r) => r.data)
+
 /* Abre o popup de login da Meta e resolve com { pages } (via postMessage do
    callback) ou rejeita com o erro retornado.
    O popup é aberto IMEDIATAMENTE (contexto de gesto do usuário) com about:blank

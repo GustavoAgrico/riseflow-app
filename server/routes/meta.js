@@ -208,6 +208,48 @@ router.post('/send', async (req, res) => {
   }
 })
 
+// Carrega a config conectada (page_token/page_id) do canal para o usuário.
+async function loadPageConfig(userId, channel) {
+  if (!isConfigured) throw new Error('Backend sem Supabase.')
+  const { data } = await supabase.from('integrations')
+    .select('config').eq('user_id', userId).eq('type', channel).eq('status', 'connected').maybeSingle()
+  const cfg = data?.config || {}
+  if (!cfg.page_token || !cfg.page_id) throw new Error(`Canal ${channel} não está conectado.`)
+  return { token: cfg.page_token, pageId: cfg.page_id }
+}
+
+// GET /api/meta/followers?channel=facebook|instagram — total de seguidores do perfil.
+router.get('/followers', async (req, res) => {
+  const userId = req.user?.sub || (process.env.NODE_ENV !== 'production' ? req.query.userId : null)
+  const channel = req.query.channel
+  if (!userId || !['facebook', 'instagram'].includes(channel)) {
+    return res.status(400).json({ error: 'channel (facebook|instagram) obrigatório.' })
+  }
+  try {
+    const { token, pageId } = await loadPageConfig(userId, channel)
+    res.json(await meta.getFollowerCount({ pageId, token, channel }))
+  } catch (err) {
+    res.status(400).json({ error: err.response?.data?.error?.message || err.message })
+  }
+})
+
+// POST /api/meta/sync-conversations  Body: { channel } — puxa o histórico do Direct/Messenger.
+router.post('/sync-conversations', async (req, res) => {
+  const userId = req.user?.sub || (process.env.NODE_ENV !== 'production' ? req.body?.userId : null)
+  const channel = req.body?.channel
+  if (!userId || !['facebook', 'instagram'].includes(channel)) {
+    return res.status(400).json({ error: 'channel (facebook|instagram) obrigatório.' })
+  }
+  try {
+    const { token, pageId } = await loadPageConfig(userId, channel)
+    meta.registerPage({ pageId, userId, channel, token, pageName: null }) // habilita envio depois
+    const result = await meta.syncConversations({ pageId, token, channel, userId })
+    res.json({ ok: true, ...result })
+  } catch (err) {
+    res.status(400).json({ error: err.response?.data?.error?.message || err.message })
+  }
+})
+
 module.exports = router
 module.exports.webhookRouter = webhookRouter
 module.exports.oauthRouter = oauthRouter

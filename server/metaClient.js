@@ -291,7 +291,113 @@ async function resumePages() {
   }
 }
 
+/* ─── Seguidores do perfil ────────────────────────────────────────────────
+   A Graph NÃO expõe a LISTA de seguidores (privacidade) — só o total.
+   Facebook: followers_count/fan_count da própria página.
+   Instagram: followers_count da conta profissional vinculada à página. */
+async function getFollowerCount({ pageId, token, channel }) {
+  if (!pageId || !token) throw new Error('página não conectada')
+  if (channel === 'instagram') {
+    const { data } = await axios.get(`${GRAPH}/${pageId}`, {
+      params: { fields: 'instagram_business_account{followers_count,follows_count,media_count,username}', access_token: token },
+      timeout: 12_000,
+    })
+    const ig = data.instagram_business_account
+    if (!ig) throw new Error('Nenhuma conta do Instagram vinculada a esta página.')
+    return { channel, count: ig.followers_count ?? null, username: ig.username ?? null, mediaCount: ig.media_count ?? null }
+  }
+  const { data } = await axios.get(`${GRAPH}/${pageId}`, {
+    params: { fields: 'followers_count,fan_count,name', access_token: token },
+    timeout: 12_000,
+  })
+  return { channel, count: data.followers_count ?? data.fan_count ?? null, username: data.name ?? null }
+}
+
+/* Persiste uma mensagem histórica (inbound|outbound) no mesmo shape do chat.
+   Idempotente por external_id (dedup com o que o webhook já gravou). */
+async function saveMetaMessage({ userId, phone, name, text, direction, externalId, createdAt, channel }) {
+  if (!isConfigured || !userId || !text) return
+  const { data: conv } = await supabase.from('conversations').upsert({
+    user_id: userId, contact_phone: phone, contact_name: name || phone,
+    contact_channel: channel, last_message: text, last_message_at: createdAt, updated_at: createdAt,
+  }, { onConflict: 'user_id,contact_phone' }).select('id').single()
+  await supabase.from('messages').upsert({
+    user_id: userId, conversation_id: conv?.id, contact_phone: phone, content: text,
+    direction, type: 'text', channel, external_id: externalId,
+    status: 'delivered', read: direction === 'outbound', created_at: createdAt,
+  }, { onConflict: 'external_id', ignoreDuplicates: true })
+}
+
+/* ─── Sync do Direct/Messenger ─────────────────────────────────────────────
+   Puxa as threads da página (histórico) e persiste em conversations/messages,
+   para o Chat mostrar as conversas mesmo sem esperar novos webhooks.
+   IG usa platform=instagram; o "nós" é o IG business account (não o pageId). */
+async function syncConversations({ pageId, token, channel, userId }) {
+  if (!pageId || !token) throw new Error('página não conectada')
+  const prefix = channel === 'instagram' ? 'ig' : 'fb'
+  const domain = channel === 'instagram' ? 'instagram' : 'messenger'
+
+  // Quem somos "nós" nas threads (para definir a direção de cada mensagem).
+  let selfId = String(pageId)
+  if (channel === 'instagram') {
+    try {
+      const { data } = await axios.get(`${GRAPH}/${pageId}`, {
+        params: { fields: 'instagram_business_account{id}', access_token: token }, timeout: 12_000,
+      })
+      selfId = String(data.instagram_business_account?.id || pageId)
+    } catch { /* mantém pageId */ }
+  }
+
+  const MAX_CONVS = 80
+  let url = `${GRAPH}/${pageId}/conversations`
+  let params = {
+    platform: channel === 'instagram' ? 'instagram' : 'messenger',
+    fields: 'participants,updated_time,messages.limit(25){id,message,from,created_time}',
+    limit: 25, access_token: token,
+  }
+
+  let convCount = 0, msgCount = 0
+  while (url && convCount < MAX_CONVS) {
+    const { data } = await axios.get(url, { params, timeout: 20_000 })
+    for (const thread of data.data || []) {
+      const parts = thread.participants?.data || []
+      const contact = parts.find((p) => String(p.id) !== selfId) || parts[0]
+      if (!contact) continue
+      const cid = String(contact.id)
+      const phone = `${prefix}${cid}`
+      const name = contact.name || contact.username || phone
+      const jid = `${phone}@${domain}`
+
+      const msgs = (thread.messages?.data || []).slice().reverse() // cronológico
+      let lastInbound = 0
+      for (const m of msgs) {
+        const text = m.message || (m.attachments?.length ? '📎 Anexo' : '')
+        if (!text) continue
+        const outbound = String(m.from?.id) === selfId
+        const createdAt = m.created_time ? new Date(m.created_time).toISOString() : new Date().toISOString()
+        await saveMetaMessage({
+          userId, phone, name, text,
+          direction: outbound ? 'outbound' : 'inbound',
+          externalId: m.id, createdAt, channel,
+        })
+        msgCount++
+        if (!outbound) lastInbound = Math.max(lastInbound, new Date(createdAt).getTime())
+      }
+      // Habilita envio dentro da janela de 24h e fixa o dono do chat.
+      chats.set(phone, { pageId: String(pageId), lastIncomingAt: lastInbound || Date.now() })
+      convCount++
+      if (convCount >= MAX_CONVS) break
+      io?.emit('new_chat', { chat: { id: jid } })
+    }
+    url = data.paging?.next || null
+    params = undefined // a URL de paging já traz todos os parâmetros
+  }
+
+  return { conversations: convCount, messages: msgCount }
+}
+
 module.exports = {
   init, registerPage, unregisterPagesOf, getStatus, verifyPageToken, subscribePage,
   handleWebhookEvent, sendTextTo, resumePages, isMetaNumber, emitIntegrationConnected,
+  getFollowerCount, syncConversations,
 }

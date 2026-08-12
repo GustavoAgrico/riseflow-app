@@ -4,7 +4,7 @@ import { useAuth } from '@context/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { getInstanceStatus, disconnectInstance } from '@/services/evolutionApi'
 import { disconnectTelegram } from '@services/telegramService'
-import { disconnectMeta } from '@services/metaService'
+import { disconnectMeta, getMetaFollowers, syncMetaConversations, metaErrorMessage } from '@services/metaService'
 import { disconnectWhatsAppCloud } from '@services/whatsappCloudService'
 import { WhatsAppModal } from '@components/Integrations/WhatsAppModal'
 import { WhatsAppManagePanel } from '@components/Integrations/WhatsAppManagePanel'
@@ -14,7 +14,7 @@ import { TelegramModal } from '@components/Integrations/TelegramModal'
 import { WhatsAppCloudModal } from '@components/Integrations/WhatsAppCloudModal'
 import { EmailModal } from '@components/Integrations/EmailModal'
 import { AIModal } from '@components/Integrations/AIModal'
-import { CheckCircle, XCircle, Plug, Settings, Loader2, RefreshCw, Wifi, AlertTriangle, Mail, Lock } from 'lucide-react'
+import { CheckCircle, XCircle, Plug, Settings, Loader2, RefreshCw, Wifi, AlertTriangle, Mail, Lock, Users } from 'lucide-react'
 import { sendEmail, emailErrorMessage } from '@services/emailService'
 import { BrandIcon } from '@components/Integrations/BrandIcons'
 import { usePlan } from '@hooks/usePlan'
@@ -37,6 +37,65 @@ const REQUIRED_PLAN = {
 }
 
 const PLAN_LABEL = { free: 'Grátis', starter: 'Starter', pro: 'Pro', enterprise: 'Enterprise' }
+
+/* Estatísticas do perfil Meta (FB/IG): total de seguidores + botão para puxar
+   o histórico do Direct/Messenger. A API da Meta não expõe a LISTA de
+   seguidores — só o número; por isso mostramos a contagem, não os contatos. */
+function MetaStats({ userId, channel }) {
+  const [followers, setFollowers] = useState(null)
+  const [username, setUsername]   = useState(null)
+  const [loadingF, setLoadingF]   = useState(true)
+  const [fErr, setFErr]           = useState(null)
+  const [syncing, setSyncing]     = useState(false)
+  const [syncMsg, setSyncMsg]     = useState(null)
+
+  useEffect(() => {
+    let on = true
+    setLoadingF(true); setFErr(null)
+    getMetaFollowers(userId, channel)
+      .then(d => { if (on) { setFollowers(d.count); setUsername(d.username) } })
+      .catch(e => { if (on) setFErr(metaErrorMessage(e)) })
+      .finally(() => { if (on) setLoadingF(false) })
+    return () => { on = false }
+  }, [userId, channel])
+
+  const doSync = async () => {
+    setSyncing(true); setSyncMsg(null)
+    try {
+      const r = await syncMetaConversations(userId, channel)
+      setSyncMsg(`✓ ${r.conversations} conversa(s) · ${r.messages} mensagem(ns)`)
+    } catch (e) {
+      setSyncMsg('Erro: ' + metaErrorMessage(e))
+    } finally { setSyncing(false) }
+  }
+
+  return (
+    <div className="mb-3 space-y-2">
+      <div className="flex items-center gap-1.5 text-xs">
+        <Users size={12} className="text-brand-orange flex-shrink-0" />
+        {loadingF ? (
+          <span className="text-slate-500">Carregando seguidores…</span>
+        ) : fErr ? (
+          <span className="text-amber-400" title={fErr}>Seguidores indisponíveis</span>
+        ) : (
+          <span className="text-slate-300">
+            <span className="font-semibold text-white">{followers?.toLocaleString('pt-BR') ?? '—'}</span> seguidores
+            {username ? <span className="text-slate-500"> · @{username}</span> : null}
+          </span>
+        )}
+      </div>
+      <button
+        onClick={doSync}
+        disabled={syncing}
+        className="w-full py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-white/5 border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+        {syncing ? 'Sincronizando…' : 'Sincronizar conversas do Direct'}
+      </button>
+      {syncMsg && <p className="text-[10px] text-slate-500 text-center">{syncMsg}</p>}
+    </div>
+  )
+}
 
 /* ─── Card definitions ─────────────────────────────────────────────────── */
 const CARDS = [
@@ -359,6 +418,11 @@ export const Integrations = () => {
                     <Wifi size={12} className="text-brand-green" />
                     <span className="text-xs text-slate-300 font-mono">{cfg.page_name}</span>
                   </div>
+                )}
+
+                {/* Seguidores + sync do Direct (FB/IG conectados, fora do demo) */}
+                {(card.id === 'facebook' || card.id === 'instagram') && connected && !isDemoMode && (
+                  <MetaStats userId={user?.id} channel={card.id} />
                 )}
 
                 {/* ── Action area ── */}
