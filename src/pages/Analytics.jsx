@@ -32,6 +32,43 @@ const relTime = ts => {
 
 const ini = n => (n || '?').split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
+// Dados de exemplo p/ o modo demo — escalam com o período para o gráfico e os
+// KPIs fazerem sentido em Hoje/7/30/90 dias, sem bater no banco.
+const buildDemo = (days) => {
+  const slots = Math.min(days, 7)
+  const chart = []
+  for (let i = slots - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86_400_000)
+    const date = d.toLocaleDateString('pt-BR', { weekday: 'short' })
+    chart.push({ date, sent: 45 + (i * 29) % 55, recv: 32 + (i * 41) % 44 })
+  }
+  const sent = Math.round(62 * days)
+  const recv = Math.round(48 * days)
+  return {
+    sent, recv, clients: 1382, rate: Math.round((sent / (sent + recv)) * 100),
+    conversions: 1204, avgTime: 92, chart,
+    channels: [
+      { label: 'WhatsApp',  val: 142, pct: 63, color: '#25D366' },
+      { label: 'Instagram', val: 46,  pct: 20, color: '#E1306C' },
+      { label: 'Facebook',  val: 24,  pct: 11, color: '#1877F2' },
+      { label: 'Telegram',  val: 14,  pct: 6,  color: '#2AABEE' },
+    ],
+    topConvs: [
+      { name: 'Ana Paula Silva',  msgs: 38, last: '12min atrás', color: '#25D366' },
+      { name: 'Carlos Eduardo',   msgs: 31, last: '1h atrás',    color: '#E1306C' },
+      { name: 'Marina Rodrigues', msgs: 27, last: '2h atrás',    color: '#1877F2' },
+      { name: 'Roberto Santos',   msgs: 19, last: '3h atrás',    color: '#25D366' },
+      { name: 'Julia Ferreira',   msgs: 14, last: '5h atrás',    color: '#2AABEE' },
+    ],
+    flows: [
+      { name: 'Boas-vindas WhatsApp',   active: true,  runs: 847,  rate: 37 },
+      { name: 'Qualificação de Leads',  active: true,  runs: 1203, rate: 74 },
+      { name: 'Follow-up Carrinho',     active: false, runs: 445,  rate: 42 },
+      { name: 'Pós-venda Satisfação',   active: true,  runs: 2891, rate: 81 },
+    ],
+  }
+}
+
 const LineChart = ({ data }) => {
   const ref = useRef(null)
   useEffect(() => {
@@ -64,7 +101,7 @@ const LineChart = ({ data }) => {
 }
 
 export function Analytics() {
-  const { user } = useAuth()
+  const { user, isDemoMode } = useAuth()
   const [period, setPeriod]     = useState('7d')
   const [loading, setLoading]   = useState(true)
   const [sent, setSent]         = useState(0)
@@ -82,6 +119,17 @@ export function Analytics() {
     if (!user) return
     setLoading(true)
     const days = PERIODS.find(p => p.key === period)?.days ?? 7
+
+    // Modo demo: usa dados de exemplo (não bate no banco), como CRM/Funil/Campanhas.
+    if (isDemoMode) {
+      const d = buildDemo(days)
+      setSent(d.sent); setRecv(d.recv); setClients(d.clients); setRate(d.rate)
+      setConv(d.conversions); setAvgTime(d.avgTime); setChart(d.chart)
+      setChannels(d.channels); setTop(d.topConvs); setFlows(d.flows)
+      setLoading(false)
+      return
+    }
+
     const from = new Date(Date.now() - days * 86_400_000).toISOString()
 
     Promise.all([
@@ -144,7 +192,7 @@ export function Analytics() {
 
       setFlows(fls.map(f => ({ name: f.name, active: f.status === 'active', runs: f.triggers ?? 0, rate: (f.triggers ?? 0) > 0 ? Math.round(((f.conversions ?? 0) / f.triggers) * 100) : 0 })))
     }).catch(console.error).finally(() => setLoading(false))
-  }, [user, period])
+  }, [user, period, isDemoMode])
 
   const [exporting, setExporting] = useState(false)
 
@@ -189,6 +237,12 @@ export function Analytics() {
         </div>
       ) : (
         <div id="analytics-content" className="space-y-6 animate-fade-in">
+
+          {isDemoMode && (
+            <div className="px-4 py-2.5 rounded-xl text-sm text-amber-300 bg-amber-500/10 border border-amber-500/30">
+              Modo demo — os números abaixo são apenas exemplo. Crie uma conta para ver as métricas reais do seu atendimento.
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <div className="flex gap-1 glass rounded-xl p-1">
