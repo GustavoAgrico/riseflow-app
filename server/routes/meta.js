@@ -146,7 +146,13 @@ router.get('/oauth/url', (req, res) => {
   const origin = req.headers.origin || (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',')[0].trim()
   const state = jwt.sign({ u: userId, origin }, JWT_SECRET, { expiresIn: '10m' })
   const redirectUri = `${req.protocol}://${req.get('host')}/api/meta/oauth/callback`
-  const url = `${OAUTH_DIALOG}?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${SCOPES}`
+  // Facebook Login for Business: com config_id a Meta força a seleção de
+  // Páginas/IG e o /me/accounts passa a retornar os ativos (resolve o caso
+  // "New Pages Experience" em que scopes soltos vêm vazios). Sem a env, mantém
+  // o fluxo antigo por scope.
+  const configId = process.env.META_CONFIG_ID
+  const authParam = configId ? `config_id=${encodeURIComponent(configId)}` : `scope=${SCOPES}`
+  const url = `${OAUTH_DIALOG}?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&${authParam}`
   res.json({ url })
 })
 

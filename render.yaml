@@ -72,3 +72,9 @@ services:
         sync: false
       - key: META_VERIFY_TOKEN
         sync: false
+      # Facebook Login for Business: id da "Configuration" criada no painel do
+      # app (Facebook Login for Business → Configurations). Com ele, o consentimento
+      # força a seleção de Páginas/IG e /me/accounts retorna os ativos (necessário
+      # para páginas New Pages Experience). Se vazio, usa o fluxo por scope.
+      - key: META_CONFIG_ID
+        sync: false
