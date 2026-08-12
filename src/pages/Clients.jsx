@@ -549,8 +549,8 @@ export const Clients = () => {
             </div>
           )}
 
-          {/* Table Header */}
-          <div className="px-4 py-2 grid grid-cols-5 text-xs text-slate-500 uppercase tracking-wider border-b border-dark-400">
+          {/* Table Header — colunas só a partir de sm (no mobile a linha empilha) */}
+          <div className="px-4 py-2 hidden sm:grid grid-cols-5 text-xs text-slate-500 uppercase tracking-wider border-b border-dark-400">
             <span className="col-span-2 flex items-center gap-3">
               {!isDemoMode && (
                 <button
@@ -594,7 +594,7 @@ export const Clients = () => {
                     key={c.id}
                     onClick={() => setSelected(c)}
                     className={clsx(
-                      'px-4 py-3 grid grid-cols-5 items-center hover:bg-dark-500 transition-colors cursor-pointer border-b border-dark-400/50 group',
+                      'px-4 py-3 flex flex-col gap-2 sm:grid sm:grid-cols-5 sm:gap-0 sm:items-center hover:bg-dark-500 transition-colors cursor-pointer border-b border-dark-400/50 group',
                       selected?.id === c.id && 'bg-dark-500 border-l-2 border-brand-orange',
                       selectedIds.has(c.id) && 'bg-brand-orange/5'
                     )}
@@ -619,20 +619,24 @@ export const Clients = () => {
                         <p className="text-xs text-slate-500">{c.phone ?? '—'}</p>
                       </div>
                     </div>
-                    <span className={clsx('badge text-xs w-fit', ch?.bg, ch?.text)}>{ch?.label}</span>
-                    <div className="flex items-center gap-1.5">
-                      <div className={clsx(
-                        'w-1.5 h-1.5 rounded-full',
-                        c.status === 'active' ? 'bg-brand-green' :
-                        c.status === 'pending' ? 'bg-brand-yellow' : 'bg-slate-500'
-                      )} />
-                      <span className="text-xs text-slate-400">
-                        {c.status === 'active' ? 'Ativo' : c.status === 'pending' ? 'Pendente' : 'Fechado'}
+                    {/* No mobile, canal/status/tag ficam numa linha que quebra;
+                        no desktop, sm:contents devolve cada um às colunas do grid */}
+                    <div className="flex flex-wrap items-center gap-2 sm:contents">
+                      <span className={clsx('badge text-xs w-fit', ch?.bg, ch?.text)}>{ch?.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        <div className={clsx(
+                          'w-1.5 h-1.5 rounded-full',
+                          c.status === 'active' ? 'bg-brand-green' :
+                          c.status === 'pending' ? 'bg-brand-yellow' : 'bg-slate-500'
+                        )} />
+                        <span className="text-xs text-slate-400">
+                          {c.status === 'active' ? 'Ativo' : c.status === 'pending' ? 'Pendente' : 'Fechado'}
+                        </span>
+                      </div>
+                      <span className={clsx('badge text-xs w-fit', tagColors[c.tag] || 'bg-slate-500/15 text-slate-400')}>
+                        {c.tag}
                       </span>
                     </div>
-                    <span className={clsx('badge text-xs w-fit', tagColors[c.tag] || 'bg-slate-500/15 text-slate-400')}>
-                      {c.tag}
-                    </span>
                   </div>
                 )
               })
