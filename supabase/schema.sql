@@ -179,10 +179,14 @@ create table if not exists public.messages (
   channel         text default 'whatsapp',
   external_id     text,                 -- id da Evolution/Cloud p/ casar status e dedup
   contact_phone   text,                 -- denormalizado: consultas de histórico por telefone
+  type            text default 'text',  -- tipo da mensagem (gravado pelos writers do servidor)
+  read            boolean default false,-- flag de lida (writers/Edge Function)
   created_at      timestamptz default now()
 );
 alter table public.messages add column if not exists external_id text;
 alter table public.messages add column if not exists contact_phone text;
+alter table public.messages add column if not exists type text default 'text';
+alter table public.messages add column if not exists read boolean default false;
 create index if not exists messages_contact_phone_idx on public.messages (contact_phone);
 -- Dedup idempotente das mensagens recebidas (webhook e polling)
 create unique index if not exists messages_external_id_uidx

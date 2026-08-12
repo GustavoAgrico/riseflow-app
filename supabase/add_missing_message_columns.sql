@@ -20,6 +20,12 @@ create trigger conversations_updated_at before update on public.conversations
 -- 2) messages.contact_phone (denormalizado — consultas por telefone)
 alter table public.messages add column if not exists contact_phone text;
 
+-- 3) messages.type e messages.read — gravadas pelos writers do servidor e pela
+-- Edge Function (tipo da mensagem e flag de lida). Não são lidas pelo frontend
+-- (que usa `status`), mas sem elas o insert inteiro falha.
+alter table public.messages add column if not exists type text default 'text';
+alter table public.messages add column if not exists read boolean default false;
+
 -- Backfill: preenche contact_phone das mensagens já existentes a partir da conversa.
 update public.messages m
    set contact_phone = c.contact_phone
