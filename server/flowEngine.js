@@ -469,4 +469,5 @@ async function hasMatchingFlow(jid, text) {
 }
 
 // sendText/getWaitingExecution/hasMatchingFlow também são usados pelo aiAttendant.js
-module.exports = { handleIncomingMessage, sweepTimeouts, sendText, getWaitingExecution, hasMatchingFlow, setIo }
+// saveSentMessage é exportado para testes diretos do writer de mensagens enviadas.
+module.exports = { handleIncomingMessage, sweepTimeouts, sendText, saveSentMessage, getWaitingExecution, hasMatchingFlow, setIo }

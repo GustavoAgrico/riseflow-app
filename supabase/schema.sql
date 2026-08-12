@@ -146,10 +146,16 @@ create table if not exists public.conversations (
   unread_count    int default 0,
   ai_auto_reply   boolean default false,
   status          text default 'active',
-  created_at      timestamptz default now()
+  created_at      timestamptz default now(),
+  updated_at      timestamptz default now()
 );
 alter table public.conversations add column if not exists ai_auto_reply boolean default false;
 alter table public.conversations add column if not exists unread_count  int default 0;
+alter table public.conversations add column if not exists updated_at    timestamptz default now();
+-- updated_at automático (writers do servidor e Edge Function fazem upsert com ela)
+drop trigger if exists conversations_updated_at on public.conversations;
+create trigger conversations_updated_at before update on public.conversations
+  for each row execute function public.set_updated_at();
 -- Chave de upsert por (usuário, telefone) — usada no sync e no webhook
 do $$ begin
   alter table public.conversations add constraint conversations_user_phone_unique unique (user_id, contact_phone);
@@ -172,9 +178,12 @@ create table if not exists public.messages (
   status          text default 'sent',  -- sent | delivered | read
   channel         text default 'whatsapp',
   external_id     text,                 -- id da Evolution/Cloud p/ casar status e dedup
+  contact_phone   text,                 -- denormalizado: consultas de histórico por telefone
   created_at      timestamptz default now()
 );
 alter table public.messages add column if not exists external_id text;
+alter table public.messages add column if not exists contact_phone text;
+create index if not exists messages_contact_phone_idx on public.messages (contact_phone);
 -- Dedup idempotente das mensagens recebidas (webhook e polling)
 create unique index if not exists messages_external_id_uidx
   on public.messages (external_id) where external_id is not null;
