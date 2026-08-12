@@ -167,7 +167,10 @@ export const Chat = () => {
 
   /* Mapeia linhas reais do Supabase para o formato que a UI já espera */
   const mapConv = c => ({ id: c.id, name: c.contact_name || `+${c.contact_phone ?? '?'}`, phone: c.contact_phone, preview: c.last_message ?? '', lt: c.last_message_at ? new Date(c.last_message_at).getTime() : Date.now(), unread: c.unread_count ?? 0, online: false, auto: c.ai_auto_reply ?? false, av: colorFor(c.contact_name || c.contact_phone) })
-  const mapMsg = m => ({ id: m.id, dir: m.direction === 'outbound' ? 'out' : 'in', type: 'text', text: m.content ?? m.text ?? m.body ?? '', t: m.created_at ? new Date(m.created_at).getTime() : Date.now(), s: m.status || 'delivered' })
+  // `direction` tem vocabulário misto no banco: o frontend grava 'outbound'/'inbound',
+  // mas o servidor (flowEngine, inbox) e a Edge Function deployada gravam 'sent'/'received'.
+  // Sem normalizar, mensagens 'sent' (funil / enviadas pelo app) caíam no lado errado.
+  const mapMsg = m => ({ id: m.id, dir: (m.direction === 'outbound' || m.direction === 'sent') ? 'out' : 'in', type: 'text', text: m.content ?? m.text ?? m.body ?? '', t: m.created_at ? new Date(m.created_at).getTime() : Date.now(), s: m.status || 'delivered' })
 
   const loadConvs = async (uid) => {
     const filter = isMember && memberRecord ? { assignedTo: memberRecord.name } : {}

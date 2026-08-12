@@ -147,8 +147,11 @@ export function Analytics() {
       const convs = convsRes.data ?? []
       const fls   = flowRes.data  ?? []
 
-      const s = msgs.filter(m => m.direction === 'outbound').length
-      const r = msgs.filter(m => m.direction === 'inbound').length
+      // direction tem vocabulário misto: frontend usa 'outbound'/'inbound';
+      // servidor e Edge Function deployada usam 'sent'/'received'. Trata os dois.
+      const isOut = d => d === 'outbound' || d === 'sent'
+      const s = msgs.filter(m => isOut(m.direction)).length
+      const r = msgs.length - s
       setSent(s); setRecv(r)
       setRate((s + r) > 0 ? Math.round((s / (s + r)) * 100) : 0)
       setConv(fls.reduce((acc, f) => acc + (f.conversions ?? 0), 0))
@@ -160,7 +163,7 @@ export function Analytics() {
       Object.values(convMsgs).forEach(ms => {
         ms.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
         for (let i = 1; i < ms.length; i++) {
-          if (ms[i].direction === 'outbound' && ms[i - 1].direction === 'inbound') {
+          if (isOut(ms[i].direction) && !isOut(ms[i - 1].direction)) {
             const diff = new Date(ms[i].created_at) - new Date(ms[i - 1].created_at)
             if (diff > 0 && diff < 3_600_000) times.push(diff)
           }
@@ -177,7 +180,7 @@ export function Analytics() {
       }
       msgs.forEach(m => {
         const key = new Date(m.created_at).toLocaleDateString('pt-BR', { weekday: 'short' })
-        if (buckets[key]) m.direction === 'outbound' ? buckets[key].sent++ : buckets[key].recv++
+        if (buckets[key]) isOut(m.direction) ? buckets[key].sent++ : buckets[key].recv++
       })
       setChart(Object.values(buckets))
 
