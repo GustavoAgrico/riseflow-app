@@ -225,19 +225,24 @@ async function applyTags(contact, tags = []) {
   contact.tags = merged
 }
 
-async function transferToHuman(contact, assignTo) {
+async function transferToHuman(contact, assignTo, userId) {
   // Marca o contato como em atendimento humano (o operador filtra por essa tag).
   if (contact) {
     const merged = Array.from(new Set([...(contact.tags || []), HANDOFF_TAG]))
     await supabase.from('contacts').update({ tags: merged }).eq('id', contact.id)
     contact.tags = merged
   }
-  // Best-effort: se existir uma tabela `conversations` com assigned_to, atualiza.
+  // Persiste o assigned_to na conversa. A conversa é chaveada por (user_id,
+  // contact_phone) — NÃO por jid (coluna contact_jid não existe). Escopa por
+  // user_id quando disponível para não vazar entre contas.
   try {
-    if (assignTo && contact?.jid) {
-      await supabase.from('conversations').update({ assigned_to: assignTo }).eq('contact_jid', contact.jid)
+    const phone = contact?.phone || jidToNumber(contact?.jid || '')
+    if (assignTo && phone) {
+      let q = supabase.from('conversations').update({ assigned_to: assignTo }).eq('contact_phone', phone)
+      if (userId) q = q.eq('user_id', userId)
+      await q
     }
-  } catch (_) { /* tabela pode não existir — ok */ }
+  } catch (e) { console.warn('[flowEngine] transfer: não atualizou assigned_to:', e?.message ?? e) }
 
   // Notificação em tempo real para o atendente designado.
   if (_io) {
@@ -355,7 +360,7 @@ async function runFlow(flow, execution, startNodeId, ctx) {
         currentId = nextNodeId(edges, currentId)
       } else if (type === 'actionTransfer') {
         if (data.notice) await sendText(ctx, applyVars(data.notice, variables, ctx))
-        await transferToHuman(ctx.contact, data.assignTo)
+        await transferToHuman(ctx.contact, data.assignTo, ctx.userId)
         await completeExecution(execution.id)
         return
       } else if (type === 'actionWebhook') {
