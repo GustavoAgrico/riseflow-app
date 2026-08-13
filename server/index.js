@@ -23,6 +23,7 @@ const metaRoutes = require('./routes/meta')
 const createWebhookRouter = require('./routes/webhook')
 const billingRoutes = require('./routes/billing')
 const aiRoutes = require('./routes/ai')
+const legalRoutes = require('./routes/legal')
 const telegram = require('./telegramClient')
 const metaClient = require('./metaClient')
 const whatsappCloud = require('./whatsappCloudClient')
@@ -268,6 +269,10 @@ app.use('/api/meta', auth, metaRoutes)
 app.use('/api/whatsapp-cloud', auth, whatsappCloudRoutes)
 app.use('/api/billing', auth, billingRoutes)
 app.use('/api/ai', auth, aiRoutes)
+
+// Páginas legais públicas (Política de Privacidade / Exclusão de dados) — exigidas
+// pela App Review da Meta. Montadas ANTES do fallback do SPA para terem URL própria.
+app.use('/', legalRoutes)
 
 // Produção (Docker/Render): serve o build do frontend (../dist) na mesma porta.
 // GET em rota não-/api cai no index.html (SPA fallback) — corrige o "Cannot GET /".
