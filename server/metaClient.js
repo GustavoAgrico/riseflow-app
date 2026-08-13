@@ -66,17 +66,26 @@ function getStatus(userId, channel) {
 async function verifyPageToken(token) {
   let meErrorCode = null
 
+  let meData = null
   try {
     const { data } = await axios.get(`${GRAPH}/me`, {
-      params: { fields: 'id,name', access_token: token }, timeout: 15_000,
+      params: { fields: 'id,name,category', access_token: token }, timeout: 15_000,
     })
-    if (data?.id) return data
+    meData = data
     if (data?.error) meErrorCode = data.error.code
   } catch (err) {
     const code = err.response?.data?.error?.code
     meErrorCode = code ?? null
     // Código 190 = token inválido/expirado — rejeita diretamente
     if (code === 190) throw new Error('Token inválido ou expirado.')
+  }
+  if (meData?.id) {
+    // Só Páginas têm 'category'. Um token de USUÁRIO passaria aqui e só falharia
+    // depois, no sync, com (#298) read_mailbox — rejeita já com mensagem clara.
+    if (!meData.category) {
+      throw new Error('Esse token é de um USUÁRIO, não de uma Página. No Graph API Explorer use "Get Page Access Token" e selecione a página (ex.: gugah.agrico).')
+    }
+    return meData
   }
 
   const { META_APP_ID, META_APP_SECRET } = process.env
