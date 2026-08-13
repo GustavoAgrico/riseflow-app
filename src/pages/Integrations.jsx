@@ -22,10 +22,10 @@ import clsx from 'clsx'
 
 /* ─── Quais integrações cada plano pode conectar ───────────────────────── */
 const INTEGRATION_ACCESS = {
-  free:       ['whatsapp', 'whatsapp_cloud'],
-  starter:    ['whatsapp', 'whatsapp_cloud', 'telegram'],
-  pro:        ['whatsapp', 'whatsapp_cloud', 'telegram', 'email'],
-  enterprise: ['whatsapp', 'whatsapp_cloud', 'instagram', 'facebook', 'telegram', 'email', 'ai'],
+  free:       ['whatsapp_cloud'],
+  starter:    ['whatsapp_cloud', 'telegram'],
+  pro:        ['whatsapp_cloud', 'telegram', 'email'],
+  enterprise: ['whatsapp_cloud', 'instagram', 'facebook', 'telegram', 'email', 'ai'],
 }
 
 const REQUIRED_PLAN = {
@@ -99,11 +99,6 @@ function MetaStats({ userId, channel }) {
 
 /* ─── Card definitions ─────────────────────────────────────────────────── */
 const CARDS = [
-  {
-    id: 'whatsapp', name: 'WhatsApp Business', category: 'Mensageria',
-    color: '#25D366', bg: 'from-green-500/20 to-green-600/5',
-    description: 'Automatize mensagens, respostas e fluxos no WhatsApp Business API via Evolution API',
-  },
   {
     id: 'whatsapp_cloud', name: 'WhatsApp API Oficial', category: 'Mensageria',
     color: '#128C7E', bg: 'from-emerald-500/20 to-emerald-600/5',
@@ -225,17 +220,17 @@ export const Integrations = () => {
   /* ── On mount ── */
   useEffect(() => {
     if (isDemoMode) {
-      setIntegrations({ whatsapp: { status: 'connected', config: { number: '+55 11 99774-0712' } } })
+      setIntegrations({ whatsapp_cloud: { status: 'connected', config: { number: '+55 11 99774-0712' } } })
       setMonthlyMessages(12847)
       return
     }
-    loadIntegrations().then(checkWhatsApp)
+    loadIntegrations()
     fetchMonthlyMessages()
   }, [user, isDemoMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Helpers ── */
   const isConnected = (type) => {
-    if (isDemoMode) return type === 'whatsapp'
+    if (isDemoMode) return type === 'whatsapp_cloud'
     return integrations[type]?.status === 'connected'
   }
 
