@@ -200,8 +200,11 @@ async function handleWebhookEvent(body) {
       let pushName = phone
       if (page?.token) {
         try {
+          // Usuário do Instagram NÃO tem first_name/last_name — pedir esses campos
+          // faz a Graph falhar (#100) e o nome cair no id. Campos por canal.
+          const nameFields = channel === 'instagram' ? 'name,username' : 'name,first_name,last_name,username'
           const { data } = await axios.get(`${GRAPH}/${psid}`, {
-            params: { fields: 'name,first_name,last_name,username', access_token: page.token },
+            params: { fields: nameFields, access_token: page.token },
             timeout: 8_000,
           })
           pushName = data.name
