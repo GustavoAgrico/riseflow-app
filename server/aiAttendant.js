@@ -134,27 +134,28 @@ async function askClaude(key, systemPrompt, userMessage) {
 }
 
 /* Entrada principal. Retorna true se a IA respondeu (webhook então pula os funis). */
-async function aiRespond({ jid, text, pushName, fromMe }) {
+async function aiRespond({ jid, text, pushName, fromMe, userId: ownerId }) {
   if (!isConfigured || fromMe || !jid || !text) return false
 
   try {
-    // Config habilitada (single-tenant: a primeira; userId = dono da config).
-    const { data: config } = await supabase
-      .from('attendant_config').select('*').eq('enabled', true)
-      .limit(1).maybeSingle()
+    // Config do atendente do DONO da mensagem (multi-tenant). Sem dono conhecido
+    // (webhook legado da Evolution) cai na primeira habilitada (single-tenant).
+    let q = supabase.from('attendant_config').select('*').eq('enabled', true)
+    if (ownerId) q = q.eq('user_id', ownerId)
+    const { data: config } = await q.limit(1).maybeSingle()
     if (!config) return false
     const userId = config.user_id
     const phone = jidToNumber(jid)
 
     if (jid.endsWith('@g.us') && !config.respond_groups) return false
 
-    // Funil pausado em "Aguardar resposta" tem prioridade sobre a IA.
-    const waiting = await getWaitingExecution(jid)
+    // Funil pausado em "Aguardar resposta" tem prioridade sobre a IA (escopado).
+    const waiting = await getWaitingExecution(jid, userId)
     if (waiting) return false
 
-    // Se algum funil ativo dispararia para esta mensagem (palavra-chave, primeiro
-    // contato, horário), a IA cede — o engine de funis responde.
-    if (await hasMatchingFlow(jid, text)) return false
+    // Se algum funil ativo DESTE usuário dispararia para esta mensagem
+    // (palavra-chave, primeiro contato, horário), a IA cede ao motor de funis.
+    if (await hasMatchingFlow(jid, text, userId)) return false
 
     // Humano assumiu a conversa → IA não responde mais.
     const { data: conv } = await supabase.from('conversations')

@@ -122,7 +122,7 @@ async function handleWebhookEvent(body) {
 
         // 3) IA → funis (mesma cadeia do WhatsApp), fire-and-forget.
         if (onIncoming) {
-          Promise.resolve(onIncoming({ jid, text, pushName, fromMe: false }))
+          Promise.resolve(onIncoming({ jid, text, pushName, fromMe: false, userId }))
             .catch((err) => console.error('[wa-cloud] IA/flowEngine:', err?.message ?? err))
         }
       }

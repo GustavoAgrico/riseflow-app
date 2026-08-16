@@ -57,7 +57,7 @@ async function handleMessage(userId, msg) {
 
   // 3) IA → funis (mesma cadeia do webhook WhatsApp), fire-and-forget.
   if (onIncoming) {
-    Promise.resolve(onIncoming({ jid, text, pushName, fromMe: false }))
+    Promise.resolve(onIncoming({ jid, text, pushName, fromMe: false, userId }))
       .catch((err) => console.error('[telegram] IA/flowEngine:', err?.message ?? err))
   }
 }

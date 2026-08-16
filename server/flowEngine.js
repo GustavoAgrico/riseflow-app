@@ -80,8 +80,12 @@ function findMatchingTrigger(flow, ctx) {
 }
 
 /* ─── Acesso ao banco ────────────────────────────────────────────────── */
-async function getActiveFlows() {
-  const { data, error } = await supabase.from('flows').select('*').eq('status', 'active')
+// Escopa por dono (multi-tenant): só os funis ativos DESTE usuário. Sem userId
+// (webhook legado da Evolution, single-tenant) mantém o comportamento antigo.
+async function getActiveFlows(userId) {
+  let q = supabase.from('flows').select('*').eq('status', 'active')
+  if (userId) q = q.eq('user_id', userId)
+  const { data, error } = await q
   if (error) throw error
   return data || []
 }
@@ -114,12 +118,22 @@ async function upsertContact(jid, pushName) {
   return { contact: data, isFirstContact: true }
 }
 
-async function getWaitingExecution(jid) {
+// Retoma só uma execução aguardando cujo funil pertença a ESTE usuário — evita
+// que a mensagem de um contato (o mesmo número pode falar com 2 negócios)
+// retome o funil de outro dono. flow_executions não tem user_id, então o dono
+// vem do flow. Sem userId → comportamento legado (primeira execução).
+async function getWaitingExecution(jid, userId) {
   const { data } = await supabase
     .from('flow_executions').select('*')
     .eq('contact_jid', jid).eq('status', 'waiting_reply')
-    .order('started_at', { ascending: false }).limit(1)
-  return data?.[0] ?? null
+    .order('started_at', { ascending: false })
+  const execs = data || []
+  if (!userId) return execs[0] ?? null
+  for (const ex of execs) {
+    const flow = await getFlow(ex.flow_id)
+    if (flow?.user_id === userId) return ex
+  }
+  return null
 }
 
 const updateExecution = (id, patch) =>
@@ -396,7 +410,7 @@ async function resumeWaiting(execution, flow, ctx) {
 }
 
 /* ─── Entrada principal (chamada pelo webhook) ───────────────────────── */
-async function handleIncomingMessage({ jid, text, pushName, fromMe }) {
+async function handleIncomingMessage({ jid, text, pushName, fromMe, userId }) {
   if (!isConfigured) return            // sem Supabase: motor desativado
   if (fromMe) return                   // ignora mensagens enviadas por nós
   if (!jid || jid.endsWith('@g.us')) return // ignora grupos
@@ -405,16 +419,16 @@ async function handleIncomingMessage({ jid, text, pushName, fromMe }) {
     const { contact, isFirstContact } = await upsertContact(jid, pushName)
     const ctx = { jid, text: text || '', contact, isFirstContact, pushName, now: new Date() }
 
-    // 1) Contato já está num funil aguardando resposta? Retoma.
-    const waiting = await getWaitingExecution(jid)
+    // 1) Contato já está num funil aguardando resposta? Retoma (escopado ao dono).
+    const waiting = await getWaitingExecution(jid, userId)
     if (waiting) {
       const flow = await getFlow(waiting.flow_id)
       if (flow) { await resumeWaiting(waiting, flow, ctx); return }
       await completeExecution(waiting.id) // funil sumiu — encerra a execução órfã
     }
 
-    // 2) Avalia gatilhos dos funis ativos (um funil por mensagem).
-    const flows = await getActiveFlows()
+    // 2) Avalia gatilhos dos funis ativos DESTE usuário (um funil por mensagem).
+    const flows = await getActiveFlows(userId)
     for (const flow of flows) {
       const trigger = findMatchingTrigger(flow, ctx)
       if (!trigger) continue
@@ -460,13 +474,13 @@ if (isConfigured) {
 /* Verifica sem mutação se algum funil ativo dispararia para esta mensagem.
    Usado pelo aiAttendant para ceder o controle ao engine quando há match.
    Não chama upsertContact — só lê o banco para não criar efeitos colaterais. */
-async function hasMatchingFlow(jid, text) {
+async function hasMatchingFlow(jid, text, userId) {
   if (!isConfigured) return false
   try {
     const existing = await getContactByJid(jid)
     const isFirstContact = existing == null
     const ctx = { jid, text: text || '', isFirstContact, now: new Date() }
-    const flows = await getActiveFlows()
+    const flows = await getActiveFlows(userId)
     return flows.some((flow) => findMatchingTrigger(flow, ctx) !== null)
   } catch {
     return false

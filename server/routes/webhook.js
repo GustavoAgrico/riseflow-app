@@ -69,6 +69,8 @@ module.exports = function createWebhookRouter(io) {
           // esta mensagem (evita resposta dupla). A IA cede sozinha quando há
           // funil aguardando resposta ou conversa transferida para humano.
           // Fire-and-forget: não bloqueia a resposta do webhook.
+          // Sem userId: a Evolution é instância única (single-tenant, em
+          // desativação); IA/funis usam o comportamento legado não escopado.
           aiRespond({ jid, text, pushName, fromMe })
             .then((handled) => (handled ? null : handleIncomingMessage({ jid, text, pushName, fromMe })))
             .catch((err) => console.error('[webhook] IA/flowEngine:', err?.message ?? err))

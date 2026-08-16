@@ -231,9 +231,9 @@ app.use('/api/telegram/webhook', telegramRoutes.webhookRouter)
 app.use('/api/meta/oauth', metaRoutes.oauthRouter)
 
 // Telegram e Meta: injetam Socket.io + a mesma cadeia IA→funis do WhatsApp.
-const incomingHandler = ({ jid, text, pushName, fromMe }) =>
-  aiRespond({ jid, text, pushName, fromMe })
-    .then((handled) => (handled ? null : handleIncomingMessage({ jid, text, pushName, fromMe })))
+const incomingHandler = ({ jid, text, pushName, fromMe, userId }) =>
+  aiRespond({ jid, text, pushName, fromMe, userId })
+    .then((handled) => (handled ? null : handleIncomingMessage({ jid, text, pushName, fromMe, userId })))
 telegram.init({ socketIo: io, incomingHandler })
 metaClient.init({ socketIo: io, incomingHandler })
 whatsappCloud.init({ socketIo: io, incomingHandler })
