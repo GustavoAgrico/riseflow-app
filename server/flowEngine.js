@@ -96,16 +96,17 @@ async function getFlow(id) {
   return data
 }
 
-async function getContactByJid(jid) {
-  const { data } = await supabase
-    .from('contacts').select('*').eq('jid', jid)
-    .order('first_seen_at', { ascending: true }).limit(1)
+async function getContactByJid(jid, userId) {
+  let q = supabase.from('contacts').select('*').eq('jid', jid)
+  if (userId) q = q.eq('user_id', userId) // escopa o contato ao dono (multi-tenant)
+  const { data } = await q.order('first_seen_at', { ascending: true }).limit(1)
   return data?.[0] ?? null
 }
 
-/* Detecta primeiro contato e mantém o espelho local atualizado. */
-async function upsertContact(jid, pushName) {
-  const existing = await getContactByJid(jid)
+/* Detecta primeiro contato e mantém o espelho local atualizado. Grava user_id
+   quando o dono é conhecido — evita órfãs e isola "primeiro contato" por conta. */
+async function upsertContact(jid, pushName, userId) {
+  const existing = await getContactByJid(jid, userId)
   if (existing) {
     await supabase.from('contacts')
       .update({ last_message_at: nowIso(), name: existing.name || pushName || null })
@@ -113,7 +114,8 @@ async function upsertContact(jid, pushName) {
     return { contact: { ...existing, name: existing.name || pushName || null }, isFirstContact: false }
   }
   const { data } = await supabase.from('contacts')
-    .insert({ jid, name: pushName || null, phone: jidToNumber(jid), last_message_at: nowIso() })
+    .insert({ jid, name: pushName || null, phone: jidToNumber(jid), last_message_at: nowIso(),
+      ...(userId ? { user_id: userId } : {}) })
     .select().single()
   return { contact: data, isFirstContact: true }
 }
@@ -416,7 +418,7 @@ async function handleIncomingMessage({ jid, text, pushName, fromMe, userId }) {
   if (!jid || jid.endsWith('@g.us')) return // ignora grupos
 
   try {
-    const { contact, isFirstContact } = await upsertContact(jid, pushName)
+    const { contact, isFirstContact } = await upsertContact(jid, pushName, userId)
     const ctx = { jid, text: text || '', contact, isFirstContact, pushName, now: new Date() }
 
     // 1) Contato já está num funil aguardando resposta? Retoma (escopado ao dono).
@@ -456,7 +458,7 @@ async function sweepTimeouts() {
       const waitNode = vars._waitNode
       delete vars._waitNode; delete vars._saveAs; delete vars._waitUntil
       const next = nextNodeId(flow.edges || [], waitNode, 'timeout')
-      const contact = await getContactByJid(exec.contact_jid)
+      const contact = await getContactByJid(exec.contact_jid, flow.user_id)
       const ctx = { jid: exec.contact_jid, text: '', contact, isFirstContact: false, now: new Date(), userId: flow.user_id }
       await updateExecution(exec.id, { status: 'running', variables: vars, current_node_id: next })
       await runFlow(flow, { ...exec, variables: vars }, next, ctx)
@@ -477,7 +479,7 @@ if (isConfigured) {
 async function hasMatchingFlow(jid, text, userId) {
   if (!isConfigured) return false
   try {
-    const existing = await getContactByJid(jid)
+    const existing = await getContactByJid(jid, userId)
     const isFirstContact = existing == null
     const ctx = { jid, text: text || '', isFirstContact, now: new Date() }
     const flows = await getActiveFlows(userId)

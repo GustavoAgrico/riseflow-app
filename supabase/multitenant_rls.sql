@@ -163,11 +163,20 @@ END $$;
 
 
 -- ============================================================================
--- SEÇÃO 4 · (OPCIONAL) BACKFILL de linhas órfãs
+-- SEÇÃO 4 · BACKFILL de linhas órfãs
 -- ----------------------------------------------------------------------------
--- Só rode se a SEÇÃO 1d acusou órfãs em tabelas que o frontend lê E você sabe a
--- quem pertencem. Exemplos (DESCOMENTE e ajuste o UUID do dono):
+-- Diagnóstico de 2026-08-13 no banco de produção: apenas `contacts` tinha
+-- órfãs (7 de 7, gravadas pelo flowEngine sem user_id). Como `contacts` é
+-- server-only (o frontend NÃO a lê), isso não quebra o app — mas convém
+-- taggear ao dono para higiene e para o futuro isolamento de contatos.
 --
+-- Ambiente é single-tenant (1 usuário). Backfill dos contatos órfãos ao dono:
+UPDATE public.contacts
+   SET user_id = 'cca5eba3-a63c-4b61-b311-34cc4d2e1364'
+ WHERE user_id IS NULL;
+--
+-- (A causa raiz foi corrigida no código: upsertContact agora grava user_id.)
+-- Se no futuro houver órfãs em tabelas que o frontend LÊ, use estes padrões:
 -- UPDATE public.clients  SET user_id = 'UUID-DO-DONO' WHERE user_id IS NULL;
 -- UPDATE public.messages SET user_id = (SELECT c.user_id FROM public.conversations c
 --                                       WHERE c.id = messages.conversation_id)
