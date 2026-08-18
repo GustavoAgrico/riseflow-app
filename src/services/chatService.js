@@ -96,8 +96,12 @@ export const sendChatMessage = async (userId, conversationId, contactPhone, cont
   const ok = !!(r?.key?.id || r?.messageId || r?.success || r?.status === 'PENDING' || r?.status === 'success')
   // Guarda o ID externo (Cloud: messages[0].id) p/ casar status updates do webhook.
   const externalId = r?.messageId || r?.key?.id || null
+  // WhatsApp Cloud manda o status real por webhook (sent→delivered→read/failed);
+  // então marca só 'sent' (aceito) e deixa o webhook conduzir. Canais sem esse
+  // retorno (Telegram) seguem com 'delivered' otimista.
+  const okStatus = ch === 'whatsapp' ? 'sent' : 'delivered'
   await supabase.from('messages')
-    .update({ status: ok ? 'delivered' : 'sent', ...(externalId ? { external_id: externalId } : {}) })
+    .update({ status: ok ? okStatus : 'sent', ...(externalId ? { external_id: externalId } : {}) })
     .eq('id', msg.id)
   console.log('[Chat] Mensagem salva no Supabase')
   return msg

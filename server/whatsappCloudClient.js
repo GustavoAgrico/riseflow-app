@@ -126,6 +126,24 @@ async function handleWebhookEvent(body) {
             .catch((err) => console.error('[wa-cloud] IA/flowEngine:', err?.message ?? err))
         }
       }
+
+      // Status de entrega/leitura → atualiza messages.status pelo external_id
+      // (wamid), para os checks do Chat refletirem o real: enviado → entregue →
+      // lido → falhou. O realtime do Supabase leva a mudança ao frontend.
+      const STATUS_MAP = { sent: 'sent', delivered: 'delivered', read: 'read', failed: 'failed' }
+      for (const st of value.statuses || []) {
+        const newStatus = STATUS_MAP[st.status]
+        if (!newStatus || !st.id) continue
+        if (st.status === 'failed') {
+          const e0 = st.errors?.[0]
+          console.warn(`[wa-cloud] mensagem ${st.id} FALHOU: ${e0?.title || e0?.message || 'sem detalhe'}`)
+        }
+        try {
+          let q = supabase.from('messages').update({ status: newStatus }).eq('external_id', st.id)
+          if (userId) q = q.eq('user_id', userId)
+          await q
+        } catch (e) { console.warn('[wa-cloud] status update falhou:', e?.message ?? e) }
+      }
     }
   }
 }

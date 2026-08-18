@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Paperclip, Send, Mic, Trash2, Play, Pause, Image as ImageIcon, FileText, Download, RefreshCw, Check, CheckCheck, Clock, ArrowLeft, PanelRight, ArrowRightLeft, Plus, Sparkles, Bot, Loader2, Pencil, MessageSquareText, Save, User, Phone, Mail, Tag, Bell, X } from 'lucide-react'
+import { Paperclip, Send, Mic, Trash2, Play, Pause, Image as ImageIcon, FileText, Download, RefreshCw, Check, CheckCheck, Clock, ArrowLeft, PanelRight, ArrowRightLeft, Plus, Sparkles, Bot, Loader2, Pencil, MessageSquareText, Save, User, Phone, Mail, Tag, Bell, X, AlertCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { usageService } from '@services/usageService'
 import { fetchConversations, fetchMessages, sendChatMessage, markConversationRead, syncWhatsAppChats, deleteConversation, loadConversationMessages, createConversation } from '@services/chatService'
@@ -33,9 +33,11 @@ const trunc = (s, n = 30) => s.length > n ? s.slice(0, n) + '…' : s
 
 const Tick = ({ s }) => s === 'sending'
   ? <Clock size={13} style={{ opacity: .55 }} />
-  : (s === 'delivered' || s === 'read'
-    ? <CheckCheck size={14} color={s === 'read' ? C.blue : 'rgba(255,255,255,.6)'} />
-    : <Check size={14} color="rgba(255,255,255,.6)" />)
+  : s === 'failed'
+    ? <AlertCircle size={13} color="#F87171" />
+    : (s === 'delivered' || s === 'read'
+      ? <CheckCheck size={14} color={s === 'read' ? C.blue : 'rgba(255,255,255,.6)'} />
+      : <Check size={14} color="rgba(255,255,255,.6)" />)
 
 const iBtn = { background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 20, padding: 4, lineHeight: 1, display: 'inline-flex', alignItems: 'center' }
 
@@ -376,7 +378,19 @@ export const Chat = () => {
             return [up, ...cs.filter(c => c.id !== cid)]
           })
         }
-      }).subscribe((status) => console.log('[Chat] realtime:', status))
+      })
+      // Status de entrega/leitura (webhook → messages.status) → atualiza o check.
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `user_id=eq.${userId}` }, ({ new: r }) => {
+        if (!r?.id) return
+        const cid = r.conversation_id
+        setMessages(p => {
+          const list = p[cid]; if (!list) return p
+          let changed = false
+          const next = list.map(x => (x.id === r.id && x.s !== r.status ? (changed = true, { ...x, s: r.status }) : x))
+          return changed ? { ...p, [cid]: next } : p
+        })
+      })
+      .subscribe((status) => console.log('[Chat] realtime:', status))
     return () => { try { supabase.removeChannel(ch) } catch {} }
   }, [userId])
 
