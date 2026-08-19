@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Layout } from '@components/Layout/Layout'
 import {
   Search, Plus, MessageCircle, Phone, Mail, Tag,
   Trash2, Users, Loader2, X, ChevronRight, Pencil, Download,
-  CheckSquare, Square, FileDown, AlertTriangle, UserX
+  CheckSquare, Square, FileDown, AlertTriangle, UserX, Upload
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { api } from '@services/api'
@@ -37,6 +37,74 @@ const channelMeta = {
 
 const initials = (name = '') =>
   name.split(' ').map(x => x[0]).slice(0, 2).join('').toUpperCase() || '?'
+
+// ── Import de contatos por CSV (helpers puros) ────────────────────────────────
+// Normaliza para o padrão do WhatsApp (só dígitos, com DDI). Sem DDI, assume
+// Brasil: 10-11 dígitos (DDD + número) recebem "55". Retorna null se inválido.
+const normalizePhone = (raw) => {
+  const d = String(raw ?? '').replace(/\D/g, '')
+  if (!d) return null
+  if (d.length >= 12 && d.startsWith('55')) return d       // já tem DDI Brasil
+  if (d.length === 10 || d.length === 11) return '55' + d  // DDD + número (BR)
+  if (d.length >= 8) return d                              // internacional/outro — mantém
+  return null                                              // curto demais = inválido
+}
+
+const stripAccents = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '')
+
+// CSV → matriz de campos. Suporta aspas ("a,b"), campos escapados ("") e
+// delimitador , ou ; (Excel BR usa ;). Ignora \r e linhas totalmente vazias.
+const parseCsvRows = (text) => {
+  const t = String(text).replace(/^﻿/, '') // remove BOM
+  const nl = t.indexOf('\n')
+  const firstLine = nl === -1 ? t : t.slice(0, nl)
+  const delim = firstLine.split(';').length > firstLine.split(',').length ? ';' : ','
+  const rows = []
+  let field = '', row = [], inQ = false
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i]
+    if (inQ) {
+      if (ch === '"') { if (t[i + 1] === '"') { field += '"'; i++ } else inQ = false }
+      else field += ch
+    } else if (ch === '"') inQ = true
+    else if (ch === delim) { row.push(field); field = '' }
+    else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = '' }
+    else if (ch !== '\r') field += ch
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row) }
+  return rows.filter(r => r.some(c => c.trim() !== ''))
+}
+
+// CSV → [{ name, phone, email, tag }]. Detecta colunas pelo cabeçalho; sem
+// cabeçalho reconhecível, cai na heurística (1 col = telefone; 2+ = nome/telefone).
+const parseContactsCsv = (text) => {
+  const rows = parseCsvRows(text)
+  if (!rows.length) return []
+  const header = rows[0].map(h => stripAccents(h.trim().toLowerCase()))
+  const findCol = (re) => header.findIndex(h => re.test(h))
+  let iPhone = findCol(/tel|phone|whats|numero|celular|fone|contato/)
+  let iName = findCol(/nome|name|cliente/)
+  let iEmail = findCol(/mail/)
+  let iTag = findCol(/tag|etiqueta|grupo|segmento/)
+  let dataRows = rows.slice(1)
+  if (iPhone === -1 && iName === -1) {
+    // sem cabeçalho reconhecível: usa todas as linhas por heurística
+    dataRows = rows
+    const looksPhone = (v) => String(v).replace(/\D/g, '').length >= 8
+    if (rows[0].length === 1) { iPhone = 0 }
+    else { iPhone = looksPhone(rows[0][0]) && !looksPhone(rows[0][1]) ? 0 : 1; iName = iPhone === 0 ? 1 : 0 }
+  }
+  const out = []
+  for (const r of dataRows) {
+    const phone = normalizePhone(iPhone !== -1 ? r[iPhone] : '')
+    if (!phone) continue
+    const name = (iName !== -1 && r[iName] ? String(r[iName]).trim() : '') || phone
+    const email = iEmail !== -1 && r[iEmail] ? String(r[iEmail]).trim() : null
+    const tag = iTag !== -1 && r[iTag] ? String(r[iTag]).trim() : null
+    out.push({ name, phone, email, tag })
+  }
+  return out
+}
 
 // ── Client Form Modal ─────────────────────────────────────────────────────────
 const ClientFormModal = ({ userId, initial, onClose, onSaved }) => {
@@ -322,6 +390,57 @@ export const Clients = () => {
     URL.revokeObjectURL(url)
   }
 
+  // ── Importar CSV ──────────────────────────────────────────────────────────
+  // Traz sua base de contatos de um arquivo (a API Oficial do WhatsApp não deixa
+  // puxar histórico/contatos). Parse no browser → insert em `clients` (RLS isola
+  // por user_id). Deduplica por telefone e insere em lotes de 500.
+  const csvFileRef = useRef(null)
+
+  const handleImportCsv = async (e) => {
+    const file = e.target.files?.[0]
+    if (e.target) e.target.value = '' // permite reimportar o mesmo arquivo
+    if (!file || isDemoMode || importing) return
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const parsed = parseContactsCsv(await file.text())
+      if (!parsed.length) {
+        setImportResult({ ok: false, msg: 'Nenhum telefone válido encontrado no CSV.' })
+        return
+      }
+      // Dedup: contra o que já existe E dentro do próprio arquivo.
+      const { data: existing } = await supabase.from('clients').select('phone').eq('user_id', user.id)
+      const seen = new Set((existing || []).map(c => c.phone).filter(Boolean))
+      const toInsert = []
+      for (const c of parsed) {
+        if (seen.has(c.phone)) continue
+        seen.add(c.phone)
+        toInsert.push({
+          name: c.name, phone: c.phone, email: c.email, channel: 'whatsapp',
+          tag: c.tag || 'Prospect', status: 'active', user_id: user.id,
+        })
+      }
+      const dupes = parsed.length - toInsert.length
+      if (!toInsert.length) {
+        setImportResult({ ok: true, msg: `Todos os ${parsed.length} contatos do CSV já existem.` })
+        return
+      }
+      let inserted = 0
+      for (let i = 0; i < toInsert.length; i += 500) {
+        const { error } = await supabase.from('clients').insert(toInsert.slice(i, i + 500))
+        if (error) throw error
+        inserted += Math.min(500, toInsert.length - i)
+      }
+      logger.log(user?.id, 'contacts_csv_imported', { category: 'contacts', description: `${inserted} contato(s) importado(s) via CSV` })
+      setImportResult({ ok: true, msg: `${inserted} importado${inserted !== 1 ? 's' : ''}${dupes ? ` · ${dupes} já existia${dupes !== 1 ? 'm' : ''}` : ''}.` })
+      fetchClients()
+    } catch (err) {
+      setImportResult({ ok: false, msg: err.message })
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const handleImportWhatsApp = async () => {
     if (isDemoMode || importing) return
     setImporting(true)
@@ -488,6 +607,22 @@ export const Clients = () => {
             >
               {importing ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
               {importing ? 'Importando...' : 'WhatsApp'}
+            </button>
+            <input
+              ref={csvFileRef}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleImportCsv}
+              className="hidden"
+            />
+            <button
+              onClick={() => { if (!isDemoMode && !importing) csvFileRef.current?.click() }}
+              disabled={isDemoMode || importing}
+              className={clsx('btn-secondary flex items-center gap-1.5', (isDemoMode || importing) && 'opacity-50 cursor-not-allowed')}
+              title="Importar contatos de um CSV (colunas Nome, Telefone; aceita ; ou , como separador)"
+            >
+              <Upload size={14} />
+              CSV
             </button>
             <button
               onClick={() => { if (!isDemoMode) { setEditTarget(null); setFormOpen(true) } }}
