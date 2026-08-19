@@ -60,6 +60,9 @@ const S = {
 export const Schedules = () => {
   const { user, isDemoMode } = useAuth()
   const navigate = useNavigate()
+  // Voltar robusto: só volta 1 passo se houver histórico interno do SPA
+  // (history.state.idx > 0); aberta direto por URL, cai no dashboard em vez de ficar inerte.
+  const goBack = () => { (window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate('/dashboard') }
   const [items, setItems]   = useState([])
   const [contacts, setContacts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -142,7 +145,7 @@ export const Schedules = () => {
   return (
     <div style={{ minHeight:'100vh', background:C.bg, color:C.tx, fontFamily:'DM Sans,sans-serif' }}>
       <div style={S.top}>
-        <button onClick={() => navigate(-1)} style={S.ghost}>← Voltar</button>
+        <button onClick={goBack} style={S.ghost}>← Voltar</button>
         <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}><Calendar size={18} color={C.pur} /> Agendamentos</span>
         <span style={S.badge(C.pur)}>{items.filter(s => s.status==='agendado').length} ativos</span>
         <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>

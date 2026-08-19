@@ -37,6 +37,9 @@ const S = {
 export const Templates = () => {
   const { user, isDemoMode } = useAuth()
   const navigate = useNavigate()
+  // Voltar robusto: só volta 1 passo se houver histórico interno do SPA
+  // (history.state.idx > 0); aberta direto por URL, cai no dashboard em vez de ficar inerte.
+  const goBack = () => { (window.history.state?.idx ?? 0) > 0 ? navigate(-1) : navigate('/dashboard') }
   const isMobile = useIsMobile()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -107,7 +110,7 @@ export const Templates = () => {
   return (
     <div style={{ minHeight:'100vh', background:C.bg, color:C.tx, fontFamily:'DM Sans,sans-serif' }}>
       <div style={S.top}>
-        <button onClick={() => navigate(-1)} style={S.ghost}>← Voltar</button>
+        <button onClick={goBack} style={S.ghost}>← Voltar</button>
         <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}><FileText size={18} color={C.pur} /> Templates</span>
         <span style={S.badge(C.pur)}>{items.length} templates</span>
         <button onClick={()=>{ if(guardDemo())return; openNew() }} style={{ ...S.btn(), marginLeft:'auto' }}>+ Novo Template</button>
