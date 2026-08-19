@@ -65,11 +65,13 @@ export const abacatePayService = {
           ).catch(() => {})
         }
       }
-      window.history.replaceState({}, '', '/plans')
+      // Preserva o history.state do React Router (idx/key) — passar {} corromperia
+      // a navegação do SPA. Só limpamos a query (?success) da URL.
+      window.history.replaceState(window.history.state, '', '/plans')
       return { status: 'success', plan: planId }
     }
     if (p.get('canceled') === 'true') {
-      window.history.replaceState({}, '', '/plans')
+      window.history.replaceState(window.history.state, '', '/plans')
       return { status: 'canceled' }
     }
     return { status: 'none' }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Gem, Check } from 'lucide-react'
 import { useAuth } from '@context/AuthContext'
@@ -43,16 +43,20 @@ export const Plans = () => {
   const [usage, setUsage] = useState(null)
   const [toast, setToast] = useState(null)
   const flash = (text, ok = true, ms = 4000) => { setToast({ text, ok }); setTimeout(() => setToast(null), ms) }
+  const returnHandled = useRef(false) // processa o retorno do checkout uma única vez
 
   useEffect(() => {
     if (!user?.id) return
     const run = async () => {
       const result = await checkoutService.handleReturn(user)
-      if (result.status === 'success') {
+      if (result.status === 'success' && !returnHandled.current) {
+        returnHandled.current = true
         flash(`Plano ${result.plan} ativado com sucesso!`)
-        // Após ativar (inclui bypass admin, que volta para /plans?success), leva
-        // o usuário de volta à página inicial em vez de deixá-lo preso em /plans.
-        setTimeout(() => navigate('/dashboard'), 2000)
+        // Após ativar (inclui bypass admin, que volta para /plans?success), leva o
+        // usuário à página inicial. replace:true tira /plans do histórico — senão,
+        // com o history.state corrompido pelo replaceState do handleReturn, o botão
+        // Voltar reentrava no checkout e criava um loop.
+        setTimeout(() => navigate('/dashboard', { replace: true }), 1800)
       }
       if (result.status === 'canceled') flash('Pagamento cancelado.', false)
       try { setUsage(await usageService.getUsage(user.id)) } catch {}
@@ -60,15 +64,11 @@ export const Plans = () => {
     run()
   }, [user])
 
-  // Voltar robusto: adquirir um plano faz um reload completo (retorno do gateway
-  // AbacatePay), então o histórico do SPA recomeça e navigate(-1) iria para fora
-  // do app ou ficaria inerte. Só volta 1 passo se houver histórico interno
-  // (react-router v6 guarda o índice em history.state.idx); senão, vai ao dashboard.
-  const goBack = () => {
-    const idx = window.history.state?.idx ?? 0
-    if (idx > 0) navigate(-1)
-    else navigate('/dashboard')
-  }
+  // "Voltar" numa página de preços = ir para o início. NÃO usar navigate(-1) aqui:
+  // o fluxo de compra entra por reload completo (gateway externo) e o handleReturn
+  // corrompe o history.state.idx, então voltar pelo histórico reentrava no checkout
+  // (loop). Destino fixo e seguro: o dashboard.
+  const goBack = () => navigate('/dashboard')
 
   const current = usage?.plan ?? 'free'
   const subscribe = (planId) => { logger.log(user?.id, 'plan_upgraded', { category: 'billing', description: 'Plano alterado para ' + (CATALOG.find(p => p.id === planId)?.name || planId) }); navigate(`/plans/${planId}`) }
