@@ -16,6 +16,7 @@
 const axios = require('axios')
 const { supabase, isConfigured } = require('./supabaseClient')
 const { saveIncomingMessage } = require('./inbox')
+const { decryptSecret } = require('./secretCrypto')
 
 const GRAPH = 'https://graph.facebook.com/v21.0'
 
@@ -181,11 +182,12 @@ async function resumeNumbers() {
       .select('user_id, config').eq('type', 'whatsapp_cloud').eq('status', 'connected')
     for (const row of data || []) {
       const cfg = row.config || {}
-      if (!cfg.phone_number_id || !cfg.token) continue
+      const token = decryptSecret(cfg.token)
+      if (!cfg.phone_number_id || !token) continue
       registerNumber({
         userId: row.user_id,
         phoneNumberId: cfg.phone_number_id,
-        token: cfg.token,
+        token,
         wabaId: cfg.waba_id,
         displayNumber: cfg.display_number,
       })

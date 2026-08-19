@@ -17,6 +17,7 @@ const axios = require('axios')
 const jwt = require('jsonwebtoken')
 const { supabase, isConfigured } = require('../supabaseClient')
 const meta = require('../metaClient')
+const { encryptSecret, decryptSecret } = require('../secretCrypto')
 
 const GRAPH = 'https://graph.facebook.com/v21.0'
 const OAUTH_DIALOG = 'https://www.facebook.com/v21.0/dialog/oauth'
@@ -181,7 +182,7 @@ router.post('/connect', async (req, res) => {
     const { error } = await supabase.from('integrations').upsert(
       {
         user_id: userId, type: channel, status: 'connected',
-        config: { page_token: String(pageToken).trim(), page_id: finalPageId, page_name: finalName },
+        config: { page_token: encryptSecret(String(pageToken).trim()), page_id: finalPageId, page_name: finalName },
         connected_at: new Date().toISOString(),
       },
       { onConflict: 'user_id,type' }
@@ -237,7 +238,7 @@ async function loadPageConfig(userId, channel) {
     .select('config').eq('user_id', userId).eq('type', channel).eq('status', 'connected').maybeSingle()
   const cfg = data?.config || {}
   if (!cfg.page_token || !cfg.page_id) throw new Error(`Canal ${channel} não está conectado.`)
-  return { token: cfg.page_token, pageId: cfg.page_id }
+  return { token: decryptSecret(cfg.page_token), pageId: cfg.page_id }
 }
 
 // GET /api/meta/followers?channel=facebook|instagram — total de seguidores do perfil.

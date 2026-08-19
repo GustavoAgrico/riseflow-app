@@ -8,6 +8,7 @@
 const { Router } = require('express')
 const { supabase, isConfigured } = require('../supabaseClient')
 const telegram = require('../telegramClient')
+const { encryptSecret } = require('../secretCrypto')
 
 const router = Router()
 
@@ -27,7 +28,7 @@ router.post('/connect', async (req, res) => {
     const { error } = await supabase.from('integrations').upsert(
       {
         user_id: userId, type: 'telegram', status: 'connected',
-        config: { bot_token: String(token).trim(), username: bot.username },
+        config: { bot_token: encryptSecret(String(token).trim()), username: bot.username },
         connected_at: new Date().toISOString(),
       },
       { onConflict: 'user_id,type' }

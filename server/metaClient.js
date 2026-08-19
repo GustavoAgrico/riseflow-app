@@ -14,6 +14,7 @@ const axios = require('axios')
 const { supabase, isConfigured } = require('./supabaseClient')
 const { saveIncomingMessage } = require('./inbox')
 const metaLeads = require('./metaLeads')
+const { decryptSecret } = require('./secretCrypto')
 
 const GRAPH = 'https://graph.facebook.com/v21.0'
 const WINDOW_24H_MS = 24 * 60 * 60 * 1000
@@ -289,7 +290,7 @@ async function resumePages() {
     const { data } = await supabase.from('integrations')
       .select('user_id, type, config').in('type', ['facebook', 'instagram']).eq('status', 'connected')
     for (const row of data || []) {
-      const token = row.config?.page_token
+      const token = decryptSecret(row.config?.page_token)
       const pageId = row.config?.page_id
       if (!token || !pageId) continue
       registerPage({

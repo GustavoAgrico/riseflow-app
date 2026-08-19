@@ -13,6 +13,7 @@ const crypto = require('crypto')
 const { Router } = require('express')
 const { supabase, isConfigured } = require('../supabaseClient')
 const waCloud = require('../whatsappCloudClient')
+const { encryptSecret } = require('../secretCrypto')
 
 // Verify token e app secret podem ser próprios do WhatsApp ou reaproveitar os da
 // Meta (FB/IG) se o mesmo app Meta for usado.
@@ -85,7 +86,7 @@ router.post('/connect', async (req, res) => {
         user_id: userId, type: 'whatsapp_cloud', status: 'connected',
         config: {
           phone_number_id: String(phoneNumberId).trim(),
-          token: String(token).trim(),
+          token: encryptSecret(String(token).trim()), // cifrado em repouso; registerNumber recebe o texto puro
           waba_id: wabaId ? String(wabaId).trim() : null,
           display_number: info.displayNumber,
           verified_name: info.verifiedName,

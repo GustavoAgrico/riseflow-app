@@ -15,6 +15,7 @@ const crypto = require('crypto')
 const { Bot } = require('grammy')
 const { supabase, isConfigured } = require('./supabaseClient')
 const { saveIncomingMessage } = require('./inbox')
+const { decryptSecret } = require('./secretCrypto')
 
 const WEBHOOK_BASE = (process.env.TELEGRAM_WEBHOOK_BASE || '').replace(/\/+$/, '')
 
@@ -133,7 +134,7 @@ async function resumeBots() {
     const { data } = await supabase.from('integrations')
       .select('user_id, config').eq('type', 'telegram').eq('status', 'connected')
     for (const row of data || []) {
-      const token = row.config?.bot_token
+      const token = decryptSecret(row.config?.bot_token)
       if (!token) continue
       try { await startBot(row.user_id, token) }
       catch (e) { console.warn(`[telegram] bot do user ${row.user_id} não religou:`, e?.message ?? e) }
