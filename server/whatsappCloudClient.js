@@ -151,9 +151,12 @@ async function handleWebhookEvent(body) {
 
 /* ─── Envio ────────────────────────────────────────────────────────────────── */
 async function sendTextTo(number, text, userId = null) {
-  // Resolve o número Cloud do usuário; se só houver um conectado, usa ele.
-  const entry = userId != null ? numbers.get(String(userId)) : null
-  const e = entry || (numbers.size === 1 ? [...numbers.values()][0] : null)
+  // Resolve o número Cloud ESTRITAMENTE pelo dono (userId). Sem fallback para "o
+  // único número conectado": num cenário multi-tenant isso enviaria pelo número
+  // (e token) de OUTRO dono. Ambos os call sites (messages.js, flowEngine.sendText)
+  // já guardam com isActiveFor(userId) antes de chamar, então isto nunca deveria
+  // faltar em uso normal.
+  const e = userId != null ? numbers.get(String(userId)) : null
   if (!e) throw new Error('Nenhum número WhatsApp Cloud conectado para este usuário.')
   try {
     const { data } = await axios.post(
