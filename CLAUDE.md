@@ -60,7 +60,8 @@ All resolve to `src/`:
 2. `src/services/api.js` intercepts every axios request, calls `POST /api/auth/login` with the Supabase access token to get a proxy JWT (7-day)
 3. All `/api/*` calls send `Authorization: Bearer <proxy-JWT>`
 4. `server/middleware/auth.js` validates the JWT; `req.user.sub` is the Supabase user UUID
-5. `server/middleware/adminOnly.js` restricts all routes to `ADMIN_EMAILS` during the current test phase
+
+Self-signup is open (`/register` → `AuthContext.signUp`); every authenticated Supabase user is their own tenant, isolated by `user_id` (server queries) and RLS (frontend reads). There is **no** admin-only gate on the API — the old `adminOnly` middleware was removed once open signup + billing went live. To lock the app to a closed test group, add an allowlist check inside `auth.js` (returning a coherent 403), not a blanket middleware.
 
 **Demo mode:** `isDemoMode` flag in `AuthContext`. Pages check it and render `MOCK_*` constants from `src/constants/config.js` instead of hitting the DB. Never write to Supabase in demo mode.
 
