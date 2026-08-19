@@ -1,24 +1,30 @@
 const express = require('express')
 const Anthropic = require('@anthropic-ai/sdk')
+const { chatComplete } = require('../aiProvider')
 const router = express.Router()
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-// Rate limiting em memória: máx 10 chamadas/minuto por usuário (evita drenagem de créditos).
-const rateMap = new Map()
+// Rate limiting em memória por usuário (evita drenagem de créditos). Cada bucket
+// tem seu próprio limite: gerar mensagem de campanha é raro; o chat do atendente/
+// simulador/qualificação de lead pode vir em rajada, então tem teto maior.
 const RATE_WINDOW_MS = 60_000
-const RATE_LIMIT = 10
-function isRateLimited(userId) {
-  const now = Date.now()
-  const entry = rateMap.get(userId)
-  if (!entry || now > entry.reset) {
-    rateMap.set(userId, { count: 1, reset: now + RATE_WINDOW_MS })
+function makeRateLimiter(limit) {
+  const map = new Map()
+  return (userId) => {
+    const now = Date.now()
+    const entry = map.get(userId)
+    if (!entry || now > entry.reset) {
+      map.set(userId, { count: 1, reset: now + RATE_WINDOW_MS })
+      return false
+    }
+    if (entry.count >= limit) return true
+    entry.count++
     return false
   }
-  if (entry.count >= RATE_LIMIT) return true
-  entry.count++
-  return false
 }
+const isRateLimited = makeRateLimiter(10)      // /generate-message
+const isChatRateLimited = makeRateLimiter(30)  // /chat
 
 // POST /api/ai/generate-message
 // Body: { channel, goal, tone, audience, extraContext? }
@@ -65,6 +71,31 @@ Escreva a mensagem de campanha completa.`
     console.error('[ai] erro ao gerar mensagem:', e?.message)
     res.status(500).json({ error: e?.message ?? 'Erro ao chamar a API da Claude.' })
   }
+})
+
+// POST /api/ai/chat — proxy do atendente/simulador/qualificação de lead.
+// Substitui o antigo aiService.chat() do frontend: as chaves do dono ficam no
+// servidor (settings, via service-role) e NUNCA vão ao navegador.
+// O dono vem do JWT (req.user.sub), jamais do body (ver B14).
+// Body: { provider?, systemPrompt?, userMessage, temperature?, maxTokens?, conversationHistory? }
+// Retorna: { success, response } | { success:false, error } (chatComplete nunca lança).
+router.post('/chat', async (req, res) => {
+  const userId = req.user?.sub
+  if (!userId) return res.status(401).json({ success: false, error: 'Usuário não identificado no token.' })
+  if (isChatRateLimited(userId)) {
+    return res.status(429).json({ success: false, error: 'Muitas requisições. Tente novamente em 1 minuto.' })
+  }
+
+  const { provider, systemPrompt, userMessage, temperature, maxTokens, conversationHistory } = req.body ?? {}
+  if (!userMessage || !String(userMessage).trim()) {
+    return res.status(400).json({ success: false, error: 'Campo "userMessage" obrigatório.' })
+  }
+
+  const result = await chatComplete({
+    userId, provider, systemPrompt, userMessage, temperature, maxTokens,
+    conversationHistory: Array.isArray(conversationHistory) ? conversationHistory : [],
+  })
+  res.json(result)
 })
 
 module.exports = router

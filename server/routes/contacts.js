@@ -20,11 +20,14 @@ async function fetchWAContacts() {
 router.get('/', async (req, res) => {
   try {
     const waContacts = await fetchWAContacts().catch(() => [])
-    // Enriquece com nomes das conversas (já sincronia do histórico do WhatsApp)
+    // Enriquece com nomes das conversas (já sincronia do histórico do WhatsApp).
+    // ⚠️ O servidor usa a service_role key (ignora RLS): sem o filtro por user_id
+    // o dono A veria nomes/telefones de contatos do dono B (vazamento de PII).
     if (isConfigured) {
       const { data: convRows } = await supabase
         .from('conversations')
         .select('contact_phone, contact_name')
+        .eq('user_id', req.user.sub)
         .not('contact_phone', 'is', null)
       const convNames = {}
       for (const row of convRows || []) {
@@ -50,14 +53,18 @@ router.get('/', async (req, res) => {
 // Importa contatos para o Supabase
 router.post('/import', async (req, res) => {
   if (!isConfigured) return res.status(503).json({ error: 'Supabase não configurado' })
+  // Dono vem do token (sub), NUNCA do body. Sem dono não gravamos — evita órfãs.
+  const userId = req.user?.sub
+  if (!userId) return res.status(401).json({ error: 'Usuário não identificado no token.' })
   try {
     // 1. Contatos do WA server (números sem nome, vindos dos LID mappings)
     const waContacts = await fetchWAContacts().catch(() => [])
 
-    // 2. Nomes das conversas já sincronizadas no Supabase
+    // 2. Nomes das conversas já sincronizadas no Supabase (só as DESTE dono)
     const { data: convRows } = await supabase
       .from('conversations')
       .select('contact_phone, contact_name')
+      .eq('user_id', userId)
       .not('contact_phone', 'is', null)
     const convNames = {}
     for (const row of convRows || []) {
@@ -81,17 +88,19 @@ router.post('/import', async (req, res) => {
     const rows = Array.from(merged.values())
     if (!rows.length) return res.json({ imported: 0, message: 'Nenhum contato disponível' })
 
-    const userId = req.user?.id
     const upsertRows = rows.map(c => ({
       jid: c.jid,
       name: c.name,
       phone: c.phone,
-      ...(userId ? { user_id: userId } : {}),
+      user_id: userId,
     }))
 
+    // onConflict por (user_id, jid): o mesmo número pode existir para donos
+    // diferentes sem uma sobrescrever a outra. Exige a UNIQUE (user_id, jid)
+    // criada em supabase/contacts_unique_constraint.sql.
     const { error, count } = await supabase
       .from('contacts')
-      .upsert(upsertRows, { onConflict: 'jid', ignoreDuplicates: false })
+      .upsert(upsertRows, { onConflict: 'user_id,jid', ignoreDuplicates: false })
       .select('id', { count: 'exact', head: true })
 
     if (error) throw error
