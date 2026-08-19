@@ -19,8 +19,8 @@ permanente do WhatsApp, dados legais reais, e a submissão do App Review da Meta
 |---|---|
 | Segurança & multi-tenant | ✅ |
 | Cifragem de segredos em repouso | ✅ (ativa em produção) |
-| Integração WhatsApp Cloud | 🟠 (número de teste; token expira) |
-| Integrações Meta / Telegram / Email | 🟠 (verificar conexão em produção) |
+| Integração WhatsApp Cloud | 🔴 (desconectado — sem número ativo) |
+| Integrações Meta / Telegram / Email | 🔴 (todos desconectados / nunca conectados) |
 | Páginas legais | 🟠 (no ar, mas com dados placeholder) |
 | App Review Meta | 🔴 (não submetido) |
 | Infra de produção | 📋 (free tier do Render) |
@@ -54,24 +54,30 @@ puro — são escritos pelo frontend (anon client); cifrar exigiria rotear a esc
 - Cobre: WhatsApp Cloud `token`, Meta `page_token`, Telegram `bot_token`.
 - Retrocompatível: valores legados sem prefixo passam direto; sem a chave vira no-op.
 - **Ativa em produção:** `TOKEN_ENC_KEY` já setada no Render.
-- Pendência menor: reconectar cada canal uma vez recifra os tokens já salvos (o de
-  WhatsApp Cloud será recifrado junto com a troca pelo token permanente — ver §3).
+- **Nada a recifrar hoje:** verificação da tabela `integrations` em 18/08 mostrou todos
+  os canais desconectados com `config` vazio — não há token salvo em texto puro. A
+  cifragem passa a valer na próxima conexão de cada canal.
 
-## 3. WhatsApp Cloud — 🟠 (bloqueio de prazo)
+## 3. WhatsApp Cloud — 🔴 (desconectado)
 
-- Conectado com **número de teste**; status de entrega real por webhook
-  (`sent`/`delivered`/`read`/`failed`) funcionando.
-- 🔴 **O token de teste expira.** Falta gerar o **token permanente** (System User no
+- **Verificado em 18/08:** `whatsapp_cloud` está `disconnected` (config vazio). O último
+  connect foi hoje 14:18 e depois houve disconnect explícito — **não há número ativo agora.**
+- Status de entrega por webhook (`sent`/`delivered`/`read`/`failed`) está implementado,
+  mas inerte sem canal conectado.
+- Para voltar a funcionar: conectar um número via **token permanente** (System User no
   Business Manager, expiração "Nunca", permissões `whatsapp_business_messaging` +
-  `whatsapp_business_management`) OU usar o **Embedded Signup**.
-- Ao reconectar com o token permanente, ele já nasce **cifrado** (§2).
-- **Bloqueado em:** aguardando o usuário concluir a geração (última tentativa travou).
+  `whatsapp_business_management`) OU **Embedded Signup**. Ao conectar, o token já nasce
+  **cifrado** (§2).
+- **Bloqueado em:** aguardando o usuário concluir a geração do token (última tentativa travou).
 
-## 4. Integrações Meta / Telegram / Email — 🟠
+## 4. Integrações Meta / Telegram / Email — 🔴
 
 - Código pronto (Meta FB/IG: seguidores + sync do Direct; Telegram via grammY; Email SMTP).
-- **Verificar em produção:** se os canais estão conectados; se sim, reconectar uma vez
-  para cifrar os tokens já salvos (§2).
+- **Verificado em 18/08 (tabela `integrations`):**
+  - `facebook` / `instagram`: `disconnected` (últ. conexão 13/08, config vazio).
+  - `telegram` / `email`: **sem linha na tabela — nunca conectados.**
+- Nada conectado em produção hoje. Reconectar cada canal que for usar (o token/segredo
+  nasce cifrado na conexão).
 
 ## 5. Páginas legais — 🟠
 
@@ -104,7 +110,9 @@ puro — são escritos pelo frontend (anon client); cifrar exigiria rotear a esc
 ## Próximas ações (ordem sugerida)
 
 1. **Dados legais** (§5) — 100% acionável: usuário passa 4 dados, páginas ficam prontas.
-2. **Token permanente do WhatsApp** (§3) — destravar a geração (ou Embedded Signup).
-3. **Reconectar canais** (§2/§4) — para cifrar tokens já salvos.
+2. **Token permanente do WhatsApp** (§3) — destravar a geração (ou Embedded Signup) e
+   **conectar o número** (hoje não há nenhum canal ativo em produção).
+3. **Conectar os demais canais que for usar** (§4) — Meta/Telegram/Email estão todos fora;
+   cada token/segredo nasce cifrado na conexão.
 4. **Submeter App Review** (§6) — quando 1 e 2 estiverem prontos.
 5. **Plano pago do Render** (§7) — antes de tráfego real.
