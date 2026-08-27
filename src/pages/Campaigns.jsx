@@ -345,7 +345,7 @@ const DEMO_CAMPAIGNS = [
 
 export function Campaigns() {
   const navigate = useNavigate()
-  const { user, isDemoMode } = useAuth()
+  const { user, ownerUserId, isDemoMode } = useAuth()
 
   const [campaigns, setCampaigns] = useState([])
   const [contacts, setContacts] = useState([])
@@ -356,22 +356,22 @@ export function Campaigns() {
   const [emailConnected, setEmailConnected] = useState(false)
 
   const load = useCallback(async () => {
-    if (!user || isDemoMode) return
+    if (!ownerUserId || isDemoMode) return
     const [{ data: camps }, { data: cli }, { data: emailInt }] = await Promise.all([
-      supabase.from('campaigns').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-      supabase.from('clients').select('id,name,phone,email,company,tags,stage').eq('user_id', user.id),
-      supabase.from('integrations').select('status').eq('user_id', user.id).eq('type', 'email').maybeSingle(),
+      supabase.from('campaigns').select('*').eq('user_id', ownerUserId).order('created_at', { ascending: false }),
+      supabase.from('clients').select('id,name,phone,email,company,tags,stage').eq('user_id', ownerUserId),
+      supabase.from('integrations').select('status').eq('user_id', ownerUserId).eq('type', 'email').maybeSingle(),
     ])
     setCampaigns(camps ?? [])
     setContacts(cli ?? [])
     setEmailConnected(emailInt?.status === 'connected')
     setLoading(false)
-  }, [user, isDemoMode])
+  }, [ownerUserId, isDemoMode])
 
   useEffect(() => {
     if (isDemoMode) { setCampaigns(DEMO_CAMPAIGNS); setLoading(false); return }
     load()
-  }, [user, isDemoMode, load])
+  }, [ownerUserId, isDemoMode, load])
 
   // Enquanto houver campanha enviando, atualiza o progresso periodicamente.
   useEffect(() => {
@@ -389,7 +389,7 @@ export function Campaigns() {
 
     const isEmail = form.channel === 'email'
     const { data: camp, error } = await supabase.from('campaigns').insert({
-      user_id: user.id,
+      user_id: ownerUserId,
       name: form.name?.trim() || 'Nova Campanha',
       channel: form.channel ?? 'whatsapp',
       subject: isEmail ? (form.subject?.trim() || form.name?.trim() || '') : null,
@@ -422,7 +422,7 @@ export function Campaigns() {
   const remove   = async (c) => { if (!window.confirm(`Excluir a campanha "${c.name}"?`)) return; await supabase.from('campaigns').delete().eq('id', c.id); await load() }
   const duplicate = async (c) => {
     const { data: copy } = await supabase.from('campaigns').insert({
-      user_id: user.id, name: c.name + ' (cópia)', channel: c.channel ?? 'whatsapp', subject: c.subject,
+      user_id: ownerUserId, name: c.name + ' (cópia)', channel: c.channel ?? 'whatsapp', subject: c.subject,
       message: c.message, media_url: c.media_url,
       message_type: c.message_type, audience_type: c.audience_type, audience_filter: c.audience_filter,
       status: 'draft', interval_seconds: c.interval_seconds, total: c.total,

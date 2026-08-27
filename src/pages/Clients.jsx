@@ -281,7 +281,7 @@ const ClientFormModal = ({ userId, initial, onClose, onSaved }) => {
 // ── Main ──────────────────────────────────────────────────────────────────────
 export const Clients = () => {
   const navigate = useNavigate()
-  const { user, isDemoMode } = useAuth()
+  const { user, ownerUserId, isDemoMode } = useAuth()
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -307,16 +307,16 @@ export const Clients = () => {
       setLoading(false)
       return
     }
-    if (!user) return
+    if (!ownerUserId) return
     setLoading(true)
     const { data, error } = await supabase
       .from('clients')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', ownerUserId)
       .order('created_at', { ascending: false })
     if (!error) setClients(data ?? [])
     setLoading(false)
-  }, [user, isDemoMode])
+  }, [ownerUserId, isDemoMode])
 
   useEffect(() => { fetchClients() }, [fetchClients])
 
@@ -356,7 +356,7 @@ export const Clients = () => {
     if (isDemoMode || selectedIds.size === 0) return
     setBulkDeleting(true)
     const ids = [...selectedIds]
-    const { error } = await supabase.from('clients').delete().in('id', ids).eq('user_id', user.id)
+    const { error } = await supabase.from('clients').delete().in('id', ids).eq('user_id', ownerUserId)
     if (!error) {
       logger.log(user?.id, 'contacts_bulk_deleted', { category: 'contacts', description: `${ids.length} contato(s) excluído(s) em massa` })
       const idSet = new Set(ids)
@@ -409,7 +409,7 @@ export const Clients = () => {
         return
       }
       // Dedup: contra o que já existe E dentro do próprio arquivo.
-      const { data: existing } = await supabase.from('clients').select('phone').eq('user_id', user.id)
+      const { data: existing } = await supabase.from('clients').select('phone').eq('user_id', ownerUserId)
       const seen = new Set((existing || []).map(c => c.phone).filter(Boolean))
       const toInsert = []
       for (const c of parsed) {
@@ -417,7 +417,7 @@ export const Clients = () => {
         seen.add(c.phone)
         toInsert.push({
           name: c.name, phone: c.phone, email: c.email, channel: 'whatsapp',
-          tag: c.tag || 'Prospect', status: 'active', user_id: user.id,
+          tag: c.tag || 'Prospect', status: 'active', user_id: ownerUserId,
         })
       }
       const dupes = parsed.length - toInsert.length
@@ -453,11 +453,11 @@ export const Clients = () => {
         return
       }
       // 2. Insere na tabela clients (sem duplicatas por phone)
-      const { data: existing } = await supabase.from('clients').select('phone').eq('user_id', user.id)
+      const { data: existing } = await supabase.from('clients').select('phone').eq('user_id', ownerUserId)
       const existingPhones = new Set((existing || []).map(c => c.phone).filter(Boolean))
       const toInsert = waContacts
         .filter(c => c.name && c.phone && !existingPhones.has(c.phone))
-        .map(c => ({ name: c.name, phone: c.phone, channel: 'whatsapp', tag: 'Prospect', status: 'active', user_id: user.id }))
+        .map(c => ({ name: c.name, phone: c.phone, channel: 'whatsapp', tag: 'Prospect', status: 'active', user_id: ownerUserId }))
       if (!toInsert.length) {
         setImportResult({ ok: true, msg: `${waContacts.length} contatos já estão importados.` })
       } else {
@@ -519,7 +519,7 @@ export const Clients = () => {
     >
       {formOpen && !isDemoMode && (
         <ClientFormModal
-          userId={user?.id}
+          userId={ownerUserId}
           initial={editTarget}
           onClose={() => { setFormOpen(false); setEditTarget(null) }}
           onSaved={() => { setFormOpen(false); setEditTarget(null); fetchClients() }}

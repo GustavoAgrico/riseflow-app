@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@context/AuthContext'
 
 export function useNotifications() {
+  const { ownerUserId } = useAuth()
   const [notifications, setNotifications] = useState([]) // histórico (sino) — máx 20
   const [toasts, setToasts] = useState([])               // transitórios — máx 4
 
@@ -40,22 +42,23 @@ export function useNotifications() {
 
   // Tempo real (schema real: messages.direction='inbound', clients=leads, usage). Falha → segue sem realtime.
   useEffect(() => {
+    if (!ownerUserId) return
+    // Escuta os eventos da CONTA (dono). Membros de equipe usam o ownerUserId,
+    // então recebem em tempo real o que acontece no sistema, igual ao dono.
+    const acct = ownerUserId
     let channel
     let cancelled = false
     ;(async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        // O effect já foi desmontado (StrictMode/troca de rota) antes do await resolver:
-        // não cria o canal, senão o tópico fica subscrito duas vezes → "after subscribe()".
-        if (!user || cancelled) return
-        channel = supabase.channel('notifications_' + user.id)
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `user_id=eq.${user.id}` }, ({ new: m }) => {
+        if (cancelled) return
+        channel = supabase.channel('notifications_' + acct)
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `user_id=eq.${acct}` }, ({ new: m }) => {
             if (m?.direction === 'inbound') addNotification('message', 'Nova mensagem', (m.content ?? '').slice(0, 50) || 'Mensagem recebida')
           })
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'clients', filter: `user_id=eq.${user.id}` }, ({ new: c }) => {
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'clients', filter: `user_id=eq.${acct}` }, ({ new: c }) => {
             addNotification('lead', 'Novo lead', c?.name || 'Novo contato adicionado')
           })
-          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'usage', filter: `user_id=eq.${user.id}` }, ({ new: u }) => {
+          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'usage', filter: `user_id=eq.${acct}` }, ({ new: u }) => {
             if (u && u.messages_limit > 0 && u.messages_sent >= u.messages_limit * 0.8)
               addNotification('warning', 'Limite próximo', `${u.messages_sent}/${u.messages_limit} mensagens usadas`)
           })
@@ -63,7 +66,7 @@ export function useNotifications() {
       } catch (e) { console.warn('[Notif] realtime indisponível:', e?.message ?? e) }
     })()
     return () => { cancelled = true; try { if (channel) supabase.removeChannel(channel) } catch {} }
-  }, [addNotification])
+  }, [addNotification, ownerUserId])
 
   const unreadCount = notifications.filter(n => !n.read).length
   return { notifications, toasts, addNotification, dismiss, dismissToast, markAllRead, clearAll, unreadCount }

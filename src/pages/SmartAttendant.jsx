@@ -39,7 +39,7 @@ const Row = ({ label, children }) => (
 )
 
 export const SmartAttendant = () => {
-  const { user, isDemoMode } = useAuth()
+  const { user, ownerUserId, isDemoMode } = useAuth()
   const [cfg, setCfg] = useState(DEFAULTS)
   const [faqs, setFaqs] = useState([])
   const [saving, setSaving] = useState(false)
@@ -49,15 +49,15 @@ export const SmartAttendant = () => {
   const set = (k, v) => setCfg(p => ({ ...p, [k]: v }))
 
   useEffect(() => {
-    if (!user?.id || isDemoMode) return
+    if (!ownerUserId || isDemoMode) return
     ;(async () => {
       const todayIso = new Date(new Date().setHours(0,0,0,0)).toISOString()
 
       const [{ data: c }, { data: kb }, { count: aiTotal }, { count: xferTotal }] = await Promise.all([
-        supabase.from('attendant_config').select('*').eq('user_id', user.id).maybeSingle(),
-        supabase.from('knowledge_base').select('id, question, answer').eq('user_id', user.id),
-        supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('ai_auto_reply', true),
-        supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('user_id', user.id).not('assigned_to', 'is', null).neq('assigned_to', ''),
+        supabase.from('attendant_config').select('*').eq('user_id', ownerUserId).maybeSingle(),
+        supabase.from('knowledge_base').select('id, question, answer').eq('user_id', ownerUserId),
+        supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('user_id', ownerUserId).eq('ai_auto_reply', true),
+        supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('user_id', ownerUserId).not('assigned_to', 'is', null).neq('assigned_to', ''),
       ])
 
       if (c) setCfg({ ...DEFAULTS, ...c })
@@ -66,7 +66,7 @@ export const SmartAttendant = () => {
       // Mensagens de saída hoje em conversas com IA
       let todayResponded = 0
       if (aiTotal > 0) {
-        const { data: aiConvs } = await supabase.from('conversations').select('id').eq('user_id', user.id).eq('ai_auto_reply', true)
+        const { data: aiConvs } = await supabase.from('conversations').select('id').eq('user_id', ownerUserId).eq('ai_auto_reply', true)
         const ids = aiConvs?.map(r => r.id) || []
         if (ids.length) {
           const { count } = await supabase.from('messages').select('*', { count: 'exact', head: true })
@@ -85,7 +85,7 @@ export const SmartAttendant = () => {
         ['Transferências', String(xferTotal || 0)],
       ])
     })()
-  }, [user, isDemoMode])
+  }, [ownerUserId, isDemoMode])
 
   const setFaq = (i, k, v) => setFaqs(p => p.map((f, j) => j === i ? { ...f, [k]: v } : f))
   const importCsv = (e) => {
@@ -101,15 +101,15 @@ export const SmartAttendant = () => {
   }
 
   const save = async () => {
-    if (isDemoMode || !user?.id) { setStatus('Modo demo: salvar desativado.'); return }
+    if (isDemoMode || !ownerUserId) { setStatus('Modo demo: salvar desativado.'); return }
     setSaving(true); setStatus('')
     try {
       const { id, created_at, ...rest } = cfg
       await supabase.from('attendant_config').upsert(
-        { ...rest, user_id: user.id, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
-      await supabase.from('knowledge_base').delete().eq('user_id', user.id)
+        { ...rest, user_id: ownerUserId, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+      await supabase.from('knowledge_base').delete().eq('user_id', ownerUserId)
       const clean = faqs.filter(f => f.question?.trim() && f.answer?.trim())
-        .map(f => ({ user_id: user.id, question: f.question.trim(), answer: f.answer.trim() }))
+        .map(f => ({ user_id: ownerUserId, question: f.question.trim(), answer: f.answer.trim() }))
       if (clean.length) await supabase.from('knowledge_base').insert(clean)
       setStatus('✅ Configuração salva!')
     } catch (e) { console.error('[Attendant] save:', e.message); setStatus('❌ Erro ao salvar: ' + e.message) }

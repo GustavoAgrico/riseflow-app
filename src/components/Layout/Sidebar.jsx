@@ -20,7 +20,14 @@ export const Sidebar = ({ mobile = false, drawerOpen = false, onNavigate }) => {
   const { user, isDemoMode, isMember } = useAuth()
   const location = useLocation()
 
-  const MEMBER_PATHS = new Set(['/chat', '/clients'])
+  // Membros de equipe veem o MESMO painel operacional do dono (dados da conta,
+  // em tempo real). Ficam de fora só as telas de configuração/segredos/cobrança:
+  // Integrações, Automação, Equipes, Planos, Logs e Configurações.
+  const MEMBER_PATHS = new Set([
+    '/dashboard', '/chat', '/smart-attendant', '/flows',
+    '/crm', '/clients', '/analytics', '/funnel',
+    '/campaigns', '/schedules', '/templates',
+  ])
   // No mobile a sidebar vira um drawer sempre expandido (controlado por drawerOpen)
   const expanded = mobile || sidebarOpen
 

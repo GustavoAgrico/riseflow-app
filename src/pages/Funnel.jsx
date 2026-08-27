@@ -54,7 +54,7 @@ const DEMO_CLIENTS = (() => {
 
 export const Funnel = () => {
   const nav = useNavigate()
-  const { user, isDemoMode } = useAuth()
+  const { user, ownerUserId, isDemoMode } = useAuth()
   const [period, setPeriod] = useState('30d')
   const [loading, setLoading] = useState(true)
   const [clients, setClients] = useState([])
@@ -69,9 +69,9 @@ export const Funnel = () => {
       // Modo demo: usa contatos de exemplo (não bate no banco), como CRM/Campanhas.
       if (isDemoMode) { if (on) { setClients(DEMO_CLIENTS); setLoading(false) } return }
       try {
-        if (!user?.id) throw new Error('sem usuário')
+        if (!ownerUserId) throw new Error('sem usuário')
         // select('*') evita falhar se a migração (stage/value) ainda não foi rodada
-        const { data, error } = await supabase.from('clients').select('*').eq('user_id', user.id)
+        const { data, error } = await supabase.from('clients').select('*').eq('user_id', ownerUserId)
         if (error) throw error
         if (on) { setClients(data ?? []); console.log(`[Funnel] ${(data ?? []).length} contatos reais carregados`) }
       } catch (e) {
@@ -81,7 +81,7 @@ export const Funnel = () => {
       if (on) setLoading(false)
     })()
     return () => { on = false }
-  }, [user, isDemoMode])
+  }, [ownerUserId, isDemoMode])
 
   const start = Date.now() - DAYS[period] * 864e5
   const inPeriod = clients.filter(c => new Date(c.created_at).getTime() >= start)

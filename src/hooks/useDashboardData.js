@@ -24,7 +24,7 @@ function buildChartData(messages) {
 }
 
 export const useDashboardData = (version = 0) => {
-  const { user } = useAuth()
+  const { ownerUserId } = useAuth()
   const [flows, setFlows] = useState([])
   const [clients, setClients] = useState([])
   const [conversations, setConversations] = useState([])
@@ -37,7 +37,7 @@ export const useDashboardData = (version = 0) => {
   const [error, setError] = useState(null)
 
   const fetchData = useCallback(async () => {
-    if (!user) { setLoading(false); return }
+    if (!ownerUserId) { setLoading(false); return }
     setLoading(true)
     setError(null)
     try {
@@ -45,23 +45,23 @@ export const useDashboardData = (version = 0) => {
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
       const [flowsRes, clientsRes, convsRes, msgsRes, intRes, countRes, convCountRes, teamCountRes] = await Promise.all([
-        supabase.from('flows').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-        supabase.from('clients').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+        supabase.from('flows').select('*').eq('user_id', ownerUserId).order('created_at', { ascending: false }),
+        supabase.from('clients').select('*').eq('user_id', ownerUserId).order('created_at', { ascending: false }),
         supabase
           .from('conversations')
           .select('id,contact_name,contact_phone,contact_channel,last_message_at,unread_count')
-          .eq('user_id', user.id)
+          .eq('user_id', ownerUserId)
           .order('last_message_at', { ascending: false })
           .limit(20),
         supabase
           .from('messages')
           .select('id,created_at,direction')
-          .eq('user_id', user.id)
+          .eq('user_id', ownerUserId)
           .gte('created_at', sevenDaysAgo.toISOString()),
-        supabase.from('integrations').select('type,status,connected_at').eq('user_id', user.id),
-        supabase.from('messages').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
-        supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
-        supabase.from('team_members').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+        supabase.from('integrations').select('type,status,connected_at').eq('user_id', ownerUserId),
+        supabase.from('messages').select('id', { count: 'exact', head: true }).eq('user_id', ownerUserId),
+        supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('user_id', ownerUserId),
+        supabase.from('team_members').select('id', { count: 'exact', head: true }).eq('user_id', ownerUserId),
       ])
 
       if (flowsRes.error) throw flowsRes.error
@@ -80,7 +80,7 @@ export const useDashboardData = (version = 0) => {
     } finally {
       setLoading(false)
     }
-  }, [user, version])
+  }, [ownerUserId, version])
 
   useEffect(() => { fetchData() }, [fetchData])
 

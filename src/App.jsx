@@ -93,12 +93,12 @@ function GlobalToasts() {
   return <NotificationToast notifications={toasts} onDismiss={dismissToast} />
 }
 
-// Raiz: redireciona para /chat (membro) ou /dashboard (dono/demo), ou /login.
+// Raiz: todos (dono, membro de equipe e demo) caem no mesmo Dashboard, ou /login.
 function RootRedirect() {
-  const { user, loading, isDemoMode, isMember } = useAuth()
+  const { user, loading, isDemoMode } = useAuth()
   if (loading) return null
   if (!user && !isDemoMode) return <Navigate to="/login" replace />
-  return <Navigate to={isMember ? '/chat' : '/dashboard'} replace />
+  return <Navigate to="/dashboard" replace />
 }
 
 function App() {

@@ -58,7 +58,7 @@ const S = {
 }
 
 export const Schedules = () => {
-  const { user, isDemoMode } = useAuth()
+  const { user, ownerUserId, isDemoMode } = useAuth()
   const navigate = useNavigate()
   // Voltar robusto: só volta 1 passo se houver histórico interno do SPA
   // (history.state.idx > 0); aberta direto por URL, cai no dashboard em vez de ficar inerte.
@@ -77,20 +77,20 @@ export const Schedules = () => {
   const set = (k,v) => setF(p => ({ ...p, [k]:v }))
 
   const load = useCallback(async () => {
-    if (!user || isDemoMode) return
+    if (!ownerUserId || isDemoMode) return
     const [{ data: rows }, { data: cli }] = await Promise.all([
-      supabase.from('schedules').select('*').eq('user_id', user.id).order('send_date', { ascending: true }),
-      supabase.from('clients').select('name,phone,company').eq('user_id', user.id),
+      supabase.from('schedules').select('*').eq('user_id', ownerUserId).order('send_date', { ascending: true }),
+      supabase.from('clients').select('name,phone,company').eq('user_id', ownerUserId),
     ])
     setItems((rows ?? []).map(mapRow))
     setContacts(cli ?? [])
     setLoading(false)
-  }, [user, isDemoMode])
+  }, [ownerUserId, isDemoMode])
 
   useEffect(() => {
     if (isDemoMode) { setItems(DEMO); setLoading(false); return }
     load()
-  }, [user, isDemoMode, load])
+  }, [ownerUserId, isDemoMode, load])
 
   // ── Despachante client-side ──────────────────────────────────────────────
   // Sem cron no servidor: enquanto a aba estiver aberta, verifica a cada 30s os
@@ -107,7 +107,7 @@ export const Schedules = () => {
   }
   const dup = async s => {
     if (guardDemo()) return
-    await supabase.from('schedules').insert({ user_id: user.id, name: s.name, phone: onlyDigits(s.phone), msg: s.msg,
+    await supabase.from('schedules').insert({ user_id: ownerUserId, name: s.name, phone: onlyDigits(s.phone), msg: s.msg,
       send_date: dstr(addDays(1)), send_time: s.time, type: s.type, freq: s.freq, end_date: s.end || null, business_hours: s.business, status: 'agendado' })
     await load()
   }
@@ -124,7 +124,7 @@ export const Schedules = () => {
       if (editId) {
         await supabase.from('schedules').update(row).eq('id', editId)
       } else {
-        const { error } = await supabase.from('schedules').insert({ ...row, user_id: user.id })
+        const { error } = await supabase.from('schedules').insert({ ...row, user_id: ownerUserId })
         if (error) { window.alert('Erro ao agendar:\n' + error.message + '\n\n(Rode supabase/schedules.sql se ainda não rodou.)'); return }
       }
       setModal(false); setEditId(null); setF(EMPTY)

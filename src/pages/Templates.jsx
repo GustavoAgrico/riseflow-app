@@ -35,7 +35,7 @@ const S = {
 }
 
 export const Templates = () => {
-  const { user, isDemoMode } = useAuth()
+  const { user, ownerUserId, isDemoMode } = useAuth()
   const navigate = useNavigate()
   // Voltar robusto: só volta 1 passo se houver histórico interno do SPA
   // (history.state.idx > 0); aberta direto por URL, cai no dashboard em vez de ficar inerte.
@@ -55,15 +55,15 @@ export const Templates = () => {
   const set = (k,v) => setF(p => ({ ...p, [k]:v }))
 
   const load = useCallback(async () => {
-    if (!user || isDemoMode) return
-    setItems(await listTemplates(user.id))
+    if (!ownerUserId || isDemoMode) return
+    setItems(await listTemplates(ownerUserId))
     setLoading(false)
-  }, [user, isDemoMode])
+  }, [ownerUserId, isDemoMode])
 
   useEffect(() => {
     if (isDemoMode) { setItems(DEMO); setLoading(false); return }
     load()
-  }, [user, isDemoMode, load])
+  }, [ownerUserId, isDemoMode, load])
 
   const flash = m => { setToast(m); setTimeout(()=>setToast(''), 1800) }
   const guardDemo = () => { if (isDemoMode) { flash('Modo demo — crie uma conta'); return true } return false }
@@ -77,7 +77,7 @@ export const Templates = () => {
   }
   const dup = async t => {
     if (guardDemo()) return
-    await createTemplate(user.id, { ...t, name: t.name + ' (Cópia)' })
+    await createTemplate(ownerUserId, { ...t, name: t.name + ' (Cópia)' })
     await load()
   }
   const del = async id => {
@@ -95,7 +95,7 @@ export const Templates = () => {
     try {
       if (editId) { await updateTemplate(editId, f) }
       else {
-        const { error } = await createTemplate(user.id, f)
+        const { error } = await createTemplate(ownerUserId, f)
         if (error) { window.alert('Erro ao salvar template:\n' + error.message + '\n\n(Rode supabase/templates.sql se ainda não rodou.)'); return }
       }
       setModal(false); setEditId(null); setF(EMPTY)

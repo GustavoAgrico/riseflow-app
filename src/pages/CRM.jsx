@@ -216,7 +216,7 @@ const NewContactModal = ({ onSave, onClose }) => {
 
 export function CRM() {
   const navigate = useNavigate()
-  const { user, isDemoMode } = useAuth()
+  const { user, ownerUserId, isDemoMode } = useAuth()
   const [navHov, setNavHov] = useState(false)
   const [contacts, setContacts] = useState([])
   const [selected, setSelected] = useState(null)
@@ -231,15 +231,15 @@ export function CRM() {
     let on = true
     ;(async () => {
       if (isDemoMode) { setContacts(initContacts); return }
-      if (!user?.id) return
+      if (!ownerUserId) return
       try {
-        const { data, error } = await supabase.from('clients').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
+        const { data, error } = await supabase.from('clients').select('*').eq('user_id', ownerUserId).order('created_at', { ascending: false })
         if (error) throw error
         if (on) { setContacts((data || []).map(mapRow)); console.log(`[CRM] ${(data || []).length} contatos carregados`) }
       } catch (e) { console.warn('[CRM] erro ao carregar contatos:', e?.message ?? e); if (on) setContacts([]) }
     })()
     return () => { on = false }
-  }, [user, isDemoMode])
+  }, [ownerUserId, isDemoMode])
 
   const allTags = [...new Set(contacts.flatMap(c => c.tags))]
   const filtered = contacts.filter(c =>
@@ -295,7 +295,7 @@ export function CRM() {
     logger.log(user?.id, 'contact_created', { category: 'contacts', description: 'Contato criado: ' + base.name })
     if (isDemoMode) { setContacts(p => [{ ...base, id: String(Date.now()), lastMsg: 'Contato criado', time: 'agora' }, ...p]); return }
     try {
-      const { data, error } = await supabase.from('clients').insert({ user_id: user.id, status: 'active', ...base }).select().single()
+      const { data, error } = await supabase.from('clients').insert({ user_id: ownerUserId, status: 'active', ...base }).select().single()
       if (error) throw error
       setContacts(p => [mapRow(data), ...p])
       console.log('[CRM] Contato criado e sincronizado')
@@ -346,7 +346,7 @@ export function CRM() {
             )
           })}
         </div>
-        {selected && <DetailPanel key={selected.id} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} onDelete={deleteContact} userId={user?.id} mobile={isMobile} />}
+        {selected && <DetailPanel key={selected.id} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} onDelete={deleteContact} userId={ownerUserId} mobile={isMobile} />}
       </div>
       {modal && <NewContactModal onSave={addContact} onClose={() => setModal(false)} />}
     </div>

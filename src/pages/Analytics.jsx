@@ -101,7 +101,7 @@ const LineChart = ({ data }) => {
 }
 
 export function Analytics() {
-  const { user, isDemoMode } = useAuth()
+  const { user, ownerUserId, isDemoMode } = useAuth()
   const [period, setPeriod]     = useState('7d')
   const [loading, setLoading]   = useState(true)
   const [sent, setSent]         = useState(0)
@@ -116,7 +116,7 @@ export function Analytics() {
   const [flows, setFlows]       = useState([])
 
   useEffect(() => {
-    if (!user) return
+    if (!ownerUserId) return
     setLoading(true)
     const days = PERIODS.find(p => p.key === period)?.days ?? 7
 
@@ -134,14 +134,14 @@ export function Analytics() {
 
     Promise.all([
       supabase.from('messages').select('direction, created_at, conversation_id')
-        .eq('user_id', user.id).gte('created_at', from),
+        .eq('user_id', ownerUserId).gte('created_at', from),
       supabase.from('conversations').select('id, contact_name, contact_channel, last_message_at')
-        .eq('user_id', user.id).gte('last_message_at', from)
+        .eq('user_id', ownerUserId).gte('last_message_at', from)
         .order('last_message_at', { ascending: false }).limit(10),
       supabase.from('clients').select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id).eq('status', 'active'),
+        .eq('user_id', ownerUserId).eq('status', 'active'),
       supabase.from('flows').select('name, status, triggers, conversions')
-        .eq('user_id', user.id).order('triggers', { ascending: false }).limit(5),
+        .eq('user_id', ownerUserId).order('triggers', { ascending: false }).limit(5),
     ]).then(([msgsRes, convsRes, cliRes, flowRes]) => {
       const msgs  = msgsRes.data  ?? []
       const convs = convsRes.data ?? []
@@ -195,7 +195,7 @@ export function Analytics() {
 
       setFlows(fls.map(f => ({ name: f.name, active: f.status === 'active', runs: f.triggers ?? 0, rate: (f.triggers ?? 0) > 0 ? Math.round(((f.conversions ?? 0) / f.triggers) * 100) : 0 })))
     }).catch(console.error).finally(() => setLoading(false))
-  }, [user, period, isDemoMode])
+  }, [ownerUserId, period, isDemoMode])
 
   const [exporting, setExporting] = useState(false)
 

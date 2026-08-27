@@ -207,7 +207,7 @@ const makeData = (type, sub, label) => {
 /* ── FlowBuilder ─────────────────────────────────────────────────────────── */
 export function FlowBuilder() {
   const { id: flowId } = useParams()
-  const { user } = useAuth()
+  const { user, ownerUserId } = useAuth()
   const navigate = useNavigate()
 
   const [nodes, setNodes, onNodesChange] = useNodesState([])
@@ -226,8 +226,8 @@ export function FlowBuilder() {
   const rfInstance = useRef(null)
 
   React.useEffect(() => {
-    if (!flowId || !user) return
-    supabase.from('flows').select('*').eq('id', flowId).eq('user_id', user.id).single()
+    if (!flowId || !ownerUserId) return
+    supabase.from('flows').select('*').eq('id', flowId).eq('user_id', ownerUserId).single()
       .then(({ data }) => {
         if (!data) return
         setFlowName(data.name ?? 'Fluxo')
@@ -238,7 +238,7 @@ export function FlowBuilder() {
         setEdges(fd.edges ?? [])
       })
       .finally(() => setLoading(false))
-  }, [flowId, user])
+  }, [flowId, ownerUserId])
 
   const onConnect   = useCallback(p => setEdges(e => addEdge({ ...p, ...EDGE_DEF }, e)), [setEdges])
   const onDragOver  = useCallback(e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }, [])
@@ -281,7 +281,7 @@ export function FlowBuilder() {
     setSaving(true)
     try {
       const payload = {
-        user_id: user.id, name: flowName, channel,
+        user_id: ownerUserId, name: flowName, channel,
         status: active ? 'active' : 'paused',
         flow_data: { nodes, edges },
         updated_at: new Date().toISOString(),
