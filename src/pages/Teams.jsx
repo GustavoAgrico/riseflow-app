@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, UserCheck, Layers, Gauge, Pencil, Trash2, Plus, Loader2, X } from 'lucide-react'
+import { Users, UserCheck, Layers, Gauge, Pencil, Trash2, Plus, Loader2, X, Mail } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { socket } from '@services/socket'
 import { useIsMobile } from '@hooks/useIsMobile'
 import { useAuth } from '@context/AuthContext'
 import { logger } from '@services/activityLogger'
+import { sendEmail } from '@services/emailService'
+
+const EMAIL_RE = /^\S+@\S+\.\S+$/
 
 const C = { bg: '#0F172A', card: '#1E293B', border: '#334155', text: '#F8FAFC',
   muted: '#94A3B8', purple: '#7C3AED', green: '#22C55E', yellow: '#EAB308', gray: '#64748B', red: '#EF4444' }
@@ -49,8 +52,9 @@ export const Teams = () => {
   const [form, setForm] = useState(EMPTY_FORM)
   const [search, setSearch] = useState('')          // busca por nome/email
   const [bulkOpen, setBulkOpen] = useState(false)   // modal de adicionar vários
-  const [bulkText, setBulkText] = useState('')
+  const [bulkRows, setBulkRows] = useState([{ name: '', email: '' }, { name: '', email: '' }, { name: '', email: '' }])
   const [bulkMsg, setBulkMsg] = useState('')
+  const [notice, setNotice] = useState(null)        // { type:'ok'|'warn', text } — feedback de convite
 
   const load = useCallback(async () => {
     if (!user || isDemoMode) return
@@ -116,6 +120,10 @@ export const Teams = () => {
         if (error) { window.alert('Erro ao adicionar membro:\n' + error.message + '\n\n(Rode supabase/team.sql se ainda não rodou.)'); return }
         await syncQueues(created.id, form.queues)
         logger.log(user.id, 'member_added', { category: 'team', description: 'Membro adicionado: ' + payload.name })
+        const { sent } = await sendInvites([{ name: payload.name, email: payload.email }])
+        setNotice(sent
+          ? { type: 'ok', text: `Convite enviado para ${payload.email}.` }
+          : { type: 'warn', text: `Membro adicionado, mas o convite por e-mail falhou — configure o e-mail (SMTP) em Integrações.` })
       }
       setOpen(false); setForm(EMPTY_FORM); setEditing(null)
       await load()
@@ -187,30 +195,60 @@ export const Teams = () => {
     return members.filter(m => `${m.name ?? ''} ${m.email ?? ''}`.toLowerCase().includes(q))
   }, [members, search])
 
-  /* ── Adicionar vários de uma vez (colar uma lista "Nome, email" por linha) ── */
+  /* ── Convite por e-mail (via SMTP do dono) para cada pessoa adicionada ── */
+  const sendInvites = async (people) => {
+    const origin = window.location.origin
+    let sent = 0, failed = 0
+    for (const p of people) {
+      if (!EMAIL_RE.test(p.email)) { failed++; continue }
+      try {
+        await sendEmail({
+          to: p.email,
+          subject: 'Convite para a equipe no RiseFlow',
+          text: `Ola${p.name ? ' ' + p.name : ''}!\n\nVoce foi convidado para a equipe no RiseFlow.\nCadastre-se com este e-mail (${p.email}) em:\n${origin}/register\n\nAte ja!`,
+          html: `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:480px;margin:0 auto;padding:28px;color:#1b1f2a">
+            <h2 style="color:#7C3AED;margin:0 0 10px">Você foi convidado 🎉</h2>
+            <p style="font-size:15px;line-height:1.6">Olá${p.name ? ' <b>' + p.name + '</b>' : ''}! Você foi adicionado à equipe no <b>RiseFlow</b>.</p>
+            <p style="font-size:15px;line-height:1.6">Para acessar, crie seu acesso usando <b>este e-mail</b> (${p.email}):</p>
+            <p style="margin:22px 0"><a href="${origin}/register" style="display:inline-block;background:#7C3AED;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">Criar meu acesso</a></p>
+            <p style="color:#8a92a3;font-size:13px">Ou acesse: ${origin}/register</p>
+          </div>`,
+        })
+        sent++
+      } catch { failed++ }
+    }
+    return { sent, failed }
+  }
+
+  const inviteNotice = (count, sent, failed) =>
+    sent > 0 && failed === 0 ? { type: 'ok',  text: `${count} membro(s) adicionado(s) e convite(s) enviado(s) por e-mail.` }
+      : sent > 0            ? { type: 'warn', text: `${count} adicionado(s); ${sent} convite(s) enviado(s), ${failed} falharam.` }
+      :                       { type: 'warn', text: `${count} membro(s) adicionado(s), mas os convites por e-mail falharam — configure o e-mail (SMTP) em Integrações.` }
+
+  /* ── Adicionar vários (um campo por pessoa) + convite ── */
   const doBulkAdd = async () => {
     if (guardDemo()) return
     const existing = new Set(members.map(m => (m.email ?? '').toLowerCase()))
     const seen = new Set()
-    const toInsert = []
-    for (const raw of bulkText.split('\n')) {
-      const line = raw.trim()
-      if (!line) continue
-      const parts = line.split(/[,;\t]/).map(s => s.trim()).filter(Boolean)
-      const email = (parts.length >= 2 ? parts[1] : parts[0]) || ''
-      const name = parts.length >= 2 ? parts[0] : email.split('@')[0]
+    const clean = []
+    for (const r of bulkRows) {
+      const email = (r.email || '').trim()
+      const name = (r.name || '').trim() || email.split('@')[0]
       const key = email.toLowerCase()
-      if (!/\S+@\S+\.\S+/.test(email) || existing.has(key) || seen.has(key)) continue
+      if (!EMAIL_RE.test(email) || existing.has(key) || seen.has(key)) continue
       seen.add(key)
-      toInsert.push({ user_id: user.id, name, email, role: 'Atendente', status: 'offline', conv_limit: 5 })
+      clean.push({ name, email })
     }
-    if (!toInsert.length) { setBulkMsg('Nenhum e-mail válido novo encontrado (verifique o formato).'); return }
+    if (!clean.length) { setBulkMsg('Preencha ao menos um e-mail válido e ainda não cadastrado.'); return }
     setBusy(true)
-    const { error } = await supabase.from('team_members').insert(toInsert)
+    const { error } = await supabase.from('team_members')
+      .insert(clean.map(c => ({ user_id: user.id, name: c.name, email: c.email, role: 'Atendente', status: 'offline', conv_limit: 5 })))
+    if (error) { setBusy(false); setBulkMsg('Erro: ' + error.message); return }
+    logger.log(user.id, 'team_bulk_add', { category: 'team', description: `${clean.length} membro(s) adicionados em massa` })
+    const { sent, failed } = await sendInvites(clean)
     setBusy(false)
-    if (error) { setBulkMsg('Erro: ' + error.message); return }
-    logger.log(user.id, 'team_bulk_add', { category: 'team', description: `${toInsert.length} membro(s) adicionados em massa` })
-    setBulkOpen(false); setBulkText(''); setBulkMsg('')
+    setBulkOpen(false); setBulkRows([{ name: '', email: '' }, { name: '', email: '' }, { name: '', email: '' }]); setBulkMsg('')
+    setNotice(inviteNotice(clean.length, sent, failed))
     await load()
   }
 
@@ -234,6 +272,16 @@ export const Teams = () => {
       {isDemoMode && (
         <div style={{ ...cardS, marginBottom: 16, borderColor: 'rgba(234,179,8,0.27)', background: 'rgba(234,179,8,0.06)', color: C.yellow, fontSize: 13 }}>
           Modo demo — a equipe abaixo é apenas exemplo. Crie uma conta para gerenciar membros e filas de verdade.
+        </div>
+      )}
+
+      {notice && (
+        <div style={{ ...cardS, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, fontSize: 13,
+          borderColor: notice.type === 'ok' ? 'rgba(34,197,94,0.3)' : 'rgba(234,179,8,0.3)',
+          background: notice.type === 'ok' ? 'rgba(34,197,94,0.08)' : 'rgba(234,179,8,0.07)',
+          color: notice.type === 'ok' ? '#22C55E' : C.yellow }}>
+          <span>{notice.text}</span>
+          <button onClick={() => setNotice(null)} style={{ ...iBtn(notice.type === 'ok' ? '#22C55E' : C.yellow), display: 'inline-flex', alignItems: 'center', padding: '3px 6px' }}><X size={13} /></button>
         </div>
       )}
 
@@ -379,18 +427,34 @@ export const Teams = () => {
       )}
 
       {bulkOpen && (
-        <div onClick={() => setBulkOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999, padding: 20 }}>
-          <div onClick={e => e.stopPropagation()} style={{ ...cardS, width: 480, maxWidth: '100%', display: 'grid', gap: 12 }}>
-            <h3 style={{ fontSize: 17, fontWeight: 700 }}>Adicionar vários membros</h3>
-            <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Cole uma pessoa por linha, no formato <strong style={{ color: C.text }}>Nome, email</strong> (também aceita só o e-mail). Todos entram como <strong style={{ color: C.text }}>Atendente</strong> — ajuste o cargo depois. E-mails repetidos ou já cadastrados são ignorados.</p>
-            <textarea value={bulkText} onChange={e => setBulkText(e.target.value)} rows={8}
-              placeholder={'Ana Paula, ana@empresa.com\nCarlos Souza, carlos@empresa.com\njoao@empresa.com'}
-              style={{ ...inp, width: '100%', resize: 'vertical', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 13, lineHeight: 1.6 }} />
-            {bulkMsg && <div style={{ fontSize: 12, color: bulkMsg.startsWith('Erro') ? C.red : C.yellow }}>{bulkMsg}</div>}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
+        <div onClick={() => setBulkOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999, padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ ...cardS, width: 560, maxWidth: '100%', display: 'grid', gap: 14, padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 38, height: 38, borderRadius: 11, background: 'rgba(124,58,237,0.15)', display: 'grid', placeItems: 'center', flexShrink: 0 }}><Mail size={18} color={C.purple} /></div>
+              <div>
+                <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Convidar vários membros</h3>
+                <p style={{ fontSize: 12.5, color: C.muted, margin: '2px 0 0' }}>Um campo por pessoa. Cada uma recebe um convite por e-mail para criar o acesso.</p>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8, maxHeight: 300, overflowY: 'auto', paddingRight: 4 }}>
+              {bulkRows.map((row, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr 34px', gap: 8, alignItems: 'center' }}>
+                  <input placeholder="Nome" value={row.name} onChange={e => setBulkRows(rs => rs.map((r, j) => j === i ? { ...r, name: e.target.value } : r))} style={{ ...inp, width: '100%' }} />
+                  <input placeholder="email@empresa.com" type="email" value={row.email} onChange={e => setBulkRows(rs => rs.map((r, j) => j === i ? { ...r, email: e.target.value } : r))} style={{ ...inp, width: '100%' }} />
+                  <button title="Remover" onClick={() => setBulkRows(rs => rs.length > 1 ? rs.filter((_, j) => j !== i) : rs)} disabled={bulkRows.length <= 1} style={{ ...iBtn(C.red), display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: bulkRows.length > 1 ? 1 : 0.3, cursor: bulkRows.length > 1 ? 'pointer' : 'not-allowed' }}><X size={14} /></button>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => setBulkRows(rs => [...rs, { name: '', email: '' }])} style={{ ...iBtn(C.purple), padding: '8px 14px', width: 'fit-content', display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}><Plus size={14} /> Adicionar linha</button>
+
+            {bulkMsg && <div style={{ fontSize: 12.5, color: bulkMsg.startsWith('Erro') ? C.red : C.yellow }}>{bulkMsg}</div>}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 2 }}>
               <button onClick={() => setBulkOpen(false)} style={{ ...iBtn(C.text), padding: '9px 16px', fontSize: 14 }}>Cancelar</button>
-              <button onClick={doBulkAdd} disabled={busy || !bulkText.trim()} style={{ background: C.purple, border: 'none', borderRadius: 9, color: '#fff', fontSize: 14, fontWeight: 600, fontFamily: F, padding: '9px 18px', cursor: (busy || !bulkText.trim()) ? 'not-allowed' : 'pointer', opacity: (busy || !bulkText.trim()) ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                {busy && <Loader2 size={14} className="animate-spin" />}Adicionar
+              <button onClick={doBulkAdd} disabled={busy} style={{ background: C.purple, border: 'none', borderRadius: 9, color: '#fff', fontSize: 14, fontWeight: 600, fontFamily: F, padding: '9px 18px', cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {busy && <Loader2 size={14} className="animate-spin" />}Adicionar e convidar
               </button>
             </div>
           </div>
