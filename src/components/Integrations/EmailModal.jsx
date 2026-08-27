@@ -7,9 +7,29 @@ import { ModalBase, HelpAccordion } from './ModalBase'
 
 const PRESETS = [
   { label: 'Gmail', host: 'smtp.gmail.com', port: '587' },
-  { label: 'Outlook', host: 'smtp-mail.outlook.com', port: '587' },
+  { label: 'Outlook / Hotmail', host: 'smtp-mail.outlook.com', port: '587' },
+  { label: 'Yahoo', host: 'smtp.mail.yahoo.com', port: '587' },
+  { label: 'iCloud', host: 'smtp.mail.me.com', port: '587' },
+  { label: 'Zoho', host: 'smtp.zoho.com', port: '587' },
   { label: 'SendGrid', host: 'smtp.sendgrid.net', port: '587' },
 ]
+
+// Detecta o servidor SMTP pelo domínio do e-mail — assim o admin só digita
+// e-mail + senha, independente do provedor (Gmail, Hotmail, Yahoo, UOL...).
+const DOMAIN_SMTP = {
+  'gmail.com': 'smtp.gmail.com', 'googlemail.com': 'smtp.gmail.com',
+  'outlook.com': 'smtp-mail.outlook.com', 'hotmail.com': 'smtp-mail.outlook.com',
+  'live.com': 'smtp-mail.outlook.com', 'msn.com': 'smtp-mail.outlook.com',
+  'hotmail.com.br': 'smtp-mail.outlook.com', 'outlook.com.br': 'smtp-mail.outlook.com',
+  'yahoo.com': 'smtp.mail.yahoo.com', 'yahoo.com.br': 'smtp.mail.yahoo.com', 'ymail.com': 'smtp.mail.yahoo.com',
+  'icloud.com': 'smtp.mail.me.com', 'me.com': 'smtp.mail.me.com', 'mac.com': 'smtp.mail.me.com',
+  'zoho.com': 'smtp.zoho.com', 'aol.com': 'smtp.aol.com',
+  'uol.com.br': 'smtps.uol.com.br', 'bol.com.br': 'smtps.bol.com.br', 'terra.com.br': 'smtp.terra.com.br',
+}
+const hostForEmail = (addr) => {
+  const dom = (addr.split('@')[1] || '').trim().toLowerCase()
+  return dom ? (DOMAIN_SMTP[dom] || '') : ''
+}
 
 export const EmailModal = ({ onClose, onSuccess }) => {
   const { user } = useAuth()
@@ -19,10 +39,22 @@ export const EmailModal = ({ onClose, onSuccess }) => {
   const [pass, setPass] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Marca se o host foi preenchido automaticamente (para não sobrescrever
+  // um servidor que o admin digitou manualmente).
+  const [hostAuto, setHostAuto] = useState(true)
+
+  const onEmailChange = (val) => {
+    setEmail(val)
+    if (hostAuto) {
+      const h = hostForEmail(val)
+      if (h) setHost(h)
+    }
+  }
 
   const applyPreset = (preset) => {
     setHost(preset.host)
     setPort(preset.port)
+    setHostAuto(false)
   }
 
   const handleSave = async () => {
@@ -66,14 +98,28 @@ export const EmailModal = ({ onClose, onSuccess }) => {
           { label: 'API Keys SendGrid', url: 'https://app.sendgrid.com/settings/api_keys' },
         ]}
       />
-      {/* Quick presets */}
-      <p className="text-xs text-slate-500 mb-2">Configuração rápida:</p>
-      <div className="flex gap-2 mb-4">
+      {/* Email primeiro — o servidor SMTP é detectado pelo domínio. */}
+      <div className="mb-3">
+        <label className="block text-xs text-slate-400 mb-1.5">Email</label>
+        <input value={email} onChange={e => onEmailChange(e.target.value)} type="email" placeholder="voce@gmail.com" className="input-field text-sm" />
+        {host && hostAuto && (
+          <p className="text-[10px] text-brand-green mt-1">Servidor detectado: {host} · porta {port}</p>
+        )}
+      </div>
+
+      <div className="mb-3">
+        <label className="block text-xs text-slate-400 mb-1.5">Senha / App Password</label>
+        <input value={pass} onChange={e => setPass(e.target.value)} type="password" placeholder="••••••••••••" className="input-field text-sm" />
+      </div>
+
+      {/* Presets — só precisa se o domínio não for reconhecido automaticamente. */}
+      <p className="text-xs text-slate-500 mb-2">Provedor não detectado? Escolha:</p>
+      <div className="flex flex-wrap gap-2 mb-3">
         {PRESETS.map(p => (
           <button
             key={p.label}
             onClick={() => applyPreset(p)}
-            className="flex-1 py-1.5 rounded-lg text-xs glass text-slate-300 hover:text-white transition-all"
+            className="py-1.5 px-3 rounded-lg text-xs glass text-slate-300 hover:text-white transition-all"
           >
             {p.label}
           </button>
@@ -83,22 +129,12 @@ export const EmailModal = ({ onClose, onSuccess }) => {
       <div className="grid grid-cols-3 gap-3 mb-3">
         <div className="col-span-2">
           <label className="block text-xs text-slate-400 mb-1.5">Servidor SMTP</label>
-          <input value={host} onChange={e => setHost(e.target.value)} placeholder="smtp.gmail.com" className="input-field text-sm" />
+          <input value={host} onChange={e => { setHost(e.target.value); setHostAuto(false) }} placeholder="smtp.gmail.com" className="input-field text-sm" />
         </div>
         <div>
           <label className="block text-xs text-slate-400 mb-1.5">Porta</label>
           <input value={port} onChange={e => setPort(e.target.value)} placeholder="587" className="input-field text-sm" />
         </div>
-      </div>
-
-      <div className="mb-3">
-        <label className="block text-xs text-slate-400 mb-1.5">Email</label>
-        <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="voce@gmail.com" className="input-field text-sm" />
-      </div>
-
-      <div className="mb-3">
-        <label className="block text-xs text-slate-400 mb-1.5">Senha / App Password</label>
-        <input value={pass} onChange={e => setPass(e.target.value)} type="password" placeholder="••••••••••••" className="input-field text-sm" />
       </div>
 
       <div className="flex items-start gap-2 glass rounded-xl p-3 mb-3">
