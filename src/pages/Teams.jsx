@@ -55,15 +55,18 @@ export const Teams = () => {
   const [bulkRows, setBulkRows] = useState([{ name: '', email: '' }, { name: '', email: '' }, { name: '', email: '' }])
   const [bulkMsg, setBulkMsg] = useState('')
   const [notice, setNotice] = useState(null)        // { type:'ok'|'warn', text } — feedback de convite
+  const [emailReady, setEmailReady] = useState(true) // e-mail (SMTP) do admin conectado? (default true evita flash)
 
   const load = useCallback(async () => {
     if (!user || isDemoMode) return
-    const [{ data: m }, { data: q }] = await Promise.all([
+    const [{ data: m }, { data: q }, { data: emailInt }] = await Promise.all([
       supabase.from('team_members').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
       supabase.from('team_queues').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
+      supabase.from('integrations').select('status').eq('user_id', user.id).eq('type', 'email').maybeSingle(),
     ])
     setMembers(m ?? [])
     setQueues(q ?? [])
+    setEmailReady(emailInt?.status === 'connected')
     setLoading(false)
   }, [user, isDemoMode])
 
@@ -272,6 +275,21 @@ export const Teams = () => {
       {isDemoMode && (
         <div style={{ ...cardS, marginBottom: 16, borderColor: 'rgba(234,179,8,0.27)', background: 'rgba(234,179,8,0.06)', color: C.yellow, fontSize: 13 }}>
           Modo demo — a equipe abaixo é apenas exemplo. Crie uma conta para gerenciar membros e filas de verdade.
+        </div>
+      )}
+
+      {!isDemoMode && !emailReady && (
+        <div style={{ ...cardS, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+          borderColor: 'rgba(124,58,237,0.35)', background: 'rgba(124,58,237,0.08)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Mail size={16} color={C.purple} style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 13, color: C.text }}>
+              Conecte um e-mail para enviar os <b>convites aos colaboradores</b>. Os convites saem desse endereço (Gmail, Outlook, etc.).
+            </span>
+          </div>
+          <button onClick={() => navigate('/integrations')} style={{ background: C.purple, border: 'none', borderRadius: 9, color: '#fff', fontSize: 13, fontWeight: 600, fontFamily: F, padding: '8px 14px', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            Configurar e-mail
+          </button>
         </div>
       )}
 
