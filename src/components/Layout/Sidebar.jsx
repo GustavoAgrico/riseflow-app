@@ -3,14 +3,14 @@ import { useLocation, Link } from 'react-router-dom'
 import {
   LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, MessageSquare,
   BarChart3, Settings, ChevronLeft, ChevronRight,
-  Crown, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Menu, Bot
+  Crown, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Menu, Bot, Sparkles
 } from 'lucide-react'
 import { useApp } from '@context/AppContext'
 import { useAuth } from '@context/AuthContext'
 import { NAV_ITEMS } from '@constants/config'
 import clsx from 'clsx'
 
-const ICONS = { LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, MessageSquare, BarChart3, Settings, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Crown, Bot }
+const ICONS = { LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, MessageSquare, BarChart3, Settings, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Crown, Bot, Sparkles }
 
 const getInitials = (name = '') =>
   name.split(' ').slice(0, 2).map(w => w[0] ?? '').join('').toUpperCase() || 'U'

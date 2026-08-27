@@ -66,6 +66,7 @@ export const NAV_ITEMS = [
   { id: 'templates', label: 'Templates', icon: 'FileText', path: '/templates' },
   { id: 'integrations', label: 'Integrações', icon: 'Plug', path: '/integrations' },
   { id: 'automation', label: 'Automação', icon: 'Zap', path: '/automation' },
+  { id: 'produto', label: 'Produto', icon: 'Sparkles', path: '/produto' },
   { id: 'plans', label: 'Planos', icon: 'Crown', path: '/plans' },
   { id: 'logs', label: 'Logs', icon: 'ClipboardList', path: '/activity-logs' },
   { id: 'settings', label: 'Configurações', icon: 'Settings', path: '/settings' },

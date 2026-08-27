@@ -27,6 +27,7 @@ import { FlowBuilder } from '@pages/FlowBuilder'
 import Flows from '@pages/Flows'
 import { Templates } from '@pages/Templates'
 import { Plans } from '@pages/Plans'
+import { Product } from '@pages/Product'
 import { PlanDetails } from '@pages/PlanDetails'
 import { ActivityLogs } from '@pages/ActivityLogs'
 import { PageTransition } from '@components/PageTransition'
@@ -143,6 +144,7 @@ function App() {
               <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
               <Route path="/activity-logs" element={<PrivateRoute><ActivityLogs /></PrivateRoute>} />
               <Route path="/templates" element={<PrivateRoute><Templates /></PrivateRoute>} />
+              <Route path="/produto" element={<PrivateRoute><Product /></PrivateRoute>} />
               <Route path="/plans" element={<PrivateRoute><Plans /></PrivateRoute>} />
               <Route path="/plans/:planId" element={<PrivateRoute><PlanDetails /></PrivateRoute>} />
 
