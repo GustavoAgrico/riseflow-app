@@ -32,19 +32,48 @@ async function getUserEmailConfig(userId) {
   return data.config
 }
 
-// Envia um email usando a config salva do usuário. Lança se não estiver configurado.
-async function sendMailForUser(userId, { to, subject, text, html, from }) {
-  const c = await getUserEmailConfig(userId)
-  if (!c) throw new Error('Email não configurado para este usuário.')
-  return makeTransport({
-    host: c.host, port: c.port, secure: c.secure, user: c.email || c.user, pass: c.pass,
-  }).sendMail({
-    from: from || c.from || c.email || c.user,
-    to,
-    subject,
-    text: text || undefined,
-    html: html || undefined,
-  })
+// Fallback: SMTP da PLATAFORMA (env do servidor). Usado quando o dono não tem
+// e-mail próprio configurado — ex.: convite de equipe sai do endereço do sistema.
+// Defina SMTP_HOST / SMTP_USER / SMTP_PASS (e opcional SMTP_PORT / SMTP_SECURE /
+// SMTP_FROM) no servidor. Sem essas envs, não há fallback.
+function getSystemEmailConfig() {
+  const host = process.env.SMTP_HOST
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASS
+  if (!host || !user || !pass) return null
+  const secure = process.env.SMTP_SECURE
+  return {
+    host,
+    port: process.env.SMTP_PORT,
+    secure: secure === 'true' ? true : secure === 'false' ? false : undefined,
+    user,
+    pass,
+    from: process.env.SMTP_FROM || user,
+  }
 }
 
-module.exports = { makeTransport, verifySmtp, getUserEmailConfig, sendMailForUser }
+// Envia um email. Prioridade: SMTP do usuário → SMTP do sistema (env).
+// Lança só se NENHUM dos dois estiver configurado.
+async function sendMailForUser(userId, { to, subject, text, html, from }) {
+  const c = await getUserEmailConfig(userId)
+  if (c) {
+    return makeTransport({
+      host: c.host, port: c.port, secure: c.secure, user: c.email || c.user, pass: c.pass,
+    }).sendMail({
+      from: from || c.from || c.email || c.user,
+      to, subject, text: text || undefined, html: html || undefined,
+    })
+  }
+  const sys = getSystemEmailConfig()
+  if (sys) {
+    return makeTransport({
+      host: sys.host, port: sys.port, secure: sys.secure, user: sys.user, pass: sys.pass,
+    }).sendMail({
+      from: from || sys.from,
+      to, subject, text: text || undefined, html: html || undefined,
+    })
+  }
+  throw new Error('Email não configurado: conecte o canal Email em Integrações, ou defina SMTP_HOST/SMTP_USER/SMTP_PASS no servidor.')
+}
+
+module.exports = { makeTransport, verifySmtp, getUserEmailConfig, getSystemEmailConfig, sendMailForUser }
