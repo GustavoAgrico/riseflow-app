@@ -47,6 +47,10 @@ export const Teams = () => {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null) // member sendo editado | null
   const [form, setForm] = useState(EMPTY_FORM)
+  const [search, setSearch] = useState('')          // busca por nome/email
+  const [bulkOpen, setBulkOpen] = useState(false)   // modal de adicionar vários
+  const [bulkText, setBulkText] = useState('')
+  const [bulkMsg, setBulkMsg] = useState('')
 
   const load = useCallback(async () => {
     if (!user || isDemoMode) return
@@ -176,6 +180,40 @@ export const Teams = () => {
     ]
   }, [members, queues])
 
+  /* ── Busca (empresas com muitas pessoas) ── */
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return members
+    return members.filter(m => `${m.name ?? ''} ${m.email ?? ''}`.toLowerCase().includes(q))
+  }, [members, search])
+
+  /* ── Adicionar vários de uma vez (colar uma lista "Nome, email" por linha) ── */
+  const doBulkAdd = async () => {
+    if (guardDemo()) return
+    const existing = new Set(members.map(m => (m.email ?? '').toLowerCase()))
+    const seen = new Set()
+    const toInsert = []
+    for (const raw of bulkText.split('\n')) {
+      const line = raw.trim()
+      if (!line) continue
+      const parts = line.split(/[,;\t]/).map(s => s.trim()).filter(Boolean)
+      const email = (parts.length >= 2 ? parts[1] : parts[0]) || ''
+      const name = parts.length >= 2 ? parts[0] : email.split('@')[0]
+      const key = email.toLowerCase()
+      if (!/\S+@\S+\.\S+/.test(email) || existing.has(key) || seen.has(key)) continue
+      seen.add(key)
+      toInsert.push({ user_id: user.id, name, email, role: 'Atendente', status: 'offline', conv_limit: 5 })
+    }
+    if (!toInsert.length) { setBulkMsg('Nenhum e-mail válido novo encontrado (verifique o formato).'); return }
+    setBusy(true)
+    const { error } = await supabase.from('team_members').insert(toInsert)
+    setBusy(false)
+    if (error) { setBulkMsg('Erro: ' + error.message); return }
+    logger.log(user.id, 'team_bulk_add', { category: 'team', description: `${toInsert.length} membro(s) adicionados em massa` })
+    setBulkOpen(false); setBulkText(''); setBulkMsg('')
+    await load()
+  }
+
   const valid = form.name.trim() && form.email.trim()
   const th = { textAlign: 'left', padding: '10px 12px', fontSize: 11, color: C.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }
   const td = { padding: '10px 12px', fontSize: 13, color: C.text, borderTop: `1px solid ${C.border}` }
@@ -188,7 +226,9 @@ export const Teams = () => {
         <button onClick={() => navigate('/dashboard')} style={{ ...iBtn(C.text), padding: '7px 12px', fontSize: 16 }}>←</button>
         <h1 style={{ fontSize: 22, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><Users size={20} color={C.purple} /> Equipe</h1>
         <span style={{ background: 'rgba(124,58,237,0.15)', color: C.purple, fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 999 }}>{members.length} membros</span>
-        <button onClick={openAdd} style={{ marginLeft: 'auto', background: C.purple, border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 600, fontFamily: F, padding: '10px 18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={15} /> Adicionar Membro</button>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nome ou e-mail…" style={{ ...inp, flex: 1, minWidth: 160, maxWidth: 320, marginLeft: 8 }} />
+        <button onClick={() => { setBulkOpen(true); setBulkMsg('') }} style={{ ...iBtn(C.purple), padding: '10px 14px', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={14} /> Vários</button>
+        <button onClick={openAdd} style={{ background: C.purple, border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 600, fontFamily: F, padding: '10px 18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={15} /> Adicionar Membro</button>
       </div>
 
       {isDemoMode && (
@@ -211,7 +251,8 @@ export const Teams = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
           {loading && <div style={{ textAlign: 'center', color: C.muted, padding: 24 }}><Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /> Carregando…</div>}
           {!loading && members.length === 0 && <div style={{ ...cardS, textAlign: 'center', color: C.muted }}>Nenhum membro ainda. Toque em <strong style={{ color: C.purple }}>Adicionar Membro</strong>.</div>}
-          {members.map(m => {
+          {!loading && members.length > 0 && filtered.length === 0 && <div style={{ ...cardS, textAlign: 'center', color: C.muted }}>Nenhum membro para “{search}”.</div>}
+          {filtered.map(m => {
             const isAdmin = m.role === 'Admin'
             return (
               <div key={m.id} style={{ ...cardS, padding: 14 }}>
@@ -250,7 +291,9 @@ export const Teams = () => {
               <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: C.muted, padding: 32 }}><Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /> Carregando…</td></tr>
             ) : members.length === 0 ? (
               <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: C.muted, padding: 32 }}>Nenhum membro ainda. Clique em <strong style={{ color: C.purple }}>Adicionar Membro</strong>.</td></tr>
-            ) : members.map(m => {
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: C.muted, padding: 32 }}>Nenhum membro para “{search}”.</td></tr>
+            ) : filtered.map(m => {
               const isAdmin = m.role === 'Admin'
               return (
                 <tr key={m.id}>
@@ -329,6 +372,25 @@ export const Teams = () => {
               <button onClick={() => setOpen(false)} style={{ ...iBtn(C.text), padding: '9px 16px', fontSize: 14 }}>Cancelar</button>
               <button onClick={submitMember} disabled={!valid || busy} style={{ background: C.purple, border: 'none', borderRadius: 9, color: '#fff', fontSize: 14, fontWeight: 600, fontFamily: F, padding: '9px 18px', cursor: (valid && !busy) ? 'pointer' : 'not-allowed', opacity: (valid && !busy) ? 1 : 0.5, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 {busy && <Loader2 size={14} className="animate-spin" />}{editing ? 'Salvar' : 'Adicionar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkOpen && (
+        <div onClick={() => setBulkOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999, padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ ...cardS, width: 480, maxWidth: '100%', display: 'grid', gap: 12 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700 }}>Adicionar vários membros</h3>
+            <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Cole uma pessoa por linha, no formato <strong style={{ color: C.text }}>Nome, email</strong> (também aceita só o e-mail). Todos entram como <strong style={{ color: C.text }}>Atendente</strong> — ajuste o cargo depois. E-mails repetidos ou já cadastrados são ignorados.</p>
+            <textarea value={bulkText} onChange={e => setBulkText(e.target.value)} rows={8}
+              placeholder={'Ana Paula, ana@empresa.com\nCarlos Souza, carlos@empresa.com\njoao@empresa.com'}
+              style={{ ...inp, width: '100%', resize: 'vertical', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 13, lineHeight: 1.6 }} />
+            {bulkMsg && <div style={{ fontSize: 12, color: bulkMsg.startsWith('Erro') ? C.red : C.yellow }}>{bulkMsg}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
+              <button onClick={() => setBulkOpen(false)} style={{ ...iBtn(C.text), padding: '9px 16px', fontSize: 14 }}>Cancelar</button>
+              <button onClick={doBulkAdd} disabled={busy || !bulkText.trim()} style={{ background: C.purple, border: 'none', borderRadius: 9, color: '#fff', fontSize: 14, fontWeight: 600, fontFamily: F, padding: '9px 18px', cursor: (busy || !bulkText.trim()) ? 'not-allowed' : 'pointer', opacity: (busy || !bulkText.trim()) ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {busy && <Loader2 size={14} className="animate-spin" />}Adicionar
               </button>
             </div>
           </div>
