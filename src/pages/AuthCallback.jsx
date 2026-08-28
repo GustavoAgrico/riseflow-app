@@ -64,7 +64,7 @@ export const AuthCallback = () => {
             isHandlingPkce.current = false
             navigate(`/login?oauth_error=${encodeURIComponent(exErr.message)}`, { replace: true })
           } else if (data?.session) {
-            navigate('/', { replace: true })   // sessão criada — vai direto (não espera o evento)
+            navigate('/dashboard', { replace: true })   // sessão criada — vai direto pro painel
           } else {
             isHandlingPkce.current = false
             navigate('/login?oauth_error=Sess%C3%A3o%20n%C3%A3o%20criada', { replace: true })
@@ -82,7 +82,7 @@ export const AuthCallback = () => {
   useEffect(() => {
     if (loading) return
     if (user) {
-      navigate('/', { replace: true })
+      navigate('/dashboard', { replace: true })
       return
     }
     if (isHandlingImplicit.current || isHandlingPkce.current) return   // troca em andamento, aguarda
@@ -112,7 +112,7 @@ export const AuthCallback = () => {
           animation: 'spin 0.8s linear infinite', margin: '0 auto 16px',
         }} />
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-        <p style={{ fontSize: 14 }}>Autenticando com Google...</p>
+        <p style={{ fontSize: 14 }}>Entrando...</p>
       </div>
     </div>
   )
