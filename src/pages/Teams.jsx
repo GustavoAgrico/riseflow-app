@@ -6,7 +6,6 @@ import { socket } from '@services/socket'
 import { useIsMobile } from '@hooks/useIsMobile'
 import { useAuth } from '@context/AuthContext'
 import { logger } from '@services/activityLogger'
-import { sendEmail } from '@services/emailService'
 
 const EMAIL_RE = /^\S+@\S+\.\S+$/
 
@@ -55,18 +54,15 @@ export const Teams = () => {
   const [bulkRows, setBulkRows] = useState([{ name: '', email: '' }, { name: '', email: '' }, { name: '', email: '' }])
   const [bulkMsg, setBulkMsg] = useState('')
   const [notice, setNotice] = useState(null)        // { type:'ok'|'warn', text } — feedback de convite
-  const [emailReady, setEmailReady] = useState(true) // e-mail (SMTP) do admin conectado? (default true evita flash)
 
   const load = useCallback(async () => {
     if (!user || isDemoMode) return
-    const [{ data: m }, { data: q }, { data: emailInt }] = await Promise.all([
+    const [{ data: m }, { data: q }] = await Promise.all([
       supabase.from('team_members').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
       supabase.from('team_queues').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
-      supabase.from('integrations').select('status').eq('user_id', user.id).eq('type', 'email').maybeSingle(),
     ])
     setMembers(m ?? [])
     setQueues(q ?? [])
-    setEmailReady(emailInt?.status === 'connected')
     setLoading(false)
   }, [user, isDemoMode])
 
@@ -126,7 +122,7 @@ export const Teams = () => {
         const { sent } = await sendInvites([{ name: payload.name, email: payload.email }])
         setNotice(sent
           ? { type: 'ok', text: `Convite enviado para ${payload.email}.` }
-          : { type: 'warn', text: `Membro adicionado, mas o convite por e-mail falhou — configure o e-mail (SMTP) em Integrações.` })
+          : { type: 'warn', text: `Membro adicionado, mas o convite por e-mail falhou. Verifique em Supabase → Auth se o e-mail está habilitado (limite por hora).` })
       }
       setOpen(false); setForm(EMPTY_FORM); setEditing(null)
       await load()
@@ -198,35 +194,35 @@ export const Teams = () => {
     return members.filter(m => `${m.name ?? ''} ${m.email ?? ''}`.toLowerCase().includes(q))
   }, [members, search])
 
-  /* ── Convite por e-mail (via SMTP do dono) para cada pessoa adicionada ── */
+  /* ── Convite por e-mail via MAGIC LINK do Supabase ──────────────────────────
+     O Supabase envia o e-mail (infra dele, não passa pelo servidor/Render, que
+     bloqueia SMTP). A pessoa clica no link, entra já autenticada e é reconhecida
+     como membro (o e-mail casa com a linha em team_members). shouldCreateUser
+     cria o acesso na primeira vez. Personalize o texto em: Supabase → Auth →
+     Email Templates → Magic Link. */
   const sendInvites = async (people) => {
     const origin = window.location.origin
     let sent = 0, failed = 0
     for (const p of people) {
       if (!EMAIL_RE.test(p.email)) { failed++; continue }
-      try {
-        await sendEmail({
-          to: p.email,
-          subject: 'Convite para a equipe no RiseFlow',
-          text: `Ola${p.name ? ' ' + p.name : ''}!\n\nVoce foi convidado para a equipe no RiseFlow.\nCadastre-se com este e-mail (${p.email}) em:\n${origin}/register\n\nAte ja!`,
-          html: `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:480px;margin:0 auto;padding:28px;color:#1b1f2a">
-            <h2 style="color:#7C3AED;margin:0 0 10px">Você foi convidado 🎉</h2>
-            <p style="font-size:15px;line-height:1.6">Olá${p.name ? ' <b>' + p.name + '</b>' : ''}! Você foi adicionado à equipe no <b>RiseFlow</b>.</p>
-            <p style="font-size:15px;line-height:1.6">Para acessar, crie seu acesso usando <b>este e-mail</b> (${p.email}):</p>
-            <p style="margin:22px 0"><a href="${origin}/register" style="display:inline-block;background:#7C3AED;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">Criar meu acesso</a></p>
-            <p style="color:#8a92a3;font-size:13px">Ou acesse: ${origin}/register</p>
-          </div>`,
-        })
-        sent++
-      } catch { failed++ }
+      const { error } = await supabase.auth.signInWithOtp({
+        email: p.email,
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: `${origin}/auth/callback`,
+          data: { full_name: p.name },
+        },
+      })
+      if (error) { console.warn('[Convite] falha p/', p.email, error.message); failed++ }
+      else sent++
     }
     return { sent, failed }
   }
 
   const inviteNotice = (count, sent, failed) =>
     sent > 0 && failed === 0 ? { type: 'ok',  text: `${count} membro(s) adicionado(s) e convite(s) enviado(s) por e-mail.` }
-      : sent > 0            ? { type: 'warn', text: `${count} adicionado(s); ${sent} convite(s) enviado(s), ${failed} falharam.` }
-      :                       { type: 'warn', text: `${count} membro(s) adicionado(s), mas os convites por e-mail falharam — configure o e-mail (SMTP) em Integrações.` }
+      : sent > 0            ? { type: 'warn', text: `${count} adicionado(s); ${sent} convite(s) enviado(s), ${failed} falharam (limite de e-mails do Supabase? tente de novo em alguns minutos).` }
+      :                       { type: 'warn', text: `${count} membro(s) adicionado(s), mas o convite por e-mail falhou. Verifique em Supabase → Auth se o e-mail está habilitado (e o limite por hora).` }
 
   /* ── Adicionar vários (um campo por pessoa) + convite ── */
   const doBulkAdd = async () => {
@@ -275,21 +271,6 @@ export const Teams = () => {
       {isDemoMode && (
         <div style={{ ...cardS, marginBottom: 16, borderColor: 'rgba(234,179,8,0.27)', background: 'rgba(234,179,8,0.06)', color: C.yellow, fontSize: 13 }}>
           Modo demo — a equipe abaixo é apenas exemplo. Crie uma conta para gerenciar membros e filas de verdade.
-        </div>
-      )}
-
-      {!isDemoMode && !emailReady && (
-        <div style={{ ...cardS, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
-          borderColor: 'rgba(124,58,237,0.35)', background: 'rgba(124,58,237,0.08)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Mail size={16} color={C.purple} style={{ flexShrink: 0 }} />
-            <span style={{ fontSize: 13, color: C.text }}>
-              Conecte um e-mail para enviar os <b>convites aos colaboradores</b>. Os convites saem desse endereço (Gmail, Outlook, etc.).
-            </span>
-          </div>
-          <button onClick={() => navigate('/integrations')} style={{ background: C.purple, border: 'none', borderRadius: 9, color: '#fff', fontSize: 13, fontWeight: 600, fontFamily: F, padding: '8px 14px', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
-            Configurar e-mail
-          </button>
         </div>
       )}
 
