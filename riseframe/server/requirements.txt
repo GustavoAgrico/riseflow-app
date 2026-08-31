@@ -1,0 +1,3 @@
+# Transcrição local (provedor whisper-local, default). CPU + int8.
+# Instale com: pip install -r requirements.txt
+faster-whisper==1.2.1

@@ -32,8 +32,9 @@ Mapeamento entre o que o brief pede (por fase) e o que este repositório já ent
 
 ## Próximos passos técnicos sugeridos
 
-1. **ASR real por padrão em produção** — configurar `whisper-local` (custo marginal ~0)
-   ou Deepgram/OpenAI (menos esforço). Já é só uma variável de ambiente.
+1. ~~**ASR real por padrão**~~ ✅ `whisper-local` é o default (faster-whisper, CPU,
+   custo ~0), com fallback seguro para `mock`. Trocar para Deepgram/OpenAI é só uma
+   variável de ambiente.
 2. **Fila persistente** — trocar a fila em memória por BullMQ+Redis para sobreviver a
    restarts e permitir múltiplos workers.
 3. **Encode acelerado** — NVENC/QSV quando houver GPU, cortando o maior custo variável.

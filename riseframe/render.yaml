@@ -18,7 +18,9 @@ services:
       - key: OUTPUT_TTL_HOURS
         value: 24
       - key: TRANSCRIBE_PROVIDER
-        value: mock # troque para deepgram/openai/whisper-local em produção
+        value: whisper-local # ASR real em CPU; o Dockerfile instala faster-whisper + baixa o modelo
+      - key: WHISPER_MODEL
+        value: base
       # Chaves opcionais — configure no dashboard, não no repositório:
       # - key: PEXELS_API_KEY
       #   sync: false

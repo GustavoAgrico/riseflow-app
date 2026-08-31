@@ -36,11 +36,13 @@ export const config = {
   outputTtlHours: num(process.env.OUTPUT_TTL_HOURS, 24),
 
   transcribe: {
-    provider: process.env.TRANSCRIBE_PROVIDER || 'mock',
+    provider: process.env.TRANSCRIBE_PROVIDER || 'whisper-local',
     openaiKey: process.env.OPENAI_API_KEY || '',
     deepgramKey: process.env.DEEPGRAM_API_KEY || '',
     assemblyaiKey: process.env.ASSEMBLYAI_API_KEY || '',
     whisperModel: process.env.WHISPER_MODEL || 'base',
+    // Definido em runtime pelo autoteste de inicialização (null = ainda não checado).
+    whisperReady: null,
   },
 
   analyze: {
@@ -58,16 +60,19 @@ export const config = {
 
 /** Recursos externos disponíveis, para o frontend saber o que oferecer. */
 export function capabilities() {
+  const p = config.transcribe.provider;
+  let transcribeReady;
+  if (p === 'mock') transcribeReady = true;
+  else if (p === 'whisper-local') transcribeReady = config.transcribe.whisperReady !== false;
+  else
+    transcribeReady = Boolean(
+      config.transcribe.openaiKey || config.transcribe.deepgramKey || config.transcribe.assemblyaiKey,
+    );
   return {
-    transcribeProvider: config.transcribe.provider,
-    transcribeReady:
-      config.transcribe.provider === 'mock' ||
-      config.transcribe.provider === 'whisper-local' ||
-      Boolean(
-        config.transcribe.openaiKey ||
-          config.transcribe.deepgramKey ||
-          config.transcribe.assemblyaiKey,
-      ),
+    transcribeProvider: p,
+    transcribeReady,
+    // Sinaliza degradação para mock (whisper indisponível → jobs caem para mock).
+    transcribeFallbackToMock: p === 'whisper-local' && config.transcribe.whisperReady === false,
     analyzeProvider: config.analyze.provider,
     brollReady: Boolean(config.broll.pexelsKey),
   };

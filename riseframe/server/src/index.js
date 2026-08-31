@@ -8,12 +8,21 @@ import { ensureDirs, startCleanupTimer } from './storage.js';
 import { jobsRouter } from './routes/jobs.js';
 import { optionsRouter } from './routes/options.js';
 import { ffmpegPath } from './pipeline/ffmpeg.js';
+import { whisperLocalAvailable } from './pipeline/transcribe/providers.js';
 import { log } from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 await ensureDirs();
 startCleanupTimer();
+
+// Autoteste do whisper-local: reflete no /api/health se a ASR real está pronta.
+if (config.transcribe.provider === 'whisper-local') {
+  const ok = await whisperLocalAvailable();
+  config.transcribe.whisperReady = ok;
+  if (ok) log.ok('whisper-local disponível (o modelo é baixado no 1º job, se ainda não estiver em cache)');
+  else log.warn('whisper-local indisponível (falta faster-whisper) — jobs cairão para o modo mock');
+}
 
 const app = express();
 app.use(cors({ origin: config.corsOrigin }));

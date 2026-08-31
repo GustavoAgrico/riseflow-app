@@ -135,6 +135,15 @@ export async function transcribeAssemblyAI(input, work, meta, cfg) {
   throw new Error('AssemblyAI: timeout aguardando transcrição');
 }
 
+/** Verifica (rápido) se python3 + faster-whisper estão instaláveis/importáveis. */
+export function whisperLocalAvailable() {
+  return new Promise((resolve) => {
+    const proc = spawn('python3', ['-c', 'import faster_whisper'], { stdio: 'ignore' });
+    proc.on('error', () => resolve(false));
+    proc.on('close', (code) => resolve(code === 0));
+  });
+}
+
 // ─── Whisper local (faster-whisper via Python) ────────────────────────
 export async function transcribeWhisperLocal(input, work, meta, cfg) {
   const audio = await extractAudio(input, work, 'wav');

@@ -9,6 +9,10 @@ import { probeSummary } from '../src/pipeline/ffmpeg.js';
 import { config } from '../src/config.js';
 import { ensureDirs } from '../src/storage.js';
 
+// Testes exercitam o pipeline, não a ASR: fixam o provedor mock (determinístico,
+// sem rede). O fallback whisper-local→mock é comportamento de runtime, não de teste.
+config.transcribe.provider = 'mock';
+
 async function makeClip(dest, { withAudio = true } = {}) {
   await fs.mkdir(path.dirname(dest), { recursive: true });
   const args = ['-hide_banner', '-y', '-f', 'lavfi', '-i', 'testsrc=size=480x854:rate=24:duration=8'];

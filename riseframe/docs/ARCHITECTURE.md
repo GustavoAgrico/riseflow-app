@@ -101,16 +101,26 @@ que o brief define como diferencial. Suporta também LUT `.cube` via `lut:<camin
 
 `TRANSCRIBE_PROVIDER` seleciona:
 
-- **mock** (default) — deriva regiões de fala do áudio e distribui palavras
-  placeholder sincronizadas. Valida o pipeline de legendas de ponta a ponta **sem
-  custo e sem chave**. Não é ASR real.
+- **whisper-local** (default) — `faster-whisper` via Python (CPU/int8), **ASR real**
+  com custo ~zero por minuto. O modelo (`WHISPER_MODEL`=tiny|base|small|medium) é
+  baixado do HuggingFace no 1º uso e fica em cache; no Docker é pré-baixado no build.
+  Um autoteste na inicialização (`whisperLocalAvailable`) reflete a prontidão no
+  `/api/health`.
 - **openai** — Whisper API (`verbose_json` + word timestamps).
 - **deepgram** — nova-2 (words com tempo).
 - **assemblyai** — upload → transcript → poll.
-- **whisper-local** — `faster-whisper` via Python (CPU/int8), zero custo por minuto.
+- **mock** — deriva regiões de fala do áudio e distribui palavras placeholder
+  sincronizadas. Valida o pipeline **sem custo e sem dependências**. Não é ASR real.
 
-Se um provedor real falhar (chave inválida, rede), o job **cai para o mock** e reporta
-o motivo no relatório — o pipeline nunca trava por causa da transcrição.
+Se um provedor real falhar (modelo ausente, chave inválida, rede), o job **cai para o
+mock** e reporta o motivo no relatório — o pipeline nunca trava por causa da
+transcrição. É por isso que `whisper-local` pode ser o default com segurança: em um
+ambiente sem Python/modelo, a saída degrada para `mock` em vez de quebrar.
+
+> **Nota de validação:** neste repositório, a política de egress bloqueia o
+> `huggingface.co`, então o download do modelo não pôde ser exercitado aqui — apenas o
+> caminho de fallback (whisper-local → mock) foi validado. Em um ambiente com rede
+> aberta ao HuggingFace (ou com o modelo pré-baixado no Docker), a ASR real roda.
 
 ## Contrato da API
 
@@ -139,7 +149,9 @@ de "derrubar custo" descrita no documento.
 - Encoder é CPU (`libx264`); vídeos longos são lentos sem aceleração de hardware.
 - Fila em memória: reiniciar o servidor perde jobs em andamento (não os renders já
   salvos). Para produção, usar fila persistente.
-- `mock` não é transcrição real — configure um provedor para legendas fiéis.
+- `whisper-local` (default) precisa de Python + `faster-whisper` e do download do
+  modelo no 1º uso; sem isso, degrada para `mock` (não trava, mas as legendas ficam
+  placeholder). Modelos maiores (small/medium) melhoram a acurácia e custam mais CPU.
 - B-roll faz overlay em tela cheia; corte por cena/tema mais fino é evolução da Fase 2.
 - Vulnerabilidades do `npm audit` são do **dev-server** do Vite/esbuild (não afetam o
   `dist/` estático servido em produção).

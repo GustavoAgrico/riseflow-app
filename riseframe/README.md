@@ -18,7 +18,7 @@ B-roll → Legendas dinâmicas → Color grade → Render final → Download
 |---|---|---|
 | Upload pelo navegador | ✅ | `multipart/form-data` → disco |
 | Sondagem de mídia (probe) | ✅ | `ffprobe` |
-| Transcrição | 🔌 pluggable | `mock` (default), `openai`, `deepgram`, `assemblyai`, `whisper-local` |
+| Transcrição | 🔌 pluggable | **`whisper-local` (default, ASR real, CPU)**, `openai`, `deepgram`, `assemblyai`, `mock` |
 | Análise por IA (temas/B-roll) | 🔌 pluggable | `heuristic` (default) ou LLM via API |
 | Corte automático de silêncios | ✅ | `ffmpeg silencedetect` → trim + concat |
 | B-roll automático | 🔌 pluggable | API do Pexels (grátis) — precisa de `PEXELS_API_KEY` |
@@ -28,21 +28,27 @@ B-roll → Legendas dinâmicas → Color grade → Render final → Download
 | **Editor de transcrição** (editar o vídeo editando o texto) | ✅ | transcreve → corta palavras/frases → render com remap de timeline |
 | Fila de jobs assíncrona | ✅ | worker em memória, 1 job por vez |
 
-> **Nota honesta:** transcrição e B-roll de qualidade dependem de serviços externos
-> (chaves de API) ou de um modelo Whisper local. Sem chaves, o sistema roda de ponta a
-> ponta usando o provedor `mock` de transcrição e pulando o B-roll — assim você valida
-> todo o encadeamento (corte + legendas + cor + render) sem custo. Veja `.env.example`.
+> **Nota honesta:** a transcrição padrão é **`whisper-local`** — ASR real via
+> `faster-whisper` em CPU, custo ~zero. Requer Python + `pip install -r
+> server/requirements.txt`; o modelo é baixado do HuggingFace no 1º uso (ou pré-baixado
+> no build Docker). Se o modelo/ambiente não estiver disponível, cada job **cai
+> automaticamente para o modo `mock`** (nunca trava). B-roll de qualidade depende do
+> Pexels (chave). Veja `server/.env.example`.
 
 ## Rodando localmente
 
 ```bash
 cd riseframe
-npm install            # instala server + web (workspaces)
-npm run dev            # server :4000 + web :5174
+npm install                              # instala server + web (workspaces)
+pip install -r server/requirements.txt   # transcrição local (whisper-local, default)
+npm run dev                              # server :4000 + web :5174
 ```
 
 Abra http://localhost:5174, faça upload de um vídeo, escolha as opções e acompanhe o
 pipeline em tempo real. O vídeo final fica disponível para download.
+
+> Sem Python/faster-whisper? Tudo funciona mesmo assim — a transcrição cai para o modo
+> `mock`. Para pular a ASR de propósito, rode com `TRANSCRIBE_PROVIDER=mock`.
 
 Sem nenhum vídeo à mão? Gere um clipe de teste:
 
