@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { C, GRAD, glass, fmtBytes, fmtDuration } from '../theme.js';
 import { GhostButton } from './ui.jsx';
+import Icon from './Icon.jsx';
 import { previewUrl, downloadUrl } from '../api.js';
 
 function Stat({ label, value }) {
@@ -40,9 +41,10 @@ export default function Result({ job, onReset }) {
             fontSize: 18,
             background: `linear-gradient(135deg, ${C.green}, #16A34A)`,
             boxShadow: `0 6px 16px -6px ${C.green}88`,
+            color: '#fff',
           }}
         >
-          ✓
+          <Icon name="check" size={19} strokeWidth={2.4} />
         </span>
         <div style={{ fontWeight: 700, fontSize: 18 }}>Vídeo pronto</div>
         <GhostButton onClick={onReset} style={{ marginLeft: 'auto' }}>
@@ -135,9 +137,13 @@ export default function Result({ job, onReset }) {
             ? '0 14px 34px -8px rgba(255,107,53,0.55), 0 6px 18px -6px rgba(124,58,237,0.5)'
             : '0 8px 22px -8px rgba(255,107,53,0.45)',
           transition: 'transform .18s ease, box-shadow .18s ease',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 9,
         }}
       >
-        ⬇  Baixar vídeo final
+        <Icon name="download" size={19} strokeWidth={2} /> Baixar vídeo final
       </a>
     </div>
   );

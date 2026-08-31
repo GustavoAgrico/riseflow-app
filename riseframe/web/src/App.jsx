@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from './theme.js';
 import { getOptions, getHealth, createJob, transcribe, renderEdited, subscribeJob } from './api.js';
 import { PrimaryButton, Card, Spinner } from './components/ui.jsx';
+import Icon, { Logo } from './components/Icon.jsx';
 import Uploader from './components/Uploader.jsx';
 import OptionsPanel from './components/OptionsPanel.jsx';
 import Pipeline from './components/Pipeline.jsx';
@@ -111,8 +112,8 @@ export default function App() {
     return (
       <Shell>
         <Card style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 34, marginBottom: 10 }}>🔌</div>
-          <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 17 }}>Servidor indisponível</div>
+          <IconBadge name="plug" tone={C.red} />
+          <div style={{ fontWeight: 700, margin: '12px 0 6px', fontSize: 17 }}>Servidor indisponível</div>
           <div style={{ color: C.muted, fontSize: 14 }}>
             Inicie a API do Riseframe (<code style={codeStyle}>npm run dev</code>). Detalhe: {loadError}
           </div>
@@ -152,7 +153,10 @@ export default function App() {
 
           <div className="rf-anim" style={{ animationDelay: '0.15s' }}>
             <PrimaryButton onClick={start} disabled={!file} style={{ width: '100%', padding: '17px' }}>
-              {editMode === 'editor' ? '📝  Transcrever para editar' : '✨  Editar com IA'}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
+                <Icon name={editMode === 'editor' ? 'edit' : 'sparkles'} size={18} strokeWidth={1.9} />
+                {editMode === 'editor' ? 'Transcrever para editar' : 'Editar com IA'}
+              </span>
             </PrimaryButton>
             {!file && (
               <p style={{ textAlign: 'center', color: C.faint, fontSize: 12.5, marginTop: 10 }}>
@@ -164,7 +168,7 @@ export default function App() {
       )}
 
       {phase === 'uploading' && (
-        <Loading title={`Enviando vídeo… ${Math.round(uploadPct * 100)}%`} pct={uploadPct} icon="⬆️" />
+        <Loading title={`Enviando vídeo… ${Math.round(uploadPct * 100)}%`} pct={uploadPct} iconName="upload" />
       )}
 
       {phase === 'transcribing' && (
@@ -172,7 +176,7 @@ export default function App() {
           title="Transcrevendo a fala…"
           subtitle="Assim que ficar pronto, você poderá cortar o vídeo editando o texto."
           pct={(job?.progress ?? 0) / 100}
-          icon="📝"
+          iconName="mic"
           spin
         />
       )}
@@ -202,8 +206,8 @@ export default function App() {
 
       {phase === 'error' && (
         <Card style={{ textAlign: 'center', borderColor: `${C.red}55` }}>
-          <div style={{ fontSize: 34, marginBottom: 10 }}>⚠️</div>
-          <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 17 }}>Algo deu errado</div>
+          <IconBadge name="alert" tone={C.red} />
+          <div style={{ fontWeight: 700, margin: '12px 0 6px', fontSize: 17 }}>Algo deu errado</div>
           <div style={{ color: C.muted, fontSize: 14, marginBottom: 20 }}>{error}</div>
           <PrimaryButton onClick={reset} style={{ padding: '12px 26px' }}>
             Tentar de novo
@@ -232,8 +236,8 @@ const codeStyle = {
 
 function ModeChooser({ value, onChange }) {
   const opts = [
-    { id: 'auto', icon: '✨', title: 'Automático', desc: 'A IA corta, legenda e finaliza sozinha' },
-    { id: 'editor', icon: '📝', title: 'Editor de transcrição', desc: 'Corte o vídeo editando o texto' },
+    { id: 'auto', icon: 'sparkles', title: 'Automático', desc: 'A IA corta, legenda e finaliza sozinha' },
+    { id: 'editor', icon: 'edit', title: 'Editor de transcrição', desc: 'Corte o vídeo editando o texto' },
   ];
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -268,9 +272,10 @@ function ModeChooser({ value, onChange }) {
                 marginBottom: 10,
                 background: on ? GRAD : C.panel2,
                 boxShadow: on ? '0 6px 16px -6px rgba(255,107,53,0.6)' : 'none',
+                color: on ? '#fff' : C.muted,
               }}
             >
-              {o.icon}
+              <Icon name={o.icon} size={19} strokeWidth={1.9} />
             </div>
             <div style={{ fontWeight: 700, fontSize: 14.5, color: on ? C.text : C.muted }}>{o.title}</div>
             <div style={{ fontSize: 12, color: C.faint, marginTop: 3, lineHeight: 1.4 }}>{o.desc}</div>
@@ -281,7 +286,31 @@ function ModeChooser({ value, onChange }) {
   );
 }
 
-function Loading({ title, subtitle, pct, icon, spin }) {
+/** Ícone grande num disco de vidro (para telas de estado: erro, servidor off). */
+function IconBadge({ name, tone = C.orange }) {
+  return (
+    <div style={{ position: 'relative', width: 58, height: 58, margin: '0 auto' }}>
+      <div style={{ position: 'absolute', inset: 0, borderRadius: 16, background: tone, filter: 'blur(16px)', opacity: 0.28 }} />
+      <div
+        style={{
+          position: 'relative',
+          width: 58,
+          height: 58,
+          borderRadius: 16,
+          display: 'grid',
+          placeItems: 'center',
+          background: 'rgba(255,255,255,0.05)',
+          border: `1px solid ${C.border}`,
+          color: tone,
+        }}
+      >
+        <Icon name={name} size={26} strokeWidth={1.9} />
+      </div>
+    </div>
+  );
+}
+
+function Loading({ title, subtitle, pct, iconName, spin }) {
   return (
     <Card style={{ textAlign: 'center', padding: 34 }}>
       <div style={{ position: 'relative', width: 68, height: 68, margin: '0 auto 16px' }}>
@@ -304,13 +333,13 @@ function Loading({ title, subtitle, pct, icon, spin }) {
             borderRadius: '50%',
             display: 'grid',
             placeItems: 'center',
-            fontSize: 30,
-            background: 'rgba(255,255,255,0.05)',
+            color: '#fff',
+            background: 'rgba(255,255,255,0.06)',
             border: `1px solid ${C.border}`,
             animation: spin ? 'rf-float 2.4s ease-in-out infinite' : 'none',
           }}
         >
-          {icon}
+          <Icon name={iconName} size={28} strokeWidth={1.8} />
         </div>
       </div>
       <div style={{ fontWeight: 700, fontSize: 16, marginBottom: subtitle ? 6 : 18 }}>{title}</div>
@@ -357,7 +386,12 @@ function Shell({ children, health }) {
           WebkitBackdropFilter: 'blur(16px)',
         }}
       >
-        <Logo />
+        <div style={{ position: 'relative', width: 36, height: 36 }}>
+          <div style={{ position: 'absolute', inset: -4, borderRadius: 12, background: C.orange, filter: 'blur(11px)', opacity: 0.45 }} />
+          <div style={{ position: 'relative' }}>
+            <Logo size={36} />
+          </div>
+        </div>
         <div>
           <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: -0.3, fontFamily: FONT_DISPLAY }}>
             Riseframe
@@ -417,39 +451,6 @@ function Shell({ children, health }) {
       <footer style={{ textAlign: 'center', padding: '20px', color: C.faint, fontSize: 12, borderTop: `1px solid ${C.border}` }}>
         Riseframe · MVP do editor de vídeo com IA
       </footer>
-    </div>
-  );
-}
-
-function Logo() {
-  return (
-    <div style={{ position: 'relative', width: 36, height: 36 }}>
-      <div
-        style={{
-          position: 'absolute',
-          inset: -3,
-          borderRadius: 12,
-          background: GRAD,
-          filter: 'blur(9px)',
-          opacity: 0.55,
-        }}
-      />
-      <div
-        style={{
-          position: 'relative',
-          width: 36,
-          height: 36,
-          borderRadius: 10,
-          background: GRAD,
-          display: 'grid',
-          placeItems: 'center',
-          fontSize: 17,
-          color: '#fff',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.4)',
-        }}
-      >
-        ▶
-      </div>
     </div>
   );
 }

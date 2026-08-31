@@ -46,20 +46,21 @@ export const gradientText = {
 
 export const FONT_DISPLAY = "'Sora', 'Inter', system-ui, sans-serif";
 
+// Mapeia cada etapa a um ícone do conjunto <Icon> (components/Icon.jsx).
 export const STAGE_ICONS = {
-  queued: '⏳',
-  starting: '⚙️',
-  probe: '🔎',
-  transcribe: '📝',
-  analyze: '🧠',
-  cut: '✂️',
-  silence: '✂️',
-  broll: '🎞️',
-  captions: '💬',
-  color: '🎨',
-  render: '🎬',
-  done: '✅',
-  error: '⚠️',
+  queued: 'search',
+  starting: 'search',
+  probe: 'search',
+  transcribe: 'mic',
+  analyze: 'wand',
+  cut: 'scissors',
+  silence: 'scissors',
+  broll: 'image',
+  captions: 'captions',
+  color: 'palette',
+  render: 'clapper',
+  done: 'check',
+  error: 'alert',
 };
 
 export function fmtBytes(n) {

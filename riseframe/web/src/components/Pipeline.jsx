@@ -1,5 +1,6 @@
 import React from 'react';
 import { C, GRAD, glass, STAGE_ICONS } from '../theme.js';
+import Icon from './Icon.jsx';
 
 const FLOW = [
   { key: 'probe', label: 'Sondagem' },
@@ -74,7 +75,13 @@ export default function Pipeline({ job }) {
                   transition: 'all .2s',
                 }}
               >
-                {done ? '✓' : active ? STAGE_ICONS[s.key] : i + 1}
+                {done ? (
+                  <Icon name="check" size={15} strokeWidth={2.4} />
+                ) : active ? (
+                  <Icon name={STAGE_ICONS[s.key] || 'search'} size={15} strokeWidth={2} />
+                ) : (
+                  i + 1
+                )}
               </span>
               <span
                 style={{
@@ -90,7 +97,11 @@ export default function Pipeline({ job }) {
                   em andamento…
                 </span>
               )}
-              {done && <span style={{ marginLeft: 'auto', fontSize: 12, color: C.green }}>✓</span>}
+              {done && (
+                <span style={{ marginLeft: 'auto', color: C.green, display: 'flex' }}>
+                  <Icon name="check" size={15} strokeWidth={2.4} />
+                </span>
+              )}
             </div>
           );
         })}

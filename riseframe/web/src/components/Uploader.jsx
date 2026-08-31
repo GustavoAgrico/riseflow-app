@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { C, GRAD, fmtBytes } from '../theme.js';
+import Icon from './Icon.jsx';
 
 export default function Uploader({ file, onFile, disabled }) {
   const inputRef = useRef(null);
@@ -66,9 +67,10 @@ export default function Uploader({ file, onFile, disabled }) {
           background: file || active ? GRAD : C.panel2,
           boxShadow: file || active ? '0 10px 26px -8px rgba(255,107,53,0.55)' : 'none',
           transition: 'all .2s ease',
+          color: file || active ? '#fff' : C.muted,
         }}
       >
-        {file ? '🎬' : '⬆️'}
+        <Icon name={file ? 'film' : 'upload'} size={26} strokeWidth={1.8} />
       </div>
       {file ? (
         <div>

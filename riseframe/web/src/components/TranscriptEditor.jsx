@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { C, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
+import Icon from './Icon.jsx';
 
 /**
  * Editor de transcrição: editar o vídeo editando o texto.
@@ -81,15 +82,17 @@ export default function TranscriptEditor({ transcript, durationSec, onGenerate, 
   return (
     <div style={{ ...glass(), padding: 26 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 8 }}>
-        <span style={{ fontSize: 20 }}>📝</span>
+        <span style={{ color: C.orangeSoft, display: 'flex' }}>
+          <Icon name="edit" size={20} strokeWidth={1.9} />
+        </span>
         <div style={{ fontWeight: 700, fontSize: 17 }}>Editar pela transcrição</div>
-        <GhostButton onClick={onBack} disabled={busy} style={{ marginLeft: 'auto' }}>
-          ← Voltar
+        <GhostButton onClick={onBack} disabled={busy} style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Icon name="arrowLeft" size={14} strokeWidth={2} /> Voltar
         </GhostButton>
       </div>
       <p style={{ color: C.muted, fontSize: 13, margin: '0 0 18px', lineHeight: 1.55 }}>
         Clique numa palavra para <strong style={{ color: C.orangeSoft }}>cortá-la do vídeo</strong>. Duplo-clique
-        para corrigir o texto. Passe o mouse numa linha e use ✕ para cortar a frase inteira.
+        para corrigir o texto. Passe o mouse numa linha e use o ✕ para cortar a frase inteira.
       </p>
 
       {/* estatísticas */}
@@ -133,12 +136,13 @@ export default function TranscriptEditor({ transcript, durationSec, onGenerate, 
                   border: `1px solid ${C.border}`,
                   background: segGone ? C.red : 'rgba(255,255,255,0.05)',
                   color: segGone ? '#fff' : C.faint,
-                  fontSize: 11,
                   lineHeight: 1,
+                  display: 'grid',
+                  placeItems: 'center',
                   transition: 'all .15s',
                 }}
               >
-                {segGone ? '↺' : '✕'}
+                <Icon name={segGone ? 'undo' : 'close'} size={12} strokeWidth={2.2} />
               </button>
               <div style={{ flex: 1 }}>
                 {s.words.map((w, wi) => (
@@ -177,7 +181,15 @@ export default function TranscriptEditor({ transcript, durationSec, onGenerate, 
       </div>
 
       <PrimaryButton onClick={generate} disabled={busy || allGone} style={{ width: '100%', marginTop: 20 }}>
-        {allGone ? 'Você cortou tudo — reinclua algo' : busy ? 'Gerando…' : '🎬  Gerar vídeo editado'}
+        {allGone ? (
+          'Você cortou tudo — reinclua algo'
+        ) : busy ? (
+          'Gerando…'
+        ) : (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
+            <Icon name="clapper" size={18} strokeWidth={1.9} /> Gerar vídeo editado
+          </span>
+        )}
       </PrimaryButton>
     </div>
   );
