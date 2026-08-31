@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { C, fmtDuration } from '../theme.js';
+import { C, glass, fmtDuration } from '../theme.js';
+import { PrimaryButton, GhostButton } from './ui.jsx';
 
 /**
  * Editor de transcrição: editar o vídeo editando o texto.
@@ -7,7 +8,6 @@ import { C, fmtDuration } from '../theme.js';
  * - duplo-clique → edita o texto da palavra (muda a legenda, não o tempo)
  */
 export default function TranscriptEditor({ transcript, durationSec, onGenerate, onBack, busy }) {
-  // Estado local: cópia editável dos segmentos.
   const [segments, setSegments] = useState(() =>
     (transcript.segments || []).map((s) => ({
       ...s,
@@ -64,7 +64,6 @@ export default function TranscriptEditor({ transcript, durationSec, onGenerate, 
   }
 
   function generate() {
-    // Envia apenas o essencial (start/end/word/removed).
     const edited = {
       provider: transcript.provider,
       language: transcript.language,
@@ -80,63 +79,63 @@ export default function TranscriptEditor({ transcript, durationSec, onGenerate, 
   const allGone = stats.removed >= stats.total;
 
   return (
-    <div style={{ background: C.panel, borderRadius: 16, padding: 22, border: `1px solid ${C.border}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+    <div style={{ ...glass(), padding: 26 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 8 }}>
         <span style={{ fontSize: 20 }}>📝</span>
         <div style={{ fontWeight: 700, fontSize: 17 }}>Editar pela transcrição</div>
-        <button
-          onClick={onBack}
-          disabled={busy}
-          style={{
-            marginLeft: 'auto', background: 'transparent', color: C.muted, border: `1px solid ${C.border}`,
-            borderRadius: 8, padding: '7px 12px', cursor: busy ? 'not-allowed' : 'pointer', fontSize: 13,
-          }}
-        >
+        <GhostButton onClick={onBack} disabled={busy} style={{ marginLeft: 'auto' }}>
           ← Voltar
-        </button>
+        </GhostButton>
       </div>
-      <p style={{ color: C.muted, fontSize: 13, margin: '0 0 16px', lineHeight: 1.5 }}>
-        Clique numa palavra para <strong style={{ color: C.orange }}>cortá-la do vídeo</strong>. Duplo-clique
+      <p style={{ color: C.muted, fontSize: 13, margin: '0 0 18px', lineHeight: 1.55 }}>
+        Clique numa palavra para <strong style={{ color: C.orangeSoft }}>cortá-la do vídeo</strong>. Duplo-clique
         para corrigir o texto. Passe o mouse numa linha e use ✕ para cortar a frase inteira.
       </p>
 
-      {/* barra de estatísticas */}
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16, fontSize: 13 }}>
-        <span style={{ color: C.muted }}>
-          Palavras: <strong style={{ color: C.text }}>{stats.total}</strong>
-        </span>
-        <span style={{ color: C.muted }}>
-          Cortadas: <strong style={{ color: C.red }}>{stats.removed}</strong>
-        </span>
-        <span style={{ color: C.muted }}>
-          Duração estimada:{' '}
-          <strong style={{ color: C.green }}>{fmtDuration(stats.keptSec)}</strong>{' '}
-          {stats.removedSec > 0.1 && <span style={{ color: C.faint }}>(−{fmtDuration(stats.removedSec)})</span>}
-        </span>
+      {/* estatísticas */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+        <Chip label="Palavras" value={stats.total} color={C.text} />
+        <Chip label="Cortadas" value={stats.removed} color={C.red} />
+        <Chip
+          label="Duração estimada"
+          value={fmtDuration(stats.keptSec)}
+          sub={stats.removedSec > 0.1 ? `−${fmtDuration(stats.removedSec)}` : null}
+          color={C.green}
+        />
       </div>
 
       {/* transcrição */}
       <div
         style={{
-          maxHeight: 340, overflowY: 'auto', background: C.bg, borderRadius: 12,
-          padding: 16, lineHeight: 2, border: `1px solid ${C.border}`,
+          maxHeight: 340,
+          overflowY: 'auto',
+          background: 'rgba(0,0,0,0.28)',
+          borderRadius: 14,
+          padding: 18,
+          lineHeight: 2.1,
+          border: `1px solid ${C.border}`,
         }}
       >
         {segments.map((s, si) => {
           const segGone = s.words.every((w) => w.removed);
           return (
-            <div
-              key={si}
-              className="rf-seg"
-              style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}
-            >
+            <div key={si} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, marginBottom: 7 }}>
               <button
                 onClick={() => toggleSegment(si)}
                 title={segGone ? 'Reincluir frase' : 'Cortar frase inteira'}
                 style={{
-                  flexShrink: 0, marginTop: 4, width: 20, height: 20, borderRadius: 6, cursor: 'pointer',
-                  border: `1px solid ${C.border}`, background: segGone ? C.red : C.panel2,
-                  color: segGone ? '#fff' : C.faint, fontSize: 11, lineHeight: 1,
+                  flexShrink: 0,
+                  marginTop: 5,
+                  width: 21,
+                  height: 21,
+                  borderRadius: 7,
+                  cursor: 'pointer',
+                  border: `1px solid ${C.border}`,
+                  background: segGone ? C.red : 'rgba(255,255,255,0.05)',
+                  color: segGone ? '#fff' : C.faint,
+                  fontSize: 11,
+                  lineHeight: 1,
+                  transition: 'all .15s',
                 }}
               >
                 {segGone ? '↺' : '✕'}
@@ -149,15 +148,20 @@ export default function TranscriptEditor({ transcript, durationSec, onGenerate, 
                     onDoubleClick={() => editWord(si, wi)}
                     title={`${w.start.toFixed(1)}s`}
                     style={{
-                      display: 'inline-block', margin: '0 3px', padding: '1px 5px', borderRadius: 6,
-                      cursor: 'pointer', userSelect: 'none',
+                      display: 'inline-block',
+                      margin: '0 3px',
+                      padding: '2px 6px',
+                      borderRadius: 7,
+                      cursor: 'pointer',
+                      userSelect: 'none',
                       textDecoration: w.removed ? 'line-through' : 'none',
-                      opacity: w.removed ? 0.4 : 1,
-                      background: w.removed ? 'rgba(239,68,68,0.12)' : 'transparent',
+                      opacity: w.removed ? 0.42 : 1,
+                      background: w.removed ? 'rgba(240,82,107,0.14)' : 'transparent',
                       color: w.removed ? C.red : C.text,
+                      transition: 'background .12s, opacity .12s',
                     }}
                     onMouseEnter={(e) => {
-                      if (!w.removed) e.currentTarget.style.background = C.panel2;
+                      if (!w.removed) e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
                     }}
                     onMouseLeave={(e) => {
                       if (!w.removed) e.currentTarget.style.background = 'transparent';
@@ -172,18 +176,29 @@ export default function TranscriptEditor({ transcript, durationSec, onGenerate, 
         })}
       </div>
 
-      <button
-        onClick={generate}
-        disabled={busy || allGone}
-        style={{
-          marginTop: 18, width: '100%', border: 'none', borderRadius: 12, padding: '15px', fontSize: 15,
-          fontWeight: 700, cursor: busy || allGone ? 'not-allowed' : 'pointer',
-          background: busy || allGone ? C.panel2 : `linear-gradient(90deg, ${C.orange}, ${C.purple})`,
-          color: busy || allGone ? C.faint : '#fff',
-        }}
-      >
-        {allGone ? 'Você cortou tudo — reinclua algo' : busy ? 'Gerando…' : '🎬 Gerar vídeo editado'}
-      </button>
+      <PrimaryButton onClick={generate} disabled={busy || allGone} style={{ width: '100%', marginTop: 20 }}>
+        {allGone ? 'Você cortou tudo — reinclua algo' : busy ? 'Gerando…' : '🎬  Gerar vídeo editado'}
+      </PrimaryButton>
+    </div>
+  );
+}
+
+function Chip({ label, value, sub, color }) {
+  return (
+    <div
+      style={{
+        background: 'rgba(255,255,255,0.04)',
+        border: `1px solid ${C.border}`,
+        borderRadius: 11,
+        padding: '8px 13px',
+      }}
+    >
+      <div style={{ fontSize: 10.5, color: C.faint, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 700, color, marginTop: 2 }}>
+        {value} {sub && <span style={{ color: C.faint, fontSize: 12, fontWeight: 500 }}>{sub}</span>}
+      </div>
     </div>
   );
 }

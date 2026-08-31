@@ -1,13 +1,13 @@
 import React from 'react';
-import { C } from '../theme.js';
+import { C, GRAD } from '../theme.js';
 
 function Row({ label, hint, children }) {
   return (
-    <div style={{ padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+    <div style={{ padding: '15px 0', borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
         <div>
           <div style={{ fontWeight: 600, fontSize: 14 }}>{label}</div>
-          {hint && <div style={{ color: C.faint, fontSize: 12, marginTop: 2 }}>{hint}</div>}
+          {hint && <div style={{ color: C.faint, fontSize: 12, marginTop: 3, lineHeight: 1.4 }}>{hint}</div>}
         </div>
         <div style={{ flexShrink: 0 }}>{children}</div>
       </div>
@@ -21,35 +21,61 @@ function Toggle({ on, onChange, disabled }) {
       onClick={() => !disabled && onChange(!on)}
       disabled={disabled}
       style={{
-        width: 46, height: 26, borderRadius: 20, border: 'none',
-        background: on ? C.orange : C.border, position: 'relative',
-        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, transition: 'background .15s',
+        width: 48,
+        height: 27,
+        borderRadius: 20,
+        border: 'none',
+        background: on ? GRAD : 'rgba(255,255,255,0.1)',
+        position: 'relative',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.4 : 1,
+        transition: 'background .2s',
+        boxShadow: on ? '0 4px 12px -3px rgba(255,107,53,0.6)' : 'inset 0 0 0 1px rgba(255,255,255,0.06)',
       }}
     >
-      <span style={{
-        position: 'absolute', top: 3, left: on ? 23 : 3, width: 20, height: 20,
-        borderRadius: '50%', background: '#fff', transition: 'left .15s',
-      }} />
+      <span
+        style={{
+          position: 'absolute',
+          top: 3,
+          left: on ? 24 : 3,
+          width: 21,
+          height: 21,
+          borderRadius: '50%',
+          background: '#fff',
+          transition: 'left .2s cubic-bezier(.22,1,.36,1)',
+          boxShadow: '0 2px 5px rgba(0,0,0,0.35)',
+        }}
+      />
     </button>
   );
 }
 
 function Segmented({ value, options, onChange }) {
   return (
-    <div style={{ display: 'flex', gap: 4, background: C.panel2, padding: 4, borderRadius: 10, flexWrap: 'wrap' }}>
-      {options.map((o) => (
-        <button
-          key={o.id}
-          onClick={() => onChange(o.id)}
-          style={{
-            border: 'none', borderRadius: 7, padding: '6px 12px', fontSize: 13, cursor: 'pointer',
-            background: value === o.id ? C.orange : 'transparent',
-            color: value === o.id ? '#fff' : C.muted, fontWeight: value === o.id ? 600 : 400,
-          }}
-        >
-          {o.label}
-        </button>
-      ))}
+    <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.05)', padding: 4, borderRadius: 11, flexWrap: 'wrap' }}>
+      {options.map((o) => {
+        const on = value === o.id;
+        return (
+          <button
+            key={o.id}
+            onClick={() => onChange(o.id)}
+            style={{
+              border: 'none',
+              borderRadius: 8,
+              padding: '6px 13px',
+              fontSize: 12.5,
+              cursor: 'pointer',
+              transition: 'all .15s ease',
+              background: on ? GRAD : 'transparent',
+              color: on ? '#fff' : C.muted,
+              fontWeight: on ? 600 : 500,
+              boxShadow: on ? '0 4px 12px -4px rgba(255,107,53,0.5)' : 'none',
+            }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -60,12 +86,21 @@ function Select({ value, options, onChange }) {
       value={value}
       onChange={(e) => onChange(e.target.value)}
       style={{
-        background: C.panel2, color: C.text, border: `1px solid ${C.border}`,
-        borderRadius: 8, padding: '8px 10px', fontSize: 13, minWidth: 200,
+        background: '#13131B',
+        color: C.text,
+        border: `1px solid ${C.border}`,
+        borderRadius: 10,
+        padding: '9px 12px',
+        fontSize: 13,
+        minWidth: 210,
+        cursor: 'pointer',
+        fontFamily: 'inherit',
       }}
     >
       {options.map((o) => (
-        <option key={o.id} value={o.id}>{o.label}</option>
+        <option key={o.id} value={o.id}>
+          {o.label}
+        </option>
       ))}
     </select>
   );
@@ -83,7 +118,7 @@ export default function OptionsPanel({ catalog, options, onChange, disabled }) {
 
       {options.cutSilence && (
         <Row label="Sensibilidade do silêncio" hint={`Ruído < ${options.silenceNoiseDb} dB por ${options.silenceMinDuration}s`}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 180 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 190 }}>
             <input type="range" min={-50} max={-15} value={options.silenceNoiseDb}
               onChange={(e) => set({ silenceNoiseDb: Number(e.target.value) })} />
             <input type="range" min={0.2} max={2} step={0.1} value={options.silenceMinDuration}

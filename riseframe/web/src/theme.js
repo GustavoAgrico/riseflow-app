@@ -1,16 +1,50 @@
 export const C = {
-  bg: '#0B0B0F',
-  panel: '#15151C',
-  panel2: '#1D1D27',
-  border: '#2A2A38',
-  text: '#EDEDF2',
-  muted: '#9A9AB0',
-  faint: '#6C6C82',
+  bg: '#08080C',
+  bgElev: '#0E0E14',
+  // superfícies em vidro (translúcidas sobre o mesh de fundo)
+  panel: 'rgba(255,255,255,0.04)',
+  panelSolid: '#13131B',
+  panel2: 'rgba(255,255,255,0.055)',
+  border: 'rgba(255,255,255,0.09)',
+  borderStrong: 'rgba(255,255,255,0.16)',
+  text: '#F4F4F8',
+  muted: '#A6A6BC',
+  faint: '#6E6E86',
   orange: '#FF6B35',
+  orangeSoft: '#FF8A5C',
   purple: '#7C3AED',
-  green: '#22C55E',
-  red: '#EF4444',
+  purpleSoft: '#9F67FF',
+  green: '#2ED47A',
+  red: '#F0526B',
 };
+
+// Gradiente-assinatura da marca (laranja → roxo).
+export const GRAD = `linear-gradient(135deg, ${C.orange} 0%, ${C.purple} 100%)`;
+export const GRAD_SOFT = `linear-gradient(135deg, ${C.orangeSoft}, ${C.purpleSoft})`;
+
+/** Card em vidro premium: borda translúcida + brilho superior + sombra profunda. */
+export function glass(extra = {}) {
+  return {
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02))',
+    border: `1px solid ${C.border}`,
+    borderRadius: 18,
+    boxShadow: '0 10px 40px -12px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    ...extra,
+  };
+}
+
+/** Texto com preenchimento em gradiente. */
+export const gradientText = {
+  background: GRAD,
+  WebkitBackgroundClip: 'text',
+  backgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+  color: 'transparent',
+};
+
+export const FONT_DISPLAY = "'Sora', 'Inter', system-ui, sans-serif";
 
 export const STAGE_ICONS = {
   queued: '⏳',
@@ -18,6 +52,7 @@ export const STAGE_ICONS = {
   probe: '🔎',
   transcribe: '📝',
   analyze: '🧠',
+  cut: '✂️',
   silence: '✂️',
   broll: '🎞️',
   captions: '💬',
