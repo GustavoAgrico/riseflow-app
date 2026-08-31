@@ -119,10 +119,12 @@ export const Teams = () => {
         if (error) { window.alert('Erro ao adicionar membro:\n' + error.message + '\n\n(Rode supabase/team.sql se ainda não rodou.)'); return }
         await syncQueues(created.id, form.queues)
         logger.log(user.id, 'member_added', { category: 'team', description: 'Membro adicionado: ' + payload.name })
-        const { sent } = await sendInvites([{ name: payload.name, email: payload.email }])
+        const { sent, rateLimited, waitSecs } = await sendInvites([{ name: payload.name, email: payload.email }])
         setNotice(sent
           ? { type: 'ok', text: `Convite enviado para ${payload.email}.` }
-          : { type: 'warn', text: `Membro adicionado, mas o convite por e-mail falhou. Verifique em Supabase → Auth se o e-mail está habilitado (limite por hora).` })
+          : rateLimited
+            ? { type: 'warn', text: `Membro adicionado. ${rateText(waitSecs)}` }
+            : { type: 'warn', text: `Membro adicionado, mas o convite falhou. Verifique em Supabase → Auth se o e-mail (provedor Email) está habilitado.` })
       }
       setOpen(false); setForm(EMPTY_FORM); setEditing(null)
       await load()
@@ -200,9 +202,22 @@ export const Teams = () => {
      como membro (o e-mail casa com a linha em team_members). shouldCreateUser
      cria o acesso na primeira vez. Personalize o texto em: Supabase → Auth →
      Email Templates → Magic Link. */
+  // Detecta rate-limit do Supabase (429 / "you can only request this after N seconds"
+  // / "email rate limit exceeded") e extrai os segundos de espera, quando houver.
+  const rateInfo = (error) => {
+    const msg = error?.message || ''
+    const secs = Number((msg.match(/after (\d+)\s*seconds?/i) || [])[1]) || null
+    const isRate = error?.status === 429
+      || /rate limit|only request this after|over_email_send_rate_limit/i.test(msg)
+      || /rate/i.test(error?.code || '')
+    return { isRate, secs }
+  }
+  const rateText = (waitSecs) =>
+    `Limite de e-mails do Supabase atingido${waitSecs ? ` — aguarde ${waitSecs}s` : ' — aguarde ~1 min'} e reenvie. Evite mandar vários convites para o mesmo e-mail em sequência.`
+
   const sendInvites = async (people) => {
     const origin = window.location.origin
-    let sent = 0, failed = 0
+    let sent = 0, failed = 0, rateLimited = false, waitSecs = null
     for (const p of people) {
       if (!EMAIL_RE.test(p.email)) { failed++; continue }
       const { error } = await supabase.auth.signInWithOtp({
@@ -213,16 +228,22 @@ export const Teams = () => {
           data: { full_name: p.name },
         },
       })
-      if (error) { console.warn('[Convite] falha p/', p.email, error.message); failed++ }
-      else sent++
+      if (error) {
+        console.warn('[Convite] falha p/', p.email, error.message)
+        failed++
+        const { isRate, secs } = rateInfo(error)
+        if (isRate) { rateLimited = true; if (secs) waitSecs = Math.max(waitSecs || 0, secs) }
+      } else sent++
     }
-    return { sent, failed }
+    return { sent, failed, rateLimited, waitSecs }
   }
 
-  const inviteNotice = (count, sent, failed) =>
-    sent > 0 && failed === 0 ? { type: 'ok',  text: `${count} membro(s) adicionado(s) e convite(s) enviado(s) por e-mail.` }
-      : sent > 0            ? { type: 'warn', text: `${count} adicionado(s); ${sent} convite(s) enviado(s), ${failed} falharam (limite de e-mails do Supabase? tente de novo em alguns minutos).` }
-      :                       { type: 'warn', text: `${count} membro(s) adicionado(s), mas o convite por e-mail falhou. Verifique em Supabase → Auth se o e-mail está habilitado (e o limite por hora).` }
+  const inviteNotice = (count, sent, failed, rateLimited, waitSecs) => {
+    if (sent > 0 && failed === 0) return { type: 'ok', text: `${count} membro(s) adicionado(s) e convite(s) enviado(s) por e-mail.` }
+    if (rateLimited && sent === 0) return { type: 'warn', text: `${count} membro(s) adicionado(s). ${rateText(waitSecs)}` }
+    if (sent > 0) return { type: 'warn', text: `${count} adicionado(s); ${sent} convite(s) enviado(s), ${failed} falharam.${rateLimited ? ' ' + rateText(waitSecs) : ''}` }
+    return { type: 'warn', text: `${count} membro(s) adicionado(s), mas o convite falhou. Verifique em Supabase → Auth se o e-mail (provedor Email) está habilitado.` }
+  }
 
   /* ── Adicionar vários (um campo por pessoa) + convite ── */
   const doBulkAdd = async () => {
@@ -244,10 +265,10 @@ export const Teams = () => {
       .insert(clean.map(c => ({ user_id: user.id, name: c.name, email: c.email, role: 'Atendente', status: 'offline', conv_limit: 5 })))
     if (error) { setBusy(false); setBulkMsg('Erro: ' + error.message); return }
     logger.log(user.id, 'team_bulk_add', { category: 'team', description: `${clean.length} membro(s) adicionados em massa` })
-    const { sent, failed } = await sendInvites(clean)
+    const { sent, failed, rateLimited, waitSecs } = await sendInvites(clean)
     setBusy(false)
     setBulkOpen(false); setBulkRows([{ name: '', email: '' }, { name: '', email: '' }, { name: '', email: '' }]); setBulkMsg('')
-    setNotice(inviteNotice(clean.length, sent, failed))
+    setNotice(inviteNotice(clean.length, sent, failed, rateLimited, waitSecs))
     await load()
   }
 
