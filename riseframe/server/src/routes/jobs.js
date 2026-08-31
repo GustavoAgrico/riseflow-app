@@ -5,7 +5,6 @@ import fs from 'node:fs';
 import { nanoid } from 'nanoid';
 import { config } from '../config.js';
 import { queue } from '../queue.js';
-import { workDirFor } from '../storage.js';
 
 export const jobsRouter = Router();
 
@@ -29,6 +28,12 @@ const upload = multer({
   },
 });
 
+function clampNum(v, min, max, def) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return def;
+  return Math.max(min, Math.min(max, n));
+}
+
 function parseOptions(raw) {
   let o = {};
   if (raw) {
@@ -38,7 +43,6 @@ function parseOptions(raw) {
       o = {};
     }
   }
-  // Normaliza/valida
   return {
     cutSilence: o.cutSilence !== false,
     captions: o.captions !== false,
@@ -55,31 +59,54 @@ function parseOptions(raw) {
     silencePadding: clampNum(o.silencePadding, 0, 0.5, 0.08),
   };
 }
-function clampNum(v, min, max, def) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return def;
-  return Math.max(min, Math.min(max, n));
-}
 
-// POST /api/jobs  (multipart: file + options JSON) → cria e enfileira
+// POST /api/jobs  (multipart: file + options) → pipeline automático completo
 jobsRouter.post('/jobs', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
-  const options = parseOptions(req.body?.options);
   const job = queue.create({
+    mode: 'auto',
     filename: req.file.originalname,
     inputPath: req.file.path,
-    workDir: ensureWork(req.file.filename),
-    options,
+    options: parseOptions(req.body?.options),
   });
   res.status(201).json(queue.public(job));
 });
 
-function ensureWork(uploadFilename) {
-  const id = path.parse(uploadFilename).name;
-  const dir = workDirFor(id);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
+// POST /api/transcribe  (multipart: file) → transcreve e para; o upload fica salvo
+// para depois ser reusado por /api/render com a transcrição editada.
+jobsRouter.post('/transcribe', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
+  const job = queue.create({
+    mode: 'transcribe',
+    filename: req.file.originalname,
+    inputPath: req.file.path,
+    options: parseOptions(req.body?.options),
+  });
+  res.status(201).json(queue.public(job));
+});
+
+// POST /api/render  (JSON: sourceId + editedTranscript + options) → aplica a edição
+// por transcrição ao vídeo já enviado e roda o restante do pipeline.
+jobsRouter.post('/render', (req, res) => {
+  const { sourceId, editedTranscript } = req.body || {};
+  if (!sourceId) return res.status(400).json({ error: 'sourceId ausente' });
+  const source = queue.get(sourceId);
+  if (!source) return res.status(404).json({ error: 'transcrição de origem não encontrada' });
+  if (!fs.existsSync(source.inputPath)) {
+    return res.status(410).json({ error: 'o vídeo de origem expirou; reenvie' });
+  }
+  if (!editedTranscript?.segments?.length) {
+    return res.status(400).json({ error: 'editedTranscript inválido' });
+  }
+  const job = queue.create({
+    mode: 'render',
+    filename: source.filename,
+    inputPath: source.inputPath,
+    options: parseOptions(req.body?.options),
+    editedTranscript,
+  });
+  res.status(201).json(queue.public(job));
+});
 
 // GET /api/jobs → lista
 jobsRouter.get('/jobs', (_req, res) => res.json(queue.list()));
@@ -127,7 +154,9 @@ jobsRouter.get('/jobs/:id/events', (req, res) => {
 // GET /api/jobs/:id/download → baixa o render final
 jobsRouter.get('/jobs/:id/download', (req, res) => {
   const job = queue.get(req.params.id);
-  if (!job || job.status !== 'done') return res.status(404).json({ error: 'render não disponível' });
+  if (!job || job.status !== 'done' || job.mode === 'transcribe') {
+    return res.status(404).json({ error: 'render não disponível' });
+  }
   const file = path.join(config.paths.outputs, `${job.id}.mp4`);
   if (!fs.existsSync(file)) return res.status(404).json({ error: 'arquivo não encontrado' });
   const base = path.parse(job.filename).name.replace(/[^\w.-]+/g, '_');
@@ -137,7 +166,9 @@ jobsRouter.get('/jobs/:id/download', (req, res) => {
 // GET /api/jobs/:id/preview → stream inline (para <video>)
 jobsRouter.get('/jobs/:id/preview', (req, res) => {
   const job = queue.get(req.params.id);
-  if (!job || job.status !== 'done') return res.status(404).json({ error: 'preview não disponível' });
+  if (!job || job.status !== 'done' || job.mode === 'transcribe') {
+    return res.status(404).json({ error: 'preview não disponível' });
+  }
   const file = path.join(config.paths.outputs, `${job.id}.mp4`);
   if (!fs.existsSync(file)) return res.status(404).json({ error: 'arquivo não encontrado' });
   res.sendFile(file);

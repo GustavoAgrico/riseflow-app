@@ -59,12 +59,60 @@ test('pipeline completo: corta silêncio, legenda, grade e renderiza', async () 
 
   const after = await probeSummary(outFile);
   assert.ok(after.duration < before.duration, 'silêncios foram cortados (saída mais curta)');
-  assert.ok(report.silence.removedSeconds > 0.5, 'reportou segundos removidos');
+  assert.ok(report.cut.removedSeconds > 0.5, 'reportou segundos removidos');
   assert.equal(report.output.aspect, '9:16', 'reframe aplicado');
   assert.ok(updates.some((u) => u.progress === 100), 'progresso chegou a 100');
 
   // limpeza
   await fs.rm(work, { recursive: true, force: true });
+  await fs.rm(outFile, { force: true });
+});
+
+test('editor de transcrição: transcribe → render aplicando remoções e remapeando legendas', async () => {
+  await ensureDirs();
+  const jobId = 'test_edit_' + Date.now();
+  const work = path.join(config.paths.work, jobId);
+  await fs.mkdir(work, { recursive: true });
+  const input = path.join(work, 'in.mp4');
+  await makeClip(input);
+  const before = await probeSummary(input);
+
+  // Fase 1: transcribe
+  const trReport = await runPipeline(
+    { id: jobId, mode: 'transcribe', inputPath: input, workDir: work, outputsDir: config.paths.outputs, options: {} },
+    () => {},
+  );
+  assert.equal(trReport.mode, 'transcribe');
+  assert.ok(trReport.transcript?.segments?.length > 0, 'transcrição retornada');
+
+  // Marca ~metade das palavras como removidas.
+  const edited = JSON.parse(JSON.stringify(trReport.transcript));
+  let flat = [];
+  edited.segments.forEach((s) => s.words.forEach((w) => flat.push(w)));
+  flat.forEach((w, i) => { if (i % 2 === 0) w.removed = true; });
+  const removedCount = flat.filter((w) => w.removed).length;
+  assert.ok(removedCount > 0, 'ao menos uma palavra marcada para remoção');
+
+  // Fase 2: render com a transcrição editada (silêncio desligado p/ isolar a remoção)
+  const jobId2 = jobId + '_r';
+  const work2 = path.join(config.paths.work, jobId2);
+  await fs.mkdir(work2, { recursive: true });
+  const rReport = await runPipeline(
+    {
+      id: jobId2, mode: 'render', inputPath: input, workDir: work2, outputsDir: config.paths.outputs,
+      editedTranscript: edited,
+      options: { cutSilence: false, captions: true, colorLook: 'none', broll: false, aspect: 'original' },
+    },
+    () => {},
+  );
+
+  const outFile = path.join(config.paths.outputs, `${jobId2}.mp4`);
+  const after = await probeSummary(outFile);
+  assert.ok(rReport.cut.removedSeconds > 0.2, 'remoções por transcrição cortaram tempo');
+  assert.ok(after.duration < before.duration, 'render editado ficou mais curto');
+
+  await fs.rm(work, { recursive: true, force: true });
+  await fs.rm(work2, { recursive: true, force: true });
   await fs.rm(outFile, { force: true });
 });
 

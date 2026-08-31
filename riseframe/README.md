@@ -25,6 +25,7 @@ B-roll → Legendas dinâmicas → Color grade → Render final → Download
 | Legendas dinâmicas (palavra-a-palavra) | ✅ | geração de `.ass` + burn-in (`libass`) |
 | Ajuste de cor cinematográfico | ✅ | filtros `curves`/`eq` + LUTs (looks) |
 | Render final (encode) | ✅ | `libx264` + `aac` |
+| **Editor de transcrição** (editar o vídeo editando o texto) | ✅ | transcreve → corta palavras/frases → render com remap de timeline |
 | Fila de jobs assíncrona | ✅ | worker em memória, 1 job por vez |
 
 > **Nota honesta:** transcrição e B-roll de qualidade dependem de serviços externos

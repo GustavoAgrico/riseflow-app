@@ -1,8 +1,10 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import { nanoid } from 'nanoid';
 import { runPipeline } from './pipeline/index.js';
 import { config } from './config.js';
+import { workDirFor } from './storage.js';
 import { makeLogger } from './logger.js';
 
 const log = makeLogger('queue');
@@ -19,10 +21,13 @@ class JobQueue extends EventEmitter {
     this.active = null;
   }
 
-  create({ filename, inputPath, workDir, options }) {
+  create({ filename, inputPath, options, mode = 'auto', editedTranscript = null }) {
     const id = nanoid(12);
+    const workDir = workDirFor(id);
+    fsSync.mkdirSync(workDir, { recursive: true });
     const job = {
       id,
+      mode,
       status: 'queued',
       progress: 0,
       stage: 'queued',
@@ -32,6 +37,7 @@ class JobQueue extends EventEmitter {
       workDir,
       outputsDir: config.paths.outputs,
       options,
+      editedTranscript,
       report: null,
       error: null,
       createdAt: Date.now(),
@@ -56,15 +62,16 @@ class JobQueue extends EventEmitter {
       .map((j) => this.public(j));
   }
 
-  /** Versão serializável (sem caminhos internos de disco). */
+  /** Versão serializável (sem caminhos internos de disco nem payload de edição). */
   public(job) {
-    const { inputPath, workDir, outputsDir, ...rest } = job;
+    const { inputPath, workDir, outputsDir, editedTranscript, ...rest } = job;
     const queuePosition =
       job.status === 'queued' ? this.pending.indexOf(job.id) + (this.active ? 1 : 0) : 0;
     return {
       ...rest,
       queuePosition,
-      downloadUrl: job.status === 'done' ? `/api/jobs/${job.id}/download` : null,
+      downloadUrl:
+        job.status === 'done' && job.mode !== 'transcribe' ? `/api/jobs/${job.id}/download` : null,
     };
   }
 

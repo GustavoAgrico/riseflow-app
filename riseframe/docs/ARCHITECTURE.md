@@ -34,8 +34,8 @@ progresso normalizado 0–100 durante toda a execução.
 |---|---|---|---|
 | 1 | `ffmpeg.js` `probeSummary` | duração, fps, resolução, streams | real (ffprobe) |
 | 2 | `transcribe/` | fala → texto com timestamps de palavra | pluggable |
-| 3 | `analyze.js` | temas (frequência) + momentos de B-roll | heurística |
-| 4 | `silence.js` | `silencedetect` → segmentos de fala → trim+concat | real |
+| 3 | `timeline.js` + `silence.js` | corte unificado (silêncio + edição por texto) + **remap** | real |
+| 4 | `analyze.js` | temas (frequência) + momentos de B-roll | heurística |
 | 5 | `broll.js` | busca Pexels + overlay em tela cheia nas janelas | pluggable (Pexels) |
 | 6 | `captions.js` | gera `.ass` palavra-a-palavra + burn-in (libass) | real |
 | 7 | `color.js` | look cinematográfico (curves/eq/colorbalance/LUT) | real |
@@ -45,13 +45,30 @@ Cada etapa transformadora escreve um MP4 intermediário em `data/work/<jobId>/` 
 passa o caminho adiante. Ao final, os intermediários são apagados; ficam o upload
 original (`data/uploads/`) e o render (`data/outputs/<jobId>.mp4`).
 
-### Corte de silêncios
+### Modos de job
 
-`silencedetect=noise=<dB>:d=<seg>` emite pares `silence_start`/`silence_end`. A partir
-deles calculamos os **segmentos de fala** a manter (com uma folga configurável em
-torno de cada corte, para não "comer" o início/fim das palavras), unimos segmentos
-adjacentes e remontamos num único passe `filter_complex` com `trim`/`atrim` +
-`concat` (corte frame-accurate, sem depender do demuxer concat).
+O mesmo pipeline roda em três modos (campo `mode` do job):
+
+- **auto** — pipeline completo automático (o fluxo padrão).
+- **transcribe** — sonda + transcreve e **para**, devolvendo a transcrição; o upload
+  é preservado para reuso. É a primeira metade do editor de transcrição.
+- **render** — reusa o upload de um job `transcribe` e aplica a **transcrição editada**
+  pelo cliente (palavras marcadas como `removed`), seguindo com o restante do pipeline.
+
+### Corte unificado + remapeamento de timeline (`timeline.js`)
+
+Silêncio e edição por texto convergem num único mecanismo: cada fonte produz **faixas
+a remover**, que são unidas e subtraídas de `[0, duração]` para gerar os segmentos a
+manter. `remuxByKeepSegments` remonta o vídeo num único passe `filter_complex`
+(`trim`/`atrim` + `concat`, frame-accurate).
+
+- `silence.js` expõe `silenceRemovalRanges` (silêncios com folga aplicada).
+- A edição por texto vira faixas a partir das palavras `removed`.
+
+Após qualquer corte, `remapTranscript` **reposiciona os timestamps** da transcrição
+para a nova timeline (descartando palavras removidas/cortadas). Isso mantém as
+**legendas sincronizadas** — antes desta unificação, as legendas eram queimadas com os
+tempos originais e desalinhavam depois do corte.
 
 ### Legendas dinâmicas
 
@@ -101,7 +118,9 @@ o motivo no relatório — o pipeline nunca trava por causa da transcrição.
 |---|---|---|
 | GET | `/api/health` | status + capabilities |
 | GET | `/api/options` | catálogo de escolhas para a UI |
-| POST | `/api/jobs` | multipart `file` + `options` → cria job |
+| POST | `/api/jobs` | multipart `file` + `options` → job automático |
+| POST | `/api/transcribe` | multipart `file` → transcreve e para (editor) |
+| POST | `/api/render` | JSON `sourceId` + `editedTranscript` + `options` → aplica a edição por texto |
 | GET | `/api/jobs` | lista jobs |
 | GET | `/api/jobs/:id` | status de um job |
 | GET | `/api/jobs/:id/events` | **SSE** de progresso em tempo real |

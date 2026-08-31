@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { C } from './theme.js';
-import { getOptions, getHealth, createJob, subscribeJob } from './api.js';
+import { getOptions, getHealth, createJob, transcribe, renderEdited, subscribeJob } from './api.js';
 import Uploader from './components/Uploader.jsx';
 import OptionsPanel from './components/OptionsPanel.jsx';
 import Pipeline from './components/Pipeline.jsx';
 import Result from './components/Result.jsx';
+import TranscriptEditor from './components/TranscriptEditor.jsx';
 
 export default function App() {
   const [catalog, setCatalog] = useState(null);
@@ -13,10 +14,18 @@ export default function App() {
 
   const [file, setFile] = useState(null);
   const [options, setOptions] = useState(null);
-  const [phase, setPhase] = useState('setup'); // setup|uploading|processing|done|error
+  const [editMode, setEditMode] = useState('auto'); // 'auto' | 'editor'
+
+  // setup | uploading | transcribing | editing | processing | done | error
+  const [phase, setPhase] = useState('setup');
   const [uploadPct, setUploadPct] = useState(0);
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
+
+  // dados do fluxo do editor
+  const [sourceId, setSourceId] = useState(null);
+  const [transcriptData, setTranscriptData] = useState(null);
+  const [durationSec, setDurationSec] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -31,26 +40,59 @@ export default function App() {
     })();
   }, []);
 
+  function fail(msg) {
+    setError(msg);
+    setPhase('error');
+  }
+
+  function watchRender(created) {
+    setJob(created);
+    setPhase('processing');
+    subscribeJob(created.id, (u) => {
+      setJob(u);
+      if (u.status === 'done') setPhase('done');
+      if (u.status === 'error') fail(u.error);
+    });
+  }
+
   async function start() {
     if (!file || !options) return;
     setError(null);
-    setPhase('uploading');
     setUploadPct(0);
+    setPhase('uploading');
     try {
-      const created = await createJob(file, options, setUploadPct);
-      setJob(created);
-      setPhase('processing');
-      subscribeJob(created.id, (update) => {
-        setJob(update);
-        if (update.status === 'done') setPhase('done');
-        if (update.status === 'error') {
-          setError(update.error);
-          setPhase('error');
-        }
-      });
+      if (editMode === 'editor') {
+        const t = await transcribe(file, options, setUploadPct);
+        setPhase('transcribing');
+        setJob(t);
+        subscribeJob(t.id, (u) => {
+          setJob(u);
+          if (u.status === 'done') {
+            const tr = u.report?.transcript;
+            if (!tr?.segments?.length) return fail('não foi possível obter a transcrição');
+            setSourceId(u.report.sourceId || u.id);
+            setTranscriptData(tr);
+            setDurationSec(u.report?.input?.duration || 0);
+            setPhase('editing');
+          }
+          if (u.status === 'error') fail(u.error);
+        });
+      } else {
+        const created = await createJob(file, options, setUploadPct);
+        watchRender(created);
+      }
     } catch (e) {
-      setError(e.message);
-      setPhase('error');
+      fail(e.message);
+    }
+  }
+
+  async function generateFromEdits(editedTranscript) {
+    setPhase('processing');
+    try {
+      const created = await renderEdited(sourceId, editedTranscript, options);
+      watchRender(created);
+    } catch (e) {
+      fail(e.message);
     }
   }
 
@@ -59,6 +101,9 @@ export default function App() {
     setJob(null);
     setError(null);
     setUploadPct(0);
+    setSourceId(null);
+    setTranscriptData(null);
+    setDurationSec(0);
     setPhase('setup');
     if (catalog) setOptions(catalog.defaults);
   }
@@ -89,12 +134,18 @@ export default function App() {
       {phase === 'setup' && (
         <div style={{ display: 'grid', gap: 20 }}>
           <Uploader file={file} onFile={setFile} />
-          <div style={{ background: C.panel, borderRadius: 16, padding: '4px 22px 18px', border: `1px solid ${C.border}` }}>
-            <h3 style={{ fontSize: 13, color: C.faint, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              O que fazer com o vídeo
-            </h3>
-            <OptionsPanel catalog={catalog} options={options} onChange={setOptions} />
-          </div>
+
+          <ModeChooser value={editMode} onChange={setEditMode} />
+
+          {editMode === 'auto' && (
+            <div style={{ background: C.panel, borderRadius: 16, padding: '4px 22px 18px', border: `1px solid ${C.border}` }}>
+              <h3 style={{ fontSize: 13, color: C.faint, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                O que fazer com o vídeo
+              </h3>
+              <OptionsPanel catalog={catalog} options={options} onChange={setOptions} />
+            </div>
+          )}
+
           <button
             onClick={start}
             disabled={!file}
@@ -104,19 +155,31 @@ export default function App() {
               fontSize: 16, fontWeight: 700, cursor: file ? 'pointer' : 'not-allowed',
             }}
           >
-            ✨ Editar com IA
+            {editMode === 'editor' ? '📝 Transcrever para editar' : '✨ Editar com IA'}
           </button>
         </div>
       )}
 
       {phase === 'uploading' && (
-        <div style={{ background: C.panel, borderRadius: 16, padding: 28, textAlign: 'center', border: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 32, marginBottom: 10 }}>⬆️</div>
-          <div style={{ fontWeight: 700, marginBottom: 16 }}>Enviando vídeo… {Math.round(uploadPct * 100)}%</div>
-          <div style={{ height: 8, background: C.panel2, borderRadius: 8, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${uploadPct * 100}%`, background: C.orange, transition: 'width .2s' }} />
-          </div>
-        </div>
+        <Loading title={`Enviando vídeo… ${Math.round(uploadPct * 100)}%`} pct={uploadPct} icon="⬆️" />
+      )}
+
+      {phase === 'transcribing' && (
+        <Loading
+          title="Transcrevendo a fala…"
+          subtitle="Assim que ficar pronto, você poderá cortar o vídeo editando o texto."
+          pct={(job?.progress ?? 0) / 100}
+          icon="📝"
+        />
+      )}
+
+      {phase === 'editing' && transcriptData && (
+        <TranscriptEditor
+          transcript={transcriptData}
+          durationSec={durationSec}
+          onGenerate={generateFromEdits}
+          onBack={reset}
+        />
       )}
 
       {phase === 'processing' && job && <Pipeline job={job} />}
@@ -137,6 +200,47 @@ export default function App() {
         </div>
       )}
     </Shell>
+  );
+}
+
+function ModeChooser({ value, onChange }) {
+  const opts = [
+    { id: 'auto', icon: '✨', title: 'Automático', desc: 'A IA corta, legenda e finaliza sozinha' },
+    { id: 'editor', icon: '📝', title: 'Editor de transcrição', desc: 'Corte o vídeo editando o texto' },
+  ];
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      {opts.map((o) => {
+        const on = value === o.id;
+        return (
+          <button
+            key={o.id}
+            onClick={() => onChange(o.id)}
+            style={{
+              textAlign: 'left', background: C.panel, cursor: 'pointer',
+              border: `2px solid ${on ? C.orange : C.border}`, borderRadius: 14, padding: '14px 16px',
+            }}
+          >
+            <div style={{ fontSize: 20, marginBottom: 6 }}>{o.icon}</div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: on ? C.text : C.muted }}>{o.title}</div>
+            <div style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>{o.desc}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Loading({ title, subtitle, pct, icon }) {
+  return (
+    <div style={{ background: C.panel, borderRadius: 16, padding: 28, textAlign: 'center', border: `1px solid ${C.border}` }}>
+      <div style={{ fontSize: 32, marginBottom: 10 }}>{icon}</div>
+      <div style={{ fontWeight: 700, marginBottom: subtitle ? 6 : 16 }}>{title}</div>
+      {subtitle && <div style={{ color: C.muted, fontSize: 13, marginBottom: 16 }}>{subtitle}</div>}
+      <div style={{ height: 8, background: C.panel2, borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${Math.round((pct || 0) * 100)}%`, background: C.orange, transition: 'width .2s' }} />
+      </div>
+    </div>
   );
 }
 
@@ -171,7 +275,7 @@ function Shell({ children, health }) {
           </h1>
           <p style={{ color: C.muted, margin: 0, fontSize: 14, lineHeight: 1.5 }}>
             Suba um vídeo. O Riseframe corta as pausas, gera legendas dinâmicas, insere B-roll
-            e aplica um color grade cinematográfico — e devolve o arquivo pronto para publicar.
+            e aplica um color grade cinematográfico — ou deixe você mesmo cortar editando a transcrição.
           </p>
         </div>
         {children}

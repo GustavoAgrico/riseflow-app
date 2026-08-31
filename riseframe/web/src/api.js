@@ -19,14 +19,14 @@ export async function listJobs() {
 }
 
 /** Envia o vídeo + opções. onProgress(0..1) reflete o upload. */
-export function createJob(file, options, onProgress) {
+function uploadTo(endpoint, file, options, onProgress) {
   return new Promise((resolve, reject) => {
     const form = new FormData();
     form.append('file', file);
     form.append('options', JSON.stringify(options));
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${BASE}/jobs`);
+    xhr.open('POST', `${BASE}${endpoint}`);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
     };
@@ -42,6 +42,28 @@ export function createJob(file, options, onProgress) {
     xhr.onerror = () => reject(new Error('falha de rede no upload'));
     xhr.send(form);
   });
+}
+
+/** Pipeline automático completo. onProgress(0..1) reflete o upload. */
+export function createJob(file, options, onProgress) {
+  return uploadTo('/jobs', file, options, onProgress);
+}
+
+/** Só transcreve (para o editor de transcrição); o upload fica salvo no servidor. */
+export function transcribe(file, options, onProgress) {
+  return uploadTo('/transcribe', file, options, onProgress);
+}
+
+/** Aplica a transcrição editada ao vídeo já enviado e roda o restante do pipeline. */
+export async function renderEdited(sourceId, editedTranscript, options) {
+  const r = await fetch(`${BASE}/render`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sourceId, editedTranscript, options }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data;
 }
 
 /** Assina o SSE de progresso de um job. Retorna uma função para cancelar. */

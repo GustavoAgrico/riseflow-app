@@ -19,7 +19,7 @@ Mapeamento entre o que o brief pede (por fase) e o que este repositório já ent
 | **Ajuste de cor por IA** (correção + look cinematográfico) | 🔨 looks + suporte a LUT `.cube`; falta o "por IA" (analisar o vídeo e escolher/gerar o look) |
 | **B-roll automático** via Pexels | 🔨 busca + inserção funcionam; refinar seleção por cena/tema |
 | Reconhecimento de tema e segmentação por trecho | 🔨 temas por frequência; evoluir para LLM + segmentação semântica |
-| Edição por texto (editar o vídeo editando a transcrição) | ⬜ UI de transcript com corte por palavra |
+| **Edição por texto** (editar o vídeo editando a transcrição) | ✅ transcreve → edita (clique remove palavra/frase, duplo-clique edita texto) → render aplica os cortes com **remapeamento de timeline** (legendas sincronizadas) |
 
 ## Fase 3 — escala ⬜
 
@@ -37,7 +37,7 @@ Mapeamento entre o que o brief pede (por fase) e o que este repositório já ent
 2. **Fila persistente** — trocar a fila em memória por BullMQ+Redis para sobreviver a
    restarts e permitir múltiplos workers.
 3. **Encode acelerado** — NVENC/QSV quando houver GPU, cortando o maior custo variável.
-4. **Editor de transcrição** — a peça de UX que fecha a Fase 2 (editar vídeo = editar texto).
+4. ~~**Editor de transcrição**~~ ✅ entregue (editar vídeo = editar texto).
 5. **"Cor por IA"** — pipeline que analisa amostras de frames e escolhe/gera o LUT,
    entregando o diferencial central do brief.
 
