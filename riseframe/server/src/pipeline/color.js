@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { runFfmpeg } from './ffmpeg.js';
+import { analyzeAndGrade } from './autoColor.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('color');
@@ -28,19 +29,34 @@ export const LOOKS = {
 };
 
 export function lookNames() {
-  return Object.keys(LOOKS);
+  // 'auto' (grade por IA) é o destaque; depois os presets fixos.
+  return ['auto', ...Object.keys(LOOKS)];
 }
 
 /**
- * Aplica um look de cor. Suporta também LUT .cube via `lut:<caminho>`.
- * @returns {Promise<{output:string, look:string}>}
+ * Aplica um look de cor. Suporta:
+ * - 'auto' → grade por IA (analisa frames e calcula correção + look);
+ * - presets fixos (teal-orange, warm, ...);
+ * - LUT .cube via `lut:<caminho>`.
+ * @returns {Promise<{output:string, look:string, ai?:object}>}
  */
 export async function applyColor(input, work, meta, options, onProgress) {
-  const look = options.colorLook || 'teal-orange';
+  const look = options.colorLook || 'auto';
 
+  // Grade por IA: decide a cadeia de filtros a partir da análise do próprio vídeo.
+  let aiAdjustments = null;
   let vf;
   if (look === 'none') {
     return { output: input, look };
+  } else if (look === 'auto') {
+    try {
+      const grade = await analyzeAndGrade(input);
+      vf = grade.vf;
+      aiAdjustments = grade.adjustments;
+    } catch (err) {
+      log.warn(`grade por IA falhou (${err.message}); usando teal-orange`);
+      vf = LOOKS['teal-orange'];
+    }
   } else if (look.startsWith('lut:')) {
     const cube = look.slice(4);
     vf = `lut3d=${cube.replace(/:/g, '\\:')}`;
@@ -58,5 +74,5 @@ export async function applyColor(input, work, meta, options, onProgress) {
 
   await runFfmpeg(args, { label: 'color', totalDuration: meta.duration, onProgress });
   log.ok(`color grade aplicado: ${look}`);
-  return { output, look };
+  return { output, look, ai: aiAdjustments };
 }

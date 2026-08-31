@@ -29,7 +29,7 @@ optionsRouter.get('/options', (_req, res) => {
       captions: true,
       captionMode: 'karaoke',
       captionPreset: 'laranja',
-      colorLook: 'teal-orange',
+      colorLook: 'auto',
       broll: false,
       aspect: 'original',
       silenceNoiseDb: -30,
@@ -40,6 +40,7 @@ optionsRouter.get('/options', (_req, res) => {
 
 const LABELS = {
   color: {
+    auto: 'Automático (IA) ✨',
     none: 'Sem ajuste',
     clean: 'Limpo (correção técnica)',
     'teal-orange': 'Teal & Orange (cinematográfico)',

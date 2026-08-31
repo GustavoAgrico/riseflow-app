@@ -4,6 +4,10 @@ import { GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import { previewUrl, downloadUrl } from '../api.js';
 
+// +X% / −X% em relação a 1.0 (ganho neutro)
+const fmtGain = (g) => `${g >= 1 ? '+' : '−'}${Math.abs(Math.round((g - 1) * 100))}%`;
+const fmtx = (v) => `${Number(v).toFixed(2)}×`;
+
 function Stat({ label, value }) {
   return (
     <div
@@ -69,12 +73,38 @@ export default function Result({ job, onReset }) {
         <Stat label="Duração original" value={fmtDuration(inDur)} />
         {cutSec != null && cutSec > 0 && <Stat label="Trechos cortados" value={`−${fmtDuration(cutSec)}`} />}
         {r.captions && <Stat label="Legendas" value={`${r.captions.segments} blocos`} />}
-        {r.color && <Stat label="Look" value={r.color.look} />}
+        {r.color && <Stat label="Look" value={r.color.ai ? `IA · ${r.color.look}` : r.color.look} />}
         {r.broll && r.broll.inserted > 0 && <Stat label="B-roll" value={`${r.broll.inserted} clipes`} />}
         {r.output && <Stat label="Formato" value={r.output.aspect} />}
         {r.output && <Stat label="Tamanho" value={fmtBytes(r.output.sizeBytes)} />}
         {r.provider?.transcribe && <Stat label="Transcrição" value={r.provider.transcribe} />}
       </div>
+
+      {r.color?.ai && (
+        <div
+          style={{
+            marginBottom: 18,
+            background: 'linear-gradient(180deg, rgba(255,107,53,0.08), rgba(124,58,237,0.05))',
+            border: `1px solid ${C.border}`,
+            borderRadius: 12,
+            padding: '12px 14px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+            <Icon name="palette" size={15} color={C.orangeSoft} />
+            <span style={{ fontSize: 12.5, fontWeight: 700 }}>Color grade por IA</span>
+            <span style={{ fontSize: 11, color: C.faint }}>· look {r.color.ai.look}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: C.muted }}>
+            <span>Balanço de branco <b style={{ color: C.text }}>
+              R{fmtGain(r.color.ai.whiteBalance.rGain)} G{fmtGain(r.color.ai.whiteBalance.gGain)} B{fmtGain(r.color.ai.whiteBalance.bGain)}
+            </b></span>
+            <span>Contraste <b style={{ color: C.text }}>{fmtx(r.color.ai.contrast)}</b></span>
+            <span>Saturação <b style={{ color: C.text }}>{fmtx(r.color.ai.saturation)}</b></span>
+            {r.color.ai.gamma !== 1 && <span>Gamma <b style={{ color: C.text }}>{fmtx(r.color.ai.gamma)}</b></span>}
+          </div>
+        </div>
+      )}
 
       {r.themes?.length > 0 && (
         <div style={{ marginBottom: 18 }}>

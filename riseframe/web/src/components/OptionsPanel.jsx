@@ -142,7 +142,14 @@ export default function OptionsPanel({ catalog, options, onChange, disabled }) {
         </>
       )}
 
-      <Row label="Color grade cinematográfico" hint="O diferencial de acabamento do Riseframe">
+      <Row
+        label="Color grade cinematográfico"
+        hint={
+          options.colorLook === 'auto'
+            ? 'A IA analisa o vídeo e calcula a correção + o look'
+            : 'O diferencial de acabamento do Riseframe'
+        }
+      >
         <Select value={options.colorLook} options={catalog.colorLooks} onChange={(v) => set({ colorLook: v })} />
       </Row>
 

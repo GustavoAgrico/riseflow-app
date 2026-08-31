@@ -103,10 +103,22 @@ PTS para o clipe começar do zero). **Nunca** baixa mídia da web aberta. Sem
 
 ### Color grade
 
-Looks são cadeias de filtros FFmpeg (`eq`, `colorbalance`, `unsharp`). O look-assinatura
-`teal-orange` esfria as sombras e esquenta as altas — o "acabamento cinematográfico"
-que o brief define como diferencial. Suporta também LUT `.cube` via `lut:<caminho>`
-(`lut3d`), caminho natural para licenciar/importar looks profissionais na Fase 2.
+Três modos:
+- **`auto` (default) — grade por IA (`autoColor.js`).** Amostra frames do vídeo
+  (ffmpeg → rgb24 reduzido), calcula estatísticas globais (médias R/G/B, luminância,
+  contraste=desvio-padrão, saturação, frações de sombra/alta, viés quente-frio) e a
+  partir delas **computa** a correção e o look:
+  - **balanço de branco** (gray-world parcial, travado em ±15%) via `colorchannelmixer`;
+  - **exposição/contraste/saturação/gamma** via `eq`, mirando alvos (luma ~118,
+    saturação ~0.32) e levantando sombras quando a imagem é escura;
+  - **look** escolhido pelo conteúdo (teal-orange p/ cenas quentes, balanced-cool p/
+    frias, moody p/ baixa luz) via `colorbalance` + `unsharp`.
+  Os ajustes calculados vão no relatório (`report.color.ai`) e aparecem na UI. É o
+  "ajuste de cor por IA" do brief — decisão guiada por análise, não preset fixo.
+- **presets fixos** (`teal-orange`, `warm`, `cold`, `vibrant`, `moody`, `clean`) —
+  cadeias `eq`/`colorbalance`/`unsharp`.
+- **LUT `.cube`** via `lut:<caminho>` (`lut3d`), para licenciar/importar looks
+  profissionais.
 
 ## Transcrição pluggable (`transcribe/`)
 

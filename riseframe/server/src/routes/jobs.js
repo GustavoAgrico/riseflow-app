@@ -49,7 +49,7 @@ function parseOptions(raw) {
     captionMode: ['karaoke', 'word'].includes(o.captionMode) ? o.captionMode : 'karaoke',
     captionPreset: ['laranja', 'roxo', 'branco'].includes(o.captionPreset) ? o.captionPreset : 'laranja',
     captionScale: clampNum(o.captionScale, 0.6, 1.6, 1),
-    colorLook: typeof o.colorLook === 'string' ? o.colorLook : 'teal-orange',
+    colorLook: typeof o.colorLook === 'string' ? o.colorLook : 'auto',
     broll: o.broll === true,
     brollEverySec: clampNum(o.brollEverySec, 4, 30, 8),
     brollMax: clampNum(o.brollMax, 1, 12, 6),

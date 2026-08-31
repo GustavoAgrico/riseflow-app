@@ -178,8 +178,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
     const st = enter('color');
     const r = await applyColor(input, work, meta, options, st.onProgress);
     input = r.output;
-    report.color = { look: r.look };
-    st.record(report.color);
+    report.color = { look: r.look, ai: r.ai || null };
+    st.record({ look: r.look });
   }
 
   // 8. Render final

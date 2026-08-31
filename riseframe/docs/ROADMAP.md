@@ -16,7 +16,7 @@ Mapeamento entre o que o brief pede (por fase) e o que este repositório já ent
 
 | Item do brief | Status |
 |---|---|
-| **Ajuste de cor por IA** (correção + look cinematográfico) | 🔨 looks + suporte a LUT `.cube`; falta o "por IA" (analisar o vídeo e escolher/gerar o look) |
+| **Ajuste de cor por IA** (correção + look cinematográfico) | ✅ look `auto` (default): analisa frames (balanço de branco, exposição, contraste, saturação, sombras/altas) e **calcula** correção + look cinematográfico específico do vídeo; presets fixos e LUT `.cube` seguem disponíveis |
 | **B-roll automático** via Pexels | ✅ refinado: keyword por contexto, tradução pt→EN, timing por cena (espaçamento/limite/sem intro), clipes deduplicados e encaixe por resolução; **análise por IA opcional** (Claude/OpenAI) escolhe momentos+queries |
 | Reconhecimento de tema e segmentação por trecho | 🔨 temas por frequência + keyword por segmento; análise por IA (LLM) quando configurada |
 | **Edição por texto** (editar o vídeo editando a transcrição) | ✅ transcreve → edita (clique remove palavra/frase, duplo-clique edita texto) → render aplica os cortes com **remapeamento de timeline** (legendas sincronizadas) |
@@ -39,8 +39,8 @@ Mapeamento entre o que o brief pede (por fase) e o que este repositório já ent
    restarts e permitir múltiplos workers.
 3. **Encode acelerado** — NVENC/QSV quando houver GPU, cortando o maior custo variável.
 4. ~~**Editor de transcrição**~~ ✅ entregue (editar vídeo = editar texto).
-5. **"Cor por IA"** — pipeline que analisa amostras de frames e escolhe/gera o LUT,
-   entregando o diferencial central do brief.
+5. ~~**"Cor por IA"**~~ ✅ entregue — grade `auto` analisa frames e calcula
+   correção + look por vídeo (`autoColor.js`). Evolução futura: gerar/licenciar LUTs.
 
 ## O que falta para virar produto (além de código)
 
