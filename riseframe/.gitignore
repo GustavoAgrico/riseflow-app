@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.env.local
+
+# runtime artifacts — uploads, renders, temp working files
+data/uploads/*
+data/outputs/*
+data/work/*
+!data/uploads/.gitkeep
+!data/outputs/.gitkeep
+!data/work/.gitkeep
+
+# logs
+*.log
+npm-debug.log*

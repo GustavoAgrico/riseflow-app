@@ -1,0 +1,23 @@
+{
+  "name": "@riseframe/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Riseframe API + fila de jobs + pipeline de vídeo (FFmpeg).",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "sample": "node src/scripts/makeSample.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "ffmpeg-static": "^5.2.0",
+    "ffprobe-static": "^3.1.0",
+    "multer": "^2.0.1",
+    "nanoid": "^5.0.9"
+  }
+}

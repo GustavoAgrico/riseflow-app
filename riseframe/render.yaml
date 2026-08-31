@@ -1,0 +1,26 @@
+# Render Blueprint para o Riseframe (processamento sob demanda).
+# Um único web service Docker serve o frontend (dist) + a API na mesma porta.
+services:
+  - type: web
+    name: riseframe
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: standard # render é CPU-bound; suba o plano conforme o volume de vídeos
+    disk:
+      name: riseframe-data
+      mountPath: /app/data # uploads + renders (defina política de expiração via OUTPUT_TTL_HOURS)
+      sizeGB: 10
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: OUTPUT_TTL_HOURS
+        value: 24
+      - key: TRANSCRIBE_PROVIDER
+        value: mock # troque para deepgram/openai/whisper-local em produção
+      # Chaves opcionais — configure no dashboard, não no repositório:
+      # - key: PEXELS_API_KEY
+      #   sync: false
+      # - key: DEEPGRAM_API_KEY
+      #   sync: false

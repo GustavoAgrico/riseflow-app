@@ -1,0 +1,26 @@
+{
+  "name": "riseframe",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Editor de vídeo web com IA — MVP do pipeline (corte de silêncio, legendas, B-roll, color grade).",
+  "type": "module",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm --workspace server run dev",
+    "dev:web": "npm --workspace web run dev",
+    "build": "npm --workspace web run build",
+    "start": "npm --workspace server run start",
+    "sample": "npm --workspace server run sample",
+    "test": "npm --workspace server run test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
