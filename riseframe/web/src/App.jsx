@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from './theme.js';
-import { getOptions, getHealth, createJob, transcribe, renderEdited, subscribeJob } from './api.js';
+import { getOptions, getHealth, createJob, transcribe, generateClips, renderEdited, subscribeJob } from './api.js';
 import { PrimaryButton, Card, Spinner } from './components/ui.jsx';
 import Icon, { Logo } from './components/Icon.jsx';
 import Uploader from './components/Uploader.jsx';
 import OptionsPanel from './components/OptionsPanel.jsx';
 import Pipeline from './components/Pipeline.jsx';
 import Result from './components/Result.jsx';
+import ClipsResult from './components/ClipsResult.jsx';
 import TranscriptEditor from './components/TranscriptEditor.jsx';
 
 export default function App() {
@@ -61,7 +62,10 @@ export default function App() {
     setUploadPct(0);
     setPhase('uploading');
     try {
-      if (editMode === 'editor') {
+      if (editMode === 'clips') {
+        const created = await generateClips(file, options, setUploadPct);
+        watchRender(created);
+      } else if (editMode === 'editor') {
         const t = await transcribe(file, options, setUploadPct);
         setPhase('transcribing');
         setJob(t);
@@ -151,11 +155,18 @@ export default function App() {
             </Card>
           )}
 
+          {editMode === 'clips' && (
+            <Card delay={0.1} style={{ padding: '6px 24px 20px' }}>
+              <h3 style={sectionLabel}>Clipes curtos</h3>
+              <ClipsOptions catalog={catalog} options={options} onChange={setOptions} />
+            </Card>
+          )}
+
           <div className="rf-anim" style={{ animationDelay: '0.15s' }}>
             <PrimaryButton onClick={start} disabled={!file} style={{ width: '100%', padding: '17px' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
-                <Icon name={editMode === 'editor' ? 'edit' : 'sparkles'} size={18} strokeWidth={1.9} />
-                {editMode === 'editor' ? 'Transcrever para editar' : 'Editar com IA'}
+                <Icon name={CTA[editMode].icon} size={18} strokeWidth={1.9} />
+                {CTA[editMode].label}
               </span>
             </PrimaryButton>
             {!file && (
@@ -192,7 +203,17 @@ export default function App() {
         </div>
       )}
 
-      {phase === 'processing' && job && (
+      {phase === 'processing' && job && job.mode === 'clips' && (
+        <Loading
+          title={job.stageLabel || 'Gerando clipes…'}
+          subtitle="Encontrando os melhores trechos e montando cada clipe."
+          pct={(job.progress ?? 0) / 100}
+          iconName="film"
+          spin
+        />
+      )}
+
+      {phase === 'processing' && job && job.mode !== 'clips' && (
         <div className="rf-anim">
           <Pipeline job={job} />
         </div>
@@ -200,7 +221,7 @@ export default function App() {
 
       {phase === 'done' && job && (
         <div className="rf-anim">
-          <Result job={job} onReset={reset} />
+          {job.mode === 'clips' ? <ClipsResult job={job} onReset={reset} /> : <Result job={job} onReset={reset} />}
         </div>
       )}
 
@@ -234,13 +255,66 @@ const codeStyle = {
   fontFamily: 'ui-monospace, monospace',
 };
 
+const CTA = {
+  auto: { icon: 'sparkles', label: 'Editar com IA' },
+  editor: { icon: 'edit', label: 'Transcrever para editar' },
+  clips: { icon: 'film', label: 'Gerar clipes curtos' },
+};
+
+function ClipsOptions({ options, onChange }) {
+  const set = (patch) => onChange({ ...options, ...patch });
+  const count = options.clipsCount ?? 3;
+  const aspect = options.clipAspect ?? '9:16';
+  const aspects = [
+    { id: '9:16', label: 'Vertical 9:16' },
+    { id: '1:1', label: 'Quadrado' },
+    { id: '16:9', label: 'Horizontal' },
+    { id: 'original', label: 'Original' },
+  ];
+  return (
+    <div>
+      <div style={{ padding: '15px 0', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>Quantidade de clipes</div>
+          <div style={{ color: C.faint, fontSize: 12, marginTop: 3 }}>Os {count} melhores trechos</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <input type="range" min={1} max={6} value={count} onChange={(e) => set({ clipsCount: Number(e.target.value) })} />
+          <span style={{ fontWeight: 700, width: 18, textAlign: 'center' }}>{count}</span>
+        </div>
+      </div>
+      <div style={{ padding: '15px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
+        <div style={{ fontWeight: 600, fontSize: 14 }}>Formato dos clipes</div>
+        <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.05)', padding: 4, borderRadius: 11, flexWrap: 'wrap' }}>
+          {aspects.map((a) => {
+            const on = aspect === a.id;
+            return (
+              <button
+                key={a.id}
+                onClick={() => set({ clipAspect: a.id })}
+                style={{
+                  border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, cursor: 'pointer',
+                  background: on ? GRAD : 'transparent', color: on ? '#fff' : C.muted, fontWeight: on ? 600 : 500,
+                }}
+              >
+                {a.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ModeChooser({ value, onChange }) {
   const opts = [
     { id: 'auto', icon: 'sparkles', title: 'Automático', desc: 'A IA corta, legenda e finaliza sozinha' },
     { id: 'editor', icon: 'edit', title: 'Editor de transcrição', desc: 'Corte o vídeo editando o texto' },
+    { id: 'clips', icon: 'film', title: 'Clipes curtos', desc: 'Gere cortes dos melhores trechos' },
   ];
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 12 }}>
       {opts.map((o) => {
         const on = value === o.id;
         return (

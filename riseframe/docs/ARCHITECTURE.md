@@ -54,6 +54,23 @@ O mesmo pipeline roda em três modos (campo `mode` do job):
   é preservado para reuso. É a primeira metade do editor de transcrição.
 - **render** — reusa o upload de um job `transcribe` e aplica a **transcrição editada**
   pelo cliente (palavras marcadas como `removed`), seguindo com o restante do pipeline.
+- **clips** — sonda + transcreve + gera **vários clipes curtos** (`clips.js`): encontra
+  os melhores trechos e produz um MP4 por clipe (ver abaixo).
+
+### Geração de clipes curtos (`clips.js`)
+
+`findHighlights` particiona a transcrição em janelas naturais (quebra numa pausa
+grande ou ao atingir o comprimento-alvo, entre `clipMin`–`clipMax`s) e **pontua** cada
+uma por sinais de engajamento: densidade de fala (palavras/s), densidade de informação
+(palavras únicas/s), palavras-gancho, presença de pergunta/número e encaixe de duração
+(ideal 20–45s). Pega as `clipsCount` melhores. (Camada por IA opcional: mesma
+infraestrutura de `analyzeLLM`.)
+
+Para cada janela, `generateClips` monta um clipe **reutilizando os módulos do
+pipeline**: corta a fonte (`remuxByKeepSegments`), **remapeia a transcrição** para o
+tempo local (`remapTranscript`), queima legendas, aplica o **grade por IA** e faz
+**reframe** (9:16 por padrão). Cada clipe vira `outputs/<jobId>_clip<N>.mp4`, baixável
+em `/api/jobs/:id/clips/:index/download`.
 
 ### Corte unificado + remapeamento de timeline (`timeline.js`)
 
@@ -154,6 +171,8 @@ ambiente sem Python/modelo, a saída degrada para `mock` em vez de quebrar.
 | POST | `/api/jobs` | multipart `file` + `options` → job automático |
 | POST | `/api/transcribe` | multipart `file` → transcreve e para (editor) |
 | POST | `/api/render` | JSON `sourceId` + `editedTranscript` + `options` → aplica a edição por texto |
+| POST | `/api/clips` | multipart `file` → gera vários clipes curtos |
+| GET | `/api/jobs/:id/clips/:i/preview` · `/download` | preview/baixa um clipe |
 | GET | `/api/jobs` | lista jobs |
 | GET | `/api/jobs/:id` | status de um job |
 | GET | `/api/jobs/:id/events` | **SSE** de progresso em tempo real |

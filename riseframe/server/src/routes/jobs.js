@@ -57,6 +57,11 @@ function parseOptions(raw) {
     silenceNoiseDb: clampNum(o.silenceNoiseDb, -60, -10, -30),
     silenceMinDuration: clampNum(o.silenceMinDuration, 0.2, 3, 0.5),
     silencePadding: clampNum(o.silencePadding, 0, 0.5, 0.08),
+    // clipes curtos
+    clipsCount: clampNum(o.clipsCount, 1, 8, 3),
+    clipAspect: ['original', '9:16', '16:9', '1:1'].includes(o.clipAspect) ? o.clipAspect : '9:16',
+    clipMin: clampNum(o.clipMin, 5, 60, 15),
+    clipMax: clampNum(o.clipMax, 15, 120, 50),
   };
 }
 
@@ -78,6 +83,18 @@ jobsRouter.post('/transcribe', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   const job = queue.create({
     mode: 'transcribe',
+    filename: req.file.originalname,
+    inputPath: req.file.path,
+    options: parseOptions(req.body?.options),
+  });
+  res.status(201).json(queue.public(job));
+});
+
+// POST /api/clips  (multipart: file) → gera vários clipes curtos do vídeo longo
+jobsRouter.post('/clips', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
+  const job = queue.create({
+    mode: 'clips',
     filename: req.file.originalname,
     inputPath: req.file.path,
     options: parseOptions(req.body?.options),
@@ -161,6 +178,29 @@ jobsRouter.get('/jobs/:id/download', (req, res) => {
   if (!fs.existsSync(file)) return res.status(404).json({ error: 'arquivo não encontrado' });
   const base = path.parse(job.filename).name.replace(/[^\w.-]+/g, '_');
   res.download(file, `riseframe_${base}.mp4`);
+});
+
+// Clipes: download/preview por índice (outputs/<jobId>_clip<index>.mp4)
+function clipFile(job, index) {
+  const clip = job?.report?.clips?.find((c) => String(c.index) === String(index));
+  if (!clip) return null;
+  const file = path.join(config.paths.outputs, clip.file);
+  return fs.existsSync(file) ? { file, clip } : null;
+}
+
+jobsRouter.get('/jobs/:id/clips/:index/download', (req, res) => {
+  const job = queue.get(req.params.id);
+  const found = job && job.status === 'done' ? clipFile(job, req.params.index) : null;
+  if (!found) return res.status(404).json({ error: 'clipe não disponível' });
+  const base = path.parse(job.filename).name.replace(/[^\w.-]+/g, '_');
+  res.download(found.file, `riseframe_${base}_clipe${Number(req.params.index) + 1}.mp4`);
+});
+
+jobsRouter.get('/jobs/:id/clips/:index/preview', (req, res) => {
+  const job = queue.get(req.params.id);
+  const found = job && job.status === 'done' ? clipFile(job, req.params.index) : null;
+  if (!found) return res.status(404).json({ error: 'clipe não disponível' });
+  res.sendFile(found.file);
 });
 
 // GET /api/jobs/:id/preview → stream inline (para <video>)

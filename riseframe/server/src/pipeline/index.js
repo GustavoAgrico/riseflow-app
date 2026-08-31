@@ -7,6 +7,7 @@ import { insertBroll } from './broll.js';
 import { burnCaptions } from './captions.js';
 import { applyColor } from './color.js';
 import { finalRender } from './render.js';
+import { generateClips } from './clips.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('pipeline');
@@ -23,6 +24,12 @@ function buildPlan(mode, options) {
     all = [
       { key: 'probe', label: 'Sondando o vídeo', weight: 5, enabled: true },
       { key: 'transcribe', label: 'Transcrevendo a fala', weight: 95, enabled: true },
+    ];
+  } else if (mode === 'clips') {
+    all = [
+      { key: 'probe', label: 'Sondando o vídeo', weight: 3, enabled: true },
+      { key: 'transcribe', label: 'Transcrevendo a fala', weight: 22, enabled: true },
+      { key: 'clips', label: 'Gerando clipes curtos', weight: 75, enabled: true },
     ];
   } else {
     const hasRemoval = options.cutSilence !== false || mode === 'render';
@@ -104,6 +111,20 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (transcript.fallbackFrom) report.provider.transcribeFallback = transcript.fallbackReason;
     st.record({ segments: transcript.segments.length, provider: transcript.provider });
     st.onProgress(1);
+  }
+
+  // Modo clips: encontra os melhores trechos e gera vários clipes curtos.
+  if (mode === 'clips') {
+    const st = enter('clips');
+    const clips = await generateClips(
+      { source: input, work, outputsDir: job.outputsDir, jobId: job.id, transcript, meta, options },
+      st.onProgress,
+    );
+    report.clips = clips;
+    report.provider.transcribe = transcript.provider;
+    emit({ progress: 100, stage: 'done', stageLabel: 'Clipes prontos' });
+    log.ok(`${clips.length} clipes gerados para job ${job.id}`);
+    return report;
   }
 
   // Modo transcribe: devolve a transcrição e para (o upload é preservado para o render).

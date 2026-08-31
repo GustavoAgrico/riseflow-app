@@ -26,6 +26,8 @@ B-roll → Legendas dinâmicas → Color grade → Render final → Download
 | Ajuste de cor cinematográfico | ✅ | filtros `curves`/`eq` + LUTs (looks) |
 | Render final (encode) | ✅ | `libx264` + `aac` |
 | **Editor de transcrição** (editar o vídeo editando o texto) | ✅ | transcreve → corta palavras/frases → render com remap de timeline |
+| **Color grade por IA** | ✅ | analisa frames → calcula balanço de branco/exposição/contraste/saturação + look |
+| **Clipes curtos** (highlight finder) | ✅ | acha os melhores trechos → N clipes com legendas + grade + reframe 9:16 |
 | Fila de jobs assíncrona | ✅ | worker em memória, 1 job por vez |
 
 > **Nota honesta:** a transcrição padrão é **`whisper-local`** — ASR real via
