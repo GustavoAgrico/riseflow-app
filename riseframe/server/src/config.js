@@ -49,6 +49,8 @@ export const config = {
     provider: process.env.ANALYZE_PROVIDER || 'heuristic',
     anthropicKey: process.env.ANTHROPIC_API_KEY || '',
     openaiKey: process.env.OPENAI_API_KEY || '',
+    model: process.env.ANALYZE_MODEL || 'claude-opus-5',
+    openaiModel: process.env.ANALYZE_OPENAI_MODEL || 'gpt-4o-mini',
   },
 
   broll: {

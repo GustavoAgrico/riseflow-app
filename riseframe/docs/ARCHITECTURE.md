@@ -82,13 +82,24 @@ Tamanho de fonte, contorno e sombra escalam com a resolução (`PlayResX/Y`). O 
 usa `-vf subtitles=` (libass + fontconfig). Fonte padrão: DejaVu Sans (presente no
 ambiente); configurável.
 
-### <a name="b-roll"></a>B-roll (licença)
+### <a name="b-roll"></a>B-roll (seleção + licença)
 
-Só a **API do Pexels** (licença livre). `broll.js` busca um clipe por momento,
-baixa, escala/croppa para o quadro e sobrepõe **apenas** durante a janela
-(`overlay=enable='between(t,s,e)'`, com offset de PTS para o clipe começar do zero na
-janela). **Nunca** baixa mídia da web aberta. Requer `PEXELS_API_KEY`; sem ela, a
-etapa é pulada com elegância.
+A **seleção de momentos** (`analyze.js`) é feita por cena, não por relógio:
+- keyword extraída do **texto do próprio segmento** (a mais saliente; prioriza temas
+  fortes), traduzida **pt→EN** (o Pexels é indexado em inglês) por um mini-dicionário;
+- momentos **espaçados** (`brollEverySec`/`brollMinGap`), **sem repetir** a query em
+  sequência, **sem cobrir a introdução** (`brollSkipIntro`) e limitados por `brollMax`.
+- **Opcional por IA:** com `ANALYZE_PROVIDER=anthropic|openai` + chave, um LLM lê a
+  transcrição e devolve `{themes, brollMoments:[{start,end,query}]}` com queries em
+  inglês (`analyzeLLM.js`, Claude via SDK oficial / OpenAI via HTTP). Falha/sem chave
+  → cai para a heurística.
+
+A **inserção** (`broll.js`) usa só a **API do Pexels** (licença livre): para cada
+momento busca vídeos, **deduplica** por id entre momentos, escolhe o arquivo cuja
+**resolução** mais se aproxima do quadro (sem baixar 4K à toa), escala/croppa e
+sobrepõe **apenas** durante a janela (`overlay=enable='between(t,s,e)'`, com offset de
+PTS para o clipe começar do zero). **Nunca** baixa mídia da web aberta. Sem
+`PEXELS_API_KEY`, a etapa é pulada com elegância.
 
 ### Color grade
 

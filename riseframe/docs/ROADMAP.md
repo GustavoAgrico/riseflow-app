@@ -17,8 +17,8 @@ Mapeamento entre o que o brief pede (por fase) e o que este repositório já ent
 | Item do brief | Status |
 |---|---|
 | **Ajuste de cor por IA** (correção + look cinematográfico) | 🔨 looks + suporte a LUT `.cube`; falta o "por IA" (analisar o vídeo e escolher/gerar o look) |
-| **B-roll automático** via Pexels | 🔨 busca + inserção funcionam; refinar seleção por cena/tema |
-| Reconhecimento de tema e segmentação por trecho | 🔨 temas por frequência; evoluir para LLM + segmentação semântica |
+| **B-roll automático** via Pexels | ✅ refinado: keyword por contexto, tradução pt→EN, timing por cena (espaçamento/limite/sem intro), clipes deduplicados e encaixe por resolução; **análise por IA opcional** (Claude/OpenAI) escolhe momentos+queries |
+| Reconhecimento de tema e segmentação por trecho | 🔨 temas por frequência + keyword por segmento; análise por IA (LLM) quando configurada |
 | **Edição por texto** (editar o vídeo editando a transcrição) | ✅ transcreve → edita (clique remove palavra/frase, duplo-clique edita texto) → render aplica os cortes com **remapeamento de timeline** (legendas sincronizadas) |
 
 ## Fase 3 — escala ⬜
