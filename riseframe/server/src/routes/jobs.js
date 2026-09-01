@@ -51,8 +51,8 @@ function parseOptions(raw) {
   return {
     cutSilence: o.cutSilence !== false,
     captions: o.captions !== false,
-    captionMode: ['karaoke', 'word'].includes(o.captionMode) ? o.captionMode : 'karaoke',
-    captionPreset: ['laranja', 'roxo', 'branco'].includes(o.captionPreset) ? o.captionPreset : 'laranja',
+    captionTemplate: ['clean', 'pop', 'hormozi', 'box', 'neon', 'bounce'].includes(o.captionTemplate) ? o.captionTemplate : 'clean',
+    captionColor: ['white', 'yellow', 'orange', 'purple', 'green', 'cyan', 'pink', 'red'].includes(o.captionColor) ? o.captionColor : 'white',
     captionScale: clampNum(o.captionScale, 0.6, 1.6, 1),
     colorLook: ALLOWED_LOOKS.has(o.colorLook) ? o.colorLook : 'auto',
     broll: o.broll === true,

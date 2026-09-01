@@ -106,6 +106,30 @@ function Select({ value, options, onChange }) {
   );
 }
 
+function Swatches({ value, options, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      {options.map((o) => {
+        const on = value === o.id;
+        return (
+          <button
+            key={o.id}
+            onClick={() => onChange(o.id)}
+            title={o.label}
+            style={{
+              width: 26, height: 26, borderRadius: '50%', cursor: 'pointer',
+              background: o.hex,
+              border: on ? '2px solid #fff' : '2px solid rgba(255,255,255,0.15)',
+              boxShadow: on ? `0 0 0 2px ${o.hex}, 0 0 10px ${o.hex}88` : 'none',
+              transition: 'all .12s',
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export default function OptionsPanel({ catalog, options, onChange, disabled }) {
   const set = (patch) => onChange({ ...options, ...patch });
   const caps = catalog?.capabilities || {};
@@ -133,11 +157,11 @@ export default function OptionsPanel({ catalog, options, onChange, disabled }) {
 
       {options.captions && (
         <>
-          <Row label="Estilo da legenda">
-            <Segmented value={options.captionMode} options={catalog.captionModes} onChange={(v) => set({ captionMode: v })} />
+          <Row label="Estilo da legenda" hint="Look + movimento das legendas">
+            <Select value={options.captionTemplate} options={catalog.captionTemplates} onChange={(v) => set({ captionTemplate: v })} />
           </Row>
-          <Row label="Cor de destaque">
-            <Segmented value={options.captionPreset} options={catalog.captionPresets} onChange={(v) => set({ captionPreset: v })} />
+          <Row label="Cor de destaque" hint="Padrão branco">
+            <Swatches value={options.captionColor} options={catalog.captionColors} onChange={(v) => set({ captionColor: v })} />
           </Row>
         </>
       )}

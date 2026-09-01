@@ -9,14 +9,22 @@ optionsRouter.get('/options', (_req, res) => {
   res.json({
     capabilities: capabilities(),
     colorLooks: lookNames().map((id) => ({ id, label: LABELS.color[id] || id })),
-    captionModes: [
-      { id: 'karaoke', label: 'Frase (destaque palavra-a-palavra)' },
-      { id: 'word', label: 'Uma palavra por vez (pop)' },
+    captionTemplates: [
+      { id: 'clean', label: 'Clássico (limpo)' },
+      { id: 'pop', label: 'Pop (palavra a palavra)' },
+      { id: 'hormozi', label: 'Impacto (bold)' },
+      { id: 'box', label: 'Caixa (destaque)' },
+      { id: 'neon', label: 'Neon (glow)' },
+      { id: 'bounce', label: 'Bounce' },
     ],
-    captionPresets: [
-      { id: 'laranja', label: 'Laranja (#FF6B35)' },
-      { id: 'roxo', label: 'Roxo (#7C3AED)' },
-      { id: 'branco', label: 'Branco/Amarelo' },
+    captionColors: [
+      { id: 'white', label: 'Branco', hex: '#FFFFFF' },
+      { id: 'yellow', label: 'Amarelo', hex: '#FFE24B' },
+      { id: 'orange', label: 'Laranja', hex: '#FF6B35' },
+      { id: 'purple', label: 'Roxo', hex: '#9F67FF' },
+      { id: 'green', label: 'Verde', hex: '#2ED47A' },
+      { id: 'cyan', label: 'Ciano', hex: '#22D3EE' },
+      { id: 'pink', label: 'Rosa', hex: '#FF5CA8' },
     ],
     aspects: [
       { id: 'original', label: 'Manter original' },
@@ -27,8 +35,8 @@ optionsRouter.get('/options', (_req, res) => {
     defaults: {
       cutSilence: true,
       captions: true,
-      captionMode: 'karaoke',
-      captionPreset: 'laranja',
+      captionTemplate: 'clean',
+      captionColor: 'white',
       colorLook: 'auto',
       broll: false,
       aspect: 'original',

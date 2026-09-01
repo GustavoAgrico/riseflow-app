@@ -27,7 +27,7 @@ Mapeamento entre o que o brief pede (por fase) e o que este repositório já ent
 |---|---|
 | Geração de clipes curtos a partir de vídeo longo | ✅ modo `clips`: encontra os melhores trechos (heurística de engajamento: densidade de fala/informação, ganchos, encaixe de duração) e gera N clipes curtos, cada um com corte + legendas remapeadas + grade por IA + reframe 9:16 |
 | Reframe automático (16:9 → 9:16) | ✅ com **tracking do sujeito**: detecção de rosto (Haar) + fallback de centroide de movimento → crop dinâmica suavizada que segue o sujeito; fallback para crop central |
-| Bibliotecas de "looks" e templates de legenda | 🔨 3 presets de legenda + 6 looks; virar biblioteca navegável |
+| Bibliotecas de "looks" e templates de legenda | ✅ legendas: 6 estilos premium (clean/pop/hormozi/box/neon/bounce) × 7 cores (padrão branco) com movimentos; 6 looks de cor + grade por IA. Falta só virar galeria com preview |
 | Colaboração / equipes | ⬜ (exige auth + multi-tenant) |
 
 ## Próximos passos técnicos sugeridos

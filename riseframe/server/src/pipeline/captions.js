@@ -8,56 +8,91 @@ const log = makeLogger('captions');
 /** "RRGGBB" (ou "#RRGGBB") → cor ASS "&H00BBGGRR". */
 function assColor(hex) {
   const h = String(hex).replace('#', '').padStart(6, '0');
-  const rr = h.slice(0, 2);
-  const gg = h.slice(2, 4);
-  const bb = h.slice(4, 6);
-  return `&H00${bb}${gg}${rr}`.toUpperCase();
+  return `&H00${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`.toUpperCase();
 }
 
 function assTime(sec) {
   const s = Math.max(0, sec);
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
-  const cs = Math.round((s % 60) * 100); // centésimos
-  const ss = Math.floor(cs / 100);
-  const c = cs % 100;
-  return `${h}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}.${String(c).padStart(2, '0')}`;
+  const cs = Math.round((s % 60) * 100);
+  return `${h}:${String(m).padStart(2, '0')}:${String(Math.floor(cs / 100)).padStart(2, '0')}.${String(cs % 100).padStart(2, '0')}`;
 }
 
 function escapeAss(text) {
   return String(text).replace(/\\/g, '\\\\').replace(/\{/g, '(').replace(/\}/g, ')').replace(/\n/g, ' ');
 }
 
-const PRESETS = {
-  // paleta alinhada ao brief: laranja #FF6B35, roxo #7C3AED
-  laranja: { primary: 'FFFFFF', highlight: 'FF6B35', outline: '000000' },
-  roxo: { primary: 'FFFFFF', highlight: '7C3AED', outline: '000000' },
-  branco: { primary: 'FFFFFF', highlight: 'FFE24B', outline: '000000' },
+// ─── Paleta de cores de destaque (padrão: branco) ─────────────────────
+export const CAPTION_COLORS = {
+  white: 'FFFFFF',
+  yellow: 'FFE24B',
+  orange: 'FF6B35',
+  purple: '9F67FF',
+  green: '2ED47A',
+  cyan: '22D3EE',
+  pink: 'FF5CA8',
+  red: 'F0526B',
 };
 
+// ─── Estilos (templates) — cada um combina look + movimento ───────────
+// mode: 'word' (uma palavra por vez) | 'phrase' (frase com destaque)
+export const CAPTION_TEMPLATES = {
+  clean: { mode: 'phrase', size: 0.068, align: 2, marginV: 0.14, outline: 0.09, bold: true, upper: false, anim: 'fade' },
+  pop: { mode: 'word', size: 0.11, align: 5, marginV: 0, outline: 0.1, bold: true, upper: true, anim: 'pop' },
+  hormozi: { mode: 'word', size: 0.132, align: 2, marginV: 0.17, outline: 0.14, bold: true, upper: true, anim: 'pop' },
+  box: { mode: 'word', size: 0.1, align: 5, marginV: 0, outline: 0.12, bold: true, upper: true, anim: 'pop', box: true },
+  neon: { mode: 'phrase', size: 0.072, align: 2, marginV: 0.14, outline: 0.05, bold: true, upper: false, anim: 'fade', glow: true },
+  bounce: { mode: 'word', size: 0.115, align: 5, marginV: 0, outline: 0.1, bold: true, upper: true, anim: 'bounce' },
+};
+
+export const CAPTION_TEMPLATE_LABELS = {
+  clean: 'Clássico (limpo)',
+  pop: 'Pop (palavra a palavra)',
+  hormozi: 'Impacto (bold)',
+  box: 'Caixa (destaque)',
+  neon: 'Neon (glow)',
+  bounce: 'Bounce',
+};
+
+/** Override de animação (movimento) por template. */
+function animTag(anim) {
+  switch (anim) {
+    case 'pop':
+      return '\\fad(50,40)\\fscx82\\fscy82\\t(0,110,\\fscx106\\fscy106)\\t(110,210,\\fscx100\\fscy100)';
+    case 'bounce':
+      return '\\fad(40,40)\\fscx68\\fscy68\\t(0,90,\\fscx113\\fscy113)\\t(90,150,\\fscx95\\fscy95)\\t(150,215,\\fscx100\\fscy100)';
+    case 'fade':
+    default:
+      return '\\fad(60,60)';
+  }
+}
+
 /**
- * Gera o conteúdo de um arquivo .ass com legendas dinâmicas.
- * @param {Array} segments  segmentos com {start,end,text,words:[{start,end,word}]}
- * @param {object} meta      {width,height}
- * @param {object} style     {mode:'karaoke'|'word', preset, fontName, fontScale, marginV}
+ * Gera o conteúdo de um arquivo .ass com legendas dinâmicas premium.
+ * @param {Array} segments segmentos com {start,end,text,words:[{start,end,word}]}
+ * @param {object} meta {width,height}
+ * @param {object} style {template, color, fontScale, mode?} (mode legado → template)
  */
 export function buildAss(segments, meta, style = {}) {
   const w = meta.width || 1080;
   const h = meta.height || 1920;
-  const mode = style.mode === 'word' ? 'word' : 'karaoke';
-  const palette = PRESETS[style.preset] || PRESETS.laranja;
-  const fontName = style.fontName || 'DejaVu Sans';
+  const color = CAPTION_COLORS[style.color] ? style.color : 'white';
+  const tplKey = CAPTION_TEMPLATES[style.template]
+    ? style.template
+    : style.mode === 'word'
+      ? 'pop'
+      : 'clean';
+  const T = CAPTION_TEMPLATES[tplKey];
   const scale = style.fontScale || 1;
 
-  const baseSize = Math.round(h * (mode === 'word' ? 0.11 : 0.068) * scale);
-  const outline = Math.max(2, Math.round(baseSize * 0.09));
-  const shadow = Math.max(1, Math.round(baseSize * 0.04));
-  const align = mode === 'word' ? 5 : 2; // 5=centro, 2=base-centro
-  const marginV = style.marginV ?? Math.round(h * (mode === 'word' ? 0.0 : 0.14));
-
-  const primary = assColor(palette.primary);
-  const highlight = assColor(palette.highlight);
-  const outlineC = assColor(palette.outline);
+  const accent = assColor(CAPTION_COLORS[color]); // cor de destaque
+  const WHITE = assColor('FFFFFF');
+  const size = Math.round(h * T.size * scale);
+  const outline = Math.max(2, Math.round(size * T.outline));
+  const shadow = Math.max(1, Math.round(size * 0.05));
+  const marginV = style.marginV != null ? style.marginV : Math.round(h * T.marginV);
+  const boldFlag = T.bold ? -1 : 0;
 
   const header = [
     '[Script Info]',
@@ -69,42 +104,55 @@ export function buildAss(segments, meta, style = {}) {
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Rise,${fontName},${baseSize},${primary},${highlight},${outlineC},&H80000000,-1,0,0,0,100,100,0,0,1,${outline},${shadow},${align},60,60,${marginV},1`,
-    '',
-    '[Events]',
-    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+    `Style: Rise,${style.fontName || 'DejaVu Sans'},${size},${WHITE},${accent},${assColor('000000')},&H90000000,${boldFlag},0,0,0,100,100,0,0,1,${outline},${shadow},${T.align},60,60,${marginV},1`,
   ];
+  // Estilo com caixa opaca atrás da palavra (BorderStyle=3).
+  if (T.box) {
+    const boxColor = color === 'white' ? assColor('FFFFFF') : accent;
+    const textColor = color === 'white' ? assColor('111111') : assColor('FFFFFF');
+    const pad = Math.max(6, Math.round(size * 0.16));
+    header.push(
+      `Style: RiseBox,${style.fontName || 'DejaVu Sans'},${size},${textColor},${textColor},${boxColor},${boxColor},${boldFlag},0,0,0,100,100,0,0,3,${pad},0,${T.align},60,60,${marginV},1`,
+    );
+  }
+  header.push('', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text');
 
+  const anim = animTag(T.anim);
+  const glow = T.glow ? '\\blur4\\be1' : '';
   const lines = [];
+
   for (const seg of segments) {
-    // Normaliza: `word` sempre string, tempos numéricos; descarta palavras vazias.
-    // (a transcrição pode vir editada pelo cliente, com campos ausentes/malformados)
-    const rawWords = seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }];
-    const words = rawWords
-      .map((w) => ({ start: Number(w.start) || 0, end: Number(w.end) || 0, word: String(w.word ?? '').trim() }))
-      .filter((w) => w.word.length > 0);
+    const raw = seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }];
+    const words = raw
+      .map((wd) => ({ start: Number(wd.start) || 0, end: Number(wd.end) || 0, word: String(wd.word ?? '').trim() }))
+      .filter((wd) => wd.word.length > 0);
     if (!words.length) continue;
 
-    if (mode === 'word') {
-      // Uma palavra grande por vez, com um leve "pop".
+    if (T.mode === 'word') {
+      // Uma palavra por vez, centralizada, com o movimento do template.
+      const styleName = T.box ? 'RiseBox' : 'Rise';
+      const wordColor = T.box ? '' : `\\c${accent}`;
       for (const wd of words) {
         const end = Math.max(wd.end, wd.start + 0.12);
-        const txt = `{\\an5\\fad(60,60)\\fscx80\\fscy80\\t(0,120,\\fscx105\\fscy105)\\t(120,200,\\fscx100\\fscy100)\\c${highlight}}${escapeAss(wd.word.toUpperCase())}`;
-        lines.push(`Dialogue: 0,${assTime(wd.start)},${assTime(end)},Rise,,0,0,0,,${txt}`);
+        const txt = escapeAss(T.upper ? wd.word.toUpperCase() : wd.word);
+        const ov = `{\\an${T.align}${anim}${glow}${wordColor}}`;
+        lines.push(`Dialogue: 0,${assTime(wd.start)},${assTime(end)},${styleName},,0,0,0,,${ov}${txt}`);
       }
     } else {
-      // Frase inteira, destacando a palavra corrente (estilo karaokê).
+      // Frase inteira; a palavra corrente é destacada (por cor, ou — no branco —
+      // pelo escurecimento das demais).
       for (let i = 0; i < words.length; i++) {
         const start = words[i].start;
         const end = i + 1 < words.length ? words[i + 1].start : Math.max(words[i].end, seg.end);
         const rendered = words
           .map((wd, j) => {
-            const t = escapeAss(wd.word);
-            return j === i ? `{\\c${highlight}}${t}{\\c${primary}}` : t;
+            const t = escapeAss(T.upper ? wd.word.toUpperCase() : wd.word);
+            if (j === i) return `{\\alpha&H00&\\c${accent}}${t}{\\c${WHITE}}`;
+            if (color === 'white') return `{\\alpha&H70&}${t}{\\alpha&H00&}`;
+            return t;
           })
           .join(' ');
-        const txt = `{\\fad(40,40)}${rendered}`;
-        lines.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Rise,,0,0,0,,${txt}`);
+        lines.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Rise,,0,0,0,,{${anim}${glow}}${rendered}`);
       }
     }
   }
@@ -123,17 +171,13 @@ export async function burnCaptions(input, work, meta, transcript, style, onProgr
   await fs.writeFile(assPath, ass, 'utf8');
 
   const output = path.join(work, 'captioned.mp4');
-  // subtitles= exige escapar o caminho; usamos caminho relativo ao cwd do work.
   const escaped = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
-  const args = [
-    '-i', input,
-    '-vf', `subtitles=${escaped}`,
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
-  ];
+  const args = ['-i', input, '-vf', `subtitles=${escaped}`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20'];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push('-movflags', '+faststart', '-y', output);
 
   await runFfmpeg(args, { label: 'captions', totalDuration: meta.duration, onProgress });
-  log.ok(`legendas queimadas (${transcript.segments.length} segmentos, modo ${style.mode || 'karaoke'})`);
+  const tpl = CAPTION_TEMPLATES[style.template] ? style.template : style.mode === 'word' ? 'pop' : 'clean';
+  log.ok(`legendas queimadas (${transcript.segments.length} seg, estilo ${tpl}, cor ${style.color || 'white'})`);
   return { output, count: transcript.segments.length };
 }

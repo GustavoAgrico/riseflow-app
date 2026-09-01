@@ -127,7 +127,11 @@ export async function generateClips(ctx, onProgress = () => {}) {
 
     // 3) legendas
     if (options.captions !== false) {
-      const style = { mode: options.captionMode || 'word', preset: options.captionPreset || 'laranja' };
+      const style = {
+        template: options.captionTemplate || 'pop', // clipes: default palavra-a-palavra
+        color: options.captionColor || 'white',
+        mode: options.captionMode,
+      };
       const r = await burnCaptions(input, cwork, cmeta, localTranscript, style, () => {});
       input = r.output;
     }

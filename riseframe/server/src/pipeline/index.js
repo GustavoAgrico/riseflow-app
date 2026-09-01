@@ -188,13 +188,14 @@ export async function runPipeline(job, onUpdate = () => {}) {
   if (has('captions')) {
     const st = enter('captions');
     const style = {
-      mode: options.captionMode || 'karaoke',
-      preset: options.captionPreset || 'laranja',
+      template: options.captionTemplate || 'clean',
+      color: options.captionColor || 'white',
+      mode: options.captionMode, // compat legado
       fontScale: options.captionScale || 1,
     };
     const r = await burnCaptions(input, work, meta, transcript, style, st.onProgress);
     input = r.output;
-    report.captions = { segments: r.count, mode: style.mode, preset: style.preset };
+    report.captions = { segments: r.count, template: style.template, color: style.color };
     st.record(report.captions);
   }
 

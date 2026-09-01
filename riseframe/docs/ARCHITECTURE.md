@@ -89,15 +89,20 @@ tempos originais e desalinhavam depois do corte.
 
 ### Legendas dinâmicas
 
-`captions.js` gera um arquivo ASS (Advanced SubStation). Dois modos:
+`captions.js` gera um arquivo ASS (Advanced SubStation) a partir de um sistema de
+**templates** (look + movimento) × **cor de destaque** (padrão **branco**):
 
-- **karaoke** — a frase inteira aparece e a palavra corrente é destacada na cor de
-  acento (laranja `#FF6B35` ou roxo `#7C3AED`).
-- **word** — uma palavra grande por vez, com um leve "pop" (`\t` animando `\fscx`).
+- **Estilos** (`CAPTION_TEMPLATES`): `clean` (frase, palavra ativa em destaque e as
+  demais escurecidas), `pop` (palavra a palavra com escala-pop), `hormozi` (impacto
+  bold maiúsculo), `box` (palavra numa caixa opaca — `BorderStyle=3`), `neon` (frase
+  com glow via `\blur\be`), `bounce` (overshoot). Cada estilo é `word` ou `phrase`.
+- **Movimentos** (`animTag`): `fade`, `pop` e `bounce` via `\fad`/`\fscx`/`\t`.
+- **Cores** (`CAPTION_COLORS`): branco (default), amarelo, laranja, roxo, verde, ciano,
+  rosa — aplicadas à palavra corrente. No branco, o destaque vem do escurecimento
+  (`\alpha`) das demais palavras.
 
 Tamanho de fonte, contorno e sombra escalam com a resolução (`PlayResX/Y`). O burn-in
-usa `-vf subtitles=` (libass + fontconfig). Fonte padrão: DejaVu Sans (presente no
-ambiente); configurável.
+usa `-vf subtitles=` (libass + fontconfig). Fonte padrão: DejaVu Sans; configurável.
 
 ### <a name="b-roll"></a>B-roll (seleção + licença)
 
