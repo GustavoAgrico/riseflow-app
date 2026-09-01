@@ -167,16 +167,18 @@ export async function burnCaptions(input, work, meta, transcript, style, onProgr
     return { output: input, count: 0 };
   }
   const ass = buildAss(transcript.segments, meta, style);
-  const assPath = path.join(work, 'captions.ass');
-  await fs.writeFile(assPath, ass, 'utf8');
+  const ASS_NAME = 'captions.ass';
+  await fs.writeFile(path.join(work, ASS_NAME), ass, 'utf8');
 
   const output = path.join(work, 'captioned.mp4');
-  const escaped = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
-  const args = ['-i', input, '-vf', `subtitles=${escaped}`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20'];
+  // Roda com cwd = pasta do job e referencia o .ass pelo NOME relativo. Assim o
+  // filtro `subtitles` nunca recebe drive (C:), barras ou espaços do caminho —
+  // que quebravam o parser do FFmpeg no Windows (caminhos com espaço/`:`).
+  const args = ['-i', input, '-vf', `subtitles=${ASS_NAME}`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20'];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push('-movflags', '+faststart', '-y', output);
 
-  await runFfmpeg(args, { label: 'captions', totalDuration: meta.duration, onProgress });
+  await runFfmpeg(args, { label: 'captions', totalDuration: meta.duration, onProgress, cwd: work });
   const tpl = CAPTION_TEMPLATES[style.template] ? style.template : style.mode === 'word' ? 'pop' : 'clean';
   log.ok(`legendas queimadas (${transcript.segments.length} seg, estilo ${tpl}, cor ${style.color || 'white'})`);
   return { output, count: transcript.segments.length };

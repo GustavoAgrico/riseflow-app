@@ -25,9 +25,9 @@ export function hmsToSeconds(hms) {
  * @returns {Promise<{stderr:string}>}
  */
 export function runFfmpeg(args, opts = {}) {
-  const { totalDuration, onProgress, label = 'run' } = opts;
+  const { totalDuration, onProgress, label = 'run', cwd } = opts;
   return new Promise((resolve, reject) => {
-    const proc = spawn(ffmpegPath, ['-hide_banner', '-nostdin', ...args]);
+    const proc = spawn(ffmpegPath, ['-hide_banner', '-nostdin', ...args], cwd ? { cwd } : undefined);
     let stderr = '';
 
     proc.stderr.on('data', (buf) => {
