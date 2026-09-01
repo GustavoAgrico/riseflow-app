@@ -39,7 +39,7 @@ progresso normalizado 0–100 durante toda a execução.
 | 5 | `broll.js` | busca Pexels + overlay em tela cheia nas janelas | pluggable (Pexels) |
 | 6 | `captions.js` | gera `.ass` palavra-a-palavra + burn-in (libass) | real |
 | 7 | `color.js` | look cinematográfico (curves/eq/colorbalance/LUT) | real |
-| 8 | `render.js` | reframe (crop central) + encode web-ready | real |
+| 8 | `render.js` + `reframe.js` | reframe (tracking do sujeito / crop central) + encode | real |
 
 Cada etapa transformadora escreve um MP4 intermediário em `data/work/<jobId>/` e
 passa o caminho adiante. Ao final, os intermediários são apagados; ficam o upload
@@ -136,6 +136,21 @@ Três modos:
   cadeias `eq`/`colorbalance`/`unsharp`.
 - **LUT `.cube`** via `lut:<caminho>` (`lut3d`), para licenciar/importar looks
   profissionais.
+
+### Reframe com tracking do sujeito (`reframe.js` + `track_subject.py`)
+
+Ao converter de formato (ex.: 16:9 → 9:16), em vez de crop central fixo o Riseframe
+**segue o sujeito**:
+1. `track_subject.py` (OpenCV) amostra o vídeo (~4 fps), detecta **rosto** (Haar frontal
+   + perfil) e, onde não há rosto, usa o **centroide de movimento** (diferença entre
+   frames). Devolve o centro do sujeito normalizado ao longo do tempo.
+2. `reframe.js` (funções puras) preenche lacunas, **suaviza** o caminho (média móvel) e
+   reamostra em keyframes; converte para o offset de crop em pixels (centralizando o
+   sujeito, com trava nas bordas) e monta uma **expressão FFmpeg piecewise-linear** para
+   `crop=…:x='…'` — uma crop que **paneia** seguindo o sujeito (eixo horizontal em
+   16:9→9:16; vertical no caso oposto).
+3. Sem OpenCV, sem sujeito rastreável ou com `reframeTrack=false` → **fallback** para
+   crop central. Aplica-se também a cada clipe curto.
 
 ## Transcrição pluggable (`transcribe/`)
 

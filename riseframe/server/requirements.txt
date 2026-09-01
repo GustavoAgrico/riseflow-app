@@ -1,3 +1,7 @@
+# Dependências Python do Riseframe. Instale com: pip install -r requirements.txt
 # Transcrição local (provedor whisper-local, default). CPU + int8.
-# Instale com: pip install -r requirements.txt
 faster-whisper==1.2.1
+# Reframe com tracking do sujeito (detecção de rosto Haar + centroide de movimento).
+opencv-python-headless==4.10.0.84
+numpy>=1.24
+

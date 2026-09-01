@@ -207,7 +207,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
   {
     const st = enter('render');
     const r = await finalRender(input, job.outputsDir, job.id, meta, options, st.onProgress);
-    report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes };
+    report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe };
     st.record({ aspect: r.aspect });
     st.onProgress(1);
   }

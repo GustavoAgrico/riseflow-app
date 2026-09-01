@@ -32,6 +32,7 @@ optionsRouter.get('/options', (_req, res) => {
       colorLook: 'auto',
       broll: false,
       aspect: 'original',
+      reframeTrack: true,
       silenceNoiseDb: -30,
       silenceMinDuration: 0.5,
     },

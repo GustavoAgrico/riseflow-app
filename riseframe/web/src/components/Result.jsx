@@ -76,6 +76,9 @@ export default function Result({ job, onReset }) {
         {r.color && <Stat label="Look" value={r.color.ai ? `IA · ${r.color.look}` : r.color.look} />}
         {r.broll && r.broll.inserted > 0 && <Stat label="B-roll" value={`${r.broll.inserted} clipes`} />}
         {r.output && <Stat label="Formato" value={r.output.aspect} />}
+        {r.output?.reframe?.tracked && (
+          <Stat label="Enquadramento" value={`IA · segue ${r.output.reframe.source === 'face' ? 'rosto' : 'sujeito'}`} />
+        )}
         {r.output && <Stat label="Tamanho" value={fmtBytes(r.output.sizeBytes)} />}
         {r.provider?.transcribe && <Stat label="Transcrição" value={r.provider.transcribe} />}
       </div>

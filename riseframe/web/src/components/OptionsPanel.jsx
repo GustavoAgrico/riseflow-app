@@ -163,6 +163,12 @@ export default function OptionsPanel({ catalog, options, onChange, disabled }) {
       <Row label="Formato de saída" hint="Reframe automático para a plataforma">
         <Select value={options.aspect} options={catalog.aspects} onChange={(v) => set({ aspect: v })} />
       </Row>
+
+      {options.aspect !== 'original' && (
+        <Row label="Seguir o sujeito (tracking)" hint="A IA mantém o rosto/sujeito no quadro em vez de crop central">
+          <Toggle on={options.reframeTrack !== false} onChange={(v) => set({ reframeTrack: v })} />
+        </Row>
+      )}
     </div>
   );
 }
