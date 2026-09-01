@@ -75,6 +75,20 @@ Veja `docs/ARCHITECTURE.md` para o detalhamento técnico e `docs/ROADMAP.md` par
 Copie `server/.env.example` para `server/.env` e ajuste. Todas as chaves são opcionais —
 o sistema degrada com elegância para provedores locais/mock quando faltam.
 
+## Segurança (estado do MVP)
+
+- **Sem auth por usuário.** O MVP não tem login/tenant — o acesso aos jobs é por
+  **id não-adivinhável** (nanoid, capability URL). A listagem global de jobs **não** é
+  exposta. Para travar a API, defina `API_TOKEN` (exige `Authorization: Bearer`). Um
+  deploy **multiusuário** real precisa de login/isolamento por usuário — é pré-requisito
+  antes de expor publicamente (alinhado a "colaboração/equipes" ser fase posterior).
+- **Entrada validada.** `colorLook` é restrito a uma lista permitida (o caminho de LUT
+  não é exposto ao cliente, evitando injeção no filtergraph do FFmpeg); todas as chamadas
+  a ffmpeg/ffprobe/python usam argumentos em array (sem shell); caminhos de arquivo vêm
+  de ids gerados no servidor (sem path traversal).
+- **Limites.** Upload limitado por `MAX_UPLOAD_MB`; renders expiram por `OUTPUT_TTL_HOURS`;
+  a fila em memória evita crescimento sem fim (limite de registros).
+
 ## Licença de mídia
 
 O B-roll usa **apenas** a API do Pexels (licença livre). O sistema nunca baixa mídia da

@@ -152,6 +152,10 @@ Ao converter de formato (ex.: 16:9 → 9:16), em vez de crop central fixo o Rise
 3. Sem OpenCV, sem sujeito rastreável ou com `reframeTrack=false` → **fallback** para
    crop central. Aplica-se também a cada clipe curto.
 
+O tracker roda sobre a **fonte limpa** (pós-corte, antes de legendas/B-roll) — mesma
+geometria e timeline do vídeo final — para que o fallback de movimento siga o sujeito,
+não as legendas queimadas.
+
 ## Transcrição pluggable (`transcribe/`)
 
 `TRANSCRIBE_PROVIDER` seleciona:

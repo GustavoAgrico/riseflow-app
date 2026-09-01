@@ -22,9 +22,10 @@ export async function finalRender(input, outputsDir, jobId, meta, options, onPro
   let vf;
   let reframe = null;
   if (target) {
-    // Tenta reframe com tracking do sujeito.
+    // Tenta reframe com tracking do sujeito. `trackInput` (quando fornecido) é a
+    // fonte limpa, antes de legendas/B-roll, para o tracker não seguir as legendas.
     if (options.reframeTrack !== false) {
-      const smart = await smartReframeVf(input, meta, target);
+      const smart = await smartReframeVf(input, meta, target, options.trackInput || input);
       if (smart) {
         vf = smart.vf;
         reframe = smart.reframe;

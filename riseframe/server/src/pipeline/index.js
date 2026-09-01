@@ -77,6 +77,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
   const work = job.workDir;
   let input = job.inputPath;
 
+  // Fonte "limpa" para o tracker de reframe (antes de legendas/B-roll). Atualizada
+  // após o corte de timeline (mesma geometria/timeline do vídeo final).
+  let trackInput = input;
   const report = { mode, stages: [], provider: {}, options };
   const stageByKey = Object.fromEntries(plan.map((s) => [s.key, s]));
   const emit = (patch) => onUpdate(patch);
@@ -150,6 +153,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (removedSeconds > 0.15) {
       const r = await remuxByKeepSegments(input, work, meta, keep, st.onProgress, 'cut');
       input = r.output;
+      trackInput = input; // fonte limpa (pós-corte, pré-legendas/B-roll) para o tracker
       transcript = remapTranscript(transcript, keep); // sincroniza legendas com a nova timeline
       meta = { ...meta, ...(await probeSummary(input)) };
       report.cut = { removedSeconds: Math.round(removedSeconds * 10) / 10, kept: keep.length };
@@ -206,7 +210,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
   // 8. Render final
   {
     const st = enter('render');
-    const r = await finalRender(input, job.outputsDir, job.id, meta, options, st.onProgress);
+    const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput }, st.onProgress);
     report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe };
     st.record({ aspect: r.aspect });
     st.onProgress(1);

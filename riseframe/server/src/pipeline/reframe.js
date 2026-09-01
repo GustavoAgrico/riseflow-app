@@ -105,10 +105,13 @@ function runTracker(input, sampleFps = 4) {
  * estiver disponível ou não houver caminho, retorna null (o chamador usa crop central).
  * @returns {Promise<{vf:string, reframe:object}|null>}
  */
-export async function smartReframeVf(input, meta, target) {
+export async function smartReframeVf(input, meta, target, trackInput = input) {
   let data;
   try {
-    data = await runTracker(input);
+    // Rastreia a partir da fonte LIMPA (sem legendas/B-roll queimados) para que o
+    // fallback de movimento siga o sujeito, não as legendas. A geometria (WxH) e a
+    // timeline são idênticas às do vídeo final, então o crop calculado se aplica.
+    data = await runTracker(trackInput);
   } catch (err) {
     log.warn(`tracking indisponível (${err.message}); crop central`);
     return null;

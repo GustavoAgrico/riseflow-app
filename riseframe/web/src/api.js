@@ -12,12 +12,6 @@ export async function getOptions() {
   return r.json();
 }
 
-export async function listJobs() {
-  const r = await fetch(`${BASE}/jobs`);
-  if (!r.ok) throw new Error('falha ao listar jobs');
-  return r.json();
-}
-
 /** Envia o vídeo + opções. onProgress(0..1) reflete o upload. */
 function uploadTo(endpoint, file, options, onProgress) {
   return new Promise((resolve, reject) => {

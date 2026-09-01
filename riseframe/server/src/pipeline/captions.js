@@ -77,7 +77,13 @@ export function buildAss(segments, meta, style = {}) {
 
   const lines = [];
   for (const seg of segments) {
-    const words = seg.words && seg.words.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }];
+    // Normaliza: `word` sempre string, tempos numéricos; descarta palavras vazias.
+    // (a transcrição pode vir editada pelo cliente, com campos ausentes/malformados)
+    const rawWords = seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }];
+    const words = rawWords
+      .map((w) => ({ start: Number(w.start) || 0, end: Number(w.end) || 0, word: String(w.word ?? '').trim() }))
+      .filter((w) => w.word.length > 0);
+    if (!words.length) continue;
 
     if (mode === 'word') {
       // Uma palavra grande por vez, com um leve "pop".

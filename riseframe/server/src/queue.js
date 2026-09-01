@@ -19,6 +19,22 @@ class JobQueue extends EventEmitter {
     this.jobs = new Map();
     this.pending = [];
     this.active = null;
+    this.maxJobs = 500; // limite de registros em memória (evita crescimento sem fim)
+    // Cada conexão SSE registra um listener 'update' (removido no 'close'); permitimos
+    // muitos clientes simultâneos sem o aviso de MaxListenersExceeded.
+    this.setMaxListeners(0);
+  }
+
+  /** Remove registros de jobs finalizados mais antigos quando passa do limite. */
+  _evict() {
+    if (this.jobs.size <= this.maxJobs) return;
+    const finished = [...this.jobs.values()]
+      .filter((j) => j.status === 'done' || j.status === 'error')
+      .sort((a, b) => a.createdAt - b.createdAt);
+    for (const j of finished) {
+      if (this.jobs.size <= this.maxJobs) break;
+      this.jobs.delete(j.id);
+    }
   }
 
   create({ filename, inputPath, options, mode = 'auto', editedTranscript = null }) {
@@ -46,6 +62,7 @@ class JobQueue extends EventEmitter {
     };
     this.jobs.set(id, job);
     this.pending.push(id);
+    this._evict();
     this.emit('update', this.public(job));
     log.info(`job ${id} criado (${filename}) — ${this.pending.length} na fila`);
     this._drain();
@@ -70,8 +87,11 @@ class JobQueue extends EventEmitter {
     return {
       ...rest,
       queuePosition,
+      // 'clips' não tem um único arquivo — cada clipe é baixado por /clips/:index.
       downloadUrl:
-        job.status === 'done' && job.mode !== 'transcribe' ? `/api/jobs/${job.id}/download` : null,
+        job.status === 'done' && job.mode !== 'transcribe' && job.mode !== 'clips'
+          ? `/api/jobs/${job.id}/download`
+          : null,
     };
   }
 

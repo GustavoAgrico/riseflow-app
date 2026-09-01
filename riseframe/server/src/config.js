@@ -34,6 +34,7 @@ export const config = {
 
   maxUploadBytes: num(process.env.MAX_UPLOAD_MB, 512) * 1024 * 1024,
   outputTtlHours: num(process.env.OUTPUT_TTL_HOURS, 24),
+  apiToken: process.env.API_TOKEN || '',
 
   transcribe: {
     provider: process.env.TRANSCRIBE_PROVIDER || 'whisper-local',

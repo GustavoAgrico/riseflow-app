@@ -21,10 +21,9 @@ def main() -> int:
     sample_fps = float(sys.argv[2]) if len(sys.argv) > 2 else 4.0
 
     try:
-        import cv2
-        import numpy as np
+        import cv2  # numpy vem junto como dependência do opencv
     except ImportError:
-        sys.stderr.write("opencv/numpy indisponível\n")
+        sys.stderr.write("opencv indisponível\n")
         return 3
 
     cap = cv2.VideoCapture(video)

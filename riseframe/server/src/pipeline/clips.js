@@ -119,6 +119,7 @@ export async function generateClips(ctx, onProgress = () => {}) {
     const keep = [{ start: w.start, end: w.end }];
     const cut = await remuxByKeepSegments(source, cwork, meta, keep, () => {}, 'clipcut');
     let input = cut.output;
+    const trackInput = input; // corte limpo (antes das legendas) para o tracker de reframe
     let cmeta = await probeSummary(input);
 
     // 2) transcrição local (remapeada para 0..dur, palavras da janela)
@@ -141,7 +142,7 @@ export async function generateClips(ctx, onProgress = () => {}) {
 
     // 5) reframe + render final → outputs/<jobId>_clipN.mp4
     const clipId = `${jobId}_clip${i}`;
-    const r = await finalRender(input, outputsDir, clipId, cmeta, { ...options, aspect }, () => {});
+    const r = await finalRender(input, outputsDir, clipId, cmeta, { ...options, aspect, trackInput }, () => {});
     prog(1);
 
     results.push({

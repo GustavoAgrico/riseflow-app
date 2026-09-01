@@ -34,6 +34,11 @@ function clampNum(v, min, max, def) {
   return Math.max(min, Math.min(max, n));
 }
 
+// Looks permitidos via API pública. O caminho `lut:<arquivo>` NÃO é exposto ao
+// cliente (evita injeção de filtro/leitura de caminho no filtergraph do ffmpeg);
+// LUTs ficam a cargo de configuração do servidor, não da requisição.
+const ALLOWED_LOOKS = new Set(['auto', 'none', 'clean', 'teal-orange', 'warm', 'cold', 'vibrant', 'moody']);
+
 function parseOptions(raw) {
   let o = {};
   if (raw) {
@@ -49,7 +54,7 @@ function parseOptions(raw) {
     captionMode: ['karaoke', 'word'].includes(o.captionMode) ? o.captionMode : 'karaoke',
     captionPreset: ['laranja', 'roxo', 'branco'].includes(o.captionPreset) ? o.captionPreset : 'laranja',
     captionScale: clampNum(o.captionScale, 0.6, 1.6, 1),
-    colorLook: typeof o.colorLook === 'string' ? o.colorLook : 'auto',
+    colorLook: ALLOWED_LOOKS.has(o.colorLook) ? o.colorLook : 'auto',
     broll: o.broll === true,
     brollEverySec: clampNum(o.brollEverySec, 4, 30, 8),
     brollMax: clampNum(o.brollMax, 1, 12, 6),
@@ -126,8 +131,8 @@ jobsRouter.post('/render', (req, res) => {
   res.status(201).json(queue.public(job));
 });
 
-// GET /api/jobs → lista
-jobsRouter.get('/jobs', (_req, res) => res.json(queue.list()));
+// (removido) GET /api/jobs — não expomos a listagem global de jobs: ela vazava os
+// nomes de arquivo de todos os usuários. O acesso é por id (capability URL).
 
 // GET /api/jobs/:id → status de um job
 jobsRouter.get('/jobs/:id', (req, res) => {

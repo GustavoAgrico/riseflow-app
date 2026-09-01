@@ -25,7 +25,9 @@ if (config.transcribe.provider === 'whisper-local') {
 }
 
 const app = express();
-app.use(cors({ origin: config.corsOrigin }));
+// CORS: '*' vira `origin: true` (reflete qualquer origem); senão, a lista explícita.
+const corsOrigin = config.corsOrigin.includes('*') ? true : config.corsOrigin;
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (_req, res) => {
@@ -37,6 +39,20 @@ app.get('/api/health', (_req, res) => {
     time: new Date().toISOString(),
   });
 });
+
+// Auth opcional por token (defina API_TOKEN). Quando definido, todas as rotas /api
+// (exceto /health) exigem `Authorization: Bearer <token>`. Sem API_TOKEN, a API fica
+// aberta (modo dev / atrás de um gateway). NÃO substitui auth por usuário: veja as
+// notas de segurança no README — um deploy multiusuário real precisa de login/tenant.
+if (config.apiToken) {
+  app.use('/api', (req, res, next) => {
+    if (req.path === '/health') return next();
+    const hdr = req.get('authorization') || '';
+    const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : '';
+    if (token && token === config.apiToken) return next();
+    return res.status(401).json({ error: 'não autorizado' });
+  });
+}
 
 app.use('/api', optionsRouter);
 app.use('/api', jobsRouter);
