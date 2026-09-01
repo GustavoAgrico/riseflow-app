@@ -68,7 +68,7 @@ export async function applyColor(input, work, meta, options, onProgress) {
   }
 
   const output = path.join(work, 'graded.mp4');
-  const args = ['-i', input, '-vf', vf, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19'];
+  const args = ['-i', input, '-vf', vf, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16'];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push('-movflags', '+faststart', '-y', output);
 

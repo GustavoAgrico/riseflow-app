@@ -50,6 +50,7 @@ function parseOptions(raw) {
   }
   return {
     cutSilence: o.cutSilence !== false,
+    autoClean: o.autoClean === true, // corta muletas/hesitações e gagueiras da fala
     captions: o.captions !== false,
     captionTemplate: ['clean', 'pop', 'hormozi', 'box', 'neon', 'bounce'].includes(o.captionTemplate) ? o.captionTemplate : 'clean',
     captionColor: ['white', 'yellow', 'orange', 'purple', 'green', 'cyan', 'pink', 'red'].includes(o.captionColor) ? o.captionColor : 'white',

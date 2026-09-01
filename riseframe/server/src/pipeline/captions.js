@@ -97,7 +97,7 @@ export function buildAss(segments, meta, style = {}) {
   const header = [
     '[Script Info]',
     'ScriptType: v4.00+',
-    'WrapStyle: 2',
+    'WrapStyle: 0',
     'ScaledBorderAndShadow: yes',
     `PlayResX: ${w}`,
     `PlayResY: ${h}`,
@@ -132,8 +132,12 @@ export function buildAss(segments, meta, style = {}) {
       // Uma palavra por vez, centralizada, com o movimento do template.
       const styleName = T.box ? 'RiseBox' : 'Rise';
       const wordColor = T.box ? '' : `\\c${accent}`;
-      for (const wd of words) {
-        const end = Math.max(wd.end, wd.start + 0.12);
+      for (let i = 0; i < words.length; i++) {
+        const wd = words[i];
+        // Fim = até o começo da PRÓXIMA palavra (nunca sobrepõe → nada de duas
+        // palavras na tela ao mesmo tempo). Última palavra: até seu próprio fim.
+        const nextStart = i + 1 < words.length ? words[i + 1].start : seg.end;
+        const end = Math.max(wd.start + 0.1, Math.min(Math.max(wd.end, wd.start + 0.12), nextStart));
         const txt = escapeAss(T.upper ? wd.word.toUpperCase() : wd.word);
         const ov = `{\\an${T.align}${anim}${glow}${wordColor}}`;
         lines.push(`Dialogue: 0,${assTime(wd.start)},${assTime(end)},${styleName},,0,0,0,,${ov}${txt}`);
@@ -174,7 +178,7 @@ export async function burnCaptions(input, work, meta, transcript, style, onProgr
   // Roda com cwd = pasta do job e referencia o .ass pelo NOME relativo. Assim o
   // filtro `subtitles` nunca recebe drive (C:), barras ou espaços do caminho —
   // que quebravam o parser do FFmpeg no Windows (caminhos com espaço/`:`).
-  const args = ['-i', input, '-vf', `subtitles=${ASS_NAME}`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20'];
+  const args = ['-i', input, '-vf', `subtitles=${ASS_NAME}`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16'];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push('-movflags', '+faststart', '-y', output);
 

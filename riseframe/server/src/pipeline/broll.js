@@ -117,7 +117,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   for (const c of clips) args.push('-i', c.file);
   args.push('-filter_complex_script', scriptPath, '-map', '[outv]');
   if (meta.hasAudio) args.push('-map', '0:a', '-c:a', 'copy');
-  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-movflags', '+faststart', '-y', output);
+  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-movflags', '+faststart', '-y', output);
 
   await runFfmpeg(args, { label: 'broll', totalDuration: meta.duration, onProgress });
   log.ok(`${clips.length} inserções de B-roll (Pexels, clipes distintos)`);

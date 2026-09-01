@@ -137,17 +137,27 @@ export default function Result({ job, onReset }) {
       {r.provider?.transcribeFallback && (
         <div
           style={{
-            background: 'rgba(240,82,107,0.08)',
-            border: `1px solid ${C.red}44`,
+            background: 'rgba(240,82,107,0.10)',
+            border: `1px solid ${C.red}66`,
             color: '#FCA5B4',
             borderRadius: 12,
-            padding: '11px 14px',
+            padding: '13px 15px',
             fontSize: 12.5,
             marginBottom: 18,
-            lineHeight: 1.5,
+            lineHeight: 1.55,
           }}
         >
-          Transcrição real indisponível, usei o modo mock. Motivo: {r.provider.transcribeFallback}
+          <div style={{ fontWeight: 700, color: '#FFB4C0', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 7 }}>
+            <Icon name="alert" size={16} strokeWidth={2.2} /> Legendas de demonstração (não batem com a fala)
+          </div>
+          A transcrição real (ASR) não rodou, então as legendas usam texto de exemplo
+          e a correção automática da fala fica limitada. Para legendas fiéis à fala,
+          instale o Whisper local (uma vez) na pasta do servidor:{' '}
+          <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 6px', borderRadius: 5 }}>
+            pip install -r requirements.txt
+          </code>{' '}
+          — na 1ª execução ele baixa o modelo e passa a transcrever de verdade.
+          <div style={{ marginTop: 6, opacity: 0.8 }}>Motivo técnico: {r.provider.transcribeFallback}</div>
         </div>
       )}
 

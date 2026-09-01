@@ -34,6 +34,7 @@ optionsRouter.get('/options', (_req, res) => {
     ],
     defaults: {
       cutSilence: true,
+      autoClean: true,
       captions: true,
       captionTemplate: 'clean',
       captionColor: 'white',

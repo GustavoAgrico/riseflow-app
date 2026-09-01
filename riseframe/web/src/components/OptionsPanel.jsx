@@ -151,6 +151,13 @@ export default function OptionsPanel({ catalog, options, onChange, disabled }) {
         </Row>
       )}
 
+      <Row
+        label="Corrigir a fala automaticamente"
+        hint="Remove muletas e hesitações (é..., hã, hmm) e gagueiras (palavras repetidas). Requer transcrição real (ASR) — no modo demonstração o efeito é limitado."
+      >
+        <Toggle on={options.autoClean !== false} onChange={(v) => set({ autoClean: v })} />
+      </Row>
+
       <Row label="Legendas dinâmicas" hint="Transcrição queimada no vídeo, palavra-a-palavra">
         <Toggle on={options.captions} onChange={(v) => set({ captions: v })} />
       </Row>

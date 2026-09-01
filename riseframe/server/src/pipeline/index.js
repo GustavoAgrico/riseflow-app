@@ -4,6 +4,7 @@ import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript } from './timeline.js';
 import { insertBroll } from './broll.js';
+import { markFillers } from './cleanup.js';
 import { burnCaptions } from './captions.js';
 import { applyColor } from './color.js';
 import { finalRender } from './render.js';
@@ -32,7 +33,7 @@ function buildPlan(mode, options) {
       { key: 'clips', label: 'Gerando clipes curtos', weight: 75, enabled: true },
     ];
   } else {
-    const hasRemoval = options.cutSilence !== false || mode === 'render';
+    const hasRemoval = options.cutSilence !== false || options.autoClean === true || mode === 'render';
     all = [
       { key: 'probe', label: 'Sondando o vídeo', weight: 2, enabled: true },
       { key: 'transcribe', label: 'Transcrevendo a fala', weight: 15, enabled: mode !== 'render' },
@@ -64,6 +65,18 @@ function transcriptRemovalRanges(transcript, pad = 0.04) {
     }
   }
   return ranges;
+}
+
+/** Remove palavras marcadas (removed) da transcrição sem remapear tempos. */
+function dropRemovedWords(transcript) {
+  const segments = [];
+  for (const seg of transcript?.segments || []) {
+    const words = (seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }])
+      .filter((w) => !w.removed);
+    if (!words.length) continue;
+    segments.push({ ...seg, start: words[0].start, end: words[words.length - 1].end, text: words.map((w) => w.word).join(' '), words });
+  }
+  return { ...transcript, segments };
 }
 
 /**
@@ -142,9 +155,19 @@ export async function runPipeline(job, onUpdate = () => {}) {
   // 3. Cortes na timeline: silêncio (auto/render, se ligado) + palavras removidas (render)
   if (has('cut')) {
     const st = enter('cut');
+
+    // Limpeza automática da fala: marca muletas/hesitações e gagueiras na transcrição.
+    if (options.autoClean) {
+      const cleaned = markFillers(transcript);
+      transcript = cleaned;
+      report.autoClean = { removed: cleaned.removedCount };
+      if (cleaned.removedCount) log.info(`limpeza automática: ${cleaned.removedCount} palavras (muletas/gagueira) marcadas`);
+    }
+
     const removals = [];
     if (options.cutSilence !== false) removals.push(...(await silenceRemovalRanges(input, meta, options)));
-    if (mode === 'render') removals.push(...transcriptRemovalRanges(transcript));
+    // Palavras marcadas como removidas: edição manual do cliente (render) e/ou limpeza automática.
+    removals.push(...transcriptRemovalRanges(transcript));
 
     const keep = subtractRanges(meta.duration, removals);
     if (!keep.length) throw new Error('todos os trechos foram removidos — nada para renderizar');
@@ -158,6 +181,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
       meta = { ...meta, ...(await probeSummary(input)) };
       report.cut = { removedSeconds: Math.round(removedSeconds * 10) / 10, kept: keep.length };
     } else {
+      // Nada relevante para recortar. Ainda assim, se a limpeza automática marcou
+      // palavras, tira-as das legendas (sem remapear tempos — o vídeo não foi cortado).
+      if (options.autoClean) transcript = dropRemovedWords(transcript);
       report.cut = { removedSeconds: 0, kept: keep.length };
     }
     st.record(report.cut);

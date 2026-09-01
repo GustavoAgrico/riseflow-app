@@ -45,7 +45,7 @@ export async function finalRender(input, outputsDir, jobId, meta, options, onPro
     vf = 'format=yuv420p';
   }
 
-  const args = ['-i', input, '-vf', vf, '-c:v', 'libx264', '-preset', 'medium', '-crf', '20'];
+  const args = ['-i', input, '-vf', vf, '-c:v', 'libx264', '-preset', 'medium', '-crf', '18'];
   if (meta.hasAudio) args.push('-c:a', 'aac', '-b:a', '160k');
   args.push('-movflags', '+faststart', '-y', output);
 
