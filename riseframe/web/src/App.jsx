@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from './theme.js';
-import { getOptions, getHealth, createJob, transcribe, generateClips, renderEdited, subscribeJob } from './api.js';
+import { getOptions, getHealth, createJob, transcribe, generateClips, renderEdited, subscribeJob, sampleFile } from './api.js';
 import { PrimaryButton, Card, Spinner } from './components/ui.jsx';
 import Icon, { Logo } from './components/Icon.jsx';
 import Uploader from './components/Uploader.jsx';
@@ -27,6 +27,18 @@ export default function App() {
   const [sourceId, setSourceId] = useState(null);
   const [transcriptData, setTranscriptData] = useState(null);
   const [durationSec, setDurationSec] = useState(0);
+  const [loadingSample, setLoadingSample] = useState(false);
+
+  async function useExample() {
+    setLoadingSample(true);
+    try {
+      setFile(await sampleFile());
+    } catch (e) {
+      alert('Não foi possível carregar o exemplo: ' + e.message);
+    } finally {
+      setLoadingSample(false);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -142,6 +154,24 @@ export default function App() {
         <div style={{ display: 'grid', gap: 18 }}>
           <div className="rf-anim">
             <Uploader file={file} onFile={setFile} />
+            {!file && (
+              <div style={{ textAlign: 'center', marginTop: 12 }}>
+                <button
+                  onClick={useExample}
+                  disabled={loadingSample}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8, cursor: loadingSample ? 'wait' : 'pointer',
+                    background: 'transparent', border: `1px solid ${C.border}`, color: C.muted,
+                    borderRadius: 20, padding: '8px 16px', fontSize: 13, transition: 'all .15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.orange; e.currentTarget.style.color = C.text; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}
+                >
+                  {loadingSample ? <Spinner size={13} color={C.orange} /> : <Icon name="sparkles" size={14} color={C.orangeSoft} />}
+                  {loadingSample ? 'Carregando exemplo…' : 'Experimentar com um vídeo de exemplo'}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="rf-anim" style={{ animationDelay: '0.05s' }}>

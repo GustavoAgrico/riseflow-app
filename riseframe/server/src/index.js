@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { config, capabilities } from './config.js';
 import { ensureDirs, startCleanupTimer } from './storage.js';
+import { ensureDemoSample } from './demo.js';
 import { jobsRouter } from './routes/jobs.js';
 import { optionsRouter } from './routes/options.js';
 import { ffmpegPath } from './pipeline/ffmpeg.js';
@@ -15,6 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 await ensureDirs();
 startCleanupTimer();
+ensureDemoSample().catch(() => {}); // gera o vídeo de exemplo em segundo plano
 
 // Autoteste do whisper-local: reflete no /api/health se a ASR real está pronta.
 if (config.transcribe.provider === 'whisper-local') {
@@ -53,6 +55,13 @@ if (config.apiToken) {
     return res.status(401).json({ error: 'não autorizado' });
   });
 }
+
+// Vídeo de exemplo (modo demo) — o frontend baixa e usa como arquivo.
+app.get('/api/sample', async (_req, res) => {
+  const p = await ensureDemoSample();
+  if (!p) return res.status(503).json({ error: 'exemplo indisponível' });
+  res.type('video/mp4').set('Content-Disposition', 'inline; filename="riseframe-exemplo.mp4"').sendFile(p);
+});
 
 app.use('/api', optionsRouter);
 app.use('/api', jobsRouter);

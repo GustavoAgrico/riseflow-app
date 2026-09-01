@@ -56,6 +56,14 @@ export function generateClips(file, options, onProgress) {
 export const clipPreviewUrl = (id, i) => `${BASE}/jobs/${id}/clips/${i}/preview`;
 export const clipDownloadUrl = (id, i) => `${BASE}/jobs/${id}/clips/${i}/download`;
 
+/** Baixa o vídeo de exemplo (modo demo) como um File pronto para usar. */
+export async function sampleFile() {
+  const r = await fetch(`${BASE}/sample`);
+  if (!r.ok) throw new Error('exemplo indisponível');
+  const blob = await r.blob();
+  return new File([blob], 'exemplo.mp4', { type: 'video/mp4' });
+}
+
 /** Aplica a transcrição editada ao vídeo já enviado e roda o restante do pipeline. */
 export async function renderEdited(sourceId, editedTranscript, options) {
   const r = await fetch(`${BASE}/render`, {

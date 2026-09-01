@@ -27,7 +27,7 @@ export async function cleanupOldOutputs() {
       continue;
     }
     for (const name of entries) {
-      if (name.startsWith('.')) continue;
+      if (name.startsWith('.') || name === '_demo.mp4') continue; // preserva o vídeo de exemplo
       const full = path.join(dir, name);
       try {
         const st = await fs.stat(full);
