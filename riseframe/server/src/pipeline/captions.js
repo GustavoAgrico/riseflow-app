@@ -38,12 +38,12 @@ export const CAPTION_COLORS = {
 // ─── Estilos (templates) — cada um combina look + movimento ───────────
 // mode: 'word' (uma palavra por vez) | 'phrase' (frase com destaque)
 export const CAPTION_TEMPLATES = {
-  clean: { mode: 'phrase', size: 0.068, align: 2, marginV: 0.14, outline: 0.09, bold: true, upper: false, anim: 'fade' },
-  pop: { mode: 'word', size: 0.11, align: 5, marginV: 0, outline: 0.1, bold: true, upper: true, anim: 'pop' },
-  hormozi: { mode: 'word', size: 0.132, align: 2, marginV: 0.17, outline: 0.14, bold: true, upper: true, anim: 'pop' },
-  box: { mode: 'word', size: 0.1, align: 5, marginV: 0, outline: 0.12, bold: true, upper: true, anim: 'pop', box: true },
-  neon: { mode: 'phrase', size: 0.072, align: 2, marginV: 0.14, outline: 0.05, bold: true, upper: false, anim: 'fade', glow: true },
-  bounce: { mode: 'word', size: 0.115, align: 5, marginV: 0, outline: 0.1, bold: true, upper: true, anim: 'bounce' },
+  clean: { mode: 'phrase', size: 0.062, align: 2, marginV: 0.14, outline: 0.09, bold: true, upper: false, anim: 'fade' },
+  pop: { mode: 'word', size: 0.088, align: 5, marginV: 0, outline: 0.1, bold: true, upper: true, anim: 'pop' },
+  hormozi: { mode: 'word', size: 0.1, align: 2, marginV: 0.17, outline: 0.14, bold: true, upper: true, anim: 'pop' },
+  box: { mode: 'word', size: 0.082, align: 5, marginV: 0, outline: 0.12, bold: true, upper: true, anim: 'pop', box: true },
+  neon: { mode: 'phrase', size: 0.066, align: 2, marginV: 0.14, outline: 0.05, bold: true, upper: false, anim: 'fade', glow: true },
+  bounce: { mode: 'word', size: 0.092, align: 5, marginV: 0, outline: 0.1, bold: true, upper: true, anim: 'bounce' },
 };
 
 export const CAPTION_TEMPLATE_LABELS = {
@@ -94,6 +94,16 @@ export function buildAss(segments, meta, style = {}) {
   const marginV = style.marginV != null ? style.marginV : Math.round(h * T.marginV);
   const boldFlag = T.bold ? -1 : 0;
 
+  // Auto-ajuste: encolhe a fonte de palavras longas para nunca vazar a largura do
+  // quadro (ex.: "PARENTE" em maiúsculas). Largura útil = quadro menos as margens L/R.
+  const availW = Math.max(1, w - 140);
+  function fitFontSize(displayText, base) {
+    const factor = T.upper ? 0.66 : 0.58; // avanço médio do glifo ~ fração da fonte
+    const est = displayText.length * base * factor;
+    if (est <= availW) return base;
+    return Math.max(Math.round((base * availW) / est), Math.round(base * 0.45));
+  }
+
   const header = [
     '[Script Info]',
     'ScriptType: v4.00+',
@@ -138,8 +148,11 @@ export function buildAss(segments, meta, style = {}) {
         // palavras na tela ao mesmo tempo). Última palavra: até seu próprio fim.
         const nextStart = i + 1 < words.length ? words[i + 1].start : seg.end;
         const end = Math.max(wd.start + 0.1, Math.min(Math.max(wd.end, wd.start + 0.12), nextStart));
-        const txt = escapeAss(T.upper ? wd.word.toUpperCase() : wd.word);
-        const ov = `{\\an${T.align}${anim}${glow}${wordColor}}`;
+        const disp = T.upper ? wd.word.toUpperCase() : wd.word;
+        const txt = escapeAss(disp);
+        const fs = fitFontSize(disp, size);
+        const fsTag = fs !== size ? `\\fs${fs}` : '';
+        const ov = `{\\an${T.align}${fsTag}${anim}${glow}${wordColor}}`;
         lines.push(`Dialogue: 0,${assTime(wd.start)},${assTime(end)},${styleName},,0,0,0,,${ov}${txt}`);
       }
     } else {

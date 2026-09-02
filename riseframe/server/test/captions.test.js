@@ -43,3 +43,14 @@ test('modo legado (mode) mapeia para template', () => {
   assert.ok(buildAss(segments, meta, { mode: 'word' }).includes('\\an5'), 'word → template centrado');
   assert.ok(buildAss(segments, meta, { mode: 'karaoke' }).includes('Dialogue:'), 'karaoke → phrase');
 });
+
+test('buildAss: palavra longa encolhe (auto-fit) e curta mantém tamanho', () => {
+  const meta = { width: 1080, height: 1920 };
+  const seg = { start: 0, end: 2, text: 'x', words: [
+    { start: 0, end: 1, word: 'oi' },
+    { start: 1, end: 2, word: 'pneumoultramicroscopico' },
+  ] };
+  const dialogs = buildAss([seg], meta, { template: 'pop' }).split('\n').filter((l) => l.startsWith('Dialogue'));
+  assert.ok(!/\\fs\d+/.test(dialogs[0]), 'palavra curta não recebe override de fonte');
+  assert.ok(/\\fs\d+/.test(dialogs[1]), 'palavra longa recebe \\fs menor (auto-fit)');
+});

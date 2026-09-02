@@ -38,6 +38,7 @@ optionsRouter.get('/options', (_req, res) => {
       captions: true,
       captionTemplate: 'clean',
       captionColor: 'white',
+      captionScale: 1,
       colorLook: 'auto',
       broll: false,
       aspect: 'original',

@@ -170,6 +170,17 @@ export default function OptionsPanel({ catalog, options, onChange, disabled }) {
           <Row label="Cor de destaque" hint="Padrão branco">
             <Swatches value={options.captionColor} options={catalog.captionColors} onChange={(v) => set({ captionColor: v })} />
           </Row>
+          <Row label="Tamanho da legenda" hint={`${Math.round((options.captionScale ?? 1) * 100)}% — palavras longas encolhem sozinhas para caber`}>
+            <input
+              type="range"
+              min={0.6}
+              max={1.4}
+              step={0.05}
+              value={options.captionScale ?? 1}
+              onChange={(e) => set({ captionScale: Number(e.target.value) })}
+              style={{ minWidth: 190 }}
+            />
+          </Row>
         </>
       )}
 
