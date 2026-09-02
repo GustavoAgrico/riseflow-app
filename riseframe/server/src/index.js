@@ -8,6 +8,7 @@ import { ensureDirs, startCleanupTimer } from './storage.js';
 import { ensureDemoSample } from './demo.js';
 import { jobsRouter } from './routes/jobs.js';
 import { optionsRouter } from './routes/options.js';
+import { authRouter } from './routes/auth.js';
 import { ffmpegPath } from './pipeline/ffmpeg.js';
 import { whisperLocalAvailable } from './pipeline/transcribe/providers.js';
 import { log } from './logger.js';
@@ -72,6 +73,7 @@ app.get('/api/sample', async (_req, res) => {
   res.type('video/mp4').set('Content-Disposition', 'inline; filename="riseframe-exemplo.mp4"').sendFile(p);
 });
 
+app.use('/api', authRouter);
 app.use('/api', optionsRouter);
 app.use('/api', jobsRouter);
 

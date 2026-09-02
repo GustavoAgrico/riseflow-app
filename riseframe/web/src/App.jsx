@@ -10,7 +10,7 @@ import Result from './components/Result.jsx';
 import ClipsResult from './components/ClipsResult.jsx';
 import TranscriptEditor from './components/TranscriptEditor.jsx';
 
-export default function App() {
+export default function App({ embedded = false, onHome } = {}) {
   const [catalog, setCatalog] = useState(null);
   const [health, setHealth] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -161,7 +161,7 @@ export default function App() {
 
   if (loadError) {
     return (
-      <Shell>
+      <Shell embedded={embedded}>
         <Card style={{ textAlign: 'center' }}>
           <IconBadge name="plug" tone={C.red} />
           <div style={{ fontWeight: 700, margin: '12px 0 6px', fontSize: 17 }}>Servidor indisponível</div>
@@ -174,7 +174,7 @@ export default function App() {
   }
   if (!catalog || !options) {
     return (
-      <Shell>
+      <Shell embedded={embedded}>
         <div style={{ color: C.muted, textAlign: 'center', padding: 60 }}>
           <Spinner size={22} color={C.orange} />
           <div style={{ marginTop: 14 }}>Carregando…</div>
@@ -184,7 +184,7 @@ export default function App() {
   }
 
   return (
-    <Shell health={health}>
+    <Shell health={health} embedded={embedded}>
       {phase === 'setup' && (
         <div style={{ display: 'grid', gap: 18 }}>
           <div className="rf-anim">
@@ -507,44 +507,46 @@ export function ProgressBar({ pct }) {
   );
 }
 
-function Shell({ children, health }) {
+function Shell({ children, health, embedded }) {
   return (
     <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-      <header
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-          padding: '15px 24px',
-          borderBottom: `1px solid ${C.border}`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          background: 'rgba(8,8,12,0.72)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-        }}
-      >
-        <div style={{ position: 'relative', width: 36, height: 36 }}>
-          <div style={{ position: 'absolute', inset: -4, borderRadius: 12, background: C.orange, filter: 'blur(11px)', opacity: 0.45 }} />
-          <div style={{ position: 'relative' }}>
-            <Logo size={36} />
+      {!embedded && (
+        <header
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
+            padding: '15px 24px',
+            borderBottom: `1px solid ${C.border}`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            background: 'rgba(8,8,12,0.72)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+          }}
+        >
+          <div style={{ position: 'relative', width: 36, height: 36 }}>
+            <div style={{ position: 'absolute', inset: -4, borderRadius: 12, background: C.orange, filter: 'blur(11px)', opacity: 0.45 }} />
+            <div style={{ position: 'relative' }}>
+              <Logo size={36} />
+            </div>
           </div>
-        </div>
-        <div>
-          <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: -0.3, fontFamily: FONT_DISPLAY }}>
-            Riseframe
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: -0.3, fontFamily: FONT_DISPLAY }}>
+              Riseframe
+            </div>
+            <div style={{ fontSize: 10.5, color: C.faint, letterSpacing: 0.3 }}>Editor de vídeo com IA</div>
           </div>
-          <div style={{ fontSize: 10.5, color: C.faint, letterSpacing: 0.3 }}>Editor de vídeo com IA</div>
-        </div>
-        {health && (
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 7, fontSize: 11, color: C.faint, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <Badge on={health.ffmpeg} label="FFmpeg" />
-            <Badge on={health.capabilities?.transcribeReady} label={`ASR: ${health.capabilities?.transcribeProvider}`} />
-            <Badge on={health.capabilities?.brollReady} label="Pexels" />
-          </div>
-        )}
-      </header>
+          {health && (
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 7, fontSize: 11, color: C.faint, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <Badge on={health.ffmpeg} label="FFmpeg" />
+              <Badge on={health.capabilities?.transcribeReady} label={`ASR: ${health.capabilities?.transcribeProvider}`} />
+              <Badge on={health.capabilities?.brollReady} label="Pexels" />
+            </div>
+          )}
+        </header>
+      )}
 
       <main style={{ maxWidth: 760, width: '100%', margin: '0 auto', padding: '40px 20px 80px', flex: 1 }}>
         <div className="rf-anim" style={{ marginBottom: 30 }}>

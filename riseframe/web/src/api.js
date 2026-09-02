@@ -1,4 +1,44 @@
 const BASE = '/api';
+const TOKEN_KEY = 'riseframe_token';
+
+export function getToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+export function setToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* ignora */
+  }
+}
+function authHeaders(extra = {}) {
+  const t = getToken();
+  return t ? { ...extra, Authorization: `Bearer ${t}` } : extra;
+}
+
+// ─── Autenticação ─────────────────────────────────────────────────────
+async function authPost(path, body) {
+  const r = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data;
+}
+export const register = (email, password, name) => authPost('/auth/register', { email, password, name });
+export const login = (email, password) => authPost('/auth/login', { email, password });
+export async function fetchMe() {
+  const r = await fetch(`${BASE}/auth/me`, { headers: authHeaders() });
+  if (!r.ok) throw new Error('sessão inválida');
+  return (await r.json()).user;
+}
 
 export async function getHealth() {
   const r = await fetch(`${BASE}/health`);
@@ -21,6 +61,8 @@ function uploadTo(endpoint, file, options, onProgress) {
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${BASE}${endpoint}`);
+    const t = getToken();
+    if (t) xhr.setRequestHeader('Authorization', `Bearer ${t}`);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
     };
@@ -68,7 +110,7 @@ export async function sampleFile() {
 export async function renderEdited(sourceId, editedTranscript, options) {
   const r = await fetch(`${BASE}/render`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ sourceId, editedTranscript, options }),
   });
   const data = await r.json();

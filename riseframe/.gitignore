@@ -11,6 +11,10 @@ data/work/*
 !data/outputs/.gitkeep
 !data/work/.gitkeep
 
+# contas de usuário e segredo de assinatura de tokens (nunca versionar)
+data/users.json
+data/auth_secret
+
 # logs
 *.log
 npm-debug.log*

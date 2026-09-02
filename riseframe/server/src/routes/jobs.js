@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { nanoid } from 'nanoid';
 import { config } from '../config.js';
 import { queue } from '../queue.js';
+import { requireAuth } from './auth.js';
 
 export const jobsRouter = Router();
 
@@ -78,7 +79,7 @@ function parseOptions(raw) {
 }
 
 // POST /api/jobs  (multipart: file + options) → pipeline automático completo
-jobsRouter.post('/jobs', upload.single('file'), (req, res) => {
+jobsRouter.post('/jobs', requireAuth, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   const job = queue.create({
     mode: 'auto',
@@ -91,7 +92,7 @@ jobsRouter.post('/jobs', upload.single('file'), (req, res) => {
 
 // POST /api/transcribe  (multipart: file) → transcreve e para; o upload fica salvo
 // para depois ser reusado por /api/render com a transcrição editada.
-jobsRouter.post('/transcribe', upload.single('file'), (req, res) => {
+jobsRouter.post('/transcribe', requireAuth, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   const job = queue.create({
     mode: 'transcribe',
@@ -103,7 +104,7 @@ jobsRouter.post('/transcribe', upload.single('file'), (req, res) => {
 });
 
 // POST /api/clips  (multipart: file) → gera vários clipes curtos do vídeo longo
-jobsRouter.post('/clips', upload.single('file'), (req, res) => {
+jobsRouter.post('/clips', requireAuth, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   const job = queue.create({
     mode: 'clips',
@@ -116,7 +117,7 @@ jobsRouter.post('/clips', upload.single('file'), (req, res) => {
 
 // POST /api/render  (JSON: sourceId + editedTranscript + options) → aplica a edição
 // por transcrição ao vídeo já enviado e roda o restante do pipeline.
-jobsRouter.post('/render', (req, res) => {
+jobsRouter.post('/render', requireAuth, (req, res) => {
   const { sourceId, editedTranscript } = req.body || {};
   if (!sourceId) return res.status(400).json({ error: 'sourceId ausente' });
   const source = queue.get(sourceId);
