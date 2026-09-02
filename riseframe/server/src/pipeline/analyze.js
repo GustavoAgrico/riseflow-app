@@ -105,17 +105,19 @@ export async function analyze(transcript, meta, options) {
   const themes = extractThemes(transcript.text);
 
   // Camada por IA (opcional): melhora a relevância dos momentos/queries.
-  if (options.broll && config.analyze.provider !== 'heuristic') {
+  // A chave da Anthropic do USUÁRIO (options.anthropicKey, vinda das Configurações)
+  // tem prioridade; senão, cai para a config do servidor (.env).
+  const anthropicKey = options.anthropicKey || (config.analyze.provider === 'anthropic' ? config.analyze.anthropicKey : '');
+  const useOpenAI = !anthropicKey && config.analyze.provider === 'openai' && config.analyze.openaiKey;
+  if (options.broll && (anthropicKey || useOpenAI)) {
+    const provider = anthropicKey ? 'anthropic' : 'openai';
     try {
-      let llm;
-      if (config.analyze.provider === 'anthropic' && config.analyze.anthropicKey) {
-        llm = await analyzeWithClaude(transcript, meta, options, config.analyze);
-      } else if (config.analyze.provider === 'openai' && config.analyze.openaiKey) {
-        llm = await analyzeWithOpenAI(transcript, meta, options, config.analyze);
-      }
+      const llm = anthropicKey
+        ? await analyzeWithClaude(transcript, meta, options, { ...config.analyze, anthropicKey })
+        : await analyzeWithOpenAI(transcript, meta, options, config.analyze);
       if (llm?.brollMoments?.length) {
-        log.ok(`análise por IA (${config.analyze.provider}): ${llm.brollMoments.length} momentos`);
-        return { provider: config.analyze.provider, themes: llm.themes?.length ? llm.themes : themes, brollMoments: llm.brollMoments };
+        log.ok(`análise por IA (${provider}): ${llm.brollMoments.length} momentos`);
+        return { provider, themes: llm.themes?.length ? llm.themes : themes, brollMoments: llm.brollMoments };
       }
     } catch (err) {
       log.warn(`análise por IA falhou (${err.message}); usando heurística`);

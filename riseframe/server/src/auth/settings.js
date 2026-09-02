@@ -34,12 +34,16 @@ function clean(patch = {}) {
     const k = String(patch.pexelsKey || '').trim();
     out.pexelsKey = /^[A-Za-z0-9]{20,80}$/.test(k) ? k : '';
   }
+  if ('anthropicKey' in patch) {
+    const k = String(patch.anthropicKey || '').trim();
+    out.anthropicKey = /^sk-ant-[A-Za-z0-9_-]{20,240}$/.test(k) ? k : '';
+  }
   return out;
 }
 
 /** Retorna as configurações do usuário (objeto; {} se não houver). */
 export function getSettings(userId) {
-  return { pexelsKey: '', ...(load()[userId] || {}) };
+  return { pexelsKey: '', anthropicKey: '', ...(load()[userId] || {}) };
 }
 
 /** Mescla e salva as configurações do usuário; retorna o resultado. */

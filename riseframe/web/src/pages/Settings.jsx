@@ -25,6 +25,7 @@ export default function Settings({ onNewVideo }) {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [pexelsKey, setPexelsKey] = useState('');
+  const [anthropicKey, setAnthropicKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [error, setError] = useState('');
@@ -34,6 +35,7 @@ export default function Settings({ onNewVideo }) {
       try {
         const data = await getSettings();
         setPexelsKey(data.settings.pexelsKey || '');
+        setAnthropicKey(data.settings.anthropicKey || '');
         setStatus(data.status);
       } catch (e) {
         setError(e.message);
@@ -44,16 +46,18 @@ export default function Settings({ onNewVideo }) {
   }, []);
 
   const keyValid = /^[A-Za-z0-9]{20,80}$/.test(pexelsKey.trim());
-  const canSave = pexelsKey.trim() === '' || keyValid;
+  const anthropicValid = /^sk-ant-[A-Za-z0-9_-]{20,240}$/.test(anthropicKey.trim());
+  const canSave = (pexelsKey.trim() === '' || keyValid) && (anthropicKey.trim() === '' || anthropicValid);
 
   async function save() {
     setSaving(true);
     setError('');
     setSavedMsg('');
     try {
-      const data = await saveSettings({ pexelsKey: pexelsKey.trim() });
+      const data = await saveSettings({ pexelsKey: pexelsKey.trim(), anthropicKey: anthropicKey.trim() });
       setStatus(data.status);
       setPexelsKey(data.settings.pexelsKey || '');
+      setAnthropicKey(data.settings.anthropicKey || '');
       setSavedMsg('Salvo!');
       setTimeout(() => setSavedMsg(''), 2500);
     } catch (e) {
@@ -124,11 +128,52 @@ export default function Settings({ onNewVideo }) {
         {error && <p style={{ color: '#FCA5B4', fontSize: 13, marginTop: 10 }}>{error}</p>}
       </Section>
 
+      {/* Análise por IA · Anthropic */}
+      <Section title="Análise por IA · Anthropic (Claude)">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <StatusDot on={status?.ai} />
+          {status?.aiFromServer && <span style={{ fontSize: 12, color: C.faint }}>(chave também configurada no servidor)</span>}
+        </div>
+        <p style={{ color: C.muted, fontSize: 14, lineHeight: 1.55, margin: '0 0 16px' }}>
+          Com a IA da Anthropic, o Riseframe entende o conteúdo da fala e escolhe
+          momentos e buscas de <strong>B-roll muito mais relevantes</strong> (em vez da
+          heurística por palavras). Crie uma chave em{' '}
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" style={{ color: C.orangeSoft, fontWeight: 600 }}>
+            console.anthropic.com
+          </a>
+          . Usada apenas quando o B-roll está ligado.
+        </p>
+        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.muted, marginBottom: 7 }}>Chave da API da Anthropic</label>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <input
+            type="password"
+            value={anthropicKey}
+            onChange={(e) => setAnthropicKey(e.target.value.trim())}
+            placeholder="sk-ant-..."
+            spellCheck={false}
+            autoComplete="off"
+            style={{ flex: 1, minWidth: 220, boxSizing: 'border-box', background: '#13131B', color: C.text, border: `1px solid ${anthropicKey && !anthropicValid ? `${C.red}66` : anthropicValid ? '#2ED47A66' : C.border}`, borderRadius: 11, padding: '12px 14px', fontSize: 14, fontFamily: 'inherit', outline: 'none' }}
+          />
+          <button
+            onClick={save}
+            disabled={saving || !canSave}
+            style={{ background: GRAD, border: 'none', color: '#fff', borderRadius: 11, padding: '0 22px', fontSize: 14, fontWeight: 700, cursor: saving || !canSave ? 'not-allowed' : 'pointer', opacity: canSave ? 1 : 0.5, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8, minHeight: 44 }}
+          >
+            {saving && <Spinner size={14} color="#fff" />}
+            Salvar
+          </button>
+        </div>
+        {anthropicKey && !anthropicValid && (
+          <p style={{ color: '#FCA5B4', fontSize: 12.5, marginTop: 8 }}>A chave deve começar com “sk-ant-”.</p>
+        )}
+      </Section>
+
       {/* Status do sistema */}
       <Section title="Status do sistema">
         <div style={{ display: 'grid', gap: 12 }}>
           <Row label="Transcrição (Whisper local)" value={<StatusDot on={status?.whisperReady} />} hint={`Provedor: ${status?.transcribeProvider || '—'}`} />
           <Row label="B-roll (Pexels)" value={<StatusDot on={status?.broll} />} />
+          <Row label="Análise por IA (Anthropic)" value={<StatusDot on={status?.ai} />} />
         </div>
       </Section>
 

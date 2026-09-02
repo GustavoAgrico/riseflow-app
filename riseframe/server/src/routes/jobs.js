@@ -8,11 +8,12 @@ import { queue } from '../queue.js';
 import { requireAuth } from './auth.js';
 import { getSettings } from '../auth/settings.js';
 
-/** Opções do job com a chave do Pexels salva do usuário (o servidor manda). */
+/** Opções do job com as chaves salvas do usuário (Pexels/Anthropic) — o servidor manda. */
 function optionsForUser(req) {
   const o = parseOptions(req.body?.options);
-  const saved = getSettings(req.user.id).pexelsKey;
-  if (saved) o.pexelsKey = saved;
+  const s = getSettings(req.user.id);
+  if (s.pexelsKey) o.pexelsKey = s.pexelsKey;
+  if (s.anthropicKey) o.anthropicKey = s.anthropicKey;
   return o;
 }
 
