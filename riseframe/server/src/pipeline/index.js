@@ -4,6 +4,7 @@ import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript } from './timeline.js';
 import { insertBroll } from './broll.js';
+import { applyMotion } from './motion.js';
 import { markFillers } from './cleanup.js';
 import { burnCaptions } from './captions.js';
 import { applyColor } from './color.js';
@@ -39,6 +40,7 @@ function buildPlan(mode, options) {
       { key: 'transcribe', label: 'Transcrevendo a fala', weight: 15, enabled: mode !== 'render' },
       { key: 'cut', label: 'Aplicando cortes na timeline', weight: 20, enabled: hasRemoval },
       { key: 'analyze', label: 'Analisando temas', weight: 3, enabled: true },
+      { key: 'motion', label: 'Aplicando movimento (zoom)', weight: 12, enabled: Boolean(options.videoMotion) && options.videoMotion !== 'none' },
       { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'color', label: 'Aplicando color grade', weight: 11, enabled: (options.colorLook || 'teal-orange') !== 'none' },
@@ -200,7 +202,19 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
-  // 5. B-roll
+  // 5. Movimento (zoom/pan) — sobre o vídeo base, antes de B-roll/legendas para não
+  // ampliar as legendas junto. Atualiza também o trackInput (fonte limpa do reframe).
+  if (has('motion')) {
+    const st = enter('motion');
+    const r = await applyMotion(input, work, meta, options, st.onProgress);
+    input = r.output;
+    trackInput = r.output;
+    report.motion = { effect: r.motion, intensity: options.motionIntensity || 'medio' };
+    st.record(report.motion);
+    st.onProgress(1);
+  }
+
+  // 6. B-roll
   if (has('broll')) {
     const st = enter('broll');
     const r = await insertBroll(input, work, meta, analysis, options, st.onProgress);

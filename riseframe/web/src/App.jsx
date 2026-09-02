@@ -54,7 +54,14 @@ export default function App() {
           if (cancelled) return;
           setCatalog(c);
           setHealth(h);
-          setOptions(c.defaults);
+          // Recupera a chave do Pexels salva neste navegador (se houver).
+          let savedKey = '';
+          try {
+            savedKey = localStorage.getItem('riseframe_pexels_key') || '';
+          } catch {
+            savedKey = '';
+          }
+          setOptions({ ...c.defaults, pexelsKey: savedKey });
           setLoadError(null);
           return;
         } catch (e) {
@@ -68,6 +75,18 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  // Salva a chave do Pexels neste navegador sempre que mudar.
+  useEffect(() => {
+    if (!options) return;
+    try {
+      const k = (options.pexelsKey || '').trim();
+      if (k) localStorage.setItem('riseframe_pexels_key', k);
+      else localStorage.removeItem('riseframe_pexels_key');
+    } catch {
+      /* localStorage indisponível — ignora */
+    }
+  }, [options?.pexelsKey]);
 
   function fail(msg) {
     setError(msg);

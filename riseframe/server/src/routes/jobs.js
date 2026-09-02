@@ -56,7 +56,12 @@ function parseOptions(raw) {
     captionColor: ['white', 'yellow', 'orange', 'purple', 'green', 'cyan', 'pink', 'red'].includes(o.captionColor) ? o.captionColor : 'white',
     captionScale: clampNum(o.captionScale, 0.6, 1.6, 1),
     colorLook: ALLOWED_LOOKS.has(o.colorLook) ? o.colorLook : 'auto',
+    videoMotion: ['none', 'zoom-in', 'zoom-out', 'ken-burns', 'pulse'].includes(o.videoMotion) ? o.videoMotion : 'none',
+    motionIntensity: ['suave', 'medio', 'forte'].includes(o.motionIntensity) ? o.motionIntensity : 'medio',
     broll: o.broll === true,
+    // Chave do Pexels vinda da interface (opcional). Sanitiza: só o formato esperado
+    // (alfanumérico, 20–80 chars) é aceito; qualquer outra coisa é descartada.
+    pexelsKey: typeof o.pexelsKey === 'string' && /^[A-Za-z0-9]{20,80}$/.test(o.pexelsKey.trim()) ? o.pexelsKey.trim() : '',
     brollEverySec: clampNum(o.brollEverySec, 4, 30, 8),
     brollMax: clampNum(o.brollMax, 1, 12, 6),
     aspect: ['original', '9:16', '16:9', '1:1'].includes(o.aspect) ? o.aspect : 'original',

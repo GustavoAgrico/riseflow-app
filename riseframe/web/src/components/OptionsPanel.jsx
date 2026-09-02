@@ -133,6 +133,9 @@ function Swatches({ value, options, onChange }) {
 export default function OptionsPanel({ catalog, options, onChange, disabled }) {
   const set = (patch) => onChange({ ...options, ...patch });
   const caps = catalog?.capabilities || {};
+  // B-roll liga com a chave do servidor (.env) OU com a chave colada na interface.
+  const keyValid = /^[A-Za-z0-9]{20,80}$/.test((options.pexelsKey || '').trim());
+  const brollUsable = caps.brollReady || keyValid;
 
   return (
     <div style={{ opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
@@ -195,12 +198,56 @@ export default function OptionsPanel({ catalog, options, onChange, disabled }) {
         <Select value={options.colorLook} options={catalog.colorLooks} onChange={(v) => set({ colorLook: v })} />
       </Row>
 
+      <Row label="Movimento no vídeo (zoom)" hint="Efeito de câmera: aproxima, afasta ou Ken Burns ao longo do vídeo">
+        <Select value={options.videoMotion || 'none'} options={catalog.videoMotions} onChange={(v) => set({ videoMotion: v })} />
+      </Row>
+
+      {options.videoMotion && options.videoMotion !== 'none' && (
+        <Row label="Intensidade do movimento" hint="O quanto o zoom é perceptível">
+          <Segmented value={options.motionIntensity || 'medio'} options={catalog.motionIntensities} onChange={(v) => set({ motionIntensity: v })} />
+        </Row>
+      )}
+
       <Row
         label="B-roll automático (Pexels)"
-        hint={caps.brollReady ? 'Insere imagens de apoio de banco gratuito' : 'Requer PEXELS_API_KEY no servidor'}
+        hint={
+          caps.brollReady
+            ? 'Insere imagens de apoio de banco gratuito (chave no servidor)'
+            : keyValid
+              ? 'Chave conectada — insere imagens de apoio de banco gratuito'
+              : 'Cole sua chave gratuita do Pexels abaixo para ativar'
+        }
       >
-        <Toggle on={options.broll} onChange={(v) => set({ broll: v })} disabled={!caps.brollReady} />
+        <Toggle on={options.broll} onChange={(v) => set({ broll: v })} disabled={!brollUsable} />
       </Row>
+
+      {!caps.brollReady && (
+        <Row
+          label="Chave da API do Pexels"
+          hint={
+            keyValid ? '✓ chave válida — fica salva neste navegador' : 'Gratuita em pexels.com/api — cole aqui e o B-roll liga'
+          }
+        >
+          <input
+            type="password"
+            value={options.pexelsKey || ''}
+            onChange={(e) => set({ pexelsKey: e.target.value.trim() })}
+            placeholder="Cole a chave do Pexels"
+            spellCheck={false}
+            autoComplete="off"
+            style={{
+              background: '#13131B',
+              color: C.text,
+              border: `1px solid ${keyValid ? '#2ED47A66' : C.border}`,
+              borderRadius: 10,
+              padding: '9px 12px',
+              fontSize: 13,
+              minWidth: 230,
+              fontFamily: 'inherit',
+            }}
+          />
+        </Row>
+      )}
 
       <Row label="Formato de saída" hint="Reframe automático para a plataforma">
         <Select value={options.aspect} options={catalog.aspects} onChange={(v) => set({ aspect: v })} />

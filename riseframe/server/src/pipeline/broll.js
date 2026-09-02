@@ -28,11 +28,11 @@ export function pickBestVideoFile(files, targetH) {
  * Busca no Pexels (licença livre) e devolve o 1º vídeo ainda não usado.
  * @returns {Promise<{id:number, link:string}|null>}
  */
-async function searchPexels(query, targetH, orientation, usedIds) {
+async function searchPexels(query, targetH, orientation, usedIds, apiKey) {
   const url =
     `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}` +
     `&per_page=8&orientation=${orientation}`;
-  const res = await fetch(url, { headers: { Authorization: config.broll.pexelsKey } });
+  const res = await fetch(url, { headers: { Authorization: apiKey } });
   if (!res.ok) {
     log.warn(`Pexels ${res.status} para "${query}"`);
     return null;
@@ -60,8 +60,10 @@ async function download(url, dest) {
  * @returns {Promise<{output:string, inserted:number}>}
  */
 export async function insertBroll(input, work, meta, analysis, options, onProgress) {
-  if (!config.broll.pexelsKey) {
-    log.info('sem PEXELS_API_KEY; pulando B-roll');
+  // Chave da interface (options.pexelsKey) tem prioridade; senão, a do servidor (.env).
+  const apiKey = options.pexelsKey || config.broll.pexelsKey;
+  if (!apiKey) {
+    log.info('sem chave do Pexels; pulando B-roll');
     return { output: input, inserted: 0 };
   }
   const moments = (analysis.brollMoments || []).slice(0, options.brollMax ?? 6);
@@ -76,7 +78,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   const clips = [];
   for (const m of moments) {
     try {
-      const hit = await searchPexels(m.query, H, orientation, usedIds);
+      const hit = await searchPexels(m.query, H, orientation, usedIds, apiKey);
       if (!hit) {
         log.info(`sem B-roll para "${m.query}"`);
         continue;

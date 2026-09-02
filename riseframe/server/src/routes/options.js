@@ -26,6 +26,18 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'cyan', label: 'Ciano', hex: '#22D3EE' },
       { id: 'pink', label: 'Rosa', hex: '#FF5CA8' },
     ],
+    videoMotions: [
+      { id: 'none', label: 'Sem movimento' },
+      { id: 'zoom-in', label: 'Zoom in (aproxima)' },
+      { id: 'zoom-out', label: 'Zoom out (afasta)' },
+      { id: 'ken-burns', label: 'Ken Burns (zoom + pan)' },
+      { id: 'pulse', label: 'Pulse (respiração sutil)' },
+    ],
+    motionIntensities: [
+      { id: 'suave', label: 'Suave' },
+      { id: 'medio', label: 'Médio' },
+      { id: 'forte', label: 'Forte' },
+    ],
     aspects: [
       { id: 'original', label: 'Manter original' },
       { id: '9:16', label: 'Vertical 9:16 (Reels/Shorts/TikTok)' },
@@ -40,6 +52,8 @@ optionsRouter.get('/options', (_req, res) => {
       captionColor: 'white',
       captionScale: 1,
       colorLook: 'auto',
+      videoMotion: 'none',
+      motionIntensity: 'medio',
       broll: false,
       aspect: 'original',
       reframeTrack: true,
