@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { resolvePython } from './python.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('reframe');
@@ -80,10 +81,12 @@ export function buildPiecewiseExpr(kf, minV, maxV) {
   return `clip(${rec(0)},${minV},${maxV})`;
 }
 
-function runTracker(input, sampleFps = 4) {
+async function runTracker(input, sampleFps = 4) {
+  const py = await resolvePython();
+  if (!py) throw new Error('Python não encontrado no PATH (instale Python 3 ou defina PYTHON_BIN)');
   const script = path.join(__dirname, 'track_subject.py');
   return new Promise((resolve, reject) => {
-    const proc = spawn('python3', [script, input, String(sampleFps)]);
+    const proc = spawn(py, [script, input, String(sampleFps)]);
     let out = '';
     let err = '';
     proc.stdout.on('data', (d) => (out += d.toString()));

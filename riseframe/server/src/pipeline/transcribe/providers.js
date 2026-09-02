@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runFfmpeg } from '../ffmpeg.js';
+import { resolvePython } from '../python.js';
 import { makeLogger } from '../../logger.js';
 
 const log = makeLogger('transcribe');
@@ -135,10 +136,12 @@ export async function transcribeAssemblyAI(input, work, meta, cfg) {
   throw new Error('AssemblyAI: timeout aguardando transcrição');
 }
 
-/** Verifica (rápido) se python3 + faster-whisper estão instaláveis/importáveis. */
-export function whisperLocalAvailable() {
+/** Verifica (rápido) se Python + faster-whisper estão instaláveis/importáveis. */
+export async function whisperLocalAvailable() {
+  const py = await resolvePython();
+  if (!py) return false;
   return new Promise((resolve) => {
-    const proc = spawn('python3', ['-c', 'import faster_whisper'], { stdio: 'ignore' });
+    const proc = spawn(py, ['-c', 'import faster_whisper'], { stdio: 'ignore' });
     proc.on('error', () => resolve(false));
     proc.on('close', (code) => resolve(code === 0));
   });
@@ -146,10 +149,12 @@ export function whisperLocalAvailable() {
 
 // ─── Whisper local (faster-whisper via Python) ────────────────────────
 export async function transcribeWhisperLocal(input, work, meta, cfg) {
+  const py = await resolvePython();
+  if (!py) throw new Error('Python não encontrado no PATH (instale Python 3 ou defina PYTHON_BIN)');
   const audio = await extractAudio(input, work, 'wav');
   const script = path.join(__dirname, 'whisper_local.py');
   const data = await new Promise((resolve, reject) => {
-    const proc = spawn('python3', [script, audio, cfg.whisperModel || 'base']);
+    const proc = spawn(py, [script, audio, cfg.whisperModel || 'base']);
     let out = '';
     let err = '';
     proc.stdout.on('data', (b) => (out += b.toString()));
