@@ -6,6 +6,7 @@ import { useAuth } from './AuthContext.jsx';
 import Landing from './pages/Landing.jsx';
 import Auth from './pages/Auth.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import Settings from './pages/Settings.jsx';
 import Editor from './App.jsx';
 
 function TopNav({ user, view, onView, onLogout }) {
@@ -31,6 +32,7 @@ function TopNav({ user, view, onView, onLogout }) {
       <div style={{ display: 'flex', gap: 2, marginLeft: 14 }}>
         {link('dashboard', 'Início')}
         {link('editor', 'Novo vídeo')}
+        {link('settings', 'Configurações')}
       </div>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
@@ -77,11 +79,9 @@ export default function Root() {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <TopNav user={user} view={view} onView={setView} onLogout={logout} />
       <div style={{ flex: 1 }}>
-        {view === 'dashboard' ? (
-          <Dashboard user={user} onNewVideo={() => setView('editor')} />
-        ) : (
-          <Editor embedded onHome={() => setView('dashboard')} />
-        )}
+        {view === 'dashboard' && <Dashboard user={user} onNewVideo={() => setView('editor')} />}
+        {view === 'settings' && <Settings onNewVideo={() => setView('editor')} />}
+        {view === 'editor' && <Editor embedded onSettings={() => setView('settings')} />}
       </div>
     </div>
   );

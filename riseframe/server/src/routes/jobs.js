@@ -6,6 +6,15 @@ import { nanoid } from 'nanoid';
 import { config } from '../config.js';
 import { queue } from '../queue.js';
 import { requireAuth } from './auth.js';
+import { getSettings } from '../auth/settings.js';
+
+/** Opções do job com a chave do Pexels salva do usuário (o servidor manda). */
+function optionsForUser(req) {
+  const o = parseOptions(req.body?.options);
+  const saved = getSettings(req.user.id).pexelsKey;
+  if (saved) o.pexelsKey = saved;
+  return o;
+}
 
 export const jobsRouter = Router();
 
@@ -85,7 +94,7 @@ jobsRouter.post('/jobs', requireAuth, upload.single('file'), (req, res) => {
     mode: 'auto',
     filename: req.file.originalname,
     inputPath: req.file.path,
-    options: parseOptions(req.body?.options),
+    options: optionsForUser(req),
   });
   res.status(201).json(queue.public(job));
 });
@@ -98,7 +107,7 @@ jobsRouter.post('/transcribe', requireAuth, upload.single('file'), (req, res) =>
     mode: 'transcribe',
     filename: req.file.originalname,
     inputPath: req.file.path,
-    options: parseOptions(req.body?.options),
+    options: optionsForUser(req),
   });
   res.status(201).json(queue.public(job));
 });
@@ -110,7 +119,7 @@ jobsRouter.post('/clips', requireAuth, upload.single('file'), (req, res) => {
     mode: 'clips',
     filename: req.file.originalname,
     inputPath: req.file.path,
-    options: parseOptions(req.body?.options),
+    options: optionsForUser(req),
   });
   res.status(201).json(queue.public(job));
 });
@@ -132,7 +141,7 @@ jobsRouter.post('/render', requireAuth, (req, res) => {
     mode: 'render',
     filename: source.filename,
     inputPath: source.inputPath,
-    options: parseOptions(req.body?.options),
+    options: optionsForUser(req),
     editedTranscript,
   });
   res.status(201).json(queue.public(job));

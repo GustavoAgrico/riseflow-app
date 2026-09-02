@@ -40,6 +40,23 @@ export async function fetchMe() {
   return (await r.json()).user;
 }
 
+// ─── Configurações do usuário ─────────────────────────────────────────
+export async function getSettings() {
+  const r = await fetch(`${BASE}/settings`, { headers: authHeaders() });
+  if (!r.ok) throw new Error('não foi possível carregar as configurações');
+  return r.json();
+}
+export async function saveSettings(patch) {
+  const r = await fetch(`${BASE}/settings`, {
+    method: 'PUT',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(patch),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data;
+}
+
 export async function getHealth() {
   const r = await fetch(`${BASE}/health`);
   if (!r.ok) throw new Error('API indisponível');

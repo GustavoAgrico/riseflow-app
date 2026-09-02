@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from './theme.js';
-import { getOptions, getHealth, createJob, transcribe, generateClips, renderEdited, subscribeJob, sampleFile } from './api.js';
+import { getOptions, getHealth, getSettings, createJob, transcribe, generateClips, renderEdited, subscribeJob, sampleFile } from './api.js';
 import { PrimaryButton, Card, Spinner } from './components/ui.jsx';
 import Icon, { Logo } from './components/Icon.jsx';
 import Uploader from './components/Uploader.jsx';
@@ -10,7 +10,7 @@ import Result from './components/Result.jsx';
 import ClipsResult from './components/ClipsResult.jsx';
 import TranscriptEditor from './components/TranscriptEditor.jsx';
 
-export default function App({ embedded = false, onHome } = {}) {
+export default function App({ embedded = false, onHome, onSettings } = {}) {
   const [catalog, setCatalog] = useState(null);
   const [health, setHealth] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -54,13 +54,15 @@ export default function App({ embedded = false, onHome } = {}) {
           if (cancelled) return;
           setCatalog(c);
           setHealth(h);
-          // Recupera a chave do Pexels salva neste navegador (se houver).
+          // Chave do Pexels vem das Configurações do usuário (servidor).
           let savedKey = '';
           try {
-            savedKey = localStorage.getItem('riseframe_pexels_key') || '';
+            const s = await getSettings();
+            savedKey = s?.settings?.pexelsKey || '';
           } catch {
             savedKey = '';
           }
+          if (cancelled) return;
           setOptions({ ...c.defaults, pexelsKey: savedKey });
           setLoadError(null);
           return;
@@ -75,18 +77,6 @@ export default function App({ embedded = false, onHome } = {}) {
       cancelled = true;
     };
   }, []);
-
-  // Salva a chave do Pexels neste navegador sempre que mudar.
-  useEffect(() => {
-    if (!options) return;
-    try {
-      const k = (options.pexelsKey || '').trim();
-      if (k) localStorage.setItem('riseframe_pexels_key', k);
-      else localStorage.removeItem('riseframe_pexels_key');
-    } catch {
-      /* localStorage indisponível — ignora */
-    }
-  }, [options?.pexelsKey]);
 
   function fail(msg) {
     setError(msg);
@@ -216,7 +206,7 @@ export default function App({ embedded = false, onHome } = {}) {
           {editMode === 'auto' && (
             <Card delay={0.1} style={{ padding: '6px 24px 20px' }}>
               <h3 style={sectionLabel}>O que fazer com o vídeo</h3>
-              <OptionsPanel catalog={catalog} options={options} onChange={setOptions} />
+              <OptionsPanel catalog={catalog} options={options} onChange={setOptions} onSettings={onSettings} />
             </Card>
           )}
 

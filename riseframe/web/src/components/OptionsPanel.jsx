@@ -130,7 +130,7 @@ function Swatches({ value, options, onChange }) {
   );
 }
 
-export default function OptionsPanel({ catalog, options, onChange, disabled }) {
+export default function OptionsPanel({ catalog, options, onChange, disabled, onSettings }) {
   const set = (patch) => onChange({ ...options, ...patch });
   const caps = catalog?.capabilities || {};
   // B-roll liga com a chave do servidor (.env) OU com a chave colada na interface.
@@ -221,31 +221,14 @@ export default function OptionsPanel({ catalog, options, onChange, disabled }) {
         <Toggle on={options.broll} onChange={(v) => set({ broll: v })} disabled={!brollUsable} />
       </Row>
 
-      {!caps.brollReady && (
-        <Row
-          label="Chave da API do Pexels"
-          hint={
-            keyValid ? '✓ chave válida — fica salva neste navegador' : 'Gratuita em pexels.com/api — cole aqui e o B-roll liga'
-          }
-        >
-          <input
-            type="password"
-            value={options.pexelsKey || ''}
-            onChange={(e) => set({ pexelsKey: e.target.value.trim() })}
-            placeholder="Cole a chave do Pexels"
-            spellCheck={false}
-            autoComplete="off"
-            style={{
-              background: '#13131B',
-              color: C.text,
-              border: `1px solid ${keyValid ? '#2ED47A66' : C.border}`,
-              borderRadius: 10,
-              padding: '9px 12px',
-              fontSize: 13,
-              minWidth: 230,
-              fontFamily: 'inherit',
-            }}
-          />
+      {!caps.brollReady && !keyValid && (
+        <Row label="Chave do Pexels" hint="Configure sua chave em Configurações para ativar o B-roll">
+          <button
+            onClick={() => onSettings?.()}
+            style={{ background: 'transparent', border: `1px solid ${C.borderStrong}`, color: C.text, borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            Abrir Configurações →
+          </button>
         </Row>
       )}
 
