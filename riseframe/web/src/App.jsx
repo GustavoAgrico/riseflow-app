@@ -41,16 +41,32 @@ export default function App() {
   }
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      try {
-        const [c, h] = await Promise.all([getOptions(), getHealth()]);
-        setCatalog(c);
-        setHealth(h);
-        setOptions(c.defaults);
-      } catch (e) {
-        setLoadError(e.message);
+      // O servidor pode levar alguns segundos para subir (checagens de inicialização).
+      // Tenta algumas vezes antes de desistir, para não mostrar "falha ao carregar
+      // opções" só porque a porta ainda não abriu.
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      let lastErr;
+      for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
+        try {
+          const [c, h] = await Promise.all([getOptions(), getHealth()]);
+          if (cancelled) return;
+          setCatalog(c);
+          setHealth(h);
+          setOptions(c.defaults);
+          setLoadError(null);
+          return;
+        } catch (e) {
+          lastErr = e;
+          await sleep(1500);
+        }
       }
+      if (!cancelled) setLoadError(lastErr?.message || 'não foi possível conectar ao servidor');
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function fail(msg) {

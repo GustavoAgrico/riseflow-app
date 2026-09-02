@@ -18,12 +18,21 @@ await ensureDirs();
 startCleanupTimer();
 ensureDemoSample().catch(() => {}); // gera o vídeo de exemplo em segundo plano
 
-// Autoteste do whisper-local: reflete no /api/health se a ASR real está pronta.
-if (config.transcribe.provider === 'whisper-local') {
-  const ok = await whisperLocalAvailable();
-  config.transcribe.whisperReady = ok;
-  if (ok) log.ok('whisper-local disponível (o modelo é baixado no 1º job, se ainda não estiver em cache)');
-  else log.warn('whisper-local indisponível (falta faster-whisper) — jobs cairão para o modo mock');
+// Autoteste do whisper-local: roda em SEGUNDO PLANO (não bloqueia o app.listen).
+// Importar faster-whisper leva alguns segundos (mais ainda no Windows); se isto
+// travasse a subida do servidor, o frontend pediria /api/options antes da porta
+// abrir e mostraria "falha ao carregar opções". Reflete no /api/health quando ficar pronto.
+function probeWhisper() {
+  if (config.transcribe.provider !== 'whisper-local') return;
+  whisperLocalAvailable()
+    .then((ok) => {
+      config.transcribe.whisperReady = ok;
+      if (ok) log.ok('whisper-local disponível (o modelo é baixado no 1º job, se ainda não estiver em cache)');
+      else log.warn('whisper-local indisponível (falta faster-whisper) — jobs cairão para o modo mock');
+    })
+    .catch(() => {
+      config.transcribe.whisperReady = false;
+    });
 }
 
 const app = express();
@@ -89,4 +98,5 @@ app.listen(config.port, () => {
   log.ok(`Riseframe API on http://localhost:${config.port}`);
   log.info(`transcrição: ${config.transcribe.provider} · B-roll: ${config.broll.pexelsKey ? 'Pexels' : 'off'}`);
   log.info(`CORS: ${config.corsOrigin.join(', ')}`);
+  probeWhisper(); // teste do Whisper em segundo plano, sem atrasar a abertura da porta
 });
