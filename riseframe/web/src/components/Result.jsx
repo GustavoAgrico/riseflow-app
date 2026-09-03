@@ -75,6 +75,7 @@ export default function Result({ job, onReset }) {
         {r.autoClean?.removed > 0 && (
           <Stat label="Fala corrigida" value={`${r.autoClean.removed} ${r.autoClean.removed === 1 ? 'palavra' : 'palavras'}${r.autoClean.method === 'IA' ? ' · IA' : ''}`} />
         )}
+        {r.voice?.applied && <Stat label="Voz" value="limpa · volume normalizado" />}
         {r.captions && <Stat label="Legendas" value={`${r.captions.segments} blocos`} />}
         {r.color && <Stat label="Look" value={r.color.ai ? `IA · ${r.color.look}` : r.color.look} />}
         {r.broll && r.broll.inserted > 0 && <Stat label="B-roll" value={`${r.broll.inserted} clipes`} />}

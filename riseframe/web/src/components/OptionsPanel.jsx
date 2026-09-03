@@ -161,6 +161,19 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
         <Toggle on={options.autoClean !== false} onChange={(v) => set({ autoClean: v })} />
       </Row>
 
+      <Row
+        label="Correção automática de voz"
+        hint="Limpa o áudio: reduz ruído de fundo, normaliza o volume e dá mais clareza à voz"
+      >
+        <Toggle on={options.voiceEnhance === true} onChange={(v) => set({ voiceEnhance: v })} />
+      </Row>
+
+      {options.voiceEnhance === true && (
+        <Row label="Intensidade da limpeza" hint="Quanto ruído remover (forte pode soar artificial)">
+          <Segmented value={options.voiceIntensity || 'medio'} options={catalog.motionIntensities} onChange={(v) => set({ voiceIntensity: v })} />
+        </Row>
+      )}
+
       <Row label="Legendas dinâmicas" hint="Transcrição queimada no vídeo, palavra-a-palavra">
         <Toggle on={options.captions} onChange={(v) => set({ captions: v })} />
       </Row>

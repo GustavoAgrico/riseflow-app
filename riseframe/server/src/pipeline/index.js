@@ -6,6 +6,7 @@ import { silenceRemovalRanges } from './silence.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript } from './timeline.js';
 import { insertBroll } from './broll.js';
 import { applyMotion } from './motion.js';
+import { enhanceVoice } from './voice.js';
 import { markFillers } from './cleanup.js';
 import { cleanupWithClaude } from './cleanupLLM.js';
 import { burnCaptions } from './captions.js';
@@ -39,6 +40,7 @@ function buildPlan(mode, options) {
     const hasRemoval = options.cutSilence !== false || options.autoClean === true || mode === 'render';
     all = [
       { key: 'probe', label: 'Sondando o vídeo', weight: 2, enabled: true },
+      { key: 'voice', label: 'Corrigindo a voz (áudio)', weight: 10, enabled: options.voiceEnhance === true },
       { key: 'transcribe', label: 'Transcrevendo a fala', weight: 15, enabled: mode !== 'render' },
       { key: 'cut', label: 'Aplicando cortes na timeline', weight: 20, enabled: hasRemoval },
       { key: 'analyze', label: 'Analisando temas', weight: 3, enabled: true },
@@ -118,6 +120,19 @@ export async function runPipeline(job, onUpdate = () => {}) {
   let meta = await probeSummary(input);
   report.input = meta;
   if (!meta.duration || meta.duration < 0.3) throw new Error('vídeo inválido ou muito curto');
+
+  // 1b. Correção de voz (áudio): denoise + normalização de volume. Antes da
+  // transcrição — a ASR também se beneficia do áudio limpo. Fonte limpa p/ tracker.
+  if (has('voice')) {
+    const st = enter('voice');
+    const r = await enhanceVoice(input, work, meta, options, st.onProgress);
+    if (r.applied) {
+      input = r.output;
+      trackInput = r.output;
+      report.voice = { applied: true, intensity: options.voiceIntensity || 'medio' };
+    }
+    st.onProgress(1);
+  }
 
   // 2. Transcrição (ASR no auto/transcribe; já vem do cliente no render)
   let transcript;

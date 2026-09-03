@@ -54,6 +54,8 @@ optionsRouter.get('/options', (_req, res) => {
     ],
     defaults: {
       cutSilence: true,
+      voiceEnhance: false,
+      voiceIntensity: 'medio',
       autoClean: true,
       captions: true,
       captionTemplate: 'clean',

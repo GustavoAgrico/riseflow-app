@@ -61,6 +61,8 @@ function parseOptions(raw) {
   }
   return {
     cutSilence: o.cutSilence !== false,
+    voiceEnhance: o.voiceEnhance === true, // denoise + normalização de volume
+    voiceIntensity: ['suave', 'medio', 'forte'].includes(o.voiceIntensity) ? o.voiceIntensity : 'medio',
     autoClean: o.autoClean === true, // corta muletas/hesitações e gagueiras da fala
     captions: o.captions !== false,
     captionTemplate: ['clean', 'pop', 'hormozi', 'box', 'neon', 'bounce'].includes(o.captionTemplate) ? o.captionTemplate : 'clean',
