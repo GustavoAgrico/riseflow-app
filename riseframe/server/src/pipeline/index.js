@@ -1,3 +1,4 @@
+import { config } from '../config.js';
 import { probeSummary } from './ffmpeg.js';
 import { transcribe } from './transcribe/index.js';
 import { analyze } from './analyze.js';
@@ -6,6 +7,7 @@ import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript } fr
 import { insertBroll } from './broll.js';
 import { applyMotion } from './motion.js';
 import { markFillers } from './cleanup.js';
+import { cleanupWithClaude } from './cleanupLLM.js';
 import { burnCaptions } from './captions.js';
 import { applyColor } from './color.js';
 import { finalRender } from './render.js';
@@ -158,12 +160,23 @@ export async function runPipeline(job, onUpdate = () => {}) {
   if (has('cut')) {
     const st = enter('cut');
 
-    // Limpeza automática da fala: marca muletas/hesitações e gagueiras na transcrição.
+    // Limpeza automática da fala: marca muletas/hesitações, gagueiras e — com a
+    // chave da Anthropic do usuário — também falsos começos e autocorreções (IA).
     if (options.autoClean) {
-      const cleaned = markFillers(transcript);
+      let cleaned;
+      let method = 'heurística';
+      if (options.anthropicKey) {
+        try {
+          cleaned = await cleanupWithClaude(transcript, { anthropicKey: options.anthropicKey, model: config.analyze.model });
+          method = 'IA';
+        } catch (err) {
+          log.warn(`limpeza por IA falhou (${err.message}); usando heurística`);
+        }
+      }
+      if (!cleaned) cleaned = markFillers(transcript);
       transcript = cleaned;
-      report.autoClean = { removed: cleaned.removedCount };
-      if (cleaned.removedCount) log.info(`limpeza automática: ${cleaned.removedCount} palavras (muletas/gagueira) marcadas`);
+      report.autoClean = { removed: cleaned.removedCount, method };
+      if (cleaned.removedCount) log.info(`limpeza automática (${method}): ${cleaned.removedCount} palavras marcadas`);
     }
 
     const removals = [];

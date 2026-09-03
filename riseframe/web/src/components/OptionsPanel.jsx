@@ -156,7 +156,7 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
 
       <Row
         label="Corrigir a fala automaticamente"
-        hint="Remove muletas e hesitações (é..., hã, hmm) e gagueiras (palavras repetidas). Requer transcrição real (ASR) — no modo demonstração o efeito é limitado."
+        hint="Remove muletas (é..., hã, hmm), gagueiras e palavras repetidas. Com a chave da Anthropic (Configurações), a IA corta também falsos começos e autocorreções (“falei errado e refiz”)."
       >
         <Toggle on={options.autoClean !== false} onChange={(v) => set({ autoClean: v })} />
       </Row>
