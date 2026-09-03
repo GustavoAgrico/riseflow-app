@@ -61,3 +61,17 @@ test('markFillers: flags off desligam cada limpeza', () => {
   const onlyFill = markFillers({ segments: [seg('hmm', 'oi', 'oi')] }, { repeats: false });
   assert.equal(onlyFill.removedCount, 1);
 });
+
+test('markFillers: remove repetição de frase (2-3 palavras) imediata', () => {
+  const r = markFillers({ segments: [seg('vou', 'no', 'banco', 'no', 'banco', 'hoje')] });
+  const kept = r.segments[0].words.filter((w) => !w.removed).map((w) => w.word);
+  assert.deepEqual(kept, ['vou', 'no', 'banco', 'hoje']);
+});
+
+test('markFillers: corta falso começo (fragmento prefixo), preserva palavra comum', () => {
+  const frag = markFillers({ segments: [seg('trans', 'transformar', 'tudo')] });
+  assert.deepEqual(frag.segments[0].words.filter((w) => !w.removed).map((w) => w.word), ['transformar', 'tudo']);
+  // "com" é palavra comum protegida — não vira fragmento de "computador"
+  const prot = markFillers({ segments: [seg('com', 'computador', 'novo')] });
+  assert.deepEqual(prot.segments[0].words.filter((w) => !w.removed).map((w) => w.word), ['com', 'computador', 'novo']);
+});

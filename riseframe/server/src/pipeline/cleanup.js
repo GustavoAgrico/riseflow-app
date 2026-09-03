@@ -35,6 +35,25 @@ export function isFiller(word) {
   return FILLERS.has(n) || isElongated(n);
 }
 
+// Palavras curtas comuns (pt/en) que NÃO devem ser tratadas como fragmento de
+// gagueira mesmo sendo prefixo da palavra seguinte (ex.: "com computador").
+const PROTECTED = new Set([
+  'com', 'como', 'para', 'por', 'que', 'uma', 'um', 'dos', 'das', 'nos', 'nas',
+  'meu', 'minha', 'seu', 'sua', 'foi', 'vou', 'vai', 'tem', 'ser', 'ver', 'dar',
+  'mais', 'mas', 'sem', 'sob', 'sao', 'nao', 'sim', 'the', 'and', 'for', 'you', 'are',
+]);
+
+/**
+ * Falso começo / gagueira parcial: `a` é uma tentativa abandonada de `b` quando é
+ * prefixo dela (ex.: "trans" → "transformar", "com-" → "comprar"). Guardas para
+ * não cortar palavras curtas legítimas (PROTECTED) nem casos ambíguos.
+ */
+function isStutterFragment(a, b) {
+  if (a.length < 2 || a.length > 6 || PROTECTED.has(a)) return false; // fragmento curto
+  if (a === b || !b.startsWith(a)) return false;
+  return b.length >= a.length + 2; // a próxima é claramente mais longa
+}
+
 /**
  * Marca palavras a remover na transcrição (retorna uma NOVA transcrição; não muta a
  * original). Preserva marcações `removed` já existentes (ex.: edição manual do cliente).
@@ -61,21 +80,46 @@ export function markFillers(transcript, opts = {}) {
     return { ...seg, words };
   });
 
-  // Gagueira: percorre a sequência global de palavras ainda mantidas; ao encontrar
-  // duas iguais em sequência, remove a ANTERIOR e mantém a última (a "boa").
-  if (removeRepeats) {
-    const flat = [];
-    for (const seg of segments) for (const w of seg.words) flat.push(w);
-    let prevKept = null;
-    for (const w of flat) {
+  // Sequência global de palavras mantidas (com norma não-vazia), por referência.
+  const kept = () => {
+    const out = [];
+    for (const seg of segments) for (const w of seg.words) {
       if (w.removed) continue;
       const n = norm(w.word);
-      if (!n) continue;
-      if (prevKept && norm(prevKept.word) === n) {
-        prevKept.removed = true;
+      if (n) out.push({ w, n });
+    }
+    return out;
+  };
+
+  if (removeRepeats) {
+    // 1) Falso começo / gagueira parcial: "trans transformar" → remove "trans".
+    let list = kept();
+    for (let i = 0; i < list.length - 1; i++) {
+      if (list[i].w.removed) continue;
+      if (isStutterFragment(list[i].n, list[i + 1].n)) {
+        list[i].w.removed = true;
         removedCount++;
       }
-      prevKept = w;
+    }
+
+    // 2) Repetição imediata de FRASE (1 a 3 palavras): "no banco no banco" →
+    // remove a primeira ocorrência; "eu eu quero" → remove o primeiro "eu".
+    // Trata n maior primeiro para pegar frases antes de palavras isoladas.
+    for (let n = 3; n >= 1; n--) {
+      list = kept();
+      let i = 0;
+      while (i + 2 * n <= list.length) {
+        let equal = true;
+        for (let k = 0; k < n; k++) {
+          if (list[i + k].n !== list[i + n + k].n) { equal = false; break; }
+        }
+        if (equal) {
+          for (let k = 0; k < n; k++) { list[i + k].w.removed = true; removedCount++; }
+          i += n; // pula o bloco removido; a cópia mantida pode repetir de novo adiante
+        } else {
+          i++;
+        }
+      }
     }
   }
 

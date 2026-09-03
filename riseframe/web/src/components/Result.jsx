@@ -72,6 +72,9 @@ export default function Result({ job, onReset }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))', gap: 10, marginBottom: 18 }}>
         <Stat label="Duração original" value={fmtDuration(inDur)} />
         {cutSec != null && cutSec > 0 && <Stat label="Trechos cortados" value={`−${fmtDuration(cutSec)}`} />}
+        {r.autoClean?.removed > 0 && (
+          <Stat label="Fala corrigida" value={`${r.autoClean.removed} ${r.autoClean.removed === 1 ? 'palavra' : 'palavras'}${r.autoClean.method === 'IA' ? ' · IA' : ''}`} />
+        )}
         {r.captions && <Stat label="Legendas" value={`${r.captions.segments} blocos`} />}
         {r.color && <Stat label="Look" value={r.color.ai ? `IA · ${r.color.look}` : r.color.look} />}
         {r.broll && r.broll.inserted > 0 && <Stat label="B-roll" value={`${r.broll.inserted} clipes`} />}
