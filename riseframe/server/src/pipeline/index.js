@@ -226,6 +226,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     const st = enter('analyze');
     analysis = await analyze(transcript, meta, options);
     report.themes = analysis.themes;
+    if (analysis.niche) report.niche = analysis.niche;
     st.record({ themes: analysis.themes.length, brollMoments: analysis.brollMoments.length });
     st.onProgress(1);
   }

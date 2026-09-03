@@ -10,12 +10,15 @@ function compactTranscript(transcript, maxSegments = 80) {
     .join('\n');
 }
 
-const INSTRUCTION = (duration, maxCount) =>
+const INSTRUCTION = (duration, maxCount, niche) =>
   `Você seleciona momentos de B-roll para um editor de vídeo. Recebe a transcrição com marcações de tempo (em segundos) de um vídeo de ${duration.toFixed(0)}s.
+${niche
+    ? `O NICHO/LINGUAGEM do vídeo é: ${niche}. TODAS as buscas devem ser visualmente coerentes com esse nicho (o clima, as pessoas e os cenários precisam combinar com ${niche}).`
+    : `Primeiro, identifique o NICHO/tema do vídeo (ex.: liderança, medicina, mentoria, finanças, fitness) e mantenha TODAS as buscas visualmente coerentes com ele.`}
 Escolha até ${maxCount} momentos onde inserir imagens de apoio, distribuídos ao longo do vídeo (evite a introdução e não repita a mesma imagem em sequência).
-Para cada momento devolva: "start" (segundo de início, número), "end" (fim, número, 1.5–4s após o start) e "query" — termos de busca EM INGLÊS para um banco de vídeos (ex.: "city skyline", "team meeting", "money growth"), concretos e visuais.
-Também liste "themes": 3–6 temas centrais (palavras).
-Responda APENAS com JSON no formato: {"themes":["..."],"brollMoments":[{"start":0,"end":0,"query":"..."}]}`;
+Para cada momento devolva: "start" (segundo de início, número), "end" (fim, número, 1.5–4s após o start) e "query" — termos de busca EM INGLÊS para um banco de vídeos (ex.: "business leadership team", "doctor hospital", "mentor coaching"), concretos, visuais e ALINHADOS ao nicho.
+Também devolva "niche" (o nicho em 1-2 palavras, em português) e "themes": 3–6 temas centrais.
+Responda APENAS com JSON no formato: {"niche":"...","themes":["..."],"brollMoments":[{"start":0,"end":0,"query":"..."}]}`;
 
 function parseJson(text) {
   try {
@@ -50,7 +53,7 @@ export async function analyzeWithClaude(transcript, meta, options, cfg) {
   const response = await client.messages.create({
     model,
     max_tokens: 1500,
-    system: INSTRUCTION(meta.duration, maxCount),
+    system: INSTRUCTION(meta.duration, maxCount, cfg.niche),
     messages: [{ role: 'user', content: compactTranscript(transcript) }],
   });
   const text = (response.content || [])
@@ -73,7 +76,7 @@ export async function analyzeWithOpenAI(transcript, meta, options, cfg) {
       max_tokens: 1200,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: INSTRUCTION(meta.duration, maxCount) },
+        { role: 'system', content: INSTRUCTION(meta.duration, maxCount, cfg.niche) },
         { role: 'user', content: compactTranscript(transcript) },
       ],
     }),

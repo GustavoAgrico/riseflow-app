@@ -237,6 +237,12 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
         <Toggle on={options.broll} onChange={(v) => set({ broll: v })} disabled={!brollUsable} />
       </Row>
 
+      {options.broll && brollUsable && catalog.niches && (
+        <Row label="Nicho do vídeo" hint="As imagens de apoio combinam com o tema (liderança, médico, mentor...)">
+          <Select value={options.niche || 'auto'} options={catalog.niches} onChange={(v) => set({ niche: v })} />
+        </Row>
+      )}
+
       {!caps.brollReady && !keyValid && (
         <Row label="Chave do Pexels" hint="Configure sua chave em Configurações para ativar o B-roll">
           <button

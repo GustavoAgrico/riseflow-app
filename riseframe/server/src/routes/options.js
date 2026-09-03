@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { capabilities } from '../config.js';
 import { lookNames } from '../pipeline/color.js';
+import { NICHES } from '../pipeline/niche.js';
 
 export const optionsRouter = Router();
 
@@ -46,6 +47,10 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'medio', label: 'Médio' },
       { id: 'forte', label: 'Forte' },
     ],
+    niches: [
+      { id: 'auto', label: 'Detectar automaticamente' },
+      ...Object.entries(NICHES).map(([id, n]) => ({ id, label: n.label })),
+    ],
     aspects: [
       { id: 'original', label: 'Manter original' },
       { id: '9:16', label: 'Vertical 9:16 (Reels/Shorts/TikTok)' },
@@ -66,6 +71,7 @@ optionsRouter.get('/options', (_req, res) => {
       videoMotion: 'none',
       motionIntensity: 'medio',
       broll: false,
+      niche: 'auto',
       aspect: 'original',
       reframeTrack: true,
       silenceNoiseDb: -30,

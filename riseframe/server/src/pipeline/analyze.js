@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { makeLogger } from '../logger.js';
 import { analyzeWithClaude, analyzeWithOpenAI } from './analyzeLLM.js';
+import { resolveNiche, NICHES } from './niche.js';
 
 const log = makeLogger('analyze');
 
@@ -84,9 +85,12 @@ export function pickBrollMoments(segments, themes, duration, opts = {}) {
   let lastQuery = null;
   for (const seg of segments || []) {
     if (seg.start < skipIntro || seg.start < nextAt) continue;
+    const niche = opts.niche; // {core, fallback} | null — casa o B-roll com o tema
     const kw = pickKeyword(seg, themeTerms) || themeTerms[moments.length % (themeTerms.length || 1)];
-    if (!kw) continue;
-    const query = translateQuery(kw);
+    let query;
+    if (kw) query = (niche ? `${niche.core} ${translateQuery(kw)}` : translateQuery(kw)).trim();
+    else if (niche) query = niche.fallback; // sem palavra-chave: usa o tema do nicho
+    else continue;
     if (query === lastQuery) continue; // evita B-roll repetido em sequência
     const end = Math.min(seg.start + clipLen, duration);
     if (end - seg.start < 1) continue;
@@ -103,6 +107,10 @@ export function pickBrollMoments(segments, themes, duration, opts = {}) {
  */
 export async function analyze(transcript, meta, options) {
   const themes = extractThemes(transcript.text);
+  // Nicho do vídeo: escolha do usuário (options.niche) ou detecção pela fala. Faz o
+  // B-roll casar com o tema (liderança, médico, mentor...).
+  const niche = resolveNiche(options.niche, transcript.text);
+  if (niche) log.info(`nicho do vídeo: ${niche.id}${options.niche && options.niche !== 'auto' ? ' (definido)' : ' (detectado)'}`);
 
   // Camada por IA (opcional): melhora a relevância dos momentos/queries.
   // A chave da Anthropic do USUÁRIO (options.anthropicKey, vinda das Configurações)
@@ -112,18 +120,19 @@ export async function analyze(transcript, meta, options) {
   if (options.broll && (anthropicKey || useOpenAI)) {
     const provider = anthropicKey ? 'anthropic' : 'openai';
     try {
+      const nicheLabel = niche ? NICHES[niche.id]?.label : null;
       const llm = anthropicKey
-        ? await analyzeWithClaude(transcript, meta, options, { ...config.analyze, anthropicKey })
-        : await analyzeWithOpenAI(transcript, meta, options, config.analyze);
+        ? await analyzeWithClaude(transcript, meta, options, { ...config.analyze, anthropicKey, niche: nicheLabel })
+        : await analyzeWithOpenAI(transcript, meta, options, { ...config.analyze, niche: nicheLabel });
       if (llm?.brollMoments?.length) {
-        log.ok(`análise por IA (${provider}): ${llm.brollMoments.length} momentos`);
-        return { provider, themes: llm.themes?.length ? llm.themes : themes, brollMoments: llm.brollMoments };
+        log.ok(`análise por IA (${provider}): ${llm.brollMoments.length} momentos${niche ? ` · nicho ${niche.id}` : ''}`);
+        return { provider, themes: llm.themes?.length ? llm.themes : themes, brollMoments: llm.brollMoments, niche: niche?.id || null };
       }
     } catch (err) {
       log.warn(`análise por IA falhou (${err.message}); usando heurística`);
     }
   }
 
-  const brollMoments = options.broll ? pickBrollMoments(transcript.segments, themes, meta.duration, options) : [];
-  return { provider: 'heuristic', themes, brollMoments };
+  const brollMoments = options.broll ? pickBrollMoments(transcript.segments, themes, meta.duration, { ...options, niche }) : [];
+  return { provider: 'heuristic', themes, brollMoments, niche: niche?.id || null };
 }
