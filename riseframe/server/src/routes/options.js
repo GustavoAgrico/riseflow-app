@@ -17,6 +17,14 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'neon', label: 'Neon (glow)' },
       { id: 'bounce', label: 'Bounce' },
     ],
+    captionFonts: [
+      { id: 'auto', label: 'Automática (por estilo)' },
+      { id: 'poppins', label: 'Poppins (moderna)' },
+      { id: 'anton', label: 'Anton (impacto)' },
+      { id: 'bebas', label: 'Bebas Neue (condensada)' },
+      { id: 'archivo', label: 'Archivo Black (grossa)' },
+      { id: 'luckiest', label: 'Divertida (cartoon)' },
+    ],
     captionColors: [
       { id: 'white', label: 'Branco', hex: '#FFFFFF' },
       { id: 'yellow', label: 'Amarelo', hex: '#FFE24B' },
@@ -50,6 +58,7 @@ optionsRouter.get('/options', (_req, res) => {
       captions: true,
       captionTemplate: 'clean',
       captionColor: 'white',
+      captionFont: 'auto',
       captionScale: 1,
       colorLook: 'auto',
       videoMotion: 'none',

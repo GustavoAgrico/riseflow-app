@@ -130,6 +130,8 @@ export async function generateClips(ctx, onProgress = () => {}) {
       const style = {
         template: options.captionTemplate || 'pop', // clipes: default palavra-a-palavra
         color: options.captionColor || 'white',
+        font: options.captionFont || 'auto',
+        fontScale: options.captionScale || 1,
         mode: options.captionMode,
       };
       const r = await burnCaptions(input, cwork, cmeta, localTranscript, style, () => {});

@@ -170,6 +170,9 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
           <Row label="Estilo da legenda" hint="Look + movimento das legendas">
             <Select value={options.captionTemplate} options={catalog.captionTemplates} onChange={(v) => set({ captionTemplate: v })} />
           </Row>
+          <Row label="Tipografia (fonte)" hint="Fonte premium embutida — renderiza igual em qualquer máquina">
+            <Select value={options.captionFont || 'auto'} options={catalog.captionFonts} onChange={(v) => set({ captionFont: v })} />
+          </Row>
           <Row label="Cor de destaque" hint="Padrão branco">
             <Swatches value={options.captionColor} options={catalog.captionColors} onChange={(v) => set({ captionColor: v })} />
           </Row>

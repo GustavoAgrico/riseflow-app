@@ -1,9 +1,24 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { runFfmpeg } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('captions');
+
+// Pasta com as fontes premium empacotadas (OFL) — usada pelo libass via `fontsdir`,
+// garantindo que a tipografia escolhida renderize igual em qualquer máquina.
+const FONTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets', 'fonts');
+
+// ─── Tipografia (fontes empacotadas) ──────────────────────────────────
+// `family` é o nome interno da fonte (o que o libass procura).
+export const CAPTION_FONTS = {
+  poppins: { family: 'Poppins', label: 'Poppins (moderna)' },
+  anton: { family: 'Anton', label: 'Anton (impacto)' },
+  bebas: { family: 'Bebas Neue', label: 'Bebas Neue (condensada)' },
+  archivo: { family: 'Archivo Black', label: 'Archivo Black (grossa)' },
+  luckiest: { family: 'Luckiest Guy', label: 'Divertida (cartoon)' },
+};
 
 /** "RRGGBB" (ou "#RRGGBB") → cor ASS "&H00BBGGRR". */
 function assColor(hex) {
@@ -38,12 +53,12 @@ export const CAPTION_COLORS = {
 // ─── Estilos (templates) — cada um combina look + movimento ───────────
 // mode: 'word' (uma palavra por vez) | 'phrase' (frase com destaque)
 export const CAPTION_TEMPLATES = {
-  clean: { mode: 'phrase', size: 0.062, align: 2, marginV: 0.14, outline: 0.09, bold: true, upper: false, anim: 'fade' },
-  pop: { mode: 'word', size: 0.088, align: 5, marginV: 0, outline: 0.1, bold: true, upper: true, anim: 'pop' },
-  hormozi: { mode: 'word', size: 0.1, align: 2, marginV: 0.17, outline: 0.14, bold: true, upper: true, anim: 'pop' },
-  box: { mode: 'word', size: 0.082, align: 5, marginV: 0, outline: 0.12, bold: true, upper: true, anim: 'pop', box: true },
-  neon: { mode: 'phrase', size: 0.066, align: 2, marginV: 0.14, outline: 0.05, bold: true, upper: false, anim: 'fade', glow: true },
-  bounce: { mode: 'word', size: 0.092, align: 5, marginV: 0, outline: 0.1, bold: true, upper: true, anim: 'bounce' },
+  clean: { mode: 'phrase', size: 0.062, align: 2, marginV: 0.14, outline: 0.09, bold: true, upper: false, anim: 'fade', defaultFont: 'poppins' },
+  pop: { mode: 'word', size: 0.088, align: 5, marginV: 0, outline: 0.1, bold: true, upper: true, anim: 'pop', defaultFont: 'anton' },
+  hormozi: { mode: 'word', size: 0.1, align: 2, marginV: 0.17, outline: 0.14, bold: true, upper: true, anim: 'pop', defaultFont: 'anton' },
+  box: { mode: 'word', size: 0.082, align: 5, marginV: 0, outline: 0.12, bold: true, upper: true, anim: 'pop', box: true, defaultFont: 'archivo' },
+  neon: { mode: 'phrase', size: 0.066, align: 2, marginV: 0.14, outline: 0.05, bold: true, upper: false, anim: 'fade', glow: true, defaultFont: 'poppins' },
+  bounce: { mode: 'word', size: 0.092, align: 5, marginV: 0, outline: 0.1, bold: true, upper: true, anim: 'bounce', defaultFont: 'luckiest' },
 };
 
 export const CAPTION_TEMPLATE_LABELS = {
@@ -85,6 +100,9 @@ export function buildAss(segments, meta, style = {}) {
       : 'clean';
   const T = CAPTION_TEMPLATES[tplKey];
   const scale = style.fontScale || 1;
+  // Tipografia: fonte escolhida pelo usuário (style.font) OU a padrão do estilo.
+  const fontId = CAPTION_FONTS[style.font] ? style.font : T.defaultFont || 'poppins';
+  const fontName = style.fontName || CAPTION_FONTS[fontId]?.family || 'Poppins';
 
   const accent = assColor(CAPTION_COLORS[color]); // cor de destaque
   const WHITE = assColor('FFFFFF');
@@ -114,7 +132,7 @@ export function buildAss(segments, meta, style = {}) {
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Rise,${style.fontName || 'DejaVu Sans'},${size},${WHITE},${accent},${assColor('000000')},&H90000000,${boldFlag},0,0,0,100,100,0,0,1,${outline},${shadow},${T.align},60,60,${marginV},1`,
+    `Style: Rise,${fontName},${size},${WHITE},${accent},${assColor('000000')},&H90000000,${boldFlag},0,0,0,100,100,0,0,1,${outline},${shadow},${T.align},60,60,${marginV},1`,
   ];
   // Estilo com caixa opaca atrás da palavra (BorderStyle=3).
   if (T.box) {
@@ -122,7 +140,7 @@ export function buildAss(segments, meta, style = {}) {
     const textColor = color === 'white' ? assColor('111111') : assColor('FFFFFF');
     const pad = Math.max(6, Math.round(size * 0.16));
     header.push(
-      `Style: RiseBox,${style.fontName || 'DejaVu Sans'},${size},${textColor},${textColor},${boxColor},${boxColor},${boldFlag},0,0,0,100,100,0,0,3,${pad},0,${T.align},60,60,${marginV},1`,
+      `Style: RiseBox,${fontName},${size},${textColor},${textColor},${boxColor},${boxColor},${boldFlag},0,0,0,100,100,0,0,3,${pad},0,${T.align},60,60,${marginV},1`,
     );
   }
   header.push('', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text');
@@ -191,7 +209,11 @@ export async function burnCaptions(input, work, meta, transcript, style, onProgr
   // Roda com cwd = pasta do job e referencia o .ass pelo NOME relativo. Assim o
   // filtro `subtitles` nunca recebe drive (C:), barras ou espaços do caminho —
   // que quebravam o parser do FFmpeg no Windows (caminhos com espaço/`:`).
-  const args = ['-i', input, '-vf', `subtitles=${ASS_NAME}`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16'];
+  // `fontsdir` (caminho RELATIVO, com "/" — sem drive/espaços) aponta para as fontes
+  // premium empacotadas, garantindo a tipografia escolhida em qualquer máquina.
+  const fontsRel = path.relative(work, FONTS_DIR).split(path.sep).join('/');
+  const vf = `subtitles=${ASS_NAME}:fontsdir=${fontsRel}`;
+  const args = ['-i', input, '-vf', vf, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16'];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push('-movflags', '+faststart', '-y', output);
 
