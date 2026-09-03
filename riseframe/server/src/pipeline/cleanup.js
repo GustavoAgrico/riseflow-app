@@ -92,8 +92,22 @@ export function markFillers(transcript, opts = {}) {
   };
 
   if (removeRepeats) {
-    // 1) Falso começo / gagueira parcial: "trans transformar" → remove "trans".
+    // 0) Repetição com muleta no meio: "isso né isso" / "quero tipo quero" →
+    // remove o marcador e a 1ª cópia, mantém a 2ª. Marcadores só são removidos
+    // AQUI (entre palavras iguais), nunca soltos, para não mudar o tom da fala.
+    const WEAK = new Set(['ne', 'ta', 'tipo', 'assim', 'sabe', 'entao', 'ai', 'olha', 'entendeu']);
     let list = kept();
+    for (let i = 0; i + 2 < list.length; i++) {
+      if (list[i].w.removed) continue;
+      if (list[i].n === list[i + 2].n && WEAK.has(list[i + 1].n)) {
+        list[i].w.removed = true;
+        list[i + 1].w.removed = true;
+        removedCount += 2;
+      }
+    }
+
+    // 1) Falso começo / gagueira parcial: "trans transformar" → remove "trans".
+    list = kept();
     for (let i = 0; i < list.length - 1; i++) {
       if (list[i].w.removed) continue;
       if (isStutterFragment(list[i].n, list[i + 1].n)) {
