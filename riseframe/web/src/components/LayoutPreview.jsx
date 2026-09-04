@@ -23,8 +23,10 @@ function Media() {
   );
 }
 
-function Half({ kind, height }) {
+function Half({ kind, height, crop }) {
   const isPerson = kind === 'person';
+  // No lado da pessoa, o conteúdo se posiciona conforme o recorte escolhido.
+  const justify = !isPerson ? 'center' : crop === 'center' ? 'center' : crop === 'bottom' ? 'flex-end' : 'flex-start';
   return (
     <div
       style={{
@@ -32,8 +34,10 @@ function Half({ kind, height }) {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: justify,
         gap: 5,
+        padding: isPerson ? '10px 0' : 0,
+        boxSizing: 'border-box',
         background: isPerson ? 'linear-gradient(160deg,#1c2c50,#101a30)' : GRAD,
       }}
     >
@@ -49,16 +53,16 @@ function Half({ kind, height }) {
  * Prévia visual do layout do B-roll (tela cheia / apoio em cima / apoio embaixo).
  * Mostra um quadro 9:16 dividido conforme a escolha, atualizando ao vivo.
  */
-export default function LayoutPreview({ layout = 'fullscreen' }) {
+export default function LayoutPreview({ layout = 'fullscreen', personCrop = 'top' }) {
   const H = 170;
   const W = Math.round((H * 9) / 16); // ~96, mantém proporção vertical
   const half = H / 2;
 
   let body;
   if (layout === 'top') {
-    body = (<><Half kind="broll" height={half} /><Half kind="person" height={half} /></>);
+    body = (<><Half kind="broll" height={half} /><Half kind="person" height={half} crop={personCrop} /></>);
   } else if (layout === 'bottom') {
-    body = (<><Half kind="person" height={half} /><Half kind="broll" height={half} /></>);
+    body = (<><Half kind="person" height={half} crop={personCrop} /><Half kind="broll" height={half} /></>);
   } else {
     // Tela cheia: o apoio cobre o quadro inteiro durante o momento.
     body = <Half kind="broll" height={H} />;

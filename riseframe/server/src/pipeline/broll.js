@@ -114,6 +114,9 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   const regionH = layout === 'fullscreen' ? H : even(H / 2);
   const ovY = layout === 'bottom' ? H - regionH : 0; // Y da metade do B-roll
   const personY = layout === 'top' ? regionH : 0; // pessoa fica na metade oposta
+  // Posição vertical do recorte da pessoa dentro da metade dela (ajuste fino do rosto).
+  const pcrop = ['top', 'center', 'bottom'].includes(options.personCrop) ? options.personCrop : 'top';
+  const cropY = pcrop === 'center' ? '(ih-oh)/2' : pcrop === 'bottom' ? 'ih-oh' : '0';
 
   // Baixa clipes distintos; ignora os que falharem ou repetirem. Se não houver
   // VÍDEO para o momento, cai para uma FOTO do Pexels (mesmo contexto/nicho).
@@ -163,7 +166,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     clips.forEach((_, i) => {
       parts.push(
         `[p${i}]scale=${regionW}:${regionH}:force_original_aspect_ratio=increase,` +
-          `crop=${regionW}:${regionH}:(iw-${regionW})/2:0,setsar=1[ph${i}]`,
+          `crop=${regionW}:${regionH}:(iw-${regionW})/2:${cropY},setsar=1[ph${i}]`,
       );
     });
     last = '[base]';

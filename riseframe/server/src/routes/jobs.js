@@ -78,6 +78,8 @@ function parseOptions(raw) {
     // Layout do B-roll: tela cheia OU tela dividida (metade a metade) com o vídeo
     // da pessoa em cima/baixo e o B-roll na outra metade.
     brollLayout: ['fullscreen', 'top', 'bottom'].includes(o.brollLayout) ? o.brollLayout : 'fullscreen',
+    // Posição vertical do recorte da pessoa na tela dividida (ajuste fino do rosto).
+    personCrop: ['top', 'center', 'bottom'].includes(o.personCrop) ? o.personCrop : 'top',
     niche: ['auto', 'leadership', 'mentor', 'medical', 'fitness', 'finance', 'business', 'marketing', 'education', 'tech', 'mindset', 'law', 'realestate'].includes(o.niche) ? o.niche : 'auto',
     // Chave do Pexels vinda da interface (opcional). Sanitiza: só o formato esperado
     // (alfanumérico, 20–80 chars) é aceito; qualquer outra coisa é descartada.

@@ -56,6 +56,11 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'top', label: 'Apoio em cima' },
       { id: 'bottom', label: 'Apoio embaixo' },
     ],
+    personCrops: [
+      { id: 'top', label: 'Topo (rosto)' },
+      { id: 'center', label: 'Centro' },
+      { id: 'bottom', label: 'Base' },
+    ],
     aspects: [
       { id: 'original', label: 'Manter original' },
       { id: '9:16', label: 'Vertical 9:16 (Reels/Shorts/TikTok)' },
@@ -80,6 +85,7 @@ optionsRouter.get('/options', (_req, res) => {
       broll: false,
       niche: 'auto',
       brollLayout: 'fullscreen',
+      personCrop: 'top',
       aspect: 'original',
       reframeTrack: true,
       silenceNoiseDb: -30,
