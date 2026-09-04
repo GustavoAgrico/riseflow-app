@@ -25,6 +25,7 @@ const PATHS = {
   ),
   play: <path d="M7 5.5v13l11-6.5-11-6.5Z" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />,
   pause: <path d="M8.5 5v14M15.5 5v14" />,
+  chevron: <path d="M9 6l6 6-6 6" />,
   clapper: (
     <>
       <path d="M3.5 9.5h17V19a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V9.5Z" />
