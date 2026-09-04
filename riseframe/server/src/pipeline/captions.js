@@ -41,6 +41,48 @@ function escapeAss(text) {
   return String(text).replace(/\\/g, '\\\\').replace(/\{/g, '(').replace(/\}/g, ')').replace(/\n/g, ' ');
 }
 
+// ─── Destaque de palavra-chave ────────────────────────────────────────
+// Stopwords (PT + EN): palavras funcionais que nunca devem ser destacadas.
+const STOPWORDS = new Set([
+  // português
+  'a', 'o', 'e', 'é', 'as', 'os', 'um', 'uma', 'uns', 'umas', 'de', 'do', 'da', 'dos', 'das',
+  'em', 'no', 'na', 'nos', 'nas', 'por', 'para', 'pra', 'pro', 'com', 'sem', 'que', 'se', 'não',
+  'sim', 'mais', 'mas', 'ou', 'como', 'quando', 'onde', 'quem', 'qual', 'quais', 'isso', 'isto',
+  'esse', 'essa', 'este', 'esta', 'aquele', 'aquela', 'ele', 'ela', 'eles', 'elas', 'eu', 'tu',
+  'você', 'vocês', 'nós', 'meu', 'minha', 'seu', 'sua', 'ao', 'aos', 'à', 'às', 'já', 'ainda',
+  'muito', 'muita', 'pouco', 'tão', 'ser', 'ter', 'estar', 'foi', 'era', 'são', 'vai', 'vou',
+  'tem', 'tinha', 'está', 'até', 'também', 'só', 'lá', 'aqui', 'ali', 'então', 'porque',
+  // inglês
+  'the', 'a', 'an', 'and', 'or', 'but', 'of', 'to', 'in', 'on', 'at', 'for', 'with', 'without',
+  'is', 'are', 'was', 'were', 'be', 'been', 'this', 'that', 'these', 'those', 'it', 'you', 'i',
+  'we', 'they', 'he', 'she', 'my', 'your', 'so', 'if', 'as', 'not', 'no', 'yes', 'do', 'does',
+]);
+
+/** Comprimento da palavra sem pontuação, para pontuar candidatas a palavra-chave. */
+function coreLen(word) {
+  return String(word).replace(/[^\p{L}\p{N}]/gu, '').length;
+}
+
+/**
+ * Escolhe a palavra-chave de um conjunto de palavras (índice) — a palavra de
+ * conteúdo mais "forte": não-stopword, ≥4 letras, priorizando a mais longa.
+ * Retorna -1 quando não há candidata clara.
+ */
+function pickKeyword(words) {
+  let best = -1;
+  let bestLen = 0;
+  for (let i = 0; i < words.length; i++) {
+    const clean = String(words[i].word).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+    if (clean.length < 4 || STOPWORDS.has(clean)) continue;
+    const len = coreLen(words[i].word);
+    if (len > bestLen) {
+      bestLen = len;
+      best = i;
+    }
+  }
+  return best;
+}
+
 // ─── Paleta de cores de destaque (padrão: branco) ─────────────────────
 export const CAPTION_COLORS = {
   white: 'FFFFFF',
@@ -62,6 +104,7 @@ export const CAPTION_TEMPLATES = {
   box: { mode: 'word', size: 0.082, align: 5, marginV: 0, outline: 0.12, bold: true, upper: true, anim: 'pop', box: true, defaultFont: 'archivo' },
   neon: { mode: 'phrase', size: 0.066, align: 2, marginV: 0.14, outline: 0.05, bold: true, upper: false, anim: 'fade', glow: true, defaultFont: 'poppins' },
   bounce: { mode: 'word', size: 0.092, align: 5, marginV: 0, outline: 0.1, bold: true, upper: true, anim: 'bounce', defaultFont: 'luckiest' },
+  keyword: { mode: 'phrase', size: 0.07, align: 2, marginV: 0.15, outline: 0.1, bold: true, upper: true, anim: 'pop', highlightKeyword: true, defaultFont: 'poppins' },
 };
 
 export const CAPTION_TEMPLATE_LABELS = {
@@ -71,6 +114,7 @@ export const CAPTION_TEMPLATE_LABELS = {
   box: 'Caixa (destaque)',
   neon: 'Neon (glow)',
   bounce: 'Bounce',
+  keyword: 'Palavra-chave (dinâmico)',
 };
 
 /** Animações de texto disponíveis (entrada de cada palavra/frase). */
@@ -202,13 +246,23 @@ export function buildAss(segments, meta, style = {}) {
     } else {
       // Frase inteira; a palavra corrente é destacada (por cor, ou — no branco —
       // pelo escurecimento das demais).
+      // No estilo "palavra-chave", a palavra de conteúdo mais forte da frase é
+      // sempre destacada (cor + maior), independente de qual está sendo falada.
+      const kw = T.highlightKeyword ? pickKeyword(words) : -1;
+      const kwBig = '\\fscx118\\fscy118'; // realce da palavra-chave (maior)
       for (let i = 0; i < words.length; i++) {
         const start = words[i].start;
         const end = i + 1 < words.length ? words[i + 1].start : Math.max(words[i].end, seg.end);
         const rendered = words
           .map((wd, j) => {
             const t = escapeAss(T.upper ? wd.word.toUpperCase() : wd.word);
-            if (j === i) return `{\\alpha&H00&\\c${accent}}${t}{\\c${WHITE}}`;
+            if (j === kw) return `{\\alpha&H00&${kwBig}\\c${accent}}${t}{\\fscx100\\fscy100\\c${WHITE}}`;
+            if (j === i) {
+              // Palavra corrente: se a cor de destaque não é branca, usa a cor;
+              // no branco realça só pelo brilho (as demais escurecem).
+              if (color === 'white') return `{\\alpha&H00&}${t}`;
+              return `{\\alpha&H00&\\c${accent}}${t}{\\c${WHITE}}`;
+            }
             if (color === 'white') return `{\\alpha&H70&}${t}{\\alpha&H00&}`;
             return t;
           })

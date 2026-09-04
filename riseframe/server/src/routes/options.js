@@ -18,6 +18,7 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'box', label: 'Caixa (destaque)' },
       { id: 'neon', label: 'Neon (glow)' },
       { id: 'bounce', label: 'Bounce' },
+      { id: 'keyword', label: 'Palavra-chave (dinâmico)' },
     ],
     captionFonts: [
       { id: 'auto', label: 'Automática (por estilo)' },
@@ -49,6 +50,11 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'auto', label: 'Detectar automaticamente' },
       ...Object.entries(NICHES).map(([id, n]) => ({ id, label: n.label })),
     ],
+    brollLayouts: [
+      { id: 'fullscreen', label: 'Tela cheia' },
+      { id: 'top', label: 'Apoio em cima' },
+      { id: 'bottom', label: 'Apoio embaixo' },
+    ],
     aspects: [
       { id: 'original', label: 'Manter original' },
       { id: '9:16', label: 'Vertical 9:16 (Reels/Shorts/TikTok)' },
@@ -71,6 +77,7 @@ optionsRouter.get('/options', (_req, res) => {
       motionIntensity: 'medio',
       broll: false,
       niche: 'auto',
+      brollLayout: 'fullscreen',
       aspect: 'original',
       reframeTrack: true,
       silenceNoiseDb: -30,

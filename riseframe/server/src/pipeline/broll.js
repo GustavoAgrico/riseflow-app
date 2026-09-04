@@ -25,6 +25,15 @@ export function pickBestVideoFile(files, targetH) {
 }
 
 /**
+ * Escolhe a melhor URL de foto do Pexels: a maior versão disponível.
+ * Puro/exportado para teste.
+ */
+export function pickBestPhotoFile(src) {
+  if (!src) return null;
+  return src.original || src.large2x || src.large || src.medium || null;
+}
+
+/**
  * Busca no Pexels (licença livre) e devolve o 1º vídeo ainda não usado.
  * @returns {Promise<{id:number, link:string}|null>}
  */
@@ -42,6 +51,29 @@ async function searchPexels(query, targetH, orientation, usedIds, apiKey) {
     if (usedIds.has(video.id)) continue; // dedupe entre momentos
     const file = pickBestVideoFile(video.video_files, targetH);
     if (file) return { id: video.id, link: file.link };
+  }
+  return null;
+}
+
+/**
+ * Fallback em FOTO: quando não há vídeo para o momento, busca uma imagem do
+ * Pexels que combine com o contexto/nicho e a usa como B-roll estático.
+ * @returns {Promise<{id:number, link:string}|null>}
+ */
+async function searchPexelsPhoto(query, orientation, usedIds, apiKey) {
+  const url =
+    `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}` +
+    `&per_page=8&orientation=${orientation}`;
+  const res = await fetch(url, { headers: { Authorization: apiKey } });
+  if (!res.ok) {
+    log.warn(`Pexels fotos ${res.status} para "${query}"`);
+    return null;
+  }
+  const data = await res.json();
+  for (const photo of data.photos || []) {
+    if (usedIds.has(`p${photo.id}`)) continue; // dedupe (namespace separado de vídeos)
+    const link = pickBestPhotoFile(photo.src);
+    if (link) return { id: `p${photo.id}`, link };
   }
   return null;
 }
@@ -73,40 +105,57 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   const H = meta.height || 1920;
   const orientation = H >= W ? 'portrait' : 'landscape';
 
-  // Baixa clipes distintos; ignora os que falharem ou repetirem.
+  // Layout: tela cheia (padrão) OU tela dividida (metade a metade) com o vídeo da
+  // pessoa em uma metade e o B-roll na outra (o usuário escolhe em cima/embaixo).
+  const layout = ['fullscreen', 'top', 'bottom'].includes(options.brollLayout) ? options.brollLayout : 'fullscreen';
+  const even = (n) => Math.max(2, Math.round(n / 2) * 2);
+  const regionW = W;
+  const regionH = layout === 'fullscreen' ? H : even(H / 2);
+  const ovY = layout === 'bottom' ? H - regionH : 0;
+
+  // Baixa clipes distintos; ignora os que falharem ou repetirem. Se não houver
+  // VÍDEO para o momento, cai para uma FOTO do Pexels (mesmo contexto/nicho).
   const usedIds = new Set();
   const clips = [];
   for (const m of moments) {
     try {
-      const hit = await searchPexels(m.query, H, orientation, usedIds, apiKey);
+      let hit = await searchPexels(m.query, regionH, orientation, usedIds, apiKey);
+      let isImage = false;
       if (!hit) {
-        log.info(`sem B-roll para "${m.query}"`);
+        hit = await searchPexelsPhoto(m.query, orientation, usedIds, apiKey);
+        isImage = true;
+      }
+      if (!hit) {
+        log.info(`sem B-roll (vídeo/foto) para "${m.query}"`);
         continue;
       }
       usedIds.add(hit.id);
-      const dest = path.join(work, `broll_${clips.length}.mp4`);
+      const ext = isImage ? 'jpg' : 'mp4';
+      const dest = path.join(work, `broll_${clips.length}.${ext}`);
       await download(hit.link, dest);
-      clips.push({ ...m, file: dest });
+      clips.push({ ...m, file: dest, isImage });
     } catch (err) {
       log.warn(`B-roll "${m.query}" falhou: ${err.message}`);
     }
   }
   if (!clips.length) return { output: input, inserted: 0 };
 
-  // Filtergraph: cada clipe escalado/cropado e sobreposto na sua janela.
+  // Filtergraph: cada clipe (vídeo ou foto) escalado/cropado para a região do
+  // layout e sobreposto na sua janela de tempo. Foto → congela pela duração.
   const parts = [];
   clips.forEach((c, i) => {
     const dur = Math.max(0.6, c.end - c.start).toFixed(2);
     parts.push(
-      `[${i + 1}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,` +
+      `[${i + 1}:v]scale=${regionW}:${regionH}:force_original_aspect_ratio=increase,crop=${regionW}:${regionH},setsar=1,` +
         `trim=0:${dur},setpts=PTS-STARTPTS+${c.start.toFixed(3)}/TB[b${i}]`,
     );
   });
   let last = '[0:v]';
   clips.forEach((c, i) => {
     const out = i === clips.length - 1 ? '[outv]' : `[o${i}]`;
+    const pos = layout === 'fullscreen' ? '' : `x=0:y=${ovY}:`;
     parts.push(
-      `${last}[b${i}]overlay=enable='between(t,${c.start.toFixed(3)},${c.end.toFixed(3)})'${out}`,
+      `${last}[b${i}]overlay=${pos}enable='between(t,${c.start.toFixed(3)},${c.end.toFixed(3)})'${out}`,
     );
     last = `[o${i}]`;
   });
@@ -116,12 +165,18 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
 
   const output = path.join(work, 'broll.mp4');
   const args = ['-i', input];
-  for (const c of clips) args.push('-i', c.file);
+  for (const c of clips) {
+    // Foto entra como input em loop, limitado à duração do momento.
+    if (c.isImage) args.push('-loop', '1', '-t', Math.max(0.6, c.end - c.start).toFixed(2));
+    args.push('-i', c.file);
+  }
   args.push('-filter_complex_script', scriptPath, '-map', '[outv]');
   if (meta.hasAudio) args.push('-map', '0:a', '-c:a', 'copy');
   args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-movflags', '+faststart', '-y', output);
 
   await runFfmpeg(args, { label: 'broll', totalDuration: meta.duration, onProgress });
-  log.ok(`${clips.length} inserções de B-roll (Pexels, clipes distintos)`);
+  const nImg = clips.filter((c) => c.isImage).length;
+  const layoutLabel = layout === 'fullscreen' ? 'tela cheia' : `tela dividida (${layout === 'top' ? 'em cima' : 'embaixo'})`;
+  log.ok(`${clips.length} inserções de B-roll (${clips.length - nImg} vídeos, ${nImg} fotos, ${layoutLabel})`);
   return { output, inserted: clips.length };
 }

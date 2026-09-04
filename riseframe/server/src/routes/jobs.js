@@ -65,7 +65,7 @@ function parseOptions(raw) {
     voiceIntensity: ['suave', 'medio', 'forte'].includes(o.voiceIntensity) ? o.voiceIntensity : 'medio',
     autoClean: o.autoClean === true, // corta muletas/hesitações e gagueiras da fala
     captions: o.captions !== false,
-    captionTemplate: ['clean', 'pop', 'hormozi', 'box', 'neon', 'bounce'].includes(o.captionTemplate) ? o.captionTemplate : 'clean',
+    captionTemplate: ['clean', 'pop', 'hormozi', 'box', 'neon', 'bounce', 'keyword'].includes(o.captionTemplate) ? o.captionTemplate : 'clean',
     captionColor: ['white', 'yellow', 'orange', 'purple', 'green', 'cyan', 'pink', 'red'].includes(o.captionColor) ? o.captionColor : 'white',
     captionFont: ['auto', 'poppins', 'inter', 'opensans', 'anton', 'bebas', 'archivo', 'garamond', 'luckiest'].includes(o.captionFont) ? o.captionFont : 'auto',
     captionAnimation: ['auto', 'fade', 'pop', 'bounce', 'zoom', 'pop-rot', 'shake', 'none'].includes(o.captionAnimation) ? o.captionAnimation : 'auto',
@@ -74,6 +74,9 @@ function parseOptions(raw) {
     videoMotion: ['none', 'zoom-in', 'zoom-out', 'ken-burns', 'pulse'].includes(o.videoMotion) ? o.videoMotion : 'none',
     motionIntensity: ['suave', 'medio', 'forte'].includes(o.motionIntensity) ? o.motionIntensity : 'medio',
     broll: o.broll === true,
+    // Layout do B-roll: tela cheia OU tela dividida (metade a metade) com o vídeo
+    // da pessoa em cima/baixo e o B-roll na outra metade.
+    brollLayout: ['fullscreen', 'top', 'bottom'].includes(o.brollLayout) ? o.brollLayout : 'fullscreen',
     niche: ['auto', 'leadership', 'mentor', 'medical', 'fitness', 'finance', 'business', 'marketing', 'education', 'tech', 'mindset', 'law', 'realestate'].includes(o.niche) ? o.niche : 'auto',
     // Chave do Pexels vinda da interface (opcional). Sanitiza: só o formato esperado
     // (alfanumérico, 20–80 chars) é aceito; qualquer outra coisa é descartada.

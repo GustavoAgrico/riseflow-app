@@ -9,6 +9,7 @@ const TPL = {
   box: { mode: 'word', font: 'Archivo Black', anim: 'pop', upper: true, size: 42, box: true },
   neon: { mode: 'phrase', font: 'Poppins', anim: 'fade', upper: false, size: 32, glow: true },
   bounce: { mode: 'word', font: 'Luckiest Guy', anim: 'bounce', upper: true, size: 46 },
+  keyword: { mode: 'phrase', font: 'Poppins', anim: 'pop', upper: true, size: 34, highlightKeyword: true },
 };
 const FONT_FAMILY = {
   poppins: 'Poppins', inter: 'Inter', opensans: 'Open Sans', anton: 'Anton',
@@ -25,6 +26,8 @@ const ANIM_CSS = {
 
 const SAMPLE = ['ISSO', 'MUDA', 'TUDO', 'AGORA'];
 const SAMPLE_PHRASE = 'isso muda tudo agora';
+// Índice da palavra-chave na frase de exemplo (destaque do estilo "keyword").
+const KW_INDEX = 3; // "agora"
 
 export default function CaptionPreview({ options }) {
   const tplKey = TPL[options.captionTemplate] ? options.captionTemplate : 'clean';
@@ -86,6 +89,15 @@ export default function CaptionPreview({ options }) {
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 120%, rgba(255,107,53,0.18), transparent 60%)' }} />
         {T.mode === 'word' ? (
           <span key={`${i}-${animKind}-${fontFamily}`} style={textStyle}>{SAMPLE[i]}</span>
+        ) : T.highlightKeyword ? (
+          <span key={`${tick}-${animKind}-${fontFamily}`} style={{ ...textStyle, color: '#FFFFFF', maxWidth: '86%', textAlign: 'center' }}>
+            {SAMPLE_PHRASE.split(' ').map((wd, k) => (
+              <React.Fragment key={k}>
+                {k > 0 ? ' ' : ''}
+                <span style={k === KW_INDEX ? { color, fontSize: '1.18em', display: 'inline-block' } : undefined}>{wd}</span>
+              </React.Fragment>
+            ))}
+          </span>
         ) : (
           <span key={`${tick}-${animKind}-${fontFamily}`} style={{ ...textStyle, maxWidth: '86%', textAlign: 'center' }}>{SAMPLE_PHRASE}</span>
         )}

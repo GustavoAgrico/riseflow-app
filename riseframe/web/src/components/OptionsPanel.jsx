@@ -252,6 +252,20 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
         </Row>
       )}
 
+      {options.broll && brollUsable && (
+        <Row label="Layout do B-roll" hint="Tela cheia OU dividida (você em uma metade, o apoio na outra). Sem vídeo, usa imagem.">
+          <Segmented
+            value={options.brollLayout || 'fullscreen'}
+            options={catalog.brollLayouts || [
+              { id: 'fullscreen', label: 'Tela cheia' },
+              { id: 'top', label: 'Apoio em cima' },
+              { id: 'bottom', label: 'Apoio embaixo' },
+            ]}
+            onChange={(v) => set({ brollLayout: v })}
+          />
+        </Row>
+      )}
+
       {!caps.brollReady && !keyValid && (
         <Row label="Chave do Pexels" hint="Configure sua chave em Configurações para ativar o B-roll">
           <button
