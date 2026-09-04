@@ -34,26 +34,24 @@ export default function Result({ job, onReset, onEditTimeline }) {
 
   return (
     <div style={{ ...glass(), padding: 26 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 18 }}>
-        <span
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 11,
-            display: 'grid',
-            placeItems: 'center',
-            fontSize: 18,
-            background: `linear-gradient(135deg, ${C.green}, #16A34A)`,
-            boxShadow: `0 6px 16px -6px ${C.green}88`,
-            color: '#fff',
-          }}
-        >
-          <Icon name="check" size={19} strokeWidth={2.4} />
+      {/* Banner de sucesso */}
+      <div
+        style={{
+          position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 13, marginBottom: 18,
+          borderRadius: 14, padding: '14px 16px',
+          background: `linear-gradient(180deg, ${C.green}1f, rgba(255,255,255,0.015))`,
+          border: `1px solid ${C.green}44`,
+        }}
+      >
+        <div style={{ position: 'absolute', top: -40, right: -20, width: 140, height: 140, background: `radial-gradient(circle, ${C.green}33, transparent 70%)`, pointerEvents: 'none' }} />
+        <span style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', background: `linear-gradient(135deg, ${C.green}, #16A34A)`, boxShadow: `0 8px 18px -6px ${C.green}88`, color: '#fff', flexShrink: 0 }}>
+          <Icon name="check" size={21} strokeWidth={2.4} />
         </span>
-        <div style={{ fontWeight: 700, fontSize: 18 }}>Vídeo pronto</div>
-        <GhostButton onClick={onReset} style={{ marginLeft: 'auto' }}>
-          Editar outro
-        </GhostButton>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: -0.2 }}>Seu vídeo está pronto</div>
+          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Baixe, ou ajuste os detalhes na timeline</div>
+        </div>
+        <GhostButton onClick={onReset} style={{ flexShrink: 0 }}>Editar outro</GhostButton>
       </div>
 
       <video
@@ -66,6 +64,7 @@ export default function Result({ job, onReset, onEditTimeline }) {
           background: '#000',
           marginBottom: 18,
           border: `1px solid ${C.border}`,
+          boxShadow: '0 20px 50px -24px rgba(0,0,0,0.8)',
         }}
       />
 
