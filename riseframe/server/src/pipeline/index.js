@@ -268,6 +268,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       font: options.captionFont || 'auto', // tipografia (auto = padrão do estilo)
       animation: options.captionAnimation || 'auto', // animação de entrada do texto
       background: options.captionBackground || 'auto', // sombra | caixa | sem sombra
+      position: options.captionPosition || 'auto', // topo | meio | embaixo
       mode: options.captionMode, // compat legado
       fontScale: options.captionScale || 1,
     };

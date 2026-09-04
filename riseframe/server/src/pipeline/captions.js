@@ -117,6 +117,14 @@ export const CAPTION_TEMPLATE_LABELS = {
   keyword: 'Palavra-chave (dinâmico)',
 };
 
+/** Posição vertical da legenda no quadro. */
+export const CAPTION_POSITIONS = {
+  auto: 'Automática (do estilo)',
+  top: 'Em cima',
+  center: 'No meio',
+  bottom: 'Embaixo',
+};
+
 /** Fundo/legibilidade do texto (escolha manual). */
 export const CAPTION_BACKGROUNDS = {
   auto: 'Automático (do estilo)',
@@ -188,7 +196,16 @@ export function buildAss(segments, meta, style = {}) {
   const bg = ['shadow', 'box', 'none'].includes(style.background) ? style.background : (T.box ? 'box' : 'shadow');
   const useBox = bg === 'box';
   const shadow = bg === 'none' ? 0 : Math.max(1, Math.round(size * 0.05));
-  const marginV = style.marginV != null ? style.marginV : Math.round(h * T.marginV);
+  // Posição vertical da legenda (escolha manual). 'auto' segue o estilo.
+  const pos = ['top', 'center', 'bottom'].includes(style.position) ? style.position : 'auto';
+  const align = pos === 'top' ? 8 : pos === 'center' ? 5 : pos === 'bottom' ? 2 : T.align;
+  const marginV = style.marginV != null
+    ? style.marginV
+    : pos === 'center'
+      ? 0
+      : pos === 'top' || pos === 'bottom'
+        ? Math.round(h * 0.12)
+        : Math.round(h * T.marginV);
   const boldFlag = T.bold ? -1 : 0;
 
   // Auto-ajuste: encolhe a fonte de palavras longas para nunca vazar a largura do
@@ -211,7 +228,7 @@ export function buildAss(segments, meta, style = {}) {
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Rise,${fontName},${size},${WHITE},${accent},${assColor('000000')},&H90000000,${boldFlag},0,0,0,100,100,0,0,1,${outline},${shadow},${T.align},60,60,${marginV},1`,
+    `Style: Rise,${fontName},${size},${WHITE},${accent},${assColor('000000')},&H90000000,${boldFlag},0,0,0,100,100,0,0,1,${outline},${shadow},${align},60,60,${marginV},1`,
   ];
   // Estilo com caixa opaca atrás do texto (BorderStyle=3).
   if (useBox) {
@@ -222,7 +239,7 @@ export function buildAss(segments, meta, style = {}) {
     const textColor = phraseBox ? WHITE : color === 'white' ? assColor('111111') : assColor('FFFFFF');
     const pad = Math.max(6, Math.round(size * 0.16));
     header.push(
-      `Style: RiseBox,${fontName},${size},${textColor},${textColor},${boxColor},${boxColor},${boldFlag},0,0,0,100,100,0,0,3,${pad},0,${T.align},60,60,${marginV},1`,
+      `Style: RiseBox,${fontName},${size},${textColor},${textColor},${boxColor},${boxColor},${boldFlag},0,0,0,100,100,0,0,3,${pad},0,${align},60,60,${marginV},1`,
     );
   }
   header.push('', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text');
@@ -254,7 +271,7 @@ export function buildAss(segments, meta, style = {}) {
         const txt = escapeAss(disp);
         const fs = fitFontSize(disp, size);
         const fsTag = fs !== size ? `\\fs${fs}` : '';
-        const ov = `{\\an${T.align}${fsTag}${anim}${glow}${wordColor}}`;
+        const ov = `{\\an${align}${fsTag}${anim}${glow}${wordColor}}`;
         lines.push(`Dialogue: 0,${assTime(wd.start)},${assTime(end)},${styleName},,0,0,0,,${ov}${txt}`);
       }
     } else {

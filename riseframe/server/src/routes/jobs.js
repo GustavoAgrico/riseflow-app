@@ -70,6 +70,7 @@ function parseOptions(raw) {
     captionFont: ['auto', 'poppins', 'inter', 'opensans', 'anton', 'bebas', 'archivo', 'garamond', 'luckiest'].includes(o.captionFont) ? o.captionFont : 'auto',
     captionAnimation: ['auto', 'fade', 'pop', 'bounce', 'zoom', 'pop-rot', 'shake', 'none'].includes(o.captionAnimation) ? o.captionAnimation : 'auto',
     captionBackground: ['auto', 'shadow', 'box', 'none'].includes(o.captionBackground) ? o.captionBackground : 'auto',
+    captionPosition: ['auto', 'top', 'center', 'bottom'].includes(o.captionPosition) ? o.captionPosition : 'auto',
     captionScale: clampNum(o.captionScale, 0.6, 1.6, 1),
     colorLook: ALLOWED_LOOKS.has(o.colorLook) ? o.colorLook : 'auto',
     videoMotion: ['none', 'zoom-in', 'zoom-out', 'ken-burns', 'pulse'].includes(o.videoMotion) ? o.videoMotion : 'none',
@@ -79,7 +80,7 @@ function parseOptions(raw) {
     // da pessoa em cima/baixo e o B-roll na outra metade.
     brollLayout: ['fullscreen', 'top', 'bottom'].includes(o.brollLayout) ? o.brollLayout : 'fullscreen',
     // Posição vertical do recorte da pessoa na tela dividida (ajuste fino do rosto).
-    personCrop: ['top', 'center', 'bottom'].includes(o.personCrop) ? o.personCrop : 'top',
+    personCrop: ['top', 'center', 'bottom'].includes(o.personCrop) ? o.personCrop : 'center',
     niche: ['auto', 'leadership', 'mentor', 'medical', 'fitness', 'finance', 'business', 'marketing', 'education', 'tech', 'mindset', 'law', 'realestate'].includes(o.niche) ? o.niche : 'auto',
     // Chave do Pexels vinda da interface (opcional). Sanitiza: só o formato esperado
     // (alfanumérico, 20–80 chars) é aceito; qualquer outra coisa é descartada.

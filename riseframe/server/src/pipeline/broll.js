@@ -115,7 +115,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   const ovY = layout === 'bottom' ? H - regionH : 0; // Y da metade do B-roll
   const personY = layout === 'top' ? regionH : 0; // pessoa fica na metade oposta
   // Posição vertical do recorte da pessoa dentro da metade dela (ajuste fino do rosto).
-  const pcrop = ['top', 'center', 'bottom'].includes(options.personCrop) ? options.personCrop : 'top';
+  const pcrop = ['top', 'center', 'bottom'].includes(options.personCrop) ? options.personCrop : 'center';
   const cropY = pcrop === 'center' ? '(ih-oh)/2' : pcrop === 'bottom' ? 'ih-oh' : '0';
 
   // Baixa clipes distintos; ignora os que falharem ou repetirem. Se não houver

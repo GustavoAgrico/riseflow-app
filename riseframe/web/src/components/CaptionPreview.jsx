@@ -42,6 +42,9 @@ export default function CaptionPreview({ options }) {
     ? options.captionBackground
     : (T.box ? 'box' : 'shadow');
   const useBox = bg === 'box';
+  // Posição vertical no quadro de prévia (auto = centralizado).
+  const pos = ['top', 'center', 'bottom'].includes(options.captionPosition) ? options.captionPosition : 'auto';
+  const vAlign = pos === 'top' ? 'flex-start' : pos === 'bottom' ? 'flex-end' : 'center';
 
   const [i, setI] = useState(0);
   // No modo palavra, cicla as palavras para dar a sensação de dinâmica.
@@ -95,7 +98,9 @@ export default function CaptionPreview({ options }) {
         style={{
           position: 'relative', height: 150, borderRadius: 14, overflow: 'hidden',
           background: 'linear-gradient(135deg, #1b2436, #0c0c16)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          display: 'flex', alignItems: vAlign, justifyContent: 'center',
+          padding: pos === 'auto' ? 0 : '14px 0',
+          boxSizing: 'border-box',
           border: `1px solid ${C.border}`,
         }}
       >

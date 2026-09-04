@@ -198,6 +198,11 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
               <Select value={options.captionBackground || 'auto'} options={catalog.captionBackgrounds} onChange={(v) => set({ captionBackground: v })} />
             </Row>
           )}
+          {catalog.captionPositions && (
+            <Row label="Posição da legenda" hint="Onde a legenda aparece no vídeo: em cima, no meio ou embaixo">
+              <Select value={options.captionPosition || 'auto'} options={catalog.captionPositions} onChange={(v) => set({ captionPosition: v })} />
+            </Row>
+          )}
           <Row label="Cor de destaque" hint="Padrão branco">
             <Swatches value={options.captionColor} options={catalog.captionColors} onChange={(v) => set({ captionColor: v })} />
           </Row>
