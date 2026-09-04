@@ -8,7 +8,7 @@ import OptionsPanel from './components/OptionsPanel.jsx';
 import Pipeline from './components/Pipeline.jsx';
 import Result from './components/Result.jsx';
 import ClipsResult from './components/ClipsResult.jsx';
-import TranscriptEditor from './components/TranscriptEditor.jsx';
+import TimelineEditor from './components/TimelineEditor.jsx';
 
 export default function App({ embedded = false, onHome, onSettings } = {}) {
   const [catalog, setCatalog] = useState(null);
@@ -249,9 +249,10 @@ export default function App({ embedded = false, onHome, onSettings } = {}) {
 
       {phase === 'editing' && transcriptData && (
         <div className="rf-anim">
-          <TranscriptEditor
+          <TimelineEditor
             transcript={transcriptData}
             durationSec={durationSec}
+            sourceId={sourceId}
             onGenerate={generateFromEdits}
             onBack={reset}
           />
@@ -312,7 +313,7 @@ const codeStyle = {
 
 const CTA = {
   auto: { icon: 'sparkles', label: 'Editar com IA' },
-  editor: { icon: 'edit', label: 'Transcrever para editar' },
+  editor: { icon: 'edit', label: 'Abrir editor / timeline' },
   clips: { icon: 'film', label: 'Gerar clipes curtos' },
 };
 
@@ -365,7 +366,7 @@ function ClipsOptions({ options, onChange }) {
 function ModeChooser({ value, onChange }) {
   const opts = [
     { id: 'auto', icon: 'sparkles', title: 'Automático', desc: 'A IA corta, legenda e finaliza sozinha' },
-    { id: 'editor', icon: 'edit', title: 'Editor de transcrição', desc: 'Corte o vídeo editando o texto' },
+    { id: 'editor', icon: 'edit', title: 'Editor / Timeline', desc: 'Preview + timeline: corrija a legenda e corte trechos' },
     { id: 'clips', icon: 'film', title: 'Clipes curtos', desc: 'Gere cortes dos melhores trechos' },
   ];
   return (

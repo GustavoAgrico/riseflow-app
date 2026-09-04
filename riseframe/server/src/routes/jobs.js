@@ -248,3 +248,20 @@ jobsRouter.get('/jobs/:id/preview', (req, res) => {
   if (!fs.existsSync(file)) return res.status(404).json({ error: 'arquivo não encontrado' });
   res.sendFile(file);
 });
+
+// GET /api/jobs/:id/source → stream do vídeo ORIGINAL enviado (para o editor/timeline
+// pré-visualizar e sincronizar as legendas). Só existe enquanto o upload não expira.
+const MIME_BY_EXT = {
+  '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime',
+  '.webm': 'video/webm', '.mkv': 'video/x-matroska', '.avi': 'video/x-msvideo',
+};
+jobsRouter.get('/jobs/:id/source', (req, res) => {
+  const job = queue.get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'job não encontrado' });
+  if (!job.inputPath || !fs.existsSync(job.inputPath)) {
+    return res.status(410).json({ error: 'o vídeo de origem expirou' });
+  }
+  const ext = path.extname(job.inputPath).toLowerCase();
+  res.type(MIME_BY_EXT[ext] || 'application/octet-stream');
+  res.sendFile(path.resolve(job.inputPath)); // sendFile suporta Range (scrubbing)
+});

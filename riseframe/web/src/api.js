@@ -151,3 +151,5 @@ export function subscribeJob(id, onUpdate) {
 
 export const downloadUrl = (id) => `${BASE}/jobs/${id}/download`;
 export const previewUrl = (id) => `${BASE}/jobs/${id}/preview`;
+/** URL do vídeo ORIGINAL enviado (para o editor/timeline pré-visualizar). */
+export const sourceUrl = (id) => `${BASE}/jobs/${id}/source`;
