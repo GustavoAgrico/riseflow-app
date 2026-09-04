@@ -26,6 +26,27 @@ const PATHS = {
   play: <path d="M7 5.5v13l11-6.5-11-6.5Z" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />,
   pause: <path d="M8.5 5v14M15.5 5v14" />,
   chevron: <path d="M9 6l6 6-6 6" />,
+  grid: (
+    <>
+      <rect x="4" y="4" width="7" height="7" rx="1.6" />
+      <rect x="13" y="4" width="7" height="7" rx="1.6" />
+      <rect x="4" y="13" width="7" height="7" rx="1.6" />
+      <rect x="13" y="13" width="7" height="7" rx="1.6" />
+    </>
+  ),
+  folder: <path d="M4 7.5a2 2 0 0 1 2-2h3l2 2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9Z" />,
+  gear: (
+    <>
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M12 3.6v2.4M12 18v2.4M5.1 7.3l2.1 1.2M16.8 15.5l2.1 1.2M5.1 16.7l2.1-1.2M16.8 8.5l2.1-1.2" />
+    </>
+  ),
+  logout: (
+    <>
+      <path d="M15 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8" />
+      <path d="M18 15l3-3-3-3M21 12H10" />
+    </>
+  ),
   clapper: (
     <>
       <path d="M3.5 9.5h17V19a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V9.5Z" />

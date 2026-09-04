@@ -9,6 +9,7 @@ import Pipeline from './components/Pipeline.jsx';
 import Result from './components/Result.jsx';
 import ClipsResult from './components/ClipsResult.jsx';
 import TimelineEditor from './components/TimelineEditor.jsx';
+import { recordJob } from './history.js';
 
 export default function App({ embedded = false, onHome, onSettings } = {}) {
   const [catalog, setCatalog] = useState(null);
@@ -88,7 +89,24 @@ export default function App({ embedded = false, onHome, onSettings } = {}) {
     setPhase('processing');
     subscribeJob(created.id, (u) => {
       setJob(u);
-      if (u.status === 'done') setPhase('done');
+      if (u.status === 'done') {
+        setPhase('done');
+        // Guarda no histórico local (alimenta a Produtividade e a Biblioteca).
+        const rep = u.report || {};
+        recordJob({
+          id: u.id,
+          title: u.filename || 'vídeo',
+          mode: u.mode,
+          at: Date.now(),
+          durationSec: rep.input?.duration || 0,
+          savedSec: rep.cut?.removedSeconds || 0,
+          captions: rep.captions?.segments || 0,
+          aspect: rep.output?.aspect || null,
+          sizeBytes: rep.output?.sizeBytes || 0,
+          clips: rep.clips?.length || 0,
+          downloadUrl: u.downloadUrl || null,
+        });
+      }
       if (u.status === 'error') fail(u.error);
     });
   }

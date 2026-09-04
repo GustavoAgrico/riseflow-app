@@ -1,56 +1,80 @@
 import React, { useState } from 'react';
 import { C, GRAD, FONT_DISPLAY } from './theme.js';
-import { Logo } from './components/Icon.jsx';
+import Icon, { Logo } from './components/Icon.jsx';
 import { Spinner } from './components/ui.jsx';
 import { useAuth } from './AuthContext.jsx';
 import Landing from './pages/Landing.jsx';
 import Auth from './pages/Auth.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import Library from './pages/Library.jsx';
 import Settings from './pages/Settings.jsx';
 import Editor from './App.jsx';
 
-function TopNav({ user, view, onView, onLogout }) {
-  const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
-  const link = (id, label) => (
+const NAV = [
+  { id: 'dashboard', label: 'Produtividade', icon: 'grid' },
+  { id: 'library', label: 'Biblioteca', icon: 'folder' },
+  { id: 'editor', label: 'Novo vídeo', icon: 'sparkles', cta: true },
+];
+
+function NavItem({ item, active, onClick }) {
+  return (
     <button
-      onClick={() => onView(id)}
+      onClick={onClick}
       style={{
-        background: view === id ? 'rgba(255,255,255,0.07)' : 'transparent',
-        border: 'none', color: view === id ? C.text : C.muted, borderRadius: 9,
-        padding: '8px 14px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+        position: 'relative', width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+        padding: '11px 14px', borderRadius: 12, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+        textAlign: 'left', fontSize: 14, fontWeight: 600, transition: 'all .15s',
+        background: item.cta
+          ? GRAD
+          : active ? 'rgba(255,107,53,0.12)' : 'transparent',
+        color: item.cta ? '#fff' : active ? C.text : C.muted,
+        boxShadow: item.cta ? '0 8px 20px -8px rgba(255,107,53,0.55)' : 'none',
       }}
     >
-      {label}
+      {active && !item.cta && <span style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 3, borderRadius: 3, background: GRAD }} />}
+      <Icon name={item.icon} size={18} strokeWidth={1.9} color={item.cta ? '#fff' : active ? C.orangeSoft : 'currentColor'} />
+      {item.label}
     </button>
   );
+}
+
+function Sidebar({ user, view, onView, onLogout }) {
+  const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
   return (
-    <header style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', alignItems: 'center', gap: 10, padding: '13px 22px', borderBottom: `1px solid ${C.border}`, background: 'rgba(8,8,12,0.75)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
-      <button onClick={() => onView('dashboard')} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 9, padding: 0 }}>
-        <Logo size={30} />
-        <span style={{ fontWeight: 800, fontSize: 17, fontFamily: FONT_DISPLAY, letterSpacing: -0.4, color: C.text }}>Riseframe</span>
-      </button>
-      <div style={{ display: 'flex', gap: 2, marginLeft: 14 }}>
-        {link('dashboard', 'Início')}
-        {link('editor', 'Novo vídeo')}
-        {link('settings', 'Configurações')}
-      </div>
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-          <div style={{ width: 32, height: 32, borderRadius: '50%', background: GRAD, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, color: '#fff' }}>{initial}</div>
-          <span style={{ fontSize: 13.5, color: C.muted, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || user?.email}</span>
+    <aside className="rf-sidebar" style={{ width: 244, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: 'rgba(10,10,15,0.6)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', display: 'flex', flexDirection: 'column', padding: '18px 14px', position: 'sticky', top: 0, height: '100vh' }}>
+      <button onClick={() => onView('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px 16px' }}>
+        <Logo size={32} />
+        <div style={{ textAlign: 'left' }}>
+          <div style={{ fontWeight: 800, fontSize: 16, fontFamily: FONT_DISPLAY, letterSpacing: -0.4, color: C.text }}>Riseframe</div>
+          <div style={{ fontSize: 10.5, color: C.faint, letterSpacing: 0.2 }}>Editor de vídeo IA</div>
         </div>
-        <button onClick={onLogout} style={{ background: 'transparent', border: `1px solid ${C.border}`, color: C.muted, borderRadius: 9, padding: '7px 13px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-          Sair
-        </button>
+      </button>
+
+      <div style={{ display: 'grid', gap: 4 }}>
+        {NAV.map((n) => <NavItem key={n.id} item={n} active={view === n.id} onClick={() => onView(n.id)} />)}
       </div>
-    </header>
+
+      <div style={{ marginTop: 20, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px' }}>CONTA</div>
+      <div style={{ display: 'grid', gap: 4 }}>
+        <NavItem item={{ id: 'settings', label: 'Configurações', icon: 'gear' }} active={view === 'settings'} onClick={() => onView('settings')} />
+        <NavItem item={{ id: 'logout', label: 'Sair', icon: 'logout' }} active={false} onClick={onLogout} />
+      </div>
+
+      <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderTop: `1px solid ${C.border}` }}>
+        <div style={{ width: 34, height: 34, borderRadius: '50%', background: GRAD, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 14, color: '#fff', flexShrink: 0 }}>{initial}</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || 'Você'}</div>
+          <div style={{ fontSize: 11, color: C.faint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email}</div>
+        </div>
+      </div>
+    </aside>
   );
 }
 
 export default function Root() {
   const { user, ready, logout } = useAuth();
-  const [publicRoute, setPublicRoute] = useState('landing'); // landing | login | register
-  const [view, setView] = useState('dashboard'); // dashboard | editor
+  const [publicRoute, setPublicRoute] = useState('landing');
+  const [view, setView] = useState('dashboard');
 
   if (!ready) {
     return (
@@ -60,29 +84,29 @@ export default function Root() {
     );
   }
 
-  // Não autenticado → landing ou tela de auth.
   if (!user) {
     if (publicRoute === 'landing') {
       return <Landing onEnter={() => setPublicRoute('register')} onLogin={() => setPublicRoute('login')} />;
     }
-    return (
-      <Auth
-        initialMode={publicRoute === 'register' ? 'register' : 'login'}
-        onDone={() => setView('dashboard')}
-        onHome={() => setPublicRoute('landing')}
-      />
-    );
+    return <Auth initialMode={publicRoute === 'register' ? 'register' : 'login'} onDone={() => setView('dashboard')} onHome={() => setPublicRoute('landing')} />;
   }
 
-  // Autenticado → app com barra de navegação.
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <TopNav user={user} view={view} onView={setView} onLogout={logout} />
-      <div style={{ flex: 1 }}>
-        {view === 'dashboard' && <Dashboard user={user} onNewVideo={() => setView('editor')} />}
+    <div style={{ minHeight: '100vh', display: 'flex' }}>
+      <Sidebar user={user} view={view} onView={setView} onLogout={logout} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {view === 'dashboard' && <Dashboard user={user} onNewVideo={() => setView('editor')} onLibrary={() => setView('library')} onSettings={() => setView('settings')} />}
+        {view === 'library' && <Library onNewVideo={() => setView('editor')} />}
         {view === 'settings' && <Settings onNewVideo={() => setView('editor')} />}
         {view === 'editor' && <Editor embedded onSettings={() => setView('settings')} />}
       </div>
+      <style>{`
+        @media (max-width: 820px){
+          body{ }
+          .rf-sidebar{ position: sticky; top: 0; width: 100% !important; height: auto !important; flex-direction: row !important; align-items: center; overflow-x: auto; padding: 10px 12px !important; }
+          .rf-sidebar > div{ display: flex !important; }
+        }
+      `}</style>
     </div>
   );
 }
