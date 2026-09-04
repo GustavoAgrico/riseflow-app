@@ -193,6 +193,11 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
               <Select value={options.captionAnimation || 'auto'} options={catalog.captionAnimations} onChange={(v) => set({ captionAnimation: v })} />
             </Row>
           )}
+          {catalog.captionBackgrounds && (
+            <Row label="Fundo do texto" hint="Sombra, caixa sólida ou só contorno (sem sombra)">
+              <Select value={options.captionBackground || 'auto'} options={catalog.captionBackgrounds} onChange={(v) => set({ captionBackground: v })} />
+            </Row>
+          )}
           <Row label="Cor de destaque" hint="Padrão branco">
             <Swatches value={options.captionColor} options={catalog.captionColors} onChange={(v) => set({ captionColor: v })} />
           </Row>

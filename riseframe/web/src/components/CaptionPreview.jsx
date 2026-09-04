@@ -37,6 +37,11 @@ export default function CaptionPreview({ options }) {
   const anim = ANIM_CSS[animKind] || ANIM_CSS.fade;
   const color = COLOR_HEX[options.captionColor] || '#FFFFFF';
   const scale = options.captionScale || 1;
+  // Fundo do texto (escolha manual): sombra | caixa | sem sombra. 'auto' segue o estilo.
+  const bg = ['shadow', 'box', 'none'].includes(options.captionBackground)
+    ? options.captionBackground
+    : (T.box ? 'box' : 'shadow');
+  const useBox = bg === 'box';
 
   const [i, setI] = useState(0);
   // No modo palavra, cicla as palavras para dar a sensação de dinâmica.
@@ -59,19 +64,27 @@ export default function CaptionPreview({ options }) {
   const stroke = `-${outline}px 0 #000, ${outline}px 0 #000, 0 -${outline}px #000, 0 ${outline}px #000,` +
     `-${outline}px -${outline}px #000, ${outline}px ${outline}px #000, -${outline}px ${outline}px #000, ${outline}px -${outline}px #000`;
 
+  // Sombra: contorno + sombra. Sem sombra: só contorno. Neon mantém o glow.
+  const baseShadow = T.glow
+    ? `0 0 12px ${color}, 0 0 22px ${color}, ${stroke}`
+    : bg === 'none' ? stroke : `${stroke}, ${shadow}`;
   const textStyle = {
     fontFamily: `'${fontFamily}', system-ui, sans-serif`,
     fontWeight: 800,
     fontSize: fontPx,
     lineHeight: 1.1,
     color,
-    textShadow: T.glow ? `0 0 12px ${color}, 0 0 22px ${color}, ${stroke}` : `${stroke}, ${shadow}`,
+    textShadow: baseShadow,
     textTransform: T.upper ? 'uppercase' : 'none',
     letterSpacing: fontFamily === 'Bebas Neue' ? 1 : -0.3,
     display: 'inline-block',
-    padding: T.box ? '2px 12px' : 0,
-    background: T.box ? (options.captionColor === 'white' ? '#fff' : color) : 'transparent',
-    ...(T.box ? { color: options.captionColor === 'white' ? '#111' : '#fff', textShadow: 'none', borderRadius: 6 } : {}),
+    padding: useBox ? '2px 12px' : 0,
+    ...(useBox
+      ? T.mode === 'phrase'
+        // Frase/palavra-chave: caixa escura + texto branco (destaque colorido por cima).
+        ? { background: '#101014', color: '#fff', textShadow: 'none', borderRadius: 6 }
+        : { background: options.captionColor === 'white' ? '#fff' : color, color: options.captionColor === 'white' ? '#111' : '#fff', textShadow: 'none', borderRadius: 6 }
+      : { background: 'transparent' }),
     animation: anim,
   };
 
@@ -103,7 +116,7 @@ export default function CaptionPreview({ options }) {
         )}
       </div>
       <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>
-        {fontFamily} · {options.captionColor || 'white'} · {animKind}
+        {fontFamily} · {options.captionColor || 'white'} · {animKind} · {bg === 'box' ? 'caixa' : bg === 'none' ? 'sem sombra' : 'sombra'}
       </div>
     </div>
   );

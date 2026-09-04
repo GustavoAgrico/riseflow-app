@@ -108,10 +108,12 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   // Layout: tela cheia (padrão) OU tela dividida (metade a metade) com o vídeo da
   // pessoa em uma metade e o B-roll na outra (o usuário escolhe em cima/embaixo).
   const layout = ['fullscreen', 'top', 'bottom'].includes(options.brollLayout) ? options.brollLayout : 'fullscreen';
+  const isSplit = layout !== 'fullscreen';
   const even = (n) => Math.max(2, Math.round(n / 2) * 2);
   const regionW = W;
   const regionH = layout === 'fullscreen' ? H : even(H / 2);
-  const ovY = layout === 'bottom' ? H - regionH : 0;
+  const ovY = layout === 'bottom' ? H - regionH : 0; // Y da metade do B-roll
+  const personY = layout === 'top' ? regionH : 0; // pessoa fica na metade oposta
 
   // Baixa clipes distintos; ignora os que falharem ou repetirem. Se não houver
   // VÍDEO para o momento, cai para uma FOTO do Pexels (mesmo contexto/nicho).
@@ -150,15 +152,40 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
         `trim=0:${dur},setpts=PTS-STARTPTS+${c.start.toFixed(3)}/TB[b${i}]`,
     );
   });
-  let last = '[0:v]';
-  clips.forEach((c, i) => {
-    const out = i === clips.length - 1 ? '[outv]' : `[o${i}]`;
-    const pos = layout === 'fullscreen' ? '' : `x=0:y=${ovY}:`;
-    parts.push(
-      `${last}[b${i}]overlay=${pos}enable='between(t,${c.start.toFixed(3)},${c.end.toFixed(3)})'${out}`,
-    );
-    last = `[o${i}]`;
-  });
+
+  let last;
+  if (isSplit) {
+    // Tela dividida: a pessoa é REDIMENSIONADA para caber na metade dela (não fica
+    // coberta pelo B-roll). Crop alinhado ao topo (y=0) para preservar o rosto —
+    // em vídeo "talking head" a cabeça fica no terço superior.
+    const n = clips.length;
+    parts.push(`[0:v]split=${n + 1}[base]${clips.map((_, i) => `[p${i}]`).join('')}`);
+    clips.forEach((_, i) => {
+      parts.push(
+        `[p${i}]scale=${regionW}:${regionH}:force_original_aspect_ratio=increase,` +
+          `crop=${regionW}:${regionH}:(iw-${regionW})/2:0,setsar=1[ph${i}]`,
+      );
+    });
+    last = '[base]';
+    clips.forEach((c, i) => {
+      const win = `enable='between(t,${c.start.toFixed(3)},${c.end.toFixed(3)})'`;
+      const mid = `[s${i}]`;
+      // 1) encaixa a pessoa na metade dela; 2) coloca o B-roll na outra metade.
+      parts.push(`${last}[ph${i}]overlay=x=0:y=${personY}:${win}${mid}`);
+      parts.push(`${mid}[b${i}]overlay=x=0:y=${ovY}:${win}${i === n - 1 ? '[outv]' : `[o${i}]`}`);
+      last = i === n - 1 ? '[outv]' : `[o${i}]`;
+    });
+  } else {
+    // Tela cheia: o B-roll cobre o quadro inteiro durante o momento.
+    last = '[0:v]';
+    clips.forEach((c, i) => {
+      const out = i === clips.length - 1 ? '[outv]' : `[o${i}]`;
+      parts.push(
+        `${last}[b${i}]overlay=enable='between(t,${c.start.toFixed(3)},${c.end.toFixed(3)})'${out}`,
+      );
+      last = `[o${i}]`;
+    });
+  }
 
   const scriptPath = path.join(work, 'broll_filter.txt');
   await fs.writeFile(scriptPath, parts.join(';\n'), 'utf8');

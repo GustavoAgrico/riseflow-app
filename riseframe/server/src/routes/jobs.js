@@ -69,6 +69,7 @@ function parseOptions(raw) {
     captionColor: ['white', 'yellow', 'orange', 'purple', 'green', 'cyan', 'pink', 'red'].includes(o.captionColor) ? o.captionColor : 'white',
     captionFont: ['auto', 'poppins', 'inter', 'opensans', 'anton', 'bebas', 'archivo', 'garamond', 'luckiest'].includes(o.captionFont) ? o.captionFont : 'auto',
     captionAnimation: ['auto', 'fade', 'pop', 'bounce', 'zoom', 'pop-rot', 'shake', 'none'].includes(o.captionAnimation) ? o.captionAnimation : 'auto',
+    captionBackground: ['auto', 'shadow', 'box', 'none'].includes(o.captionBackground) ? o.captionBackground : 'auto',
     captionScale: clampNum(o.captionScale, 0.6, 1.6, 1),
     colorLook: ALLOWED_LOOKS.has(o.colorLook) ? o.colorLook : 'auto',
     videoMotion: ['none', 'zoom-in', 'zoom-out', 'ken-burns', 'pulse'].includes(o.videoMotion) ? o.videoMotion : 'none',

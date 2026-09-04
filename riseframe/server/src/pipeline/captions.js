@@ -117,6 +117,14 @@ export const CAPTION_TEMPLATE_LABELS = {
   keyword: 'Palavra-chave (dinâmico)',
 };
 
+/** Fundo/legibilidade do texto (escolha manual). */
+export const CAPTION_BACKGROUNDS = {
+  auto: 'Automático (do estilo)',
+  shadow: 'Sombra (contorno + sombra)',
+  box: 'Caixa (fundo sólido)',
+  none: 'Sem sombra (só contorno)',
+};
+
 /** Animações de texto disponíveis (entrada de cada palavra/frase). */
 export const CAPTION_ANIMATIONS = {
   auto: 'Automática (do estilo)',
@@ -176,7 +184,10 @@ export function buildAss(segments, meta, style = {}) {
   const WHITE = assColor('FFFFFF');
   const size = Math.round(h * T.size * scale);
   const outline = Math.max(2, Math.round(size * T.outline));
-  const shadow = Math.max(1, Math.round(size * 0.05));
+  // Fundo do texto (escolha manual): sombra | caixa | sem sombra. 'auto' segue o estilo.
+  const bg = ['shadow', 'box', 'none'].includes(style.background) ? style.background : (T.box ? 'box' : 'shadow');
+  const useBox = bg === 'box';
+  const shadow = bg === 'none' ? 0 : Math.max(1, Math.round(size * 0.05));
   const marginV = style.marginV != null ? style.marginV : Math.round(h * T.marginV);
   const boldFlag = T.bold ? -1 : 0;
 
@@ -202,10 +213,13 @@ export function buildAss(segments, meta, style = {}) {
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
     `Style: Rise,${fontName},${size},${WHITE},${accent},${assColor('000000')},&H90000000,${boldFlag},0,0,0,100,100,0,0,1,${outline},${shadow},${T.align},60,60,${marginV},1`,
   ];
-  // Estilo com caixa opaca atrás da palavra (BorderStyle=3).
-  if (T.box) {
-    const boxColor = color === 'white' ? assColor('FFFFFF') : accent;
-    const textColor = color === 'white' ? assColor('111111') : assColor('FFFFFF');
+  // Estilo com caixa opaca atrás do texto (BorderStyle=3).
+  if (useBox) {
+    // Frase (ex.: destaque de palavra-chave): caixa ESCURA neutra, para que tanto o
+    // branco quanto a cor de destaque leiam bem. Palavra-a-palavra: caixa na cor.
+    const phraseBox = T.mode === 'phrase';
+    const boxColor = phraseBox ? assColor('101014') : color === 'white' ? assColor('FFFFFF') : accent;
+    const textColor = phraseBox ? WHITE : color === 'white' ? assColor('111111') : assColor('FFFFFF');
     const pad = Math.max(6, Math.round(size * 0.16));
     header.push(
       `Style: RiseBox,${fontName},${size},${textColor},${textColor},${boxColor},${boxColor},${boldFlag},0,0,0,100,100,0,0,3,${pad},0,${T.align},60,60,${marginV},1`,
@@ -228,8 +242,8 @@ export function buildAss(segments, meta, style = {}) {
 
     if (T.mode === 'word') {
       // Uma palavra por vez, centralizada, com o movimento do template.
-      const styleName = T.box ? 'RiseBox' : 'Rise';
-      const wordColor = T.box ? '' : `\\c${accent}`;
+      const styleName = useBox ? 'RiseBox' : 'Rise';
+      const wordColor = useBox ? '' : `\\c${accent}`;
       for (let i = 0; i < words.length; i++) {
         const wd = words[i];
         // Fim = até o começo da PRÓXIMA palavra (nunca sobrepõe → nada de duas
@@ -250,6 +264,7 @@ export function buildAss(segments, meta, style = {}) {
       // sempre destacada (cor + maior), independente de qual está sendo falada.
       const kw = T.highlightKeyword ? pickKeyword(words) : -1;
       const kwBig = '\\fscx118\\fscy118'; // realce da palavra-chave (maior)
+      const phraseStyle = useBox ? 'RiseBox' : 'Rise';
       for (let i = 0; i < words.length; i++) {
         const start = words[i].start;
         const end = i + 1 < words.length ? words[i + 1].start : Math.max(words[i].end, seg.end);
@@ -268,7 +283,7 @@ export function buildAss(segments, meta, style = {}) {
             return t;
           })
           .join(' ');
-        lines.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Rise,,0,0,0,,{${anim}${glow}}${rendered}`);
+        lines.push(`Dialogue: 0,${assTime(start)},${assTime(end)},${phraseStyle},,0,0,0,,{${anim}${glow}}${rendered}`);
       }
     }
   }

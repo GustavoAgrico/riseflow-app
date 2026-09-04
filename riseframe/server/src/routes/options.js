@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { capabilities } from '../config.js';
 import { lookNames } from '../pipeline/color.js';
 import { NICHES } from '../pipeline/niche.js';
-import { CAPTION_FONTS, CAPTION_ANIMATIONS } from '../pipeline/captions.js';
+import { CAPTION_FONTS, CAPTION_ANIMATIONS, CAPTION_BACKGROUNDS } from '../pipeline/captions.js';
 
 export const optionsRouter = Router();
 
@@ -25,6 +25,7 @@ optionsRouter.get('/options', (_req, res) => {
       ...Object.entries(CAPTION_FONTS).map(([id, f]) => ({ id, label: f.label })),
     ],
     captionAnimations: Object.entries(CAPTION_ANIMATIONS).map(([id, label]) => ({ id, label })),
+    captionBackgrounds: Object.entries(CAPTION_BACKGROUNDS).map(([id, label]) => ({ id, label })),
     captionColors: [
       { id: 'white', label: 'Branco', hex: '#FFFFFF' },
       { id: 'yellow', label: 'Amarelo', hex: '#FFE24B' },
@@ -71,6 +72,7 @@ optionsRouter.get('/options', (_req, res) => {
       captionColor: 'white',
       captionFont: 'auto',
       captionAnimation: 'auto',
+      captionBackground: 'auto',
       captionScale: 1,
       colorLook: 'auto',
       videoMotion: 'none',
