@@ -377,50 +377,55 @@ function ClipsOptions({ options, onChange }) {
 
 function ModeChooser({ value, onChange }) {
   const opts = [
-    { id: 'auto', icon: 'sparkles', title: 'Automático', desc: 'A IA corta, legenda e finaliza sozinha' },
+    { id: 'auto', icon: 'sparkles', title: 'Automático', desc: 'A IA corta, legenda e finaliza sozinha', tag: 'Recomendado' },
     { id: 'editor', icon: 'edit', title: 'Editor / Timeline', desc: 'Preview + timeline: corrija a legenda e corte trechos' },
     { id: 'clips', icon: 'film', title: 'Clipes curtos', desc: 'Gere cortes dos melhores trechos' },
   ];
+  const [hover, setHover] = useState(null);
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 12 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
       {opts.map((o) => {
         const on = value === o.id;
+        const hovered = hover === o.id;
         return (
           <button
             key={o.id}
             onClick={() => onChange(o.id)}
+            onMouseEnter={() => setHover(o.id)}
+            onMouseLeave={() => setHover(null)}
             style={{
               textAlign: 'left',
               cursor: 'pointer',
               position: 'relative',
-              borderRadius: 16,
-              padding: '16px 18px',
-              transition: 'all .18s ease',
+              borderRadius: 18,
+              padding: '18px 18px 16px',
+              overflow: 'hidden',
+              transition: 'transform .18s ease, box-shadow .18s ease, border-color .18s',
+              transform: on || hovered ? 'translateY(-3px)' : 'none',
               background: on
-                ? 'linear-gradient(180deg, rgba(255,107,53,0.14), rgba(124,58,237,0.10))'
-                : 'linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015))',
-              border: `1px solid ${on ? 'transparent' : C.border}`,
-              boxShadow: on ? `0 0 0 1.5px ${C.orange}88, 0 10px 30px -12px rgba(255,107,53,0.4)` : 'none',
+                ? 'linear-gradient(180deg, rgba(255,107,53,0.16), rgba(124,58,237,0.10))'
+                : 'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015))',
+              border: `1px solid ${on ? 'transparent' : hovered ? C.borderStrong || C.border : C.border}`,
+              boxShadow: on
+                ? `0 0 0 1.5px ${C.orange}, 0 16px 38px -14px rgba(255,107,53,0.5)`
+                : hovered ? '0 12px 26px -16px rgba(0,0,0,0.6)' : 'none',
             }}
           >
-            <div
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 11,
-                display: 'grid',
-                placeItems: 'center',
-                fontSize: 19,
-                marginBottom: 10,
-                background: on ? GRAD : C.panel2,
-                boxShadow: on ? '0 6px 16px -6px rgba(255,107,53,0.6)' : 'none',
-                color: on ? '#fff' : C.muted,
-              }}
-            >
-              <Icon name={o.icon} size={19} strokeWidth={1.9} />
+            {/* brilho decorativo no topo quando selecionado */}
+            {on && <div style={{ position: 'absolute', top: -40, right: -30, width: 120, height: 120, background: 'radial-gradient(circle, rgba(255,107,53,0.35), transparent 70%)', pointerEvents: 'none' }} />}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ width: 42, height: 42, borderRadius: 12, display: 'grid', placeItems: 'center', background: on ? GRAD : C.panel2, boxShadow: on ? '0 6px 16px -6px rgba(255,107,53,0.6)' : 'none', color: on ? '#fff' : C.muted, transition: 'all .18s' }}>
+                <Icon name={o.icon} size={20} strokeWidth={1.9} />
+              </div>
+              {o.tag && (
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.3, color: on ? '#fff' : C.orangeSoft, background: on ? 'rgba(255,255,255,0.16)' : 'rgba(255,107,53,0.12)', border: `1px solid ${on ? 'transparent' : 'rgba(255,107,53,0.25)'}`, borderRadius: 20, padding: '3px 9px' }}>{o.tag}</span>
+              )}
+              {on && !o.tag && (
+                <span style={{ width: 22, height: 22, borderRadius: '50%', background: GRAD, display: 'grid', placeItems: 'center', color: '#fff' }}><Icon name="check" size={13} strokeWidth={2.6} /></span>
+              )}
             </div>
-            <div style={{ fontWeight: 700, fontSize: 14.5, color: on ? C.text : C.muted }}>{o.title}</div>
-            <div style={{ fontSize: 12, color: C.faint, marginTop: 3, lineHeight: 1.4 }}>{o.desc}</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: on ? C.text : C.text }}>{o.title}</div>
+            <div style={{ fontSize: 12, color: C.faint, marginTop: 4, lineHeight: 1.45 }}>{o.desc}</div>
           </button>
         );
       })}
@@ -552,9 +557,12 @@ function Shell({ children, health, embedded }) {
       )}
 
       <main style={{ maxWidth: 760, width: '100%', margin: '0 auto', padding: '40px 20px 80px', flex: 1 }}>
-        <div className="rf-anim" style={{ marginBottom: 30 }}>
+        <div className="rf-anim" style={{ position: 'relative', marginBottom: 30 }}>
+          {/* halo suave atrás do título */}
+          <div style={{ position: 'absolute', top: -60, left: -20, width: 280, height: 200, background: 'radial-gradient(circle, rgba(255,107,53,0.14), transparent 65%)', pointerEvents: 'none', filter: 'blur(4px)' }} />
           <div
             style={{
+              position: 'relative',
               display: 'inline-flex',
               alignItems: 'center',
               gap: 7,
@@ -573,10 +581,11 @@ function Shell({ children, health, embedded }) {
           </div>
           <h1
             style={{
-              fontSize: 40,
-              lineHeight: 1.08,
+              position: 'relative',
+              fontSize: 42,
+              lineHeight: 1.06,
               margin: '0 0 12px',
-              letterSpacing: -1.2,
+              letterSpacing: -1.3,
               fontWeight: 800,
               fontFamily: FONT_DISPLAY,
             }}
@@ -584,10 +593,25 @@ function Shell({ children, health, embedded }) {
             Do bruto ao pronto,{' '}
             <span style={gradientText}>automático.</span>
           </h1>
-          <p style={{ color: C.muted, margin: 0, fontSize: 15.5, lineHeight: 1.6, maxWidth: 560 }}>
+          <p style={{ position: 'relative', color: C.muted, margin: 0, fontSize: 15.5, lineHeight: 1.6, maxWidth: 560 }}>
             Suba um vídeo. O Riseframe corta as pausas, gera legendas dinâmicas, insere B-roll
-            e aplica um color grade cinematográfico — ou deixe você mesmo cortar editando a transcrição.
+            e aplica um color grade cinematográfico — ou ajuste tudo você mesmo na timeline.
           </p>
+          {/* chips das capacidades */}
+          <div style={{ position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 18 }}>
+            {[
+              { icon: 'scissors', label: 'Corta pausas' },
+              { icon: 'captions', label: 'Legendas dinâmicas' },
+              { icon: 'image', label: 'B-roll automático' },
+              { icon: 'palette', label: 'Color grade' },
+              { icon: 'crop', label: 'Reframe 9:16' },
+            ].map((f) => (
+              <span key={f.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.muted, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 12px' }}>
+                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name={f.icon} size={13} strokeWidth={2} /></span>
+                {f.label}
+              </span>
+            ))}
+          </div>
         </div>
         {children}
       </main>
