@@ -1,6 +1,7 @@
 import React from 'react';
 import { C, GRAD } from '../theme.js';
 import CaptionPreview from './CaptionPreview.jsx';
+import LayoutPreview from './LayoutPreview.jsx';
 
 function Row({ label, hint, children }) {
   return (
@@ -264,6 +265,12 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
             onChange={(v) => set({ brollLayout: v })}
           />
         </Row>
+      )}
+
+      {options.broll && brollUsable && (
+        <div style={{ padding: '4px 0 12px' }}>
+          <LayoutPreview layout={options.brollLayout || 'fullscreen'} />
+        </div>
       )}
 
       {!caps.brollReady && !keyValid && (
