@@ -178,20 +178,26 @@ export async function runPipeline(job, onUpdate = () => {}) {
     // Limpeza automática da fala: marca muletas/hesitações, gagueiras e — com a
     // chave da Anthropic do usuário — também falsos começos e autocorreções (IA).
     if (options.autoClean) {
-      let cleaned;
+      // 1) Heurística SEMPRE (garante o óbvio: muletas, repetições, gagueiras).
+      const h = markFillers(transcript);
+      let cleaned = h;
       let method = 'heurística';
+      let total = h.removedCount;
+      // 2) IA POR CIMA (com a chave): pega falsos começos e autocorreções sutis,
+      //    preservando o que a heurística já marcou.
       if (options.anthropicKey) {
         try {
-          cleaned = await cleanupWithClaude(transcript, { anthropicKey: options.anthropicKey, model: config.analyze.model });
-          method = 'IA';
+          const ai = await cleanupWithClaude(h, { anthropicKey: options.anthropicKey, model: config.analyze.model });
+          cleaned = ai;
+          method = 'heurística + IA';
+          total = h.removedCount + ai.removedCount; // ai conta só as NOVAS (preserva as da heurística)
         } catch (err) {
-          log.warn(`limpeza por IA falhou (${err.message}); usando heurística`);
+          log.warn(`limpeza por IA falhou (${err.message}); mantendo heurística`);
         }
       }
-      if (!cleaned) cleaned = markFillers(transcript);
       transcript = cleaned;
-      report.autoClean = { removed: cleaned.removedCount, method };
-      if (cleaned.removedCount) log.info(`limpeza automática (${method}): ${cleaned.removedCount} palavras marcadas`);
+      report.autoClean = { removed: total, method };
+      if (total) log.info(`limpeza automática (${method}): ${total} palavras marcadas`);
     }
 
     const removals = [];

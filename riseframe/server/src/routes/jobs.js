@@ -82,7 +82,7 @@ function parseOptions(raw) {
     aspect: ['original', '9:16', '16:9', '1:1'].includes(o.aspect) ? o.aspect : 'original',
     reframeTrack: o.reframeTrack !== false, // seguir o sujeito no reframe
     silenceNoiseDb: clampNum(o.silenceNoiseDb, -60, -10, -30),
-    silenceMinDuration: clampNum(o.silenceMinDuration, 0.2, 3, 0.5),
+    silenceMinDuration: clampNum(o.silenceMinDuration, 0.2, 3, 0.4),
     silencePadding: clampNum(o.silencePadding, 0, 0.5, 0.08),
     // clipes curtos
     clipsCount: clampNum(o.clipsCount, 1, 8, 3),

@@ -75,7 +75,7 @@ optionsRouter.get('/options', (_req, res) => {
       aspect: 'original',
       reframeTrack: true,
       silenceNoiseDb: -30,
-      silenceMinDuration: 0.5,
+      silenceMinDuration: 0.4,
     },
   });
 });
