@@ -38,10 +38,11 @@ export default function CaptionPreview({ options }) {
   const color = COLOR_HEX[options.captionColor] || '#FFFFFF';
   const scale = options.captionScale || 1;
   // Fundo do texto (escolha manual): sombra | caixa | sem sombra. 'auto' segue o estilo.
-  const bg = ['shadow', 'box', 'none'].includes(options.captionBackground)
+  const bg = ['shadow', 'box', 'bar', 'glow', 'none'].includes(options.captionBackground)
     ? options.captionBackground
     : (T.box ? 'box' : 'shadow');
-  const useBox = bg === 'box';
+  const useBox = bg === 'box' || bg === 'bar';
+  const glowOn = bg === 'glow' || (options.captionBackground == null && T.glow);
   // Posição vertical no quadro de prévia (auto = centralizado).
   const pos = ['top', 'center', 'bottom'].includes(options.captionPosition) ? options.captionPosition : 'auto';
   const vAlign = pos === 'top' ? 'flex-start' : pos === 'bottom' ? 'flex-end' : 'center';
@@ -67,26 +68,29 @@ export default function CaptionPreview({ options }) {
   const stroke = `-${outline}px 0 #000, ${outline}px 0 #000, 0 -${outline}px #000, 0 ${outline}px #000,` +
     `-${outline}px -${outline}px #000, ${outline}px ${outline}px #000, -${outline}px ${outline}px #000, ${outline}px -${outline}px #000`;
 
-  // Sombra: contorno + sombra. Sem sombra: só contorno. Neon mantém o glow.
-  const baseShadow = T.glow
-    ? `0 0 12px ${color}, 0 0 22px ${color}, ${stroke}`
+  // Sombra: contorno + sombra. Brilho: halo colorido. Sem sombra: só contorno.
+  const baseShadow = glowOn
+    ? `0 0 10px ${color}, 0 0 20px ${color}, 0 0 30px ${color}, ${stroke}`
     : bg === 'none' ? stroke : `${stroke}, ${shadow}`;
   const textStyle = {
     fontFamily: `'${fontFamily}', system-ui, sans-serif`,
     fontWeight: 800,
     fontSize: fontPx,
     lineHeight: 1.1,
-    color,
+    color: glowOn ? '#fff' : color, // neon: texto branco, cor no halo
     textShadow: baseShadow,
     textTransform: T.upper ? 'uppercase' : 'none',
     letterSpacing: fontFamily === 'Bebas Neue' ? 1 : -0.3,
     display: 'inline-block',
     padding: useBox ? '2px 12px' : 0,
     ...(useBox
-      ? T.mode === 'phrase'
-        // Frase/palavra-chave: caixa escura + texto branco (destaque colorido por cima).
-        ? { background: '#101014', color: '#fff', textShadow: 'none', borderRadius: 6 }
-        : { background: options.captionColor === 'white' ? '#fff' : color, color: options.captionColor === 'white' ? '#111' : '#fff', textShadow: 'none', borderRadius: 6 }
+      ? bg === 'bar'
+        // Barra translúcida escura, texto branco (destaque colorido por cima).
+        ? { background: 'rgba(16,16,20,0.55)', color: '#fff', textShadow: 'none', borderRadius: 6 }
+        : T.mode === 'phrase'
+          // Caixa sólida escura + texto branco (destaque colorido por cima).
+          ? { background: '#101014', color: '#fff', textShadow: 'none', borderRadius: 6 }
+          : { background: options.captionColor === 'white' ? '#fff' : color, color: options.captionColor === 'white' ? '#111' : '#fff', textShadow: 'none', borderRadius: 6 }
       : { background: 'transparent' }),
     animation: anim,
   };
@@ -112,7 +116,7 @@ export default function CaptionPreview({ options }) {
             {SAMPLE_PHRASE.split(' ').map((wd, k) => (
               <React.Fragment key={k}>
                 {k > 0 ? ' ' : ''}
-                <span style={k === KW_INDEX ? { color, fontSize: '1.18em', display: 'inline-block' } : undefined}>{wd}</span>
+                <span style={k === KW_INDEX ? { color: glowOn ? undefined : color, fontSize: '1.18em', display: 'inline-block' } : undefined}>{wd}</span>
               </React.Fragment>
             ))}
           </span>
@@ -121,7 +125,7 @@ export default function CaptionPreview({ options }) {
         )}
       </div>
       <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>
-        {fontFamily} · {options.captionColor || 'white'} · {animKind} · {bg === 'box' ? 'caixa' : bg === 'none' ? 'sem sombra' : 'sombra'}
+        {fontFamily} · {options.captionColor || 'white'} · {animKind} · {{ box: 'caixa', bar: 'barra', glow: 'brilho', none: 'sem sombra' }[bg] || 'sombra'}
       </div>
     </div>
   );

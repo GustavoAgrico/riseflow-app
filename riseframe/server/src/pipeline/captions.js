@@ -130,6 +130,8 @@ export const CAPTION_BACKGROUNDS = {
   auto: 'Automático (do estilo)',
   shadow: 'Sombra (contorno + sombra)',
   box: 'Caixa (fundo sólido)',
+  bar: 'Barra translúcida',
+  glow: 'Brilho neon (cor)',
   none: 'Sem sombra (só contorno)',
 };
 
@@ -192,10 +194,11 @@ export function buildAss(segments, meta, style = {}) {
   const WHITE = assColor('FFFFFF');
   const size = Math.round(h * T.size * scale);
   const outline = Math.max(2, Math.round(size * T.outline));
-  // Fundo do texto (escolha manual): sombra | caixa | sem sombra. 'auto' segue o estilo.
-  const bg = ['shadow', 'box', 'none'].includes(style.background) ? style.background : (T.box ? 'box' : 'shadow');
-  const useBox = bg === 'box';
-  const shadow = bg === 'none' ? 0 : Math.max(1, Math.round(size * 0.05));
+  // Fundo do texto (escolha manual): sombra | caixa | barra | brilho | sem sombra.
+  const bg = ['shadow', 'box', 'bar', 'glow', 'none'].includes(style.background) ? style.background : (T.box ? 'box' : 'shadow');
+  const useBox = bg === 'box' || bg === 'bar'; // ambos usam BorderStyle=3 (caixa)
+  const glowOn = bg === 'glow' || (style.background == null && T.glow) || (bg === 'auto' && T.glow);
+  const shadow = bg === 'none' || glowOn || useBox ? 0 : Math.max(1, Math.round(size * 0.05));
   // Posição vertical da legenda (escolha manual). 'auto' segue o estilo.
   const pos = ['top', 'center', 'bottom'].includes(style.position) ? style.position : 'auto';
   const align = pos === 'top' ? 8 : pos === 'center' ? 5 : pos === 'bottom' ? 2 : T.align;
@@ -228,16 +231,21 @@ export function buildAss(segments, meta, style = {}) {
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Rise,${fontName},${size},${WHITE},${accent},${assColor('000000')},&H90000000,${boldFlag},0,0,0,100,100,0,0,1,${outline},${shadow},${align},60,60,${marginV},1`,
+    // No brilho neon, o contorno vira a COR de destaque (halo colorido, borrado abaixo).
+    `Style: Rise,${fontName},${size},${WHITE},${accent},${glowOn ? accent : assColor('000000')},&H90000000,${boldFlag},0,0,0,100,100,0,0,1,${outline},${shadow},${align},60,60,${marginV},1`,
   ];
-  // Estilo com caixa opaca atrás do texto (BorderStyle=3).
+  // Estilo com caixa atrás do texto (BorderStyle=3). 'box' = sólida; 'bar' = translúcida.
   if (useBox) {
-    // Frase (ex.: destaque de palavra-chave): caixa ESCURA neutra, para que tanto o
-    // branco quanto a cor de destaque leiam bem. Palavra-a-palavra: caixa na cor.
     const phraseBox = T.mode === 'phrase';
-    const boxColor = phraseBox ? assColor('101014') : color === 'white' ? assColor('FFFFFF') : accent;
-    const textColor = phraseBox ? WHITE : color === 'white' ? assColor('111111') : assColor('FFFFFF');
-    const pad = Math.max(6, Math.round(size * 0.16));
+    // Barra translúcida escura (alpha 0x66) — sempre neutra, legível em qualquer cor.
+    // Caixa sólida: frase → escura neutra; palavra → na cor de destaque.
+    const boxColor = bg === 'bar'
+      ? '&H66101014'
+      : phraseBox ? assColor('101014') : color === 'white' ? assColor('FFFFFF') : accent;
+    const textColor = bg === 'bar'
+      ? WHITE
+      : phraseBox ? WHITE : color === 'white' ? assColor('111111') : assColor('FFFFFF');
+    const pad = Math.max(6, Math.round(size * (bg === 'bar' ? 0.12 : 0.16)));
     header.push(
       `Style: RiseBox,${fontName},${size},${textColor},${textColor},${boxColor},${boxColor},${boldFlag},0,0,0,100,100,0,0,3,${pad},0,${align},60,60,${marginV},1`,
     );
@@ -247,7 +255,7 @@ export function buildAss(segments, meta, style = {}) {
   // Animação escolhida pelo usuário (style.animation) OU a padrão do estilo.
   const animKind = style.animation && style.animation !== 'auto' && CAPTION_ANIMATIONS[style.animation] ? style.animation : T.anim;
   const anim = animTag(animKind);
-  const glow = T.glow ? '\\blur4\\be1' : '';
+  const glow = glowOn ? '\\blur3' : '';
   const lines = [];
 
   for (const seg of segments) {
@@ -260,7 +268,8 @@ export function buildAss(segments, meta, style = {}) {
     if (T.mode === 'word') {
       // Uma palavra por vez, centralizada, com o movimento do template.
       const styleName = useBox ? 'RiseBox' : 'Rise';
-      const wordColor = useBox ? '' : `\\c${accent}`;
+      // No brilho neon o texto fica branco e a cor aparece no halo (mais legível).
+      const wordColor = useBox || glowOn ? '' : `\\c${accent}`;
       for (let i = 0; i < words.length; i++) {
         const wd = words[i];
         // Fim = até o começo da PRÓXIMA palavra (nunca sobrepõe → nada de duas
@@ -288,6 +297,9 @@ export function buildAss(segments, meta, style = {}) {
         const rendered = words
           .map((wd, j) => {
             const t = escapeAss(T.upper ? wd.word.toUpperCase() : wd.word);
+            // Brilho neon: texto branco, a cor vira o halo (legível). A palavra-chave
+            // ainda cresce, mas sem recolorir o preenchimento.
+            if (glowOn) return j === kw ? `{\\alpha&H00&${kwBig}}${t}{\\fscx100\\fscy100}` : `{\\alpha&H00&}${t}`;
             if (j === kw) return `{\\alpha&H00&${kwBig}\\c${accent}}${t}{\\fscx100\\fscy100\\c${WHITE}}`;
             if (j === i) {
               // No estilo palavra-chave, SÓ a palavra-chave é colorida; a corrente
