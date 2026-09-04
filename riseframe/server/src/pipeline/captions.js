@@ -258,9 +258,10 @@ export function buildAss(segments, meta, style = {}) {
             const t = escapeAss(T.upper ? wd.word.toUpperCase() : wd.word);
             if (j === kw) return `{\\alpha&H00&${kwBig}\\c${accent}}${t}{\\fscx100\\fscy100\\c${WHITE}}`;
             if (j === i) {
-              // Palavra corrente: se a cor de destaque não é branca, usa a cor;
-              // no branco realça só pelo brilho (as demais escurecem).
-              if (color === 'white') return `{\\alpha&H00&}${t}`;
+              // No estilo palavra-chave, SÓ a palavra-chave é colorida; a corrente
+              // realça apenas pelo brilho (branco opaco). Nos demais estilos, a
+              // corrente usa a cor de destaque quando ela não é branca.
+              if (T.highlightKeyword || color === 'white') return `{\\alpha&H00&}${t}`;
               return `{\\alpha&H00&\\c${accent}}${t}{\\c${WHITE}}`;
             }
             if (color === 'white') return `{\\alpha&H70&}${t}{\\alpha&H00&}`;
