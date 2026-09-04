@@ -1,0 +1,18 @@
+/* Fontes das legendas, servidas pelo backend (/api/fonts) — usadas na PRÉVIA de
+   legenda no navegador. O render real usa os mesmos arquivos via libass. */
+@font-face { font-family: 'Poppins'; src: url('/api/fonts/Poppins-Bold.ttf'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('/api/fonts/Inter.ttf'); font-display: swap; }
+@font-face { font-family: 'Open Sans'; src: url('/api/fonts/OpenSans.ttf'); font-display: swap; }
+@font-face { font-family: 'Anton'; src: url('/api/fonts/Anton-Regular.ttf'); font-display: swap; }
+@font-face { font-family: 'Bebas Neue'; src: url('/api/fonts/BebasNeue-Regular.ttf'); font-display: swap; }
+@font-face { font-family: 'Archivo Black'; src: url('/api/fonts/ArchivoBlack-Regular.ttf'); font-display: swap; }
+@font-face { font-family: 'EB Garamond'; src: url('/api/fonts/EBGaramond.ttf'); font-display: swap; }
+@font-face { font-family: 'Luckiest Guy'; src: url('/api/fonts/LuckiestGuy-Regular.ttf'); font-display: swap; }
+
+/* Animações de entrada das legendas (prévia) */
+@keyframes rf-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes rf-pop { 0% { opacity: 0; transform: scale(.82) } 55% { opacity: 1; transform: scale(1.06) } 100% { transform: scale(1) } }
+@keyframes rf-bounce { 0% { opacity: 0; transform: scale(.68) } 45% { opacity: 1; transform: scale(1.13) } 70% { transform: scale(.95) } 100% { transform: scale(1) } }
+@keyframes rf-zoom { 0% { opacity: 0; transform: scale(.55) } 100% { opacity: 1; transform: scale(1) } }
+@keyframes rf-pop-rot { 0% { opacity: 0; transform: scale(.7) rotate(-6deg) } 70% { opacity: 1; transform: scale(1.04) rotate(0) } 100% { transform: scale(1) } }
+@keyframes rf-shake { 0% { opacity: 0 } 20% { opacity: 1 } 25% { transform: rotate(3deg) } 50% { transform: rotate(-3deg) } 75% { transform: rotate(2deg) } 100% { transform: rotate(0) } }

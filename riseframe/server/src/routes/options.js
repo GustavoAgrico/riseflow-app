@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { capabilities } from '../config.js';
 import { lookNames } from '../pipeline/color.js';
 import { NICHES } from '../pipeline/niche.js';
+import { CAPTION_FONTS, CAPTION_ANIMATIONS } from '../pipeline/captions.js';
 
 export const optionsRouter = Router();
 
@@ -20,12 +21,9 @@ optionsRouter.get('/options', (_req, res) => {
     ],
     captionFonts: [
       { id: 'auto', label: 'Automática (por estilo)' },
-      { id: 'poppins', label: 'Poppins (moderna)' },
-      { id: 'anton', label: 'Anton (impacto)' },
-      { id: 'bebas', label: 'Bebas Neue (condensada)' },
-      { id: 'archivo', label: 'Archivo Black (grossa)' },
-      { id: 'luckiest', label: 'Divertida (cartoon)' },
+      ...Object.entries(CAPTION_FONTS).map(([id, f]) => ({ id, label: f.label })),
     ],
+    captionAnimations: Object.entries(CAPTION_ANIMATIONS).map(([id, label]) => ({ id, label })),
     captionColors: [
       { id: 'white', label: 'Branco', hex: '#FFFFFF' },
       { id: 'yellow', label: 'Amarelo', hex: '#FFE24B' },
@@ -66,6 +64,7 @@ optionsRouter.get('/options', (_req, res) => {
       captionTemplate: 'clean',
       captionColor: 'white',
       captionFont: 'auto',
+      captionAnimation: 'auto',
       captionScale: 1,
       colorLook: 'auto',
       videoMotion: 'none',

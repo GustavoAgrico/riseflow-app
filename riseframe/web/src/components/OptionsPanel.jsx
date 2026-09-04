@@ -1,5 +1,6 @@
 import React from 'react';
 import { C, GRAD } from '../theme.js';
+import CaptionPreview from './CaptionPreview.jsx';
 
 function Row({ label, hint, children }) {
   return (
@@ -186,6 +187,11 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
           <Row label="Tipografia (fonte)" hint="Fonte premium embutida — renderiza igual em qualquer máquina">
             <Select value={options.captionFont || 'auto'} options={catalog.captionFonts} onChange={(v) => set({ captionFont: v })} />
           </Row>
+          {catalog.captionAnimations && (
+            <Row label="Animação do texto" hint="Como cada palavra/frase entra na tela">
+              <Select value={options.captionAnimation || 'auto'} options={catalog.captionAnimations} onChange={(v) => set({ captionAnimation: v })} />
+            </Row>
+          )}
           <Row label="Cor de destaque" hint="Padrão branco">
             <Swatches value={options.captionColor} options={catalog.captionColors} onChange={(v) => set({ captionColor: v })} />
           </Row>
@@ -200,6 +206,9 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
               style={{ minWidth: 190 }}
             />
           </Row>
+          <div style={{ padding: '4px 0 12px' }}>
+            <CaptionPreview options={options} />
+          </div>
         </>
       )}
 

@@ -266,6 +266,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       template: options.captionTemplate || 'clean',
       color: options.captionColor || 'white',
       font: options.captionFont || 'auto', // tipografia (auto = padrão do estilo)
+      animation: options.captionAnimation || 'auto', // animação de entrada do texto
       mode: options.captionMode, // compat legado
       fontScale: options.captionScale || 1,
     };

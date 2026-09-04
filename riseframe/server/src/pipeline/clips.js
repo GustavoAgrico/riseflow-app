@@ -131,6 +131,7 @@ export async function generateClips(ctx, onProgress = () => {}) {
         template: options.captionTemplate || 'pop', // clipes: default palavra-a-palavra
         color: options.captionColor || 'white',
         font: options.captionFont || 'auto',
+        animation: options.captionAnimation || 'auto',
         fontScale: options.captionScale || 1,
         mode: options.captionMode,
       };

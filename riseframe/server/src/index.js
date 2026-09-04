@@ -74,6 +74,9 @@ app.get('/api/sample', async (_req, res) => {
   res.type('video/mp4').set('Content-Disposition', 'inline; filename="riseframe-exemplo.mp4"').sendFile(p);
 });
 
+// Fontes das legendas (para a prévia no navegador via @font-face). Público e cacheável.
+app.use('/api/fonts', express.static(path.join(__dirname, '..', 'assets', 'fonts'), { maxAge: '7d', immutable: true }));
+
 app.use('/api', authRouter);
 app.use('/api', settingsRouter);
 app.use('/api', optionsRouter);

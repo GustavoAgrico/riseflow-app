@@ -14,9 +14,12 @@ const FONTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 
 // `family` é o nome interno da fonte (o que o libass procura).
 export const CAPTION_FONTS = {
   poppins: { family: 'Poppins', label: 'Poppins (moderna)' },
+  inter: { family: 'Inter', label: 'Inter (estilo Helvetica)' },
+  opensans: { family: 'Open Sans', label: 'Open Sans (limpa)' },
   anton: { family: 'Anton', label: 'Anton (impacto)' },
   bebas: { family: 'Bebas Neue', label: 'Bebas Neue (condensada)' },
   archivo: { family: 'Archivo Black', label: 'Archivo Black (grossa)' },
+  garamond: { family: 'EB Garamond', label: 'EB Garamond (estilo Garamond)' },
   luckiest: { family: 'Luckiest Guy', label: 'Divertida (cartoon)' },
 };
 
@@ -70,13 +73,34 @@ export const CAPTION_TEMPLATE_LABELS = {
   bounce: 'Bounce',
 };
 
-/** Override de animação (movimento) por template. */
+/** Animações de texto disponíveis (entrada de cada palavra/frase). */
+export const CAPTION_ANIMATIONS = {
+  auto: 'Automática (do estilo)',
+  fade: 'Fade (suave)',
+  pop: 'Pop (escala)',
+  bounce: 'Bounce (pula)',
+  zoom: 'Zoom in',
+  'pop-rot': 'Pop girando',
+  shake: 'Tremer (impacto)',
+  none: 'Sem animação',
+};
+
+/** Tag ASS de animação (movimento de entrada). Só transforma escala/rotação/alpha,
+ * nunca reposiciona (mantém a centralização do alinhamento). */
 function animTag(anim) {
   switch (anim) {
     case 'pop':
       return '\\fad(50,40)\\fscx82\\fscy82\\t(0,110,\\fscx106\\fscy106)\\t(110,210,\\fscx100\\fscy100)';
     case 'bounce':
       return '\\fad(40,40)\\fscx68\\fscy68\\t(0,90,\\fscx113\\fscy113)\\t(90,150,\\fscx95\\fscy95)\\t(150,215,\\fscx100\\fscy100)';
+    case 'zoom':
+      return '\\fad(40,40)\\fscx55\\fscy55\\t(0,180,\\fscx100\\fscy100)';
+    case 'pop-rot':
+      return '\\fad(40,40)\\fscx70\\fscy70\\frz-6\\t(0,160,\\fscx104\\fscy104\\frz0)\\t(160,230,\\fscx100\\fscy100)';
+    case 'shake':
+      return '\\fad(30,30)\\t(0,60,\\frz3)\\t(60,120,\\frz-3)\\t(120,180,\\frz0)';
+    case 'none':
+      return '';
     case 'fade':
     default:
       return '\\fad(60,60)';
@@ -145,7 +169,9 @@ export function buildAss(segments, meta, style = {}) {
   }
   header.push('', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text');
 
-  const anim = animTag(T.anim);
+  // Animação escolhida pelo usuário (style.animation) OU a padrão do estilo.
+  const animKind = style.animation && style.animation !== 'auto' && CAPTION_ANIMATIONS[style.animation] ? style.animation : T.anim;
+  const anim = animTag(animKind);
   const glow = T.glow ? '\\blur4\\be1' : '';
   const lines = [];
 
