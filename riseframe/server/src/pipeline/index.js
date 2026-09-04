@@ -136,6 +136,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
   // 2. Transcrição (ASR no auto/transcribe; já vem do cliente no render)
   let transcript;
+  // Cópia da transcrição na TIMELINE ORIGINAL (com as remoções da limpeza marcadas),
+  // para o editor/timeline abrir depois de qualquer modo e reprocessar via /render.
+  let editorTranscript = null;
   if (mode === 'render') {
     transcript = job.editedTranscript || { segments: [], text: '' };
     report.provider.transcribe = 'edited';
@@ -146,6 +149,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (transcript.fallbackFrom) report.provider.transcribeFallback = transcript.fallbackReason;
     st.record({ segments: transcript.segments.length, provider: transcript.provider });
     st.onProgress(1);
+    editorTranscript = transcript; // base (atualizada abaixo se a limpeza marcar cortes)
   }
 
   // Modo clips: encontra os melhores trechos e gera vários clipes curtos.
@@ -196,6 +200,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
         }
       }
       transcript = cleaned;
+      editorTranscript = cleaned; // timeline original com as muletas/cortes já marcados
       report.autoClean = { removed: total, method };
       if (total) log.info(`limpeza automática (${method}): ${total} palavras marcadas`);
     }
@@ -294,6 +299,13 @@ export async function runPipeline(job, onUpdate = () => {}) {
     report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe };
     st.record({ aspect: r.aspect });
     st.onProgress(1);
+  }
+
+  // Guarda a transcrição da timeline original + o id da fonte, para o resultado
+  // oferecer "Ajustar na timeline" depois de qualquer modo (auto/render).
+  if (editorTranscript?.segments?.length) {
+    report.editorTranscript = { provider: editorTranscript.provider, language: editorTranscript.language, segments: editorTranscript.segments };
+    report.sourceId = job.id;
   }
 
   emit({ progress: 100, stage: 'done', stageLabel: 'Concluído' });

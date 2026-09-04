@@ -26,7 +26,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
   const [segments, setSegments] = useState(() =>
     (transcript.segments || []).map((s) => ({
       ...s,
-      words: (s.words?.length ? s.words : [{ start: s.start, end: s.end, word: s.text }]).map((w) => ({ ...w, removed: false })),
+      words: (s.words?.length ? s.words : [{ start: s.start, end: s.end, word: s.text }]).map((w) => ({ ...w, removed: !!w.removed })),
     })),
   );
 

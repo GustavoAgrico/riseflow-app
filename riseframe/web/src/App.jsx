@@ -127,6 +127,18 @@ export default function App({ embedded = false, onHome, onSettings } = {}) {
     }
   }
 
+  // Abre a timeline a partir de um resultado já processado (qualquer modo), usando
+  // a transcrição da timeline original que o pipeline devolveu no relatório.
+  function openTimeline(doneJob) {
+    const tr = doneJob?.report?.editorTranscript;
+    const sid = doneJob?.report?.sourceId;
+    if (!tr?.segments?.length || !sid) return;
+    setSourceId(sid);
+    setTranscriptData(tr);
+    setDurationSec(doneJob?.report?.input?.duration || 0);
+    setPhase('editing');
+  }
+
   async function generateFromEdits(editedTranscript) {
     setPhase('processing');
     try {
@@ -277,7 +289,7 @@ export default function App({ embedded = false, onHome, onSettings } = {}) {
 
       {phase === 'done' && job && (
         <div className="rf-anim">
-          {job.mode === 'clips' ? <ClipsResult job={job} onReset={reset} /> : <Result job={job} onReset={reset} />}
+          {job.mode === 'clips' ? <ClipsResult job={job} onReset={reset} /> : <Result job={job} onReset={reset} onEditTimeline={job.report?.editorTranscript ? () => openTimeline(job) : null} />}
         </div>
       )}
 

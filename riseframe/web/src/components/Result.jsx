@@ -26,7 +26,7 @@ function Stat({ label, value }) {
   );
 }
 
-export default function Result({ job, onReset }) {
+export default function Result({ job, onReset, onEditTimeline }) {
   const r = job.report || {};
   const inDur = r.input?.duration;
   const cutSec = r.cut?.removedSeconds;
@@ -191,6 +191,19 @@ export default function Result({ job, onReset }) {
       >
         <Icon name="download" size={19} strokeWidth={2} /> Baixar vídeo final
       </a>
+
+      {onEditTimeline && (
+        <button
+          onClick={onEditTimeline}
+          style={{
+            marginTop: 10, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+            background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text,
+            borderRadius: 14, padding: '13px', fontSize: 14.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          <Icon name="film" size={18} strokeWidth={2} /> Ajustar na timeline (cortes e legendas)
+        </button>
+      )}
     </div>
   );
 }
