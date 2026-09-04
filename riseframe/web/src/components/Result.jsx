@@ -170,7 +170,6 @@ export default function Result({ job, onReset }) {
         onMouseEnter={() => setDlHover(true)}
         onMouseLeave={() => setDlHover(false)}
         style={{
-          display: 'block',
           textAlign: 'center',
           textDecoration: 'none',
           background: GRAD,
