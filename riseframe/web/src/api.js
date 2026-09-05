@@ -1,4 +1,8 @@
-const BASE = '/api';
+// URL da API. Em produção com frontend e backend juntos (Render), deixe vazio
+// (mesma origem → '/api'). Na Netlify (só frontend), defina VITE_API_URL com a
+// URL do backend, ex.: https://riseframe-api.onrender.com  → vira '.../api'.
+const API_ORIGIN = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+const BASE = API_ORIGIN ? `${API_ORIGIN}/api` : '/api';
 const TOKEN_KEY = 'riseframe_token';
 
 export function getToken() {
