@@ -1,0 +1,7 @@
+# Dependências Python do Riseframe. Instale com: pip install -r requirements.txt
+# Transcrição local (provedor whisper-local, default). CPU + int8.
+faster-whisper==1.2.1
+# Reframe com tracking do sujeito (detecção de rosto Haar + centroide de movimento).
+# (numpy vem como dependência transitiva do opencv, já numa versão compatível.)
+opencv-python-headless==4.10.0.84
+

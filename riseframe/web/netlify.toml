@@ -1,0 +1,18 @@
+# Deploy do FRONTEND do Riseframe na Netlify (grátis).
+# IMPORTANTE: a Netlify hospeda só o site estático. O BACKEND (Express + FFmpeg +
+# Whisper) NÃO roda aqui — hospede-o no Render (ver render.yaml) e informe a URL
+# dele na variável VITE_API_URL (Site settings → Environment variables).
+
+[build]
+  base = "riseframe/web"          # pasta do frontend no repositório
+  command = "npm install && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA: qualquer rota cai no index.html (o app é single-page).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

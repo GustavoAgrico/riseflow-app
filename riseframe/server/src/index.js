@@ -1,0 +1,109 @@
+import express from 'express';
+import cors from 'cors';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { config, capabilities } from './config.js';
+import { ensureDirs, startCleanupTimer } from './storage.js';
+import { ensureDemoSample } from './demo.js';
+import { jobsRouter } from './routes/jobs.js';
+import { optionsRouter } from './routes/options.js';
+import { authRouter } from './routes/auth.js';
+import { settingsRouter } from './routes/settings.js';
+import { ffmpegPath } from './pipeline/ffmpeg.js';
+import { whisperLocalAvailable } from './pipeline/transcribe/providers.js';
+import { log } from './logger.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+await ensureDirs();
+startCleanupTimer();
+ensureDemoSample().catch(() => {}); // gera o vídeo de exemplo em segundo plano
+
+// Autoteste do whisper-local: roda em SEGUNDO PLANO (não bloqueia o app.listen).
+// Importar faster-whisper leva alguns segundos (mais ainda no Windows); se isto
+// travasse a subida do servidor, o frontend pediria /api/options antes da porta
+// abrir e mostraria "falha ao carregar opções". Reflete no /api/health quando ficar pronto.
+function probeWhisper() {
+  if (config.transcribe.provider !== 'whisper-local') return;
+  whisperLocalAvailable()
+    .then((ok) => {
+      config.transcribe.whisperReady = ok;
+      if (ok) log.ok('whisper-local disponível (o modelo é baixado no 1º job, se ainda não estiver em cache)');
+      else log.warn('whisper-local indisponível (falta faster-whisper) — jobs cairão para o modo mock');
+    })
+    .catch(() => {
+      config.transcribe.whisperReady = false;
+    });
+}
+
+const app = express();
+// CORS: '*' vira `origin: true` (reflete qualquer origem); senão, a lista explícita.
+const corsOrigin = config.corsOrigin.includes('*') ? true : config.corsOrigin;
+app.use(cors({ origin: corsOrigin }));
+app.use(express.json({ limit: '1mb' }));
+
+app.get('/api/health', (_req, res) => {
+  res.json({
+    ok: true,
+    service: 'riseframe',
+    ffmpeg: Boolean(ffmpegPath),
+    capabilities: capabilities(),
+    time: new Date().toISOString(),
+  });
+});
+
+// Auth opcional por token (defina API_TOKEN). Quando definido, todas as rotas /api
+// (exceto /health) exigem `Authorization: Bearer <token>`. Sem API_TOKEN, a API fica
+// aberta (modo dev / atrás de um gateway). NÃO substitui auth por usuário: veja as
+// notas de segurança no README — um deploy multiusuário real precisa de login/tenant.
+if (config.apiToken) {
+  app.use('/api', (req, res, next) => {
+    if (req.path === '/health') return next();
+    const hdr = req.get('authorization') || '';
+    const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : '';
+    if (token && token === config.apiToken) return next();
+    return res.status(401).json({ error: 'não autorizado' });
+  });
+}
+
+// Vídeo de exemplo (modo demo) — o frontend baixa e usa como arquivo.
+app.get('/api/sample', async (_req, res) => {
+  const p = await ensureDemoSample();
+  if (!p) return res.status(503).json({ error: 'exemplo indisponível' });
+  res.type('video/mp4').set('Content-Disposition', 'inline; filename="riseframe-exemplo.mp4"').sendFile(p);
+});
+
+// Fontes das legendas (para a prévia no navegador via @font-face). Público e cacheável.
+app.use('/api/fonts', express.static(path.join(__dirname, '..', 'assets', 'fonts'), { maxAge: '7d', immutable: true }));
+
+app.use('/api', authRouter);
+app.use('/api', settingsRouter);
+app.use('/api', optionsRouter);
+app.use('/api', jobsRouter);
+
+// Em produção, serve o build do frontend (mesma origem).
+const distDir = path.resolve(__dirname, '..', '..', 'web', 'dist');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+}
+
+// Erros (inclui limites do multer)
+app.use((err, _req, res, _next) => {
+  if (err?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: `arquivo maior que o limite (${config.maxUploadBytes / 1e6} MB)` });
+  }
+  log.error(`erro: ${err?.message || err}`);
+  res.status(400).json({ error: err?.message || 'erro interno' });
+});
+
+app.listen(config.port, () => {
+  log.ok(`Riseframe API on http://localhost:${config.port}`);
+  log.info(`transcrição: ${config.transcribe.provider} · B-roll: ${config.broll.pexelsKey ? 'Pexels' : 'off'}`);
+  log.info(`CORS: ${config.corsOrigin.join(', ')}`);
+  probeWhisper(); // teste do Whisper em segundo plano, sem atrasar a abertura da porta
+});

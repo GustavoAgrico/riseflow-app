@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.env
+.env.local
+
+# runtime artifacts — uploads, renders, temp working files
+data/uploads/*
+data/outputs/*
+data/work/*
+!data/uploads/.gitkeep
+!data/outputs/.gitkeep
+!data/work/.gitkeep
+
+# contas de usuário e segredo de assinatura de tokens (nunca versionar)
+data/users.json
+data/auth_secret
+data/settings.json
+
+# logs
+*.log
+npm-debug.log*

@@ -1,0 +1,57 @@
+# Render Blueprint do Riseframe — um único serviço Docker que builda o frontend
+# e serve o site (dist) + a API (/api) na MESMA porta. Sobe tudo junto.
+#
+# COMO USAR (recomendado: serviço manual, por causa do monorepo):
+#   Render → New → Web Service → conecte GustavoAgrico/riseflow-app
+#   • Root Directory: riseframe
+#   • Runtime: Docker   • Dockerfile: Dockerfile
+#   • Plan: Free
+#   • Health Check Path: /api/health
+#   Depois adicione as variáveis abaixo em Environment.
+# (Este arquivo serve de referência do que configurar.)
+#
+# ⚠️ PLANO FREE: 512 MB de RAM, sem disco persistente e "dorme" quando ocioso.
+#   - Sem disco: usuários cadastrados e renders são temporários (somem no restart).
+#   - Vídeo é pesado (CPU/RAM): o free serve para testar. Para uso real, suba o
+#     plano (Starter+) e adicione um disco em /app/data (ver bloco comentado).
+
+services:
+  - type: web
+    name: riseframe
+    runtime: docker
+    plan: free
+    rootDir: riseframe
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: CORS_ORIGIN
+        value: "*"               # frontend é servido junto (mesma origem)
+      - key: OUTPUT_TTL_HOURS
+        value: 6                 # limpa renders antigos (disco efêmero pequeno no free)
+      - key: AUTH_SECRET
+        generateValue: true      # mantém os logins válidos entre reinícios (sem disco)
+      # ── Transcrição (legendas reais) ──
+      # No free (512 MB) use o modelo 'tiny'. Se der OOM/crash, troque
+      # TRANSCRIBE_PROVIDER para 'mock' (o app funciona, legendas de exemplo) ou
+      # suba o plano. O servidor também cai para 'mock' sozinho se o Whisper falhar.
+      - key: TRANSCRIBE_PROVIDER
+        value: whisper-local
+      - key: WHISPER_MODEL
+        value: tiny
+      # ── Chaves opcionais (configure no dashboard, não no repo) ──
+      # - key: PEXELS_API_KEY      # B-roll automático
+      #   sync: false
+      # - key: ANTHROPIC_API_KEY   # correção de fala + color grade por IA
+      #   sync: false
+
+    # ── Para uso REAL (plano pago): descomente o disco e suba o modelo ──
+    # plan: starter
+    # disk:
+    #   name: riseframe-data
+    #   mountPath: /app/data       # guarda usuários, uploads e renders de forma persistente
+    #   sizeGB: 10
+    # (e troque WHISPER_MODEL para 'base' ou 'small' para legendas melhores)
