@@ -33,7 +33,7 @@ export default function Dashboard({ user, onNewVideo, onLibrary, onSettings }) {
   const recent = jobs.slice(0, 6);
 
   return (
-    <div style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 28px 90px', position: 'relative' }}>
+    <div style={{ maxWidth: 1180, margin: 0, padding: '40px 32px 90px', position: 'relative' }}>
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
         <div style={{ position: 'absolute', top: '-12%', right: '2%', width: 460, height: 460, borderRadius: '50%', background: C.purple, filter: 'blur(190px)', opacity: 0.12 }} />
         <div style={{ position: 'absolute', top: '20%', left: '-6%', width: 340, height: 340, borderRadius: '50%', background: C.orange, filter: 'blur(180px)', opacity: 0.09 }} />

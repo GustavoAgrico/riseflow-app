@@ -19,7 +19,7 @@ export default function Library({ onNewVideo }) {
   ];
 
   return (
-    <div style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 28px 90px', position: 'relative' }}>
+    <div style={{ maxWidth: 1180, margin: 0, padding: '40px 32px 90px', position: 'relative' }}>
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
         <div style={{ position: 'absolute', top: '-10%', right: '4%', width: 420, height: 420, borderRadius: '50%', background: C.purple, filter: 'blur(190px)', opacity: 0.1 }} />
       </div>

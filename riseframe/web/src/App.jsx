@@ -574,7 +574,7 @@ function Shell({ children, health, embedded }) {
         </header>
       )}
 
-      <main style={{ maxWidth: 760, width: '100%', margin: '0 auto', padding: '40px 20px 80px', flex: 1 }}>
+      <main style={{ maxWidth: 1000, width: '100%', margin: 0, padding: '40px 32px 80px', flex: 1 }}>
         <div className="rf-anim" style={{ position: 'relative', marginBottom: 30 }}>
           {/* halo suave atrás do título */}
           <div style={{ position: 'absolute', top: -60, left: -20, width: 280, height: 200, background: 'radial-gradient(circle, rgba(255,107,53,0.14), transparent 65%)', pointerEvents: 'none', filter: 'blur(4px)' }} />
