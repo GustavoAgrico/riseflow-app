@@ -38,6 +38,12 @@ async function authPost(path, body) {
 }
 export const register = (email, password, name) => authPost('/auth/register', { email, password, name });
 export const login = (email, password) => authPost('/auth/login', { email, password });
+/** Login com Google: envia o ID token (credential) do Google Identity Services. */
+export const loginWithGoogle = (credential) => authPost('/auth/google', { credential });
+/** Pede o e-mail de recuperação de senha (resposta sempre neutra). */
+export const forgotPassword = (email) => authPost('/auth/forgot', { email });
+/** Redefine a senha com o token recebido por e-mail. */
+export const resetPassword = (token, password) => authPost('/auth/reset', { token, password });
 export async function fetchMe() {
   const r = await fetch(`${BASE}/auth/me`, { headers: authHeaders() });
   if (!r.ok) throw new Error('sessão inválida');

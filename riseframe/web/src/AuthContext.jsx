@@ -1,5 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { getToken, setToken, fetchMe, login as apiLogin, register as apiRegister } from './api.js';
+import {
+  getToken,
+  setToken,
+  fetchMe,
+  login as apiLogin,
+  register as apiRegister,
+  loginWithGoogle as apiGoogle,
+  resetPassword as apiReset,
+} from './api.js';
 
 const AuthCtx = createContext(null);
 
@@ -41,12 +49,28 @@ export function AuthProvider({ children }) {
     setUser(u);
     return u;
   }
+  async function loginWithGoogle(credential) {
+    const { token, user: u } = await apiGoogle(credential);
+    setToken(token);
+    setUser(u);
+    return u;
+  }
+  async function resetPassword(resetTok, password) {
+    const { token, user: u } = await apiReset(resetTok, password);
+    setToken(token);
+    setUser(u);
+    return u;
+  }
   function logout() {
     setToken('');
     setUser(null);
   }
 
-  return <AuthCtx.Provider value={{ user, ready, login, register, logout }}>{children}</AuthCtx.Provider>;
+  return (
+    <AuthCtx.Provider value={{ user, ready, login, register, loginWithGoogle, resetPassword, logout }}>
+      {children}
+    </AuthCtx.Provider>
+  );
 }
 
 export function useAuth() {
