@@ -71,9 +71,29 @@ function Sidebar({ user, view, onView, onLogout }) {
   );
 }
 
+// Detecta ?reset=TOKEN no link de recuperação de senha vindo do e-mail.
+function readResetToken() {
+  try {
+    const t = new URLSearchParams(window.location.search).get('reset');
+    return t ? String(t) : '';
+  } catch {
+    return '';
+  }
+}
+function clearResetToken() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('reset');
+    window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+  } catch {
+    /* ignora */
+  }
+}
+
 export default function Root() {
   const { user, ready, logout } = useAuth();
-  const [publicRoute, setPublicRoute] = useState('landing');
+  const [resetToken] = useState(readResetToken);
+  const [publicRoute, setPublicRoute] = useState(resetToken ? 'login' : 'landing');
   const [view, setView] = useState('dashboard');
 
   if (!ready) {
@@ -85,6 +105,16 @@ export default function Root() {
   }
 
   if (!user) {
+    if (resetToken) {
+      return (
+        <Auth
+          initialMode="reset"
+          resetToken={resetToken}
+          onDone={() => { clearResetToken(); setView('dashboard'); }}
+          onHome={() => { clearResetToken(); setPublicRoute('landing'); }}
+        />
+      );
+    }
     if (publicRoute === 'landing') {
       return <Landing onEnter={() => setPublicRoute('register')} onLogin={() => setPublicRoute('login')} />;
     }

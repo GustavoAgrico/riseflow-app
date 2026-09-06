@@ -19,6 +19,7 @@
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",
     "multer": "^2.0.1",
-    "nanoid": "^5.0.9"
+    "nanoid": "^5.0.9",
+    "nodemailer": "^6.9.16"
   }
 }

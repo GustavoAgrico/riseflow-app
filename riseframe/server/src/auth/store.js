@@ -62,10 +62,52 @@ export function createUser({ email, password, name }) {
   return publicUser(user);
 }
 
+/**
+ * Encontra o usuário pelo email (login Google) ou cria um novo sem senha.
+ * O campo `google` guarda o `sub` do Google para futuras verificações.
+ */
+export function findOrCreateGoogleUser({ email, name, sub }) {
+  load();
+  const e = norm(email);
+  let user = users.find((u) => u.email === e);
+  if (user) {
+    if (sub && !user.google) {
+      user.google = sub;
+      persist();
+    }
+    return publicUser(user);
+  }
+  user = {
+    id: crypto.randomUUID(),
+    email: e,
+    name: String(name || '').trim() || e.split('@')[0],
+    google: sub || null,
+    // Sem senha local: só pode entrar via Google até definir uma senha.
+    salt: null,
+    hash: null,
+    createdAt: new Date().toISOString(),
+  };
+  users.push(user);
+  persist();
+  return publicUser(user);
+}
+
+/** Define/redefine a senha de um usuário existente (recuperação). */
+export function setPassword(email, password) {
+  load();
+  const user = users.find((u) => u.email === norm(email));
+  if (!user) return null;
+  const { salt, hash } = hashPassword(password);
+  user.salt = salt;
+  user.hash = hash;
+  persist();
+  return publicUser(user);
+}
+
 /** Confere a senha; retorna o usuário público ou null. Tempo constante. */
 export function verifyCredentials(email, password) {
   const user = findByEmail(email);
-  if (!user) return null;
+  if (!user || !user.salt || !user.hash) return null; // conta só-Google não tem senha
   const { hash } = hashPassword(password, user.salt);
   const a = Buffer.from(hash);
   const b = Buffer.from(user.hash);

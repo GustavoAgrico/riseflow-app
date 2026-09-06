@@ -58,6 +58,21 @@ export const config = {
     pexelsKey: process.env.PEXELS_API_KEY || '',
   },
 
+  auth: {
+    // Login com Google: Client ID (Web) do Google Cloud. Vazio = botão escondido.
+    googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+    // Envio de e-mail (recuperação de senha) via SMTP. Sem isso, recuperação fica off.
+    smtp: {
+      host: process.env.SMTP_HOST || '',
+      port: num(process.env.SMTP_PORT, 587),
+      user: process.env.SMTP_USER || '',
+      pass: process.env.SMTP_PASS || '',
+      from: process.env.SMTP_FROM || process.env.SMTP_USER || '',
+    },
+    // URL pública do app (para montar o link de recuperação). Ex.: https://riseframe.onrender.com
+    appUrl: process.env.APP_URL || '',
+  },
+
   debug: bool(process.env.DEBUG, false),
 };
 
@@ -78,5 +93,10 @@ export function capabilities() {
     transcribeFallbackToMock: p === 'whisper-local' && config.transcribe.whisperReady === false,
     analyzeProvider: config.analyze.provider,
     brollReady: Boolean(config.broll.pexelsKey),
+    // Login com Google só aparece se o Client ID estiver configurado.
+    googleReady: Boolean(config.auth.googleClientId),
+    googleClientId: config.auth.googleClientId,
+    // Recuperação de senha só aparece se houver SMTP configurado.
+    emailReady: Boolean(config.auth.smtp.host && config.auth.smtp.user && config.auth.smtp.pass),
   };
 }
