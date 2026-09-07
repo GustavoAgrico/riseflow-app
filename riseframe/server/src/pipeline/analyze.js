@@ -19,21 +19,48 @@ const STOP = new Set(
 const PT_EN = {
   vídeo: 'video', video: 'video', câmera: 'camera', câmara: 'camera',
   cidade: 'city', natureza: 'nature', praia: 'beach', montanha: 'mountain',
-  trabalho: 'work office', escritório: 'office', negócio: 'business', empresa: 'business',
-  dinheiro: 'money', mercado: 'market', comida: 'food', cozinha: 'kitchen cooking',
-  viagem: 'travel', carro: 'car driving', tecnologia: 'technology', computador: 'computer',
-  celular: 'smartphone', internet: 'internet network', pessoas: 'people', equipe: 'team',
-  reunião: 'meeting', treino: 'workout gym', academia: 'gym', saúde: 'health',
+  trabalho: 'work office', escritório: 'office', negócio: 'business', negócios: 'business',
+  empresa: 'business company', empresário: 'entrepreneur', empreendedor: 'entrepreneur',
+  empreendedorismo: 'entrepreneurship',
+  dinheiro: 'money cash', mercado: 'market', comida: 'food', cozinha: 'kitchen cooking',
+  viagem: 'travel', carro: 'car driving', tecnologia: 'technology', computador: 'computer laptop',
+  celular: 'smartphone', internet: 'internet network', pessoas: 'people', pessoa: 'person',
+  equipe: 'team teamwork', time: 'team', reunião: 'meeting', treino: 'workout gym',
+  academia: 'gym fitness', saúde: 'health wellness', médico: 'doctor medical', hospital: 'hospital',
   música: 'music', dança: 'dance', esporte: 'sports', futebol: 'soccer',
-  estudo: 'study', escola: 'school', livro: 'books reading', ciência: 'science',
-  resultado: 'success growth', crescimento: 'growth chart', vendas: 'sales',
-  cliente: 'customer', produto: 'product', marketing: 'marketing', social: 'social media',
+  estudo: 'study', estudar: 'studying', escola: 'school classroom', faculdade: 'university',
+  livro: 'books reading', livros: 'books', leitura: 'reading', ciência: 'science laboratory',
+  resultado: 'success growth', resultados: 'success results', crescimento: 'growth chart',
+  vendas: 'sales', venda: 'sales selling', comprar: 'shopping', compras: 'shopping',
+  cliente: 'customer', clientes: 'customers', produto: 'product', produtos: 'products',
+  marketing: 'marketing', social: 'social media', vida: 'lifestyle life', sucesso: 'success winner',
   tempo: 'time clock', casa: 'home house', família: 'family', criança: 'children kids',
-  sol: 'sun sunrise', chuva: 'rain', floresta: 'forest', rio: 'river',
-  importante: 'important idea', ideia: 'idea lightbulb', foco: 'focus',
-  atenção: 'attention', detalhe: 'detail closeup', diferença: 'contrast comparison',
-  começar: 'start beginning', futuro: 'future innovation', mundo: 'world globe',
-  digital: 'digital technology', dados: 'data analytics', gráfico: 'chart graph',
+  crianças: 'children kids', filho: 'child family', amor: 'love couple', felicidade: 'happiness smile',
+  sol: 'sun sunrise', chuva: 'rain', floresta: 'forest', rio: 'river', mar: 'ocean sea',
+  céu: 'sky clouds', paisagem: 'landscape scenery', flor: 'flowers', animal: 'animals wildlife',
+  importante: 'important idea', ideia: 'idea lightbulb', ideias: 'ideas brainstorming', foco: 'focus',
+  atenção: 'attention focus', detalhe: 'detail closeup', diferença: 'contrast comparison',
+  começar: 'start beginning', início: 'beginning start', futuro: 'future innovation',
+  mundo: 'world globe', digital: 'digital technology', dados: 'data analytics',
+  gráfico: 'chart graph', gráficos: 'charts graphs', números: 'numbers statistics',
+  investimento: 'investment finance', investir: 'investing finance', banco: 'bank finance',
+  finanças: 'finance money', economia: 'economy finance', renda: 'income money',
+  liderança: 'leadership leader', líder: 'leader', motivação: 'motivation inspiration',
+  mente: 'mindset brain', mentalidade: 'mindset', disciplina: 'discipline focus',
+  hábito: 'habit routine', hábitos: 'habits routine', rotina: 'routine morning',
+  meta: 'goal target', metas: 'goals target', objetivo: 'goal target', sonho: 'dream aspiration',
+  projeto: 'project planning', plano: 'plan strategy', estratégia: 'strategy planning',
+  processo: 'process workflow', comunicação: 'communication speaking',
+  palco: 'stage speaker', apresentação: 'presentation speaker', público: 'audience crowd',
+  celebração: 'celebration success', conquista: 'achievement success', vitória: 'victory winning',
+  problema: 'problem challenge', solução: 'solution idea', mudança: 'change transformation',
+  transformação: 'transformation change', energia: 'energy power', poder: 'power strength',
+  força: 'strength power', trabalhar: 'working office',
+  vender: 'selling sales', crescer: 'growth rising', ganhar: 'winning earning',
+  aprender: 'learning study', ensinar: 'teaching mentor', mentor: 'mentor coaching',
+  coach: 'coaching mentor', negociar: 'negotiation deal', contrato: 'contract deal signing',
+  tráfego: 'city traffic', estrada: 'road highway', avião: 'airplane travel',
+  relógio: 'clock time', calendário: 'calendar schedule',
 };
 
 export function extractThemes(text, max = 6) {
@@ -55,16 +82,32 @@ export function translateQuery(term) {
   return PT_EN[t] || t;
 }
 
-/** Palavra-chave mais saliente de um segmento (prioriza temas fortes presentes). */
+/** O termo tem tradução conhecida para inglês? (garante query relevante no Pexels) */
+export function isTranslatable(term) {
+  return Object.prototype.hasOwnProperty.call(PT_EN, String(term).toLowerCase().trim());
+}
+
+/**
+ * Palavra-chave mais saliente de um segmento. Prioriza termos TRADUZÍVEIS (o Pexels
+ * é indexado em inglês) para não buscar por palavra em português — o que traz
+ * imagens aleatórias. Ordem: tema forte traduzível > palavra traduzível > tema
+ * forte presente > palavra mais longa.
+ */
 function pickKeyword(seg, themeTerms) {
   const words = (seg.words?.length ? seg.words.map((w) => w.word) : String(seg.text || '').split(/\s+/))
     .map((w) => String(w).toLowerCase().replace(/[^a-záàâãéêíóôõúüç0-9]/gi, ''))
-    .filter((w) => w.length >= 5 && !STOP.has(w));
+    .filter((w) => w.length >= 4 && !STOP.has(w));
   if (!words.length) return null;
-  // 1) um tema forte que aparece no trecho
+  // 1) tema forte presente no trecho E traduzível
+  const themeHit = words.find((w) => themeTerms.includes(w) && isTranslatable(w));
+  if (themeHit) return themeHit;
+  // 2) qualquer palavra traduzível do trecho (mais longa primeiro = mais específica)
+  const translatable = words.filter(isTranslatable).sort((a, b) => b.length - a.length);
+  if (translatable.length) return translatable[0];
+  // 3) tema forte presente (mesmo sem tradução — o chamador decide o fallback)
   const inTheme = words.find((w) => themeTerms.includes(w));
   if (inTheme) return inTheme;
-  // 2) a palavra mais longa (heurística de saliência)
+  // 4) a palavra mais longa (última opção)
   return words.sort((a, b) => b.length - a.length)[0];
 }
 
@@ -88,9 +131,16 @@ export function pickBrollMoments(segments, themes, duration, opts = {}) {
     const niche = opts.niche; // {core, fallback} | null — casa o B-roll com o tema
     const kw = pickKeyword(seg, themeTerms) || themeTerms[moments.length % (themeTerms.length || 1)];
     let query;
-    if (kw) query = (niche ? `${niche.core} ${translateQuery(kw)}` : translateQuery(kw)).trim();
-    else if (niche) query = niche.fallback; // sem palavra-chave: usa o tema do nicho
-    else continue;
+    if (kw && isTranslatable(kw)) {
+      // Palavra-chave com tradução → query em inglês (relevante), casada ao nicho.
+      query = (niche ? `${niche.core} ${translateQuery(kw)}` : translateQuery(kw)).trim();
+    } else if (niche) {
+      // Sem tradução: NÃO manda português cru ao Pexels — usa o tema do nicho.
+      query = niche.fallback;
+    } else {
+      // Sem tradução e sem nicho: pula o momento (melhor menos B-roll do que imagem errada).
+      continue;
+    }
     if (query === lastQuery) continue; // evita B-roll repetido em sequência
     const end = Math.min(seg.start + clipLen, duration);
     if (end - seg.start < 1) continue;
