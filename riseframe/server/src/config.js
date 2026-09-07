@@ -55,7 +55,9 @@ export const config = {
     provider: process.env.ANALYZE_PROVIDER || 'heuristic',
     anthropicKey: process.env.ANTHROPIC_API_KEY || '',
     openaiKey: process.env.OPENAI_API_KEY || '',
-    model: process.env.ANALYZE_MODEL || 'claude-opus-5',
+    // Haiku por padrão: barato e rápido, suficiente para escolher B-roll e limpar
+    // fala. Troque por claude-sonnet-5/opus se quiser mais capricho (mais caro).
+    model: process.env.ANALYZE_MODEL || 'claude-haiku-4-5-20251001',
     openaiModel: process.env.ANALYZE_OPENAI_MODEL || 'gpt-4o-mini',
   },
 

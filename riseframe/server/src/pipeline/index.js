@@ -188,11 +188,12 @@ export async function runPipeline(job, onUpdate = () => {}) {
       let cleaned = h;
       let method = 'heurística';
       let total = h.removedCount;
-      // 2) IA POR CIMA (com a chave): pega falsos começos e autocorreções sutis,
-      //    preservando o que a heurística já marcou.
-      if (options.anthropicKey) {
+      // 2) IA POR CIMA (com a chave do usuário OU do servidor): pega falsos
+      //    começos e autocorreções sutis, preservando o que a heurística marcou.
+      const aiKey = options.anthropicKey || config.analyze.anthropicKey;
+      if (aiKey) {
         try {
-          const ai = await cleanupWithClaude(h, { anthropicKey: options.anthropicKey, model: config.analyze.model });
+          const ai = await cleanupWithClaude(h, { anthropicKey: aiKey, model: config.analyze.model });
           cleaned = ai;
           method = 'heurística + IA';
           total = h.removedCount + ai.removedCount; // ai conta só as NOVAS (preserva as da heurística)
