@@ -35,10 +35,18 @@ mesma porta — não precisa de Netlify nem de CORS.
 ## O que esperar no plano FREE
 
 - **Dorme quando ocioso:** a 1ª visita depois de dormir demora ~30s para acordar.
-- **512 MB de RAM:** vídeo é pesado. Com `WHISPER_MODEL=tiny` tem chance de rodar;
-  se o serviço **reiniciar/der OOM** durante a transcrição, troque
-  `TRANSCRIBE_PROVIDER` para `mock` (o app funciona, com legendas de exemplo) ou
-  suba o plano. O servidor também cai para `mock` sozinho se o Whisper falhar.
+- **512 MB de RAM:** vídeo é pesado. A transcrição local (`whisper-local`) roda um
+  processo Python que, no free, pode **estourar a memória (OOM) ou travar**. Existe
+  um timeout de segurança (o job cai para `mock` em vez de ficar preso), mas para
+  **legendas reais de forma estável no free** a melhor opção é usar uma **API de
+  transcrição** (roda fora da máquina, não consome a RAM):
+  - **Deepgram** (`TRANSCRIBE_PROVIDER=deepgram` + `DEEPGRAM_API_KEY`) — crédito grátis inicial.
+  - **AssemblyAI** (`TRANSCRIBE_PROVIDER=assemblyai` + `ASSEMBLYAI_API_KEY`) — tier grátis.
+  - **OpenAI Whisper** (`TRANSCRIBE_PROVIDER=openai` + `OPENAI_API_KEY`) — ~US$0,006/min.
+
+  Alternativas: `WHISPER_MODEL=tiny` (mais leve, pode rodar mas é instável no free),
+  `TRANSCRIBE_PROVIDER=mock` (funciona com legendas de exemplo, só p/ demo) ou subir
+  o plano. Ajuste fino do timeout: `TRANSCRIBE_TIMEOUT_MS` (ms).
 - **Sem disco persistente:** contas de usuário, uploads e vídeos prontos são
   **temporários** — somem quando o serviço reinicia. Bom para testar/demonstrar.
 

@@ -153,19 +153,32 @@ export async function transcribeWhisperLocal(input, work, meta, cfg) {
   if (!py) throw new Error('Python não encontrado no PATH (instale Python 3 ou defina PYTHON_BIN)');
   const audio = await extractAudio(input, work, 'wav');
   const script = path.join(__dirname, 'whisper_local.py');
+  // Timeout de segurança: em máquinas pequenas (ex.: free 512 MB) o processo pode
+  // travar/estourar a memória. Sem limite, o job ficaria preso em "Transcrição"
+  // para sempre. Ao estourar, matamos o processo e deixamos o chamador cair para
+  // outro provedor/mock. Escala com a duração do vídeo; configurável por env.
+  const timeoutMs = Number(cfg.timeoutMs) > 0
+    ? Number(cfg.timeoutMs)
+    : Math.min(600000, Math.max(180000, Math.ceil((meta?.duration || 60) * 12) * 1000));
   const data = await new Promise((resolve, reject) => {
     const proc = spawn(py, [script, audio, cfg.whisperModel || 'base']);
     let out = '';
     let err = '';
+    let done = false;
+    const finish = (fn, arg) => { if (done) return; done = true; clearTimeout(timer); fn(arg); };
+    const timer = setTimeout(() => {
+      try { proc.kill('SIGKILL'); } catch { /* já morreu */ }
+      finish(reject, new Error(`whisper-local excedeu ${Math.round(timeoutMs / 1000)}s (possível falta de memória)`));
+    }, timeoutMs);
     proc.stdout.on('data', (b) => (out += b.toString()));
     proc.stderr.on('data', (b) => (err += b.toString()));
-    proc.on('error', reject);
+    proc.on('error', (e) => finish(reject, e));
     proc.on('close', (code) => {
-      if (code !== 0) return reject(new Error(`whisper-local falhou: ${err.trim() || code}`));
+      if (code !== 0) return finish(reject, new Error(`whisper-local falhou: ${err.trim() || code}`));
       try {
-        resolve(JSON.parse(out));
+        finish(resolve, JSON.parse(out));
       } catch (e) {
-        reject(new Error(`whisper-local JSON inválido: ${e.message}`));
+        finish(reject, new Error(`whisper-local JSON inválido: ${e.message}`));
       }
     });
   });
