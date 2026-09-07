@@ -2,11 +2,14 @@
 # IMPORTANTE: a Netlify hospeda só o site estático. O BACKEND (Express + FFmpeg +
 # Whisper) NÃO roda aqui — hospede-o no Render (ver render.yaml) e informe a URL
 # dele na variável VITE_API_URL (Site settings → Environment variables).
+#
+# No Netlify, defina o "Base directory" = riseframe/web (Site settings → Build).
+# Este arquivo é lido a partir desse base, então os caminhos abaixo são relativos
+# a ele (NÃO repita "riseframe/web" no `base`, senão vira caminho duplicado).
 
 [build]
-  base = "riseframe/web"          # pasta do frontend no repositório
-  command = "npm install && npm run build"
-  publish = "dist"
+  command = "npm run build"       # a Netlify roda `npm install` sozinha
+  publish = "dist"                # relativo ao base (riseframe/web/dist)
 
 [build.environment]
   NODE_VERSION = "20"
