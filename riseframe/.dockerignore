@@ -1,10 +1,12 @@
 node_modules
 **/node_modules
 web/dist
-data/uploads/*
-data/outputs/*
-data/work/*
+# Dados de runtime nunca entram na imagem (o servidor cria as pastas no boot via
+# ensureDirs). Evita "assar" uploads/renders e, principalmente, segredos/PII
+# (data/users.json, data/auth_secret, data/settings.json) na imagem.
+data
 .git
 *.log
 .env
 **/.env
+deploy

@@ -1,0 +1,66 @@
+# Riseframe — deploy num servidor (ex.: Oracle Cloud Always Free).
+# Sobe DOIS contêineres:
+#   • app   → o Riseframe (frontend + API + FFmpeg + Whisper) na porta interna 4000
+#   • caddy → proxy reverso com HTTPS AUTOMÁTICO e grátis (Let's Encrypt)
+#
+# Uso (dentro de riseframe/deploy):
+#   cp .env.example .env    # e preencha SITE_ADDRESS + AUTH_SECRET
+#   docker compose up -d --build
+#
+# Os dados (usuários, uploads, renders) ficam num volume Docker persistente.
+
+services:
+  app:
+    build:
+      context: ..              # a pasta riseframe/ (onde está o Dockerfile)
+      dockerfile: Dockerfile
+      args:
+        WHISPER_MODEL: ${WHISPER_MODEL:-base}   # tiny|base|small|medium (mais = melhor/mais pesado)
+    restart: unless-stopped
+    expose:
+      - "4000"                 # só interno; quem publica na internet é o Caddy
+    environment:
+      PORT: 4000
+      # frontend e API na MESMA origem (o Caddy serve tudo) → CORS liberado p/ o próprio site
+      CORS_ORIGIN: "https://${SITE_ADDRESS}"
+      APP_URL: "https://${SITE_ADDRESS}"        # usado nos links de recuperação de senha
+      AUTH_SECRET: ${AUTH_SECRET}               # OBRIGATÓRIO: mantém logins entre reinícios
+      OUTPUT_TTL_HOURS: ${OUTPUT_TTL_HOURS:-24}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-512}
+      # ── Transcrição (legendas) ──
+      TRANSCRIBE_PROVIDER: ${TRANSCRIBE_PROVIDER:-whisper-local}
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+      # ── Chaves opcionais (deixe em branco se não usar) ──
+      PEXELS_API_KEY: ${PEXELS_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ASSEMBLYAI_API_KEY: ${ASSEMBLYAI_API_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    volumes:
+      - riseframe_data:/app/data   # usuários, uploads e renders persistentes
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data           # guarda os certificados TLS (não apagar!)
+      - caddy_config:/config
+
+volumes:
+  riseframe_data:
+  caddy_data:
+  caddy_config:

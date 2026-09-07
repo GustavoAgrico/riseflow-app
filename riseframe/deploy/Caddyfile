@@ -1,0 +1,14 @@
+# Proxy reverso do Riseframe com HTTPS automático (Let's Encrypt).
+# SITE_ADDRESS vem do .env (ex.: 123.45.67.89.sslip.io ou app.seudominio.com).
+{$SITE_ADDRESS} {
+	# Encaminha tudo para o contêiner do app (frontend + API na mesma origem).
+	reverse_proxy app:4000
+
+	# Compacta respostas de texto (HTML/CSS/JS); vídeos já vêm comprimidos.
+	encode zstd gzip
+
+	# Uploads de vídeo podem ser grandes — libera o corpo da requisição.
+	request_body {
+		max_size 600MB
+	}
+}
