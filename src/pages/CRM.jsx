@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2, MonitorPlay } from 'lucide-react'
+import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2, MonitorPlay, User, Plus, Square, CheckSquare } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { LeadScorePanel } from '@components/LeadScorePanel'
@@ -45,7 +45,7 @@ const ini = n => n.split(' ').slice(0, 2).map(w => w[0]).join('')
 /* tempo relativo curto para o card ("2h", "3d") */
 const rel = t => { if (!t) return 'agora'; const m = Math.max(1, Math.round((Date.now() - new Date(t)) / 60000)); return m < 60 ? `${m}min` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d` }
 /* linha da tabela clients -> formato do card do CRM */
-const mapRow = r => ({ id: r.id, name: r.name || '', phone: r.phone || '', email: r.email || '', company: r.company || '', value: Number(r.value) || 0, stage: r.stage || 'lead', tags: r.tags || [], lastMsg: r.last_message || '', time: rel(r.created_at) })
+const mapRow = r => ({ id: r.id, name: r.name || '', phone: r.phone || '', email: r.email || '', company: r.company || '', value: Number(r.value) || 0, stage: r.stage || 'lead', tags: r.tags || [], lastMsg: r.last_message || '', time: rel(r.created_at), assignedTo: r.assigned_to || '' })
 
 const ContactCard = ({ contact, onDragStart, onClick, onDelete }) => {
   const [hov, setHov] = useState(false)
@@ -60,6 +60,9 @@ const ContactCard = ({ contact, onDragStart, onClick, onDelete }) => {
           <p style={{ fontSize: 13, fontWeight: 700, color: C.tx, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</p>
           <p style={{ fontSize: 11, color: C.mut, margin: 0 }}>{contact.company}</p>
         </div>
+        {!hov && contact.assignedTo && (
+          <div title={'Responsável: ' + contact.assignedTo} style={{ width: 22, height: 22, borderRadius: '50%', background: '#33415A', color: '#CBD5E1', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{ini(contact.assignedTo)}</div>
+        )}
         {hov && (
           <button
             onClick={e => { e.stopPropagation(); onDelete(contact) }}
@@ -85,7 +88,64 @@ const ContactCard = ({ contact, onDragStart, onClick, onDelete }) => {
   )
 }
 
-const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, userId, mobile }) => {
+// Tarefas/atividades por lead (tabela crm_tasks). Escopo por conta via RLS.
+const TasksPanel = ({ clientId, userId }) => {
+  const [tasks, setTasks] = useState([])
+  const [title, setTitle] = useState('')
+  const [due, setDue] = useState('')
+  const [busy, setBusy] = useState(false)
+  const today = new Date().toISOString().slice(0, 10)
+
+  const load = useCallback(async () => {
+    if (!clientId || !userId) return
+    const { data } = await supabase.from('crm_tasks').select('*').eq('client_id', clientId).order('done', { ascending: true }).order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: true })
+    setTasks(data || [])
+  }, [clientId, userId])
+  useEffect(() => { load() }, [load])
+
+  const add = async () => {
+    if (!title.trim() || busy) return
+    setBusy(true)
+    const { data, error } = await supabase.from('crm_tasks').insert({ user_id: userId, client_id: clientId, title: title.trim(), due_date: due || null }).select().single()
+    setBusy(false)
+    if (error) { alert('Erro ao criar tarefa:\n' + error.message + '\n\n(Rode supabase/crm_tasks.sql se ainda não rodou.)'); return }
+    setTasks(t => [...t, data]); setTitle(''); setDue('')
+  }
+  const toggle = async (t) => { setTasks(x => x.map(i => i.id === t.id ? { ...i, done: !i.done } : i)); await supabase.from('crm_tasks').update({ done: !t.done }).eq('id', t.id) }
+  const del = async (t) => { setTasks(x => x.filter(i => i.id !== t.id)); await supabase.from('crm_tasks').delete().eq('id', t.id) }
+
+  const pend = tasks.filter(t => !t.done).length
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <p style={{ fontSize: 12, fontWeight: 700, color: C.tx, marginBottom: 8 }}>Tarefas {pend > 0 && <span style={{ color: C.pur }}>({pend})</span>}</p>
+      <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
+        {tasks.length === 0 && <p style={{ fontSize: 12, color: C.mut, margin: 0 }}>Nenhuma tarefa ainda.</p>}
+        {tasks.map(t => {
+          const overdue = !t.done && t.due_date && t.due_date < today
+          return (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: C.bg, borderRadius: 8, padding: '7px 9px' }}>
+              <button onClick={() => toggle(t)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.done ? '#059669' : C.mut, padding: 0, display: 'flex', flexShrink: 0 }}>
+                {t.done ? <CheckSquare size={16} /> : <Square size={16} />}
+              </button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 12, color: t.done ? C.mut : C.tx, textDecoration: t.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</p>
+                {t.due_date && <p style={{ margin: 0, fontSize: 10, color: overdue ? '#F87171' : C.mut, fontWeight: overdue ? 700 : 400 }}>{overdue ? 'venceu ' : 'vence '}{new Date(t.due_date + 'T00:00').toLocaleDateString('pt-BR')}</p>}
+              </div>
+              <button onClick={() => del(t)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#F87171', padding: 0, display: 'flex', flexShrink: 0 }}><Trash2 size={13} /></button>
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input value={title} onChange={e => setTitle(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} placeholder="Nova tarefa..." style={{ ...S.input, flex: 1 }} />
+        <input type="date" value={due} onChange={e => setDue(e.target.value)} style={{ ...S.input, width: 130, flexShrink: 0 }} />
+        <button onClick={add} disabled={busy || !title.trim()} style={{ ...S.btn(C.pur), padding: '7px 10px', opacity: (busy || !title.trim()) ? 0.5 : 1, display: 'flex', alignItems: 'center' }}><Plus size={15} /></button>
+      </div>
+    </div>
+  )
+}
+
+const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, onAssign, members = [], userId, mobile }) => {
   const st = STAGES.find(s => s.id === contact.stage)
   const navigate = useNavigate()
   const [msgs, setMsgs] = useState(null)
@@ -134,6 +194,13 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, u
           </select>
         </div>
         <div style={{ marginBottom: 14 }}>
+          <label style={S.label}>Responsável</label>
+          <select value={contact.assignedTo || ''} onChange={e => onAssign(contact.id, e.target.value)} style={S.select}>
+            <option value="" style={S.opt}>Sem responsável</option>
+            {members.map(m => <option key={m.id} value={m.name} style={S.opt}>{m.name}</option>)}
+          </select>
+        </div>
+        <div style={{ marginBottom: 14 }}>
           <label style={S.label}>Tags</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {TAGS_OPT.map(t => { const on = (contact.tags || []).includes(t); return (
@@ -162,6 +229,7 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, u
             )
           })}
         </div>
+        <TasksPanel clientId={contact.id} userId={userId} />
         <NotesPanel contactId={contact.id} userId={userId} />
         <button onClick={() => navigate('/chat')} style={{ ...S.btn('#7C3AED'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, marginTop: 14 }}>Abrir conversa</button>
         <button
@@ -224,7 +292,18 @@ export function CRM() {
   const [modal, setModal] = useState(false)
   const [search, setSearch] = useState('')
   const [filterTag, setFilterTag] = useState('')
+  const [filterOwner, setFilterOwner] = useState('')
+  const [members, setMembers] = useState([])
   const [dragOver, setDragOver] = useState(null)
+
+  /* Membros da equipe (para atribuir responsável e filtrar). */
+  useEffect(() => {
+    if (isDemoMode || !ownerUserId) return
+    ;(async () => {
+      const { data } = await supabase.from('team_members').select('id,name').eq('user_id', ownerUserId).order('name', { ascending: true })
+      setMembers(data || [])
+    })()
+  }, [ownerUserId, isDemoMode])
 
   /* Carrega contatos reais da tabela clients (no modo demo, usa o mock local). */
   useEffect(() => {
@@ -244,8 +323,18 @@ export function CRM() {
   const allTags = [...new Set(contacts.flatMap(c => c.tags))]
   const filtered = contacts.filter(c =>
     (c.name + c.company).toLowerCase().includes(search.toLowerCase()) &&
-    (!filterTag || c.tags.includes(filterTag))
+    (!filterTag || c.tags.includes(filterTag)) &&
+    (!filterOwner || (filterOwner === '__none__' ? !c.assignedTo : c.assignedTo === filterOwner))
   )
+
+  /* Atribui responsável — otimista + persiste em clients.assigned_to. */
+  const assignOwner = async (id, name) => {
+    setContacts(p => p.map(c => c.id === id ? { ...c, assignedTo: name } : c))
+    if (selected?.id === id) setSelected(p => ({ ...p, assignedTo: name }))
+    if (isDemoMode) return
+    try { await supabase.from('clients').update({ assigned_to: name || null }).eq('id', id) }
+    catch (e) { console.warn('[CRM] erro ao atribuir responsável:', e?.message ?? e) }
+  }
 
   /* Move etapa (drag/select) — atualização otimista + persiste em clients. */
   const moveContact = async (id, stage) => {
@@ -328,6 +417,13 @@ export function CRM() {
           <option value="" style={S.opt}>Todas as tags</option>
           {allTags.map(t => <option key={t} value={t} style={S.opt}>{t}</option>)}
         </select>
+        {members.length > 0 && (
+          <select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} style={{ ...S.select, width: 150, height: 34 }}>
+            <option value="" style={S.opt}>Todos responsáveis</option>
+            <option value="__none__" style={S.opt}>Sem responsável</option>
+            {members.map(m => <option key={m.id} value={m.name} style={S.opt}>{m.name}</option>)}
+          </select>
+        )}
         <button onClick={() => window.open('/crm/board', '_blank', 'noopener')} title="Abrir o pipeline ao vivo em outra aba (modo apresentação)"
           style={{ ...S.btn('transparent', C.tx), border: `1px solid ${C.bd}`, marginLeft: 'auto', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <MonitorPlay size={15} /> Painel ao vivo
@@ -378,7 +474,7 @@ export function CRM() {
             )
           })}
         </div>
-        {selected && <DetailPanel key={selected.id} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} onDelete={deleteContact} userId={ownerUserId} mobile={isMobile} />}
+        {selected && <DetailPanel key={selected.id} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} onDelete={deleteContact} onAssign={assignOwner} members={members} userId={ownerUserId} mobile={isMobile} />}
       </div>
       {modal && <NewContactModal onSave={addContact} onClose={() => setModal(false)} />}
     </div>
