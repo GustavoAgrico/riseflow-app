@@ -90,6 +90,8 @@ function parseOptions(raw) {
     voiceEnhance: o.voiceEnhance === true, // denoise + normalização de volume
     voiceIntensity: ['suave', 'medio', 'forte'].includes(o.voiceIntensity) ? o.voiceIntensity : 'medio',
     autoClean: o.autoClean === true, // corta muletas/hesitações e gagueiras da fala
+    soundEffects: o.soundEffects === true, // pop na legenda + whoosh no B-roll
+    sfxIntensity: ['suave', 'medio', 'forte'].includes(o.sfxIntensity) ? o.sfxIntensity : 'medio',
     captions: o.captions !== false,
     captionTemplate: ['clean', 'pop', 'hormozi', 'box', 'neon', 'bounce', 'keyword'].includes(o.captionTemplate) ? o.captionTemplate : 'clean',
     captionColor: ['white', 'yellow', 'orange', 'purple', 'green', 'cyan', 'pink', 'red'].includes(o.captionColor) ? o.captionColor : 'white',

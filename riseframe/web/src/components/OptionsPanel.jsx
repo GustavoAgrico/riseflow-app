@@ -143,6 +143,14 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
             <Segmented value={options.voiceIntensity || 'medio'} options={catalog.motionIntensities} onChange={(v) => set({ voiceIntensity: v })} />
           </Row>
         )}
+        <Row label="Efeitos sonoros" hint="Toque premium: um 'pop' quando a legenda entra e um 'whoosh' nas entradas de B-roll">
+          <Toggle on={options.soundEffects === true} onChange={(v) => set({ soundEffects: v })} />
+        </Row>
+        {options.soundEffects === true && (
+          <Row label="Volume dos efeitos" hint="O quanto os efeitos aparecem (forte = mais presentes)">
+            <Segmented value={options.sfxIntensity || 'medio'} options={catalog.motionIntensities} onChange={(v) => set({ sfxIntensity: v })} />
+          </Row>
+        )}
       </Section>
 
       {/* ── Legendas ── */}
