@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2 } from 'lucide-react'
+import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2, MonitorPlay } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { LeadScorePanel } from '@components/LeadScorePanel'
@@ -312,7 +312,11 @@ export function CRM() {
           <option value="" style={S.opt}>Todas as tags</option>
           {allTags.map(t => <option key={t} value={t} style={S.opt}>{t}</option>)}
         </select>
-        <button onClick={() => setModal(true)} style={{ ...S.btn('#7C3AED'), marginLeft: 'auto', whiteSpace: 'nowrap' }}>+ Novo Contato</button>
+        <button onClick={() => window.open('/crm/board', '_blank', 'noopener')} title="Abrir o pipeline ao vivo em outra aba (modo apresentação)"
+          style={{ ...S.btn('transparent', C.tx), border: `1px solid ${C.bd}`, marginLeft: 'auto', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <MonitorPlay size={15} /> Painel ao vivo
+        </button>
+        <button onClick={() => setModal(true)} style={{ ...S.btn('#7C3AED'), whiteSpace: 'nowrap' }}>+ Novo Contato</button>
       </div>
       {isDemoMode && (
         <div style={{ margin: '12px 20px 0', padding: '10px 14px', background: '#EAB30810', border: '1px solid #EAB30844', borderRadius: 10, color: '#EAB308', fontSize: 13, flexShrink: 0 }}>
