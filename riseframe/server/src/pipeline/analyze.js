@@ -165,7 +165,9 @@ export async function analyze(transcript, meta, options) {
   // Camada por IA (opcional): melhora a relevância dos momentos/queries.
   // A chave da Anthropic do USUÁRIO (options.anthropicKey, vinda das Configurações)
   // tem prioridade; senão, cai para a config do servidor (.env).
-  const anthropicKey = options.anthropicKey || (config.analyze.provider === 'anthropic' ? config.analyze.anthropicKey : '');
+  // Basta ter a chave (do usuário ou do servidor) para ligar o B-roll por IA —
+  // não precisa também setar ANALYZE_PROVIDER.
+  const anthropicKey = options.anthropicKey || config.analyze.anthropicKey;
   const useOpenAI = !anthropicKey && config.analyze.provider === 'openai' && config.analyze.openaiKey;
   if (options.broll && (anthropicKey || useOpenAI)) {
     const provider = anthropicKey ? 'anthropic' : 'openai';
