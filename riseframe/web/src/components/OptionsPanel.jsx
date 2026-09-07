@@ -112,23 +112,27 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
   // resumo curto para o subtítulo de cada seção (fechada)
   const on = (b) => (b ? 'ligado' : 'desligado');
   const tplLabel = (catalog.captionTemplates?.find((t) => t.id === options.captionTemplate) || {}).label;
+  const cutStrengthLabel = (catalog.cutStrengths?.find((s) => s.id === (options.cutStrength || 'forte')) || {}).label;
 
   return (
     <div style={{ opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
       {/* ── Fala e áudio ── */}
-      <Section icon="mic" title="Fala e áudio" defaultOpen subtitle={`Pausas ${on(options.cutSilence)} · fala ${on(options.autoClean !== false)} · voz ${on(options.voiceEnhance === true)}`}>
+      <Section icon="mic" title="Fala e áudio" defaultOpen subtitle={`Corte ${options.cutSilence ? (cutStrengthLabel || 'ligado') : 'desligado'} · fala ${on(options.autoClean !== false)} · voz ${on(options.voiceEnhance === true)}`}>
         <Row label="Cortar pausas e silêncios" hint="Remove trechos sem fala e remonta a timeline">
           <Toggle on={options.cutSilence} onChange={(v) => set({ cutSilence: v })} />
         </Row>
         {options.cutSilence && (
-          <Row label="Sensibilidade do silêncio" hint={`Ruído < ${options.silenceNoiseDb} dB por ${options.silenceMinDuration}s`}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 190 }}>
-              <input type="range" min={-50} max={-15} value={options.silenceNoiseDb} onChange={(e) => set({ silenceNoiseDb: Number(e.target.value) })} />
-              <input type="range" min={0.2} max={2} step={0.1} value={options.silenceMinDuration} onChange={(e) => set({ silenceMinDuration: Number(e.target.value) })} />
-            </div>
+          <Row label="Força do corte" hint={
+            (options.cutStrength || 'forte') === 'forte'
+              ? 'Forte: enxuga o máximo — corta pausas curtas e mais muletas (recomendado p/ Reels)'
+              : (options.cutStrength || 'forte') === 'suave'
+                ? 'Suave: só as pausas longas — mantém o ritmo natural da fala'
+                : 'Equilibrado: corta pausas médias sem acelerar demais'
+          }>
+            <Segmented value={options.cutStrength || 'forte'} options={catalog.cutStrengths || [{ id: 'suave', label: 'Suave' }, { id: 'equilibrado', label: 'Equilibrado' }, { id: 'forte', label: 'Forte' }]} onChange={(v) => set({ cutStrength: v })} />
           </Row>
         )}
-        <Row label="Corrigir a fala automaticamente" hint="Remove muletas (é..., hã, hmm), gagueiras e palavras repetidas. Com a chave da Anthropic (Configurações), a IA corta também falsos começos e autocorreções.">
+        <Row label="Corrigir a fala automaticamente" hint="Remove muletas (é..., hã, hmm), gagueiras e palavras repetidas. Em corte Forte fica mais agressiva. Com a chave da Anthropic (Configurações), a IA corta também falsos começos e autocorreções.">
           <Toggle on={options.autoClean !== false} onChange={(v) => set({ autoClean: v })} />
         </Row>
         <Row label="Correção automática de voz" hint="Limpa o áudio: reduz ruído de fundo, normaliza o volume e dá mais clareza à voz">

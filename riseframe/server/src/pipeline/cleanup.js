@@ -14,6 +14,13 @@ const FILLERS = new Set([
   'uhm', 'uh', 'uhh', 'er', 'err', 'ehm', 'mmm', 'ahan', 'anham', 'uhum', 'aham',
 ]);
 
+// Muletas extras removidas só no modo agressivo ("forte"): sons de hesitação
+// puros (não conectivos com sentido). Conectivos como "tipo"/"né"/"então" só são
+// cortados quando REPETIDOS (ver removeRepeats), nunca isolados — preserva o tom.
+const FILLERS_AGGRESSIVE = new Set([
+  'eh', 'ehh', 'ehhh', 'ah', 'ahh', 'ahhh', 'oh', 'ohh', 'humhum', 'anram',
+]);
+
 /** minúsculas, sem acentos, sem pontuação/espaços. */
 function norm(word) {
   return String(word ?? '')
@@ -29,10 +36,11 @@ function isElongated(n) {
 }
 
 /** True se a palavra é uma muleta/hesitação (não uma palavra com significado). */
-export function isFiller(word) {
+export function isFiller(word, aggressive = false) {
   const n = norm(word);
   if (!n) return false;
-  return FILLERS.has(n) || isElongated(n);
+  if (FILLERS.has(n) || isElongated(n)) return true;
+  return aggressive && FILLERS_AGGRESSIVE.has(n);
 }
 
 // Palavras curtas comuns (pt/en) que NÃO devem ser tratadas como fragmento de
@@ -48,10 +56,11 @@ const PROTECTED = new Set([
  * prefixo dela (ex.: "trans" → "transformar", "com-" → "comprar"). Guardas para
  * não cortar palavras curtas legítimas (PROTECTED) nem casos ambíguos.
  */
-function isStutterFragment(a, b) {
-  if (a.length < 2 || a.length > 6 || PROTECTED.has(a)) return false; // fragmento curto
+function isStutterFragment(a, b, aggressive = false) {
+  const maxLen = aggressive ? 7 : 6;
+  if (a.length < 2 || a.length > maxLen || PROTECTED.has(a)) return false; // fragmento curto
   if (a === b || !b.startsWith(a)) return false;
-  return b.length >= a.length + 2; // a próxima é claramente mais longa
+  return b.length >= a.length + (aggressive ? 1 : 2); // a próxima é claramente mais longa
 }
 
 /**
@@ -64,6 +73,7 @@ function isStutterFragment(a, b) {
 export function markFillers(transcript, opts = {}) {
   const removeFillers = opts.fillers !== false;
   const removeRepeats = opts.repeats !== false;
+  const aggressive = opts.aggressive === true;
   let removedCount = 0;
 
   const segments = (transcript?.segments || []).map((seg) => {
@@ -71,7 +81,7 @@ export function markFillers(transcript, opts = {}) {
     const words = src.map((w) => ({ ...w }));
     if (removeFillers) {
       for (const w of words) {
-        if (!w.removed && isFiller(w.word)) {
+        if (!w.removed && isFiller(w.word, aggressive)) {
           w.removed = true;
           removedCount++;
         }
@@ -110,7 +120,7 @@ export function markFillers(transcript, opts = {}) {
     list = kept();
     for (let i = 0; i < list.length - 1; i++) {
       if (list[i].w.removed) continue;
-      if (isStutterFragment(list[i].n, list[i + 1].n)) {
+      if (isStutterFragment(list[i].n, list[i + 1].n, aggressive)) {
         list[i].w.removed = true;
         removedCount++;
       }
