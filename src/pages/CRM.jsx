@@ -1,21 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2, MonitorPlay, User, Plus, Square, CheckSquare } from 'lucide-react'
+import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2, MonitorPlay, User, Plus, Square, CheckSquare, X, ChevronUp, ChevronDown, Layers } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { LeadScorePanel } from '@components/LeadScorePanel'
 import { NotesPanel } from '@components/NotesPanel'
 import { logger } from '@services/activityLogger'
 import { useIsMobile } from '@hooks/useIsMobile'
+import { DEFAULT_STAGES, useStages, saveStages, newStageKey } from '@hooks/useStages'
 
-const STAGES = [
-  { id: 'lead',   label: 'Novo Lead',   color: '#7C3AED' },
-  { id: 'qual',   label: 'Qualificado', color: '#2563EB' },
-  { id: 'prop',   label: 'Proposta',    color: '#D97706' },
-  { id: 'neg',    label: 'Negociação',  color: '#0891B2' },
-  { id: 'closed', label: 'Fechado',     color: '#059669' },
-  { id: 'lost',   label: 'Perdido',     color: '#EF4444' },
-]
+// Etapas do funil agora são dinâmicas (por conta) — ver @hooks/useStages.
+// stageAt(stages, key) resolve a etapa de um lead com fallback seguro.
+const stageAt = (stages, key) => (stages || DEFAULT_STAGES).find(s => s.key === key) || (stages || DEFAULT_STAGES)[0] || DEFAULT_STAGES[0]
 
 /* Paleta padrão (tema escuro) — mesma do Funil para manter consistência entre as páginas */
 const C = { bg: '#0F172A', card: '#1E293B', bd: '#334155', tx: '#F8FAFC', mut: '#94A3B8', pur: '#7C3AED' }
@@ -47,9 +43,9 @@ const rel = t => { if (!t) return 'agora'; const m = Math.max(1, Math.round((Dat
 /* linha da tabela clients -> formato do card do CRM */
 const mapRow = r => ({ id: r.id, name: r.name || '', phone: r.phone || '', email: r.email || '', company: r.company || '', value: Number(r.value) || 0, stage: r.stage || 'lead', tags: r.tags || [], lastMsg: r.last_message || '', time: rel(r.created_at), assignedTo: r.assigned_to || '' })
 
-const ContactCard = ({ contact, onDragStart, onClick, onDelete }) => {
+const ContactCard = ({ contact, onDragStart, onClick, onDelete, stages }) => {
   const [hov, setHov] = useState(false)
-  const st = STAGES.find(s => s.id === contact.stage)
+  const st = stageAt(stages, contact.stage)
   return (
     <div draggable onDragStart={e => onDragStart(e, contact.id)} onClick={() => onClick(contact)}
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
@@ -145,8 +141,8 @@ const TasksPanel = ({ clientId, userId }) => {
   )
 }
 
-const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, onAssign, members = [], userId, mobile }) => {
-  const st = STAGES.find(s => s.id === contact.stage)
+const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, onAssign, members = [], stages = DEFAULT_STAGES, userId, mobile }) => {
+  const st = stageAt(stages, contact.stage)
   const navigate = useNavigate()
   const [msgs, setMsgs] = useState(null)
 
@@ -190,7 +186,7 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, o
         <div style={{ marginBottom: 14, marginTop: 14 }}>
           <label style={S.label}>Etapa</label>
           <select value={contact.stage} onChange={e => onStageChange(contact.id, e.target.value)} style={S.select}>
-            {STAGES.map(s => <option key={s.id} value={s.id} style={S.opt}>{s.label}</option>)}
+            {stages.map(s => <option key={s.key} value={s.key} style={S.opt}>{s.label}</option>)}
           </select>
         </div>
         <div style={{ marginBottom: 14 }}>
@@ -245,8 +241,72 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, o
 
 const TAGS_OPT = ['VIP', 'Interessado', 'Hot', 'Frio', 'Pago']
 
-const NewContactModal = ({ onSave, onClose }) => {
-  const [form, setForm] = useState({ name: '', phone: '', email: '', company: '', value: '', stage: 'lead', tags: [] })
+// Editor de etapas do funil (por conta). Salva na tabela pipeline_stages.
+const KIND_OPT = [['open', 'Aberta'], ['won', 'Ganho'], ['lost', 'Perdido']]
+const StageEditor = ({ stages, onClose, onSaved, ownerUserId, isDemoMode }) => {
+  const [list, setList] = useState(() => stages.map(s => ({ ...s })))
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const prevKeys = stages.map(s => s.key)
+
+  const upd = (i, k, v) => setList(l => l.map((s, j) => j === i ? { ...s, [k]: v } : s))
+  const move = (i, d) => setList(l => { const j = i + d; if (j < 0 || j >= l.length) return l; const c = [...l]; [c[i], c[j]] = [c[j], c[i]]; return c })
+  const add = () => setList(l => [...l, { key: newStageKey(), label: 'Nova etapa', color: '#7C3AED', kind: 'open', probability: 20 }])
+  const remove = (i) => setList(l => l.length > 1 ? l.filter((_, j) => j !== i) : l)
+
+  const save = async () => {
+    if (isDemoMode) { setErr('Modo demo: crie uma conta para editar as etapas.'); return }
+    if (!list.some(s => (s.label || '').trim())) { setErr('Defina ao menos uma etapa.'); return }
+    setBusy(true); setErr('')
+    try {
+      await saveStages(ownerUserId, list, prevKeys)
+      onSaved && await onSaved()
+      onClose()
+    } catch (e) { setErr('Erro ao salvar: ' + (e?.message || e) + '  (Rode supabase/pipeline_stages.sql se ainda não rodou.)'); setBusy(false) }
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: C.card, border: `1px solid ${C.bd}`, borderRadius: 16, padding: 22, width: 620, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', fontFamily: 'DM Sans,sans-serif' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <p style={{ margin: 0, fontSize: 17, fontWeight: 700, color: C.tx }}>Editar etapas do funil</p>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.mut }}><X size={18} /></button>
+        </div>
+        <p style={{ margin: '0 0 14px', fontSize: 12, color: C.mut }}>Renomeie, reordene, mude a cor e a probabilidade (usada na previsão). Marque a etapa de <b style={{ color: C.tx }}>Ganho</b> e a de <b style={{ color: C.tx }}>Perdido</b>. Ao remover uma etapa com leads, eles vão para a primeira.</p>
+
+        <div style={{ display: 'grid', gap: 8 }}>
+          {list.map((s, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '22px 1fr 40px 110px 78px 30px', gap: 8, alignItems: 'center', background: C.bg, borderRadius: 10, padding: '8px 10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <button onClick={() => move(i, -1)} disabled={i === 0} style={{ background: 'none', border: 'none', cursor: i === 0 ? 'default' : 'pointer', color: C.mut, opacity: i === 0 ? 0.3 : 1, padding: 0, display: 'flex' }}><ChevronUp size={14} /></button>
+                <button onClick={() => move(i, 1)} disabled={i === list.length - 1} style={{ background: 'none', border: 'none', cursor: i === list.length - 1 ? 'default' : 'pointer', color: C.mut, opacity: i === list.length - 1 ? 0.3 : 1, padding: 0, display: 'flex' }}><ChevronDown size={14} /></button>
+              </div>
+              <input value={s.label} onChange={e => upd(i, 'label', e.target.value)} placeholder="Nome da etapa" style={{ ...S.input }} />
+              <input type="color" value={s.color} onChange={e => upd(i, 'color', e.target.value)} title="Cor" style={{ width: 40, height: 34, padding: 2, background: C.card, border: `1px solid ${C.bd}`, borderRadius: 8, cursor: 'pointer' }} />
+              <select value={s.kind} onChange={e => upd(i, 'kind', e.target.value)} style={{ ...S.select }}>
+                {KIND_OPT.map(([v, l]) => <option key={v} value={v} style={S.opt}>{l}</option>)}
+              </select>
+              <input type="number" min="0" max="100" value={s.probability} onChange={e => upd(i, 'probability', e.target.value)} title="Probabilidade %" style={{ ...S.input }} />
+              <button onClick={() => remove(i)} disabled={list.length <= 1} title="Remover" style={{ background: 'none', border: 'none', cursor: list.length <= 1 ? 'default' : 'pointer', color: '#F87171', opacity: list.length <= 1 ? 0.3 : 1, padding: 0, display: 'flex', justifyContent: 'center' }}><Trash2 size={15} /></button>
+            </div>
+          ))}
+        </div>
+
+        <button onClick={add} style={{ ...S.btn('transparent', C.tx), border: `1px dashed ${C.bd}`, marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={15} /> Adicionar etapa</button>
+
+        {err && <p style={{ fontSize: 12.5, color: '#F87171', marginTop: 12 }}>{err}</p>}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+          <button onClick={onClose} style={{ ...S.btn('transparent', C.tx), border: `1px solid ${C.bd}`, padding: '9px 16px' }}>Cancelar</button>
+          <button onClick={save} disabled={busy} style={{ ...S.btn(C.pur), padding: '9px 18px', opacity: busy ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>{busy ? 'Salvando…' : 'Salvar etapas'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const NewContactModal = ({ onSave, onClose, stages = DEFAULT_STAGES }) => {
+  const [form, setForm] = useState({ name: '', phone: '', email: '', company: '', value: '', stage: stages[0]?.key || 'lead', tags: [] })
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
   const toggleTag = t => set('tags', form.tags.includes(t) ? form.tags.filter(x => x !== t) : [...form.tags, t])
   return (
@@ -264,7 +324,7 @@ const NewContactModal = ({ onSave, onClose }) => {
         ))}
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
           <div style={{ flex: 1 }}><label style={S.label}>Valor (R$)</label><input type="number" value={form.value} onChange={e => set('value', e.target.value)} style={S.input} /></div>
-          <div style={{ flex: 1 }}><label style={S.label}>Etapa</label><select value={form.stage} onChange={e => set('stage', e.target.value)} style={S.select}>{STAGES.map(s => <option key={s.id} value={s.id} style={S.opt}>{s.label}</option>)}</select></div>
+          <div style={{ flex: 1 }}><label style={S.label}>Etapa</label><select value={form.stage} onChange={e => set('stage', e.target.value)} style={S.select}>{stages.map(s => <option key={s.key} value={s.key} style={S.opt}>{s.label}</option>)}</select></div>
         </div>
         <div style={{ marginBottom: 18 }}>
           <label style={S.label}>Tags</label>
@@ -285,6 +345,8 @@ const NewContactModal = ({ onSave, onClose }) => {
 export function CRM() {
   const navigate = useNavigate()
   const { user, ownerUserId, isDemoMode } = useAuth()
+  const { stages, reload: reloadStages } = useStages()
+  const [stagesOpen, setStagesOpen] = useState(false)
   const [navHov, setNavHov] = useState(false)
   const [contacts, setContacts] = useState([])
   const [selected, setSelected] = useState(null)
@@ -340,7 +402,7 @@ export function CRM() {
   const moveContact = async (id, stage) => {
     setContacts(p => p.map(c => c.id === id ? { ...c, stage } : c))
     if (selected?.id === id) setSelected(p => ({ ...p, stage }))
-    logger.log(user?.id, 'stage_changed', { category: 'crm', description: (contacts.find(c => c.id === id)?.name || 'Contato') + ' movido para ' + (STAGES.find(s => s.id === stage)?.label || stage) })
+    logger.log(user?.id, 'stage_changed', { category: 'crm', description: (contacts.find(c => c.id === id)?.name || 'Contato') + ' movido para ' + (stageAt(stages, stage).label || stage) })
     if (isDemoMode) return
     try { await supabase.from('clients').update({ stage }).eq('id', id) }
     catch (e) { console.warn('[CRM] erro ao mover contato:', e?.message ?? e) }
@@ -393,12 +455,13 @@ export function CRM() {
 
   // ── Métricas do funil (forecast ponderado por etapa) ──
   const brl = n => 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR')
-  const PROB = { lead: 0.1, qual: 0.3, prop: 0.5, neg: 0.7, closed: 1, lost: 0 }
-  const stageSum = id => filtered.filter(c => c.stage === id).reduce((a, c) => a + (c.value || 0), 0)
-  const pipelineTotal = filtered.filter(c => !['closed', 'lost'].includes(c.stage)).reduce((a, c) => a + (c.value || 0), 0)
-  const forecast = filtered.reduce((a, c) => a + (c.value || 0) * (PROB[c.stage] ?? 0), 0)
-  const wonN = filtered.filter(c => c.stage === 'closed').length
-  const lostN = filtered.filter(c => c.stage === 'lost').length
+  const kindOf = k => stageAt(stages, k).kind
+  const probOf = k => (stageAt(stages, k).probability ?? 0) / 100
+  const stageSum = key => filtered.filter(c => c.stage === key).reduce((a, c) => a + (c.value || 0), 0)
+  const pipelineTotal = filtered.filter(c => kindOf(c.stage) === 'open').reduce((a, c) => a + (c.value || 0), 0)
+  const forecast = filtered.reduce((a, c) => a + (c.value || 0) * probOf(c.stage), 0)
+  const wonN = filtered.filter(c => kindOf(c.stage) === 'won').length
+  const lostN = filtered.filter(c => kindOf(c.stage) === 'lost').length
   const convR = (wonN + lostN) ? Math.round(wonN / (wonN + lostN) * 100) : 0
   const kpis = [
     { label: 'No funil', value: brl(pipelineTotal), color: C.pur, hint: `${filtered.length - wonN - lostN} em aberto` },
@@ -424,8 +487,12 @@ export function CRM() {
             {members.map(m => <option key={m.id} value={m.name} style={S.opt}>{m.name}</option>)}
           </select>
         )}
-        <button onClick={() => window.open('/crm/board', '_blank', 'noopener')} title="Abrir o pipeline ao vivo em outra aba (modo apresentação)"
+        <button onClick={() => setStagesOpen(true)} title="Editar etapas do funil"
           style={{ ...S.btn('transparent', C.tx), border: `1px solid ${C.bd}`, marginLeft: 'auto', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Layers size={15} /> Editar etapas
+        </button>
+        <button onClick={() => window.open('/crm/board', '_blank', 'noopener')} title="Abrir o pipeline ao vivo em outra aba (modo apresentação)"
+          style={{ ...S.btn('transparent', C.tx), border: `1px solid ${C.bd}`, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <MonitorPlay size={15} /> Painel ao vivo
         </button>
         <button onClick={() => setModal(true)} style={{ ...S.btn('#7C3AED'), whiteSpace: 'nowrap' }}>+ Novo Contato</button>
@@ -446,14 +513,14 @@ export function CRM() {
       </div>
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12, padding: '16px 20px', overflowX: isMobile ? 'hidden' : 'auto', overflowY: isMobile ? 'auto' : 'visible', alignItems: isMobile ? 'stretch' : 'flex-start' }}>
-          {STAGES.map(stage => {
-            const cols = filtered.filter(c => c.stage === stage.id)
-            const over = dragOver === stage.id
+          {stages.map(stage => {
+            const cols = filtered.filter(c => c.stage === stage.key)
+            const over = dragOver === stage.key
             return (
-              <div key={stage.id}
-                onDragOver={e => { e.preventDefault(); setDragOver(stage.id) }}
+              <div key={stage.key}
+                onDragOver={e => { e.preventDefault(); setDragOver(stage.key) }}
                 onDragLeave={() => setDragOver(null)}
-                onDrop={e => { const id = e.dataTransfer.getData('cid'); if (id) moveContact(id, stage.id); setDragOver(null) }}
+                onDrop={e => { const id = e.dataTransfer.getData('cid'); if (id) moveContact(id, stage.key); setDragOver(null) }}
                 style={{ minWidth: isMobile ? 0 : 240, width: isMobile ? '100%' : undefined, flexShrink: 0 }}>
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -461,11 +528,11 @@ export function CRM() {
                     <span style={{ fontSize: 13, fontWeight: 700, color: C.tx, flex: 1 }}>{stage.label}</span>
                     <span style={{ fontSize: 11, fontWeight: 700, color: stage.color, background: stage.color + '18', borderRadius: 10, padding: '1px 8px' }}>{cols.length}</span>
                   </div>
-                  {stageSum(stage.id) > 0 && <p style={{ margin: '4px 0 0 16px', fontSize: 11, fontWeight: 700, color: C.mut, fontVariantNumeric: 'tabular-nums' }}>{brl(stageSum(stage.id))}</p>}
+                  {stageSum(stage.key) > 0 && <p style={{ margin: '4px 0 0 16px', fontSize: 11, fontWeight: 700, color: C.mut, fontVariantNumeric: 'tabular-nums' }}>{brl(stageSum(stage.key))}</p>}
                 </div>
                 <div style={{ minHeight: 60, borderRadius: 12, border: over ? '2px dashed #2563EB66' : '2px dashed transparent', background: over ? '#2563EB06' : 'transparent', padding: over ? 4 : 0, transition: 'all .15s' }}>
                   {cols.map(c => (
-                    <ContactCard key={c.id} contact={c} onClick={setSelected}
+                    <ContactCard key={c.id} contact={c} onClick={setSelected} stages={stages}
                       onDragStart={(e, id) => e.dataTransfer.setData('cid', id)}
                       onDelete={deleteContact} />
                   ))}
@@ -474,9 +541,10 @@ export function CRM() {
             )
           })}
         </div>
-        {selected && <DetailPanel key={selected.id} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} onDelete={deleteContact} onAssign={assignOwner} members={members} userId={ownerUserId} mobile={isMobile} />}
+        {selected && <DetailPanel key={selected.id} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} onDelete={deleteContact} onAssign={assignOwner} members={members} stages={stages} userId={ownerUserId} mobile={isMobile} />}
       </div>
-      {modal && <NewContactModal onSave={addContact} onClose={() => setModal(false)} />}
+      {modal && <NewContactModal onSave={addContact} onClose={() => setModal(false)} stages={stages} />}
+      {stagesOpen && <StageEditor stages={stages} ownerUserId={ownerUserId} isDemoMode={isDemoMode} onClose={() => setStagesOpen(false)} onSaved={reloadStages} />}
     </div>
   )
 }

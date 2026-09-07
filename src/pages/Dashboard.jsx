@@ -13,6 +13,7 @@ import {
   RadarChart, PolarGrid, PolarAngleAxis, Radar,
 } from 'recharts'
 import { useDashboardData } from '@hooks/useDashboardData'
+import { useStages } from '@hooks/useStages'
 import { useOnboarding } from '@hooks/useOnboarding'
 import { OnboardingWizard } from '@components/OnboardingWizard'
 import { useApp } from '@context/AppContext'
@@ -26,15 +27,6 @@ const CH_COLOR = {
   telegram: '#38BDF8',
 }
 
-// Etapas do funil (mesmas do CRM) para o painel de desempenho de vendas.
-const STAGE_DEF = [
-  { id: 'lead',   label: 'Lead',      color: '#7C3AED' },
-  { id: 'qual',   label: 'Qualif.',   color: '#2563EB' },
-  { id: 'prop',   label: 'Proposta',  color: '#D97706' },
-  { id: 'neg',    label: 'Negoc.',    color: '#0891B2' },
-  { id: 'closed', label: 'Fechado',   color: '#059669' },
-  { id: 'lost',   label: 'Perdido',   color: '#EF4444' },
-]
 const brlShort = (n) => {
   const v = Number(n) || 0
   if (v >= 1000) return 'R$ ' + (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + 'k'
@@ -230,6 +222,7 @@ const EmptyState = ({ userName, onCreateFlow }) => (
 export const Dashboard = () => {
   const { flowsVersion, setNewFlowModalOpen } = useApp()
   const { user, isDemoMode } = useAuth()
+  const { stages } = useStages()
   const {
     flows, clients, conversations,
     totalMessages, totalFlows, activeFlows,
@@ -296,18 +289,18 @@ export const Dashboard = () => {
     .map(c => ({ name: c.label, value: c.convCount || 1, color: CH_COLOR[c.id] }))
 
   // ── Desempenho de vendas (a partir dos clients: etapa + valor) ──
-  const stageOf = (c) => c.stage || 'lead'
-  const stageRows = STAGE_DEF.map(s => {
-    const list = clients.filter(c => stageOf(c) === s.id)
+  const stageOf = (c) => c.stage || (stages[0]?.key || 'lead')
+  const stageRows = stages.map(s => {
+    const list = clients.filter(c => stageOf(c) === s.key)
     return { ...s, count: list.length, value: list.reduce((a, c) => a + (Number(c.value) || 0), 0) }
   })
-  const won = stageRows.find(s => s.id === 'closed')?.count || 0
-  const lost = stageRows.find(s => s.id === 'lost')?.count || 0
+  const won = stageRows.filter(s => s.kind === 'won').reduce((a, s) => a + s.count, 0)
+  const lost = stageRows.filter(s => s.kind === 'lost').reduce((a, s) => a + s.count, 0)
   const decided = won + lost
   const convRate = decided ? Math.round((won / decided) * 100) : 0
   const lostRate = decided ? Math.round((lost / decided) * 100) : 0
-  const pipelineValue = stageRows.filter(s => !['closed', 'lost'].includes(s.id)).reduce((a, s) => a + s.value, 0)
-  const wonValue = stageRows.find(s => s.id === 'closed')?.value || 0
+  const pipelineValue = stageRows.filter(s => s.kind === 'open').reduce((a, s) => a + s.value, 0)
+  const wonValue = stageRows.filter(s => s.kind === 'won').reduce((a, s) => a + s.value, 0)
   const ticket = won ? wonValue / won : 0
   const salesKpis = [
     { label: 'Taxa de Conversão', value: `${convRate}%`, color: '#10B981', hint: `${won} fechados` },

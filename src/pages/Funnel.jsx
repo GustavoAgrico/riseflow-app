@@ -4,21 +4,13 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { exportCSV } from '@utils/exportUtils'
 import { logger } from '@services/activityLogger'
+import { useStages } from '@hooks/useStages'
 import { BarChart3, Users, TrendingUp, DollarSign, Ticket, ChevronDown, Phone, ArrowLeft, X } from 'lucide-react'
 
 const C = { bg: '#0F172A', card: '#1E293B', bd: '#334155', tx: '#F8FAFC', mut: '#64748B', pur: '#7C3AED' }
 const F = 'DM Sans, sans-serif'
 const DAYS = { '7d': 7, '30d': 30, '90d': 90 }
 const PERIODS = { '7d': ['Dia 1-2', 'Dia 3-4', 'Dia 5-6', 'Dia 7'], '30d': ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'], '90d': ['Mês 1', 'Mês 2', 'Mês 3', 'Mês 4'] }
-// Mesmas etapas do CRM (campo clients.stage) — garante sincronização CRM <-> Funil
-const STAGES = [
-  { k: 'Novo Lead',   id: 'lead',   color: '#7C3AED', w: 100 },
-  { k: 'Qualificado', id: 'qual',   color: '#2563EB', w: 84 },
-  { k: 'Proposta',    id: 'prop',   color: '#0891B2', w: 66 },
-  { k: 'Negociação',  id: 'neg',    color: '#D97706', w: 48 },
-  { k: 'Fechado',     id: 'closed', color: '#059669', w: 30 },
-  { k: 'Perdido',     id: 'lost',   color: '#EF4444', w: 20 },
-]
 const brl = n => 'R$ ' + Math.round(n).toLocaleString('pt-BR')
 const daysAgo = t => Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 864e5))
 
@@ -55,6 +47,11 @@ const DEMO_CLIENTS = (() => {
 export const Funnel = () => {
   const nav = useNavigate()
   const { user, ownerUserId, isDemoMode } = useAuth()
+  const { stages } = useStages()
+  // Etapas dinâmicas → largura do funil derivada da posição; cor/semântica das etapas.
+  const STAGES = stages.map((s, i) => ({ k: s.label, id: s.key, color: s.color, kind: s.kind, w: Math.round(100 - (stages.length > 1 ? i / (stages.length - 1) : 0) * 70) }))
+  const firstId = STAGES[0]?.id || 'lead'
+  const wonIds = STAGES.filter(s => s.kind === 'won').map(s => s.id)
   const [period, setPeriod] = useState('30d')
   const [loading, setLoading] = useState(true)
   const [clients, setClients] = useState([])
@@ -85,13 +82,13 @@ export const Funnel = () => {
 
   const start = Date.now() - DAYS[period] * 864e5
   const inPeriod = clients.filter(c => new Date(c.created_at).getTime() >= start)
-  const list = id => inPeriod.filter(c => (c.stage || 'lead') === id)
+  const list = id => inPeriod.filter(c => (c.stage || firstId) === id)
   const count = id => list(id).length
   const value = id => list(id).reduce((s, c) => s + (Number(c.value) || 0), 0)
   const avgT = id => { const l = list(id); return l.length ? Math.round(l.reduce((s, c) => s + daysAgo(c.created_at), 0) / l.length) + 'd' : '—' }
 
   const total = inPeriod.length
-  const closed = count('closed')
+  const closed = inPeriod.filter(c => wonIds.includes(c.stage || firstId)).length
   const pipeline = inPeriod.reduce((s, c) => s + (Number(c.value) || 0), 0)
   const ticket = closed ? pipeline / closed : 0
   const geral = total ? (closed / total * 100).toFixed(1) : '0'
@@ -139,7 +136,7 @@ export const Funnel = () => {
           )}
           {loading ? (
             <div style={{ maxWidth: 760, margin: '0 auto' }}>
-              {STAGES.map(st => <div key={st.k} className="animate-pulse" style={{ width: st.w + '%', height: 56, margin: '0 auto 12px', background: C.card, borderRadius: 10 }} />)}
+              {STAGES.map(st => <div key={st.id} className="animate-pulse" style={{ width: st.w + '%', height: 56, margin: '0 auto 12px', background: C.card, borderRadius: 10 }} />)}
             </div>
           ) : err ? (
             <p style={{ textAlign: 'center', color: C.mut, fontSize: 14, marginTop: 40 }}>{err}</p>
@@ -148,7 +145,7 @@ export const Funnel = () => {
               {/* SEÇÃO 1 — FUNIL */}
               <div style={{ maxWidth: 760, margin: '0 auto' }}>
                 {STAGES.map((st, i) => (
-                  <React.Fragment key={st.k}>
+                  <React.Fragment key={st.id}>
                     <div onMouseEnter={() => setHover(st.k)} onMouseLeave={() => setHover(null)} onClick={() => setModal(st)}
                       style={{ width: st.w + '%', minWidth: 200, maxWidth: '100%', margin: '0 auto', height: 56, background: st.color, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '0 14px', boxSizing: 'border-box', color: '#fff', cursor: 'pointer', filter: hover === st.k ? 'brightness(1.18)' : 'none', transition: 'filter .15s' }}>
                       <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>{st.k}</span>
@@ -191,8 +188,8 @@ export const Funnel = () => {
                 <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
                   <thead><tr>{['Etapa', 'Quantidade', 'Valor Total', '% do Total', 'Tempo Médio'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
                   <tbody>
-                    {STAGES.map(st => { const cl = st.id === 'closed' ? '#22C55E' : st.id === 'lost' ? '#F87171' : C.tx; return (
-                      <tr key={st.k}>
+                    {STAGES.map(st => { const cl = st.kind === 'won' ? '#22C55E' : st.kind === 'lost' ? '#F87171' : C.tx; return (
+                      <tr key={st.id}>
                         <td style={{ ...td, color: cl, fontWeight: 600 }}>{st.k}</td>
                         <td style={td}>{count(st.id).toLocaleString('pt-BR')}</td>
                         <td style={td}>{brl(value(st.id))}</td>

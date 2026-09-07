@@ -6,15 +6,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
-
-const STAGES = [
-  { id: 'lead',   label: 'Novo Lead',   color: '#7C3AED' },
-  { id: 'qual',   label: 'Qualificado', color: '#2563EB' },
-  { id: 'prop',   label: 'Proposta',    color: '#D97706' },
-  { id: 'neg',    label: 'Negociação',  color: '#0891B2' },
-  { id: 'closed', label: 'Fechado',     color: '#059669' },
-  { id: 'lost',   label: 'Perdido',     color: '#EF4444' },
-]
+import { useStages } from '@hooks/useStages'
 
 const C = { bg: '#0B1120', panel: '#111C30', card: '#18233A', bd: '#26324A', tx: '#F1F5F9', mut: '#93A3BC', pur: '#7C3AED' }
 const F = "'DM Sans', system-ui, sans-serif"
@@ -55,6 +47,7 @@ const Card = ({ c, color, flash }) => (
 
 export const PipelineBoard = () => {
   const { ownerUserId, isDemoMode, loading: authLoading } = useAuth()
+  const { stages } = useStages()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [updatedAt, setUpdatedAt] = useState(null)
@@ -121,11 +114,11 @@ export const PipelineBoard = () => {
         <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: C.mut }}>Carregando pipeline…</div>
       ) : (
         <div style={{ flex: 1, display: 'flex', gap: 16, padding: 20, overflowX: 'auto', alignItems: 'stretch' }}>
-          {STAGES.map(stage => {
-            const cols = rows.filter(r => r.stage === stage.id)
+          {stages.map(stage => {
+            const cols = rows.filter(r => (r.stage || stages[0]?.key) === stage.key)
             const sum = cols.reduce((s, r) => s + (r.value || 0), 0)
             return (
-              <section key={stage.id} style={{ minWidth: 300, width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', background: C.panel, border: `1px solid ${C.bd}`, borderRadius: 16, overflow: 'hidden' }}>
+              <section key={stage.key} style={{ minWidth: 300, width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', background: C.panel, border: `1px solid ${C.bd}`, borderRadius: 16, overflow: 'hidden' }}>
                 <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.bd}`, borderTop: `3px solid ${stage.color}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>{stage.label}</span>
