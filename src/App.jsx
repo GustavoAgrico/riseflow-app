@@ -10,6 +10,7 @@ import { Dashboard } from '@pages/Dashboard'
 import { Clients } from '@pages/Clients'
 import { CRM } from '@pages/CRM'
 import { PipelineBoard } from '@pages/PipelineBoard'
+import { Billing } from '@pages/Billing'
 import { Integrations } from '@pages/Integrations'
 import { Analytics } from '@pages/Analytics'
 import { Funnel } from '@pages/Funnel'
@@ -135,6 +136,7 @@ function App() {
               <Route path="/flows-novo" element={<PrivateRoute><Flows /></PrivateRoute>} />
               <Route path="/crm" element={<PrivateRoute><CRM /></PrivateRoute>} />
               <Route path="/crm/board" element={<PrivateRoute><PipelineBoard /></PrivateRoute>} />
+              <Route path="/billing" element={<PrivateRoute><Billing /></PrivateRoute>} />
               <Route path="/clients" element={<PrivateRoute><Clients /></PrivateRoute>} />
               <Route path="/campaigns" element={<PrivateRoute><Campaigns /></PrivateRoute>} />
               <Route path="/schedules" element={<PrivateRoute><Schedules /></PrivateRoute>} />
