@@ -84,9 +84,9 @@ const StatCard = ({ icon: Icon, label, value, change, color, hex = '#FF6B35', sp
         {value}
       </p>
       <p style={{ fontSize: 11, color: '#64748B', marginBottom: 10 }}>{label}</p>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <ArrowUpRight size={11} style={{ color: hex }} />
-        <span style={{ fontSize: 11, color: '#475569' }}>{change}</span>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: `${hex}14`, border: `1px solid ${hex}2b`, color: hex, borderRadius: 20, padding: '3px 9px' }}>
+        <ArrowUpRight size={11} />
+        <span style={{ fontSize: 11, fontWeight: 600 }}>{change}</span>
       </div>
       {/* Hint "Acessar" no hover (só quando o card é clicável) */}
       {to && (
