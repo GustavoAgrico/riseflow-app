@@ -48,6 +48,12 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'medio', label: 'Médio' },
       { id: 'forte', label: 'Forte' },
     ],
+    // Força do corte automático (silêncio + muletas): quanto maior, mais o vídeo é enxugado.
+    cutStrengths: [
+      { id: 'suave', label: 'Suave' },
+      { id: 'equilibrado', label: 'Equilibrado' },
+      { id: 'forte', label: 'Forte' },
+    ],
     niches: [
       { id: 'auto', label: 'Detectar automaticamente' },
       ...Object.entries(NICHES).map(([id, n]) => ({ id, label: n.label })),
@@ -70,6 +76,7 @@ optionsRouter.get('/options', (_req, res) => {
     ],
     defaults: {
       cutSilence: true,
+      cutStrength: 'forte', // enxuga mais por padrão (pausas curtas + muletas)
       voiceEnhance: false,
       voiceIntensity: 'medio',
       autoClean: true,
@@ -90,8 +97,6 @@ optionsRouter.get('/options', (_req, res) => {
       personCrop: 'center',
       aspect: 'original',
       reframeTrack: true,
-      silenceNoiseDb: -30,
-      silenceMinDuration: 0.4,
     },
   });
 });

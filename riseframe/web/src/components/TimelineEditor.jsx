@@ -33,6 +33,48 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
   const dur = durationSec || segments.reduce((m, s) => Math.max(m, s.end || 0), 0) || 1;
   const width = Math.max(320, Math.round(dur * PPS));
 
+  // ── Pausas de silêncio (gaps entre palavras mantidas). O usuário decide, na
+  // timeline, quais cortar. Por padrão TODA pausa visível é cortada (o cliente
+  // reclamou que sobrava silêncio); clicar numa pausa a preserva.
+  const MIN_PAUSE = 0.35; // só mostra/oferece corte a partir daqui
+  const [keptPauses, setKeptPauses] = useState(() => new Set());
+  const pauseKey = (p) => p.start.toFixed(2);
+
+  const flatWords = useMemo(() => {
+    const arr = [];
+    for (const s of segments) for (const w of s.words) if (!w.removed) arr.push(w);
+    return arr.sort((a, b) => a.start - b.start);
+  }, [segments]);
+
+  const pauses = useMemo(() => {
+    const out = [];
+    if (flatWords.length) {
+      const lead = flatWords[0].start;
+      if (lead >= MIN_PAUSE) out.push({ start: 0, end: flatWords[0].start, dur: lead });
+      for (let i = 0; i < flatWords.length - 1; i++) {
+        const gap = flatWords[i + 1].start - flatWords[i].end;
+        if (gap >= MIN_PAUSE) out.push({ start: flatWords[i].end, end: flatWords[i + 1].start, dur: gap });
+      }
+      const last = flatWords[flatWords.length - 1].end;
+      if (dur - last >= MIN_PAUSE) out.push({ start: last, end: dur, dur: dur - last });
+    }
+    return out;
+  }, [flatWords, dur]);
+
+  const isPauseCut = (p) => !keptPauses.has(pauseKey(p));
+  function togglePause(p) {
+    setKeptPauses((prev) => {
+      const n = new Set(prev);
+      const k = pauseKey(p);
+      if (n.has(k)) n.delete(k); else n.add(k);
+      return n;
+    });
+  }
+  function cutAllPauses() { setKeptPauses(new Set()); }
+  function keepAllPauses() { setKeptPauses(new Set(pauses.map(pauseKey))); }
+  const pausesCut = pauses.filter(isPauseCut);
+  const pauseCutSec = pausesCut.reduce((a, p) => a + p.dur, 0);
+
   // ── sincroniza o vídeo ↔ timeline
   useEffect(() => {
     const v = videoRef.current;
@@ -124,8 +166,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
   const stats = useMemo(() => {
     let total = 0, removed = 0, removedSec = 0;
     for (const s of segments) for (const w of s.words) { total++; if (w.removed) { removed++; removedSec += Math.max(0, w.end - w.start); } }
-    return { total, removed, removedSec, keptSec: Math.max(0, dur - removedSec) };
-  }, [segments, dur]);
+    const keptSec = Math.max(0, dur - removedSec - pauseCutSec);
+    return { total, removed, removedSec, keptSec };
+  }, [segments, dur, pauseCutSec]);
   const segRemoved = (s) => s.words.every((w) => w.removed);
   const canSplit = segments.some((s) => cur > s.start + 0.05 && cur < s.end - 0.05);
 
@@ -138,11 +181,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
   }
 
   function generate() {
-    onGenerate({
-      provider: transcript.provider,
-      language: transcript.language,
-      segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map((w) => ({ start: w.start, end: w.end, word: w.word, removed: !!w.removed })) })),
-    });
+    // Cortes de silêncio escolhidos: uma pequena folga interna evita cortar o
+    // ataque/finalização das palavras vizinhas.
+    const silenceCuts = pausesCut
+      .map((p) => ({ start: p.start + Math.min(0.03, p.dur / 4), end: p.end - Math.min(0.03, p.dur / 4) }))
+      .filter((c) => c.end - c.start > 0.02);
+    onGenerate(
+      {
+        provider: transcript.provider,
+        language: transcript.language,
+        segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map((w) => ({ start: w.start, end: w.end, word: w.word, removed: !!w.removed })) })),
+      },
+      { manualSilence: true, silenceCuts },
+    );
   }
 
   const allGone = stats.removed >= stats.total;
@@ -173,7 +224,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
             <Chip label="Palavras" value={stats.total} color={C.text} />
             <Chip label="Cortadas" value={stats.removed} color={C.red} />
-            <Chip label="Duração final" value={fmtDuration(stats.keptSec)} sub={stats.removedSec > 0.1 ? `−${fmtDuration(stats.removedSec)}` : null} color={C.green} />
+            <Chip label="Pausas cortadas" value={pausesCut.length} sub={pauseCutSec > 0.1 ? `−${fmtDuration(pauseCutSec)}` : null} color={C.orangeSoft} />
+            <Chip label="Duração final" value={fmtDuration(stats.keptSec)} sub={(stats.removedSec + pauseCutSec) > 0.1 ? `−${fmtDuration(stats.removedSec + pauseCutSec)}` : null} color={C.green} />
           </div>
 
           {selSeg && (
@@ -208,12 +260,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
         <button onClick={splitAtPlayhead} disabled={!canSplit} style={toolBtn(!canSplit)}>
           <Icon name="scissors" size={14} strokeWidth={2} /> Dividir no playhead
         </button>
-        <span style={{ fontSize: 11.5, color: C.faint }}>Arraste as pontas de um bloco para cortar o início/fim do trecho</span>
+        {pauses.length > 0 && (
+          <>
+            <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />
+            <span style={{ fontSize: 11.5, color: C.faint }}>Pausas:</span>
+            <button onClick={cutAllPauses} disabled={pausesCut.length === pauses.length} style={toolBtn(pausesCut.length === pauses.length)}>
+              <Icon name="scissors" size={13} strokeWidth={2} /> Cortar todas
+            </button>
+            <button onClick={keepAllPauses} disabled={pausesCut.length === 0} style={toolBtn(pausesCut.length === 0)}>
+              <Icon name="undo" size={13} strokeWidth={2} /> Manter todas
+            </button>
+          </>
+        )}
       </div>
 
       {/* Timeline */}
       <div ref={trackRef} onClick={onTrackClick} style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', border: `1px solid ${C.border}`, borderRadius: 12, background: 'rgba(0,0,0,0.3)', paddingBottom: 6 }}>
-        <div style={{ position: 'relative', width, height: 96 }}>
+        <div style={{ position: 'relative', width, height: 124 }}>
           <div style={{ position: 'relative', height: 20, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
             {Array.from({ length: Math.ceil(dur) + 1 }).map((_, s) => (
               <div key={s} style={{ position: 'absolute', left: s * PPS, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
@@ -256,12 +319,35 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
               );
             })}
           </div>
+          {/* Lane de pausas (silêncio entre palavras) — clique alterna cortar/manter */}
+          <div style={{ position: 'relative', height: 24, marginTop: 4 }}>
+            {pauses.map((p, pi) => {
+              const cut = isPauseCut(p);
+              const w = Math.max(6, p.dur * PPS - 1);
+              return (
+                <div
+                  key={pi}
+                  onClick={(e) => { e.stopPropagation(); togglePause(p); }}
+                  title={`Pausa de ${p.dur.toFixed(1)}s — ${cut ? 'será cortada (clique p/ manter)' : 'mantida (clique p/ cortar)'}`}
+                  style={{
+                    position: 'absolute', left: p.start * PPS, top: 0, width: w, height: 22, borderRadius: 6,
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                    background: cut ? 'repeating-linear-gradient(45deg, rgba(240,82,107,0.28), rgba(240,82,107,0.28) 5px, rgba(240,82,107,0.14) 5px, rgba(240,82,107,0.14) 10px)' : 'rgba(255,255,255,0.05)',
+                    border: `1px ${cut ? 'solid' : 'dashed'} ${cut ? 'rgba(240,82,107,0.55)' : C.border}`,
+                    color: cut ? C.red : C.faint,
+                  }}
+                >
+                  {w > 26 && (cut ? <Icon name="scissors" size={11} strokeWidth={2.2} /> : <span style={{ fontSize: 9.5, fontWeight: 600 }}>{p.dur.toFixed(1)}s</span>)}
+                </div>
+              );
+            })}
+          </div>
           <div style={{ position: 'absolute', left: cur * PPS, top: 0, bottom: 0, width: 2, background: C.orange, boxShadow: `0 0 8px ${C.orange}`, pointerEvents: 'none' }}>
             <div style={{ position: 'absolute', top: -1, left: -4, width: 10, height: 10, borderRadius: '50%', background: C.orange }} />
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Clique na régua para navegar · clique num bloco para selecionar · arraste as pontas para cortar · trechos vermelhos serão cortados</div>
+      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Blocos = fala · a faixa de baixo são as <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar</div>
 
       <PrimaryButton onClick={generate} disabled={busy || allGone} style={{ width: '100%', marginTop: 18 }}>
         {allGone ? 'Você cortou tudo — reinclua algo' : busy ? 'Gerando…' : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Icon name="clapper" size={18} strokeWidth={1.9} /> Renderizar vídeo final</span>)}

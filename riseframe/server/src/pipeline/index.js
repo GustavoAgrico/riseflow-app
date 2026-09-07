@@ -183,7 +183,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
     // chave da Anthropic do usuário — também falsos começos e autocorreções (IA).
     if (options.autoClean) {
       // 1) Heurística SEMPRE (garante o óbvio: muletas, repetições, gagueiras).
-      const h = markFillers(transcript);
+      //    Em "forte", fica mais agressiva (pega mais muletas e falsos começos).
+      const h = markFillers(transcript, { aggressive: options.cutStrength === 'forte' });
       let cleaned = h;
       let method = 'heurística';
       let total = h.removedCount;
@@ -206,7 +207,14 @@ export async function runPipeline(job, onUpdate = () => {}) {
     }
 
     const removals = [];
-    if (options.cutSilence !== false) removals.push(...(await silenceRemovalRanges(input, meta, options)));
+    if (options.manualSilence) {
+      // Cortes de silêncio escolhidos na timeline (mesma linha do tempo original das palavras).
+      for (const c of options.silenceCuts || []) {
+        if (c && c.end > c.start) removals.push({ start: Math.max(0, c.start), end: Math.min(meta.duration, c.end) });
+      }
+    } else if (options.cutSilence !== false) {
+      removals.push(...(await silenceRemovalRanges(input, meta, options)));
+    }
     // Palavras marcadas como removidas: edição manual do cliente (render) e/ou limpeza automática.
     removals.push(...transcriptRemovalRanges(transcript));
 

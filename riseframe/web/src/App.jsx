@@ -157,10 +157,11 @@ export default function App({ embedded = false, onHome, onSettings } = {}) {
     setPhase('editing');
   }
 
-  async function generateFromEdits(editedTranscript) {
+  async function generateFromEdits(editedTranscript, extra = {}) {
     setPhase('processing');
     try {
-      const created = await renderEdited(sourceId, editedTranscript, options);
+      // extra traz os cortes de silêncio escolhidos na timeline (manualSilence + silenceCuts).
+      const created = await renderEdited(sourceId, editedTranscript, { ...options, ...extra });
       watchRender(created);
     } catch (e) {
       fail(e.message);

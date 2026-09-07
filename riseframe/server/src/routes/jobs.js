@@ -45,6 +45,29 @@ function clampNum(v, min, max, def) {
   return Math.max(min, Math.min(max, n));
 }
 
+// Parâmetros de detecção de silêncio por "força do corte". Quanto mais forte,
+// menor a pausa mínima e mais permissivo o piso de ruído → enxuga mais o vídeo.
+function silenceParamsFor(strength) {
+  if (strength === 'suave') return { noiseDb: -34, min: 0.6, pad: 0.1 };
+  if (strength === 'forte') return { noiseDb: -26, min: 0.28, pad: 0.05 };
+  return { noiseDb: -30, min: 0.45, pad: 0.08 }; // equilibrado
+}
+
+// Sanitiza a lista de cortes de silêncio escolhidos manualmente na timeline.
+function sanitizeSilenceCuts(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const c of raw) {
+    const s = Number(c?.start);
+    const e = Number(c?.end);
+    if (Number.isFinite(s) && Number.isFinite(e) && e - s > 0.02 && s >= 0) {
+      out.push({ start: s, end: e });
+    }
+    if (out.length >= 1000) break; // teto de segurança
+  }
+  return out;
+}
+
 // Looks permitidos via API pública. O caminho `lut:<arquivo>` NÃO é exposto ao
 // cliente (evita injeção de filtro/leitura de caminho no filtergraph do ffmpeg);
 // LUTs ficam a cargo de configuração do servidor, não da requisição.
@@ -59,8 +82,11 @@ function parseOptions(raw) {
       o = {};
     }
   }
+  const cutStrength = ['suave', 'equilibrado', 'forte'].includes(o.cutStrength) ? o.cutStrength : 'forte';
+  const sp = silenceParamsFor(cutStrength);
   return {
     cutSilence: o.cutSilence !== false,
+    cutStrength, // suave | equilibrado | forte (define agressividade do corte automático)
     voiceEnhance: o.voiceEnhance === true, // denoise + normalização de volume
     voiceIntensity: ['suave', 'medio', 'forte'].includes(o.voiceIntensity) ? o.voiceIntensity : 'medio',
     autoClean: o.autoClean === true, // corta muletas/hesitações e gagueiras da fala
@@ -89,9 +115,13 @@ function parseOptions(raw) {
     brollMax: clampNum(o.brollMax, 1, 12, 6),
     aspect: ['original', '9:16', '16:9', '1:1'].includes(o.aspect) ? o.aspect : 'original',
     reframeTrack: o.reframeTrack !== false, // seguir o sujeito no reframe
-    silenceNoiseDb: clampNum(o.silenceNoiseDb, -60, -10, -30),
-    silenceMinDuration: clampNum(o.silenceMinDuration, 0.2, 3, 0.4),
-    silencePadding: clampNum(o.silencePadding, 0, 0.5, 0.08),
+    silenceNoiseDb: clampNum(o.silenceNoiseDb, -60, -10, sp.noiseDb),
+    silenceMinDuration: clampNum(o.silenceMinDuration, 0.2, 3, sp.min),
+    silencePadding: clampNum(o.silencePadding, 0, 0.5, sp.pad),
+    // Cortes de silêncio escolhidos manualmente na timeline (modo render). Quando
+    // manualSilence=true, o pipeline usa exatamente estes trechos em vez de detectar.
+    manualSilence: o.manualSilence === true,
+    silenceCuts: sanitizeSilenceCuts(o.silenceCuts),
     // clipes curtos
     clipsCount: clampNum(o.clipsCount, 1, 8, 3),
     clipAspect: ['original', '9:16', '16:9', '1:1'].includes(o.clipAspect) ? o.clipAspect : '9:16',
