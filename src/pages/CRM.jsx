@@ -302,6 +302,22 @@ export function CRM() {
     } catch (e) { console.warn('[CRM] erro ao criar contato:', e?.message ?? e); alert('Erro ao salvar contato. Rode supabase/clients_crm.sql se ainda não rodou.') }
   }
 
+  // ── Métricas do funil (forecast ponderado por etapa) ──
+  const brl = n => 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR')
+  const PROB = { lead: 0.1, qual: 0.3, prop: 0.5, neg: 0.7, closed: 1, lost: 0 }
+  const stageSum = id => filtered.filter(c => c.stage === id).reduce((a, c) => a + (c.value || 0), 0)
+  const pipelineTotal = filtered.filter(c => !['closed', 'lost'].includes(c.stage)).reduce((a, c) => a + (c.value || 0), 0)
+  const forecast = filtered.reduce((a, c) => a + (c.value || 0) * (PROB[c.stage] ?? 0), 0)
+  const wonN = filtered.filter(c => c.stage === 'closed').length
+  const lostN = filtered.filter(c => c.stage === 'lost').length
+  const convR = (wonN + lostN) ? Math.round(wonN / (wonN + lostN) * 100) : 0
+  const kpis = [
+    { label: 'No funil', value: brl(pipelineTotal), color: C.pur, hint: `${filtered.length - wonN - lostN} em aberto` },
+    { label: 'Previsão ponderada', value: brl(forecast), color: '#059669', hint: 'por probabilidade de etapa' },
+    { label: 'Conversão', value: `${convR}%`, color: '#2563EB', hint: `${wonN} ganhos / ${lostN} perdidos` },
+    { label: 'Negócios', value: String(filtered.length), color: '#D97706', hint: 'total exibido' },
+  ]
+
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: C.bg, color: C.tx, fontFamily: 'DM Sans,sans-serif' }}>
       <div style={{ minHeight: 56, background: C.card, borderBottom: `1px solid ${C.bd}`, display: 'flex', alignItems: 'center', flexWrap: 'wrap', padding: '8px 20px', gap: 10, flexShrink: 0 }}>
@@ -323,6 +339,15 @@ export function CRM() {
           Modo demo — os contatos abaixo são apenas exemplo. Crie uma conta para gerenciar seu CRM de verdade.
         </div>
       )}
+      <div style={{ display: 'flex', gap: 10, padding: '12px 20px 0', flexShrink: 0, overflowX: 'auto' }}>
+        {kpis.map(k => (
+          <div key={k.label} style={{ flex: '1 1 0', minWidth: 150, background: C.card, border: `1px solid ${C.bd}`, borderLeft: `3px solid ${k.color}`, borderRadius: 12, padding: '10px 14px' }}>
+            <p style={{ margin: 0, fontSize: 11, color: C.mut }}>{k.label}</p>
+            <p style={{ margin: '3px 0 1px', fontSize: 19, fontWeight: 800, color: C.tx, fontVariantNumeric: 'tabular-nums' }}>{k.value}</p>
+            <p style={{ margin: 0, fontSize: 10, color: k.color, fontWeight: 600 }}>{k.hint}</p>
+          </div>
+        ))}
+      </div>
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12, padding: '16px 20px', overflowX: isMobile ? 'hidden' : 'auto', overflowY: isMobile ? 'auto' : 'visible', alignItems: isMobile ? 'stretch' : 'flex-start' }}>
           {STAGES.map(stage => {
@@ -334,10 +359,13 @@ export function CRM() {
                 onDragLeave={() => setDragOver(null)}
                 onDrop={e => { const id = e.dataTransfer.getData('cid'); if (id) moveContact(id, stage.id); setDragOver(null) }}
                 style={{ minWidth: isMobile ? 0 : 240, width: isMobile ? '100%' : undefined, flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 13, fontWeight: 700, color: C.tx, flex: 1 }}>{stage.label}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: stage.color, background: stage.color + '18', borderRadius: 10, padding: '1px 8px' }}>{cols.length}</span>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: C.tx, flex: 1 }}>{stage.label}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: stage.color, background: stage.color + '18', borderRadius: 10, padding: '1px 8px' }}>{cols.length}</span>
+                  </div>
+                  {stageSum(stage.id) > 0 && <p style={{ margin: '4px 0 0 16px', fontSize: 11, fontWeight: 700, color: C.mut, fontVariantNumeric: 'tabular-nums' }}>{brl(stageSum(stage.id))}</p>}
                 </div>
                 <div style={{ minHeight: 60, borderRadius: 12, border: over ? '2px dashed #2563EB66' : '2px dashed transparent', background: over ? '#2563EB06' : 'transparent', padding: over ? 4 : 0, transition: 'all .15s' }}>
                   {cols.map(c => (
