@@ -316,34 +316,54 @@ export const Dashboard = () => {
     <Layout title="Dashboard" subtitle="Visão geral do seu negócio">
       {showOnboarding && <OnboardingWizard isOpen={showOnboarding} onComplete={completeOnboarding} />}
 
-      {/* ── Welcome banner ── */}
-      <div className="glass-orange rounded-2xl p-5 mb-6 flex items-center justify-between">
-        <div>
-          <h2 className="font-display font-bold text-xl text-white mb-1">
-            Olá{firstName ? `, ${firstName}` : ''}!
-          </h2>
-          <p className="text-sm text-slate-400">
-            {totalMessages > 0
-              ? <><span className="text-brand-orange font-semibold">{totalMessages.toLocaleString('pt-BR')}</span> mensagens processadas no total.</>
-              : totalFlows > 0
-                ? <><span className="text-brand-orange font-semibold">{totalFlows}</span> fluxo{totalFlows !== 1 ? 's' : ''} criado{totalFlows !== 1 ? 's' : ''}. Conecte uma integração para começar.</>
-                : <>Configure suas integrações para começar a automatizar.</>
-            }
-            {isDemoMode && <span className="ml-2 text-yellow-400 text-xs">(modo demo)</span>}
-          </p>
-        </div>
-        <div className="hidden md:flex items-center gap-2">
-          {hasAnyIntegration ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.22)', borderRadius: 12, padding: '8px 14px' }}>
-              <Wifi size={13} className="text-brand-green animate-pulse-slow" />
-              <span style={{ fontSize: 12, color: '#10B981', fontWeight: 500 }}>{connectedIntegrations.length} canal{connectedIntegrations.length !== 1 ? 'is' : ''} online</span>
+      {/* ── Hero premium ── */}
+      <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 20, marginBottom: 24,
+        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'linear-gradient(120deg, rgba(255,107,53,0.16), rgba(124,58,237,0.15) 58%, rgba(255,255,255,0.03))',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 20px 50px -26px rgba(0,0,0,0.7)' }}>
+        <div style={{ position: 'absolute', right: -70, top: -90, width: 300, height: 300, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,58,237,0.32), transparent 62%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', left: -60, bottom: -110, width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,107,53,0.20), transparent 62%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', justifyContent: 'space-between', padding: '26px 28px' }}>
+          <div style={{ minWidth: 240 }}>
+            <p style={{ margin: 0, fontSize: 12, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: '#FFB79A' }}>Olá{firstName ? `, ${firstName}` : ''} 👋</p>
+            <p style={{ margin: '10px 0 0', fontSize: 13, color: '#CBD5E1' }}>{hasCrm ? 'Pipeline em aberto' : 'Mensagens processadas'}</p>
+            <p className="font-display" style={{ margin: '2px 0 0', fontSize: 40, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
+              {hasCrm ? ('R$ ' + Math.round(pipelineValue).toLocaleString('pt-BR')) : totalMessages.toLocaleString('pt-BR')}
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 12, fontSize: 12.5, color: '#94A3B8' }}>
+              <span><b style={{ color: '#34D399' }}>{won}</b> ganhos</span>
+              <span>conversão <b style={{ color: '#fff' }}>{convRate}%</b></span>
+              <span>ticket <b style={{ color: '#fff' }}>{brlShort(ticket)}</b></span>
             </div>
-          ) : (
-            <Link to="/integrations" style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '8px 14px', textDecoration: 'none' }}>
-              <LinkIcon size={13} className="text-slate-400" />
-              <span style={{ fontSize: 12, color: '#94A3B8' }}>Conectar integração</span>
-            </Link>
-          )}
+            <div style={{ marginTop: 14, maxWidth: 360 }}>
+              <div style={{ height: 8, borderRadius: 999, background: 'rgba(255,255,255,0.09)', overflow: 'hidden' }}>
+                <div style={{ width: `${Math.min(100, convRate)}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#FF6B35,#7C3AED)' }} />
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: '#94A3B8' }}>Taxa de conversão do funil{isDemoMode && <span style={{ color: '#EAB308', marginLeft: 6 }}>(modo demo)</span>}</p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'stretch' }}>
+            {hasAnyIntegration ? (
+              <div style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.28)', borderRadius: 12, padding: '8px 14px' }}>
+                <Wifi size={13} className="text-brand-green animate-pulse-slow" />
+                <span style={{ fontSize: 12, color: '#10B981', fontWeight: 600 }}>{connectedIntegrations.length} canal{connectedIntegrations.length !== 1 ? 'is' : ''} online</span>
+              </div>
+            ) : (
+              <Link to="/integrations" style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '8px 14px', textDecoration: 'none' }}>
+                <LinkIcon size={13} className="text-slate-400" />
+                <span style={{ fontSize: 12, color: '#94A3B8' }}>Conectar integração</span>
+              </Link>
+            )}
+            <div style={{ display: 'flex', gap: 10 }}>
+              {[{ l: 'Mensagens', v: totalMessages.toLocaleString('pt-BR') }, { l: 'Conversas', v: totalConversations.toLocaleString('pt-BR') }].map(t => (
+                <div key={t.l} style={{ minWidth: 120, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: '12px 16px' }}>
+                  <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{t.v}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94A3B8' }}>{t.l}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
