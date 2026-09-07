@@ -10,6 +10,7 @@ import {
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
+  RadarChart, PolarGrid, PolarAngleAxis, Radar,
 } from 'recharts'
 import { useDashboardData } from '@hooks/useDashboardData'
 import { useOnboarding } from '@hooks/useOnboarding'
@@ -23,6 +24,21 @@ const CH_COLOR = {
   instagram: '#EC4899',
   facebook: '#3B82F6',
   telegram: '#38BDF8',
+}
+
+// Etapas do funil (mesmas do CRM) para o painel de desempenho de vendas.
+const STAGE_DEF = [
+  { id: 'lead',   label: 'Lead',      color: '#7C3AED' },
+  { id: 'qual',   label: 'Qualif.',   color: '#2563EB' },
+  { id: 'prop',   label: 'Proposta',  color: '#D97706' },
+  { id: 'neg',    label: 'Negoc.',    color: '#0891B2' },
+  { id: 'closed', label: 'Fechado',   color: '#059669' },
+  { id: 'lost',   label: 'Perdido',   color: '#EF4444' },
+]
+const brlShort = (n) => {
+  const v = Number(n) || 0
+  if (v >= 1000) return 'R$ ' + (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + 'k'
+  return 'R$ ' + v.toLocaleString('pt-BR')
 }
 
 // ── Inline sparkline (SVG, no deps) ──────────────────────────────────────────
@@ -279,6 +295,30 @@ export const Dashboard = () => {
     .filter(c => c.connected)
     .map(c => ({ name: c.label, value: c.convCount || 1, color: CH_COLOR[c.id] }))
 
+  // ── Desempenho de vendas (a partir dos clients: etapa + valor) ──
+  const stageOf = (c) => c.stage || 'lead'
+  const stageRows = STAGE_DEF.map(s => {
+    const list = clients.filter(c => stageOf(c) === s.id)
+    return { ...s, count: list.length, value: list.reduce((a, c) => a + (Number(c.value) || 0), 0) }
+  })
+  const won = stageRows.find(s => s.id === 'closed')?.count || 0
+  const lost = stageRows.find(s => s.id === 'lost')?.count || 0
+  const decided = won + lost
+  const convRate = decided ? Math.round((won / decided) * 100) : 0
+  const lostRate = decided ? Math.round((lost / decided) * 100) : 0
+  const pipelineValue = stageRows.filter(s => !['closed', 'lost'].includes(s.id)).reduce((a, s) => a + s.value, 0)
+  const wonValue = stageRows.find(s => s.id === 'closed')?.value || 0
+  const ticket = won ? wonValue / won : 0
+  const salesKpis = [
+    { label: 'Taxa de Conversão', value: `${convRate}%`, color: '#10B981', hint: `${won} fechados` },
+    { label: 'Taxa de Perdidos', value: `${lostRate}%`, color: '#EF4444', hint: `${lost} perdidos` },
+    { label: 'Pipeline em aberto', value: brlShort(pipelineValue), color: '#FF6B35', hint: `${clients.length - won - lost} negócios` },
+    { label: 'Ticket médio', value: brlShort(ticket), color: '#3B82F6', hint: 'por fechamento' },
+  ]
+  const radarData = stageRows.map(s => ({ stage: s.label, count: s.count }))
+  const stagePie = stageRows.filter(s => s.count > 0).map(s => ({ name: s.label, value: s.count, color: s.color }))
+  const hasCrm = clients.length > 0
+
   return (
     <Layout title="Dashboard" subtitle="Visão geral do seu negócio">
       {showOnboarding && <OnboardingWizard isOpen={showOnboarding} onComplete={completeOnboarding} />}
@@ -353,6 +393,72 @@ export const Dashboard = () => {
       {/* ── Stat cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
         {stats.map((s, i) => <StatCard key={i} {...s} sparkData={sparkline} />)}
+      </div>
+
+      {/* ── Desempenho de vendas (funil real dos clients) ── */}
+      <div className="mb-6">
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
+          <h3 className="font-display font-semibold text-white" style={{ fontSize: 15 }}>Desempenho de vendas</h3>
+          <span style={{ fontSize: 11, color: '#475569' }}>funil de {clients.length} negócio{clients.length !== 1 ? 's' : ''}</span>
+          <Link to="/crm" style={{ marginLeft: 'auto', fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Abrir CRM →</Link>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          {salesKpis.map(k => (
+            <div key={k.label} className="glass rounded-2xl" style={{ padding: '16px 18px', borderLeft: `3px solid ${k.color}` }}>
+              <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{k.label}</p>
+              <p style={{ fontSize: 26, fontWeight: 800, color: '#fff', margin: '6px 0 2px', fontVariantNumeric: 'tabular-nums' }}>{k.value}</p>
+              <p style={{ fontSize: 11, color: k.color, margin: 0, fontWeight: 600 }}>{k.hint}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Radar — leads por etapa */}
+          <div className="glass rounded-2xl p-5">
+            <h4 className="font-display font-semibold text-white" style={{ fontSize: 13, marginBottom: 6 }}>Leads por etapa</h4>
+            {hasCrm ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <RadarChart data={radarData} outerRadius="70%">
+                  <PolarGrid stroke="#26324A" />
+                  <PolarAngleAxis dataKey="stage" tick={{ fill: '#94A3B8', fontSize: 11 }} />
+                  <Radar dataKey="count" stroke="#7C3AED" fill="#7C3AED" fillOpacity={0.35} />
+                  <Tooltip contentStyle={{ background: '#0F172A', border: '1px solid #26324A', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#F8FAFC' }} itemStyle={{ color: '#C084FC' }} />
+                </RadarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ height: 240, display: 'grid', placeItems: 'center', color: '#2D3A55', fontSize: 13 }}>Sem leads no CRM ainda</div>
+            )}
+          </div>
+
+          {/* Pizza — distribuição do funil */}
+          <div className="glass rounded-2xl p-5">
+            <h4 className="font-display font-semibold text-white" style={{ fontSize: 13, marginBottom: 6 }}>Distribuição do funil</h4>
+            {stagePie.length ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ResponsiveContainer width="55%" height={220}>
+                  <PieChart>
+                    <Pie data={stagePie} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={48} outerRadius={82} paddingAngle={2} stroke="none">
+                      {stagePie.map((s, i) => <Cell key={i} fill={s.color} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: '#0F172A', border: '1px solid #26324A', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#F8FAFC' }} itemStyle={{ color: '#F8FAFC' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div style={{ flex: 1, display: 'grid', gap: 7 }}>
+                  {stagePie.map(s => (
+                    <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                      <span style={{ width: 9, height: 9, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                      <span style={{ color: '#CBD5E1', flex: 1 }}>{s.name}</span>
+                      <span style={{ color: '#fff', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{s.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div style={{ height: 220, display: 'grid', placeItems: 'center', color: '#2D3A55', fontSize: 13 }}>Sem dados de funil ainda</div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── Activity chart + Channels ── */}
