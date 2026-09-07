@@ -80,6 +80,8 @@ optionsRouter.get('/options', (_req, res) => {
       voiceEnhance: false,
       voiceIntensity: 'medio',
       autoClean: true,
+      soundEffects: false,
+      sfxIntensity: 'medio',
       captions: true,
       captionTemplate: 'clean',
       captionColor: 'white',

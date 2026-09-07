@@ -10,6 +10,7 @@ import { enhanceVoice } from './voice.js';
 import { markFillers } from './cleanup.js';
 import { cleanupWithClaude } from './cleanupLLM.js';
 import { burnCaptions } from './captions.js';
+import { applySoundEffects } from './sfx.js';
 import { applyColor } from './color.js';
 import { finalRender } from './render.js';
 import { generateClips } from './clips.js';
@@ -47,6 +48,7 @@ function buildPlan(mode, options) {
       { key: 'motion', label: 'Aplicando movimento (zoom)', weight: 12, enabled: Boolean(options.videoMotion) && options.videoMotion !== 'none' },
       { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
+      { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true },
       { key: 'color', label: 'Aplicando color grade', weight: 11, enabled: (options.colorLook || 'teal-orange') !== 'none' },
       { key: 'render', label: 'Renderização final', weight: 15, enabled: true },
     ].filter((s) => s.enabled);
@@ -290,6 +292,23 @@ export async function runPipeline(job, onUpdate = () => {}) {
     input = r.output;
     report.captions = { segments: r.count, template: style.template, color: style.color };
     st.record(report.captions);
+  }
+
+  // 6b. Efeitos sonoros: pop quando a legenda entra + whoosh nas entradas de B-roll.
+  if (has('sfx')) {
+    const st = enter('sfx');
+    const events = [];
+    if (options.captions !== false) {
+      for (const seg of transcript.segments || []) events.push({ t: seg.start, type: 'pop' });
+    }
+    if (has('broll')) {
+      for (const m of analysis.brollMoments || []) events.push({ t: Math.max(0, m.start - 0.12), type: 'whoosh' });
+    }
+    const r = await applySoundEffects(input, work, meta, events, options, st.onProgress);
+    if (r.applied) input = r.output;
+    report.sfx = { count: r.count };
+    st.record(report.sfx);
+    st.onProgress(1);
   }
 
   // 7. Color grade
