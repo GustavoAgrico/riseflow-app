@@ -59,6 +59,7 @@ export const NAV_ITEMS = [
   { id: 'crm', label: 'CRM', icon: 'Users', path: '/crm' },
   { id: 'clients', label: 'Clientes', icon: 'ContactRound', path: '/clients' },
   { id: 'billing', label: 'Cobranças', icon: 'Receipt', path: '/billing' },
+  { id: 'calls', label: 'Ligações', icon: 'PhoneCall', path: '/calls' },
   { id: 'analytics', label: 'Analytics', icon: 'BarChart3', path: '/analytics' },
   { id: 'funnel', label: 'Funil', icon: 'Filter', path: '/funnel' },
   { id: 'campaigns', label: 'Campanhas', icon: 'Megaphone', path: '/campaigns' },
