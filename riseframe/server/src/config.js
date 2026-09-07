@@ -42,6 +42,9 @@ export const config = {
     deepgramKey: process.env.DEEPGRAM_API_KEY || '',
     assemblyaiKey: process.env.ASSEMBLYAI_API_KEY || '',
     whisperModel: process.env.WHISPER_MODEL || 'base',
+    // Timeout do whisper-local (ms). 0/ausente = automático (escala com a duração).
+    // Em máquinas pequenas, evita que um processo travado/OOM prenda o job.
+    timeoutMs: num(process.env.TRANSCRIBE_TIMEOUT_MS, 0),
     // Definido em runtime pelo autoteste de inicialização (null = ainda não checado).
     whisperReady: null,
   },
