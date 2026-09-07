@@ -40,6 +40,8 @@ export const config = {
     provider: process.env.TRANSCRIBE_PROVIDER || 'whisper-local',
     openaiKey: process.env.OPENAI_API_KEY || '',
     deepgramKey: process.env.DEEPGRAM_API_KEY || '',
+    // Idioma fixo opcional para a Deepgram (ex.: 'pt'). Vazio = detecta sozinho.
+    deepgramLanguage: process.env.DEEPGRAM_LANGUAGE || '',
     assemblyaiKey: process.env.ASSEMBLYAI_API_KEY || '',
     whisperModel: process.env.WHISPER_MODEL || 'base',
     // Timeout do whisper-local (ms). 0/ausente = automático (escala com a duração).

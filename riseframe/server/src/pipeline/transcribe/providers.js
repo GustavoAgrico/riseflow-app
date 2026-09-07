@@ -66,16 +66,21 @@ export async function transcribeOpenAI(input, work, meta, cfg) {
 export async function transcribeDeepgram(input, work, meta, cfg) {
   const audio = await extractAudio(input, work, 'wav');
   const buf = await fs.readFile(audio);
-  const url =
-    'https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&punctuate=true';
-  const res = await fetch(url, {
+  // detect_language=true: descobre o idioma sozinho (pt, en, es...). Sem isso o
+  // nova-2 assume inglês e transcreve fala em português errado. Um idioma fixo
+  // pode ser forçado por env (DEEPGRAM_LANGUAGE, ex.: "pt").
+  const params = new URLSearchParams({ model: 'nova-2', smart_format: 'true', punctuate: 'true' });
+  if (cfg.deepgramLanguage) params.set('language', cfg.deepgramLanguage);
+  else params.set('detect_language', 'true');
+  const res = await fetch(`https://api.deepgram.com/v1/listen?${params}`, {
     method: 'POST',
     headers: { Authorization: `Token ${cfg.deepgramKey}`, 'Content-Type': 'audio/wav' },
     body: buf,
   });
   if (!res.ok) throw new Error(`Deepgram ${res.status}: ${await res.text()}`);
   const data = await res.json();
-  const alt = data.results?.channels?.[0]?.alternatives?.[0];
+  const channel = data.results?.channels?.[0];
+  const alt = channel?.alternatives?.[0];
   const words = (alt?.words || []).map((w) => ({
     start: w.start,
     end: w.end,
@@ -83,7 +88,7 @@ export async function transcribeDeepgram(input, work, meta, cfg) {
   }));
   return {
     provider: 'deepgram',
-    language: 'unknown',
+    language: channel?.detected_language || cfg.deepgramLanguage || 'unknown',
     text: alt?.transcript || words.map((w) => w.word).join(' '),
     segments: wordsToSegments(words),
   };
