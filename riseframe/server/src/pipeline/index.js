@@ -195,7 +195,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       const aiKey = options.anthropicKey || config.analyze.anthropicKey;
       if (aiKey) {
         try {
-          const ai = await cleanupWithClaude(h, { anthropicKey: aiKey, model: config.analyze.model });
+          const ai = await cleanupWithClaude(h, { anthropicKey: aiKey, model: config.analyze.model, anthropicWorkspaceId: config.analyze.anthropicWorkspaceId });
           cleaned = ai;
           method = 'heurística + IA';
           total = h.removedCount + ai.removedCount; // ai conta só as NOVAS (preserva as da heurística)
