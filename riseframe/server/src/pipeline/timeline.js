@@ -37,6 +37,24 @@ export function keptDuration(keep) {
 }
 
 /**
+ * Ajusta as fronteiras dos trechos mantidos ao GRID DE FRAMES (múltiplos de 1/fps).
+ * Sem isso, o corte de vídeo "encaixa" nas fronteiras de frame enquanto o remap das
+ * legendas usa segundos exatos — a cada corte a diferença soma e as legendas
+ * dessincronizam (pior quanto mais cortes). Usar o MESMO `keep` ajustado no corte do
+ * vídeo e no remap das legendas mantém tudo alinhado.
+ */
+export function snapKeep(keep, fps, minKeep = 0.05) {
+  const f = Math.max(1, Math.round(fps || 30));
+  const out = [];
+  for (const s of keep || []) {
+    const start = Math.round(s.start * f) / f;
+    const end = Math.round(s.end * f) / f;
+    if (end - start >= minKeep) out.push({ start, end });
+  }
+  return out;
+}
+
+/**
  * Mapeia um timestamp da timeline ORIGINAL para a timeline CORTADA definida por
  * `keep`. Tempos dentro de trechos removidos colam na fronteira do trecho mantido.
  */
@@ -109,12 +127,15 @@ export function remapTranscript(transcript, keep, perSegment = 4) {
 export async function remuxByKeepSegments(input, work, meta, keep, onProgress, tag = 'cut') {
   const kd = keptDuration(keep);
   const wantAudio = meta.hasAudio;
+  const fps = Math.max(1, Math.round(meta.fps || 30));
   const output = path.join(work, `${tag}.mp4`);
 
   const parts = [];
   const concatInputs = [];
   keep.forEach((seg, i) => {
-    parts.push(`[0:v]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`);
+    // fps=CFR normaliza o tempo (protege vídeos com frame rate variável, ex.: celular)
+    // e mantém cada trecho com duração exata no grid → sem drift de legenda/áudio.
+    parts.push(`[0:v]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS,fps=${fps}[v${i}]`);
     concatInputs.push(`[v${i}]`);
     if (wantAudio) {
       parts.push(`[0:a]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
