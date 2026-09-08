@@ -46,7 +46,10 @@ function normalize(data, duration, maxCount) {
 // ─── Anthropic (Claude) via SDK oficial ───────────────────────────────
 export async function analyzeWithClaude(transcript, meta, options, cfg) {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
-  const client = new Anthropic({ apiKey: cfg.anthropicKey });
+  const client = new Anthropic({
+    apiKey: cfg.anthropicKey,
+    ...(cfg.anthropicWorkspaceId ? { defaultHeaders: { 'anthropic-workspace-id': cfg.anthropicWorkspaceId } } : {}),
+  });
   const maxCount = options.brollMax ?? 6;
   const model = cfg.model || 'claude-opus-5';
 

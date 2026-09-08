@@ -46,7 +46,10 @@ export async function cleanupWithClaude(transcript, cfg) {
   if (flat.length > 2000) throw new Error(`transcrição longa demais para limpeza por IA (${flat.length} palavras)`);
 
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
-  const client = new Anthropic({ apiKey: cfg.anthropicKey });
+  const client = new Anthropic({
+    apiKey: cfg.anthropicKey,
+    ...(cfg.anthropicWorkspaceId ? { defaultHeaders: { 'anthropic-workspace-id': cfg.anthropicWorkspaceId } } : {}),
+  });
   const model = cfg.model || 'claude-opus-5';
   const numbered = flat.map((f, i) => `${i}:${f.word}`).join(' ');
 

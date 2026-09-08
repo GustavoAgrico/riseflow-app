@@ -54,6 +54,9 @@ export const config = {
   analyze: {
     provider: process.env.ANALYZE_PROVIDER || 'heuristic',
     anthropicKey: process.env.ANTHROPIC_API_KEY || '',
+    // Necessário quando a chave é de ORGANIZAÇÃO (não amarrada a um workspace):
+    // a Anthropic exige o cabeçalho anthropic-workspace-id. Chave de workspace dispensa.
+    anthropicWorkspaceId: process.env.ANTHROPIC_WORKSPACE_ID || '',
     openaiKey: process.env.OPENAI_API_KEY || '',
     // Haiku por padrão: barato e rápido, suficiente para escolher B-roll e limpar
     // fala. Troque por claude-sonnet-5/opus se quiser mais capricho (mais caro).
