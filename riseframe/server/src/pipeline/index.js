@@ -257,7 +257,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
   // ampliar as legendas junto. Atualiza também o trackInput (fonte limpa do reframe).
   if (has('motion')) {
     const st = enter('motion');
-    const r = await applyMotion(input, work, meta, options, st.onProgress);
+    const r = await applyMotion(input, work, meta, options, st.onProgress, transcript.segments);
     input = r.output;
     trackInput = r.output;
     report.motion = { effect: r.motion, intensity: options.motionIntensity || 'medio' };

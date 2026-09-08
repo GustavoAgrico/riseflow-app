@@ -38,6 +38,7 @@ optionsRouter.get('/options', (_req, res) => {
     ],
     videoMotions: [
       { id: 'none', label: 'Sem movimento' },
+      { id: 'dynamic', label: 'Zoom dinâmico (punch-ins) ✨' },
       { id: 'zoom-in', label: 'Zoom in (aproxima)' },
       { id: 'zoom-out', label: 'Zoom out (afasta)' },
       { id: 'ken-burns', label: 'Ken Burns (zoom + pan)' },
