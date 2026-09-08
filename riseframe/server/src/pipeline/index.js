@@ -3,7 +3,7 @@ import { probeSummary } from './ffmpeg.js';
 import { transcribe } from './transcribe/index.js';
 import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
-import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript } from './timeline.js';
+import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep } from './timeline.js';
 import { insertBroll } from './broll.js';
 import { applyMotion } from './motion.js';
 import { enhanceVoice } from './voice.js';
@@ -221,7 +221,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
     // Palavras marcadas como removidas: edição manual do cliente (render) e/ou limpeza automática.
     removals.push(...transcriptRemovalRanges(transcript));
 
-    const keep = subtractRanges(meta.duration, removals);
+    // Ajusta ao grid de frames e usa o MESMO keep no corte do vídeo e no remap das
+    // legendas — evita o drift progressivo (legenda adiantando/atrasando após cortes).
+    const keep = snapKeep(subtractRanges(meta.duration, removals), meta.fps);
     if (!keep.length) throw new Error('todos os trechos foram removidos — nada para renderizar');
 
     const removedSeconds = Math.max(0, meta.duration - keptDuration(keep));
