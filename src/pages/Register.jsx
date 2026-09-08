@@ -65,7 +65,13 @@ export const Register = () => {
     e.preventDefault(); setError('')
     const v = validate(); if (v) { setError(v); return }
     setLoading(true)
-    try { await signUp(email, password, fullName); setSuccess(true) }
+    try {
+      const data = await signUp(email, password, fullName)
+      // Se a confirmação de e-mail estiver DESLIGADA no Supabase, já vem sessão →
+      // entra direto. Se estiver LIGADA, session é null → mostra "confirme o e-mail".
+      if (data?.session) { navigate('/dashboard', { replace: true }); return }
+      setSuccess(true)
+    }
     catch (err) { setError(translateError(err.message)) }
     finally { setLoading(false) }
   }
