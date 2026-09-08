@@ -101,7 +101,7 @@ function parseOptions(raw) {
     captionPosition: ['auto', 'top', 'center', 'bottom'].includes(o.captionPosition) ? o.captionPosition : 'auto',
     captionScale: clampNum(o.captionScale, 0.6, 1.6, 1),
     colorLook: ALLOWED_LOOKS.has(o.colorLook) ? o.colorLook : 'auto',
-    videoMotion: ['none', 'zoom-in', 'zoom-out', 'ken-burns', 'pulse'].includes(o.videoMotion) ? o.videoMotion : 'none',
+    videoMotion: ['none', 'dynamic', 'zoom-in', 'zoom-out', 'ken-burns', 'pulse'].includes(o.videoMotion) ? o.videoMotion : 'none',
     motionIntensity: ['suave', 'medio', 'forte'].includes(o.motionIntensity) ? o.motionIntensity : 'medio',
     broll: o.broll === true,
     // Layout do B-roll: tela cheia OU tela dividida (metade a metade) com o vídeo

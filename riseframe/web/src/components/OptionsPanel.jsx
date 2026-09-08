@@ -197,7 +197,7 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
         <Row label="Color grade cinematográfico" hint={options.colorLook === 'auto' ? 'A IA analisa o vídeo e calcula a correção + o look' : 'O diferencial de acabamento do Riseframe'}>
           <Select value={options.colorLook} options={catalog.colorLooks} onChange={(v) => set({ colorLook: v })} />
         </Row>
-        <Row label="Movimento no vídeo (zoom)" hint="Efeito de câmera: aproxima, afasta ou Ken Burns ao longo do vídeo">
+        <Row label="Movimento no vídeo (zoom)" hint="Zoom dinâmico (punch-ins a cada frase — cara de viral), ou aproxima/afasta/Ken Burns ao longo do vídeo">
           <Select value={options.videoMotion || 'none'} options={catalog.videoMotions} onChange={(v) => set({ videoMotion: v })} />
         </Row>
         {options.videoMotion && options.videoMotion !== 'none' && (
