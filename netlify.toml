@@ -1,0 +1,31 @@
+# Netlify — hospeda SOMENTE o frontend (Vite SPA).
+# O backend (server/ Express + Socket.io + webhooks) NÃO roda no Netlify;
+# ele continua no Render. O frontend aponta para lá via VITE_API_URL /
+# VITE_SOCKET_URL (definidas no painel do Netlify → Site settings → Env vars).
+#
+# Variáveis de build necessárias (Netlify → Environment variables):
+#   VITE_SUPABASE_URL       = https://SEU-PROJETO.supabase.co
+#   VITE_SUPABASE_ANON_KEY  = <anon key do Supabase>
+#   VITE_API_URL            = https://riseflow-app-aepu.onrender.com   (origem do backend, SEM /api)
+#   VITE_SOCKET_URL         = https://riseflow-app-aepu.onrender.com   (mesma origem do backend)
+#
+# Depois: no Render (backend), inclua a URL do Netlify em CORS_ORIGIN.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA: qualquer rota cai no index.html (React Router cuida do resto)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Cache dos assets com hash (o index.html nunca é cacheado agressivamente)
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
