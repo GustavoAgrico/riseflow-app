@@ -51,25 +51,61 @@ export const MOCK_FLOWS = [
   { id: 4, name: 'Pós-venda Satisfação', channel: 'whatsapp', status: 'active', triggers: 2891, conversions: 2341, rate: 81.0 },
 ]
 
-export const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/dashboard' },
-  { id: 'chat', label: 'Chat', icon: 'MessageSquare', path: '/chat' },
-  { id: 'smart-attendant', label: 'Atendimento IA', icon: 'Bot', path: '/smart-attendant', badge: 'IA' },
-  { id: 'flows', label: 'Funis', icon: 'GitBranch', path: '/flows', badge: 'NEW' },
-  { id: 'crm', label: 'CRM', icon: 'Users', path: '/crm' },
-  { id: 'clients', label: 'Clientes', icon: 'ContactRound', path: '/clients' },
-  { id: 'billing', label: 'Cobranças', icon: 'Receipt', path: '/billing' },
-  { id: 'calls', label: 'Ligações', icon: 'PhoneCall', path: '/calls' },
-  { id: 'analytics', label: 'Analytics', icon: 'BarChart3', path: '/analytics' },
-  { id: 'funnel', label: 'Funil', icon: 'Filter', path: '/funnel' },
-  { id: 'campaigns', label: 'Campanhas', icon: 'Megaphone', path: '/campaigns' },
-  { id: 'schedules', label: 'Agendamentos', icon: 'Calendar', path: '/schedules' },
-  { id: 'teams', label: 'Equipes', icon: 'UserCog', path: '/teams' },
-  { id: 'templates', label: 'Templates', icon: 'FileText', path: '/templates' },
-  { id: 'integrations', label: 'Integrações', icon: 'Plug', path: '/integrations' },
-  { id: 'automation', label: 'Automação', icon: 'Zap', path: '/automation' },
-  { id: 'produto', label: 'Produto', icon: 'Sparkles', path: '/produto' },
-  { id: 'plans', label: 'Planos', icon: 'Crown', path: '/plans' },
-  { id: 'logs', label: 'Logs', icon: 'ClipboardList', path: '/activity-logs' },
-  { id: 'settings', label: 'Configurações', icon: 'Settings', path: '/settings' },
+// Navegação agrupada por seção semântica (arquitetura de informação).
+// Ordem dos grupos e itens = frequência/importância das tarefas.
+// Nota: resolvido o conflito "Funis" x "Funil":
+//   /flows  = construtor de fluxos do bot  → "Fluxos"        (Automação)
+//   /funnel = funil de vendas (analítico)  → "Funil de vendas" (Vendas)
+export const NAV_GROUPS = [
+  {
+    id: 'operacao', label: 'Operação', kind: 'op',
+    items: [
+      { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/dashboard' },
+      { id: 'chat', label: 'Chat', icon: 'MessageSquare', path: '/chat' },
+      { id: 'crm', label: 'CRM', icon: 'Users', path: '/crm' },
+      { id: 'clients', label: 'Clientes', icon: 'ContactRound', path: '/clients' },
+    ],
+  },
+  {
+    id: 'vendas', label: 'Vendas', kind: 'op',
+    items: [
+      { id: 'funnel', label: 'Funil de vendas', icon: 'Filter', path: '/funnel' },
+      { id: 'schedules', label: 'Agendamentos', icon: 'Calendar', path: '/schedules' },
+      { id: 'calls', label: 'Ligações', icon: 'PhoneCall', path: '/calls' },
+    ],
+  },
+  {
+    id: 'automacao', label: 'Automação', kind: 'op',
+    items: [
+      { id: 'smart-attendant', label: 'Atendimento IA', icon: 'Bot', path: '/smart-attendant', badge: 'IA' },
+      { id: 'flows', label: 'Fluxos', icon: 'GitBranch', path: '/flows', badge: 'NEW' },
+      { id: 'automation', label: 'Automação', icon: 'Zap', path: '/automation' },
+      { id: 'campaigns', label: 'Campanhas', icon: 'Megaphone', path: '/campaigns' },
+      { id: 'templates', label: 'Templates', icon: 'FileText', path: '/templates' },
+    ],
+  },
+  {
+    id: 'analise', label: 'Análise', kind: 'op',
+    items: [
+      { id: 'analytics', label: 'Analytics', icon: 'BarChart3', path: '/analytics' },
+      { id: 'logs', label: 'Logs', icon: 'ClipboardList', path: '/activity-logs' },
+    ],
+  },
+  {
+    id: 'admin', label: 'Administração', kind: 'admin',
+    items: [
+      { id: 'teams', label: 'Equipes', icon: 'UserCog', path: '/teams' },
+      { id: 'integrations', label: 'Integrações', icon: 'Plug', path: '/integrations' },
+      { id: 'billing', label: 'Cobranças', icon: 'Receipt', path: '/billing' },
+      { id: 'plans', label: 'Planos', icon: 'Crown', path: '/plans' },
+      { id: 'produto', label: 'Produto', icon: 'Sparkles', path: '/produto' },
+      { id: 'settings', label: 'Configurações', icon: 'Settings', path: '/settings' },
+    ],
+  },
 ]
+
+// Quais grupos começam abertos (os de maior uso). Persistência sobrescreve isto.
+export const NAV_DEFAULT_OPEN = { operacao: true, vendas: true, automacao: true, analise: true, admin: false }
+
+// Lista achatada — mantida p/ retrocompatibilidade (mesma forma de antes).
+export const NAV_ITEMS = NAV_GROUPS.flatMap(g => g.items)
