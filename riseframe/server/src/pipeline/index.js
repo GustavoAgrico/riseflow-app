@@ -8,6 +8,7 @@ import { insertBroll } from './broll.js';
 import { applyMotion } from './motion.js';
 import { enhanceVoice } from './voice.js';
 import { markFillers } from './cleanup.js';
+import { classifyNarrative } from './narrative.js';
 import { cleanupWithClaude } from './cleanupLLM.js';
 import { burnCaptions } from './captions.js';
 import { applySoundEffects } from './sfx.js';
@@ -251,6 +252,10 @@ export async function runPipeline(job, onUpdate = () => {}) {
     analysis = await analyze(transcript, meta, options);
     report.themes = analysis.themes;
     if (analysis.niche) report.niche = analysis.niche;
+    // Classificação narrativa (heurística): marca gancho/desenvolvimento/clímax/CTA.
+    const narr = classifyNarrative(transcript.segments, meta.duration);
+    report.narrative = { summary: narr.summary, hasHook: narr.hasHook, hasCta: narr.hasCta };
+    if (narr.hasHook || narr.hasCta) log.info(`narrativa: ${JSON.stringify(narr.summary)}`);
     st.record({ themes: analysis.themes.length, brollMoments: analysis.brollMoments.length });
     st.onProgress(1);
   }
