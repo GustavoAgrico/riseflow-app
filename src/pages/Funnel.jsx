@@ -7,42 +7,13 @@ import { logger } from '@services/activityLogger'
 import { useStages } from '@hooks/useStages'
 import { usePeriod } from '@hooks/usePeriod'
 import { computeSalesMetrics, periodRange, brl, pct } from '@lib/metrics'
+import { DEMO_DEALS } from '@constants/demoDeals'
 import { BarChart3, Users, TrendingUp, DollarSign, Ticket, ChevronDown, Phone, ArrowLeft, X } from 'lucide-react'
 
 const C = { bg: '#0F172A', card: '#1E293B', bd: '#334155', tx: '#F8FAFC', mut: '#64748B', pur: '#7C3AED' }
 const F = 'DM Sans, sans-serif'
 const PERIODS = { '1d': ['0-6h', '6-12h', '12-18h', '18-24h'], '7d': ['Dia 1-2', 'Dia 3-4', 'Dia 5-6', 'Dia 7'], '30d': ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'], '90d': ['Mês 1', 'Mês 2', 'Mês 3', 'Mês 4'] }
 const daysAgo = t => Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 864e5))
-
-// Contatos de exemplo p/ o modo demo (mesmo shape das linhas de `clients` que o
-// funil consome: stage/value/created_at/name/phone/tags/channel). Distribuídos
-// pelas etapas e espalhados nos últimos 90 dias para popular todos os períodos.
-const DEMO_CLIENTS = (() => {
-  const names = ['Ana Paula Silva', 'Carlos Eduardo', 'Marina Rodrigues', 'Roberto Santos', 'Julia Ferreira', 'Marcos Lima', 'Beatriz Costa', 'Felipe Almeida', 'Camila Souza', 'Rafael Nunes', 'Larissa Melo', 'Bruno Cardoso', 'Patrícia Gomes', 'Thiago Ramos', 'Aline Barbosa', 'Gustavo Pinto', 'Renata Dias', 'Diego Fernandes', 'Vanessa Lopes', 'Eduardo Rocha', 'Priscila Araújo', 'Leonardo Martins', 'Fernanda Castro', 'Rodrigo Teixeira']
-  const chans = ['whatsapp', 'instagram', 'facebook', 'telegram']
-  const dist = [['lead', 10], ['qual', 8], ['prop', 6], ['neg', 4], ['closed', 3], ['lost', 2]]
-  const out = []
-  let i = 0
-  dist.forEach(([stage, n]) => {
-    for (let k = 0; k < n; k++) {
-      // Data descorrelacionada da etapa (passo primo em 90d) → cada período
-      // recebe uma amostra de todas as etapas e o funil mantém a proporção.
-      const daysBack = (i * 37) % 90
-      out.push({
-        id: 'demo-' + i,
-        name: names[i % names.length],
-        phone: '+55 11 9' + String(80000000 + i * 137013).slice(0, 8),
-        channel: chans[i % chans.length],
-        tags: [],
-        stage,
-        value: 800 + (i % 9) * 640,
-        created_at: new Date(Date.now() - daysBack * 864e5).toISOString(),
-      })
-      i++
-    }
-  })
-  return out
-})()
 
 export const Funnel = () => {
   const nav = useNavigate()
@@ -63,7 +34,7 @@ export const Funnel = () => {
     ;(async () => {
       setLoading(true); setErr('')
       // Modo demo: usa contatos de exemplo (não bate no banco), como CRM/Campanhas.
-      if (isDemoMode) { if (on) { setClients(DEMO_CLIENTS); setLoading(false) } return }
+      if (isDemoMode) { if (on) { setClients(DEMO_DEALS); setLoading(false) } return }
       try {
         if (!ownerUserId) throw new Error('sem usuário')
         // select('*') evita falhar se a migração (stage/value) ainda não foi rodada
