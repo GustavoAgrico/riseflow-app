@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Send, Inbox, Users, MessageSquare, Target, Clock, Loader2 } from 'lucide-react'
 import { exportPremiumPDF } from '@utils/exportUtils'
 import { logger } from '@services/activityLogger'
+import { isOutbound } from '@lib/metrics'
 import clsx from 'clsx'
 
 const PERIODS = [
@@ -147,9 +148,8 @@ export function Analytics() {
       const convs = convsRes.data ?? []
       const fls   = flowRes.data  ?? []
 
-      // direction tem vocabulário misto: frontend usa 'outbound'/'inbound';
-      // servidor e Edge Function deployada usam 'sent'/'received'. Trata os dois.
-      const isOut = d => d === 'outbound' || d === 'sent'
+      // Normaliza o vocabulário misto de direction (ver src/lib/metrics · isOutbound).
+      const isOut = isOutbound
       const s = msgs.filter(m => isOut(m.direction)).length
       const r = msgs.length - s
       setSent(s); setRecv(r)

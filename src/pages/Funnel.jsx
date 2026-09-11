@@ -5,13 +5,13 @@ import { useAuth } from '@context/AuthContext'
 import { exportCSV } from '@utils/exportUtils'
 import { logger } from '@services/activityLogger'
 import { useStages } from '@hooks/useStages'
+import { computeSalesMetrics, brl, pct } from '@lib/metrics'
 import { BarChart3, Users, TrendingUp, DollarSign, Ticket, ChevronDown, Phone, ArrowLeft, X } from 'lucide-react'
 
 const C = { bg: '#0F172A', card: '#1E293B', bd: '#334155', tx: '#F8FAFC', mut: '#64748B', pur: '#7C3AED' }
 const F = 'DM Sans, sans-serif'
 const DAYS = { '7d': 7, '30d': 30, '90d': 90 }
 const PERIODS = { '7d': ['Dia 1-2', 'Dia 3-4', 'Dia 5-6', 'Dia 7'], '30d': ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'], '90d': ['Mês 1', 'Mês 2', 'Mês 3', 'Mês 4'] }
-const brl = n => 'R$ ' + Math.round(n).toLocaleString('pt-BR')
 const daysAgo = t => Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 864e5))
 
 // Contatos de exemplo p/ o modo demo (mesmo shape das linhas de `clients` que o
@@ -51,7 +51,6 @@ export const Funnel = () => {
   // Etapas dinâmicas → largura do funil derivada da posição; cor/semântica das etapas.
   const STAGES = stages.map((s, i) => ({ k: s.label, id: s.key, color: s.color, kind: s.kind, w: Math.round(100 - (stages.length > 1 ? i / (stages.length - 1) : 0) * 70) }))
   const firstId = STAGES[0]?.id || 'lead'
-  const wonIds = STAGES.filter(s => s.kind === 'won').map(s => s.id)
   const [period, setPeriod] = useState('30d')
   const [loading, setLoading] = useState(true)
   const [clients, setClients] = useState([])
@@ -81,18 +80,18 @@ export const Funnel = () => {
   }, [ownerUserId, isDemoMode])
 
   const start = Date.now() - DAYS[period] * 864e5
+  // Indicadores derivam da fonte única (src/lib/metrics) — mesmas regras do Dashboard.
+  const m = computeSalesMetrics(clients, stages, { start })
+  const byStage = new Map(m.byStage.map(s => [s.key, s]))
   const inPeriod = clients.filter(c => new Date(c.created_at).getTime() >= start)
   const list = id => inPeriod.filter(c => (c.stage || firstId) === id)
-  const count = id => list(id).length
-  const value = id => list(id).reduce((s, c) => s + (Number(c.value) || 0), 0)
+  const count = id => byStage.get(id)?.count ?? 0
+  const value = id => byStage.get(id)?.value ?? 0
+  const share = id => Math.round((byStage.get(id)?.share ?? 0) * 100) + '%'
   const avgT = id => { const l = list(id); return l.length ? Math.round(l.reduce((s, c) => s + daysAgo(c.created_at), 0) / l.length) + 'd' : '—' }
 
-  const total = inPeriod.length
-  const closed = inPeriod.filter(c => wonIds.includes(c.stage || firstId)).length
-  const pipeline = inPeriod.reduce((s, c) => s + (Number(c.value) || 0), 0)
-  const ticket = closed ? pipeline / closed : 0
-  const geral = total ? (closed / total * 100).toFixed(1) : '0'
-  const share = id => total ? (count(id) / total * 100).toFixed(0) + '%' : '0%'
+  const total = m.total
+  const totalValue = m.byStage.reduce((s, x) => s + x.value, 0) // soma de todas as etapas (rodapé da tabela)
 
   const buckets = [0, 0, 0, 0]
   const span = Math.max(1, (Date.now() - start) / 4)
@@ -159,7 +158,7 @@ export const Funnel = () => {
 
               {/* SEÇÃO 2 — KPIs */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginTop: 28 }}>
-                {[[Users, 'Total de Contatos', total.toLocaleString('pt-BR')], [TrendingUp, 'Taxa Geral', geral + '%'], [DollarSign, 'Valor Total Pipeline', brl(pipeline)], [Ticket, 'Ticket Médio', brl(ticket)]].map(([Ic, lb, v]) => (
+                {[[Users, 'Total de Contatos', total.toLocaleString('pt-BR')], [TrendingUp, 'Taxa de Conversão', pct(m.convRate)], [DollarSign, 'Pipeline em aberto', brl(m.pipeline)], [Ticket, 'Ticket Médio', brl(m.ticket)]].map(([Ic, lb, v]) => (
                   <div key={lb} style={{ background: C.card, border: `1px solid ${C.bd}`, borderRadius: 12, padding: 16 }}>
                     <Ic size={22} color={C.pur} />
                     <p style={{ margin: '8px 0 2px', fontSize: 12, color: C.mut }}>{lb}</p>
@@ -201,7 +200,7 @@ export const Funnel = () => {
                   <tfoot><tr>
                     <td style={{ ...td, fontWeight: 800 }}>Total</td>
                     <td style={{ ...td, fontWeight: 800 }}>{total.toLocaleString('pt-BR')}</td>
-                    <td style={{ ...td, fontWeight: 800 }}>{brl(pipeline)}</td>
+                    <td style={{ ...td, fontWeight: 800 }}>{brl(totalValue)}</td>
                     <td style={td}>—</td><td style={td}>—</td>
                   </tr></tfoot>
                 </table></div>

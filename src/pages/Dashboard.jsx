@@ -14,6 +14,7 @@ import {
 } from 'recharts'
 import { useDashboardData } from '@hooks/useDashboardData'
 import { useStages } from '@hooks/useStages'
+import { computeSalesMetrics } from '@lib/metrics'
 import { useOnboarding } from '@hooks/useOnboarding'
 import { OnboardingWizard } from '@components/OnboardingWizard'
 import { useApp } from '@context/AppContext'
@@ -288,24 +289,16 @@ export const Dashboard = () => {
     .filter(c => c.connected)
     .map(c => ({ name: c.label, value: c.convCount || 1, color: CH_COLOR[c.id] }))
 
-  // ── Desempenho de vendas (a partir dos clients: etapa + valor) ──
-  const stageOf = (c) => c.stage || (stages[0]?.key || 'lead')
-  const stageRows = stages.map(s => {
-    const list = clients.filter(c => stageOf(c) === s.key)
-    return { ...s, count: list.length, value: list.reduce((a, c) => a + (Number(c.value) || 0), 0) }
-  })
-  const won = stageRows.filter(s => s.kind === 'won').reduce((a, s) => a + s.count, 0)
-  const lost = stageRows.filter(s => s.kind === 'lost').reduce((a, s) => a + s.count, 0)
-  const decided = won + lost
-  const convRate = decided ? Math.round((won / decided) * 100) : 0
-  const lostRate = decided ? Math.round((lost / decided) * 100) : 0
-  const pipelineValue = stageRows.filter(s => s.kind === 'open').reduce((a, s) => a + s.value, 0)
-  const wonValue = stageRows.filter(s => s.kind === 'won').reduce((a, s) => a + s.value, 0)
-  const ticket = won ? wonValue / won : 0
+  // ── Desempenho de vendas — fonte única (src/lib/metrics), mesmas regras do Funil ──
+  const m = computeSalesMetrics(clients, stages)
+  const stageRows = m.byStage
+  const { won, lost, pipeline: pipelineValue, ticket } = m
+  const convRate = Math.round(m.convRate)
+  const lostRate = Math.round(m.lostRate)
   const salesKpis = [
     { label: 'Taxa de Conversão', value: `${convRate}%`, color: '#10B981', hint: `${won} fechados` },
     { label: 'Taxa de Perdidos', value: `${lostRate}%`, color: '#EF4444', hint: `${lost} perdidos` },
-    { label: 'Pipeline em aberto', value: brlShort(pipelineValue), color: '#FF6B35', hint: `${clients.length - won - lost} negócios` },
+    { label: 'Pipeline em aberto', value: brlShort(pipelineValue), color: '#FF6B35', hint: `${m.open} negócios` },
     { label: 'Ticket médio', value: brlShort(ticket), color: '#3B82F6', hint: 'por fechamento' },
   ]
   const radarData = stageRows.map(s => ({ stage: s.label, count: s.count }))
