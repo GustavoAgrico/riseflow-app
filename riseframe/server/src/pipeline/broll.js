@@ -78,6 +78,38 @@ async function searchPexelsPhoto(query, orientation, usedIds, apiKey) {
   return null;
 }
 
+/**
+ * Busca imagens no GOOGLE via Programmable Search (Custom Search JSON API).
+ * A query já vem contextual (escolhida pela IA a partir da fala). Por segurança,
+ * filtra por licenças Creative Commons, salvo se `unrestricted` (risco do usuário).
+ * @returns {Promise<{id:string, link:string}|null>}
+ */
+async function searchGoogleImages(query, usedIds, cfg) {
+  const params = new URLSearchParams({
+    key: cfg.key, cx: cfg.cx, q: query, searchType: 'image',
+    num: '8', safe: 'active', imgType: 'photo', imgSize: 'xlarge',
+  });
+  if (!cfg.unrestricted) {
+    // Só resultados com direitos de reuso (reduz — não elimina — risco de copyright).
+    params.set('rights', 'cc_publicdomain,cc_attribute,cc_sharealike');
+  }
+  const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`);
+  if (!res.ok) {
+    log.warn(`Google Images ${res.status} para "${query}"`);
+    return null;
+  }
+  const data = await res.json();
+  for (const item of data.items || []) {
+    const link = item.link;
+    if (!link || !/^https?:\/\//i.test(link)) continue;
+    const id = `g${item.image?.thumbnailLink || link}`;
+    if (usedIds.has(id)) continue;
+    if (!/\.(jpe?g|png|webp)(\?|$)/i.test(link)) continue; // evita links sem imagem direta
+    return { id, link };
+  }
+  return null;
+}
+
 async function download(url, dest) {
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`download falhou ${res.status}`);
@@ -94,8 +126,17 @@ async function download(url, dest) {
 export async function insertBroll(input, work, meta, analysis, options, onProgress) {
   // Chave da interface (options.pexelsKey) tem prioridade; senão, a do servidor (.env).
   const apiKey = options.pexelsKey || config.broll.pexelsKey;
-  if (!apiKey) {
-    log.info('sem chave do Pexels; pulando B-roll');
+  // Fonte de imagens: pexels (padrão) ou google (Custom Search). Google exige as
+  // credenciais configuradas; se pedirem google sem elas, cai para o Pexels.
+  const google = {
+    key: config.broll.googleImagesKey,
+    cx: config.broll.googleImagesCx,
+    unrestricted: config.broll.googleImagesUnrestricted,
+  };
+  const googleReady = Boolean(google.key && google.cx);
+  const useGoogle = options.imageSource === 'google' && googleReady;
+  if (!apiKey && !useGoogle) {
+    log.info('sem fonte de imagens (Pexels/Google); pulando B-roll');
     return { output: input, inserted: 0 };
   }
   const moments = (analysis.brollMoments || []).slice(0, options.brollMax ?? 6);
@@ -124,14 +165,24 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   const clips = [];
   for (const m of moments) {
     try {
-      let hit = await searchPexels(m.query, regionH, orientation, usedIds, apiKey);
+      let hit = null;
       let isImage = false;
-      if (!hit) {
-        hit = await searchPexelsPhoto(m.query, orientation, usedIds, apiKey);
+      if (useGoogle) {
+        // Imagens do Google (contextuais). Se falhar e houver Pexels, cai para ele.
+        hit = await searchGoogleImages(m.query, usedIds, google);
         isImage = true;
+        if (!hit && apiKey) {
+          hit = await searchPexelsPhoto(m.query, orientation, usedIds, apiKey);
+        }
+      } else {
+        hit = await searchPexels(m.query, regionH, orientation, usedIds, apiKey);
+        if (!hit) {
+          hit = await searchPexelsPhoto(m.query, orientation, usedIds, apiKey);
+          isImage = true;
+        }
       }
       if (!hit) {
-        log.info(`sem B-roll (vídeo/foto) para "${m.query}"`);
+        log.info(`sem B-roll para "${m.query}"`);
         continue;
       }
       usedIds.add(hit.id);

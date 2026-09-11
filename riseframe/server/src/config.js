@@ -66,6 +66,13 @@ export const config = {
 
   broll: {
     pexelsKey: process.env.PEXELS_API_KEY || '',
+    // Imagens do Google via Programmable Search (Custom Search JSON API). Precisa de
+    // chave de API + ID do mecanismo de busca (CSE). Grátis: 100 buscas/dia.
+    // ⚠️ imagens da web costumam ter direitos autorais — por padrão filtramos só
+    // Creative Commons (GOOGLE_IMAGES_UNRESTRICTED=1 libera todas, por sua conta e risco).
+    googleImagesKey: process.env.GOOGLE_CSE_KEY || '',
+    googleImagesCx: process.env.GOOGLE_CSE_ID || '',
+    googleImagesUnrestricted: bool(process.env.GOOGLE_IMAGES_UNRESTRICTED, false),
   },
 
   auth: {
@@ -103,6 +110,8 @@ export function capabilities() {
     transcribeFallbackToMock: p === 'whisper-local' && config.transcribe.whisperReady === false,
     analyzeProvider: config.analyze.provider,
     brollReady: Boolean(config.broll.pexelsKey),
+    // Imagens do Google (Custom Search) disponíveis?
+    googleImagesReady: Boolean(config.broll.googleImagesKey && config.broll.googleImagesCx),
     // Login com Google só aparece se o Client ID estiver configurado.
     googleReady: Boolean(config.auth.googleClientId),
     googleClientId: config.auth.googleClientId,
