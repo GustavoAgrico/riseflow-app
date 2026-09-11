@@ -110,6 +110,43 @@ async function searchGoogleImages(query, usedIds, cfg) {
   return null;
 }
 
+/**
+ * Escolhe a 1ª imagem ainda não usada de um resultado do Openverse.
+ * Puro/exportado para teste.
+ * @returns {{id:string, link:string}|null}
+ */
+export function pickOpenverseHit(items, usedIds) {
+  for (const item of items || []) {
+    const link = item.url; // URL direta do arquivo de imagem
+    if (!link || !/^https?:\/\//i.test(link)) continue;
+    const id = `o${item.id || link}`;
+    if (usedIds.has(id)) continue;
+    return { id, link };
+  }
+  return null;
+}
+
+/**
+ * Busca imagens no OPENVERSE (agregador de Creative Commons: Wikimedia, Flickr CC,
+ * museus, etc.). Grátis, SEM chave e seguro para publicar (por padrão só licenças
+ * de uso comercial). A query já vem contextual (em inglês, como o Pexels).
+ * @returns {Promise<{id:string, link:string}|null>}
+ */
+async function searchOpenverse(query, usedIds, cfg = {}) {
+  const params = new URLSearchParams({ q: query, page_size: '8', mature: 'false' });
+  // Segurança para conteúdo publicado: só licenças que permitem uso comercial.
+  if (!cfg.unrestricted) params.set('license_type', 'commercial');
+  const res = await fetch(`https://api.openverse.org/v1/images/?${params}`, {
+    headers: { Accept: 'application/json', 'User-Agent': 'Riseframe/1.0 (video editor)' },
+  });
+  if (!res.ok) {
+    log.warn(`Openverse ${res.status} para "${query}"`);
+    return null;
+  }
+  const data = await res.json();
+  return pickOpenverseHit(data.results, usedIds);
+}
+
 async function download(url, dest) {
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`download falhou ${res.status}`);
@@ -134,9 +171,14 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     unrestricted: config.broll.googleImagesUnrestricted,
   };
   const googleReady = Boolean(google.key && google.cx);
-  const useGoogle = options.imageSource === 'google' && googleReady;
-  if (!apiKey && !useGoogle) {
-    log.info('sem fonte de imagens (Pexels/Google); pulando B-roll');
+  // Fonte escolhida: pexels (padrão histórico) | google (Custom Search, exige chave) |
+  // openverse (Creative Commons, grátis e SEM chave). Google sem credenciais cai para
+  // Pexels; Openverse funciona sempre.
+  const source = options.imageSource;
+  const useGoogle = source === 'google' && googleReady;
+  const useOpenverse = source === 'openverse';
+  if (!apiKey && !useGoogle && !useOpenverse) {
+    log.info('sem fonte de imagens (Pexels/Google/Openverse); pulando B-roll');
     return { output: input, inserted: 0 };
   }
   const moments = (analysis.brollMoments || []).slice(0, options.brollMax ?? 6);
@@ -167,7 +209,14 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     try {
       let hit = null;
       let isImage = false;
-      if (useGoogle) {
+      if (useOpenverse) {
+        // Openverse (Creative Commons, sem chave). Se falhar e houver Pexels, cai para ele.
+        hit = await searchOpenverse(m.query, usedIds, { unrestricted: google.unrestricted });
+        isImage = true;
+        if (!hit && apiKey) {
+          hit = await searchPexelsPhoto(m.query, orientation, usedIds, apiKey);
+        }
+      } else if (useGoogle) {
         // Imagens do Google (contextuais). Se falhar e houver Pexels, cai para ele.
         hit = await searchGoogleImages(m.query, usedIds, google);
         isImage = true;

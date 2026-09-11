@@ -70,7 +70,8 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'bottom', label: 'Base' },
     ],
     imageSources: [
-      { id: 'pexels', label: 'Pexels (livre de direitos)' },
+      { id: 'openverse', label: 'Openverse (Creative Commons, sem chave) ✨' },
+      { id: 'pexels', label: 'Pexels (vídeos + fotos, livre de direitos)' },
       { id: 'google', label: 'Google Imagens (contextual) ⚠️ copyright' },
     ],
     aspects: [
@@ -102,7 +103,7 @@ optionsRouter.get('/options', (_req, res) => {
       niche: 'auto',
       brollLayout: 'fullscreen',
       personCrop: 'center',
-      imageSource: 'pexels',
+      imageSource: 'openverse', // grátis e sem chave → B-roll funciona sem configurar nada
       aspect: 'original',
       reframeTrack: true,
     },
