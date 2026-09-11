@@ -107,7 +107,8 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
   const set = (patch) => onChange({ ...options, ...patch });
   const caps = catalog?.capabilities || {};
   const keyValid = /^[A-Za-z0-9]{20,80}$/.test((options.pexelsKey || '').trim());
-  const brollUsable = caps.brollReady || keyValid || caps.googleImagesReady;
+  // Openverse (CC, sem chave) deixa o B-roll utilizável mesmo sem chave do Pexels.
+  const brollUsable = caps.openverseReady || caps.brollReady || keyValid || caps.googleImagesReady;
 
   // resumo curto para o subtítulo de cada seção (fechada)
   const on = (b) => (b ? 'ligado' : 'desligado');
@@ -208,26 +209,29 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
       </Section>
 
       {/* ── B-roll ── */}
-      <Section icon="image" title="B-roll (imagens de apoio)" subtitle={options.broll && brollUsable ? 'ligado' : brollUsable ? 'desligado' : 'requer chave do Pexels'}>
+      <Section icon="image" title="B-roll (imagens de apoio)" subtitle={options.broll && brollUsable ? 'ligado' : 'desligado'}>
         <Row
-          label="B-roll automático (Pexels)"
-          hint={caps.brollReady ? 'Insere imagens de apoio de banco gratuito (chave no servidor)' : keyValid ? 'Chave conectada — insere imagens de apoio de banco gratuito' : 'Configure sua chave gratuita do Pexels para ativar'}
+          label="B-roll automático"
+          hint="Insere imagens de apoio contextuais nos melhores momentos da fala. Openverse (Creative Commons) funciona sem configurar nada."
         >
           <Toggle on={options.broll} onChange={(v) => set({ broll: v })} disabled={!brollUsable} />
         </Row>
         {options.broll && brollUsable && catalog.imageSources && (() => {
           const googleReady = !!caps.googleImagesReady;
-          // Google aparece mesmo sem credenciais — desabilitado e com aviso do que falta.
-          const srcOpts = catalog.imageSources.map((o) =>
-            o.id === 'google' && !googleReady ? { ...o, label: `${o.label} — requer configuração`, disabled: true } : o,
-          );
-          const value = options.imageSource === 'google' && !googleReady ? 'pexels' : options.imageSource || 'pexels';
+          const pexelsReady = !!caps.brollReady || keyValid;
+          // Cada fonte indisponível aparece desabilitada, com o motivo no rótulo.
+          const srcOpts = catalog.imageSources.map((o) => {
+            if (o.id === 'google' && !googleReady) return { ...o, label: `${o.label} — requer configuração`, disabled: true };
+            if (o.id === 'pexels' && !pexelsReady) return { ...o, label: `${o.label} — requer chave`, disabled: true };
+            return o;
+          });
+          // Se a fonte escolhida não está disponível, mostra Openverse (sempre funciona).
+          let value = options.imageSource || 'openverse';
+          if ((value === 'google' && !googleReady) || (value === 'pexels' && !pexelsReady)) value = 'openverse';
           return (
             <Row
               label="Fonte das imagens"
-              hint={googleReady
-                ? 'Pexels é livre de direitos. Google Imagens é mais contextual, mas a maioria tem copyright — use com cautela em conteúdo publicado.'
-                : 'Pexels (livre de direitos) já busca por contexto. Para liberar “Google Imagens” (mais contextual, em português), configure GOOGLE_CSE_KEY e GOOGLE_CSE_ID no servidor.'}
+              hint="Openverse: Creative Commons, grátis e sem chave (padrão). Pexels: vídeos + fotos livres de direitos (precisa de chave). Google: mais opções, porém a maioria tem copyright."
             >
               <Select value={value} options={srcOpts} onChange={(v) => set({ imageSource: v })} />
             </Row>

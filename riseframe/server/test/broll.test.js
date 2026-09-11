@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractThemes, translateQuery, pickBrollMoments, pickPhrasePt } from '../src/pipeline/analyze.js';
-import { pickBestVideoFile } from '../src/pipeline/broll.js';
+import { pickBestVideoFile, pickOpenverseHit } from '../src/pipeline/broll.js';
 
 test('translateQuery: mapeia pt→en e faz passthrough', () => {
   assert.equal(translateQuery('vídeo'), 'video');
@@ -66,6 +66,21 @@ test('pickBrollMoments: fonte padrão (pexels) continua em inglês', () => {
   const themes = extractThemes('cidade natureza mercado');
   const moments = pickBrollMoments(segments, themes, 30, { brollEverySec: 7, brollMax: 3, brollSkipIntro: 2 });
   assert.ok(moments.every((m) => m.query && !/[áàâãéêíóôõúç]/i.test(m.query)), 'query em inglês (traduzida)');
+});
+
+test('pickOpenverseHit: pega 1ª imagem válida e respeita dedupe', () => {
+  const items = [
+    { id: 'a', url: 'not-a-url' },
+    { id: 'b', url: 'https://example.com/1.jpg' },
+    { id: 'c', url: 'https://example.com/2.jpg' },
+  ];
+  const used = new Set();
+  const first = pickOpenverseHit(items, used);
+  assert.equal(first.link, 'https://example.com/1.jpg', 'pula url inválida e pega a 1ª válida');
+  used.add(first.id);
+  const second = pickOpenverseHit(items, used);
+  assert.equal(second.link, 'https://example.com/2.jpg', 'não repete a já usada');
+  assert.equal(pickOpenverseHit([], new Set()), null);
 });
 
 test('pickBestVideoFile: escolhe mp4 próximo do alvo sem exagerar na resolução', () => {

@@ -110,6 +110,8 @@ export function capabilities() {
     transcribeFallbackToMock: p === 'whisper-local' && config.transcribe.whisperReady === false,
     analyzeProvider: config.analyze.provider,
     brollReady: Boolean(config.broll.pexelsKey),
+    // Openverse (Creative Commons) não exige chave — sempre disponível.
+    openverseReady: true,
     // Imagens do Google (Custom Search) disponíveis?
     googleImagesReady: Boolean(config.broll.googleImagesKey && config.broll.googleImagesCx),
     // Login com Google só aparece se o Client ID estiver configurado.

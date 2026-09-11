@@ -109,8 +109,8 @@ function parseOptions(raw) {
     brollLayout: ['fullscreen', 'top', 'bottom'].includes(o.brollLayout) ? o.brollLayout : 'fullscreen',
     // Posição vertical do recorte da pessoa na tela dividida (ajuste fino do rosto).
     personCrop: ['top', 'center', 'bottom'].includes(o.personCrop) ? o.personCrop : 'center',
-    // Fonte das imagens de B-roll: pexels (livre) ou google (contextual, ver copyright).
-    imageSource: ['pexels', 'google'].includes(o.imageSource) ? o.imageSource : 'pexels',
+    // Fonte das imagens de B-roll: openverse (CC, sem chave) | pexels (livre) | google (contextual, ver copyright).
+    imageSource: ['openverse', 'pexels', 'google'].includes(o.imageSource) ? o.imageSource : 'openverse',
     niche: ['auto', 'leadership', 'mentor', 'medical', 'fitness', 'finance', 'business', 'marketing', 'education', 'tech', 'mindset', 'law', 'realestate'].includes(o.niche) ? o.niche : 'auto',
     // Chave do Pexels vinda da interface (opcional). Sanitiza: só o formato esperado
     // (alfanumérico, 20–80 chars) é aceito; qualquer outra coisa é descartada.
