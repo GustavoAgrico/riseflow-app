@@ -85,7 +85,7 @@ function Segmented({ value, options, onChange }) {
 function Select({ value, options, onChange }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} style={{ background: '#13131B', color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', fontSize: 13, minWidth: 210, cursor: 'pointer', fontFamily: 'inherit' }}>
-      {options.map((o) => (<option key={o.id} value={o.id}>{o.label}</option>))}
+      {options.map((o) => (<option key={o.id} value={o.id} disabled={o.disabled}>{o.label}</option>))}
     </select>
   );
 }
@@ -215,11 +215,24 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
         >
           <Toggle on={options.broll} onChange={(v) => set({ broll: v })} disabled={!brollUsable} />
         </Row>
-        {options.broll && brollUsable && caps.googleImagesReady && catalog.imageSources && (
-          <Row label="Fonte das imagens" hint="Pexels é livre de direitos. Google Imagens é mais contextual, mas a maioria tem copyright — use com cautela em conteúdo publicado.">
-            <Select value={options.imageSource || 'pexels'} options={catalog.imageSources} onChange={(v) => set({ imageSource: v })} />
-          </Row>
-        )}
+        {options.broll && brollUsable && catalog.imageSources && (() => {
+          const googleReady = !!caps.googleImagesReady;
+          // Google aparece mesmo sem credenciais — desabilitado e com aviso do que falta.
+          const srcOpts = catalog.imageSources.map((o) =>
+            o.id === 'google' && !googleReady ? { ...o, label: `${o.label} — requer configuração`, disabled: true } : o,
+          );
+          const value = options.imageSource === 'google' && !googleReady ? 'pexels' : options.imageSource || 'pexels';
+          return (
+            <Row
+              label="Fonte das imagens"
+              hint={googleReady
+                ? 'Pexels é livre de direitos. Google Imagens é mais contextual, mas a maioria tem copyright — use com cautela em conteúdo publicado.'
+                : 'Pexels (livre de direitos) já busca por contexto. Para liberar “Google Imagens” (mais contextual, em português), configure GOOGLE_CSE_KEY e GOOGLE_CSE_ID no servidor.'}
+            >
+              <Select value={value} options={srcOpts} onChange={(v) => set({ imageSource: v })} />
+            </Row>
+          );
+        })()}
         {options.broll && brollUsable && catalog.niches && (
           <Row label="Nicho do vídeo" hint="As imagens de apoio combinam com o tema (liderança, médico, mentor...)">
             <Select value={options.niche || 'auto'} options={catalog.niches} onChange={(v) => set({ niche: v })} />
