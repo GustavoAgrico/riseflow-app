@@ -312,6 +312,19 @@ export const Dashboard = () => {
     <Layout title="Dashboard" subtitle="Visão geral do seu negócio">
       {showOnboarding && <OnboardingWizard isOpen={showOnboarding} onComplete={completeOnboarding} />}
 
+      {/* ── Barra de ferramentas: período GLOBAL (governa hero + desempenho de vendas) ── */}
+      <div className="rf-toolbar">
+        <h2 className="rf-section-title">Visão geral</h2>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+          <span className="rf-chip">Período</span>
+          <div className="rf-seg" role="group" aria-label="Período de análise">
+            {periodOptions.map(o => (
+              <button key={o.key} aria-pressed={period === o.key} onClick={() => setPeriod(o.key)}>{o.label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* ── Hero premium ── */}
       <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 20, marginBottom: 24,
         border: '1px solid rgba(255,255,255,0.08)',
@@ -407,17 +420,9 @@ export const Dashboard = () => {
       {/* ── Desempenho de vendas (funil real dos clients) ── */}
       <div className="mb-6">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-          <h3 className="font-display font-semibold text-white" style={{ fontSize: 15 }}>Desempenho de vendas</h3>
-          <span style={{ fontSize: 11, color: '#475569' }}>funil de {m.total} negócio{m.total !== 1 ? 's' : ''}</span>
-          <select
-            value={period}
-            onChange={e => setPeriod(e.target.value)}
-            aria-label="Período"
-            style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#CBD5E1', fontSize: 12, padding: '5px 8px', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
-          >
-            {periodOptions.map(o => <option key={o.key} value={o.key} style={{ background: '#1E293B' }}>{o.label}</option>)}
-          </select>
-          <Link to="/crm" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Abrir CRM →</Link>
+          <h3 className="rf-section-title">Desempenho de vendas</h3>
+          <span className="rf-chip">{m.total} negócio{m.total !== 1 ? 's' : ''} no período</span>
+          <Link to="/crm" style={{ marginLeft: 'auto', fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Abrir CRM →</Link>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">

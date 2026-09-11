@@ -1,0 +1,78 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Design tokens premium — fundação reutilizável (Fase 1 · Entregável 6).
+   NÃO redefine a identidade: formaliza o que já existe (dark + laranja/roxo,
+   glassmorphism) em variáveis, para que Dashboard (vitrine) e, progressivamente,
+   as demais telas parem de repetir hex/spacing soltos.
+   Importado DEPOIS de globals.css (ver main.jsx) — puramente aditivo.
+───────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Escala de espaçamento (roadmap: 4/8/12/16/24/32) */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;
+  --sp-4: 16px; --sp-6: 24px; --sp-8: 32px;
+
+  /* Raios */
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px; --r-full: 999px;
+
+  /* Cores por PAPEL (não tons soltos) */
+  --accent: #FF6B35; --accent-2: #7C3AED;
+  --ok: #10B981; --warn: #EAB308; --danger: #EF4444; --info: #3B82F6;
+
+  /* Tinta (texto) — 4 níveis de hierarquia */
+  --ink-1: #F8FAFC; --ink-2: #CBD5E1; --ink-3: #94A3B8; --ink-4: #64748B;
+
+  /* Superfícies e filetes */
+  --surface-1: rgba(255,255,255,0.04);
+  --surface-2: rgba(255,255,255,0.06);
+  --hairline-1: rgba(255,255,255,0.08);
+  --hairline-2: rgba(255,255,255,0.12);
+
+  /* Elevação */
+  --el-1: 0 10px 30px -14px rgba(0,0,0,0.55);
+  --el-2: 0 18px 44px -18px rgba(0,0,0,0.60);
+
+  /* Movimento */
+  --ease: cubic-bezier(.4, 0, .2, 1);
+}
+
+/* Título de seção consistente, com filete de acento (papel > 'só um h3') */
+.rf-section-title {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700;
+  color: var(--ink-1); font-size: 15px; letter-spacing: -0.01em; margin: 0;
+}
+.rf-section-title::before {
+  content: ''; width: 3px; height: 16px; border-radius: 2px; flex-shrink: 0;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+}
+
+/* Barra de ferramentas da página (título + ações à direita) */
+.rf-toolbar {
+  display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+  margin-bottom: var(--sp-6);
+}
+
+/* Segmented control premium — usado no seletor de período */
+.rf-seg {
+  display: inline-flex; gap: 2px; padding: 3px;
+  background: var(--surface-1); border: 1px solid var(--hairline-1);
+  border-radius: var(--r-md);
+}
+.rf-seg button {
+  border: none; cursor: pointer; border-radius: 9px; padding: 5px 13px;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--ink-4);
+  background: transparent; transition: color .15s var(--ease), background .15s var(--ease);
+}
+.rf-seg button:hover { color: var(--ink-2); }
+.rf-seg button[aria-pressed="true"] {
+  color: #fff;
+  background: linear-gradient(135deg, rgba(255,107,53,.92), rgba(124,58,237,.85));
+  box-shadow: 0 4px 14px -6px rgba(255,107,53,.6);
+}
+
+/* Chip/rótulo discreto */
+.rf-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600; color: var(--ink-3);
+  background: var(--surface-1); border: 1px solid var(--hairline-1);
+  border-radius: var(--r-full); padding: 4px 10px;
+}
