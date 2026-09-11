@@ -5,13 +5,13 @@ import { useAuth } from '@context/AuthContext'
 import { exportCSV } from '@utils/exportUtils'
 import { logger } from '@services/activityLogger'
 import { useStages } from '@hooks/useStages'
-import { computeSalesMetrics, brl, pct } from '@lib/metrics'
+import { usePeriod } from '@hooks/usePeriod'
+import { computeSalesMetrics, periodRange, brl, pct } from '@lib/metrics'
 import { BarChart3, Users, TrendingUp, DollarSign, Ticket, ChevronDown, Phone, ArrowLeft, X } from 'lucide-react'
 
 const C = { bg: '#0F172A', card: '#1E293B', bd: '#334155', tx: '#F8FAFC', mut: '#64748B', pur: '#7C3AED' }
 const F = 'DM Sans, sans-serif'
-const DAYS = { '7d': 7, '30d': 30, '90d': 90 }
-const PERIODS = { '7d': ['Dia 1-2', 'Dia 3-4', 'Dia 5-6', 'Dia 7'], '30d': ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'], '90d': ['Mês 1', 'Mês 2', 'Mês 3', 'Mês 4'] }
+const PERIODS = { '1d': ['0-6h', '6-12h', '12-18h', '18-24h'], '7d': ['Dia 1-2', 'Dia 3-4', 'Dia 5-6', 'Dia 7'], '30d': ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'], '90d': ['Mês 1', 'Mês 2', 'Mês 3', 'Mês 4'] }
 const daysAgo = t => Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 864e5))
 
 // Contatos de exemplo p/ o modo demo (mesmo shape das linhas de `clients` que o
@@ -51,7 +51,7 @@ export const Funnel = () => {
   // Etapas dinâmicas → largura do funil derivada da posição; cor/semântica das etapas.
   const STAGES = stages.map((s, i) => ({ k: s.label, id: s.key, color: s.color, kind: s.kind, w: Math.round(100 - (stages.length > 1 ? i / (stages.length - 1) : 0) * 70) }))
   const firstId = STAGES[0]?.id || 'lead'
-  const [period, setPeriod] = useState('30d')
+  const { period, setPeriod, options: periodOptions } = usePeriod()
   const [loading, setLoading] = useState(true)
   const [clients, setClients] = useState([])
   const [err, setErr] = useState('')
@@ -79,7 +79,7 @@ export const Funnel = () => {
     return () => { on = false }
   }, [ownerUserId, isDemoMode])
 
-  const start = Date.now() - DAYS[period] * 864e5
+  const start = periodRange(period).start
   // Indicadores derivam da fonte única (src/lib/metrics) — mesmas regras do Dashboard.
   const m = computeSalesMetrics(clients, stages, { start })
   const byStage = new Map(m.byStage.map(s => [s.key, s]))
@@ -119,9 +119,7 @@ export const Funnel = () => {
         <button onClick={() => nav('/dashboard')} title="Voltar" style={iBtn}><ArrowLeft size={20} /></button>
         <span style={{ fontSize: 18, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 8 }}><BarChart3 size={20} color={C.pur} /> Funil de Vendas</span>
         <select value={period} onChange={e => setPeriod(e.target.value)} style={{ ...sel, marginLeft: 'auto' }}>
-          <option value="7d">Últimos 7 dias</option>
-          <option value="30d">Últimos 30 dias</option>
-          <option value="90d">Últimos 90 dias</option>
+          {periodOptions.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
         </select>
         <button onClick={exportCsv} style={{ background: C.pur, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, padding: '8px 14px', cursor: 'pointer', fontFamily: F }}>Exportar CSV</button>
       </div>

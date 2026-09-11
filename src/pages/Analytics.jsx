@@ -5,15 +5,9 @@ import { supabase } from '@/lib/supabase'
 import { Send, Inbox, Users, MessageSquare, Target, Clock, Loader2 } from 'lucide-react'
 import { exportPremiumPDF } from '@utils/exportUtils'
 import { logger } from '@services/activityLogger'
-import { isOutbound } from '@lib/metrics'
+import { isOutbound, periodDays } from '@lib/metrics'
+import { usePeriod } from '@hooks/usePeriod'
 import clsx from 'clsx'
-
-const PERIODS = [
-  { key: '1d',  label: 'Hoje',    days: 1  },
-  { key: '7d',  label: '7 dias',  days: 7  },
-  { key: '30d', label: '30 dias', days: 30 },
-  { key: '90d', label: '90 dias', days: 90 },
-]
 
 const CH = {
   whatsapp:  { label: 'WhatsApp',  color: '#25D366' },
@@ -103,7 +97,7 @@ const LineChart = ({ data }) => {
 
 export function Analytics() {
   const { user, ownerUserId, isDemoMode } = useAuth()
-  const [period, setPeriod]     = useState('7d')
+  const { period, setPeriod, options: periodOptions } = usePeriod()
   const [loading, setLoading]   = useState(true)
   const [sent, setSent]         = useState(0)
   const [recv, setRecv]         = useState(0)
@@ -119,7 +113,7 @@ export function Analytics() {
   useEffect(() => {
     if (!ownerUserId) return
     setLoading(true)
-    const days = PERIODS.find(p => p.key === period)?.days ?? 7
+    const days = periodDays(period)
 
     // Modo demo: usa dados de exemplo (não bate no banco), como CRM/Funil/Campanhas.
     if (isDemoMode) {
@@ -213,7 +207,7 @@ export function Analytics() {
     setExporting(true)
     logger.log(user?.id, 'export_pdf', { category: 'system', description: 'Exportou o relatório de Analytics (PDF)' })
     try {
-      const periodLabel = PERIODS.find(p => p.key === period)?.label ?? period
+      const periodLabel = periodOptions.find(p => p.key === period)?.label ?? period
       exportPremiumPDF({
         filename: 'relatorio-analytics',
         title: 'Relatório de Analytics',
@@ -249,7 +243,7 @@ export function Analytics() {
 
           <div className="flex items-center justify-between">
             <div className="flex gap-1 glass rounded-xl p-1">
-              {PERIODS.map(p => (
+              {periodOptions.map(p => (
                 <button key={p.key} onClick={() => setPeriod(p.key)} className={clsx('px-4 py-1.5 rounded-lg text-xs font-semibold transition-all', period === p.key ? 'bg-brand-orange text-white' : 'text-slate-400 hover:text-white')}>
                   {p.label}
                 </button>

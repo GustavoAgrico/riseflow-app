@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeSalesMetrics, stageOf, kindOf, inPeriod, isOutbound } from './metrics'
+import { computeSalesMetrics, stageOf, kindOf, inPeriod, isOutbound, periodDays, periodRange, DEFAULT_PERIOD } from './metrics'
 
 // Etapas iguais às DEFAULT_STAGES do useStages.
 const STAGES = [
@@ -81,6 +81,25 @@ describe('inPeriod — filtro por janela', () => {
   it('filtra pelo início da janela', () => {
     const start = new Date('2026-06-01').getTime()
     expect(inPeriod(deals, { start }).length).toBe(1)
+  })
+})
+
+describe('períodos globais', () => {
+  it('periodDays mapeia as chaves conhecidas', () => {
+    expect(periodDays('1d')).toBe(1)
+    expect(periodDays('7d')).toBe(7)
+    expect(periodDays('30d')).toBe(30)
+    expect(periodDays('90d')).toBe(90)
+  })
+
+  it('periodDays cai no default para chave inválida', () => {
+    expect(periodDays('xyz')).toBe(periodDays(DEFAULT_PERIOD))
+  })
+
+  it('periodRange devolve janela { start } coerente com os dias', () => {
+    const now = new Date('2026-09-11T12:00:00Z').getTime()
+    const { start } = periodRange('7d', now)
+    expect(now - start).toBe(7 * 86_400_000)
   })
 })
 
