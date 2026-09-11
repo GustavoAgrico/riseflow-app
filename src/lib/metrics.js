@@ -37,6 +37,27 @@ export function inPeriod(deals, { start, end } = {}) {
   })
 }
 
+// ── Períodos globais ─────────────────────────────────────────────────────────
+// Conjunto ÚNICO de períodos usado pelo seletor global (Dashboard, Funil,
+// Analytics). Janelas móveis a partir de agora, iguais em todas as telas.
+export const PERIOD_OPTIONS = [
+  { key: '1d', label: 'Hoje', days: 1 },
+  { key: '7d', label: '7 dias', days: 7 },
+  { key: '30d', label: '30 dias', days: 30 },
+  { key: '90d', label: '90 dias', days: 90 },
+]
+export const DEFAULT_PERIOD = '30d'
+
+export function periodDays(key) {
+  return (PERIOD_OPTIONS.find((o) => o.key === key) ??
+    PERIOD_OPTIONS.find((o) => o.key === DEFAULT_PERIOD)).days
+}
+
+// Converte a chave do período na janela { start } que computeSalesMetrics espera.
+export function periodRange(key, now = Date.now()) {
+  return { start: now - periodDays(key) * 86_400_000 }
+}
+
 // Núcleo: todos os indicadores derivados de um MESMO conjunto e das MESMAS
 // regras. É isto que garante que Dashboard e Funil, com o mesmo período,
 // exibam os mesmos totais.

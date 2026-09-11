@@ -14,7 +14,8 @@ import {
 } from 'recharts'
 import { useDashboardData } from '@hooks/useDashboardData'
 import { useStages } from '@hooks/useStages'
-import { computeSalesMetrics } from '@lib/metrics'
+import { usePeriod } from '@hooks/usePeriod'
+import { computeSalesMetrics, periodRange } from '@lib/metrics'
 import { useOnboarding } from '@hooks/useOnboarding'
 import { OnboardingWizard } from '@components/OnboardingWizard'
 import { useApp } from '@context/AppContext'
@@ -224,6 +225,7 @@ export const Dashboard = () => {
   const { flowsVersion, setNewFlowModalOpen } = useApp()
   const { user, isDemoMode } = useAuth()
   const { stages } = useStages()
+  const { period, setPeriod, options: periodOptions } = usePeriod()
   const {
     flows, clients, conversations,
     totalMessages, totalFlows, activeFlows,
@@ -290,7 +292,8 @@ export const Dashboard = () => {
     .map(c => ({ name: c.label, value: c.convCount || 1, color: CH_COLOR[c.id] }))
 
   // ── Desempenho de vendas — fonte única (src/lib/metrics), mesmas regras do Funil ──
-  const m = computeSalesMetrics(clients, stages)
+  // Escopado pelo período GLOBAL (usePeriod) → muda hero, KPIs e gráficos juntos.
+  const m = computeSalesMetrics(clients, stages, periodRange(period))
   const stageRows = m.byStage
   const { won, lost, pipeline: pipelineValue, ticket } = m
   const convRate = Math.round(m.convRate)
@@ -403,10 +406,18 @@ export const Dashboard = () => {
 
       {/* ── Desempenho de vendas (funil real dos clients) ── */}
       <div className="mb-6">
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
           <h3 className="font-display font-semibold text-white" style={{ fontSize: 15 }}>Desempenho de vendas</h3>
-          <span style={{ fontSize: 11, color: '#475569' }}>funil de {clients.length} negócio{clients.length !== 1 ? 's' : ''}</span>
-          <Link to="/crm" style={{ marginLeft: 'auto', fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Abrir CRM →</Link>
+          <span style={{ fontSize: 11, color: '#475569' }}>funil de {m.total} negócio{m.total !== 1 ? 's' : ''}</span>
+          <select
+            value={period}
+            onChange={e => setPeriod(e.target.value)}
+            aria-label="Período"
+            style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#CBD5E1', fontSize: 12, padding: '5px 8px', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
+          >
+            {periodOptions.map(o => <option key={o.key} value={o.key} style={{ background: '#1E293B' }}>{o.label}</option>)}
+          </select>
+          <Link to="/crm" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Abrir CRM →</Link>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
