@@ -3,19 +3,19 @@ import { Link } from 'react-router-dom'
 import { usePlan } from '@hooks/usePlan'
 import { Layout } from '@components/Layout/Layout'
 import {
-  MessageCircle, Users, Users2, Zap, TrendingUp, ArrowUpRight,
-  CheckCircle, AlertCircle, Wifi, Sparkles, GitBranch,
+  MessageCircle, Users, Users2, Zap, TrendingUp, ArrowUpRight, ArrowDownRight,
+  CheckCircle, AlertCircle, Wifi, Sparkles, GitBranch, DollarSign, Target, Ticket,
   Instagram, Facebook, Link as LinkIcon, Activity,
 } from 'lucide-react'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
-  RadarChart, PolarGrid, PolarAngleAxis, Radar,
 } from 'recharts'
 import { useDashboardData } from '@hooks/useDashboardData'
 import { useStages } from '@hooks/useStages'
 import { usePeriod } from '@hooks/usePeriod'
 import { computeSalesMetrics, periodRange } from '@lib/metrics'
+import { DEMO_DEALS } from '@constants/demoDeals'
 import { useOnboarding } from '@hooks/useOnboarding'
 import { OnboardingWizard } from '@components/OnboardingWizard'
 import { useApp } from '@context/AppContext'
@@ -66,7 +66,11 @@ const Sparkline = ({ data = [], color = '#FF6B35', w = 72, h = 30 }) => {
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
-const StatCard = ({ icon: Icon, label, value, change, color, hex = '#FF6B35', sparkData, to }) => {
+const StatCard = ({ icon: Icon, label, value, change, color, hex = '#FF6B35', sparkData, to, trend }) => {
+  // trend definido ('up'/'down') → pílula verde/vermelha com seta coerente (delta real).
+  // trend indefinido → mantém a cor do card (compatibilidade).
+  const dColor = trend == null ? hex : trend === 'down' ? '#EF4444' : '#10B981'
+  const DArrow = trend === 'down' ? ArrowDownRight : ArrowUpRight
   const content = (
     <>
       {/* Radial color glow */}
@@ -86,8 +90,8 @@ const StatCard = ({ icon: Icon, label, value, change, color, hex = '#FF6B35', sp
         {value}
       </p>
       <p style={{ fontSize: 11, color: '#64748B', marginBottom: 10 }}>{label}</p>
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: `${hex}14`, border: `1px solid ${hex}2b`, color: hex, borderRadius: 20, padding: '3px 9px' }}>
-        <ArrowUpRight size={11} />
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: `${dColor}14`, border: `1px solid ${dColor}2b`, color: dColor, borderRadius: 20, padding: '3px 9px' }}>
+        <DArrow size={11} />
         <span style={{ fontSize: 11, fontWeight: 600 }}>{change}</span>
       </div>
       {/* Hint "Acessar" no hover (só quando o card é clicável) */}
@@ -266,14 +270,6 @@ export const Dashboard = () => {
   // Sparkline data: 7-day message counts
   const sparkline = chartData.map(d => d.messages)
 
-  const stats = [
-    { icon: MessageCircle, label: 'Mensagens Enviadas',  value: totalMessages.toLocaleString('pt-BR'),      change: `${totalConversations} conversas ativas`, color: 'bg-brand-orange', hex: '#FF6B35', to: '/analytics' },
-    { icon: Users,         label: 'Clientes',            value: totalClients.toLocaleString('pt-BR'),       change: `${activeClients.length} ativos`,         color: 'bg-brand-blue',   hex: '#3B82F6', to: '/clients' },
-    { icon: Zap,           label: 'Fluxos Criados',      value: totalFlows.toString(),                      change: `${activeFlows.length} ativos`,            color: 'bg-purple-500',   hex: '#A855F7', to: '/automation' },
-    { icon: TrendingUp,    label: 'Conversas',           value: totalConversations.toLocaleString('pt-BR'), change: 'abertas agora',                           color: 'bg-brand-green',  hex: '#10B981', to: '/chat' },
-    { icon: Users2,        label: 'Equipe',              value: totalTeam.toString(),                       change: `${totalTeam === 1 ? 'membro' : 'membros'}`, color: 'bg-cyan-500',     hex: '#06B6D4', to: '/teams' },
-  ]
-
   const channels = [
     { id: 'whatsapp',  label: 'WhatsApp',  Icon: MessageCircle },
     { id: 'instagram', label: 'Instagram', Icon: Instagram },
@@ -293,20 +289,36 @@ export const Dashboard = () => {
 
   // ── Desempenho de vendas — fonte única (src/lib/metrics), mesmas regras do Funil ──
   // Escopado pelo período GLOBAL (usePeriod) → muda hero, KPIs e gráficos juntos.
-  const m = computeSalesMetrics(clients, stages, periodRange(period))
+  // Demo: usa o MESMO dataset do Funil (coerência entre telas) p/ popular KPIs e gráficos.
+  const dealRows = isDemoMode ? DEMO_DEALS : clients
+  const m = computeSalesMetrics(dealRows, stages, periodRange(period))
   const stageRows = m.byStage
-  const { won, lost, pipeline: pipelineValue, ticket } = m
+  const { won, pipeline: pipelineValue, ticket } = m
   const convRate = Math.round(m.convRate)
-  const lostRate = Math.round(m.lostRate)
-  const salesKpis = [
-    { label: 'Taxa de Conversão', value: `${convRate}%`, color: '#10B981', hint: `${won} fechados` },
-    { label: 'Taxa de Perdidos', value: `${lostRate}%`, color: '#EF4444', hint: `${lost} perdidos` },
-    { label: 'Pipeline em aberto', value: brlShort(pipelineValue), color: '#FF6B35', hint: `${m.open} negócios` },
-    { label: 'Ticket médio', value: brlShort(ticket), color: '#3B82F6', hint: 'por fechamento' },
+
+  // Comparativo REAL com o período anterior (mesma janela, deslocada) — Entregável 2.
+  const _range = periodRange(period)
+  const _len = Date.now() - _range.start
+  const prevM = computeSalesMetrics(dealRows, stages, { start: _range.start - _len, end: _range.start })
+  const pctD = (cur, prev) => {
+    if (!prev) return { txt: cur ? 'novo' : '—', trend: 'up' }
+    const d = ((cur - prev) / prev) * 100
+    return { txt: `${d >= 0 ? '+' : ''}${d.toFixed(1)}%`, trend: d >= 0 ? 'up' : 'down' }
+  }
+  const ppD = (cur, prev) => { const d = cur - prev; return { txt: `${d >= 0 ? '+' : ''}${d.toFixed(1)} p.p.`, trend: d >= 0 ? 'up' : 'down' } }
+  const dRev = pctD(m.wonValue, prevM.wonValue)
+  const dConv = ppD(m.convRate, prevM.convRate)
+  const dPipe = pctD(m.pipeline, prevM.pipeline)
+  const dTick = pctD(m.ticket, prevM.ticket)
+  const salesCards = [
+    { icon: DollarSign, label: 'Receita ganha',     value: brlShort(m.wonValue),    change: dRev.txt,  trend: dRev.trend,  color: 'bg-brand-green',  hex: '#10B981' },
+    { icon: TrendingUp, label: 'Taxa de conversão', value: `${convRate}%`,          change: dConv.txt, trend: dConv.trend, color: 'bg-brand-orange', hex: '#FF6B35' },
+    { icon: Target,     label: 'Pipeline em aberto', value: brlShort(pipelineValue), change: dPipe.txt, trend: dPipe.trend, color: 'bg-brand-blue',   hex: '#3B82F6' },
+    { icon: Ticket,     label: 'Ticket médio',      value: brlShort(ticket),        change: dTick.txt, trend: dTick.trend, color: 'bg-purple-500',   hex: '#A855F7' },
   ]
-  const radarData = stageRows.map(s => ({ stage: s.label, count: s.count }))
+  const barData = stageRows.map(s => ({ label: s.label, value: s.value, color: s.color }))
   const stagePie = stageRows.filter(s => s.count > 0).map(s => ({ name: s.label, value: s.count, color: s.color }))
-  const hasCrm = clients.length > 0
+  const hasCrm = dealRows.length > 0
 
   return (
     <Layout title="Dashboard" subtitle="Visão geral do seu negócio">
@@ -412,9 +424,9 @@ export const Dashboard = () => {
         )
       })()}
 
-      {/* ── Stat cards ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-        {stats.map((s, i) => <StatCard key={i} {...s} sparkData={sparkline} />)}
+      {/* ── KPIs de vendas — comparativo com o período anterior (sparkline + delta real) ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {salesCards.map((s, i) => <StatCard key={i} {...s} sparkData={sparkline} />)}
       </div>
 
       {/* ── Desempenho de vendas (funil real dos clients) ── */}
@@ -425,28 +437,21 @@ export const Dashboard = () => {
           <Link to="/crm" style={{ marginLeft: 'auto', fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Abrir CRM →</Link>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-          {salesKpis.map(k => (
-            <div key={k.label} className="glass rounded-2xl" style={{ padding: '16px 18px', borderLeft: `3px solid ${k.color}` }}>
-              <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{k.label}</p>
-              <p style={{ fontSize: 26, fontWeight: 800, color: '#fff', margin: '6px 0 2px', fontVariantNumeric: 'tabular-nums' }}>{k.value}</p>
-              <p style={{ fontSize: 11, color: k.color, margin: 0, fontWeight: 600 }}>{k.hint}</p>
-            </div>
-          ))}
-        </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Radar — leads por etapa */}
+          {/* Barras horizontais — valor por etapa (estilo "campaign performance" do modelo) */}
           <div className="glass rounded-2xl p-5">
-            <h4 className="font-display font-semibold text-white" style={{ fontSize: 13, marginBottom: 6 }}>Leads por etapa</h4>
+            <h4 className="font-display font-semibold text-white" style={{ fontSize: 13, marginBottom: 6 }}>Valor por etapa</h4>
             {hasCrm ? (
               <ResponsiveContainer width="100%" height={240}>
-                <RadarChart data={radarData} outerRadius="70%">
-                  <PolarGrid stroke="#26324A" />
-                  <PolarAngleAxis dataKey="stage" tick={{ fill: '#94A3B8', fontSize: 11 }} />
-                  <Radar dataKey="count" stroke="#7C3AED" fill="#7C3AED" fillOpacity={0.35} />
-                  <Tooltip contentStyle={{ background: '#0F172A', border: '1px solid #26324A', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#F8FAFC' }} itemStyle={{ color: '#C084FC' }} />
-                </RadarChart>
+                <BarChart data={barData} layout="vertical" margin={{ top: 6, right: 16, bottom: 0, left: 0 }} barCategoryGap="28%">
+                  <CartesianGrid horizontal={false} stroke="rgba(255,255,255,0.05)" />
+                  <XAxis type="number" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => brlShort(v)} />
+                  <YAxis type="category" dataKey="label" width={92} tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={v => brlShort(v)} contentStyle={{ background: '#0F172A', border: '1px solid #26324A', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#F8FAFC' }} itemStyle={{ color: '#F8FAFC' }} />
+                  <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={20}>
+                    {barData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             ) : (
               <div style={{ height: 240, display: 'grid', placeItems: 'center', color: '#2D3A55', fontSize: 13 }}>Sem leads no CRM ainda</div>
@@ -677,7 +682,7 @@ export const Dashboard = () => {
             <h3 className="rf-section-title">Clientes Recentes</h3>
             <Link to="/clients" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Ver todos →</Link>
           </div>
-          {clients.length === 0 ? (
+          {dealRows.length === 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 0', textAlign: 'center', gap: 7 }}>
               <Users size={28} style={{ color: '#1E2A3A' }} />
               <p style={{ fontSize: 13, color: '#2D3A55' }}>Nenhum cliente ainda</p>
@@ -685,7 +690,7 @@ export const Dashboard = () => {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {clients.slice(0, 5).map(c => {
+              {dealRows.slice(0, 5).map(c => {
                 const initials = c.name.split(' ').map(x => x[0]).slice(0, 2).join('')
                 return (
                   <div key={c.id}
