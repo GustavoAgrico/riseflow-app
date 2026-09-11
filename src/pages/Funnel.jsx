@@ -107,9 +107,7 @@ export const Funnel = () => {
   }
 
   const panel = { background: C.card, border: `1px solid ${C.bd}`, borderRadius: 12, padding: 20, marginTop: 24 }
-  const h2 = { margin: '0 0 16px', fontSize: 14, fontWeight: 700 }
   const iBtn = { background: 'none', border: 'none', color: C.tx, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', padding: 4 }
-  const sel = { background: C.card, border: `1px solid ${C.bd}`, borderRadius: 8, color: C.tx, fontSize: 13, padding: '7px 10px', fontFamily: F, outline: 'none' }
   const td = { padding: '10px 8px', borderTop: `1px solid ${C.bd}`, textAlign: 'left' }
   const th = { padding: '0 8px 8px', fontSize: 11, color: C.mut, textAlign: 'left', textTransform: 'uppercase', letterSpacing: '.04em' }
 
@@ -118,9 +116,9 @@ export const Funnel = () => {
       <div style={{ minHeight: 56, background: C.card, borderBottom: `1px solid ${C.bd}`, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '8px 20px', flexShrink: 0 }}>
         <button onClick={() => nav('/dashboard')} title="Voltar" style={iBtn}><ArrowLeft size={20} /></button>
         <span style={{ fontSize: 18, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 8 }}><BarChart3 size={20} color={C.pur} /> Funil de Vendas</span>
-        <select value={period} onChange={e => setPeriod(e.target.value)} style={{ ...sel, marginLeft: 'auto' }}>
-          {periodOptions.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-        </select>
+        <div className="rf-seg" role="group" aria-label="Período" style={{ marginLeft: 'auto' }}>
+          {periodOptions.map(o => <button key={o.key} aria-pressed={period === o.key} onClick={() => setPeriod(o.key)}>{o.label}</button>)}
+        </div>
         <button onClick={exportCsv} style={{ background: C.pur, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, padding: '8px 14px', cursor: 'pointer', fontFamily: F }}>Exportar CSV</button>
       </div>
 
@@ -167,7 +165,7 @@ export const Funnel = () => {
 
               {/* SEÇÃO 3 — NOVOS CONTATOS POR PERÍODO */}
               <div style={panel}>
-                <p style={h2}>Novos contatos por período</p>
+                <p className="rf-section-title" style={{ marginBottom: 16 }}>Novos contatos por período</p>
                 {PERIODS[period].map((lb, i) => (
                   <div key={lb} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                     <span style={{ width: 72, fontSize: 12, color: C.mut, flexShrink: 0 }}>{lb}</span>
@@ -181,7 +179,7 @@ export const Funnel = () => {
 
               {/* SEÇÃO 4 — TABELA */}
               <div style={panel}>
-                <p style={h2}>Detalhamento por etapa</p>
+                <p className="rf-section-title" style={{ marginBottom: 16 }}>Detalhamento por etapa</p>
                 <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
                   <thead><tr>{['Etapa', 'Quantidade', 'Valor Total', '% do Total', 'Tempo Médio'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
                   <tbody>
