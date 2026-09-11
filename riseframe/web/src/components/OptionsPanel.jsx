@@ -107,7 +107,7 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
   const set = (patch) => onChange({ ...options, ...patch });
   const caps = catalog?.capabilities || {};
   const keyValid = /^[A-Za-z0-9]{20,80}$/.test((options.pexelsKey || '').trim());
-  const brollUsable = caps.brollReady || keyValid;
+  const brollUsable = caps.brollReady || keyValid || caps.googleImagesReady;
 
   // resumo curto para o subtítulo de cada seção (fechada)
   const on = (b) => (b ? 'ligado' : 'desligado');
@@ -215,6 +215,11 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
         >
           <Toggle on={options.broll} onChange={(v) => set({ broll: v })} disabled={!brollUsable} />
         </Row>
+        {options.broll && brollUsable && caps.googleImagesReady && catalog.imageSources && (
+          <Row label="Fonte das imagens" hint="Pexels é livre de direitos. Google Imagens é mais contextual, mas a maioria tem copyright — use com cautela em conteúdo publicado.">
+            <Select value={options.imageSource || 'pexels'} options={catalog.imageSources} onChange={(v) => set({ imageSource: v })} />
+          </Row>
+        )}
         {options.broll && brollUsable && catalog.niches && (
           <Row label="Nicho do vídeo" hint="As imagens de apoio combinam com o tema (liderança, médico, mentor...)">
             <Select value={options.niche || 'auto'} options={catalog.niches} onChange={(v) => set({ niche: v })} />

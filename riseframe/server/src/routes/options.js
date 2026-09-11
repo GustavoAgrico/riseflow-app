@@ -69,6 +69,10 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'center', label: 'Centro' },
       { id: 'bottom', label: 'Base' },
     ],
+    imageSources: [
+      { id: 'pexels', label: 'Pexels (livre de direitos)' },
+      { id: 'google', label: 'Google Imagens (contextual) ⚠️ copyright' },
+    ],
     aspects: [
       { id: 'original', label: 'Manter original' },
       { id: '9:16', label: 'Vertical 9:16 (Reels/Shorts/TikTok)' },
@@ -98,6 +102,7 @@ optionsRouter.get('/options', (_req, res) => {
       niche: 'auto',
       brollLayout: 'fullscreen',
       personCrop: 'center',
+      imageSource: 'pexels',
       aspect: 'original',
       reframeTrack: true,
     },
