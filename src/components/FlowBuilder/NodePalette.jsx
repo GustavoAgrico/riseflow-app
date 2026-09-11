@@ -46,7 +46,7 @@ export const PALETTE = [
   },
   {
     category: 'Mensagens avançadas',
-    color: '#FF6B35',
+    color: '#2E8BFF',
     bg: 'bg-brand-orange/15',
     border: 'border-brand-orange/30',
     items: [

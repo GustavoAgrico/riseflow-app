@@ -8,7 +8,7 @@ import {
   Instagram, Facebook, Link as LinkIcon, Activity,
 } from 'lucide-react'
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  AreaChart, Area, BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts'
 import { useDashboardData } from '@hooks/useDashboardData'
@@ -36,7 +36,7 @@ const brlShort = (n) => {
 }
 
 // ── Inline sparkline (SVG, no deps) ──────────────────────────────────────────
-const Sparkline = ({ data = [], color = '#FF6B35', w = 72, h = 30 }) => {
+const Sparkline = ({ data = [], color = '#2E8BFF', w = 72, h = 30 }) => {
   if (data.length < 2 || data.every(v => v === 0)) return null
   const max = Math.max(...data, 1)
   const min = Math.min(...data)
@@ -66,7 +66,7 @@ const Sparkline = ({ data = [], color = '#FF6B35', w = 72, h = 30 }) => {
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
-const StatCard = ({ icon: Icon, label, value, change, color, hex = '#FF6B35', sparkData, to, trend }) => {
+const StatCard = ({ icon: Icon, label, value, change, color, hex = '#2E8BFF', sparkData, to, trend }) => {
   // trend definido ('up'/'down') → pílula verde/vermelha com seta coerente (delta real).
   // trend indefinido → mantém a cor do card (compatibilidade).
   const dColor = trend == null ? hex : trend === 'down' ? '#EF4444' : '#10B981'
@@ -139,7 +139,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   return (
     <div style={{
       background: 'rgba(8,12,24,0.96)',
-      border: '1px solid rgba(255,107,53,0.2)',
+      border: '1px solid rgba(46, 139, 255,0.2)',
       borderRadius: 12, padding: '10px 14px',
       backdropFilter: 'blur(24px)',
       boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
@@ -312,11 +312,27 @@ export const Dashboard = () => {
   const dTick = pctD(m.ticket, prevM.ticket)
   const salesCards = [
     { icon: DollarSign, label: 'Receita ganha',     value: brlShort(m.wonValue),    change: dRev.txt,  trend: dRev.trend,  color: 'bg-brand-green',  hex: '#10B981' },
-    { icon: TrendingUp, label: 'Taxa de conversão', value: `${convRate}%`,          change: dConv.txt, trend: dConv.trend, color: 'bg-brand-orange', hex: '#FF6B35' },
+    { icon: TrendingUp, label: 'Taxa de conversão', value: `${convRate}%`,          change: dConv.txt, trend: dConv.trend, color: 'bg-brand-orange', hex: '#2E8BFF' },
     { icon: Target,     label: 'Pipeline em aberto', value: brlShort(pipelineValue), change: dPipe.txt, trend: dPipe.trend, color: 'bg-brand-blue',   hex: '#3B82F6' },
     { icon: Ticket,     label: 'Ticket médio',      value: brlShort(ticket),        change: dTick.txt, trend: dTick.trend, color: 'bg-purple-500',   hex: '#A855F7' },
   ]
   const barData = stageRows.map(s => ({ label: s.label, value: s.value, color: s.color }))
+  // Série temporal p/ o gráfico grande "Desempenho ao longo do tempo" (valor + nº por bucket).
+  const perfSeries = (() => {
+    const start = periodRange(period).start
+    const now = Date.now()
+    const N = 8
+    const span = Math.max(1, (now - start) / N)
+    const b = Array.from({ length: N }, (_, i) => ({ t0: start + i * span, valor: 0, negocios: 0 }))
+    dealRows.forEach(d => {
+      const t = new Date(d.created_at).getTime()
+      if (Number.isNaN(t) || t < start || t > now) return
+      const i = Math.min(N - 1, Math.max(0, Math.floor((t - start) / span)))
+      b[i].valor += Number(d.value) || 0
+      b[i].negocios += 1
+    })
+    return b.map(x => ({ ...x, label: new Date(x.t0).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }))
+  })()
   const stagePie = stageRows.filter(s => s.count > 0).map(s => ({ name: s.label, value: s.count, color: s.color }))
   const hasCrm = dealRows.length > 0
 
@@ -340,13 +356,13 @@ export const Dashboard = () => {
       {/* ── Hero premium ── */}
       <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 20, marginBottom: 24,
         border: '1px solid rgba(255,255,255,0.08)',
-        background: 'linear-gradient(120deg, rgba(255,107,53,0.16), rgba(124,58,237,0.15) 58%, rgba(255,255,255,0.03))',
+        background: 'linear-gradient(120deg, rgba(46, 139, 255,0.16), rgba(124,58,237,0.15) 58%, rgba(255,255,255,0.03))',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 20px 50px -26px rgba(0,0,0,0.7)' }}>
         <div style={{ position: 'absolute', right: -70, top: -90, width: 300, height: 300, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,58,237,0.32), transparent 62%)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', left: -60, bottom: -110, width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,107,53,0.20), transparent 62%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', left: -60, bottom: -110, width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(46, 139, 255,0.20), transparent 62%)', pointerEvents: 'none' }} />
         <div style={{ position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', justifyContent: 'space-between', padding: '26px 28px' }}>
           <div style={{ minWidth: 240 }}>
-            <p style={{ margin: 0, fontSize: 12, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: '#FFB79A' }}>Olá{firstName ? `, ${firstName}` : ''} 👋</p>
+            <p style={{ margin: 0, fontSize: 12, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: '#93C5FD' }}>Olá{firstName ? `, ${firstName}` : ''} 👋</p>
             <p style={{ margin: '10px 0 0', fontSize: 13, color: '#CBD5E1' }}>{hasCrm ? 'Pipeline em aberto' : 'Mensagens processadas'}</p>
             <p className="font-display" style={{ margin: '2px 0 0', fontSize: 40, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
               {hasCrm ? ('R$ ' + Math.round(pipelineValue).toLocaleString('pt-BR')) : totalMessages.toLocaleString('pt-BR')}
@@ -358,7 +374,7 @@ export const Dashboard = () => {
             </div>
             <div style={{ marginTop: 14, maxWidth: 360 }}>
               <div style={{ height: 8, borderRadius: 999, background: 'rgba(255,255,255,0.09)', overflow: 'hidden' }}>
-                <div style={{ width: `${Math.min(100, convRate)}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#FF6B35,#7C3AED)' }} />
+                <div style={{ width: `${Math.min(100, convRate)}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#2E8BFF,#7C3AED)' }} />
               </div>
               <p style={{ margin: '6px 0 0', fontSize: 11, color: '#94A3B8' }}>Taxa de conversão do funil{isDemoMode && <span style={{ color: '#EAB308', marginLeft: 6 }}>(modo demo)</span>}</p>
             </div>
@@ -393,12 +409,12 @@ export const Dashboard = () => {
         const unlimited = usage.messages_limit === -1
         const pct = unlimited ? 0 : Math.min((usage.messages_sent / usage.messages_limit) * 100, 100)
         const full = pct >= 100
-        const barHex = full ? '#EF4444' : pct > 80 ? '#EAB308' : '#FF6B35'
+        const barHex = full ? '#EF4444' : pct > 80 ? '#EAB308' : '#2E8BFF'
         return (
           <div className="glass rounded-2xl p-5 mb-6">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <MessageCircle size={15} style={{ color: '#FF6B35' }} />
+                <MessageCircle size={15} style={{ color: '#2E8BFF' }} />
                 <span className="font-display font-semibold text-white text-sm">Mensagens</span>
                 <span style={{ background: 'rgba(168,85,247,0.14)', color: '#C084FC', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>{usage.plan}</span>
               </div>
@@ -417,7 +433,7 @@ export const Dashboard = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
                 <AlertCircle size={12} style={{ color: '#EF4444' }} />
                 <span style={{ fontSize: 11, color: '#EF4444', fontWeight: 500 }}>Limite atingido</span>
-                <Link to="/plans" style={{ fontSize: 11, color: '#FF6B35', marginLeft: 'auto', textDecoration: 'none' }}>Fazer upgrade →</Link>
+                <Link to="/plans" style={{ fontSize: 11, color: '#2E8BFF', marginLeft: 'auto', textDecoration: 'none' }}>Fazer upgrade →</Link>
               </div>
             )}
           </div>
@@ -434,7 +450,40 @@ export const Dashboard = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
           <h3 className="rf-section-title">Desempenho de vendas</h3>
           <span className="rf-chip">{m.total} negócio{m.total !== 1 ? 's' : ''} no período</span>
-          <Link to="/crm" style={{ marginLeft: 'auto', fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Abrir CRM →</Link>
+          <Link to="/crm" style={{ marginLeft: 'auto', fontSize: 12, color: '#2E8BFF', textDecoration: 'none' }}>Abrir CRM →</Link>
+        </div>
+
+        {/* Gráfico grande — desempenho ao longo do tempo (peça central do modelo) */}
+        <div className="glass rounded-2xl p-5 mb-4">
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+            <h4 className="font-display font-semibold text-white" style={{ fontSize: 13 }}>Desempenho ao longo do tempo</h4>
+            <div style={{ display: 'flex', gap: 16, fontSize: 11, color: '#475569' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 2.5, background: '#2E8BFF', borderRadius: 2, boxShadow: '0 0 6px #2E8BFF' }} />Valor</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 2.5, background: '#A855F7', borderRadius: 2, boxShadow: '0 0 6px #A855F7' }} />Negócios</span>
+            </div>
+          </div>
+          {hasCrm ? (
+            <ResponsiveContainer width="100%" height={260}>
+              <ComposedChart data={perfSeries} margin={{ top: 6, right: 6, bottom: 0, left: -8 }}>
+                <defs>
+                  <linearGradient id="perfBlue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#2E8BFF" stopOpacity={0.36} />
+                    <stop offset="60%" stopColor="#2E8BFF" stopOpacity={0.06} />
+                    <stop offset="100%" stopColor="#2E8BFF" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="2 8" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} dy={6} />
+                <YAxis yAxisId="v" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} width={46} tickFormatter={v => brlShort(v)} />
+                <YAxis yAxisId="n" orientation="right" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} width={26} allowDecimals={false} />
+                <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.07)', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                <Area yAxisId="v" type="monotone" dataKey="valor" name="Valor" stroke="#2E8BFF" strokeWidth={2.5} fill="url(#perfBlue)" dot={false} activeDot={<ActiveDot fill="#2E8BFF" />} />
+                <Line yAxisId="n" type="monotone" dataKey="negocios" name="Negócios" stroke="#A855F7" strokeWidth={2} dot={false} activeDot={<ActiveDot fill="#A855F7" />} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ height: 260, display: 'grid', placeItems: 'center', color: '#2D3A55', fontSize: 13 }}>Sem dados no período</div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -512,9 +561,9 @@ export const Dashboard = () => {
                       style={{
                         border: 'none', cursor: 'pointer', borderRadius: 8, padding: '4px 12px',
                         fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
-                        background: on ? 'rgba(255,107,53,0.16)' : 'transparent',
-                        color: on ? '#FF6B35' : '#64748B',
-                        boxShadow: on ? '0 0 0 1px rgba(255,107,53,0.28)' : 'none',
+                        background: on ? 'rgba(46, 139, 255,0.16)' : 'transparent',
+                        color: on ? '#2E8BFF' : '#64748B',
+                        boxShadow: on ? '0 0 0 1px rgba(46, 139, 255,0.28)' : 'none',
                         transition: 'all .15s',
                       }}
                     >
@@ -525,7 +574,7 @@ export const Dashboard = () => {
               </div>
               {/* Legenda */}
               <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-                {[{ color: '#FF6B35', label: 'Total' }, { color: '#3B82F6', label: 'Enviadas' }].map(({ color, label }) => (
+                {[{ color: '#2E8BFF', label: 'Total' }, { color: '#3B82F6', label: 'Enviadas' }].map(({ color, label }) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <div style={{ width: 22, height: 2.5, background: color, borderRadius: 2, boxShadow: `0 0 6px ${color}` }} />
                     <span style={{ fontSize: 11, color: '#475569' }}>{label}</span>
@@ -539,7 +588,7 @@ export const Dashboard = () => {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 220, gap: 10 }}>
               <Activity size={30} style={{ color: '#1E2A3A' }} />
               <p style={{ fontSize: 13, color: '#2D3A55' }}>Nenhuma integração conectada</p>
-              <Link to="/integrations" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Conectar agora →</Link>
+              <Link to="/integrations" style={{ fontSize: 12, color: '#2E8BFF', textDecoration: 'none' }}>Conectar agora →</Link>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
@@ -547,9 +596,9 @@ export const Dashboard = () => {
                 <AreaChart data={chartData} margin={{ top: 5, right: 4, bottom: 0, left: -22 }}>
                   <defs>
                     <linearGradient id="gOrange" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%"   stopColor="#FF6B35" stopOpacity={.38} />
-                      <stop offset="55%"  stopColor="#FF6B35" stopOpacity={.08} />
-                      <stop offset="100%" stopColor="#FF6B35" stopOpacity={0}   />
+                      <stop offset="0%"   stopColor="#2E8BFF" stopOpacity={.38} />
+                      <stop offset="55%"  stopColor="#2E8BFF" stopOpacity={.08} />
+                      <stop offset="100%" stopColor="#2E8BFF" stopOpacity={0}   />
                     </linearGradient>
                     <linearGradient id="gBlue" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%"   stopColor="#3B82F6" stopOpacity={.28} />
@@ -566,8 +615,8 @@ export const Dashboard = () => {
                   />
                   <Area
                     type="monotone" dataKey="messages" name="Total"
-                    stroke="#FF6B35" fill="url(#gOrange)" strokeWidth={2.5}
-                    dot={false} activeDot={<ActiveDot fill="#FF6B35" />}
+                    stroke="#2E8BFF" fill="url(#gOrange)" strokeWidth={2.5}
+                    dot={false} activeDot={<ActiveDot fill="#2E8BFF" />}
                   />
                   <Area
                     type="monotone" dataKey="sent" name="Enviadas"
@@ -579,8 +628,8 @@ export const Dashboard = () => {
                 <BarChart data={chartData} margin={{ top: 5, right: 4, bottom: 0, left: -22 }} barGap={4} barCategoryGap="26%">
                   <defs>
                     <linearGradient id="bOrange" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%"   stopColor="#FF8C5A" stopOpacity={1}   />
-                      <stop offset="100%" stopColor="#FF6B35" stopOpacity={.5}  />
+                      <stop offset="0%"   stopColor="#60A5FA" stopOpacity={1}   />
+                      <stop offset="100%" stopColor="#2E8BFF" stopOpacity={.5}  />
                     </linearGradient>
                     <linearGradient id="bBlue" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%"   stopColor="#60A5FA" stopOpacity={1}   />
@@ -680,13 +729,13 @@ export const Dashboard = () => {
         <div className="glass rounded-2xl p-5">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <h3 className="rf-section-title">Clientes Recentes</h3>
-            <Link to="/clients" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Ver todos →</Link>
+            <Link to="/clients" style={{ fontSize: 12, color: '#2E8BFF', textDecoration: 'none' }}>Ver todos →</Link>
           </div>
           {dealRows.length === 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 0', textAlign: 'center', gap: 7 }}>
               <Users size={28} style={{ color: '#1E2A3A' }} />
               <p style={{ fontSize: 13, color: '#2D3A55' }}>Nenhum cliente ainda</p>
-              <Link to="/clients" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Adicionar →</Link>
+              <Link to="/clients" style={{ fontSize: 12, color: '#2E8BFF', textDecoration: 'none' }}>Adicionar →</Link>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -701,8 +750,8 @@ export const Dashboard = () => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                       <div style={{
                         width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-                        background: 'linear-gradient(135deg, rgba(255,107,53,.28), rgba(59,130,246,.28))',
-                        border: '1px solid rgba(255,107,53,.18)',
+                        background: 'linear-gradient(135deg, rgba(46, 139, 255,.28), rgba(59,130,246,.28))',
+                        border: '1px solid rgba(46, 139, 255,.18)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: 12, fontWeight: 700, color: '#fff',
                       }}>{initials}</div>
@@ -726,13 +775,13 @@ export const Dashboard = () => {
         <div className="glass rounded-2xl p-5">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <h3 className="rf-section-title">Fluxos Ativos</h3>
-            <Link to="/automation" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Gerenciar →</Link>
+            <Link to="/automation" style={{ fontSize: 12, color: '#2E8BFF', textDecoration: 'none' }}>Gerenciar →</Link>
           </div>
           {flows.length === 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 0', textAlign: 'center', gap: 7 }}>
               <GitBranch size={28} style={{ color: '#1E2A3A' }} />
               <p style={{ fontSize: 13, color: '#2D3A55' }}>Nenhum fluxo criado</p>
-              <button onClick={() => setNewFlowModalOpen(true)} style={{ background: 'none', border: 'none', fontSize: 12, color: '#FF6B35', cursor: 'pointer', padding: 0 }}>Criar primeiro fluxo →</button>
+              <button onClick={() => setNewFlowModalOpen(true)} style={{ background: 'none', border: 'none', fontSize: 12, color: '#2E8BFF', cursor: 'pointer', padding: 0 }}>Criar primeiro fluxo →</button>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -748,7 +797,7 @@ export const Dashboard = () => {
                       border: '1px solid rgba(255,255,255,0.06)',
                       cursor: 'pointer', transition: 'border-color .15s',
                     }}
-                    onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,107,53,0.22)'}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(46, 139, 255,0.22)'}
                     onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -777,8 +826,8 @@ export const Dashboard = () => {
                       <div style={{
                         height: '100%', borderRadius: 3,
                         width: `${Math.min(convRate, 100)}%`,
-                        background: 'linear-gradient(90deg, #FF6B35, #A855F7)',
-                        boxShadow: '0 0 8px rgba(255,107,53,0.5)',
+                        background: 'linear-gradient(90deg, #2E8BFF, #A855F7)',
+                        boxShadow: '0 0 8px rgba(46, 139, 255,0.5)',
                         transition: 'width .7s ease',
                       }} />
                     </div>

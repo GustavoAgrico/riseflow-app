@@ -80,7 +80,7 @@ export const PageTransition = () => {
       <div style={{
         position: 'absolute',
         width: 160, height: 160, borderRadius: '50%',
-        border: '1px solid rgba(255, 107, 53, 0.35)',
+        border: '1px solid rgba(46, 139, 255, 0.35)',
         animation: entering ? 'rf-ring 620ms ease-out forwards' : 'none',
         opacity: 0,
       }} />
@@ -89,7 +89,7 @@ export const PageTransition = () => {
       <div style={{
         position: 'absolute',
         width: 118, height: 118, borderRadius: '50%',
-        border: '1.5px solid rgba(255, 107, 53, 0.22)',
+        border: '1.5px solid rgba(46, 139, 255, 0.22)',
         animation: entering ? 'rf-ring 480ms 40ms ease-out forwards' : 'none',
         opacity: 0,
       }} />
@@ -98,15 +98,15 @@ export const PageTransition = () => {
       <div style={{
         position: 'relative',
         width: 72, height: 72, borderRadius: 20,
-        background: 'linear-gradient(138deg, #FF6B35 0%, #D94F1A 100%)',
+        background: 'linear-gradient(138deg, #2E8BFF 0%, #D94F1A 100%)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 27, fontWeight: 900, color: '#fff',
         letterSpacing: '-1.5px',
         fontFamily: "'Plus Jakarta Sans', 'DM Sans', sans-serif",
         boxShadow: [
           '0 0 0 1px rgba(255,255,255,0.10) inset',
-          '0 0 30px rgba(255,107,53,0.60)',
-          '0 0 70px rgba(255,107,53,0.22)',
+          '0 0 30px rgba(46, 139, 255,0.60)',
+          '0 0 70px rgba(46, 139, 255,0.22)',
           '0 4px 24px rgba(0,0,0,0.5)',
         ].join(', '),
         overflow: 'hidden',

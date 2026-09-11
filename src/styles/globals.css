@@ -9,7 +9,7 @@
     /* Aurora sutil (paleta da marca: roxo + laranja) sobre o dark — dá profundidade premium */
     background:
       radial-gradient(1000px 560px at 88% -8%, rgba(124,58,237,0.12), transparent 60%),
-      radial-gradient(760px 480px at 6% -2%, rgba(255,107,53,0.09), transparent 55%),
+      radial-gradient(760px 480px at 6% -2%, rgba(46, 139, 255,0.09), transparent 55%),
       #0A0E1A;
     background-attachment: fixed;
     /* Safe area: respeita o notch / barra de status em dispositivos nativos (Capacitor) */
@@ -25,12 +25,14 @@
   body { -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
   /* font-size >= 16px evita o auto-zoom do iOS ao focar campos */
   input, select, textarea { font-size: 16px !important; }
-  h1,h2,h3,h4,h5,h6 { font-family: 'Plus Jakarta Sans', sans-serif; }
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: #0F1629; }
-  ::-webkit-scrollbar-thumb { background: #2D3A55; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #FF6B35; }
-  ::selection { background: rgba(255,107,53,0.3); color: white; }
+  h1,h2,h3,h4,h5,h6 { font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.015em; text-wrap: balance; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2D3A55; border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #465575; background-clip: padding-box; }
+  ::selection { background: rgba(46, 139, 255,0.3); color: white; }
+  /* Foco de teclado visível e consistente no app inteiro (acessibilidade) */
+  :focus-visible { outline: 2px solid rgba(46, 139, 255,0.65); outline-offset: 2px; }
   /* Dropdown nativo dark em todo o app — o popup de <option> herda branco por padrão.
      Cobre todos os <select> do projeto em navegadores Chromium/Firefox. */
   select option, select optgroup { background-color: #1E293B; color: #F8FAFC; }
@@ -51,14 +53,14 @@
     border: 1px solid rgba(255,255,255,0.10);
   }
   .glass-orange {
-    background: rgba(255,107,53,0.08);
+    background: rgba(46, 139, 255,0.08);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,107,53,0.2);
+    border: 1px solid rgba(46, 139, 255,0.2);
   }
-  .glow-orange { box-shadow: 0 0 20px rgba(255,107,53,0.4); }
+  .glow-orange { box-shadow: 0 0 20px rgba(46, 139, 255,0.4); }
   .glow-blue { box-shadow: 0 0 20px rgba(59,130,246,0.4); }
   .gradient-text {
-    background: linear-gradient(135deg, #FF6B35, #3B82F6);
+    background: linear-gradient(135deg, #2E8BFF, #3B82F6);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -73,22 +75,29 @@
     @apply glass rounded-2xl p-5 transition-all duration-300;
   }
   .stat-card:hover {
-    border-color: rgba(255,107,53,0.34);
+    border-color: rgba(46, 139, 255,0.34);
     transform: translateY(-2px);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 18px 44px -18px rgba(255,107,53,0.28), 0 12px 32px -16px rgba(0,0,0,0.6);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 18px 44px -18px rgba(46, 139, 255,0.28), 0 12px 32px -16px rgba(0,0,0,0.6);
   }
   .btn-primary {
-    @apply bg-brand-orange hover:bg-brand-orange-dark text-white font-display font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 flex items-center gap-2 text-sm;
+    @apply text-white font-display font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 flex items-center gap-2 text-sm;
+    background: linear-gradient(135deg, #2E8BFF, #1D4ED8);
+    box-shadow: 0 8px 20px -8px rgba(46, 139, 255,0.6), inset 0 1px 0 rgba(255,255,255,0.18);
   }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 13px 28px -8px rgba(46, 139, 255,0.7), inset 0 1px 0 rgba(255,255,255,0.22); }
+  .btn-primary:active { transform: translateY(0); box-shadow: 0 6px 16px -8px rgba(46, 139, 255,0.6), inset 0 1px 0 rgba(255,255,255,0.18); }
+  .btn-primary:disabled { opacity: .55; transform: none; cursor: not-allowed; box-shadow: none; }
   .btn-secondary {
     @apply glass text-slate-300 hover:text-white hover:border-brand-orange/40 font-display font-medium px-5 py-2.5 rounded-xl transition-all duration-200 flex items-center gap-2 text-sm;
   }
+  .btn-secondary:hover { transform: translateY(-1px); }
   .badge {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
   }
   .input-field {
-    @apply w-full glass rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-orange/50 focus:ring-1 focus:ring-brand-orange/30 transition-all duration-200;
+    @apply w-full glass rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none transition-all duration-200;
   }
+  .input-field:focus { border-color: rgba(46, 139, 255,0.55); box-shadow: 0 0 0 3px rgba(46, 139, 255,0.15); }
 }
 
 @layer utilities {

@@ -6,8 +6,8 @@ export default {
     extend: {
       colors: {
         brand: {
-          orange: '#FF6B35',
-          'orange-dark': '#E55100',
+          orange: '#2E8BFF',
+          'orange-dark': '#1D4ED8',
           'orange-light': '#FFF0EB',
           blue: '#3B82F6',
           'blue-dark': '#1D4ED8',
@@ -42,13 +42,13 @@ export default {
         fadeIn: { from: { opacity: 0 }, to: { opacity: 1 } },
         slideUp: { from: { transform: 'translateY(16px)', opacity: 0 }, to: { transform: 'translateY(0)', opacity: 1 } },
         slideInLeft: { from: { transform: 'translateX(-16px)', opacity: 0 }, to: { transform: 'translateX(0)', opacity: 1 } },
-        glow: { from: { boxShadow: '0 0 10px rgba(255,107,53,0.3)' }, to: { boxShadow: '0 0 25px rgba(255,107,53,0.7)' } },
+        glow: { from: { boxShadow: '0 0 10px rgba(46, 139, 255,0.3)' }, to: { boxShadow: '0 0 25px rgba(46, 139, 255,0.7)' } },
         float: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-6px)' } },
       },
       backgroundImage: {
-        'gradient-brand': 'linear-gradient(135deg, #FF6B35, #3B82F6)',
+        'gradient-brand': 'linear-gradient(135deg, #2E8BFF, #3B82F6)',
         'gradient-dark': 'linear-gradient(180deg, #0A0E1A, #0F1629)',
-        'gradient-card': 'linear-gradient(135deg, rgba(255,107,53,0.08), rgba(59,130,246,0.08))',
+        'gradient-card': 'linear-gradient(135deg, rgba(46, 139, 255,0.08), rgba(59,130,246,0.08))',
       },
     },
   },

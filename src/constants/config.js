@@ -5,8 +5,8 @@ export const APP_VERSION = '1.0.0'
 export const APP_TAGLINE = 'Automatize seus fluxos de vendas'
 
 export const COLORS = {
-  orange: '#FF6B35',
-  orangeDark: '#E55100',
+  orange: '#2E8BFF',
+  orangeDark: '#1D4ED8',
   blue: '#3B82F6',
   green: '#10B981',
   yellow: '#F59E0B',
