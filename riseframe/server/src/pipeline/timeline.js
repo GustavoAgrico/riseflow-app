@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { runFfmpeg } from './ffmpeg.js';
+import { groupIntoPhrases } from './narrative.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('timeline');
@@ -94,27 +95,8 @@ export function remapTranscript(transcript, keep, perSegment = 4) {
     }
   }
 
-  // Reagrupa em segmentos de até `perSegment` palavras, quebrando em pausas grandes.
-  const segments = [];
-  let bucket = [];
-  const flush = () => {
-    if (!bucket.length) return;
-    segments.push({
-      start: bucket[0].start,
-      end: bucket[bucket.length - 1].end,
-      text: bucket.map((w) => w.word).join(' '),
-      words: bucket,
-    });
-    bucket = [];
-  };
-  for (let i = 0; i < kept.length; i++) {
-    const w = kept[i];
-    const prev = bucket[bucket.length - 1];
-    if (prev && (w.start - prev.end > 0.6 || bucket.length >= perSegment)) flush();
-    bucket.push(w);
-  }
-  flush();
-
+  // Reagrupa em frases naturais (análise de frases: pontuação + pausas + tamanho).
+  const segments = groupIntoPhrases(kept, { maxWords: perSegment > 4 ? perSegment : 6 });
   return { ...transcript, segments, text: kept.map((w) => w.word).join(' ') };
 }
 

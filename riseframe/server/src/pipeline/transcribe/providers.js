@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runFfmpeg } from '../ffmpeg.js';
 import { resolvePython } from '../python.js';
+import { groupIntoPhrases } from '../narrative.js';
 import { makeLogger } from '../../logger.js';
 
 const log = makeLogger('transcribe');
@@ -20,20 +21,12 @@ export async function extractAudio(input, work, ext = 'wav') {
   return out;
 }
 
-/** Agrupa uma lista plana de palavras {start,end,word} em segmentos de legenda. */
-export function wordsToSegments(words, perSegment = 4) {
-  const segments = [];
-  for (let i = 0; i < words.length; i += perSegment) {
-    const chunk = words.slice(i, i + perSegment);
-    if (!chunk.length) continue;
-    segments.push({
-      start: chunk[0].start,
-      end: chunk[chunk.length - 1].end,
-      text: chunk.map((w) => w.word).join(' '),
-      words: chunk,
-    });
-  }
-  return segments;
+/**
+ * Agrupa uma lista plana de palavras {start,end,word} em frases de legenda
+ * naturais (pontuação + pausas + tamanho), via análise de frases do narrative.js.
+ */
+export function wordsToSegments(words) {
+  return groupIntoPhrases(words);
 }
 
 // ─── OpenAI (Whisper API) ─────────────────────────────────────────────
