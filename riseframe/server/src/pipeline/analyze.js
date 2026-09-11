@@ -112,8 +112,45 @@ function pickKeyword(seg, themeTerms) {
 }
 
 /**
+ * Frase de busca EM PORTUGUÊS a partir do que está sendo dito no trecho. Para o
+ * Google Imagens (não indexado só em inglês e ótimo em pt) usamos o contexto real
+ * da fala em vez de traduzir/limitar a um dicionário. Prioriza temas fortes e
+ * junta até `max` palavras de conteúdo para dar contexto (ex.: "disciplina foco").
+ * Puro/exportado para teste.
+ */
+export function pickPhrasePt(seg, themeTerms = [], max = 2) {
+  const words = (seg.words?.length ? seg.words.map((w) => w.word) : String(seg.text || '').split(/\s+/))
+    .map((w) => String(w).toLowerCase().replace(/[^a-záàâãéêíóôõúüç0-9]/gi, ''))
+    .filter((w) => w.length >= 4 && !STOP.has(w));
+  if (!words.length) return null;
+  // Mantém 1ª aparição de cada palavra e ranqueia: tema forte primeiro, depois a
+  // mais longa (mais específica). Preserva a ordem de fala no empate para soar natural.
+  const seen = new Set();
+  const uniq = words.filter((w) => (seen.has(w) ? false : (seen.add(w), true)));
+  const ranked = uniq
+    .map((w, i) => ({ w, i, theme: themeTerms.includes(w) ? 1 : 0 }))
+    .sort((a, b) => b.theme - a.theme || b.w.length - a.w.length || a.i - b.i)
+    .slice(0, max)
+    .sort((a, b) => a.i - b.i) // reordena pela fala
+    .map((x) => x.w);
+  return ranked.join(' ') || null;
+}
+
+/** Rótulo curto e limpo do nicho em pt (sem "/" nem vírgulas) para usar como query. */
+function nicheLabelPt(niche) {
+  if (!niche?.label) return null;
+  return niche.label.split(/[/,]/)[0].trim() || null;
+}
+
+/**
  * Escolhe momentos de B-roll alinhados a cenas (segmentos), espaçados, sem
  * repetição consecutiva de query e sem cobrir a introdução.
+ *
+ * A query respeita a FONTE de imagens:
+ *  • pexels (padrão): termos EM INGLÊS (banco indexado em inglês), via dicionário
+ *    pt→en + nicho; trechos sem tradução caem no nicho ou são pulados.
+ *  • google: termos EM PORTUGUÊS com o contexto real da fala (mais preciso e sem a
+ *    limitação do dicionário); só cai no nicho quando não há palavra de conteúdo.
  */
 export function pickBrollMoments(segments, themes, duration, opts = {}) {
   const everySec = opts.brollEverySec ?? 7;
@@ -123,23 +160,32 @@ export function pickBrollMoments(segments, themes, duration, opts = {}) {
   const minGap = opts.brollMinGap ?? 4;
   const themeTerms = themes.map((t) => t.term);
 
+  const source = opts.imageSource === 'google' ? 'google' : 'pexels';
   const moments = [];
   let nextAt = skipIntro;
   let lastQuery = null;
   for (const seg of segments || []) {
     if (seg.start < skipIntro || seg.start < nextAt) continue;
-    const niche = opts.niche; // {core, fallback} | null — casa o B-roll com o tema
-    const kw = pickKeyword(seg, themeTerms) || themeTerms[moments.length % (themeTerms.length || 1)];
+    const niche = opts.niche; // {core, fallback, label} | null — casa o B-roll com o tema
     let query;
-    if (kw && isTranslatable(kw)) {
-      // Palavra-chave com tradução → query em inglês (relevante), casada ao nicho.
-      query = (niche ? `${niche.core} ${translateQuery(kw)}` : translateQuery(kw)).trim();
-    } else if (niche) {
-      // Sem tradução: NÃO manda português cru ao Pexels — usa o tema do nicho.
-      query = niche.fallback;
+    let kw;
+    if (source === 'google') {
+      // Google Imagens: contexto real da fala em pt (sem dicionário/tradução).
+      const phrase = pickPhrasePt(seg, themeTerms, 2);
+      kw = phrase;
+      if (phrase) query = phrase;
+      else if (nicheLabelPt(niche)) query = nicheLabelPt(niche);
+      else continue; // sem contexto e sem nicho → melhor pular
     } else {
-      // Sem tradução e sem nicho: pula o momento (melhor menos B-roll do que imagem errada).
-      continue;
+      // Pexels: banco indexado em inglês → traduz e casa com o nicho (inglês).
+      kw = pickKeyword(seg, themeTerms) || themeTerms[moments.length % (themeTerms.length || 1)];
+      if (kw && isTranslatable(kw)) {
+        query = (niche ? `${niche.core} ${translateQuery(kw)}` : translateQuery(kw)).trim();
+      } else if (niche) {
+        query = niche.fallback; // sem tradução: usa o tema do nicho (não manda pt cru)
+      } else {
+        continue; // sem tradução e sem nicho: pula (melhor menos B-roll do que imagem errada)
+      }
     }
     if (query === lastQuery) continue; // evita B-roll repetido em sequência
     const end = Math.min(seg.start + clipLen, duration);
@@ -173,9 +219,10 @@ export async function analyze(transcript, meta, options) {
     const provider = anthropicKey ? 'anthropic' : 'openai';
     try {
       const nicheLabel = niche ? NICHES[niche.id]?.label : null;
+      const imageSource = options.imageSource === 'google' ? 'google' : 'pexels';
       const llm = anthropicKey
-        ? await analyzeWithClaude(transcript, meta, options, { ...config.analyze, anthropicKey, niche: nicheLabel })
-        : await analyzeWithOpenAI(transcript, meta, options, { ...config.analyze, niche: nicheLabel });
+        ? await analyzeWithClaude(transcript, meta, options, { ...config.analyze, anthropicKey, niche: nicheLabel, imageSource })
+        : await analyzeWithOpenAI(transcript, meta, options, { ...config.analyze, niche: nicheLabel, imageSource });
       if (llm?.brollMoments?.length) {
         log.ok(`análise por IA (${provider}): ${llm.brollMoments.length} momentos${niche ? ` · nicho ${niche.id}` : ''}`);
         return { provider, themes: llm.themes?.length ? llm.themes : themes, brollMoments: llm.brollMoments, niche: niche?.id || null };

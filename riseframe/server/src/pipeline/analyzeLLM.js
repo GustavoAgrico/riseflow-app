@@ -10,15 +10,21 @@ function compactTranscript(transcript, maxSegments = 80) {
     .join('\n');
 }
 
-const INSTRUCTION = (duration, maxCount, niche) =>
-  `Você seleciona momentos de B-roll para um editor de vídeo. Recebe a transcrição com marcações de tempo (em segundos) de um vídeo de ${duration.toFixed(0)}s.
+const INSTRUCTION = (duration, maxCount, niche, source = 'pexels') => {
+  // A query segue a FONTE de imagens: Pexels é indexado em inglês; Google Imagens
+  // busca melhor em português com o contexto real da fala.
+  const queryRule = source === 'google'
+    ? `"query" — termos de busca EM PORTUGUÊS que representem CONCRETAMENTE o que está sendo dito no trecho (ex.: "reunião de equipe", "médico com paciente", "gráfico de crescimento"), visuais e ALINHADOS ao nicho.`
+    : `"query" — termos de busca EM INGLÊS para um banco de vídeos (ex.: "business leadership team", "doctor hospital", "mentor coaching"), concretos, visuais e ALINHADOS ao nicho.`;
+  return `Você seleciona momentos de B-roll para um editor de vídeo. Recebe a transcrição com marcações de tempo (em segundos) de um vídeo de ${duration.toFixed(0)}s.
 ${niche
     ? `O NICHO/LINGUAGEM do vídeo é: ${niche}. TODAS as buscas devem ser visualmente coerentes com esse nicho (o clima, as pessoas e os cenários precisam combinar com ${niche}).`
     : `Primeiro, identifique o NICHO/tema do vídeo (ex.: liderança, medicina, mentoria, finanças, fitness) e mantenha TODAS as buscas visualmente coerentes com ele.`}
 Escolha até ${maxCount} momentos onde inserir imagens de apoio, distribuídos ao longo do vídeo (evite a introdução e não repita a mesma imagem em sequência).
-Para cada momento devolva: "start" (segundo de início, número), "end" (fim, número, 1.5–4s após o start) e "query" — termos de busca EM INGLÊS para um banco de vídeos (ex.: "business leadership team", "doctor hospital", "mentor coaching"), concretos, visuais e ALINHADOS ao nicho.
+Para cada momento devolva: "start" (segundo de início, número), "end" (fim, número, 1.5–4s após o start) e ${queryRule}
 Também devolva "niche" (o nicho em 1-2 palavras, em português) e "themes": 3–6 temas centrais.
 Responda APENAS com JSON no formato: {"niche":"...","themes":["..."],"brollMoments":[{"start":0,"end":0,"query":"..."}]}`;
+};
 
 function parseJson(text) {
   try {
@@ -56,7 +62,7 @@ export async function analyzeWithClaude(transcript, meta, options, cfg) {
   const response = await client.messages.create({
     model,
     max_tokens: 1500,
-    system: INSTRUCTION(meta.duration, maxCount, cfg.niche),
+    system: INSTRUCTION(meta.duration, maxCount, cfg.niche, cfg.imageSource),
     messages: [{ role: 'user', content: compactTranscript(transcript) }],
   });
   const text = (response.content || [])
@@ -79,7 +85,7 @@ export async function analyzeWithOpenAI(transcript, meta, options, cfg) {
       max_tokens: 1200,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: INSTRUCTION(meta.duration, maxCount, cfg.niche) },
+        { role: 'system', content: INSTRUCTION(meta.duration, maxCount, cfg.niche, cfg.imageSource) },
         { role: 'user', content: compactTranscript(transcript) },
       ],
     }),

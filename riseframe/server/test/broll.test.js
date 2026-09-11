@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractThemes, translateQuery, pickBrollMoments } from '../src/pipeline/analyze.js';
+import { extractThemes, translateQuery, pickBrollMoments, pickPhrasePt } from '../src/pipeline/analyze.js';
 import { pickBestVideoFile } from '../src/pipeline/broll.js';
 
 test('translateQuery: mapeia pt→en e faz passthrough', () => {
@@ -32,6 +32,40 @@ test('pickBrollMoments: pula intro, espaça, não repete query e respeita o limi
     assert.ok(moments[i].start - moments[i - 1].start >= 6.9, 'momentos espaçados');
     assert.notEqual(moments[i].query, moments[i - 1].query, 'sem query repetida em sequência');
   }
+});
+
+test('pickPhrasePt: frase em pt do contexto, tema forte primeiro, sem stopwords', () => {
+  const seg = { text: 'então a gente precisa de muita disciplina e foco todo dia', words: [] };
+  const phrase = pickPhrasePt(seg, ['disciplina'], 2);
+  assert.ok(phrase.includes('disciplina'), 'inclui o tema forte');
+  assert.ok(!/\b(então|gente|todo|dia)\b/.test(phrase), 'sem stopwords/genéricos curtos');
+  assert.equal(pickPhrasePt({ text: 'e a de um', words: [] }), null, 'só stopwords → null');
+});
+
+test('pickBrollMoments (google): query EM PORTUGUÊS com o contexto real (sem dicionário)', () => {
+  const segments = [];
+  // "disciplina" e "propósito" NÃO estão no dicionário pt→en; no Pexels seriam pulados,
+  // no Google devem virar query em pt (contexto real da fala).
+  for (let i = 0; i < 12; i++) {
+    segments.push({ start: i * 2.5, end: i * 2.5 + 2, text: 'disciplina propósito superação constância', words: [] });
+  }
+  const themes = extractThemes('disciplina propósito superação constância');
+  const moments = pickBrollMoments(segments, themes, 30, {
+    imageSource: 'google', brollEverySec: 7, brollMax: 3, brollSkipIntro: 2,
+  });
+  assert.ok(moments.length >= 1, 'gera momentos mesmo com palavras fora do dicionário');
+  assert.ok(moments.every((m) => /[áàâãéêíóôõúç]|disciplina|propósito/i.test(m.query)), 'query em português');
+  assert.ok(moments.every((m) => m.start >= 2), 'nada na introdução');
+});
+
+test('pickBrollMoments: fonte padrão (pexels) continua em inglês', () => {
+  const segments = [];
+  for (let i = 0; i < 12; i++) {
+    segments.push({ start: i * 2.5, end: i * 2.5 + 2, text: 'cidade natureza mercado', words: [] });
+  }
+  const themes = extractThemes('cidade natureza mercado');
+  const moments = pickBrollMoments(segments, themes, 30, { brollEverySec: 7, brollMax: 3, brollSkipIntro: 2 });
+  assert.ok(moments.every((m) => m.query && !/[áàâãéêíóôõúç]/i.test(m.query)), 'query em inglês (traduzida)');
 });
 
 test('pickBestVideoFile: escolhe mp4 próximo do alvo sem exagerar na resolução', () => {
