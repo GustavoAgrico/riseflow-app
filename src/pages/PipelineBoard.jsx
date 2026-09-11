@@ -7,11 +7,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { useStages } from '@hooks/useStages'
+import { computeSalesMetrics, stageOf, brl } from '@lib/metrics'
 
 const C = { bg: '#0B1120', panel: '#111C30', card: '#18233A', bd: '#26324A', tx: '#F1F5F9', mut: '#93A3BC', pur: '#7C3AED' }
 const F = "'DM Sans', system-ui, sans-serif"
 
-const brl = (n) => 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR')
 const ini = (n = '') => n.split(' ').slice(0, 2).map(w => w[0] ?? '').join('').toUpperCase()
 
 const DEMO = [
@@ -86,7 +86,9 @@ export const PipelineBoard = () => {
 
   useEffect(() => { const t = setInterval(() => setClock(new Date()), 1000); return () => clearInterval(t) }, [])
 
-  const totalValue = rows.reduce((s, r) => s + (r.value || 0), 0)
+  // Indicadores da fonte única (src/lib/metrics) — mesmas regras do CRM/Funil/Dashboard.
+  const m = computeSalesMetrics(rows, stages)
+  const byStage = new Map(m.byStage.map(s => [s.key, s]))
   const hhmmss = clock.toLocaleTimeString('pt-BR')
 
   return (
@@ -97,7 +99,7 @@ export const PipelineBoard = () => {
           <div style={{ width: 34, height: 34, borderRadius: 9, background: 'linear-gradient(135deg,#FF6B35,#E55100)', display: 'grid', placeItems: 'center', color: '#fff', fontWeight: 900, fontSize: 13 }}>RF</div>
           <div>
             <h1 style={{ margin: 0, fontSize: 19, fontWeight: 800, letterSpacing: '-.3px' }}>Pipeline ao vivo</h1>
-            <p style={{ margin: 0, fontSize: 12, color: C.mut }}>{rows.length} negócios · {brl(totalValue)} em aberto</p>
+            <p style={{ margin: 0, fontSize: 12, color: C.mut }}>{m.total} negócios · {brl(m.pipeline)} em aberto</p>
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 18 }}>
@@ -115,21 +117,21 @@ export const PipelineBoard = () => {
       ) : (
         <div style={{ flex: 1, display: 'flex', gap: 16, padding: 20, overflowX: 'auto', alignItems: 'stretch' }}>
           {stages.map(stage => {
-            const cols = rows.filter(r => (r.stage || stages[0]?.key) === stage.key)
-            const sum = cols.reduce((s, r) => s + (r.value || 0), 0)
+            const col = byStage.get(stage.key)
+            const cards = rows.filter(r => stageOf(r, stages) === stage.key)
             return (
               <section key={stage.key} style={{ minWidth: 300, width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', background: C.panel, border: `1px solid ${C.bd}`, borderRadius: 16, overflow: 'hidden' }}>
                 <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.bd}`, borderTop: `3px solid ${stage.color}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>{stage.label}</span>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: stage.color, background: stage.color + '1c', borderRadius: 20, padding: '2px 10px' }}>{cols.length}</span>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: stage.color, background: stage.color + '1c', borderRadius: 20, padding: '2px 10px' }}>{col?.count ?? 0}</span>
                   </div>
-                  <p style={{ margin: '6px 0 0', fontSize: 13, fontWeight: 700, color: C.mut, fontVariantNumeric: 'tabular-nums' }}>{brl(sum)}</p>
+                  <p style={{ margin: '6px 0 0', fontSize: 13, fontWeight: 700, color: C.mut, fontVariantNumeric: 'tabular-nums' }}>{brl(col?.value ?? 0)}</p>
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto', padding: 12, minHeight: 120 }}>
-                  {cols.length === 0
+                  {cards.length === 0
                     ? <p style={{ color: C.mut, fontSize: 13, textAlign: 'center', marginTop: 20, opacity: .6 }}>vazio</p>
-                    : cols.map(c => <Card key={c.id} c={c} color={stage.color} flash={flashIds.current.has(c.id)} />)}
+                    : cards.map(c => <Card key={c.id} c={c} color={stage.color} flash={flashIds.current.has(c.id)} />)}
                 </div>
               </section>
             )

@@ -8,6 +8,7 @@ import { NotesPanel } from '@components/NotesPanel'
 import { logger } from '@services/activityLogger'
 import { useIsMobile } from '@hooks/useIsMobile'
 import { DEFAULT_STAGES, useStages, saveStages, newStageKey } from '@hooks/useStages'
+import { computeSalesMetrics, brl } from '@lib/metrics'
 
 // Etapas do funil agora são dinâmicas (por conta) — ver @hooks/useStages.
 // stageAt(stages, key) resolve a etapa de um lead com fallback seguro.
@@ -453,21 +454,16 @@ export function CRM() {
     } catch (e) { console.warn('[CRM] erro ao criar contato:', e?.message ?? e); alert('Erro ao salvar contato. Rode supabase/clients_crm.sql se ainda não rodou.') }
   }
 
-  // ── Métricas do funil (forecast ponderado por etapa) ──
-  const brl = n => 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR')
-  const kindOf = k => stageAt(stages, k).kind
-  const probOf = k => (stageAt(stages, k).probability ?? 0) / 100
-  const stageSum = key => filtered.filter(c => c.stage === key).reduce((a, c) => a + (c.value || 0), 0)
-  const pipelineTotal = filtered.filter(c => kindOf(c.stage) === 'open').reduce((a, c) => a + (c.value || 0), 0)
-  const forecast = filtered.reduce((a, c) => a + (c.value || 0) * probOf(c.stage), 0)
-  const wonN = filtered.filter(c => kindOf(c.stage) === 'won').length
-  const lostN = filtered.filter(c => kindOf(c.stage) === 'lost').length
-  const convR = (wonN + lostN) ? Math.round(wonN / (wonN + lostN) * 100) : 0
+  // ── Métricas do funil — fonte única (src/lib/metrics), mesmas regras do Dashboard/Funil ──
+  // Calculadas sobre `filtered` (busca/tag/responsável) — os KPIs refletem a visão atual.
+  const m = computeSalesMetrics(filtered, stages)
+  const byStage = new Map(m.byStage.map(s => [s.key, s]))
+  const stageSum = key => byStage.get(key)?.value ?? 0
   const kpis = [
-    { label: 'No funil', value: brl(pipelineTotal), color: C.pur, hint: `${filtered.length - wonN - lostN} em aberto` },
-    { label: 'Previsão ponderada', value: brl(forecast), color: '#059669', hint: 'por probabilidade de etapa' },
-    { label: 'Conversão', value: `${convR}%`, color: '#2563EB', hint: `${wonN} ganhos / ${lostN} perdidos` },
-    { label: 'Negócios', value: String(filtered.length), color: '#D97706', hint: 'total exibido' },
+    { label: 'No funil', value: brl(m.pipeline), color: C.pur, hint: `${m.open} em aberto` },
+    { label: 'Previsão ponderada', value: brl(m.weightedForecast), color: '#059669', hint: 'por probabilidade de etapa' },
+    { label: 'Conversão', value: `${Math.round(m.convRate)}%`, color: '#2563EB', hint: `${m.won} ganhos / ${m.lost} perdidos` },
+    { label: 'Negócios', value: String(m.total), color: '#D97706', hint: 'total exibido' },
   ]
 
   return (

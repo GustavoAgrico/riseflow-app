@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { socket } from '@services/socket'
 import { useAuth } from '@context/AuthContext'
+import { isOutbound } from '@lib/metrics'
 
 const DAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
@@ -17,7 +18,7 @@ function buildChartData(messages) {
     const bucket = days.find(d => d.date === date)
     if (bucket) {
       bucket.messages += 1
-      if (msg.direction === 'outbound') bucket.sent += 1
+      if (isOutbound(msg.direction)) bucket.sent += 1
     }
   }
   return days
