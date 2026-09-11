@@ -7,7 +7,7 @@ import { X, Plus, Trash2 } from 'lucide-react'
 
 export const T = {
   body: '#111827', border: '#334155', text: '#E2E8F0', muted: '#94A3B8', dim: '#64748B',
-  field: '#0B1220', orange: '#FF6B35', green: '#10B981', blue: '#3B82F6', red: '#EF4444', gray: '#64748B',
+  field: '#0B1220', orange: '#2E8BFF', green: '#10B981', blue: '#3B82F6', red: '#EF4444', gray: '#64748B',
 }
 export const NODE_W = 280
 const F = 'DM Sans, sans-serif'

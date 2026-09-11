@@ -15,7 +15,7 @@ const CSS = `
 @keyframes rfFloat{from{transform:translateY(0)}to{transform:translateY(-30px)}}
 @keyframes rfIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 .rf-in{width:100%;box-sizing:border-box;background:#0F172A;border:1px solid #334155;border-radius:10px;padding:12px 12px 12px 40px;color:#F8FAFC;font-size:14px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .2s}
-.rf-in:focus{border-color:#FF6B35}
+.rf-in:focus{border-color:#2E8BFF}
 .rf-in::placeholder{color:#64748B}
 .rf-g:hover{box-shadow:0 4px 14px rgba(0,0,0,.25)}
 .rf-s:hover{filter:brightness(1.1)}
@@ -34,7 +34,7 @@ const Goo = () => (
   </svg>
 )
 const bullets = [[Zap, 'Flows automáticos que vendem 24h'], [Bot, 'IA que qualifica leads por você'], [BarChart3, 'Dashboard com métricas em tempo real']]
-const circles = [{ s: 200, c: '#FF6B35', t: '8%', l: '6%', d: '0s' }, { s: 150, c: '#E55100', t: '55%', l: '62%', d: '2s' }, { s: 100, c: '#FF8C42', t: '72%', l: '14%', d: '4s' }]
+const circles = [{ s: 200, c: '#2E8BFF', t: '8%', l: '6%', d: '0s' }, { s: 150, c: '#1D4ED8', t: '55%', l: '62%', d: '2s' }, { s: 100, c: '#FF8C42', t: '72%', l: '14%', d: '4s' }]
 
 export const Login = () => {
   const [email, setEmail] = useState('')
@@ -83,10 +83,10 @@ export const Login = () => {
         <div style={{ position: 'relative' }}>
           <h1 style={{ fontSize: 32, fontWeight: 700, color: '#F8FAFC', lineHeight: 1.2, margin: '0 0 16px' }}>Automatize suas plataformas digitais com inteligência artificial</h1>
           <p style={{ fontSize: 16, color: '#94A3B8', margin: '0 0 28px' }}>CRM, chatbot com IA, campanhas em massa e muito mais.</p>
-          {bullets.map(([Ic, t], i) => <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 14, color: '#E2E8F0', fontSize: 15 }}><Ic size={20} color="#FF6B35" />{t}</div>)}
+          {bullets.map(([Ic, t], i) => <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 14, color: '#E2E8F0', fontSize: 15 }}><Ic size={20} color="#2E8BFF" />{t}</div>)}
         </div>
         <div style={{ position: 'relative' }}>
-          <span style={{ color: '#475569', fontSize: 13 }}>Created by <span style={{ color: '#FF6B35', fontWeight: 600 }}>Rise Creative</span></span>
+          <span style={{ color: '#475569', fontSize: 13 }}>Created by <span style={{ color: '#2E8BFF', fontWeight: 600 }}>Rise Creative</span></span>
         </div>
       </div>
 
@@ -122,14 +122,14 @@ export const Login = () => {
               <button type="button" onClick={() => setShowPass(!showPass)} style={eyeBtn}>{showPass ? <EyeOff size={16} /> : <Eye size={16} />}</button>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#94A3B8', fontSize: 13, cursor: 'pointer' }}><input type="checkbox" style={{ accentColor: '#FF6B35' }} /> Lembrar de mim</label>
-              <Link to="/forgot-password" style={{ color: '#FF6B35', fontSize: 13, textDecoration: 'none' }}>Esqueceu a senha?</Link>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#94A3B8', fontSize: 13, cursor: 'pointer' }}><input type="checkbox" style={{ accentColor: '#2E8BFF' }} /> Lembrar de mim</label>
+              <Link to="/forgot-password" style={{ color: '#2E8BFF', fontSize: 13, textDecoration: 'none' }}>Esqueceu a senha?</Link>
             </div>
-            <button type="submit" disabled={loading || googleLoading} className="rf-s" style={{ width: '100%', padding: 14, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#FF6B35,#E55100)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', transition: 'filter .2s', fontFamily: "'DM Sans',sans-serif", opacity: loading ? 0.8 : 1 }}>
+            <button type="submit" disabled={loading || googleLoading} className="rf-s" style={{ width: '100%', padding: 14, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#2E8BFF,#1D4ED8)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', transition: 'filter .2s', fontFamily: "'DM Sans',sans-serif", opacity: loading ? 0.8 : 1 }}>
               {loading ? 'Entrando...' : 'Entrar'}
             </button>
           </form>
-          <p style={{ textAlign: 'center', fontSize: 14, color: '#94A3B8', marginTop: 20 }}>Não tem conta? <Link to="/register" style={{ color: '#FF6B35', fontWeight: 600, textDecoration: 'none' }}>Criar conta grátis</Link></p>
+          <p style={{ textAlign: 'center', fontSize: 14, color: '#94A3B8', marginTop: 20 }}>Não tem conta? <Link to="/register" style={{ color: '#2E8BFF', fontWeight: 600, textDecoration: 'none' }}>Criar conta grátis</Link></p>
           <p style={{ textAlign: 'center', marginTop: 10 }}><span onClick={handleDemo} style={{ fontSize: 12, color: '#64748B', cursor: 'pointer' }}>Ver demo sem cadastro</span></p>
         </div>
       </div>

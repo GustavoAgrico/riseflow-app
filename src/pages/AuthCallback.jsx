@@ -108,7 +108,7 @@ export const AuthCallback = () => {
       <div style={{ textAlign: 'center', color: '#94A3B8' }}>
         <div style={{
           width: 40, height: 40, border: '3px solid #334155',
-          borderTopColor: '#FF6B35', borderRadius: '50%',
+          borderTopColor: '#2E8BFF', borderRadius: '50%',
           animation: 'spin 0.8s linear infinite', margin: '0 auto 16px',
         }} />
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>

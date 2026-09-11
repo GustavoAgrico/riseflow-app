@@ -29,7 +29,7 @@ const PDF_STYLES = `
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family:'DM Sans',Arial,sans-serif; color:#0F172A; margin:0; background:#fff; }
   .page { padding:48px 52px; max-width:900px; margin:0 auto; }
-  .header { display:flex; align-items:center; justify-content:space-between; border-bottom:3px solid #FF6B35; padding-bottom:18px; }
+  .header { display:flex; align-items:center; justify-content:space-between; border-bottom:3px solid #2E8BFF; padding-bottom:18px; }
   .brand { display:flex; align-items:center; gap:12px; }
   .logo { width:42px; height:42px; border-radius:11px; background:linear-gradient(135deg,#FF6B35,#E55100); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:21px; }
   .brand-name { font-size:20px; font-weight:800; line-height:1.1; }
@@ -38,7 +38,7 @@ const PDF_STYLES = `
   h1 { font-size:26px; font-weight:800; margin:26px 0 2px; }
   .subtitle { color:#64748B; font-size:14px; margin:0 0 26px; }
   .kpis { display:grid; grid-template-columns:repeat(3,1fr); gap:13px; margin-bottom:30px; }
-  .kpi { border:1px solid #E5E7EB; border-radius:14px; padding:15px 17px; border-left:4px solid #FF6B35; }
+  .kpi { border:1px solid #E5E7EB; border-radius:14px; padding:15px 17px; border-left:4px solid #2E8BFF; }
   .kpi-label { font-size:11px; color:#64748B; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
   .kpi-value { font-size:25px; font-weight:800; color:#0F172A; margin-top:6px; }
   section { margin-bottom:24px; page-break-inside:avoid; }

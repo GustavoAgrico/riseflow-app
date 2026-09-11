@@ -27,7 +27,7 @@ export const NODE_DEFS = {
     ],
   },
   message: {
-    color: '#FF6B35', Icon: MessageSquare, label: 'Mensagem',
+    color: '#2E8BFF', Icon: MessageSquare, label: 'Mensagem',
     preview: d => d.text,
     fields: [
       { key: 'text', type: 'textarea', label: 'Mensagem', placeholder: 'Digite a mensagem...' },
