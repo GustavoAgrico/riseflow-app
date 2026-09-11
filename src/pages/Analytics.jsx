@@ -242,9 +242,9 @@ export function Analytics() {
           )}
 
           <div className="flex items-center justify-between">
-            <div className="flex gap-1 glass rounded-xl p-1">
+            <div className="rf-seg" role="group" aria-label="Período de análise">
               {periodOptions.map(p => (
-                <button key={p.key} onClick={() => setPeriod(p.key)} className={clsx('px-4 py-1.5 rounded-lg text-xs font-semibold transition-all', period === p.key ? 'bg-brand-orange text-white' : 'text-slate-400 hover:text-white')}>
+                <button key={p.key} aria-pressed={period === p.key} onClick={() => setPeriod(p.key)}>
                   {p.label}
                 </button>
               ))}

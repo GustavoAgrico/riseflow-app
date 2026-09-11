@@ -490,7 +490,7 @@ export const Dashboard = () => {
         <div className="lg:col-span-2 glass rounded-2xl p-5">
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
             <div>
-              <h3 className="font-display font-semibold text-white">Atividade</h3>
+              <h3 className="rf-section-title">Atividade</h3>
               <p style={{ fontSize: 11, color: '#475569', marginTop: 3 }}>
                 {hasAnyIntegration ? 'Últimos 7 dias · dados reais' : 'Conecte uma integração para ver dados'}
               </p>
@@ -599,7 +599,7 @@ export const Dashboard = () => {
 
         {/* Channels (1/3) */}
         <div className="glass rounded-2xl p-5 flex flex-col">
-          <h3 className="font-display font-semibold text-white mb-5">Canais</h3>
+          <h3 className="rf-section-title mb-5">Canais</h3>
 
           {/* Donut chart */}
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
@@ -674,7 +674,7 @@ export const Dashboard = () => {
         {/* Recent Clients */}
         <div className="glass rounded-2xl p-5">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <h3 className="font-display font-semibold text-white">Clientes Recentes</h3>
+            <h3 className="rf-section-title">Clientes Recentes</h3>
             <Link to="/clients" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Ver todos →</Link>
           </div>
           {clients.length === 0 ? (
@@ -720,7 +720,7 @@ export const Dashboard = () => {
         {/* Active Flows */}
         <div className="glass rounded-2xl p-5">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <h3 className="font-display font-semibold text-white">Fluxos Ativos</h3>
+            <h3 className="rf-section-title">Fluxos Ativos</h3>
             <Link to="/automation" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Gerenciar →</Link>
           </div>
           {flows.length === 0 ? (
