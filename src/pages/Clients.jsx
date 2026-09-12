@@ -487,9 +487,9 @@ export const Clients = () => {
   const chipStyle = (active) => ({
     flexShrink: 0, cursor: 'pointer', borderRadius: 999, padding: '4px 12px',
     fontSize: 12, fontWeight: 600, fontFamily: 'inherit', whiteSpace: 'nowrap',
-    border: `1px solid ${active ? 'rgba(46, 139, 255,0.4)' : 'rgba(255,255,255,0.08)'}`,
-    background: active ? 'rgba(46, 139, 255,0.16)' : 'rgba(255,255,255,0.03)',
-    color: active ? '#2E8BFF' : '#94A3B8',
+    border: `1px solid ${active ? 'rgba(255,107,53,0.4)' : 'rgba(255,255,255,0.08)'}`,
+    background: active ? 'rgba(255,107,53,0.16)' : 'rgba(255,255,255,0.03)',
+    color: active ? '#FF6B35' : '#94A3B8',
     transition: 'all .15s',
   })
 

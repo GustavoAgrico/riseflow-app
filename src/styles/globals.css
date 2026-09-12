@@ -32,7 +32,7 @@
   ::-webkit-scrollbar-thumb:hover { background: #465575; background-clip: padding-box; }
   ::selection { background: rgba(255,107,53,0.3); color: white; }
   /* Foco de teclado visível e consistente no app inteiro (acessibilidade) */
-  :focus-visible { outline: 2px solid rgba(46, 139, 255,0.65); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid rgba(255,107,53,0.65); outline-offset: 2px; }
   /* Dropdown nativo dark em todo o app — o popup de <option> herda branco por padrão.
      Cobre todos os <select> do projeto em navegadores Chromium/Firefox. */
   select option, select optgroup { background-color: #1E293B; color: #F8FAFC; }
@@ -81,11 +81,11 @@
   }
   .btn-primary {
     @apply text-white font-display font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 flex items-center gap-2 text-sm;
-    background: linear-gradient(135deg, #2E8BFF, #1D4ED8);
-    box-shadow: 0 8px 20px -8px rgba(46, 139, 255,0.6), inset 0 1px 0 rgba(255,255,255,0.18);
+    background: linear-gradient(135deg, #FF6B35, #E55100);
+    box-shadow: 0 8px 20px -8px rgba(255,107,53,0.6), inset 0 1px 0 rgba(255,255,255,0.18);
   }
-  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 13px 28px -8px rgba(46, 139, 255,0.7), inset 0 1px 0 rgba(255,255,255,0.22); }
-  .btn-primary:active { transform: translateY(0); box-shadow: 0 6px 16px -8px rgba(46, 139, 255,0.6), inset 0 1px 0 rgba(255,255,255,0.18); }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 13px 28px -8px rgba(255,107,53,0.7), inset 0 1px 0 rgba(255,255,255,0.22); }
+  .btn-primary:active { transform: translateY(0); box-shadow: 0 6px 16px -8px rgba(255,107,53,0.6), inset 0 1px 0 rgba(255,255,255,0.18); }
   .btn-primary:disabled { opacity: .55; transform: none; cursor: not-allowed; box-shadow: none; }
   .btn-secondary {
     @apply glass text-slate-300 hover:text-white hover:border-brand-orange/40 font-display font-medium px-5 py-2.5 rounded-xl transition-all duration-200 flex items-center gap-2 text-sm;
@@ -97,7 +97,7 @@
   .input-field {
     @apply w-full glass rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none transition-all duration-200;
   }
-  .input-field:focus { border-color: rgba(46, 139, 255,0.55); box-shadow: 0 0 0 3px rgba(46, 139, 255,0.15); }
+  .input-field:focus { border-color: rgba(255,107,53,0.55); box-shadow: 0 0 0 3px rgba(255,107,53,0.15); }
 }
 
 @layer utilities {

@@ -7,7 +7,7 @@ import { useAuth } from '@context/AuthContext'
 import { Plus, Loader2, X, Check, RotateCcw, Trash2, DollarSign, Clock, AlertTriangle, Repeat } from 'lucide-react'
 
 const C = { bg: '#0F172A', card: '#1E293B', bd: '#334155', tx: '#F8FAFC', mut: '#94A3B8', pur: '#7C3AED',
-  green: '#22C55E', yellow: '#EAB308', red: '#EF4444', blue: '#3B82F6', orange: '#2E8BFF' }
+  green: '#22C55E', yellow: '#EAB308', red: '#EF4444', blue: '#3B82F6', orange: '#FF6B35' }
 const F = "'DM Sans', sans-serif"
 const brl = (n) => 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const inp = { background: C.bg, border: `1px solid ${C.bd}`, borderRadius: 8, color: C.tx, fontSize: 13, fontFamily: F, padding: '9px 11px', outline: 'none', width: '100%', boxSizing: 'border-box' }

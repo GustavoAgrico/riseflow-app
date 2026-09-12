@@ -14,7 +14,7 @@ const CSS = `
 @keyframes rfFloat{from{transform:translateY(0)}to{transform:translateY(-30px)}}
 @keyframes rfIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 .rf-in{width:100%;box-sizing:border-box;background:#0F172A;border:1px solid #334155;border-radius:10px;padding:12px 12px 12px 40px;color:#F8FAFC;font-size:14px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .2s}
-.rf-in:focus{border-color:#2E8BFF}
+.rf-in:focus{border-color:#FF6B35}
 .rf-in::placeholder{color:#64748B}
 .rf-g:hover{box-shadow:0 4px 14px rgba(0,0,0,.25)}
 .rf-s:hover{filter:brightness(1.1)}
@@ -33,7 +33,7 @@ const Goo = () => (
   </svg>
 )
 const bullets = [[Zap, 'Flows automáticos que vendem 24h'], [Bot, 'IA que qualifica leads por você'], [BarChart3, 'Dashboard com métricas em tempo real']]
-const circles = [{ s: 200, c: '#2E8BFF', t: '8%', l: '6%', d: '0s' }, { s: 150, c: '#1D4ED8', t: '55%', l: '62%', d: '2s' }, { s: 100, c: '#FF8C42', t: '72%', l: '14%', d: '4s' }]
+const circles = [{ s: 200, c: '#FF6B35', t: '8%', l: '6%', d: '0s' }, { s: 150, c: '#E55100', t: '55%', l: '62%', d: '2s' }, { s: 100, c: '#FF8C42', t: '72%', l: '14%', d: '4s' }]
 const strength = (p) => p.length >= 12 ? { w: '100%', c: '#22C55E', t: 'forte' } : p.length >= 8 ? { w: '66%', c: '#EAB308', t: 'média' } : { w: '33%', c: '#EF4444', t: 'fraca' }
 
 export const Register = () => {
@@ -87,8 +87,8 @@ export const Register = () => {
       <div style={{ maxWidth: 400, textAlign: 'center', animation: 'rfIn .5s ease-out' }}>
         <div style={{ width: 64, height: 64, borderRadius: 18, background: 'linear-gradient(135deg,#FF6B35,#E55100)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}><CheckCircle2 size={32} color="#fff" /></div>
         <h1 style={{ fontSize: 26, fontWeight: 700, color: '#F8FAFC', margin: '0 0 8px' }}>Conta criada!</h1>
-        <p style={{ color: '#94A3B8', margin: '0 0 24px' }}>Enviamos um link de confirmação para <span style={{ color: '#2E8BFF' }}>{email}</span></p>
-        <button onClick={() => navigate('/login')} className="rf-s" style={{ padding: '12px 28px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#2E8BFF,#1D4ED8)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Ir para o login</button>
+        <p style={{ color: '#94A3B8', margin: '0 0 24px' }}>Enviamos um link de confirmação para <span style={{ color: '#FF6B35' }}>{email}</span></p>
+        <button onClick={() => navigate('/login')} className="rf-s" style={{ padding: '12px 28px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#FF6B35,#E55100)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Ir para o login</button>
       </div>
     </div>
   )
@@ -106,10 +106,10 @@ export const Register = () => {
         <div style={{ position: 'relative' }}>
           <h1 style={{ fontSize: 32, fontWeight: 700, color: '#F8FAFC', lineHeight: 1.2, margin: '0 0 16px' }}>Comece grátis. 50 mensagens por mês.</h1>
           <p style={{ fontSize: 16, color: '#94A3B8', margin: '0 0 28px' }}>Sem cartão de crédito. Configure em 2 minutos.</p>
-          {bullets.map(([Ic, t], i) => <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 14, color: '#E2E8F0', fontSize: 15 }}><Ic size={20} color="#2E8BFF" />{t}</div>)}
+          {bullets.map(([Ic, t], i) => <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 14, color: '#E2E8F0', fontSize: 15 }}><Ic size={20} color="#FF6B35" />{t}</div>)}
         </div>
         <div style={{ position: 'relative' }}>
-          <span style={{ color: '#475569', fontSize: 13 }}>Created by <span style={{ color: '#2E8BFF', fontWeight: 600 }}>Rise Creative</span></span>
+          <span style={{ color: '#475569', fontSize: 13 }}>Created by <span style={{ color: '#FF6B35', fontWeight: 600 }}>Rise Creative</span></span>
         </div>
       </div>
 
@@ -150,14 +150,14 @@ export const Register = () => {
             <label style={lbl}>Confirmar senha</label>
             <div style={{ position: 'relative', marginBottom: 16 }}><Lock size={16} style={ico} /><input className="rf-in" type={showPass ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Repita a senha" required autoComplete="new-password" /></div>
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 18, color: '#94A3B8', fontSize: 12, cursor: 'pointer', lineHeight: 1.5 }}>
-              <input type="checkbox" checked={acceptTerms} onChange={e => setAcceptTerms(e.target.checked)} style={{ marginTop: 2, accentColor: '#2E8BFF' }} />
-              <span>Li e aceito os <span style={{ color: '#2E8BFF' }}>Termos de Uso</span> e <span style={{ color: '#2E8BFF' }}>Política de Privacidade</span></span>
+              <input type="checkbox" checked={acceptTerms} onChange={e => setAcceptTerms(e.target.checked)} style={{ marginTop: 2, accentColor: '#FF6B35' }} />
+              <span>Li e aceito os <span style={{ color: '#FF6B35' }}>Termos de Uso</span> e <span style={{ color: '#FF6B35' }}>Política de Privacidade</span></span>
             </label>
-            <button type="submit" disabled={loading || googleLoading} className="rf-s" style={{ width: '100%', padding: 14, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#2E8BFF,#1D4ED8)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', transition: 'filter .2s', fontFamily: "'DM Sans',sans-serif", opacity: loading ? 0.8 : 1 }}>
+            <button type="submit" disabled={loading || googleLoading} className="rf-s" style={{ width: '100%', padding: 14, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#FF6B35,#E55100)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', transition: 'filter .2s', fontFamily: "'DM Sans',sans-serif", opacity: loading ? 0.8 : 1 }}>
               {loading ? 'Criando conta...' : 'Criar conta grátis'}
             </button>
           </form>
-          <p style={{ textAlign: 'center', fontSize: 14, color: '#94A3B8', marginTop: 20 }}>Já tem conta? <Link to="/login" style={{ color: '#2E8BFF', fontWeight: 600, textDecoration: 'none' }}>Fazer login</Link></p>
+          <p style={{ textAlign: 'center', fontSize: 14, color: '#94A3B8', marginTop: 20 }}>Já tem conta? <Link to="/login" style={{ color: '#FF6B35', fontWeight: 600, textDecoration: 'none' }}>Fazer login</Link></p>
         </div>
       </div>
     </div>

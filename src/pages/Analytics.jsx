@@ -88,7 +88,7 @@ const LineChart = ({ data }) => {
       data.forEach((d, i) => { i ? ctx.lineTo(X(i), Y(d[key])) : ctx.moveTo(X(i), Y(d[key])) })
       ctx.stroke()
     }
-    line('sent', '#2E8BFF'); line('recv', '#3B82F6')
+    line('sent', '#FF6B35'); line('recv', '#3B82F6')
     ctx.fillStyle = '#475569'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
     data.forEach((d, i) => ctx.fillText(d.date, X(i), H - 6))
   }, [data])

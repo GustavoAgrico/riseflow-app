@@ -56,10 +56,10 @@ class ErrorBoundary extends React.Component {
           padding: '2rem'
         }}>
           <div style={{
-            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(46, 139, 255,0.4)',
+            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,107,53,0.4)',
             borderRadius: '16px', padding: '2rem', maxWidth: '560px', width: '100%'
           }}>
-            <h2 style={{ color: '#2E8BFF', marginBottom: '1rem', fontSize: '1.2rem' }}>
+            <h2 style={{ color: '#FF6B35', marginBottom: '1rem', fontSize: '1.2rem' }}>
               Erro na aplicação
             </h2>
             <pre style={{
@@ -75,7 +75,7 @@ class ErrorBoundary extends React.Component {
             <button
               onClick={() => window.location.reload()}
               style={{
-                marginTop: '1rem', background: '#2E8BFF', color: 'white',
+                marginTop: '1rem', background: '#FF6B35', color: 'white',
                 border: 'none', borderRadius: '8px', padding: '0.6rem 1.2rem',
                 cursor: 'pointer', fontWeight: 600
               }}

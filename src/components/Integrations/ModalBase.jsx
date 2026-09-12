@@ -8,7 +8,7 @@ export const ModalBase = ({ onClose, title, icon, iconBg, children }) => (
         <div className="flex items-center gap-3">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0"
-            style={{ background: iconBg ?? 'rgba(46, 139, 255,0.15)' }}
+            style={{ background: iconBg ?? 'rgba(255,107,53,0.15)' }}
           >
             {icon}
           </div>

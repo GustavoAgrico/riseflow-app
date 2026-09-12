@@ -18,8 +18,8 @@ import { logger } from '@services/activityLogger'
 
 const EDGE_DEF = {
   type: 'smoothstep', animated: true,
-  style: { stroke: '#2E8BFF', strokeWidth: 2 },
-  markerEnd: { type: MarkerType.ArrowClosed, color: '#2E8BFF' },
+  style: { stroke: '#FF6B35', strokeWidth: 2 },
+  markerEnd: { type: MarkerType.ArrowClosed, color: '#FF6B35' },
 }
 const EYES = { ...EDGE_DEF, style: { stroke: '#10B981', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#10B981' } }
 const ENO  = { ...EDGE_DEF, style: { stroke: '#EF4444',  strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#EF4444'  } }
@@ -164,9 +164,9 @@ const NodeCard = memo(({ data, selected, type }) => {
   return (
     <div style={{
       minWidth: 200, maxWidth: 240, borderRadius: 12, background: '#111827', overflow: 'hidden',
-      border: `1.5px solid ${selected ? '#2E8BFF' : def.color + '44'}`,
+      border: `1.5px solid ${selected ? '#FF6B35' : def.color + '44'}`,
       boxShadow: selected
-        ? '0 0 0 3px rgba(46, 139, 255,0.22), 0 8px 24px rgba(0,0,0,0.5)'
+        ? '0 0 0 3px rgba(255,107,53,0.22), 0 8px 24px rgba(0,0,0,0.5)'
         : '0 4px 16px rgba(0,0,0,0.35)',
       transition: 'box-shadow .15s, border-color .15s',
     }}>
@@ -411,7 +411,7 @@ export function FlowBuilder() {
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1E2435" />
             <Controls style={{ background: '#111827', border: '1px solid #1E2435', borderRadius: 10 }} />
             <MiniMap
-              nodeColor={n => NODE_DEFS[n.type]?.color ?? '#2E8BFF'}
+              nodeColor={n => NODE_DEFS[n.type]?.color ?? '#FF6B35'}
               style={{ background: '#111827', border: '1px solid #1E2435', borderRadius: 10 }}
               maskColor="rgba(10,14,26,0.75)"
             />

@@ -14,7 +14,7 @@
   --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px; --r-full: 999px;
 
   /* Cores por PAPEL (não tons soltos) */
-  --accent: #2E8BFF; --accent-2: #7C3AED;
+  --accent: #FF6B35; --accent-2: #7C3AED;
   --ok: #10B981; --warn: #EAB308; --danger: #EF4444; --info: #3B82F6;
 
   /* Tinta (texto) — 4 níveis de hierarquia */
@@ -65,8 +65,8 @@
 .rf-seg button:hover { color: var(--ink-2); }
 .rf-seg button[aria-pressed="true"] {
   color: #fff;
-  background: linear-gradient(135deg, rgba(46, 139, 255,.92), rgba(124,58,237,.85));
-  box-shadow: 0 4px 14px -6px rgba(46, 139, 255,.6);
+  background: linear-gradient(135deg, rgba(255,107,53,.92), rgba(124,58,237,.85));
+  box-shadow: 0 4px 14px -6px rgba(255,107,53,.6);
 }
 
 /* Chip/rótulo discreto */

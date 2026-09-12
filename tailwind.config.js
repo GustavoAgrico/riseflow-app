@@ -6,8 +6,8 @@ export default {
     extend: {
       colors: {
         brand: {
-          orange: '#2E8BFF',
-          'orange-dark': '#1D4ED8',
+          orange: '#FF6B35',
+          'orange-dark': '#E55100',
           'orange-light': '#FFF0EB',
           blue: '#3B82F6',
           'blue-dark': '#1D4ED8',
@@ -46,7 +46,7 @@ export default {
         float: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-6px)' } },
       },
       backgroundImage: {
-        'gradient-brand': 'linear-gradient(135deg, #2E8BFF, #3B82F6)',
+        'gradient-brand': 'linear-gradient(135deg, #FF6B35, #3B82F6)',
         'gradient-dark': 'linear-gradient(180deg, #0A0E1A, #0F1629)',
         'gradient-card': 'linear-gradient(135deg, rgba(255,107,53,0.08), rgba(59,130,246,0.08))',
       },
