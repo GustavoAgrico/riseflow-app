@@ -36,7 +36,7 @@ export const ForgotPassword = () => {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-orange to-brand-blue flex items-center justify-center">
               <Sparkles size={20} className="text-white" />
             </div>
-            <span className="font-display font-bold text-2xl gradient-text">RiseFlow</span>
+            <span className="font-display font-bold text-2xl text-white">RiseFlow</span>
           </div>
 
           {sent ? (

@@ -107,7 +107,7 @@ export const Sidebar = ({ mobile = false, drawerOpen = false, onNavigate }) => {
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#FF6B35,#E55100)' }}>
               <span style={{ fontSize: 13, fontWeight: 900, color: '#fff', letterSpacing: '-0.5px', fontFamily: 'DM Sans, sans-serif' }}>RF</span>
             </div>
-            <span className="font-display font-bold text-lg gradient-text">RiseFlow</span>
+            <span className="font-display font-bold text-lg text-white">RiseFlow</span>
           </div>
         ) : (
           <div className="w-8 h-8 rounded-lg flex items-center justify-center mx-auto" style={{ background: 'linear-gradient(135deg,#FF6B35,#E55100)' }}>
