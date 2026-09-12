@@ -47,10 +47,12 @@ function clampNum(v, min, max, def) {
 
 // Parâmetros de detecção de silêncio por "força do corte". Quanto mais forte,
 // menor a pausa mínima e mais permissivo o piso de ruído → enxuga mais o vídeo.
+// noiseDb = piso fixo (fallback). headroom = distância abaixo do PICO no modo
+// adaptativo (maior = corta menos). min = pausa mínima. pad = folga nas bordas.
 function silenceParamsFor(strength) {
-  if (strength === 'suave') return { noiseDb: -34, min: 0.6, pad: 0.1 };
-  if (strength === 'forte') return { noiseDb: -26, min: 0.28, pad: 0.05 };
-  return { noiseDb: -30, min: 0.45, pad: 0.08 }; // equilibrado
+  if (strength === 'suave') return { noiseDb: -34, headroom: 34, min: 0.6, pad: 0.1 };
+  if (strength === 'forte') return { noiseDb: -26, headroom: 26, min: 0.28, pad: 0.05 };
+  return { noiseDb: -30, headroom: 30, min: 0.45, pad: 0.08 }; // equilibrado
 }
 
 // Sanitiza a lista de cortes de silêncio escolhidos manualmente na timeline.
@@ -122,6 +124,10 @@ function parseOptions(raw) {
     silenceNoiseDb: clampNum(o.silenceNoiseDb, -60, -10, sp.noiseDb),
     silenceMinDuration: clampNum(o.silenceMinDuration, 0.2, 3, sp.min),
     silencePadding: clampNum(o.silencePadding, 0, 0.5, sp.pad),
+    // Piso de ruído adaptativo (mede o áudio). Padrão ligado; corta melhor em
+    // qualquer gravação. silenceHeadroomDb = distância abaixo do pico (por força).
+    silenceAdaptive: o.silenceAdaptive !== false,
+    silenceHeadroomDb: clampNum(o.silenceHeadroomDb, 16, 44, sp.headroom),
     // Cortes de silêncio escolhidos manualmente na timeline (modo render). Quando
     // manualSilence=true, o pipeline usa exatamente estes trechos em vez de detectar.
     manualSilence: o.manualSilence === true,
