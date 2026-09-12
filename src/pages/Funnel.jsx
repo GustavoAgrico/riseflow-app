@@ -10,7 +10,7 @@ import { computeSalesMetrics, periodRange, brl, pct } from '@lib/metrics'
 import { DEMO_DEALS } from '@constants/demoDeals'
 import { BarChart3, Users, TrendingUp, DollarSign, Ticket, ChevronDown, Phone, ArrowLeft, X } from 'lucide-react'
 
-const C = { bg: '#0F172A', card: '#1E293B', bd: '#334155', tx: '#F8FAFC', mut: '#64748B', pur: '#7C3AED' }
+const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED' }
 const F = 'DM Sans, sans-serif'
 const PERIODS = { '1d': ['0-6h', '6-12h', '12-18h', '18-24h'], '7d': ['Dia 1-2', 'Dia 3-4', 'Dia 5-6', 'Dia 7'], '30d': ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'], '90d': ['Mês 1', 'Mês 2', 'Mês 3', 'Mês 4'] }
 const daysAgo = t => Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 864e5))

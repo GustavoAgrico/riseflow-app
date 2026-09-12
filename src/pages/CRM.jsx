@@ -15,7 +15,7 @@ import { computeSalesMetrics, brl } from '@lib/metrics'
 const stageAt = (stages, key) => (stages || DEFAULT_STAGES).find(s => s.key === key) || (stages || DEFAULT_STAGES)[0] || DEFAULT_STAGES[0]
 
 /* Paleta padrão (tema escuro) — mesma do Funil para manter consistência entre as páginas */
-const C = { bg: '#0F172A', card: '#1E293B', bd: '#334155', tx: '#F8FAFC', mut: '#94A3B8', pur: '#7C3AED' }
+const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-3)', pur: '#7C3AED' }
 
 const S = {
   input: { width: '100%', boxSizing: 'border-box', padding: '7px 10px', border: `1px solid ${C.bd}`, borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'DM Sans,sans-serif', color: C.tx, background: C.card },
@@ -58,7 +58,7 @@ const ContactCard = ({ contact, onDragStart, onClick, onDelete, stages }) => {
           <p style={{ fontSize: 11, color: C.mut, margin: 0 }}>{contact.company}</p>
         </div>
         {!hov && contact.assignedTo && (
-          <div title={'Responsável: ' + contact.assignedTo} style={{ width: 22, height: 22, borderRadius: '50%', background: '#33415A', color: '#CBD5E1', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{ini(contact.assignedTo)}</div>
+          <div title={'Responsável: ' + contact.assignedTo} style={{ width: 22, height: 22, borderRadius: '50%', background: '#33415A', color: 'var(--ink-2)', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{ini(contact.assignedTo)}</div>
         )}
         {hov && (
           <button

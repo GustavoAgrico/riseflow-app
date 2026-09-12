@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { Plus, Loader2, X, Check, RotateCcw, Trash2, DollarSign, Clock, AlertTriangle, Repeat } from 'lucide-react'
 
-const C = { bg: '#0F172A', card: '#1E293B', bd: '#334155', tx: '#F8FAFC', mut: '#94A3B8', pur: '#7C3AED',
+const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-3)', pur: '#7C3AED',
   green: '#22C55E', yellow: '#EAB308', red: '#EF4444', blue: '#3B82F6', orange: '#FF6B35' }
 const F = "'DM Sans', sans-serif"
 const brl = (n) => 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

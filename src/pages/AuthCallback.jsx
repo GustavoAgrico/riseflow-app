@@ -102,10 +102,10 @@ export const AuthCallback = () => {
 
   return (
     <div style={{
-      minHeight: '100vh', background: '#0F172A', display: 'flex',
+      minHeight: '100vh', background: 'var(--bg)', display: 'flex',
       alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans',sans-serif",
     }}>
-      <div style={{ textAlign: 'center', color: '#94A3B8' }}>
+      <div style={{ textAlign: 'center', color: 'var(--ink-3)' }}>
         <div style={{
           width: 40, height: 40, border: '3px solid #334155',
           borderTopColor: '#FF6B35', borderRadius: '50%',

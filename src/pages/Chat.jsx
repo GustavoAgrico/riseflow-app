@@ -17,8 +17,8 @@ import { socket } from '@services/socket'
 import { sanitizeMessage } from '@utils/sanitize'
 import { useAuth } from '@context/AuthContext'
 
-const C = { bg: '#0F172A', panel: '#1E293B', border: '#334155', text: '#F8FAFC',
-  muted: '#94A3B8', dim: '#64748B', purple: '#7C3AED', green: '#22C55E', blue: '#53BDEB' }
+const C = { bg: 'var(--bg)', panel: 'var(--card)', border: 'var(--border)', text: 'var(--ink-1)',
+  muted: 'var(--ink-3)', dim: 'var(--ink-4)', purple: '#7C3AED', green: '#22C55E', blue: '#53BDEB' }
 const F = 'DM Sans, sans-serif'
 const PAL = ['#7C3AED', '#2563EB', '#059669', '#D97706', '#EC4899', '#0891B2', '#8B5CF6', '#EF4444']
 const colorFor = s => PAL[[...String(s || '?')].reduce((a, c) => a + c.charCodeAt(0), 0) % PAL.length]
@@ -55,7 +55,7 @@ const Audio = ({ src, out, dur }) => {
         onLoadedMetadata={e => setTime(fmtDur(e.target.duration, dur))}
         onTimeUpdate={e => { const a = e.target; setProg(a.duration ? a.currentTime / a.duration * 100 : 0); setTime(fmtDur(a.currentTime || a.duration, dur)) }} />
       <button onClick={toggle} style={{ background: 'none', border: 'none', color: fill, cursor: 'pointer', padding: 0, flexShrink: 0, display: 'flex' }}>{play ? <Pause size={22} fill={fill} /> : <Play size={22} fill={fill} />}</button>
-      <div onClick={seek} style={{ flex: 1, height: 4, background: '#334155', borderRadius: 2, cursor: 'pointer' }}><div style={{ width: prog + '%', height: '100%', background: fill, borderRadius: 2 }} /></div>
+      <div onClick={seek} style={{ flex: 1, height: 4, background: 'var(--border)', borderRadius: 2, cursor: 'pointer' }}><div style={{ width: prog + '%', height: '100%', background: fill, borderRadius: 2 }} /></div>
       <span style={{ fontSize: 11, opacity: .7, flexShrink: 0 }}>{time}</span>
     </div>
   )
@@ -802,7 +802,7 @@ export const Chat = () => {
                     </div>
                   ) : m.type === 'audio' ? <Audio src={m.src} dur={m.dur} out={out} />
                   : m.type === 'document' ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#334155', borderRadius: 8, padding: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--border)', borderRadius: 8, padding: 10 }}>
                       <FileText size={26} color={out ? '#fff' : '#A78BFA'} style={{ flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ margin: 0, fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.fn}</p>
@@ -930,7 +930,7 @@ export const Chat = () => {
                   </label>
                   <input value={clientForm.name} onChange={e => setClientForm(p => ({ ...p, name: e.target.value }))}
                     placeholder="Nome do cliente"
-                    style={{ width: '100%', background: '#0F172A', border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13, outline: 'none', fontFamily: F, boxSizing: 'border-box' }} />
+                    style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13, outline: 'none', fontFamily: F, boxSizing: 'border-box' }} />
                 </div>
 
                 {/* Telefone */}
@@ -940,7 +940,7 @@ export const Chat = () => {
                   </label>
                   <input value={clientForm.phone} onChange={e => setClientForm(p => ({ ...p, phone: e.target.value }))}
                     placeholder="+55 11 99999-9999" type="tel"
-                    style={{ width: '100%', background: '#0F172A', border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13, outline: 'none', fontFamily: F, boxSizing: 'border-box' }} />
+                    style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13, outline: 'none', fontFamily: F, boxSizing: 'border-box' }} />
                 </div>
 
                 {/* Email */}
@@ -950,7 +950,7 @@ export const Chat = () => {
                   </label>
                   <input value={clientForm.email} onChange={e => setClientForm(p => ({ ...p, email: e.target.value }))}
                     placeholder="email@exemplo.com" type="email"
-                    style={{ width: '100%', background: '#0F172A', border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13, outline: 'none', fontFamily: F, boxSizing: 'border-box' }} />
+                    style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13, outline: 'none', fontFamily: F, boxSizing: 'border-box' }} />
                 </div>
 
                 {/* Status do Lead */}

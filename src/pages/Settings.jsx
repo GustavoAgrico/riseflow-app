@@ -149,11 +149,11 @@ const Toggle = ({ on, onClick }) => (
 
 // ── Theme (inline styles) ──
 const C = {
-  bg: '#0F172A',
-  card: '#1E293B',
-  border: '#334155',
-  text: '#F8FAFC',
-  muted: '#94A3B8',
+  bg: 'var(--bg)',
+  card: 'var(--card)',
+  border: 'var(--border)',
+  text: 'var(--ink-1)',
+  muted: 'var(--ink-3)',
   purple: '#7C3AED',
   red: '#EF4444',
   green: '#22C55E',

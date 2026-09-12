@@ -51,7 +51,7 @@ function Palette({ mobile, open, onClose, onPick }) {
                 <div key={type} draggable onDragStart={(e) => onDragStart(e, type)}
                   onClick={() => onPick?.(type)}
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 9,
-                    background: '#111827', border: `1px solid ${g.color}33`, color: T.text, fontSize: 12,
+                    background: 'var(--card)', border: `1px solid ${g.color}33`, color: T.text, fontSize: 12,
                     cursor: 'pointer', userSelect: 'none' }}>
                   <Icon size={14} color={g.color} style={{ flexShrink: 0 }} /> {label}
                 </div>
@@ -180,7 +180,7 @@ function EditorInner({ flowId, onBack }) {
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         <Palette mobile={isMobile} open={paletteOpen} onClose={() => setPaletteOpen(false)} onPick={addAtCenter} />
-        <div ref={wrapRef} className="flex-1 relative" style={{ background: '#0A0E1A' }}>
+        <div ref={wrapRef} className="flex-1 relative" style={{ background: 'var(--bg)' }}>
           <FlowsMetaContext.Provider value={meta}>
             <ReactFlow
               nodes={flow.nodes} edges={flow.edges}
@@ -193,13 +193,13 @@ function EditorInner({ flowId, onBack }) {
               fitView fitViewOptions={{ padding: 0.3 }}
               deleteKeyCode="Delete"
               zoomOnDoubleClick={false}
-              style={{ background: '#0A0E1A' }}
+              style={{ background: 'var(--bg)' }}
             >
               <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1E2435" />
-              <Controls style={{ background: '#111827', border: `1px solid ${T.border}`, borderRadius: 10 }} />
+              <Controls style={{ background: 'var(--card)', border: `1px solid ${T.border}`, borderRadius: 10 }} />
               <MiniMap
                 nodeColor={(n) => (n.type?.startsWith('trigger') ? T.green : T.orange)}
-                style={{ background: '#111827', border: `1px solid ${T.border}`, borderRadius: 10 }}
+                style={{ background: 'var(--card)', border: `1px solid ${T.border}`, borderRadius: 10 }}
                 maskColor="rgba(10,14,26,0.75)"
               />
               {flow.nodes.length === 0 && (

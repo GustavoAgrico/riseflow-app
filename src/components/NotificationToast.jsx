@@ -21,15 +21,15 @@ export const NotificationToast = ({ notifications = [], onDismiss }) => {
         const t = TYPES[n.type] ?? TYPES.system
         return (
           <div key={n.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minWidth: 320, maxWidth: 380,
-            background: '#1E293B', borderLeft: `4px solid ${t.color}`, borderRadius: 10, padding: '12px 16px',
+            background: 'var(--card)', borderLeft: `4px solid ${t.color}`, borderRadius: 10, padding: '12px 16px',
             boxShadow: '0 8px 24px rgba(0,0,0,0.3)', animation: 'ntSlideIn .3s ease' }}>
             <t.Icon size={18} color={t.color} style={{ flexShrink: 0, marginTop: 1 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#F8FAFC' }}>{n.title}</p>
-              {n.message && <p style={{ margin: '2px 0 0', fontSize: 12, color: '#94A3B8', wordBreak: 'break-word' }}>{n.message}</p>}
-              <p style={{ margin: '4px 0 0', fontSize: 11, color: '#64748B' }}>{hhmm(n.time)}</p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--ink-1)' }}>{n.title}</p>
+              {n.message && <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--ink-3)', wordBreak: 'break-word' }}>{n.message}</p>}
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-4)' }}>{hhmm(n.time)}</p>
             </div>
-            <button onClick={() => onDismiss(n.id)} aria-label="Fechar" style={{ background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}>×</button>
+            <button onClick={() => onDismiss(n.id)} aria-label="Fechar" style={{ background: 'none', border: 'none', color: 'var(--ink-4)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}>×</button>
           </div>
         )
       })}

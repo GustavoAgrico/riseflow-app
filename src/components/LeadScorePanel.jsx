@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Flame, CloudSun, Snowflake, CheckCircle2, XCircle, Check, AlertTriangle, Lightbulb, Sparkles, RefreshCw } from 'lucide-react'
 import { leadQualification } from '@/services/leadQualificationService'
 
-const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#94A3B8', pur:'#7C3AED' }
+const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-3)', pur:'#7C3AED' }
 const scoreColor = s => s <= 30 ? '#EF4444' : s <= 60 ? '#EAB308' : '#22C55E'
 const TEMP = { hot:{ Icon:Flame, label:'Hot' }, warm:{ Icon:CloudSun, label:'Warm' }, cold:{ Icon:Snowflake, label:'Cold' } }
 const ago = t => { const m = Math.max(1, Math.round((Date.now() - new Date(t)) / 60000)); return m < 60 ? `${m} minuto${m > 1 ? 's' : ''}` : `${Math.round(m / 60)}h` }

@@ -5,7 +5,7 @@ import { useAuth } from '@context/AuthContext'
 import { listTemplates, createTemplate, updateTemplate, deleteTemplate, incrementTemplateUse } from '@services/templatesService'
 import { useIsMobile } from '@hooks/useIsMobile'
 
-const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#94A3B8', pur:'#7C3AED' }
+const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-3)', pur:'#7C3AED' }
 const CATS = { 'Saudação':Hand, 'Vendas':DollarSign, 'Suporte':Wrench, 'Cobrança':Receipt, 'Follow-up':Repeat, 'Reativação':Flame }
 const TYPES = ['Texto','Imagem','Lista']
 const VARS = ['{{nome}}','{{telefone}}','{{empresa}}','{{link}}','{{valor}}']

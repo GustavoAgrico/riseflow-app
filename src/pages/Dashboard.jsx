@@ -89,7 +89,7 @@ const StatCard = ({ icon: Icon, label, value, change, color, hex = '#FF6B35', sp
          style={{ fontSize: 26, fontVariantNumeric: 'tabular-nums', letterSpacing: '-.03em', lineHeight: 1, marginBottom: 5 }}>
         {value}
       </p>
-      <p style={{ fontSize: 11, color: '#64748B', marginBottom: 10 }}>{label}</p>
+      <p style={{ fontSize: 11, color: 'var(--ink-4)', marginBottom: 10 }}>{label}</p>
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: `${dColor}14`, border: `1px solid ${dColor}2b`, color: dColor, borderRadius: 20, padding: '3px 9px' }}>
         <DArrow size={11} />
         <span style={{ fontSize: 11, fontWeight: 600 }}>{change}</span>
@@ -114,7 +114,7 @@ const StatCard = ({ icon: Icon, label, value, change, color, hex = '#FF6B35', sp
 const ChDot = ({ channel }) => (
   <span style={{
     width: 6, height: 6, borderRadius: '50%', flexShrink: 0, display: 'inline-block',
-    background: CH_COLOR[channel] || '#64748B',
+    background: CH_COLOR[channel] || 'var(--ink-4)',
   }} />
 )
 
@@ -123,7 +123,7 @@ const StatusBadge = ({ status }) => {
   const map = {
     active:  { bg: '#10B98118', fg: '#10B981', label: 'Ativo' },
     pending: { bg: '#EAB30818', fg: '#EAB308', label: 'Pendente' },
-    closed:  { bg: '#64748B18', fg: '#64748B', label: 'Fechado' },
+    closed:  { bg: '#64748B18', fg: 'var(--ink-4)', label: 'Fechado' },
   }
   const s = map[status] || map.closed
   return (
@@ -149,7 +149,7 @@ const CustomTooltip = ({ active, payload, label }) => {
       {payload.map((p, i) => (
         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: i ? 6 : 0 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
-          <span style={{ fontSize: 12, color: '#94A3B8', flex: 1 }}>{p.name}</span>
+          <span style={{ fontSize: 12, color: 'var(--ink-3)', flex: 1 }}>{p.name}</span>
           <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', fontVariantNumeric: 'tabular-nums', paddingLeft: 12 }}>{p.value}</span>
         </div>
       ))}
@@ -363,11 +363,11 @@ export const Dashboard = () => {
         <div style={{ position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', justifyContent: 'space-between', padding: '26px 28px' }}>
           <div style={{ minWidth: 240 }}>
             <p style={{ margin: 0, fontSize: 12, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: '#93C5FD' }}>Olá{firstName ? `, ${firstName}` : ''} 👋</p>
-            <p style={{ margin: '10px 0 0', fontSize: 13, color: '#CBD5E1' }}>{hasCrm ? 'Pipeline em aberto' : 'Mensagens processadas'}</p>
+            <p style={{ margin: '10px 0 0', fontSize: 13, color: 'var(--ink-2)' }}>{hasCrm ? 'Pipeline em aberto' : 'Mensagens processadas'}</p>
             <p className="font-display" style={{ margin: '2px 0 0', fontSize: 40, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
               {hasCrm ? ('R$ ' + Math.round(pipelineValue).toLocaleString('pt-BR')) : totalMessages.toLocaleString('pt-BR')}
             </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 12, fontSize: 12.5, color: '#94A3B8' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 12, fontSize: 12.5, color: 'var(--ink-3)' }}>
               <span><b style={{ color: '#34D399' }}>{won}</b> ganhos</span>
               <span>conversão <b style={{ color: '#fff' }}>{convRate}%</b></span>
               <span>ticket <b style={{ color: '#fff' }}>{brlShort(ticket)}</b></span>
@@ -376,7 +376,7 @@ export const Dashboard = () => {
               <div style={{ height: 8, borderRadius: 999, background: 'rgba(255,255,255,0.09)', overflow: 'hidden' }}>
                 <div style={{ width: `${Math.min(100, convRate)}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#FF6B35,#7C3AED)' }} />
               </div>
-              <p style={{ margin: '6px 0 0', fontSize: 11, color: '#94A3B8' }}>Taxa de conversão do funil{isDemoMode && <span style={{ color: '#EAB308', marginLeft: 6 }}>(modo demo)</span>}</p>
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--ink-3)' }}>Taxa de conversão do funil{isDemoMode && <span style={{ color: '#EAB308', marginLeft: 6 }}>(modo demo)</span>}</p>
             </div>
           </div>
 
@@ -389,14 +389,14 @@ export const Dashboard = () => {
             ) : (
               <Link to="/integrations" style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '8px 14px', textDecoration: 'none' }}>
                 <LinkIcon size={13} className="text-slate-400" />
-                <span style={{ fontSize: 12, color: '#94A3B8' }}>Conectar integração</span>
+                <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>Conectar integração</span>
               </Link>
             )}
             <div style={{ display: 'flex', gap: 10 }}>
               {[{ l: 'Mensagens', v: totalMessages.toLocaleString('pt-BR') }, { l: 'Conversas', v: totalConversations.toLocaleString('pt-BR') }].map(t => (
                 <div key={t.l} style={{ minWidth: 120, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, padding: '12px 16px' }}>
                   <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{t.v}</p>
-                  <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94A3B8' }}>{t.l}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--ink-3)' }}>{t.l}</p>
                 </div>
               ))}
             </div>
@@ -495,8 +495,8 @@ export const Dashboard = () => {
                 <BarChart data={barData} layout="vertical" margin={{ top: 6, right: 16, bottom: 0, left: 0 }} barCategoryGap="28%">
                   <CartesianGrid horizontal={false} stroke="rgba(255,255,255,0.05)" />
                   <XAxis type="number" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => brlShort(v)} />
-                  <YAxis type="category" dataKey="label" width={92} tick={{ fill: '#94A3B8', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={v => brlShort(v)} contentStyle={{ background: '#0F172A', border: '1px solid #26324A', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#F8FAFC' }} itemStyle={{ color: '#F8FAFC' }} />
+                  <YAxis type="category" dataKey="label" width={92} tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={v => brlShort(v)} contentStyle={{ background: 'var(--bg)', border: '1px solid #26324A', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: 'var(--ink-1)' }} itemStyle={{ color: 'var(--ink-1)' }} />
                   <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={20}>
                     {barData.map((d, i) => <Cell key={i} fill={d.color} />)}
                   </Bar>
@@ -517,14 +517,14 @@ export const Dashboard = () => {
                     <Pie data={stagePie} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={48} outerRadius={82} paddingAngle={2} stroke="none">
                       {stagePie.map((s, i) => <Cell key={i} fill={s.color} />)}
                     </Pie>
-                    <Tooltip contentStyle={{ background: '#0F172A', border: '1px solid #26324A', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: '#F8FAFC' }} itemStyle={{ color: '#F8FAFC' }} />
+                    <Tooltip contentStyle={{ background: 'var(--bg)', border: '1px solid #26324A', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: 'var(--ink-1)' }} itemStyle={{ color: 'var(--ink-1)' }} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div style={{ flex: 1, display: 'grid', gap: 7 }}>
                   {stagePie.map(s => (
                     <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
                       <span style={{ width: 9, height: 9, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-                      <span style={{ color: '#CBD5E1', flex: 1 }}>{s.name}</span>
+                      <span style={{ color: 'var(--ink-2)', flex: 1 }}>{s.name}</span>
                       <span style={{ color: '#fff', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{s.value}</span>
                     </div>
                   ))}
@@ -562,7 +562,7 @@ export const Dashboard = () => {
                         border: 'none', cursor: 'pointer', borderRadius: 8, padding: '4px 12px',
                         fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
                         background: on ? 'rgba(255,107,53,0.16)' : 'transparent',
-                        color: on ? '#FF6B35' : '#64748B',
+                        color: on ? '#FF6B35' : 'var(--ink-4)',
                         boxShadow: on ? '0 0 0 1px rgba(255,107,53,0.28)' : 'none',
                         transition: 'all .15s',
                       }}
@@ -704,8 +704,8 @@ export const Dashboard = () => {
                   transition: 'border-color .15s',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Icon size={14} style={{ color: connected ? chColor : '#334155' }} />
-                    <span style={{ fontSize: 13, color: connected ? '#CBD5E1' : '#334155' }}>{label}</span>
+                    <Icon size={14} style={{ color: connected ? chColor : 'var(--border)' }} />
+                    <span style={{ fontSize: 13, color: connected ? 'var(--ink-2)' : 'var(--border)' }}>{label}</span>
                   </div>
                   {connected ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -713,7 +713,7 @@ export const Dashboard = () => {
                       <span style={{ fontSize: 11, color: '#10B981', fontWeight: 500 }}>{flowCount} fluxo{flowCount !== 1 ? 's' : ''}</span>
                     </div>
                   ) : (
-                    <Link to="/integrations" style={{ fontSize: 11, color: '#334155', textDecoration: 'none' }}>Conectar</Link>
+                    <Link to="/integrations" style={{ fontSize: 11, color: 'var(--border)', textDecoration: 'none' }}>Conectar</Link>
                   )}
                 </div>
               )
@@ -756,7 +756,7 @@ export const Dashboard = () => {
                         fontSize: 12, fontWeight: 700, color: '#fff',
                       }}>{initials}</div>
                       <div style={{ minWidth: 0 }}>
-                        <p style={{ fontSize: 13, fontWeight: 500, color: '#E2E8F0', lineHeight: 1, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</p>
+                        <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-2)', lineHeight: 1, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</p>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                           <ChDot channel={c.channel} />
                           <span style={{ fontSize: 11, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>{c.last_message || c.phone || '—'}</span>
@@ -788,7 +788,7 @@ export const Dashboard = () => {
               {flows.slice(0, 4).map(f => {
                 const convRate = f.triggers > 0 ? (f.conversions / f.triggers) * 100 : 0
                 const isActive = f.status === 'active'
-                const chColor = CH_COLOR[f.channel] || '#64748B'
+                const chColor = CH_COLOR[f.channel] || 'var(--ink-4)'
                 return (
                   <div key={f.id}
                     style={{
@@ -803,7 +803,7 @@ export const Dashboard = () => {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
                         <span style={{ width: 7, height: 7, borderRadius: '50%', background: chColor, flexShrink: 0, boxShadow: `0 0 6px ${chColor}` }} />
-                        <span style={{ fontSize: 13, fontWeight: 500, color: '#E2E8F0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                        <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
                       </div>
                       <span style={{
                         display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0,

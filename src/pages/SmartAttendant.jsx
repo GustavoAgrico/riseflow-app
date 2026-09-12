@@ -4,7 +4,7 @@ import { Bot, Trash2, Plus, Upload } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 
-const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#64748B', pur:'#7C3AED' }
+const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-4)', pur:'#7C3AED' }
 const DEFAULTS = {
   enabled:false, personality:'', company_name:'', business_hours:'08:00-18:00 Seg-Sex',
   custom_rules:'', no_answer_action:'transfer', response_delay:2, max_auto_messages:10,

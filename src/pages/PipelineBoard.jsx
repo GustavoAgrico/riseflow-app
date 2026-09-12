@@ -9,7 +9,7 @@ import { useAuth } from '@context/AuthContext'
 import { useStages } from '@hooks/useStages'
 import { computeSalesMetrics, stageOf, brl } from '@lib/metrics'
 
-const C = { bg: '#0B1120', panel: '#111C30', card: '#18233A', bd: '#26324A', tx: '#F1F5F9', mut: '#93A3BC', pur: '#7C3AED' }
+const C = { bg: 'var(--bg)', panel: 'var(--panel)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-3)', pur: '#7C3AED' }
 const F = "'DM Sans', system-ui, sans-serif"
 
 const ini = (n = '') => n.split(' ').slice(0, 2).map(w => w[0] ?? '').join('').toUpperCase()

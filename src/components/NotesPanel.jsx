@@ -3,7 +3,7 @@ import { notesService } from '@/services/notesService'
 import { logger } from '@/services/activityLogger'
 import { StickyNote, Phone, Mail, Star, Activity, Pin, Pencil, Trash2 } from 'lucide-react'
 
-const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#64748B', pur:'#7C3AED' }
+const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-4)', pur:'#7C3AED' }
 const TYPES = [['note', StickyNote, 'Nota'], ['call', Phone, 'Ligação'], ['email', Mail, 'Email'], ['important', Star, 'Importante']]
 const ICON = { note: StickyNote, call: Phone, email: Mail, important: Star, activity: Activity }
 const ago = t => { const m = Math.max(1, Math.round((Date.now() - new Date(t)) / 60000)); return m < 60 ? `há ${m}min` : m < 1440 ? `há ${Math.round(m / 60)}h` : `há ${Math.round(m / 1440)}d` }

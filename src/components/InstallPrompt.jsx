@@ -21,11 +21,11 @@ export const InstallPrompt = () => {
   if (!show) return null
 
   return (
-    <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 9999, display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#1E293B', borderTop: '1px solid #334155', fontFamily: "'DM Sans',sans-serif" }}>
+    <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 9999, display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--card)', borderTop: '1px solid #334155', fontFamily: "'DM Sans',sans-serif" }}>
       <Zap size={20} color="#FF6B35" />
-      <span style={{ flex: 1, color: '#F8FAFC', fontSize: 14 }}>{ios ? 'Toque em Compartilhar → Adicionar à Tela Inicial' : 'Instalar RiseFlow como app'}</span>
+      <span style={{ flex: 1, color: 'var(--ink-1)', fontSize: 14 }}>{ios ? 'Toque em Compartilhar → Adicionar à Tela Inicial' : 'Instalar RiseFlow como app'}</span>
       {!ios && <button onClick={install} style={{ background: '#FF6B35', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Instalar</button>}
-      <button onClick={close} style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
+      <button onClick={close} style={{ background: 'none', border: 'none', color: 'var(--ink-3)', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
     </div>
   )
 }

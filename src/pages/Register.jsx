@@ -21,9 +21,9 @@ const CSS = `
 @media(max-width:767px){.rf-l{display:none!important}.rf-r{width:100%!important}.rf-c{box-shadow:none!important}.rf-mb{display:flex!important}}
 @media(min-width:768px) and (max-width:1024px){.rf-l{width:40%!important}.rf-r{width:60%!important}}
 `
-const lbl = { display: 'block', fontSize: 12, fontWeight: 600, color: '#94A3B8', marginBottom: 6 }
-const ico = { position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#64748B', pointerEvents: 'none' }
-const eyeBtn = { position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', padding: 0, display: 'flex' }
+const lbl = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--ink-3)', marginBottom: 6 }
+const ico = { position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-4)', pointerEvents: 'none' }
+const eyeBtn = { position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--ink-4)', cursor: 'pointer', padding: 0, display: 'flex' }
 const Goo = () => (
   <svg width="18" height="18" viewBox="0 0 24 24">
     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -82,12 +82,12 @@ export const Register = () => {
   }
 
   if (success) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0F172A', fontFamily: "'DM Sans',sans-serif", padding: 20 }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', fontFamily: "'DM Sans',sans-serif", padding: 20 }}>
       <style>{CSS}</style>
       <div style={{ maxWidth: 400, textAlign: 'center', animation: 'rfIn .5s ease-out' }}>
         <div style={{ width: 64, height: 64, borderRadius: 18, background: 'linear-gradient(135deg,#FF6B35,#E55100)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}><CheckCircle2 size={32} color="#fff" /></div>
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: '#F8FAFC', margin: '0 0 8px' }}>Conta criada!</h1>
-        <p style={{ color: '#94A3B8', margin: '0 0 24px' }}>Enviamos um link de confirmação para <span style={{ color: '#FF6B35' }}>{email}</span></p>
+        <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--ink-1)', margin: '0 0 8px' }}>Conta criada!</h1>
+        <p style={{ color: 'var(--ink-3)', margin: '0 0 24px' }}>Enviamos um link de confirmação para <span style={{ color: '#FF6B35' }}>{email}</span></p>
         <button onClick={() => navigate('/login')} className="rf-s" style={{ padding: '12px 28px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#FF6B35,#E55100)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Ir para o login</button>
       </div>
     </div>
@@ -95,7 +95,7 @@ export const Register = () => {
 
   const st = strength(password)
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', fontFamily: "'DM Sans',sans-serif", background: '#0F172A' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', fontFamily: "'DM Sans',sans-serif", background: 'var(--bg)' }}>
       <style>{CSS}</style>
       <div className="rf-l" style={{ width: '50vw', position: 'relative', overflow: 'hidden', background: 'linear-gradient(160deg,#0F172A,#1C1410)', padding: 48, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'center', textAlign: 'center' }}>
         {circles.map((c, i) => <div key={i} style={{ position: 'absolute', width: c.s, height: c.s, top: c.t, left: c.l, borderRadius: '50%', background: c.c, opacity: 0.15, filter: 'blur(8px)', animation: `rfFloat 6s ease-in-out ${c.d} infinite alternate` }} />)}
@@ -104,33 +104,33 @@ export const Register = () => {
           <span style={{ fontSize: 28, fontWeight: 700, color: '#fff' }}>RiseFlow</span>
         </div>
         <div style={{ position: 'relative' }}>
-          <h1 style={{ fontSize: 32, fontWeight: 700, color: '#F8FAFC', lineHeight: 1.2, margin: '0 0 16px' }}>Comece grátis. 50 mensagens por mês.</h1>
-          <p style={{ fontSize: 16, color: '#94A3B8', margin: '0 0 28px' }}>Sem cartão de crédito. Configure em 2 minutos.</p>
-          {bullets.map(([Ic, t], i) => <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 14, color: '#E2E8F0', fontSize: 15 }}><Ic size={20} color="#FF6B35" />{t}</div>)}
+          <h1 style={{ fontSize: 32, fontWeight: 700, color: 'var(--ink-1)', lineHeight: 1.2, margin: '0 0 16px' }}>Comece grátis. 50 mensagens por mês.</h1>
+          <p style={{ fontSize: 16, color: 'var(--ink-3)', margin: '0 0 28px' }}>Sem cartão de crédito. Configure em 2 minutos.</p>
+          {bullets.map(([Ic, t], i) => <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 14, color: 'var(--ink-2)', fontSize: 15 }}><Ic size={20} color="#FF6B35" />{t}</div>)}
         </div>
         <div style={{ position: 'relative' }}>
           <span style={{ color: '#475569', fontSize: 13 }}>Created by <span style={{ color: '#FF6B35', fontWeight: 600 }}>Rise Creative</span></span>
         </div>
       </div>
 
-      <div className="rf-r" style={{ width: '50vw', background: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-        <div className="rf-c" style={{ width: '100%', maxWidth: 400, background: '#1E293B', borderRadius: 16, padding: 32, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', animation: 'rfIn .5s ease-out' }}>
+      <div className="rf-r" style={{ width: '50vw', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div className="rf-c" style={{ width: '100%', maxWidth: 400, background: 'var(--card)', borderRadius: 16, padding: 32, boxShadow: '0 20px 60px rgba(0,0,0,0.3)', animation: 'rfIn .5s ease-out' }}>
           {/* Branding no topo — só no mobile (a coluna lateral fica escondida) */}
           <div className="rf-mb" style={{ display: 'none', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 42, height: 42, borderRadius: 12, background: 'linear-gradient(135deg,#FF6B35,#E55100)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, fontWeight: 900, color: '#fff' }}>RF</div>
               <span style={{ fontSize: 23, fontWeight: 700, color: '#fff' }}>RiseFlow</span>
             </div>
-            <span style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center' }}>Automação de WhatsApp com inteligência artificial</span>
+            <span style={{ fontSize: 12, color: 'var(--ink-3)', textAlign: 'center' }}>Automação de WhatsApp com inteligência artificial</span>
           </div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#F8FAFC', margin: '0 0 4px' }}>Criar sua conta</h2>
-          <p style={{ fontSize: 14, color: '#94A3B8', margin: '0 0 24px' }}>Comece a automatizar agora</p>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink-1)', margin: '0 0 4px' }}>Criar sua conta</h2>
+          <p style={{ fontSize: 14, color: 'var(--ink-3)', margin: '0 0 24px' }}>Comece a automatizar agora</p>
           {error && <div style={{ background: '#EF444420', border: '1px solid #EF4444', color: '#FCA5A5', padding: '10px 14px', borderRadius: 10, fontSize: 13, marginBottom: 16 }}>{error}</div>}
           <button type="button" onClick={handleGoogle} disabled={googleLoading || loading} className="rf-g" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: '#fff', color: '#333', border: 'none', borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'box-shadow .2s', fontFamily: "'DM Sans',sans-serif" }}>
             <Goo />{googleLoading ? 'Conectando...' : 'Continuar com Google'}
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0' }}>
-            <hr style={{ flex: 1, border: 'none', borderTop: '1px solid #334155' }} /><span style={{ color: '#64748B', fontSize: 13 }}>ou</span><hr style={{ flex: 1, border: 'none', borderTop: '1px solid #334155' }} />
+            <hr style={{ flex: 1, border: 'none', borderTop: '1px solid #334155' }} /><span style={{ color: 'var(--ink-4)', fontSize: 13 }}>ou</span><hr style={{ flex: 1, border: 'none', borderTop: '1px solid #334155' }} />
           </div>
           <form onSubmit={handleRegister}>
             <label style={lbl}>Nome completo</label>
@@ -144,12 +144,12 @@ export const Register = () => {
               <button type="button" onClick={() => setShowPass(!showPass)} style={eyeBtn}>{showPass ? <EyeOff size={16} /> : <Eye size={16} />}</button>
             </div>
             {password && <>
-              <div style={{ height: 4, borderRadius: 4, background: '#334155', marginBottom: 6, overflow: 'hidden' }}><div style={{ width: st.w, height: '100%', background: st.c, transition: 'all .3s' }} /></div>
-              <p style={{ fontSize: 12, color: password.length >= 8 ? '#22C55E' : '#94A3B8', margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: 6 }}>{password.length >= 8 && <Check size={13} />} Mínimo 8 caracteres · senha {st.t}</p>
+              <div style={{ height: 4, borderRadius: 4, background: 'var(--border)', marginBottom: 6, overflow: 'hidden' }}><div style={{ width: st.w, height: '100%', background: st.c, transition: 'all .3s' }} /></div>
+              <p style={{ fontSize: 12, color: password.length >= 8 ? '#22C55E' : 'var(--ink-3)', margin: '0 0 14px', display: 'flex', alignItems: 'center', gap: 6 }}>{password.length >= 8 && <Check size={13} />} Mínimo 8 caracteres · senha {st.t}</p>
             </>}
             <label style={lbl}>Confirmar senha</label>
             <div style={{ position: 'relative', marginBottom: 16 }}><Lock size={16} style={ico} /><input className="rf-in" type={showPass ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Repita a senha" required autoComplete="new-password" /></div>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 18, color: '#94A3B8', fontSize: 12, cursor: 'pointer', lineHeight: 1.5 }}>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 18, color: 'var(--ink-3)', fontSize: 12, cursor: 'pointer', lineHeight: 1.5 }}>
               <input type="checkbox" checked={acceptTerms} onChange={e => setAcceptTerms(e.target.checked)} style={{ marginTop: 2, accentColor: '#FF6B35' }} />
               <span>Li e aceito os <span style={{ color: '#FF6B35' }}>Termos de Uso</span> e <span style={{ color: '#FF6B35' }}>Política de Privacidade</span></span>
             </label>
@@ -157,7 +157,7 @@ export const Register = () => {
               {loading ? 'Criando conta...' : 'Criar conta grátis'}
             </button>
           </form>
-          <p style={{ textAlign: 'center', fontSize: 14, color: '#94A3B8', marginTop: 20 }}>Já tem conta? <Link to="/login" style={{ color: '#FF6B35', fontWeight: 600, textDecoration: 'none' }}>Fazer login</Link></p>
+          <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--ink-3)', marginTop: 20 }}>Já tem conta? <Link to="/login" style={{ color: '#FF6B35', fontWeight: 600, textDecoration: 'none' }}>Fazer login</Link></p>
         </div>
       </div>
     </div>

@@ -9,8 +9,8 @@ import { logger } from '@services/activityLogger'
 
 const EMAIL_RE = /^\S+@\S+\.\S+$/
 
-const C = { bg: '#0F172A', card: '#1E293B', border: '#334155', text: '#F8FAFC',
-  muted: '#94A3B8', purple: '#7C3AED', green: '#22C55E', yellow: '#EAB308', gray: '#64748B', red: '#EF4444' }
+const C = { bg: 'var(--bg)', card: 'var(--card)', border: 'var(--border)', text: 'var(--ink-1)',
+  muted: 'var(--ink-3)', purple: '#7C3AED', green: '#22C55E', yellow: '#EAB308', gray: 'var(--ink-4)', red: '#EF4444' }
 const F = "'DM Sans', sans-serif"
 const ROLES = ['Admin', 'Supervisor', 'Atendente']
 const ST = { online: { l: 'Online', c: C.green }, ausente: { l: 'Ausente', c: C.yellow }, offline: { l: 'Offline', c: C.gray } }

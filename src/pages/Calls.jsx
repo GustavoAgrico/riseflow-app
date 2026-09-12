@@ -6,8 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { Plus, Loader2, X, Trash2, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, TrendingUp, CheckCircle2 } from 'lucide-react'
 
-const C = { bg: '#0F172A', card: '#1E293B', bd: '#334155', tx: '#F8FAFC', mut: '#94A3B8', pur: '#7C3AED',
-  green: '#22C55E', yellow: '#EAB308', red: '#EF4444', blue: '#3B82F6', gray: '#64748B' }
+const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-3)', pur: '#7C3AED',
+  green: '#22C55E', yellow: '#EAB308', red: '#EF4444', blue: '#3B82F6', gray: 'var(--ink-4)' }
 const F = "'DM Sans', sans-serif"
 const inp = { background: C.bg, border: `1px solid ${C.bd}`, borderRadius: 8, color: C.tx, fontSize: 13, fontFamily: F, padding: '9px 11px', outline: 'none', width: '100%', boxSizing: 'border-box' }
 const cardS = { background: C.card, border: `1px solid ${C.bd}`, borderRadius: 14, padding: 18, fontFamily: F }

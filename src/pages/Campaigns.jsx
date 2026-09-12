@@ -59,13 +59,13 @@ const parseCSV = (text) => String(text ?? '')
 
 const fmtDate = (iso) => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR') }
 const S = {
-  page:  { minHeight:'100vh', background:'#0F172A', fontFamily:'DM Sans,sans-serif', color:'#F8FAFC', padding:24 },
-  card:  { background:'#1E293B', border:'1px solid #334155', borderRadius:12, padding:20 },
-  input: { width:'100%', boxSizing:'border-box', background:'#0F172A', border:'1px solid #334155', borderRadius:8, padding:'8px 12px', color:'#F8FAFC', fontSize:13, outline:'none', fontFamily:'DM Sans,sans-serif' },
-  label: { display:'block', fontSize:11, color:'#94A3B8', marginBottom:4, fontWeight:600, letterSpacing:'.04em', textTransform:'uppercase' },
-  btn:   (bg, color='#F8FAFC', border='none') => ({ background:bg, color, border, borderRadius:8, padding:'8px 16px', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'DM Sans,sans-serif', whiteSpace:'nowrap' }),
-  th:    { padding:'10px 14px', textAlign:'left', fontSize:10, color:'#64748B', fontWeight:700, textTransform:'uppercase', letterSpacing:'.08em', borderBottom:'1px solid #334155' },
-  td:    { padding:'11px 14px', fontSize:13, color:'#CBD5E1', borderBottom:'1px solid #1E293B' },
+  page:  { minHeight:'100vh', background:'var(--bg)', fontFamily:'DM Sans,sans-serif', color:'var(--ink-1)', padding:24 },
+  card:  { background:'var(--card)', border:'1px solid #334155', borderRadius:12, padding:20 },
+  input: { width:'100%', boxSizing:'border-box', background:'var(--bg)', border:'1px solid #334155', borderRadius:8, padding:'8px 12px', color:'var(--ink-1)', fontSize:13, outline:'none', fontFamily:'DM Sans,sans-serif' },
+  label: { display:'block', fontSize:11, color:'var(--ink-3)', marginBottom:4, fontWeight:600, letterSpacing:'.04em', textTransform:'uppercase' },
+  btn:   (bg, color='var(--ink-1)', border='none') => ({ background:bg, color, border, borderRadius:8, padding:'8px 16px', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'DM Sans,sans-serif', whiteSpace:'nowrap' }),
+  th:    { padding:'10px 14px', textAlign:'left', fontSize:10, color:'var(--ink-4)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.08em', borderBottom:'1px solid #334155' },
+  td:    { padding:'11px 14px', fontSize:13, color:'var(--ink-2)', borderBottom:'1px solid #1E293B' },
 }
 
 const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
@@ -91,7 +91,7 @@ const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
     try { await onCreate(form, recipients); onClose() }
     finally { setSubmitting(false) }
   }
-  const Pill = ({ k, v, activeColor='#7C3AED' }) => { const on = form[k].includes(v); return <button onClick={() => tog(k, v)} style={{ ...S.btn(on ? activeColor : '#0F172A', on ? '#fff' : '#94A3B8', `1px solid ${on ? activeColor : '#334155'}`), fontSize:11, padding:'4px 10px' }}>{v}</button> }
+  const Pill = ({ k, v, activeColor='#7C3AED' }) => { const on = form[k].includes(v); return <button onClick={() => tog(k, v)} style={{ ...S.btn(on ? activeColor : 'var(--bg)', on ? '#fff' : 'var(--ink-3)', `1px solid ${on ? activeColor : 'var(--border)'}`), fontSize:11, padding:'4px 10px' }}>{v}</button> }
 
   const generateWithAI = async () => {
     if (!aiGoal.trim()) return
@@ -109,16 +109,16 @@ const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
 
   return (
     <div style={{ position:'fixed', inset:0, background:'#000a', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200 }} onClick={onClose}>
-      <div style={{ background:'#1E293B', border:'1px solid #334155', borderRadius:16, width:560, maxHeight:'90vh', overflow:'hidden', display:'flex', flexDirection:'column' }} onClick={e => e.stopPropagation()}>
+      <div style={{ background:'var(--card)', border:'1px solid #334155', borderRadius:16, width:560, maxHeight:'90vh', overflow:'hidden', display:'flex', flexDirection:'column' }} onClick={e => e.stopPropagation()}>
         <div style={{ padding:'18px 24px', borderBottom:'1px solid #334155', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <div>
             <p style={{ fontSize:15, fontWeight:700, margin:'0 0 6px', display:'flex', alignItems:'center', gap:8 }}><Megaphone size={16} color="#7C3AED" /> Nova Campanha</p>
             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-              {[1,2,3].map(s => <div key={s} style={{ width:s===step?20:8, height:8, borderRadius:4, background:s===step?'#7C3AED':s<step?'#059669':'#334155', transition:'all .2s' }} />)}
-              <span style={{ fontSize:11, color:'#64748B', marginLeft:4 }}>Passo {step} de 3</span>
+              {[1,2,3].map(s => <div key={s} style={{ width:s===step?20:8, height:8, borderRadius:4, background:s===step?'#7C3AED':s<step?'#059669':'var(--border)', transition:'all .2s' }} />)}
+              <span style={{ fontSize:11, color:'var(--ink-4)', marginLeft:4 }}>Passo {step} de 3</span>
             </div>
           </div>
-          <button onClick={onClose} style={{ background:'none', border:'none', color:'#64748B', cursor:'pointer', fontSize:22, lineHeight:1 }}>×</button>
+          <button onClick={onClose} style={{ background:'none', border:'none', color:'var(--ink-4)', cursor:'pointer', fontSize:22, lineHeight:1 }}>×</button>
         </div>
 
         <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
@@ -128,7 +128,7 @@ const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
               <label style={S.label}>Canal</label>
               <div style={{ display:'flex', gap:8 }}>
                 {[['whatsapp','WhatsApp'],['email','Email (SMTP)']].map(([val,lbl]) => (
-                  <button key={val} onClick={() => set('channel', val)} style={{ ...S.btn(form.channel===val?'#7C3AED':'#0F172A', form.channel===val?'#fff':'#94A3B8', `1px solid ${form.channel===val?'#7C3AED':'#334155'}`), flex:1 }}>{lbl}</button>
+                  <button key={val} onClick={() => set('channel', val)} style={{ ...S.btn(form.channel===val?'#7C3AED':'var(--bg)', form.channel===val?'#fff':'var(--ink-3)', `1px solid ${form.channel===val?'#7C3AED':'var(--border)'}`), flex:1 }}>{lbl}</button>
                 ))}
               </div>
               {form.channel==='email' && !emailConnected && (
@@ -160,7 +160,7 @@ const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
 
             {/* Painel IA */}
             {aiOpen && (
-              <div style={{ background:'#0F172A', border:'1px solid #7C3AED55', borderRadius:10, padding:'14px 16px', marginTop:10 }}>
+              <div style={{ background:'var(--bg)', border:'1px solid #7C3AED55', borderRadius:10, padding:'14px 16px', marginTop:10 }}>
                 <p style={{ fontSize:12, fontWeight:700, color:'#A78BFA', margin:'0 0 10px', display:'flex', alignItems:'center', gap:6 }}><Sparkles size={13} /> Gerar mensagem com Claude AI</p>
                 <div style={{ marginBottom:10 }}>
                   <label style={S.label}>Objetivo da campanha</label>
@@ -170,7 +170,7 @@ const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
                   <label style={S.label}>Tom</label>
                   <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                     {[['informal','Casual'],['formal','Formal'],['urgente','Urgente'],['empático','Empático']].map(([val,lbl]) => (
-                      <button key={val} onClick={() => setAiTone(val)} style={{ ...S.btn(aiTone===val?'#7C3AED':'#1E293B', aiTone===val?'#fff':'#94A3B8', `1px solid ${aiTone===val?'#7C3AED':'#334155'}`), fontSize:11, padding:'4px 10px' }}>{lbl}</button>
+                      <button key={val} onClick={() => setAiTone(val)} style={{ ...S.btn(aiTone===val?'#7C3AED':'var(--card)', aiTone===val?'#fff':'var(--ink-3)', `1px solid ${aiTone===val?'#7C3AED':'var(--border)'}`), fontSize:11, padding:'4px 10px' }}>{lbl}</button>
                     ))}
                   </div>
                 </div>
@@ -186,7 +186,7 @@ const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
             <div style={{ marginBottom:14 }}>
               <label style={S.label}>Audiência</label>
               {[['all','Todos os contatos'],['tag','Por tag'],['stage','Por etapa CRM'],['csv','Importar CSV']].map(([val,lbl]) => (
-                <label key={val} style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 12px', background:form.audience===val?'#7C3AED22':'#0F172A', border:`1px solid ${form.audience===val?'#7C3AED55':'#334155'}`, borderRadius:8, marginBottom:6, cursor:'pointer', fontSize:13 }}>
+                <label key={val} style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 12px', background:form.audience===val?'#7C3AED22':'var(--bg)', border:`1px solid ${form.audience===val?'#7C3AED55':'var(--border)'}`, borderRadius:8, marginBottom:6, cursor:'pointer', fontSize:13 }}>
                   <input type="radio" name="aud" value={val} checked={form.audience===val} onChange={() => set('audience', val)} style={{ accentColor:'#7C3AED' }} />{lbl}
                 </label>
               ))}
@@ -196,7 +196,7 @@ const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
             {form.audience==='csv'   && <div style={{ marginBottom:12 }}><label style={S.label}>{form.channel==='email' ? 'Upload CSV (email, nome)' : 'Upload CSV (telefone, nome)'}</label><input type="file" accept=".csv,.txt" onChange={onFile} style={{ ...S.input, padding:'6px' }} />{csvRows.length > 0 && <p style={{ fontSize:11, color:'#059669', marginTop:6 }}>{csvRows.length} contato(s) lido(s) do arquivo.</p>}</div>}
             <div style={{ background:'#7C3AED18', border:'1px solid #7C3AED33', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:13 }}>
               <span style={{ color:'#A78BFA', fontWeight:700 }}>{count.toLocaleString('pt-BR')}</span>
-              <span style={{ color:'#64748B', marginLeft:6 }}>contatos selecionados</span>
+              <span style={{ color:'var(--ink-4)', marginLeft:6 }}>contatos selecionados</span>
             </div>
             <div><label style={S.label}>Excluir contatos com tag</label><div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>{TAGS.map(t => <Pill key={t} k="excludeTags" v={t} activeColor="#EF4444" />)}</div></div>
           </>}
@@ -205,7 +205,7 @@ const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
             <div style={{ marginBottom:14 }}>
               <label style={S.label}>Quando enviar</label>
               {[['now','Enviar agora'],['later','Agendar data/hora']].map(([val,lbl]) => (
-                <label key={val} style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 12px', background:form.schedule===val?'#7C3AED22':'#0F172A', border:`1px solid ${form.schedule===val?'#7C3AED55':'#334155'}`, borderRadius:8, marginBottom:6, cursor:'pointer', fontSize:13 }}>
+                <label key={val} style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 12px', background:form.schedule===val?'#7C3AED22':'var(--bg)', border:`1px solid ${form.schedule===val?'#7C3AED55':'var(--border)'}`, borderRadius:8, marginBottom:6, cursor:'pointer', fontSize:13 }}>
                   <input type="radio" name="sched" value={val} checked={form.schedule===val} onChange={() => set('schedule', val)} style={{ accentColor:'#7C3AED' }} />{lbl}
                 </label>
               ))}
@@ -221,17 +221,17 @@ const CampaignModal = ({ onClose, onCreate, contacts, emailConnected }) => {
               <select value={form.interval} onChange={e => set('interval', e.target.value)} style={S.input}>
                 {[['1','1 segundo (risco alto)'],['3','3 segundos (recomendado)'],['5','5 segundos (seguro)'],['10','10 segundos (muito seguro)'],['30','30 segundos (máxima segurança)']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
               </select>
-              <p style={{ fontSize:11, color:'#64748B', marginTop:5, display:'flex', alignItems:'center', gap:5 }}><AlertTriangle size={12} /> Intervalos curtos podem gerar bloqueio temporário do número.</p>
+              <p style={{ fontSize:11, color:'var(--ink-4)', marginTop:5, display:'flex', alignItems:'center', gap:5 }}><AlertTriangle size={12} /> Intervalos curtos podem gerar bloqueio temporário do número.</p>
             </div>
             <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer' }}>
               <input type="checkbox" checked={form.businessHours} onChange={e => set('businessHours', e.target.checked)} style={{ accentColor:'#7C3AED', width:16, height:16 }} />
-              <span style={{ color:'#CBD5E1' }}>Não enviar fora do horário comercial (8h–18h)</span>
+              <span style={{ color:'var(--ink-2)' }}>Não enviar fora do horário comercial (8h–18h)</span>
             </label>
           </>}
         </div>
 
         <div style={{ padding:'14px 24px', borderTop:'1px solid #334155', display:'flex', justifyContent:'space-between' }}>
-          <button onClick={step===1 ? onClose : () => setStep(s => s-1)} style={S.btn('#0F172A','#94A3B8','1px solid #334155')}>
+          <button onClick={step===1 ? onClose : () => setStep(s => s-1)} style={S.btn('var(--bg)','var(--ink-3)','1px solid #334155')}>
             {step===1 ? 'Cancelar' : 'Voltar'}
           </button>
           <button
@@ -261,7 +261,7 @@ const RecipientsModal = ({ campaign, onClose }) => {
       .then(({ data }) => { setMsgs(data ?? []); setLoading(false) })
   }, [campaign.id])
 
-  const ST_COLOR = { pending:'#64748B', sent:'#059669', failed:'#EF4444', skipped:'#D97706' }
+  const ST_COLOR = { pending:'var(--ink-4)', sent:'#059669', failed:'#EF4444', skipped:'#D97706' }
   const ST_LABEL = { pending:'Pendente', sent:'Enviado', failed:'Falhou', skipped:'Ignorado' }
 
   const filtered = msgs.filter(m => {
@@ -284,18 +284,18 @@ const RecipientsModal = ({ campaign, onClose }) => {
 
   return (
     <div style={{ position:'fixed', inset:0, background:'#000b', display:'flex', alignItems:'center', justifyContent:'center', zIndex:300 }} onClick={onClose}>
-      <div style={{ background:'#1E293B', border:'1px solid #334155', borderRadius:16, width:720, maxHeight:'85vh', display:'flex', flexDirection:'column' }} onClick={e => e.stopPropagation()}>
+      <div style={{ background:'var(--card)', border:'1px solid #334155', borderRadius:16, width:720, maxHeight:'85vh', display:'flex', flexDirection:'column' }} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div style={{ padding:'16px 24px', borderBottom:'1px solid #334155', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div>
-            <p style={{ fontSize:15, fontWeight:700, margin:'0 0 2px', color:'#F8FAFC', display:'flex', alignItems:'center', gap:8 }}>
+            <p style={{ fontSize:15, fontWeight:700, margin:'0 0 2px', color:'var(--ink-1)', display:'flex', alignItems:'center', gap:8 }}>
               <Users size={16} color="#7C3AED" /> Destinatários — {campaign.name}
             </p>
-            <p style={{ fontSize:11, color:'#64748B', margin:0 }}>{msgs.length} contato(s)</p>
+            <p style={{ fontSize:11, color:'var(--ink-4)', margin:0 }}>{msgs.length} contato(s)</p>
           </div>
           <div style={{ display:'flex', gap:8 }}>
-            <button onClick={exportRec} style={{ ...S.btn('#334155','#94A3B8'), display:'inline-flex', alignItems:'center', gap:6, fontSize:12 }}><Download size={13} /> Exportar CSV</button>
-            <button onClick={onClose} style={{ background:'none', border:'none', color:'#64748B', cursor:'pointer', fontSize:22, lineHeight:1 }}>×</button>
+            <button onClick={exportRec} style={{ ...S.btn('var(--border)','var(--ink-3)'), display:'inline-flex', alignItems:'center', gap:6, fontSize:12 }}><Download size={13} /> Exportar CSV</button>
+            <button onClick={onClose} style={{ background:'none', border:'none', color:'var(--ink-4)', cursor:'pointer', fontSize:22, lineHeight:1 }}>×</button>
           </div>
         </div>
 
@@ -307,9 +307,9 @@ const RecipientsModal = ({ campaign, onClose }) => {
         {/* Table */}
         <div style={{ flex:1, overflowY:'auto', padding:'0 24px 16px' }}>
           {loading ? (
-            <div style={{ padding:32, textAlign:'center', color:'#64748B' }}><Loader2 size={18} style={{ display:'inline' }} /> Carregando…</div>
+            <div style={{ padding:32, textAlign:'center', color:'var(--ink-4)' }}><Loader2 size={18} style={{ display:'inline' }} /> Carregando…</div>
           ) : filtered.length === 0 ? (
-            <div style={{ padding:32, textAlign:'center', color:'#64748B' }}>Nenhum destinatário encontrado.</div>
+            <div style={{ padding:32, textAlign:'center', color:'var(--ink-4)' }}>Nenhum destinatário encontrado.</div>
           ) : (
             <table style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead>
@@ -318,15 +318,15 @@ const RecipientsModal = ({ campaign, onClose }) => {
               <tbody>
                 {filtered.map((m, i) => (
                   <tr key={i}>
-                    <td style={{ ...S.td, color:'#F8FAFC', fontWeight:600 }}>{m.contact_name || '—'}{m.contact_company ? <span style={{ fontSize:10, color:'#64748B', display:'block', fontWeight:400 }}>{m.contact_company}</span> : null}</td>
+                    <td style={{ ...S.td, color:'var(--ink-1)', fontWeight:600 }}>{m.contact_name || '—'}{m.contact_company ? <span style={{ fontSize:10, color:'var(--ink-4)', display:'block', fontWeight:400 }}>{m.contact_company}</span> : null}</td>
                     <td style={S.td}>{m.phone || m.email || '—'}</td>
                     <td style={S.td}>
-                      <span style={{ background:(ST_COLOR[m.status]||'#64748B')+'22', color:ST_COLOR[m.status]||'#64748B', borderRadius:5, padding:'2px 8px', fontSize:11, fontWeight:600 }}>
+                      <span style={{ background:(ST_COLOR[m.status]||'var(--ink-4)')+'22', color:ST_COLOR[m.status]||'var(--ink-4)', borderRadius:5, padding:'2px 8px', fontSize:11, fontWeight:600 }}>
                         {ST_LABEL[m.status] || m.status}
                       </span>
                       {m.error && <span style={{ fontSize:10, color:'#EF4444', display:'block', marginTop:2 }}>{m.error}</span>}
                     </td>
-                    <td style={{ ...S.td, color:'#64748B', fontSize:12 }}>{m.sent_at ? new Date(m.sent_at).toLocaleString('pt-BR') : '—'}</td>
+                    <td style={{ ...S.td, color:'var(--ink-4)', fontSize:12 }}>{m.sent_at ? new Date(m.sent_at).toLocaleString('pt-BR') : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -454,10 +454,10 @@ export function Campaigns() {
 
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24, flexWrap:'wrap', gap:12 }}>
         <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-          <button onClick={() => navigate('/dashboard')} style={{ background:'none', border:'none', color:'#64748B', cursor:'pointer', padding:'4px 8px', lineHeight:1, display:'inline-flex', alignItems:'center' }}><ArrowLeft size={20} /></button>
+          <button onClick={() => navigate('/dashboard')} style={{ background:'none', border:'none', color:'var(--ink-4)', cursor:'pointer', padding:'4px 8px', lineHeight:1, display:'inline-flex', alignItems:'center' }}><ArrowLeft size={20} /></button>
           <div>
             <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 2px', display:'flex', alignItems:'center', gap:8 }}><Megaphone size={20} color="#7C3AED" /> Campanhas</h1>
-            <p style={{ fontSize:12, color:'#64748B', margin:0 }}>Disparos em massa por WhatsApp ou Email</p>
+            <p style={{ fontSize:12, color:'var(--ink-4)', margin:0 }}>Disparos em massa por WhatsApp ou Email</p>
           </div>
           <span style={{ background:'#7C3AED22', color:'#A78BFA', borderRadius:20, padding:'2px 10px', fontSize:12, fontWeight:700 }}>{campaigns.length}</span>
         </div>
@@ -475,7 +475,7 @@ export function Campaigns() {
           <div key={k.label} style={S.card}>
             <div style={{ marginBottom:8 }}><k.Icon size={22} color="#7C3AED" /></div>
             <p style={{ fontSize:26, fontWeight:800, margin:'0 0 2px' }}>{k.value}</p>
-            <p style={{ fontSize:12, color:'#94A3B8', margin:'0 0 2px', fontWeight:600 }}>{k.label}</p>
+            <p style={{ fontSize:12, color:'var(--ink-3)', margin:'0 0 2px', fontWeight:600 }}>{k.label}</p>
             <p style={{ fontSize:10, color:'#475569', margin:0 }}>{k.sub}</p>
           </div>
         ))}
@@ -489,9 +489,9 @@ export function Campaigns() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9} style={{ ...S.td, textAlign:'center', color:'#64748B', padding:'32px' }}><Loader2 size={18} className="animate-spin" style={{ display:'inline' }} /> Carregando…</td></tr>
+                <tr><td colSpan={9} style={{ ...S.td, textAlign:'center', color:'var(--ink-4)', padding:'32px' }}><Loader2 size={18} className="animate-spin" style={{ display:'inline' }} /> Carregando…</td></tr>
               ) : campaigns.length === 0 ? (
-                <tr><td colSpan={9} style={{ ...S.td, textAlign:'center', color:'#64748B', padding:'32px' }}>Nenhuma campanha ainda. Clique em <strong style={{ color:'#A78BFA' }}>+ Nova Campanha</strong> para começar.</td></tr>
+                <tr><td colSpan={9} style={{ ...S.td, textAlign:'center', color:'var(--ink-4)', padding:'32px' }}>Nenhuma campanha ainda. Clique em <strong style={{ color:'#A78BFA' }}>+ Nova Campanha</strong> para começar.</td></tr>
               ) : campaigns.map(c => {
                 const st = STATUS[c.status] ?? STATUS.draft
                 const isBusy = busyId === c.id
@@ -504,7 +504,7 @@ export function Campaigns() {
                         {st.label}
                       </span>
                     </td>
-                    <td style={{ ...S.td, fontWeight:600, color:'#F8FAFC' }}>
+                    <td style={{ ...S.td, fontWeight:600, color:'var(--ink-1)' }}>
                       {c.name}
                       {c.channel === 'email' && <span style={{ marginLeft:8, background:'#2563EB22', color:'#60A5FA', borderRadius:5, padding:'2px 7px', fontSize:10, fontWeight:700, verticalAlign:'middle' }}>EMAIL</span>}
                     </td>
@@ -517,7 +517,7 @@ export function Campaigns() {
                     <td style={S.td}>{(c.delivered || 0).toLocaleString('pt-BR')}</td>
                     <td style={S.td}>{(c.read || 0).toLocaleString('pt-BR')}</td>
                     <td style={S.td}>{(c.replied || 0).toLocaleString('pt-BR')}</td>
-                    <td style={{ ...S.td, color:'#64748B' }}>{fmtDate(c.scheduled_at || c.created_at)}</td>
+                    <td style={{ ...S.td, color:'var(--ink-4)' }}>{fmtDate(c.scheduled_at || c.created_at)}</td>
                     <td style={S.td}>
                       <div style={{ display:'flex', gap:6 }}>
                         {!isDemoMode && c.status === 'sending' && (
@@ -530,8 +530,8 @@ export function Campaigns() {
                           const { data: msgs } = await supabase.from('campaign_messages').select('contact_name,contact_company,phone,email,status,sent_at,error').eq('campaign_id', c.id).order('id')
                           const rows = (msgs ?? []).map(m => ({ Nome: m.contact_name||'—', Empresa: m.contact_company||'—', Telefone: m.phone||'—', Email: m.email||'—', Status: {pending:'Pendente',sent:'Enviado',failed:'Falhou',skipped:'Ignorado'}[m.status]||m.status, 'Enviado em': m.sent_at ? new Date(m.sent_at).toLocaleString('pt-BR') : '—', Erro: m.error||'—' }))
                           exportCSV(rows.length ? rows : [{ Nome: c.name, Status: st.label, Destinatários: c.total||0, Enviadas: c.sent||0 }], `destinatarios-${c.name}`)
-                        }} style={{ ...S.btn('#334155','#94A3B8'), padding:'6px 9px', display:'inline-flex', alignItems:'center' }}><Download size={15} /></button>
-                        {!isDemoMode && <button title="Duplicar" onClick={() => duplicate(c)} style={{ ...S.btn('#334155','#94A3B8'), padding:'6px 9px', display:'inline-flex', alignItems:'center' }}><Copy size={15} /></button>}
+                        }} style={{ ...S.btn('var(--border)','var(--ink-3)'), padding:'6px 9px', display:'inline-flex', alignItems:'center' }}><Download size={15} /></button>
+                        {!isDemoMode && <button title="Duplicar" onClick={() => duplicate(c)} style={{ ...S.btn('var(--border)','var(--ink-3)'), padding:'6px 9px', display:'inline-flex', alignItems:'center' }}><Copy size={15} /></button>}
                         {!isDemoMode && <button title="Excluir" onClick={() => remove(c)} style={{ ...S.btn('#EF444415','#F87171','1px solid #EF444430'), padding:'6px 9px', display:'inline-flex', alignItems:'center' }}><Trash2 size={15} /></button>}
                       </div>
                     </td>

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Lock } from 'lucide-react'
 import { usePlan } from '@hooks/usePlan'
 
-const C = { overlay:'rgba(0,0,0,.7)', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#94A3B8', red:'#EF4444', pur:'#7C3AED' }
+const C = { overlay:'rgba(0,0,0,.7)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-3)', red:'#EF4444', pur:'#7C3AED' }
 
 export const PaywallModal = ({ isOpen, onClose, used, limit }) => {
   const navigate = useNavigate()
@@ -20,11 +20,11 @@ export const PaywallModal = ({ isOpen, onClose, used, limit }) => {
         <div style={{ display:'flex', justifyContent:'center' }}><Lock size={42} color={C.pur} /></div>
         <h2 style={{ margin:'10px 0 8px', fontSize:19, fontWeight:800 }}>Limite de mensagens atingido</h2>
         <p style={{ color:C.mut, fontSize:13, margin:'0 0 18px' }}>Você usou {usedN} de {limitN} mensagens do plano {plan?.plan ?? 'gratuito'}.</p>
-        <div style={{ background:'#0F172A', borderRadius:8, height:10, overflow:'hidden', marginBottom:22 }}>
+        <div style={{ background:'var(--bg)', borderRadius:8, height:10, overflow:'hidden', marginBottom:22 }}>
           <div style={{ width:'100%', height:'100%', background:C.red }} />
         </div>
         <button onClick={()=>navigate('/plans/starter')} style={{ width:'100%', background:C.pur, color:'#fff', border:'none', borderRadius:10, padding:'12px', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'inherit', marginBottom:10 }}>Ver plano Starter — R$67/mês</button>
-        <button onClick={()=>navigate('/plans/pro')} style={{ width:'100%', background:'#fff', color:'#0F172A', border:'none', borderRadius:10, padding:'12px', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'inherit', marginBottom:14 }}>Ver plano Pro — R$197/mês</button>
+        <button onClick={()=>navigate('/plans/pro')} style={{ width:'100%', background:'#fff', color:'var(--bg)', border:'none', borderRadius:10, padding:'12px', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'inherit', marginBottom:14 }}>Ver plano Pro — R$197/mês</button>
         <button onClick={()=>{ window.location.href = '/plans' }} style={{ background:'none', border:'none', color:C.mut, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>Ver todos os planos →</button>
       </div>
     </div>

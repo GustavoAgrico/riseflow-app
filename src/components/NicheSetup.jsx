@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Target, Check } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
-const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#94A3B8', pur:'#7C3AED' }
+const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-3)', pur:'#7C3AED' }
 const inp = { width:'100%', boxSizing:'border-box', background:C.bg, border:`1px solid ${C.bd}`, borderRadius:8, padding:'9px 12px', color:C.tx, fontSize:13, outline:'none', fontFamily:'inherit' }
 const lbl = { display:'block', fontSize:12, color:C.mut, fontWeight:600, margin:'14px 0 6px' }
 

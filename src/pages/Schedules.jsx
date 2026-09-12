@@ -6,7 +6,7 @@ import { useAuth } from '@context/AuthContext'
 import { logger } from '@services/activityLogger'
 import { useIsMobile } from '@hooks/useIsMobile'
 
-const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#64748B', pur:'#7C3AED' }
+const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-4)', pur:'#7C3AED' }
 const ST = { agendado:{ l:'Agendado', c:'#2563EB' }, enviado:{ l:'Enviado', c:'#059669' }, cancelado:{ l:'Cancelado', c:'#EF4444' }, falhou:{ l:'Falhou', c:'#D97706' } }
 const FREQ = [['diario','Diário'],['semanal','Semanal'],['mensal','Mensal'],['segsex','Seg-Sex']]
 const pad = n => String(n).padStart(2,'0')

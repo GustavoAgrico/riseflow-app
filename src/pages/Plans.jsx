@@ -6,7 +6,7 @@ import { usageService } from '@services/usageService'
 import { checkoutService } from '@services/checkoutService'
 import { logger } from '@services/activityLogger'
 
-const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#94A3B8', pur:'#7C3AED', grn:'#059669', red:'#EF4444' }
+const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-3)', pur:'#7C3AED', grn:'#059669', red:'#EF4444' }
 
 const CATALOG = [
   {
@@ -103,9 +103,9 @@ export const Plans = () => {
                 {p.feats.map(f => <li key={f} style={{ fontSize:13, color:C.mut, display:'flex', alignItems:'center', gap:6 }}><Check size={13} color={C.grn} /> {f}</li>)}
               </ul>
               {p.integrations && (
-                <div style={{ background:'#0F172A', borderRadius:8, padding:'8px 10px', marginBottom:14 }}>
+                <div style={{ background:'var(--bg)', borderRadius:8, padding:'8px 10px', marginBottom:14 }}>
                   <p style={{ fontSize:10, color:C.mut, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:3 }}>Integrações</p>
-                  <p style={{ fontSize:12, color:'#F8FAFC', fontWeight:600, margin:0 }}>{p.integrations}</p>
+                  <p style={{ fontSize:12, color:'var(--ink-1)', fontWeight:600, margin:0 }}>{p.integrations}</p>
                 </div>
               )}
               {isCurrent

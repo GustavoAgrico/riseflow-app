@@ -163,7 +163,7 @@ const NodeCard = memo(({ data, selected, type }) => {
   const preview = def.preview?.(data) ?? ''
   return (
     <div style={{
-      minWidth: 200, maxWidth: 240, borderRadius: 12, background: '#111827', overflow: 'hidden',
+      minWidth: 200, maxWidth: 240, borderRadius: 12, background: 'var(--card)', overflow: 'hidden',
       border: `1.5px solid ${selected ? '#FF6B35' : def.color + '44'}`,
       boxShadow: selected
         ? '0 0 0 3px rgba(255,107,53,0.22), 0 8px 24px rgba(0,0,0,0.5)'
@@ -391,7 +391,7 @@ export function FlowBuilder() {
         <NodePalette mobile={isMobile} open={paletteOpen} onClose={() => setPaletteOpen(false)} onPick={addNodeAtCenter} />
 
         {/* Canvas ReactFlow */}
-        <div className="flex-1 relative" style={{ background: '#0A0E1A' }}>
+        <div className="flex-1 relative" style={{ background: 'var(--bg)' }}>
           <ReactFlow
             nodes={nodes} edges={edges}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
@@ -406,13 +406,13 @@ export function FlowBuilder() {
             deleteKeyCode="Delete"
             panOnDrag panOnScroll={false}
             zoomOnScroll zoomOnPinch zoomOnDoubleClick={false}
-            style={{ background: '#0A0E1A' }}
+            style={{ background: 'var(--bg)' }}
           >
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1E2435" />
-            <Controls style={{ background: '#111827', border: '1px solid #1E2435', borderRadius: 10 }} />
+            <Controls style={{ background: 'var(--card)', border: '1px solid #1E2435', borderRadius: 10 }} />
             <MiniMap
               nodeColor={n => NODE_DEFS[n.type]?.color ?? '#FF6B35'}
-              style={{ background: '#111827', border: '1px solid #1E2435', borderRadius: 10 }}
+              style={{ background: 'var(--card)', border: '1px solid #1E2435', borderRadius: 10 }}
               maskColor="rgba(10,14,26,0.75)"
             />
 

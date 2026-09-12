@@ -5,7 +5,7 @@ import { useAuth } from '@context/AuthContext'
 import { logger } from '@services/activityLogger'
 import { exportCSV } from '@utils/exportUtils'
 
-const C = { bg: '#0F172A', card: '#1E293B', bd: '#334155', tx: '#F8FAFC', mut: '#94A3B8', pur: '#7C3AED' }
+const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-3)', pur: '#7C3AED' }
 const F = 'DM Sans, sans-serif'
 const PER = 50
 const CATS = [
@@ -89,7 +89,7 @@ export function ActivityLogs() {
       <div style={st.top}>
         <button onClick={() => nav('/dashboard')} title="Voltar" style={st.ic}><ArrowLeft size={20} /></button>
         <span style={{ fontSize: 18, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 8 }}><ClipboardList size={20} color={C.pur} /> Logs de Atividade</span>
-        <button onClick={doExport} style={{ ...st.btn('#334155'), marginLeft: 'auto' }}><Download size={15} /> Exportar CSV</button>
+        <button onClick={doExport} style={{ ...st.btn('var(--border)'), marginLeft: 'auto' }}><Download size={15} /> Exportar CSV</button>
         <button onClick={doClear} style={st.btn('#EF4444')}><Trash2 size={15} /> Limpar logs antigos</button>
       </div>
 
@@ -151,8 +151,8 @@ export function ActivityLogs() {
         <span style={{ fontSize: 12, color: C.mut }}>
           {total === 0 ? 'Nenhum registro' : `Mostrando ${page * PER + 1}-${Math.min((page + 1) * PER, total)} de ${total} registros`}
         </span>
-        <button disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))} style={{ ...st.btn('#334155'), marginLeft: 'auto', opacity: page === 0 ? .4 : 1 }}>← Anterior</button>
-        <button disabled={page >= pages - 1} onClick={() => setPage(p => p + 1)} style={{ ...st.btn('#334155'), opacity: page >= pages - 1 ? .4 : 1 }}>Próximo →</button>
+        <button disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))} style={{ ...st.btn('var(--border)'), marginLeft: 'auto', opacity: page === 0 ? .4 : 1 }}>← Anterior</button>
+        <button disabled={page >= pages - 1} onClick={() => setPage(p => p + 1)} style={{ ...st.btn('var(--border)'), opacity: page >= pages - 1 ? .4 : 1 }}>Próximo →</button>
       </div>
     </div>
   )

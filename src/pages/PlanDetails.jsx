@@ -5,7 +5,7 @@ import { useAuth } from '@context/AuthContext'
 import { usePlan } from '@hooks/usePlan'
 import { abacatePayService } from '@services/abacatePayService'
 
-const C = { bg:'#0F172A', card:'#1E293B', bd:'#334155', tx:'#F8FAFC', mut:'#94A3B8', pur:'#7C3AED', grn:'#059669', red:'#EF4444' }
+const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-3)', pur:'#7C3AED', grn:'#059669', red:'#EF4444' }
 
 const CATALOG = {
   free: { name:'Grátis', price:'R$0', period:'', tagline:'Para experimentar o RiseFlow sem compromisso.',
@@ -40,7 +40,7 @@ const applyMask = (raw, type) => {
 
 const inputStyle = (hasErr) => ({
   width: '100%', boxSizing: 'border-box',
-  background: '#0F172A',
+  background: 'var(--bg)',
   border: `1px solid ${hasErr ? C.red : C.bd}`,
   borderRadius: 8, padding: '11px 13px',
   color: C.tx, fontSize: 15, outline: 'none',
