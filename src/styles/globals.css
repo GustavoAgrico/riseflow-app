@@ -60,7 +60,7 @@
   .glow-orange { box-shadow: 0 0 20px rgba(255,107,53,0.4); }
   .glow-blue { box-shadow: 0 0 20px rgba(59,130,246,0.4); }
   .gradient-text {
-    background: linear-gradient(135deg, #2E8BFF, #3B82F6);
+    background: linear-gradient(135deg, #FF6B35, #E55100);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
