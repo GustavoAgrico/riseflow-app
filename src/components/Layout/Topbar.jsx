@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Search, Bell, Plus, ChevronDown, LogOut, User, Zap, Menu, MessageCircle, Megaphone, AlertTriangle } from 'lucide-react'
+import { Search, Bell, Plus, ChevronDown, LogOut, User, Zap, Menu, MessageCircle, Megaphone, AlertTriangle, Sun, Moon } from 'lucide-react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useApp } from '@context/AppContext'
 import { useAuth } from '@context/AuthContext'
+import { useTheme } from '@hooks/useTheme'
 import clsx from 'clsx'
 
 const getInitials = (name) => {
@@ -22,6 +23,7 @@ const relTime = (t) => {
 export const Topbar = ({ title, subtitle, onMenu }) => {
   const { notifications, markAllRead, unreadCount, clearAll, setNewFlowModalOpen } = useApp()
   const { user, signOut, isDemoMode } = useAuth()
+  const { theme, toggle } = useTheme()
   const [showNotif, setShowNotif] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -68,7 +70,7 @@ export const Topbar = ({ title, subtitle, onMenu }) => {
           </Link>
         </div>
       )}
-    <header className="h-16 border-b border-dark-400 flex items-center justify-between gap-2 px-3 sm:px-6 bg-dark-800/80 backdrop-blur-md">
+    <header className="h-16 border-b border-dark-400 flex items-center justify-between gap-2 px-3 sm:px-6 backdrop-blur-md" style={{ background: 'var(--panel)' }}>
       <div className="flex items-center gap-1 sm:gap-2 min-w-0">
         {onMenu && (
           <button
@@ -109,6 +111,18 @@ export const Topbar = ({ title, subtitle, onMenu }) => {
         >
           <Plus size={15} />
           <span className="hidden md:inline">Novo Fluxo</span>
+        </button>
+
+        {/* Alternar tema (claro/escuro) */}
+        <button
+          onClick={toggle}
+          aria-label={theme === 'light' ? 'Ativar tema escuro' : 'Ativar tema claro'}
+          title={theme === 'light' ? 'Tema escuro' : 'Tema claro'}
+          className="p-2.5 glass rounded-xl hover:border-brand-orange/40 transition-all"
+        >
+          {theme === 'light'
+            ? <Moon size={17} className="text-slate-300" />
+            : <Sun size={17} className="text-slate-300" />}
         </button>
 
         {/* Notifications */}

@@ -356,7 +356,7 @@ export const Dashboard = () => {
       {/* ── Hero premium ── */}
       <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 20, marginBottom: 24,
         border: '1px solid rgba(255,255,255,0.08)',
-        background: 'linear-gradient(120deg, rgba(255,107,53,0.16), rgba(124,58,237,0.15) 58%, rgba(255,255,255,0.03))',
+        background: 'linear-gradient(120deg, rgba(255,107,53,0.20), rgba(124,58,237,0.20) 58%, rgba(255,255,255,0.03)), #0B1220',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 20px 50px -26px rgba(0,0,0,0.7)' }}>
         <div style={{ position: 'absolute', right: -70, top: -90, width: 300, height: 300, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,58,237,0.32), transparent 62%)', pointerEvents: 'none' }} />
         <div style={{ position: 'absolute', left: -60, bottom: -110, width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,107,53,0.20), transparent 62%)', pointerEvents: 'none' }} />
