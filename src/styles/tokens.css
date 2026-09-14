@@ -89,6 +89,17 @@
   --glass-bg: linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.022));
   --glass-border: rgba(255,255,255,0.08);
   --glass-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 30px -14px rgba(0,0,0,0.55);
+  /* Hero do Dashboard — banner escuro no tema padrão */
+  --hero-bg: linear-gradient(120deg, rgba(255,107,53,0.20), rgba(124,58,237,0.20) 58%, rgba(255,255,255,0.03)), #0B1220;
+  --hero-border: rgba(255,255,255,0.08);
+  --hero-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 20px 50px -26px rgba(0,0,0,0.7);
+  --hero-ink-1: #FFFFFF;
+  --hero-ink-2: rgba(255,255,255,0.72);
+  --hero-ink-3: rgba(255,255,255,0.62);
+  --hero-eyebrow: #93C5FD;
+  --hero-tile-bg: rgba(255,255,255,0.05);
+  --hero-tile-border: rgba(255,255,255,0.09);
+  --hero-track: rgba(255,255,255,0.09);
 }
 :root[data-theme="light"] {
   --bg: #EEF2F7;
@@ -103,4 +114,15 @@
   --glass-bg: #FFFFFF;
   --glass-border: rgba(15,23,42,0.10);
   --glass-shadow: 0 1px 3px rgba(15,23,42,0.07), 0 10px 26px -14px rgba(15,23,42,0.14);
+  /* Hero do Dashboard — banner claro/branco no tema claro */
+  --hero-bg: linear-gradient(120deg, rgba(255,107,53,0.10), rgba(124,58,237,0.10) 60%, rgba(255,255,255,0.9)), #FFFFFF;
+  --hero-border: #E2E8F0;
+  --hero-shadow: 0 1px 3px rgba(15,23,42,0.06), 0 14px 34px -20px rgba(15,23,42,0.22);
+  --hero-ink-1: #0F172A;
+  --hero-ink-2: #475569;
+  --hero-ink-3: #64748B;
+  --hero-eyebrow: #7C3AED;
+  --hero-tile-bg: #F8FAFC;
+  --hero-tile-border: #E2E8F0;
+  --hero-track: #E2E8F0;
 }
