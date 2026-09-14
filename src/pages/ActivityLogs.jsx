@@ -20,7 +20,7 @@ const rel = d => { const m = Math.max(1, Math.round((Date.now() - new Date(d)) /
 
 export function ActivityLogs() {
   const nav = useNavigate()
-  const { user } = useAuth()
+  const { ownerUserId, isMember } = useAuth()
   const [logs, setLogs] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
@@ -37,19 +37,19 @@ export function ActivityLogs() {
   useEffect(() => { setPage(0) }, [cat, from, to])
 
   useEffect(() => {
-    if (!user?.id) return
+    if (!ownerUserId) return
     let on = true; setLoading(true)
     const opts = { category: cat, limit: PER, offset: page * PER }
     if (from) opts.dateFrom = new Date(from).toISOString()
     if (to) opts.dateTo = new Date(to + 'T23:59:59').toISOString()
-    logger.getLogs(user.id, opts).then(({ logs, total }) => { if (on) { setLogs(logs); setTotal(total); setLoading(false) } })
+    logger.getLogs(ownerUserId, opts).then(({ logs, total }) => { if (on) { setLogs(logs); setTotal(total); setLoading(false) } })
     return () => { on = false }
-  }, [user, cat, page, from, to, tick])
+  }, [ownerUserId, cat, page, from, to, tick])
 
   useEffect(() => {
-    if (!user?.id) return
+    if (!ownerUserId) return
     let on = true
-    logger.getLogs(user.id, { limit: 500 }).then(({ logs }) => {
+    logger.getLogs(ownerUserId, { limit: 500 }).then(({ logs }) => {
       if (!on) return
       const now = Date.now(), today = new Date().toDateString()
       const counts = {}; logs.forEach(l => { counts[l.category] = (counts[l.category] || 0) + 1 })
@@ -63,7 +63,7 @@ export function ActivityLogs() {
       })
     })
     return () => { on = false }
-  }, [user, tick])
+  }, [ownerUserId, tick])
 
   const view = useMemo(() => q ? logs.filter(l => (l.description || '').toLowerCase().includes(q.toLowerCase())) : logs, [logs, q])
   const pages = Math.max(1, Math.ceil(total / PER))
@@ -71,7 +71,7 @@ export function ActivityLogs() {
   const doExport = () => exportCSV(logs.map(l => ({ Data: fmt(l.created_at), Categoria: l.category, Acao: l.action, Descricao: l.description, Pagina: l.page || '' })), 'logs_atividade')
   const doClear = async () => {
     if (!window.confirm('Remover logs com mais de 90 dias? Esta ação não pode ser desfeita.')) return
-    try { await logger.clearLogs(user.id, 90) } catch (e) { console.log('[Logs] clear:', e.message) }
+    try { await logger.clearLogs(ownerUserId, 90) } catch (e) { console.log('[Logs] clear:', e.message) }
     setTick(t => t + 1)
   }
 
@@ -90,7 +90,7 @@ export function ActivityLogs() {
         <button onClick={() => nav('/dashboard')} title="Voltar" style={st.ic}><ArrowLeft size={20} /></button>
         <span style={{ fontSize: 18, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 8 }}><ClipboardList size={20} color={C.pur} /> Logs de Atividade</span>
         <button onClick={doExport} style={{ ...st.btn('var(--border)'), marginLeft: 'auto' }}><Download size={15} /> Exportar CSV</button>
-        <button onClick={doClear} style={st.btn('#EF4444')}><Trash2 size={15} /> Limpar logs antigos</button>
+        {!isMember && <button onClick={doClear} style={st.btn('#EF4444')}><Trash2 size={15} /> Limpar logs antigos</button>}
       </div>
 
       <div style={{ display: 'flex', gap: 10, padding: '12px 20px', borderBottom: `1px solid ${C.bd}`, flexWrap: 'wrap', alignItems: 'center' }}>

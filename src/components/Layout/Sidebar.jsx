@@ -15,13 +15,6 @@ const ICONS = { LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, Mess
 const getInitials = (name = '') =>
   name.split(' ').slice(0, 2).map(w => w[0] ?? '').join('').toUpperCase() || 'U'
 
-// Membros de equipe veem só o painel operacional do dono (dados da conta).
-const MEMBER_PATHS = new Set([
-  '/dashboard', '/chat', '/smart-attendant', '/flows',
-  '/crm', '/clients', '/analytics', '/funnel',
-  '/campaigns', '/schedules', '/templates', '/calls',
-])
-
 const LS_KEY = 'rf_nav_open'
 const loadOpen = () => {
   try { return { ...NAV_DEFAULT_OPEN, ...JSON.parse(localStorage.getItem(LS_KEY) || '{}') } }
@@ -30,7 +23,7 @@ const loadOpen = () => {
 
 export const Sidebar = ({ mobile = false, drawerOpen = false, onNavigate }) => {
   const { sidebarOpen, setSidebarOpen } = useApp()
-  const { user, isDemoMode, isMember } = useAuth()
+  const { user, isDemoMode, canAccess } = useAuth()
   const location = useLocation()
 
   const [open, setOpen] = useState(loadOpen)
@@ -39,7 +32,7 @@ export const Sidebar = ({ mobile = false, drawerOpen = false, onNavigate }) => {
 
   const expanded = mobile || sidebarOpen
   const isActive = (path) => location.pathname === path
-  const allow = (item) => !isMember || MEMBER_PATHS.has(item.path)
+  const allow = (item) => canAccess(item.path)
 
   // Grupos visíveis para o usuário (respeita restrição de membro; esconde vazios)
   const groups = NAV_GROUPS

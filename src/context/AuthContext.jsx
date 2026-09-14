@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { supabase } from '@/lib/supabase'
 import { socket } from '@services/socket'
 import { logger } from '@services/activityLogger'
+import { normalizeRole, canAccessPath, canManage as roleCanManage } from '@constants/access'
 
 const AuthContext = createContext(null)
 
@@ -137,12 +138,18 @@ export const AuthProvider = ({ children }) => {
     setMember(null)
   }
 
+  // Cargo efetivo: dono (acesso total) ou o cargo do membro (Admin/Supervisor/Atendente).
+  const role = normalizeRole(member?.role, { isMember: !!member })
+
   return (
     <AuthContext.Provider value={{
       user, session, loading, isDemoMode,
       isMember: !!member,
       memberRecord: member,
       ownerUserId: member ? member.user_id : (user?.id ?? null),
+      role,
+      canAccess: (path) => canAccessPath(role, path),
+      canManage: roleCanManage(role),
       signUp, signIn, signOut, signInWithGoogle, resetPassword, loginDemo,
     }}>
       {children}

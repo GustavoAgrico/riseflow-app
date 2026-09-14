@@ -39,7 +39,9 @@ const EMPTY_FORM = { name: '', email: '', role: 'Atendente', conv_limit: 5, queu
 
 export const Teams = () => {
   const navigate = useNavigate()
-  const { user, isDemoMode } = useAuth()
+  const { user, isDemoMode, isMember, ownerUserId } = useAuth()
+  // Membro de equipe (Admin/Supervisor) VÊ a equipe do dono, mas não edita.
+  const readOnly = isMember
 
   const isMobile = useIsMobile()
   const [members, setMembers] = useState([])
@@ -56,15 +58,16 @@ export const Teams = () => {
   const [notice, setNotice] = useState(null)        // { type:'ok'|'warn', text } — feedback de convite
 
   const load = useCallback(async () => {
-    if (!user || isDemoMode) return
+    if (!ownerUserId || isDemoMode) return
+    // Escopo por DONO da conta → o membro enxerga a mesma equipe (ver RLS ETAPA 2).
     const [{ data: m }, { data: q }] = await Promise.all([
-      supabase.from('team_members').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
-      supabase.from('team_queues').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
+      supabase.from('team_members').select('*').eq('user_id', ownerUserId).order('created_at', { ascending: true }),
+      supabase.from('team_queues').select('*').eq('user_id', ownerUserId).order('created_at', { ascending: true }),
     ])
     setMembers(m ?? [])
     setQueues(q ?? [])
     setLoading(false)
-  }, [user, isDemoMode])
+  }, [ownerUserId, isDemoMode])
 
   useEffect(() => {
     if (isDemoMode) { setMembers(DEMO_MEMBERS); setQueues(DEMO_QUEUES); setLoading(false); return }
@@ -81,7 +84,11 @@ export const Teams = () => {
     return () => socket.off('team_status', onStatus)
   }, [isDemoMode])
 
-  const guardDemo = () => { if (isDemoMode) { window.alert('Modo demo: crie uma conta para gerenciar sua equipe.'); return true } return false }
+  const guardDemo = () => {
+    if (isDemoMode) { window.alert('Modo demo: crie uma conta para gerenciar sua equipe.'); return true }
+    if (readOnly) { setNotice({ type: 'warn', text: 'Seu cargo permite visualizar a equipe, mas apenas o dono da conta pode editar.' }); return true }
+    return false
+  }
 
   /* ── Membros ── */
   const openAdd  = () => { setEditing(null); setForm(EMPTY_FORM); setOpen(true) }
@@ -285,9 +292,17 @@ export const Teams = () => {
         <h1 style={{ fontSize: 22, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><Users size={20} color={C.purple} /> Equipe</h1>
         <span style={{ background: 'rgba(124,58,237,0.15)', color: C.purple, fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 999 }}>{members.length} membros</span>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nome ou e-mail…" style={{ ...inp, flex: 1, minWidth: 160, maxWidth: 320, marginLeft: 8 }} />
-        <button onClick={() => { setBulkOpen(true); setBulkMsg('') }} style={{ ...iBtn(C.purple), padding: '10px 14px', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={14} /> Vários</button>
-        <button onClick={openAdd} style={{ background: C.purple, border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 600, fontFamily: F, padding: '10px 18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={15} /> Adicionar Membro</button>
+        {!readOnly && <>
+          <button onClick={() => { setBulkOpen(true); setBulkMsg('') }} style={{ ...iBtn(C.purple), padding: '10px 14px', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={14} /> Vários</button>
+          <button onClick={openAdd} style={{ background: C.purple, border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 600, fontFamily: F, padding: '10px 18px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={15} /> Adicionar Membro</button>
+        </>}
       </div>
+
+      {readOnly && (
+        <div style={{ ...cardS, marginBottom: 16, borderColor: 'rgba(124,58,237,0.27)', background: 'rgba(124,58,237,0.06)', color: C.purple, fontSize: 13 }}>
+          Modo visualização — você acompanha a equipe e a presença em tempo real. A edição (adicionar, remover, cargos e filas) é exclusiva do dono da conta.
+        </div>
+      )}
 
       {isDemoMode && (
         <div style={{ ...cardS, marginBottom: 16, borderColor: 'rgba(234,179,8,0.27)', background: 'rgba(234,179,8,0.06)', color: C.yellow, fontSize: 13 }}>
@@ -332,17 +347,19 @@ export const Teams = () => {
                       <div style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>{m.email}</div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <button title="Editar" onClick={() => openEdit(m)} style={{ ...iBtn(C.muted), display: 'inline-flex', alignItems: 'center' }}><Pencil size={15} /></button>
-                    <button title={isAdmin ? 'Admin não pode ser removido' : 'Remover'} onClick={() => removeMember(m)} disabled={isAdmin} style={{ ...iBtn(C.red), opacity: isAdmin ? 0.3 : 1, display: 'inline-flex', alignItems: 'center' }}><Trash2 size={15} /></button>
-                  </div>
+                  {!readOnly && (
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button title="Editar" onClick={() => openEdit(m)} style={{ ...iBtn(C.muted), display: 'inline-flex', alignItems: 'center' }}><Pencil size={15} /></button>
+                      <button title={isAdmin ? 'Admin não pode ser removido' : 'Remover'} onClick={() => removeMember(m)} disabled={isAdmin} style={{ ...iBtn(C.red), opacity: isAdmin ? 0.3 : 1, display: 'inline-flex', alignItems: 'center' }}><Trash2 size={15} /></button>
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <label style={{ fontSize: 11, color: C.muted }}>Cargo
-                    <select value={m.role} onChange={e => patchMember(m.id, 'role', e.target.value)} style={{ ...inp, width: '100%', marginTop: 4 }}>{ROLES.map(r => <option key={r}>{r}</option>)}</select>
+                    <select value={m.role} disabled={readOnly} onChange={e => patchMember(m.id, 'role', e.target.value)} style={{ ...inp, width: '100%', marginTop: 4, opacity: readOnly ? 0.7 : 1 }}>{ROLES.map(r => <option key={r}>{r}</option>)}</select>
                   </label>
                   <label style={{ fontSize: 11, color: C.muted }}>Status
-                    <select value={m.status} onChange={e => patchMember(m.id, 'status', e.target.value)} style={{ ...inp, width: '100%', marginTop: 4, color: ST[m.status]?.c ?? C.text, fontWeight: 600 }}>{Object.entries(ST).map(([k, v]) => <option key={k} value={k} style={{ color: C.text }}>{v.l}</option>)}</select>
+                    <select value={m.status} disabled={readOnly} onChange={e => patchMember(m.id, 'status', e.target.value)} style={{ ...inp, width: '100%', marginTop: 4, color: ST[m.status]?.c ?? C.text, fontWeight: 600, opacity: readOnly ? 0.7 : 1 }}>{Object.entries(ST).map(([k, v]) => <option key={k} value={k} style={{ color: C.text }}>{v.l}</option>)}</select>
                   </label>
                 </div>
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>Limite: {m.conv_limit} conversas</div>
@@ -367,14 +384,14 @@ export const Teams = () => {
                 <tr key={m.id}>
                   <td style={td}><div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Avatar name={m.name} />{m.name}</div></td>
                   <td style={{ ...td, color: C.muted }}>{m.email}</td>
-                  <td style={td}><select value={m.role} onChange={e => patchMember(m.id, 'role', e.target.value)} style={inp}>{ROLES.map(r => <option key={r}>{r}</option>)}</select></td>
-                  <td style={td}><select value={m.status} onChange={e => patchMember(m.id, 'status', e.target.value)} style={{ ...inp, color: ST[m.status]?.c ?? C.text, fontWeight: 600 }}>{Object.entries(ST).map(([k, v]) => <option key={k} value={k} style={{ color: C.text }}>{v.l}</option>)}</select></td>
+                  <td style={td}><select value={m.role} disabled={readOnly} onChange={e => patchMember(m.id, 'role', e.target.value)} style={{ ...inp, opacity: readOnly ? 0.7 : 1 }}>{ROLES.map(r => <option key={r}>{r}</option>)}</select></td>
+                  <td style={td}><select value={m.status} disabled={readOnly} onChange={e => patchMember(m.id, 'status', e.target.value)} style={{ ...inp, color: ST[m.status]?.c ?? C.text, fontWeight: 600, opacity: readOnly ? 0.7 : 1 }}>{Object.entries(ST).map(([k, v]) => <option key={k} value={k} style={{ color: C.text }}>{v.l}</option>)}</select></td>
                   <td style={{ ...td, textAlign: 'center' }}>{m.conv_limit}</td>
-                  <td style={td}><div style={{ display: 'flex', gap: 6 }}>
+                  <td style={td}>{readOnly ? <span style={{ color: C.muted }}>—</span> : <div style={{ display: 'flex', gap: 6 }}>
                     <button title="Editar" onClick={() => openEdit(m)} style={{ ...iBtn(C.muted), display: 'inline-flex', alignItems: 'center' }}><Pencil size={14} /></button>
                     <button title={isAdmin ? 'Admin não pode ser removido' : 'Remover'} onClick={() => removeMember(m)} disabled={isAdmin}
                       style={{ ...iBtn(C.red), opacity: isAdmin ? 0.3 : 1, cursor: isAdmin ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center' }}><Trash2 size={14} /></button>
-                  </div></td>
+                  </div>}</td>
                 </tr>
               )
             })}
@@ -385,7 +402,7 @@ export const Teams = () => {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
         <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Filas de Atendimento</h2>
-        <button onClick={addQueue} style={{ ...iBtn(C.purple), display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px' }}><Plus size={14} /> Nova Fila</button>
+        {!readOnly && <button onClick={addQueue} style={{ ...iBtn(C.purple), display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px' }}><Plus size={14} /> Nova Fila</button>}
       </div>
       {queues.length === 0 && !loading ? (
         <div style={{ ...cardS, color: C.muted, fontSize: 13 }}>Nenhuma fila criada. Clique em <strong style={{ color: C.purple }}>Nova Fila</strong> para distribuir os atendimentos.</div>
@@ -394,19 +411,19 @@ export const Teams = () => {
           {queues.map(q => (
             <div key={q.id} style={cardS}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <input value={q.name} onChange={e => setQueues(s => s.map(x => x.id === q.id ? { ...x, name: e.target.value } : x))} onBlur={e => patchQueue(q.id, 'name', e.target.value)} style={{ ...inp, flex: 1, fontWeight: 700, fontSize: 14 }} />
+                <input value={q.name} readOnly={readOnly} onChange={e => setQueues(s => s.map(x => x.id === q.id ? { ...x, name: e.target.value } : x))} onBlur={e => !readOnly && patchQueue(q.id, 'name', e.target.value)} style={{ ...inp, flex: 1, fontWeight: 700, fontSize: 14 }} />
                 <span style={{ background: 'rgba(124,58,237,0.15)', color: C.purple, fontSize: 11, fontWeight: 700, padding: '4px 9px', borderRadius: 999, whiteSpace: 'nowrap' }}>{(q.member_ids ?? []).length} atend.</span>
-                <button title="Excluir fila" onClick={() => removeQueue(q)} style={{ ...iBtn(C.red), display: 'inline-flex', alignItems: 'center' }}><X size={13} /></button>
+                {!readOnly && <button title="Excluir fila" onClick={() => removeQueue(q)} style={{ ...iBtn(C.red), display: 'inline-flex', alignItems: 'center' }}><X size={13} /></button>}
               </div>
               <div style={{ display: 'flex', marginBottom: 10, minHeight: 28 }}>
                 {(q.member_ids ?? []).map(id => { const m = members.find(x => x.id === id); return m ? <div key={id} style={{ marginRight: -8 }}><Avatar name={m.name} size={28} /></div> : null })}
               </div>
               <label style={{ fontSize: 11, color: C.muted }}>Distribuição</label>
-              <select value={q.mode} onChange={e => patchQueue(q.id, 'mode', e.target.value)} style={{ ...inp, width: '100%', margin: '4px 0 12px' }}>{MODES.map(mo => <option key={mo}>{mo}</option>)}</select>
+              <select value={q.mode} disabled={readOnly} onChange={e => patchQueue(q.id, 'mode', e.target.value)} style={{ ...inp, width: '100%', margin: '4px 0 12px', opacity: readOnly ? 0.7 : 1 }}>{MODES.map(mo => <option key={mo}>{mo}</option>)}</select>
               <div style={{ display: 'grid', gap: 6, maxHeight: 130, overflowY: 'auto' }}>
                 {members.length === 0 ? <span style={{ fontSize: 12, color: C.muted }}>Adicione membros para atribuir.</span> : members.map(m => (
-                  <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={(q.member_ids ?? []).includes(m.id)} onChange={() => toggleAssign(q, m.id)} style={{ accentColor: C.purple }} />{m.name}
+                  <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: readOnly ? 'default' : 'pointer' }}>
+                    <input type="checkbox" checked={(q.member_ids ?? []).includes(m.id)} disabled={readOnly} onChange={() => toggleAssign(q, m.id)} style={{ accentColor: C.purple }} />{m.name}
                   </label>
                 ))}
               </div>
