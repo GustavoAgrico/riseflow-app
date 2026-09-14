@@ -87,6 +87,7 @@ export const NAV_GROUPS = [
   {
     id: 'analise', label: 'Análise', kind: 'op',
     items: [
+      { id: 'monitor', label: 'Monitor do time', icon: 'Activity', path: '/monitor' },
       { id: 'analytics', label: 'Analytics', icon: 'BarChart3', path: '/analytics' },
       { id: 'logs', label: 'Logs', icon: 'ClipboardList', path: '/activity-logs' },
     ],

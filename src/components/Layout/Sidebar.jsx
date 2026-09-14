@@ -3,14 +3,14 @@ import { useLocation, Link } from 'react-router-dom'
 import {
   LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, MessageSquare,
   BarChart3, Settings, ChevronLeft, ChevronRight, ChevronDown, Search,
-  Crown, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Bot, Sparkles, Receipt, PhoneCall,
+  Crown, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Bot, Sparkles, Receipt, PhoneCall, Activity,
 } from 'lucide-react'
 import { useApp } from '@context/AppContext'
 import { useAuth } from '@context/AuthContext'
 import { NAV_GROUPS, NAV_DEFAULT_OPEN } from '@constants/config'
 import clsx from 'clsx'
 
-const ICONS = { LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, MessageSquare, BarChart3, Settings, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Crown, Bot, Sparkles, Receipt, PhoneCall }
+const ICONS = { LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, MessageSquare, BarChart3, Settings, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Crown, Bot, Sparkles, Receipt, PhoneCall, Activity }
 
 const getInitials = (name = '') =>
   name.split(' ').slice(0, 2).map(w => w[0] ?? '').join('').toUpperCase() || 'U'
@@ -79,7 +79,7 @@ export const Sidebar = ({ mobile = false, drawerOpen = false, onNavigate }) => {
               iconOnly ? 'w-9 h-9' : 'w-8 h-8',
               active
                 ? 'bg-brand-orange/15 text-brand-orange shadow-[0_0_0_1px_rgba(255,107,53,0.35),0_6px_16px_-8px_rgba(255,107,53,0.55)]'
-                : 'bg-white/[0.04] text-slate-400 group-hover:text-white group-hover:bg-white/[0.08]',
+                : 'bg-white/[0.04] text-slate-400 group-hover:text-brand-orange group-hover:bg-brand-orange/10',
             )}
           >
             <Icon size={17} />

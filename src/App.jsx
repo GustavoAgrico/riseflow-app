@@ -19,6 +19,7 @@ import { Automation } from '@pages/Automation'
 import { Campaigns } from '@pages/Campaigns'
 import { Schedules } from '@pages/Schedules'
 import { Teams } from '@pages/Teams'
+import { TeamMonitor } from '@pages/TeamMonitor'
 import { Settings } from '@pages/Settings'
 import { Login } from '@pages/Login'
 import { Register } from '@pages/Register'
@@ -143,6 +144,7 @@ function App() {
               <Route path="/campaigns" element={<PrivateRoute><Campaigns /></PrivateRoute>} />
               <Route path="/schedules" element={<PrivateRoute><Schedules /></PrivateRoute>} />
               <Route path="/teams" element={<PrivateRoute><Teams /></PrivateRoute>} />
+              <Route path="/monitor" element={<PrivateRoute><TeamMonitor /></PrivateRoute>} />
               <Route path="/integrations" element={<PrivateRoute><Integrations /></PrivateRoute>} />
               <Route path="/automation" element={<PrivateRoute><Automation /></PrivateRoute>} />
               <Route path="/analytics" element={<PrivateRoute><Analytics /></PrivateRoute>} />

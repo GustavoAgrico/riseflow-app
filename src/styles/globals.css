@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Monitor do time: 2 colunas no desktop, empilha no mobile */
+.rf-monitor-grid { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+@media (max-width: 900px) { .rf-monitor-grid { grid-template-columns: 1fr; } }
+
 @layer base {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -66,10 +70,18 @@
     background-clip: text;
   }
   .sidebar-item {
-    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-dark-500 transition-all duration-200 cursor-pointer font-body text-sm font-medium;
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 cursor-pointer font-body text-sm font-medium;
+    color: var(--ink-3);
+    border: 1px solid transparent;
+  }
+  .sidebar-item:hover {
+    background: rgba(255, 107, 53, 0.12);
+    color: var(--ink-1);
   }
   .sidebar-item.active {
-    @apply text-white bg-gradient-to-r from-brand-orange/20 to-brand-blue/10 border border-brand-orange/30;
+    background: rgba(255, 107, 53, 0.15);
+    color: var(--ink-1);
+    border-color: rgba(255, 107, 53, 0.35);
   }
   .stat-card {
     @apply glass rounded-2xl p-5 transition-all duration-300;
