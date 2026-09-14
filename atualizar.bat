@@ -3,6 +3,13 @@ chcp 65001 >nul
 title Atualizar Riseframe
 cd /d "%~dp0"
 
+REM Descobre a pasta certa automaticamente:
+REM - Se este .bat estiver DENTRO da pasta "riseframe" (tem web + server + package.json), sobe um nivel.
+if exist "web\" if exist "server\" if exist "package.json" cd ..
+
+REM Confirma que achamos o projeto (precisa existir a pasta riseframe\).
+if not exist "riseframe\package.json" goto semrepo
+
 echo.
 echo ==========================================
 echo    ATUALIZANDO O RISEFRAME
@@ -14,7 +21,6 @@ git pull origin master
 if errorlevel 1 goto erro
 
 cd riseframe
-if errorlevel 1 goto erro
 
 echo.
 echo [2/4] Instalando dependencias...
@@ -43,6 +49,18 @@ echo.
 echo (O servidor foi encerrado.)
 pause
 exit /b 0
+
+:semrepo
+echo.
+echo ******************************************
+echo   Nao encontrei a pasta do projeto.
+echo   Coloque este arquivo dentro de:
+echo     D:\Rise Creative\riseframe-app
+echo   (ou dentro da pasta riseframe) e tente de novo.
+echo ******************************************
+echo.
+pause
+exit /b 1
 
 :erro
 echo.
