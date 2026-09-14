@@ -71,14 +71,27 @@ export const Sidebar = ({ mobile = false, drawerOpen = false, onNavigate }) => {
         aria-label={item.label}
         title={iconOnly ? item.label : undefined}
         className={clsx(
-          'sidebar-item relative focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/50',
+          'sidebar-item group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/50',
           active && 'active',
           iconOnly && 'justify-center px-3',
         )}
       >
         {/* Indicador lateral (não depende só de cor) */}
         {active && <span aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-brand-orange" />}
-        {Icon && <Icon size={18} className={active ? 'text-brand-orange' : ''} aria-hidden="true" />}
+        {Icon && (
+          <span
+            aria-hidden="true"
+            className={clsx(
+              'flex items-center justify-center rounded-lg flex-shrink-0 transition-all duration-200',
+              iconOnly ? 'w-9 h-9' : 'w-8 h-8',
+              active
+                ? 'bg-brand-orange/15 text-brand-orange shadow-[0_0_0_1px_rgba(255,107,53,0.35),0_6px_16px_-8px_rgba(255,107,53,0.55)]'
+                : 'bg-white/[0.04] text-slate-400 group-hover:text-white group-hover:bg-white/[0.08]',
+            )}
+          >
+            <Icon size={17} />
+          </span>
+        )}
         {!iconOnly && (
           <div className="flex items-center justify-between flex-1 min-w-0">
             <span className={clsx('truncate', active && 'font-semibold')}>{item.label}</span>
