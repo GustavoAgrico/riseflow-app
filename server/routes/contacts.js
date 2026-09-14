@@ -8,8 +8,9 @@ const router = Router()
 const WA_SERVER = process.env.BAILEYS_URL || process.env.WA_SERVER_URL || 'http://localhost:3334'
 const WA_KEY    = process.env.BAILEYS_KEY || process.env.API_KEY || 'riseflow-server-2024'
 
-async function fetchWAContacts() {
-  const res = await fetch(`${WA_SERVER}/contacts`, {
+// Multi-sessão: os contatos são da sessão DESTE usuário → userId é obrigatório.
+async function fetchWAContacts(userId) {
+  const res = await fetch(`${WA_SERVER}/contacts?userId=${encodeURIComponent(userId)}`, {
     headers: { apikey: WA_KEY, 'User-Agent': 'RiseFlow-Server/1.0' },
   })
   if (!res.ok) throw new Error(`whatsapp-server retornou ${res.status}`)
@@ -19,7 +20,7 @@ async function fetchWAContacts() {
 // Lista contatos: WA server + enriquece com nomes das conversas sincronizadas
 router.get('/', async (req, res) => {
   try {
-    const waContacts = await fetchWAContacts().catch(() => [])
+    const waContacts = await fetchWAContacts(req.user?.sub).catch(() => [])
     // Enriquece com nomes das conversas (já sincronia do histórico do WhatsApp).
     // ⚠️ O servidor usa a service_role key (ignora RLS): sem o filtro por user_id
     // o dono A veria nomes/telefones de contatos do dono B (vazamento de PII).
@@ -58,7 +59,7 @@ router.post('/import', async (req, res) => {
   if (!userId) return res.status(401).json({ error: 'Usuário não identificado no token.' })
   try {
     // 1. Contatos do WA server (números sem nome, vindos dos LID mappings)
-    const waContacts = await fetchWAContacts().catch(() => [])
+    const waContacts = await fetchWAContacts(userId).catch(() => [])
 
     // 2. Nomes das conversas já sincronizadas no Supabase (só as DESTE dono)
     const { data: convRows } = await supabase
