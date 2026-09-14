@@ -61,8 +61,8 @@ router.post('/send', async (req, res, next) => {
       }
     }
 
-    // Baileys server: { number, text } → { success, key }
-    const { data } = await baileys.post('/send/text', { number, text })
+    // Baileys server (multi-sessão): { userId, number, text } → { success, key }
+    const { data } = await baileys.post('/send/text', { userId: req.user?.sub, number, text })
     res.json(data)
   } catch (err) {
     next(err)
@@ -80,7 +80,7 @@ router.post('/send-audio', async (req, res, next) => {
         .json({ error: 'Campos obrigatórios: "number" e "audio".' })
     }
 
-    const { data } = await baileys.post('/send/audio', { number, audio })
+    const { data } = await baileys.post('/send/audio', { userId: req.user?.sub, number, audio })
     res.json(data)
   } catch (err) {
     next(err)

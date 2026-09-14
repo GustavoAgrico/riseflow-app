@@ -212,7 +212,7 @@ async function sendText(ctx, text) {
     // WhatsApp Cloud (oficial): usuário com número Cloud conectado envia por ele.
     await require('./whatsappCloudClient').sendTextTo(number, text, ctx.userId || null)
   } else {
-    await baileys.post('/send/text', { number, text })
+    await baileys.post('/send/text', { userId: ctx.userId, number, text })
   }
   await saveSentMessage(ctx, text)
 }
@@ -226,10 +226,10 @@ async function sendMedia(ctx, data = {}) {
   const number = jidToNumber(ctx.jid)
   const ft = String(data.fileType || '')
   if (ft.startsWith('image')) {
-    await baileys.post('/send/image', { number, url: media, caption: data.caption || '' })
+    await baileys.post('/send/image', { userId: ctx.userId, number, url: media, caption: data.caption || '' })
   } else {
     // vídeo/documento/outros → enviados como documento (anexo por URL).
-    await baileys.post('/send/document', { number, url: media, filename: data.fileName || 'arquivo' })
+    await baileys.post('/send/document', { userId: ctx.userId, number, url: media, filename: data.fileName || 'arquivo' })
   }
   await saveSentMessage(ctx, data.caption || `📎 ${data.fileName || 'Arquivo'}`)
 }

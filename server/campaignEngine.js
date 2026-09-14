@@ -96,7 +96,7 @@ async function runCampaign(campaign) {
           text,
         })
       } else {
-        await baileys.post('/send/text', { number: m.phone, text })
+        await baileys.post('/send/text', { userId: campaign.user_id, number: m.phone, text })
       }
       ok = true
     } catch (e) {

@@ -178,7 +178,8 @@ export const Integrations = () => {
     try {
       const data = await getInstanceStatus()
       const instances = Array.isArray(data) ? data : []
-      const inst = instances.find(i => i.instance?.instanceName === 'test') ?? instances[0]
+      // Multi-sessão: o proxy já escopa pelo JWT e retorna a instância DESTE usuário.
+      const inst = instances[0]
       const isOpen = inst?.instance?.status === 'open' || inst?.state === 'open'
       const owner = inst?.instance?.owner ?? inst?.owner ?? null
       const number = isOpen && owner ? formatPhone(owner) : null

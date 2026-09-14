@@ -9,6 +9,10 @@ const router = Router()
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const INSTANCE = 'riseflow'
 
+// A sessão Baileys é keyed pelo user_id (multi-sessão). O JWT do proxy traz o
+// UUID do usuário em req.user.sub — repassamos como ?userId= ao wa-server.
+const uid = (req) => req.user?.sub || req.user?.id || null
+
 // Converte o { status, phone, name } do Baileys no shape de fetchInstances da Evolution
 // que o frontend (parseStatus / WhatsAppManagePanel) sabe ler.
 const toEvolutionShape = (s) => {
@@ -25,10 +29,12 @@ const toEvolutionShape = (s) => {
   }]
 }
 
-// GET /api/instance/status → estado da conexão.
+// GET /api/instance/status → estado da conexão do usuário.
 router.get('/status', async (req, res, next) => {
   try {
-    const { data } = await baileys.get('/status')
+    const userId = uid(req)
+    if (!userId) return res.status(401).json({ error: 'não autenticado' })
+    const { data } = await baileys.get('/status', { params: { userId } })
     res.json(toEvolutionShape(data))
   } catch (err) {
     next(err)
@@ -39,19 +45,20 @@ router.get('/status', async (req, res, next) => {
 // Mapeia o /qr do Baileys para { base64 } — o que o extractQR do frontend espera.
 router.get('/connect', async (req, res, next) => {
   try {
-    let { data } = await baileys.get('/qr')
+    const userId = uid(req)
+    if (!userId) return res.status(401).json({ error: 'não autenticado' })
+    let { data } = await baileys.get('/qr', { params: { userId } })
     if (data?.status === 'connected') {
       return res.json({ instance: { state: 'open' }, connected: true })
     }
 
     let img = data?.qrImage
-    // Após um logout o socket fica fechado e não há QR até reconectar.
-    // Dispara o reconnect e aguarda alguns segundos o QR aparecer.
+    // Sessão nova/fechada ainda não tem QR: dispara o connect e aguarda o QR.
     if (!img) {
-      await baileys.post('/reconnect').catch(() => {})
+      await baileys.post('/reconnect', { userId }).catch(() => {})
       for (let i = 0; i < 8 && !img; i++) {
         await sleep(1000)
-        const r = await baileys.get('/qr')
+        const r = await baileys.get('/qr', { params: { userId } })
         if (r.data?.status === 'connected') {
           return res.json({ instance: { state: 'open' }, connected: true })
         }
@@ -65,10 +72,12 @@ router.get('/connect', async (req, res, next) => {
   }
 })
 
-// DELETE /api/instance/logout → desconecta (apaga a sessão no servidor Baileys).
+// DELETE /api/instance/logout → desconecta e apaga a sessão do usuário no Baileys.
 router.delete('/logout', async (req, res, next) => {
   try {
-    const { data } = await baileys.post('/logout')
+    const userId = uid(req)
+    if (!userId) return res.status(401).json({ error: 'não autenticado' })
+    const { data } = await baileys.post('/logout', { userId })
     res.json(data)
   } catch (err) {
     next(err)

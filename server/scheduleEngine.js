@@ -88,7 +88,7 @@ async function tick() {
       const text = substitute(r.msg, ctx)
 
       try {
-        await baileys.post('/send/text', { number: String(r.phone).replace(/\D/g, ''), text })
+        await baileys.post('/send/text', { userId: r.user_id, number: String(r.phone).replace(/\D/g, ''), text })
         await incrementUsage(r.user_id)
 
         const nowIso = now.toISOString()

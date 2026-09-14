@@ -4,8 +4,12 @@
 const { Router } = require('express')
 const { handleIncomingMessage } = require('../flowEngine')
 const { aiRespond } = require('../aiAttendant')
+const { saveIncomingMessage } = require('../inbox')
 
 const { WEBHOOK_TOKEN } = process.env
+
+// jid (5511...@s.whatsapp.net / @lid) → número puro.
+const jidToNumber = (jid) => String(jid || '').split('@')[0].split(':')[0]
 
 /* Extrai um texto legível do objeto message da Evolution. */
 const extractText = (m) => {
@@ -52,6 +56,9 @@ module.exports = function createWebhookRouter(io) {
 
     const body = req.body || {}
     const event = normalizeEvent(body.event || req.params.event)
+    // Multi-sessão: o wa-server envia o dono da sessão (user_id UUID). Sem ele,
+    // cai no comportamento legado não escopado (instância única, em desativação).
+    const userId = body.userId || body.data?.userId || null
 
     try {
       if (event === 'MESSAGES_UPSERT') {
@@ -63,16 +70,21 @@ module.exports = function createWebhookRouter(io) {
           const pushName = m.pushName ?? ''
           io.emit('new_message', {
             jid,
+            userId,
             message: { id: m.key?.id ?? null, fromMe, text, pushName, timestamp: m.messageTimestamp ?? null },
           })
+          // Persiste a mensagem RECEBIDA já escopada ao dono da sessão (fonte única
+          // no proxy; a Edge Function não é mais necessária no modelo multi-sessão).
+          if (!fromMe && userId && text) {
+            saveIncomingMessage({ userId, phone: jidToNumber(jid), name: pushName, text, channel: 'whatsapp' })
+              .catch((err) => console.error('[webhook] saveIncoming:', err?.message ?? err))
+          }
           // Atendimento IA primeiro; se a IA respondeu, os funis não rodam para
           // esta mensagem (evita resposta dupla). A IA cede sozinha quando há
           // funil aguardando resposta ou conversa transferida para humano.
           // Fire-and-forget: não bloqueia a resposta do webhook.
-          // Sem userId: a Evolution é instância única (single-tenant, em
-          // desativação); IA/funis usam o comportamento legado não escopado.
-          aiRespond({ jid, text, pushName, fromMe })
-            .then((handled) => (handled ? null : handleIncomingMessage({ jid, text, pushName, fromMe })))
+          aiRespond({ jid, text, pushName, fromMe, userId })
+            .then((handled) => (handled ? null : handleIncomingMessage({ jid, text, pushName, fromMe, userId })))
             .catch((err) => console.error('[webhook] IA/flowEngine:', err?.message ?? err))
         }
       } else if (event === 'CHATS_UPSERT') {
