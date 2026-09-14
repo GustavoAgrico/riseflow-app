@@ -17,7 +17,13 @@ echo ==========================================
 echo.
 
 echo [1/4] Baixando a versao mais nova...
-git pull origin master
+REM Descarta mudancas locais em arquivos versionados (ex.: package-lock.json gerado
+REM pelo npm) e forca a versao do master. Seus arquivos pessoais (.env, pasta data)
+REM nao sao versionados, entao sao preservados.
+git fetch origin master
+if errorlevel 1 goto erro
+git checkout -- . 2>nul
+git reset --hard origin/master
 if errorlevel 1 goto erro
 
 cd riseframe
