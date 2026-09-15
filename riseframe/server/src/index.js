@@ -3,7 +3,7 @@ import cors from 'cors';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { config, capabilities } from './config.js';
+import { config, capabilities, APP_VERSION } from './config.js';
 import { ensureDirs, startCleanupTimer } from './storage.js';
 import { ensureDemoSample } from './demo.js';
 import { jobsRouter } from './routes/jobs.js';
@@ -47,6 +47,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     service: 'riseframe',
+    version: APP_VERSION,
     ffmpeg: Boolean(ffmpegPath),
     capabilities: capabilities(),
     time: new Date().toISOString(),
@@ -102,7 +103,7 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(config.port, () => {
-  log.ok(`Riseframe API on http://localhost:${config.port}`);
+  log.ok(`==== Riseframe ${APP_VERSION} rodando em http://localhost:${config.port} ====`);
   log.info(`transcrição: ${config.transcribe.provider} · B-roll: ${config.broll.pexelsKey ? 'Pexels' : 'off'}`);
   log.info(`CORS: ${config.corsOrigin.join(', ')}`);
   probeWhisper(); // teste do Whisper em segundo plano, sem atrasar a abertura da porta
