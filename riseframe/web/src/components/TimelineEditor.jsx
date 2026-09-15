@@ -3,6 +3,7 @@ import { C, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import { sourceUrl } from '../api.js';
+import { APP_VERSION } from '../version.js';
 
 const PPS = 64; // pixels por segundo na timeline
 
@@ -246,6 +247,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 14 }}>
         <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="film" size={20} strokeWidth={1.9} /></span>
         <div style={{ fontWeight: 700, fontSize: 17 }}>Timeline · editar antes de renderizar</div>
+        <span style={{ fontSize: 11, fontWeight: 700, color: C.orange, background: 'rgba(255,107,53,0.14)', border: `1px solid ${C.orange}`, borderRadius: 999, padding: '2px 9px', letterSpacing: 0.4 }}>{APP_VERSION}</span>
         <GhostButton onClick={onBack} disabled={busy} style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Icon name="arrowLeft" size={14} strokeWidth={2} /> Voltar
         </GhostButton>
