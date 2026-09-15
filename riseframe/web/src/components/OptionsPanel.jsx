@@ -248,8 +248,8 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
           </Row>
         )}
         {options.broll && brollUsable && (options.brollLayout === 'top' || options.brollLayout === 'bottom') && (
-          <Row label="Recorte da pessoa" hint="Ajuste fino: o que manter na metade da pessoa (topo preserva o rosto)">
-            <Segmented value={options.personCrop || 'center'} options={catalog.personCrops || [{ id: 'top', label: 'Topo (rosto)' }, { id: 'center', label: 'Centro' }, { id: 'bottom', label: 'Base' }]} onChange={(v) => set({ personCrop: v })} />
+          <Row label="Posição da pessoa" hint="A pessoa aparece INTEIRA (sem cortar a cabeça), com fundo desfocado. Isto só alinha ela na metade: topo, centro ou base.">
+            <Segmented value={options.personCrop || 'center'} options={catalog.personCrops || [{ id: 'top', label: 'Topo' }, { id: 'center', label: 'Centro' }, { id: 'bottom', label: 'Base' }]} onChange={(v) => set({ personCrop: v })} />
           </Row>
         )}
         {options.broll && brollUsable && (
