@@ -18,6 +18,7 @@ const PPS = 64; // pixels por segundo na timeline
  */
 export default function TimelineEditor({ transcript, durationSec, sourceId, onGenerate, onBack, busy }) {
   const videoRef = useRef(null);
+  const previewVideoRef = useRef(null);
   const trackRef = useRef(null);
   const dragRef = useRef(null); // { si, edge: 'left'|'right' }
   const [cur, setCur] = useState(0);
@@ -26,7 +27,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
 
   // Enquadramento no rosto (tela dividida): 'auto' detecta o rosto no servidor;
   // 'manual' usa o foco (arrastável) + zoom escolhidos aqui.
-  const [framingMode, setFramingMode] = useState('auto');
+  const [framingMode, setFramingMode] = useState('manual');
   const [focus, setFocus] = useState({ x: 0.5, y: 0.4 });
   const [zoom, setZoom] = useState(1);
   const framingBoxRef = useRef(null);
@@ -288,13 +289,27 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
               ))}
             </div>
             {framingMode === 'manual' && (
-              <div style={{ display: 'grid', gap: 9 }}>
-                <div style={{ fontSize: 11.5, color: C.faint }}>Arraste o círculo sobre o vídeo até o seu rosto, ou use o zoom:</div>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ fontSize: 11.5, color: C.faint }}>Arraste o círculo laranja sobre o vídeo até o seu rosto e use o zoom. A prévia abaixo mostra como vai ficar a sua metade:</div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
                   <span style={{ width: 46 }}>Zoom</span>
                   <input type="range" min="1" max="2.5" step="0.05" value={zoom} onChange={(e) => setZoom(Number(e.target.value))} style={{ flex: 1 }} />
                   <span style={{ width: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
                 </label>
+                {/* Prévia AO VIVO do enquadramento da metade da pessoa (9:16 → metade = 9:8). */}
+                <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase' }}>Prévia da sua metade</div>
+                <div style={{ position: 'relative', width: '100%', aspectRatio: '9 / 8', overflow: 'hidden', borderRadius: 10, border: `1px solid ${C.orange}`, background: '#000' }}>
+                  <video
+                    ref={previewVideoRef}
+                    src={sourceUrl(sourceId)}
+                    muted
+                    loop
+                    autoPlay
+                    playsInline
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, transform: `scale(${zoom})`, transformOrigin: `${focus.x * 100}% ${focus.y * 100}%` }}
+                  />
+                  <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>sua metade</div>
+                </div>
               </div>
             )}
           </div>
