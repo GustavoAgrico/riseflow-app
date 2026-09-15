@@ -19,6 +19,7 @@ const PPS = 64; // pixels por segundo na timeline
 export default function TimelineEditor({ transcript, durationSec, sourceId, onGenerate, onBack, busy }) {
   const videoRef = useRef(null);
   const previewVideoRef = useRef(null);
+  const previewBoxRef = useRef(null);
   const trackRef = useRef(null);
   const dragRef = useRef(null); // { si, edge: 'left'|'right' }
   const [cur, setCur] = useState(0);
@@ -154,6 +155,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
     window.addEventListener('pointerup', up);
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
   }, []);
+
+  const clampZoom = (z) => Math.min(3, Math.max(1, Math.round(z * 100) / 100));
+  // Rolagem do mouse sobre a prévia = zoom (listener nativo para poder travar o scroll da página).
+  useEffect(() => {
+    const el = previewBoxRef.current;
+    if (!el) return;
+    function onWheel(e) { e.preventDefault(); setZoom((z) => clampZoom(z + (e.deltaY < 0 ? 0.1 : -0.1))); }
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [framingMode]);
 
   // faixa mantida (não cortada) de um trecho
   function keptRange(s) {
@@ -293,12 +304,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
                 <div style={{ fontSize: 11.5, color: C.faint }}>Arraste o círculo laranja sobre o vídeo até o seu rosto e use o zoom. A prévia abaixo mostra como vai ficar a sua metade:</div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
                   <span style={{ width: 46 }}>Zoom</span>
-                  <input type="range" min="1" max="2.5" step="0.05" value={zoom} onChange={(e) => setZoom(Number(e.target.value))} style={{ flex: 1 }} />
-                  <span style={{ width: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
+                  <button onClick={() => setZoom((z) => clampZoom(z - 0.1))} style={zoomBtn} title="Diminuir">−</button>
+                  <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(e) => setZoom(clampZoom(Number(e.target.value)))} style={{ flex: 1 }} />
+                  <button onClick={() => setZoom((z) => clampZoom(z + 0.1))} style={zoomBtn} title="Aumentar">+</button>
+                  <span style={{ width: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
                 </label>
                 {/* Prévia AO VIVO do enquadramento da metade da pessoa (9:16 → metade = 9:8). */}
-                <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase' }}>Prévia da sua metade</div>
-                <div style={{ position: 'relative', width: '100%', aspectRatio: '9 / 8', overflow: 'hidden', borderRadius: 10, border: `1px solid ${C.orange}`, background: '#000' }}>
+                <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase' }}>Prévia da sua metade · role o mouse para dar zoom</div>
+                <div ref={previewBoxRef} style={{ position: 'relative', width: '100%', aspectRatio: '9 / 8', overflow: 'hidden', borderRadius: 10, border: `1px solid ${C.orange}`, background: '#000', cursor: 'ns-resize' }}>
                   <video
                     ref={previewVideoRef}
                     src={sourceUrl(sourceId)}
@@ -469,6 +482,7 @@ function miniBtn(active, disabled) {
 function framingTab(active) {
   return { flex: 1, border: `1px solid ${active ? C.orange : C.border}`, background: active ? 'rgba(255,107,53,0.16)' : 'rgba(255,255,255,0.05)', color: active ? C.orange : C.muted, borderRadius: 9, padding: '7px 8px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' };
 }
+const zoomBtn = { width: 26, height: 26, flexShrink: 0, borderRadius: 7, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.06)', color: C.text, fontSize: 16, fontWeight: 700, lineHeight: 1, cursor: 'pointer', display: 'grid', placeItems: 'center', fontFamily: 'inherit' };
 function Chip({ label, value, sub, color }) {
   return (
     <div style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 11, padding: '7px 12px' }}>
