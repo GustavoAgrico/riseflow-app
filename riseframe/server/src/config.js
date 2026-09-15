@@ -2,6 +2,10 @@ import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
+// para confirmar rapidamente que o servidor está rodando o código novo.
+export const APP_VERSION = 'v26';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // riseframe/server/src → riseframe/
@@ -109,6 +113,7 @@ export function capabilities() {
     // Sinaliza degradação para mock (whisper indisponível → jobs caem para mock).
     transcribeFallbackToMock: p === 'whisper-local' && config.transcribe.whisperReady === false,
     analyzeProvider: config.analyze.provider,
+    version: APP_VERSION,
     brollReady: Boolean(config.broll.pexelsKey),
     // Openverse (Creative Commons) não exige chave — sempre disponível.
     openverseReady: true,
