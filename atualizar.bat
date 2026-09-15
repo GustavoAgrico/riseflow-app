@@ -16,7 +16,12 @@ echo    ATUALIZANDO O RISEFRAME
 echo ==========================================
 echo.
 
-echo [1/4] Baixando a versao mais nova...
+echo [1/5] Encerrando servidor anterior (porta 4000)...
+REM Mata QUALQUER servidor antigo preso na porta 4000 (senao o novo nao sobe e o
+REM app continua na versao velha). PowerShell e mais confiavel que o netstat.
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 4000 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" 2>nul
+
+echo [2/5] Baixando a versao mais nova...
 REM Descarta mudancas locais em arquivos versionados (ex.: package-lock.json gerado
 REM pelo npm) e forca a versao do master. Seus arquivos pessoais (.env, pasta data)
 REM nao sao versionados, entao sao preservados.
@@ -29,22 +34,22 @@ if errorlevel 1 goto erro
 cd riseframe
 
 echo.
-echo [2/4] Instalando dependencias...
+echo [3/5] Instalando dependencias...
 call npm install
 if errorlevel 1 goto erro
 
 echo.
-echo [3/4] Reconstruindo o app...
+echo [4/5] Reconstruindo o app...
 call npm run build
 if errorlevel 1 goto erro
 
 echo.
-echo [4/4] Liberando a porta 4000 e iniciando o servidor...
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr :4000 ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
+echo [5/5] Iniciando o servidor... (aguarde a linha "Riseframe v27 rodando")
+REM Garante a porta livre uma segunda vez, imediatamente antes de subir.
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 4000 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" 2>nul
 
 echo.
 echo ==========================================
-echo    PRONTO! O servidor esta rodando.
 echo    Abra no navegador:  http://localhost:4000
 echo    NAO feche esta janela enquanto estiver usando.
 echo ==========================================
