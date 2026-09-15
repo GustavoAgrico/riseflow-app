@@ -109,8 +109,13 @@ function parseOptions(raw) {
     // Layout do B-roll: tela cheia OU tela dividida (metade a metade) com o vídeo
     // da pessoa em cima/baixo e o B-roll na outra metade.
     brollLayout: ['fullscreen', 'top', 'bottom'].includes(o.brollLayout) ? o.brollLayout : 'fullscreen',
-    // Posição vertical do recorte da pessoa na tela dividida (ajuste fino do rosto).
+    // Posição vertical da pessoa na tela dividida (fallback quando não há enquadramento).
     personCrop: ['top', 'center', 'bottom'].includes(o.personCrop) ? o.personCrop : 'center',
+    // Enquadramento no rosto (tela dividida): foco X/Y em 0–1 e zoom 1–2.5. Sem foco
+    // definido, o servidor detecta o rosto automaticamente pelo rastreador.
+    personFocusX: Number.isFinite(Number(o.personFocusX)) ? clampNum(o.personFocusX, 0, 1, undefined) : undefined,
+    personFocusY: Number.isFinite(Number(o.personFocusY)) ? clampNum(o.personFocusY, 0, 1, undefined) : undefined,
+    personZoom: clampNum(o.personZoom, 1, 2.5, 1),
     // Fonte das imagens de B-roll: openverse (CC, sem chave) | pexels (livre) | google (contextual, ver copyright).
     imageSource: ['openverse', 'pexels', 'google'].includes(o.imageSource) ? o.imageSource : 'openverse',
     niche: ['auto', 'leadership', 'mentor', 'medical', 'fitness', 'finance', 'business', 'marketing', 'education', 'tech', 'mindset', 'law', 'realestate'].includes(o.niche) ? o.niche : 'auto',

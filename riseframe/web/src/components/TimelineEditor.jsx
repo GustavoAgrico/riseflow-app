@@ -23,6 +23,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
   const [playing, setPlaying] = useState(false);
   const [sel, setSel] = useState(0);
 
+  // Enquadramento no rosto (tela dividida): 'auto' detecta o rosto no servidor;
+  // 'manual' usa o foco (arrastável) + zoom escolhidos aqui.
+  const [framingMode, setFramingMode] = useState('auto');
+  const [focus, setFocus] = useState({ x: 0.5, y: 0.4 });
+  const [zoom, setZoom] = useState(1);
+  const framingBoxRef = useRef(null);
+  const focusDragRef = useRef(false);
+
   const [segments, setSegments] = useState(() =>
     (transcript.segments || []).map((s) => ({
       ...s,
@@ -120,6 +128,31 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
   function togglePlay() { const v = videoRef.current; if (!v) return; if (v.paused) v.play(); else v.pause(); }
   function onTrackClick(e) { seek(timeAtClientX(e.clientX)); }
 
+  // Foco do enquadramento: mapeia o ponteiro para 0–1 sobre a área REAL do vídeo
+  // (considera as barras do objectFit=contain).
+  function setFocusFromClient(clientX, clientY) {
+    const v = videoRef.current;
+    if (!v) return;
+    const rect = v.getBoundingClientRect();
+    const vw = v.videoWidth || rect.width;
+    const vh = v.videoHeight || rect.height;
+    const scale = Math.min(rect.width / vw, rect.height / vh) || 1;
+    const cw = vw * scale;
+    const ch = vh * scale;
+    const offX = rect.left + (rect.width - cw) / 2;
+    const offY = rect.top + (rect.height - ch) / 2;
+    const x = cw ? (clientX - offX) / cw : 0.5;
+    const y = ch ? (clientY - offY) / ch : 0.5;
+    setFocus({ x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) });
+  }
+  useEffect(() => {
+    function move(e) { if (focusDragRef.current) { e.preventDefault(); setFocusFromClient(e.clientX, e.clientY); } }
+    function up() { focusDragRef.current = false; }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  }, []);
+
   // faixa mantida (não cortada) de um trecho
   function keptRange(s) {
     const kept = s.words.filter((w) => !w.removed);
@@ -192,7 +225,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
         language: transcript.language,
         segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map((w) => ({ start: w.start, end: w.end, word: w.word, removed: !!w.removed })) })),
       },
-      { manualSilence: true, silenceCuts },
+      {
+        manualSilence: true,
+        silenceCuts,
+        // Enquadramento (tela dividida): manual envia foco; auto deixa o servidor
+        // detectar o rosto. Zoom vale para os dois.
+        personZoom: +Number(zoom).toFixed(2),
+        ...(framingMode === 'manual'
+          ? { personFocusX: +focus.x.toFixed(3), personFocusY: +focus.y.toFixed(3) }
+          : {}),
+      },
     );
   }
 
@@ -211,12 +253,48 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 300px) 1fr', gap: 18, alignItems: 'start' }}>
         <div>
-          <div style={{ borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
-            <video ref={videoRef} src={sourceUrl(sourceId)} style={{ width: '100%', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#000' }} onClick={togglePlay} playsInline />
+          <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
+            <video ref={videoRef} src={sourceUrl(sourceId)} style={{ width: '100%', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#000' }} onClick={framingMode === 'manual' ? undefined : togglePlay} playsInline />
+            {framingMode === 'manual' && (
+              <div
+                ref={framingBoxRef}
+                onPointerDown={(e) => { e.preventDefault(); focusDragRef.current = true; setFocusFromClient(e.clientX, e.clientY); }}
+                style={{ position: 'absolute', inset: 0, cursor: 'crosshair' }}
+                title="Arraste para escolher o ponto do rosto"
+              >
+                <div style={{ position: 'absolute', left: `${focus.x * 100}%`, top: `${focus.y * 100}%`, width: 34, height: 34, marginLeft: -17, marginTop: -17, borderRadius: '50%', border: `2px solid ${C.orange}`, boxShadow: '0 0 0 2px rgba(0,0,0,0.5), 0 0 14px rgba(0,0,0,0.6)', background: 'rgba(255,107,53,0.18)', pointerEvents: 'none' }} />
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
             <button onClick={togglePlay} style={playBtn}><Icon name={playing ? 'pause' : 'play'} size={16} strokeWidth={2} /></button>
             <div style={{ fontSize: 12.5, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(cur)} <span style={{ color: C.faint }}>/ {fmtDuration(dur)}</span></div>
+          </div>
+
+          {/* Enquadramento na tela dividida */}
+          <div style={{ marginTop: 14, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Enquadramento no rosto</div>
+            </div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
+              Como sua imagem aparece na sua metade quando o B-roll é <b>dividido</b> (não afeta tela cheia).
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+              {[{ id: 'auto', label: 'Automático (rosto)' }, { id: 'manual', label: 'Ajustar eu mesmo' }].map((o) => (
+                <button key={o.id} onClick={() => setFramingMode(o.id)} style={framingTab(framingMode === o.id)}>{o.label}</button>
+              ))}
+            </div>
+            {framingMode === 'manual' && (
+              <div style={{ display: 'grid', gap: 9 }}>
+                <div style={{ fontSize: 11.5, color: C.faint }}>Arraste o círculo sobre o vídeo até o seu rosto, ou use o zoom:</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
+                  <span style={{ width: 46 }}>Zoom</span>
+                  <input type="range" min="1" max="2.5" step="0.05" value={zoom} onChange={(e) => setZoom(Number(e.target.value))} style={{ flex: 1 }} />
+                  <span style={{ width: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
+                </label>
+              </div>
+            )}
           </div>
         </div>
 
@@ -370,6 +448,9 @@ function toolBtn(disabled) {
 }
 function miniBtn(active, disabled) {
   return { display: 'inline-flex', alignItems: 'center', gap: 5, border: `1px solid ${active ? C.red : C.border}`, background: active ? 'rgba(240,82,107,0.18)' : 'rgba(255,255,255,0.05)', color: active ? C.red : C.muted, borderRadius: 8, padding: '5px 10px', fontSize: 11.5, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, fontFamily: 'inherit' };
+}
+function framingTab(active) {
+  return { flex: 1, border: `1px solid ${active ? C.orange : C.border}`, background: active ? 'rgba(255,107,53,0.16)' : 'rgba(255,255,255,0.05)', color: active ? C.orange : C.muted, borderRadius: 9, padding: '7px 8px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' };
 }
 function Chip({ label, value, sub, color }) {
   return (

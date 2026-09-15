@@ -5,6 +5,7 @@ import { Readable } from 'node:stream';
 import { pipeline as streamPipeline } from 'node:stream/promises';
 import { config } from '../config.js';
 import { runFfmpeg } from './ffmpeg.js';
+import { averageSubjectCenter } from './reframe.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('broll');
@@ -147,6 +148,24 @@ async function searchOpenverse(query, usedIds, cfg = {}) {
   return pickOpenverseHit(data.results, usedIds);
 }
 
+/**
+ * Geometria do enquadramento no rosto: cobre a região e centraliza o crop no ponto
+ * de foco (0–1), com zoom opcional. Garante que o crop cabe (head nunca cortada
+ * porque o foco fica dentro dos limites). Puro/exportado para teste.
+ * @returns {{scaledW:number, scaledH:number, cropX:number, cropY:number}}
+ */
+export function faceCropGeometry(inW, inH, regionW, regionH, focus = {}, zoom = 1) {
+  const base = Math.max(regionW / inW, regionH / inH);
+  const s = base * Math.min(2.5, Math.max(1, zoom));
+  const scaledW = Math.max(regionW, Math.round(inW * s));
+  const scaledH = Math.max(regionH, Math.round(inH * s));
+  const fx = Math.min(1, Math.max(0, Number.isFinite(focus.x) ? focus.x : 0.5));
+  const fy = Math.min(1, Math.max(0, Number.isFinite(focus.y) ? focus.y : 0.4));
+  const cropX = Math.round(Math.min(Math.max(fx * scaledW - regionW / 2, 0), scaledW - regionW));
+  const cropY = Math.round(Math.min(Math.max(fy * scaledH - regionH / 2, 0), scaledH - regionH));
+  return { scaledW, scaledH, cropX, cropY };
+}
+
 async function download(url, dest) {
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`download falhou ${res.status}`);
@@ -246,6 +265,23 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   }
   if (!clips.length) return { output: input, inserted: 0 };
 
+  // Enquadramento da pessoa na tela dividida: foco no ROSTO. Manual (options) tem
+  // prioridade; senão detecta pelo rastreador. Sem tracking → cai para contida+desfoque.
+  let personFocus = null;
+  let personZoom = Math.min(2.5, Math.max(1, Number(options.personZoom) || 1));
+  if (isSplit) {
+    const mx = Number(options.personFocusX);
+    const my = Number(options.personFocusY);
+    if (Number.isFinite(mx) && Number.isFinite(my)) {
+      personFocus = { x: mx, y: my, source: 'manual' };
+      log.info(`enquadramento manual: foco (${mx.toFixed(2)}, ${my.toFixed(2)}) zoom ${personZoom}`);
+    } else {
+      personFocus = await averageSubjectCenter(input);
+      if (personFocus) log.ok(`enquadramento no ${personFocus.source}: foco (${personFocus.x.toFixed(2)}, ${personFocus.y.toFixed(2)})`);
+      else log.info('sem rastreamento; pessoa contida com fundo desfocado');
+    }
+  }
+
   // Filtergraph: cada clipe (vídeo ou foto) escalado/cropado para a região do
   // layout e sobreposto na sua janela de tempo. Foto → congela pela duração.
   const parts = [];
@@ -263,19 +299,27 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     // a cabeça). O vazio é preenchido por uma cópia ampliada e DESFOCADA do próprio
     // quadro (estilo Reels), e a pessoa é alinhada em topo/centro/base (alignY).
     const n = clips.length;
+    const g = personFocus ? faceCropGeometry(W, H, regionW, regionH, personFocus, personZoom) : null;
     parts.push(`[0:v]split=${n + 1}[base]${clips.map((_, i) => `[p${i}]`).join('')}`);
     clips.forEach((_, i) => {
-      parts.push(`[p${i}]split=2[pbg${i}][pfg${i}]`);
-      // Fundo: cobre a metade (increase+crop) e desfoca.
-      parts.push(
-        `[pbg${i}]scale=${regionW}:${regionH}:force_original_aspect_ratio=increase,` +
-          `crop=${regionW}:${regionH},boxblur=18:2,setsar=1[pbb${i}]`,
-      );
-      // Frente: pessoa inteira, contida (decrease) — nada é cortado.
-      parts.push(
-        `[pfg${i}]scale=${regionW}:${regionH}:force_original_aspect_ratio=decrease,setsar=1[pff${i}]`,
-      );
-      parts.push(`[pbb${i}][pff${i}]overlay=x=(W-w)/2:y=${alignY}[ph${i}]`);
+      if (g) {
+        // Enquadrado no rosto: cobre a metade e centraliza no foco (preenche, sem cortar a cabeça).
+        parts.push(
+          `[p${i}]scale=${g.scaledW}:${g.scaledH}:flags=bicubic,` +
+            `crop=${regionW}:${regionH}:${g.cropX}:${g.cropY},setsar=1[ph${i}]`,
+        );
+      } else {
+        // Sem rastreamento: pessoa inteira contida sobre fundo desfocado (nada cortado).
+        parts.push(`[p${i}]split=2[pbg${i}][pfg${i}]`);
+        parts.push(
+          `[pbg${i}]scale=${regionW}:${regionH}:force_original_aspect_ratio=increase,` +
+            `crop=${regionW}:${regionH},boxblur=18:2,setsar=1[pbb${i}]`,
+        );
+        parts.push(
+          `[pfg${i}]scale=${regionW}:${regionH}:force_original_aspect_ratio=decrease,setsar=1[pff${i}]`,
+        );
+        parts.push(`[pbb${i}][pff${i}]overlay=x=(W-w)/2:y=${alignY}[ph${i}]`);
+      }
     });
     last = '[base]';
     clips.forEach((c, i) => {

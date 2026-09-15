@@ -104,6 +104,28 @@ async function runTracker(input, sampleFps = 4) {
 }
 
 /**
+ * Média (0–1) do centro do sujeito no vídeo, priorizando pontos de ROSTO. Usado para
+ * enquadrar a pessoa no rosto na tela dividida. Retorna null se não houver tracking.
+ * @returns {Promise<{x:number,y:number,source:string}|null>}
+ */
+export async function averageSubjectCenter(input) {
+  let data;
+  try {
+    data = await runTracker(input);
+  } catch (err) {
+    log.warn(`tracking indisponível para enquadramento (${err.message})`);
+    return null;
+  }
+  const pts = (data?.points || []).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+  if (!pts.length) return null;
+  const face = pts.filter((p) => p.src === 'face');
+  const use = face.length >= Math.max(3, pts.length * 0.3) ? face : pts;
+  const x = use.reduce((a, p) => a + p.x, 0) / use.length;
+  const y = use.reduce((a, p) => a + p.y, 0) / use.length;
+  return { x: clamp(x, 0, 1), y: clamp(y, 0, 1), source: face.length ? 'face' : 'motion' };
+}
+
+/**
  * Calcula a cadeia de filtros de reframe seguindo o sujeito. Se o tracking não
  * estiver disponível ou não houver caminho, retorna null (o chamador usa crop central).
  * @returns {Promise<{vf:string, reframe:object}|null>}
