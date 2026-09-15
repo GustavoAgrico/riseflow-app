@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractThemes, translateQuery, pickBrollMoments, pickPhrasePt } from '../src/pipeline/analyze.js';
-import { pickBestVideoFile, pickOpenverseHit } from '../src/pipeline/broll.js';
+import { pickBestVideoFile, pickOpenverseHit, faceCropGeometry } from '../src/pipeline/broll.js';
 
 test('translateQuery: mapeia pt→en e faz passthrough', () => {
   assert.equal(translateQuery('vídeo'), 'video');
@@ -81,6 +81,23 @@ test('pickOpenverseHit: pega 1ª imagem válida e respeita dedupe', () => {
   const second = pickOpenverseHit(items, used);
   assert.equal(second.link, 'https://example.com/2.jpg', 'não repete a já usada');
   assert.equal(pickOpenverseHit([], new Set()), null);
+});
+
+test('faceCropGeometry: cobre a região e centraliza no foco, dentro dos limites', () => {
+  // 16:9 numa metade 1080x960, foco central-superior, zoom 1
+  const g = faceCropGeometry(1920, 1080, 1080, 960, { x: 0.5, y: 0.4 }, 1);
+  assert.ok(g.scaledW >= 1080 && g.scaledH >= 960, 'cobre a região');
+  assert.ok(g.cropX >= 0 && g.cropX <= g.scaledW - 1080, 'cropX dentro dos limites');
+  assert.ok(g.cropY >= 0 && g.cropY <= g.scaledH - 960, 'cropY dentro dos limites');
+});
+
+test('faceCropGeometry: zoom aumenta a escala e clampa o foco extremo', () => {
+  const g1 = faceCropGeometry(1080, 1920, 1080, 960, { x: 0.5, y: 0.3 }, 1);
+  const g2 = faceCropGeometry(1080, 1920, 1080, 960, { x: 0.5, y: 0.3 }, 2);
+  assert.ok(g2.scaledH > g1.scaledH, 'zoom 2 escala mais que zoom 1');
+  const gEdge = faceCropGeometry(1920, 1080, 1080, 960, { x: 1.5, y: -1 }, 1);
+  assert.ok(gEdge.cropX <= gEdge.scaledW - 1080 && gEdge.cropX >= 0, 'foco fora de 0–1 é travado');
+  assert.equal(gEdge.cropY, 0, 'foco y negativo trava em 0');
 });
 
 test('pickBestVideoFile: escolhe mp4 próximo do alvo sem exagerar na resolução', () => {
