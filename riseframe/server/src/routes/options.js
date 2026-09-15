@@ -65,7 +65,7 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'bottom', label: 'Apoio embaixo' },
     ],
     personCrops: [
-      { id: 'top', label: 'Topo (rosto)' },
+      { id: 'top', label: 'Topo' },
       { id: 'center', label: 'Centro' },
       { id: 'bottom', label: 'Base' },
     ],
