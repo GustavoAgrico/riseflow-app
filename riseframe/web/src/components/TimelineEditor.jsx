@@ -32,6 +32,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
   const [framingMode, setFramingMode] = useState('manual');
   const [focus, setFocus] = useState({ x: 0.5, y: 0.4 });
   const [zoom, setZoom] = useState(1);
+  const [personSide, setPersonSide] = useState('top'); // só p/ a prévia da composição
   const framingBoxRef = useRef(null);
   const focusDragRef = useRef(false);
 
@@ -305,47 +306,63 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
               <div style={{ fontSize: 13, fontWeight: 700 }}>Enquadramento no rosto</div>
             </div>
             <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
-              Como sua imagem aparece na sua metade quando o B-roll é <b>dividido</b> (não afeta tela cheia).
+              Ajusta como você aparece: na <b>tela dividida</b> (sua metade) e, com zoom, também no <b>vídeo em tela cheia</b> (aproxima e reposiciona).
             </div>
             <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
               {[{ id: 'auto', label: 'Automático (rosto)' }, { id: 'manual', label: 'Ajustar eu mesmo' }].map((o) => (
                 <button key={o.id} onClick={() => setFramingMode(o.id)} style={framingTab(framingMode === o.id)}>{o.label}</button>
               ))}
             </div>
-            {framingMode === 'manual' && (
-              <div style={{ display: 'grid', gap: 10 }}>
-                <div style={{ fontSize: 11.5, color: C.faint }}>Arraste o círculo laranja sobre o vídeo até o seu rosto e use o zoom. A prévia abaixo mostra como vai ficar a sua metade:</div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
-                  <span style={{ width: 46 }}>Zoom</span>
-                  <button onClick={() => setZoom((z) => clampZoom(z - 0.1))} style={zoomBtn} title="Diminuir">−</button>
-                  <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(e) => setZoom(clampZoom(Number(e.target.value)))} style={{ flex: 1 }} />
-                  <button onClick={() => setZoom((z) => clampZoom(z + 0.1))} style={zoomBtn} title="Aumentar">+</button>
-                  <span style={{ width: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
-                </label>
-                {/* Prévia AO VIVO do enquadramento da metade da pessoa (9:16 → metade = 9:8). */}
-                <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase' }}>Prévia da sua metade · arraste para posicionar · role para dar zoom</div>
+            {framingMode === 'manual' && (() => {
+              const personHalf = (
                 <div
+                  key="person"
                   ref={previewBoxRef}
                   onPointerDown={(e) => {
                     e.preventDefault();
                     const r = previewBoxRef.current.getBoundingClientRect();
                     panRef.current = { startX: e.clientX, startY: e.clientY, fx: focus.x, fy: focus.y, w: r.width, h: r.height, zoom };
                   }}
-                  style={{ position: 'relative', width: '100%', aspectRatio: '9 / 8', overflow: 'hidden', borderRadius: 10, border: `1px solid ${C.orange}`, background: '#000', cursor: 'grab', touchAction: 'none' }}
+                  style={{ position: 'relative', height: '50%', overflow: 'hidden', cursor: 'grab', touchAction: 'none', boxShadow: `inset 0 0 0 2px ${C.orange}` }}
                 >
                   <video
                     ref={previewVideoRef}
                     src={sourceUrl(sourceId)}
-                    muted
-                    loop
-                    autoPlay
-                    playsInline
+                    muted loop autoPlay playsInline
                     style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, transform: `scale(${zoom})`, transformOrigin: `${focus.x * 100}% ${focus.y * 100}%` }}
                   />
-                  <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>sua metade</div>
+                  <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>você (arraste/role)</div>
                 </div>
-              </div>
-            )}
+              );
+              const brollHalf = (
+                <div key="broll" style={{ height: '50%', display: 'grid', placeItems: 'center', background: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.05), rgba(255,255,255,0.05) 8px, rgba(255,255,255,0.02) 8px, rgba(255,255,255,0.02) 16px)', color: C.faint }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                    <Icon name="image" size={18} strokeWidth={1.8} />
+                    <div style={{ fontSize: 10.5, fontWeight: 700 }}>B-roll</div>
+                  </div>
+                </div>
+              );
+              return (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
+                    <span style={{ width: 46 }}>Zoom</span>
+                    <button onClick={() => setZoom((z) => clampZoom(z - 0.1))} style={zoomBtn} title="Diminuir">−</button>
+                    <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(e) => setZoom(clampZoom(Number(e.target.value)))} style={{ flex: 1 }} />
+                    <button onClick={() => setZoom((z) => clampZoom(z + 0.1))} style={zoomBtn} title="Aumentar">+</button>
+                    <span style={{ width: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase' }}>Prévia (as duas metades)</div>
+                    <button onClick={() => setPersonSide((s) => (s === 'top' ? 'bottom' : 'top'))} style={{ ...zoomBtn, width: 'auto', padding: '0 10px', fontSize: 11, fontWeight: 600 }}>Você: {personSide === 'top' ? 'em cima' : 'embaixo'}</button>
+                  </div>
+                  {/* Composição 9:16 = sua metade (interativa) + B-roll. Arraste/role na sua metade. */}
+                  <div style={{ width: '100%', maxWidth: 190, margin: '0 auto', aspectRatio: '9 / 16', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
+                    {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.faint, textAlign: 'center' }}>Sem B-roll, o mesmo ajuste (zoom) reenquadra o vídeo inteiro.</div>
+                </div>
+              );
+            })()}
           </div>
         </div>
 

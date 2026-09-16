@@ -5,6 +5,7 @@ import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep } from './timeline.js';
 import { insertBroll } from './broll.js';
+import { applyManualFrame } from './frame.js';
 import { applyMotion } from './motion.js';
 import { enhanceVoice } from './voice.js';
 import { markFillers } from './cleanup.js';
@@ -48,6 +49,7 @@ function buildPlan(mode, options) {
       { key: 'analyze', label: 'Analisando temas', weight: 3, enabled: true },
       { key: 'motion', label: 'Aplicando movimento (zoom)', weight: 12, enabled: Boolean(options.videoMotion) && options.videoMotion !== 'none' },
       { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
+      { key: 'frame', label: 'Reenquadrando o vídeo', weight: 8, enabled: (Number(options.personZoom) || 1) > 1.001 },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true },
       { key: 'color', label: 'Aplicando color grade', weight: 11, enabled: (options.colorLook || 'teal-orange') !== 'none' },
@@ -273,12 +275,27 @@ export async function runPipeline(job, onUpdate = () => {}) {
   }
 
   // 6. B-roll
+  let brollSplitUsed = false;
   if (has('broll')) {
     const st = enter('broll');
     const r = await insertBroll(input, work, meta, analysis, options, st.onProgress);
     input = r.output;
     report.broll = { inserted: r.inserted };
+    // Tela dividida com clipes já consumiu o foco/zoom nas metades da pessoa.
+    brollSplitUsed = ['top', 'bottom'].includes(options.brollLayout) && r.inserted > 0;
     st.record(report.broll);
+    st.onProgress(1);
+  }
+
+  // Reenquadramento manual (punch-in) do vídeo inteiro — vale SEM B-roll ou com
+  // B-roll em tela cheia. Na tela dividida o foco/zoom já foi aplicado nas metades.
+  if (has('frame') && !brollSplitUsed) {
+    const st = enter('frame');
+    const r = await applyManualFrame(input, work, meta, options, st.onProgress);
+    input = r.output;
+    if (r.applied) meta = { ...meta, ...(await probeSummary(input)) };
+    report.frame = { applied: r.applied };
+    st.record(report.frame);
     st.onProgress(1);
   }
 
