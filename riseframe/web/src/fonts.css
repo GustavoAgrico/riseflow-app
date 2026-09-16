@@ -1,6 +1,8 @@
 /* Fontes das legendas, servidas pelo backend (/api/fonts) — usadas na PRÉVIA de
    legenda no navegador. O render real usa os mesmos arquivos via libass. */
 @font-face { font-family: 'Poppins'; src: url('/api/fonts/Poppins-Bold.ttf'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Montserrat'; src: url('/api/fonts/Montserrat-Bold.ttf'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Arimo'; src: url('/api/fonts/Arimo-Bold.ttf'); font-weight: 700; font-display: swap; }
 @font-face { font-family: 'Inter'; src: url('/api/fonts/Inter.ttf'); font-display: swap; }
 @font-face { font-family: 'Open Sans'; src: url('/api/fonts/OpenSans.ttf'); font-display: swap; }
 @font-face { font-family: 'Anton'; src: url('/api/fonts/Anton-Regular.ttf'); font-display: swap; }
