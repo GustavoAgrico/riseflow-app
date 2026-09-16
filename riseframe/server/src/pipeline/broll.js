@@ -11,6 +11,17 @@ import { makeLogger } from '../logger.js';
 const log = makeLogger('broll');
 
 /**
+ * Escolhe um item entre os `top` primeiros candidatos (relevância) de forma
+ * aleatória — dá VARIEDADE (não pega sempre o mesmo 1º resultado) sem perder o
+ * contexto. Puro/exportado para teste.
+ */
+export function pickVaried(list, top = 5) {
+  if (!list || !list.length) return null;
+  const n = Math.min(top, list.length);
+  return list[Math.floor(Math.random() * n)];
+}
+
+/**
  * Escolhe o melhor arquivo de vídeo de um resultado do Pexels: mp4 com altura
  * mais próxima do alvo, sem passar muito da resolução (evita baixar 4K à toa).
  * Puro/exportado para teste.
@@ -48,12 +59,12 @@ async function searchPexels(query, targetH, orientation, usedIds, apiKey) {
     return null;
   }
   const data = await res.json();
-  for (const video of data.videos || []) {
-    if (usedIds.has(video.id)) continue; // dedupe entre momentos
-    const file = pickBestVideoFile(video.video_files, targetH);
-    if (file) return { id: video.id, link: file.link };
-  }
-  return null;
+  const cands = (data.videos || [])
+    .filter((v) => !usedIds.has(v.id)) // dedupe entre momentos
+    .map((v) => ({ id: v.id, file: pickBestVideoFile(v.video_files, targetH) }))
+    .filter((x) => x.file);
+  const pick = pickVaried(cands);
+  return pick ? { id: pick.id, link: pick.file.link } : null;
 }
 
 /**
@@ -71,12 +82,12 @@ async function searchPexelsPhoto(query, orientation, usedIds, apiKey) {
     return null;
   }
   const data = await res.json();
-  for (const photo of data.photos || []) {
-    if (usedIds.has(`p${photo.id}`)) continue; // dedupe (namespace separado de vídeos)
-    const link = pickBestPhotoFile(photo.src);
-    if (link) return { id: `p${photo.id}`, link };
-  }
-  return null;
+  const cands = (data.photos || [])
+    .filter((p) => !usedIds.has(`p${p.id}`)) // dedupe (namespace separado de vídeos)
+    .map((p) => ({ id: `p${p.id}`, link: pickBestPhotoFile(p.src) }))
+    .filter((x) => x.link);
+  const pick = pickVaried(cands);
+  return pick ? { id: pick.id, link: pick.link } : null;
 }
 
 /**
@@ -100,15 +111,11 @@ async function searchGoogleImages(query, usedIds, cfg) {
     return null;
   }
   const data = await res.json();
-  for (const item of data.items || []) {
-    const link = item.link;
-    if (!link || !/^https?:\/\//i.test(link)) continue;
-    const id = `g${item.image?.thumbnailLink || link}`;
-    if (usedIds.has(id)) continue;
-    if (!/\.(jpe?g|png|webp)(\?|$)/i.test(link)) continue; // evita links sem imagem direta
-    return { id, link };
-  }
-  return null;
+  const cands = (data.items || [])
+    .map((item) => ({ link: item.link, id: `g${item.image?.thumbnailLink || item.link}` }))
+    .filter((x) => x.link && /^https?:\/\//i.test(x.link) && /\.(jpe?g|png|webp)(\?|$)/i.test(x.link) && !usedIds.has(x.id));
+  const pick = pickVaried(cands);
+  return pick ? { id: pick.id, link: pick.link } : null;
 }
 
 /**
@@ -145,7 +152,10 @@ async function searchOpenverse(query, usedIds, cfg = {}) {
     return null;
   }
   const data = await res.json();
-  return pickOpenverseHit(data.results, usedIds);
+  const cands = (data.results || [])
+    .map((it) => ({ link: it.url, id: `o${it.id || it.url}` }))
+    .filter((x) => x.link && /^https?:\/\//i.test(x.link) && !usedIds.has(x.id));
+  return pickVaried(cands);
 }
 
 /**

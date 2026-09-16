@@ -152,6 +152,20 @@ function nicheLabelPt(niche) {
  *  • google: termos EM PORTUGUÊS com o contexto real da fala (mais preciso e sem a
  *    limitação do dicionário); só cai no nicho quando não há palavra de conteúdo.
  */
+/**
+ * Palavras de conteúdo do trecho, únicas e ranqueadas (tema forte primeiro, depois
+ * as mais longas). No fim acrescenta os temas do vídeo como candidatos extras.
+ */
+function candidateTerms(seg, themeTerms = []) {
+  const words = (seg.words?.length ? seg.words.map((w) => w.word) : String(seg.text || '').split(/\s+/))
+    .map((w) => String(w).toLowerCase().replace(/[^a-záàâãéêíóôõúüç0-9]/gi, ''))
+    .filter((w) => w.length >= 4 && !STOP.has(w));
+  const uniq = [...new Set(words)];
+  uniq.sort((a, b) => ((themeTerms.includes(b) ? 1 : 0) - (themeTerms.includes(a) ? 1 : 0)) || b.length - a.length);
+  for (const t of themeTerms) if (t && !uniq.includes(t)) uniq.push(t);
+  return uniq;
+}
+
 export function pickBrollMoments(segments, themes, duration, opts = {}) {
   const everySec = opts.brollEverySec ?? 7;
   const clipLen = opts.brollClipLen ?? 3.2;
@@ -163,35 +177,41 @@ export function pickBrollMoments(segments, themes, duration, opts = {}) {
   const source = opts.imageSource === 'google' ? 'google' : 'pexels';
   const moments = [];
   let nextAt = skipIntro;
-  let lastQuery = null;
+  // Dedupe de query no VÍDEO INTEIRO (não só em sequência) — evita a mesma imagem
+  // repetir em contextos diferentes. Cada momento recebe um termo de busca distinto.
+  const usedQueries = new Set();
+  const nq = (q) => String(q).toLowerCase().trim();
   for (const seg of segments || []) {
     if (seg.start < skipIntro || seg.start < nextAt) continue;
     const niche = opts.niche; // {core, fallback, label} | null — casa o B-roll com o tema
-    let query;
-    let kw;
+    const cands = candidateTerms(seg, themeTerms);
+    let query = null;
+    let kw = null;
+
     if (source === 'google') {
       // Google Imagens: contexto real da fala em pt (sem dicionário/tradução).
-      const phrase = pickPhrasePt(seg, themeTerms, 2);
-      kw = phrase;
-      if (phrase) query = phrase;
-      else if (nicheLabelPt(niche)) query = nicheLabelPt(niche);
-      else continue; // sem contexto e sem nicho → melhor pular
+      for (const c of cands) {
+        if (!usedQueries.has(nq(c))) { query = c; kw = c; break; }
+      }
+      if (!query) {
+        const nl = nicheLabelPt(niche);
+        if (nl && !usedQueries.has(nq(nl))) { query = nl; kw = nl; }
+      }
     } else {
       // Pexels: banco indexado em inglês → traduz e casa com o nicho (inglês).
-      kw = pickKeyword(seg, themeTerms) || themeTerms[moments.length % (themeTerms.length || 1)];
-      if (kw && isTranslatable(kw)) {
-        query = (niche ? `${niche.core} ${translateQuery(kw)}` : translateQuery(kw)).trim();
-      } else if (niche) {
-        query = niche.fallback; // sem tradução: usa o tema do nicho (não manda pt cru)
-      } else {
-        continue; // sem tradução e sem nicho: pula (melhor menos B-roll do que imagem errada)
+      for (const c of cands) {
+        if (!isTranslatable(c)) continue;
+        const q = (niche ? `${niche.core} ${translateQuery(c)}` : translateQuery(c)).trim();
+        if (!usedQueries.has(nq(q))) { query = q; kw = c; break; }
       }
+      if (!query && niche && !usedQueries.has(nq(niche.fallback))) { query = niche.fallback; kw = niche.core; }
     }
-    if (query === lastQuery) continue; // evita B-roll repetido em sequência
+
+    if (!query) continue; // nenhum termo NOVO para este trecho → pula (melhor que repetir)
     const end = Math.min(seg.start + clipLen, duration);
     if (end - seg.start < 1) continue;
+    usedQueries.add(nq(query));
     moments.push({ start: seg.start, end, query, term: kw });
-    lastQuery = query;
     nextAt = seg.start + Math.max(everySec, minGap);
     if (moments.length >= maxCount) break;
   }
