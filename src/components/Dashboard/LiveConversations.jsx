@@ -104,12 +104,16 @@ export function LiveConversations() {
               <Link
                 key={c.id}
                 to="/chat"
+                className="rf-conv-card"
                 style={{ ...card, borderColor: unread > 0 ? 'rgba(255,107,53,0.4)' : 'var(--border)' }}
               >
                 {/* topo: pessoa + tempo */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                  <div style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0, background: 'linear-gradient(135deg,#7C3AED,#4F46E5)', color: '#fff', fontWeight: 700, fontSize: 13, display: 'grid', placeItems: 'center' }}>
-                    {ini(c.contact_name || c.contact_phone)}
+                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(135deg,#7C3AED,#4F46E5)', color: '#fff', fontWeight: 700, fontSize: 13, display: 'grid', placeItems: 'center' }}>
+                      {ini(c.contact_name || c.contact_phone)}
+                    </div>
+                    <span style={{ position: 'absolute', right: -1, bottom: -1, width: 11, height: 11, borderRadius: '50%', background: '#22C55E', border: '2px solid var(--card)' }} />
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--ink-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

@@ -405,6 +405,9 @@ export const Dashboard = () => {
         </div>
       </div>
 
+      {/* ── Conversas ao vivo (pessoa ↔ atendente) — destaque no topo ── */}
+      <LiveConversations />
+
       {/* ── Plan usage ── */}
       {usage && (() => {
         const unlimited = usage.messages_limit === -1
@@ -445,9 +448,6 @@ export const Dashboard = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {salesCards.map((s, i) => <StatCard key={i} {...s} sparkData={sparkline} />)}
       </div>
-
-      {/* ── Conversas ao vivo (pessoa ↔ atendente, tempo real) ── */}
-      <LiveConversations />
 
       {/* ── Desempenho de vendas (funil real dos clients) ── */}
       <div className="mb-6">

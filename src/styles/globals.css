@@ -6,6 +6,14 @@
 .rf-monitor-grid { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
 @media (max-width: 900px) { .rf-monitor-grid { grid-template-columns: 1fr; } }
 
+/* Cards de "Conversas ao vivo" — elevação premium no hover */
+.rf-conv-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 107, 53, 0.45) !important;
+  box-shadow: 0 16px 34px -20px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+@media (prefers-reduced-motion: reduce) { .rf-conv-card:hover { transform: none; } }
+
 @layer base {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
