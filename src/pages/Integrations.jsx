@@ -22,10 +22,10 @@ import clsx from 'clsx'
 
 /* ─── Quais integrações cada plano pode conectar ───────────────────────── */
 const INTEGRATION_ACCESS = {
-  free:       ['whatsapp_cloud'],
-  starter:    ['whatsapp_cloud', 'telegram'],
-  pro:        ['whatsapp_cloud', 'telegram', 'email'],
-  enterprise: ['whatsapp_cloud', 'instagram', 'facebook', 'telegram', 'email', 'ai'],
+  free:       ['whatsapp', 'whatsapp_cloud'],
+  starter:    ['whatsapp', 'whatsapp_cloud', 'telegram'],
+  pro:        ['whatsapp', 'whatsapp_cloud', 'telegram', 'email'],
+  enterprise: ['whatsapp', 'whatsapp_cloud', 'instagram', 'facebook', 'telegram', 'email', 'ai'],
 }
 
 const REQUIRED_PLAN = {
@@ -99,6 +99,11 @@ function MetaStats({ userId, channel }) {
 
 /* ─── Card definitions ─────────────────────────────────────────────────── */
 const CARDS = [
+  {
+    id: 'whatsapp', name: 'WhatsApp (QR)', category: 'Mensageria',
+    color: '#25D366', bg: 'from-green-500/20 to-green-600/5',
+    description: 'Conecte seu próprio número escaneando um QR code — simples e sem verificação da Meta (usa o servidor Baileys).',
+  },
   {
     id: 'whatsapp_cloud', name: 'WhatsApp API Oficial', category: 'Mensageria',
     color: '#128C7E', bg: 'from-emerald-500/20 to-emerald-600/5',
