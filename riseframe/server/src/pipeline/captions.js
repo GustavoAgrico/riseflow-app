@@ -136,6 +136,7 @@ export const CAPTION_BACKGROUNDS = {
   bar: 'Barra translúcida',
   glow: 'Brilho neon (cor)',
   none: 'Sem sombra (só contorno)',
+  clean: 'Limpo (sem contorno e sem caixa)',
 };
 
 /** Animações de texto disponíveis (entrada de cada palavra/frase). */
@@ -195,13 +196,18 @@ export function buildAss(segments, meta, style = {}) {
 
   const accent = assColor(CAPTION_COLORS[color]); // cor de destaque
   const WHITE = assColor('FFFFFF');
+  // Modo de exibição: escolha do usuário (word|phrase) OU o padrão do estilo.
+  const mode = ['word', 'phrase'].includes(style.mode) ? style.mode : T.mode;
   const size = Math.round(h * T.size * scale);
-  const outline = Math.max(2, Math.round(size * T.outline));
-  // Fundo do texto (escolha manual): sombra | caixa | barra | brilho | sem sombra.
-  const bg = ['shadow', 'box', 'bar', 'glow', 'none'].includes(style.background) ? style.background : (T.box ? 'box' : 'shadow');
+  // Fundo do texto (escolha manual): sombra | caixa | barra | brilho | sem sombra | limpo.
+  const bg = ['shadow', 'box', 'bar', 'glow', 'none', 'clean'].includes(style.background) ? style.background : (T.box ? 'box' : 'shadow');
   const useBox = bg === 'box' || bg === 'bar'; // ambos usam BorderStyle=3 (caixa)
   const glowOn = bg === 'glow' || (style.background == null && T.glow) || (bg === 'auto' && T.glow);
-  const shadow = bg === 'none' || glowOn || useBox ? 0 : Math.max(1, Math.round(size * 0.05));
+  // "clean" = sem contorno (Outline 0) e sem caixa; mantém só uma sombra suave para legibilidade.
+  const outline = bg === 'clean' ? 0 : Math.max(2, Math.round(size * T.outline));
+  const shadow = bg === 'clean'
+    ? Math.max(2, Math.round(size * 0.06))
+    : bg === 'none' || glowOn || useBox ? 0 : Math.max(1, Math.round(size * 0.05));
   // Posição vertical da legenda (escolha manual). 'auto' segue o estilo.
   const pos = ['top', 'center', 'bottom'].includes(style.position) ? style.position : 'auto';
   const align = pos === 'top' ? 8 : pos === 'center' ? 5 : pos === 'bottom' ? 2 : T.align;
@@ -239,7 +245,7 @@ export function buildAss(segments, meta, style = {}) {
   ];
   // Estilo com caixa atrás do texto (BorderStyle=3). 'box' = sólida; 'bar' = translúcida.
   if (useBox) {
-    const phraseBox = T.mode === 'phrase';
+    const phraseBox = mode === 'phrase';
     // Barra translúcida escura (alpha 0x66) — sempre neutra, legível em qualquer cor.
     // Caixa sólida: frase → escura neutra; palavra → na cor de destaque.
     const boxColor = bg === 'bar'
@@ -268,7 +274,7 @@ export function buildAss(segments, meta, style = {}) {
       .filter((wd) => wd.word.length > 0);
     if (!words.length) continue;
 
-    if (T.mode === 'word') {
+    if (mode === 'word') {
       // Uma palavra por vez, centralizada, com o movimento do template.
       const styleName = useBox ? 'RiseBox' : 'Rise';
       // No brilho neon o texto fica branco e a cor aparece no halo (mais legível).

@@ -27,6 +27,11 @@ optionsRouter.get('/options', (_req, res) => {
     captionAnimations: Object.entries(CAPTION_ANIMATIONS).map(([id, label]) => ({ id, label })),
     captionBackgrounds: Object.entries(CAPTION_BACKGROUNDS).map(([id, label]) => ({ id, label })),
     captionPositions: Object.entries(CAPTION_POSITIONS).map(([id, label]) => ({ id, label })),
+    captionModes: [
+      { id: 'auto', label: 'Automático (do estilo)' },
+      { id: 'word', label: 'Palavra por palavra' },
+      { id: 'phrase', label: 'Frase (várias palavras)' },
+    ],
     captionColors: [
       { id: 'white', label: 'Branco', hex: '#FFFFFF' },
       { id: 'yellow', label: 'Amarelo', hex: '#FFE24B' },
@@ -95,6 +100,7 @@ optionsRouter.get('/options', (_req, res) => {
       captionAnimation: 'auto',
       captionBackground: 'auto',
       captionPosition: 'auto',
+      captionMode: 'auto',
       captionScale: 1,
       colorLook: 'auto',
       videoMotion: 'none',
