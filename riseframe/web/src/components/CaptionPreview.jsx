@@ -12,6 +12,7 @@ const TPL = {
   keyword: { mode: 'phrase', font: 'Poppins', anim: 'pop', upper: true, size: 34, highlightKeyword: true },
 };
 const FONT_FAMILY = {
+  montserrat: 'Montserrat', gotham: 'Poppins', helvetica: 'Arimo',
   poppins: 'Poppins', inter: 'Inter', opensans: 'Open Sans', anton: 'Anton',
   bebas: 'Bebas Neue', archivo: 'Archivo Black', garamond: 'EB Garamond', luckiest: 'Luckiest Guy',
 };

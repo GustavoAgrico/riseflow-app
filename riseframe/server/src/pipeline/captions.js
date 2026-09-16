@@ -13,6 +13,9 @@ const FONTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 
 // ─── Tipografia (fontes empacotadas) ──────────────────────────────────
 // `family` é o nome interno da fonte (o que o libass procura).
 export const CAPTION_FONTS = {
+  montserrat: { family: 'Montserrat', label: 'Montserrat' },
+  gotham: { family: 'Poppins', label: 'Gotham (estilo — Poppins)' },
+  helvetica: { family: 'Arimo', label: 'Helvética (Arimo)' },
   poppins: { family: 'Poppins', label: 'Poppins (moderna)' },
   inter: { family: 'Inter', label: 'Inter (estilo Helvetica)' },
   opensans: { family: 'Open Sans', label: 'Open Sans (limpa)' },
