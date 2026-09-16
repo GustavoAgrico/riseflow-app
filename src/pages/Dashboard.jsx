@@ -18,6 +18,7 @@ import { computeSalesMetrics, periodRange } from '@lib/metrics'
 import { DEMO_DEALS } from '@constants/demoDeals'
 import { useOnboarding } from '@hooks/useOnboarding'
 import { OnboardingWizard } from '@components/OnboardingWizard'
+import { LiveConversations } from '@components/Dashboard/LiveConversations'
 import { useApp } from '@context/AppContext'
 import { useAuth } from '@context/AuthContext'
 import clsx from 'clsx'
@@ -444,6 +445,9 @@ export const Dashboard = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {salesCards.map((s, i) => <StatCard key={i} {...s} sparkData={sparkline} />)}
       </div>
+
+      {/* ── Conversas ao vivo (pessoa ↔ atendente, tempo real) ── */}
+      <LiveConversations />
 
       {/* ── Desempenho de vendas (funil real dos clients) ── */}
       <div className="mb-6">
