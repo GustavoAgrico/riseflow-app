@@ -4,6 +4,7 @@ import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import { sourceUrl } from '../api.js';
 import { APP_VERSION } from '../version.js';
+import CaptionPreview from './CaptionPreview.jsx';
 
 const PPS = 64; // pixels por segundo na timeline
 
@@ -16,7 +17,20 @@ const PPS = 64; // pixels por segundo na timeline
  * - corrigir o texto (duplo-clique na palavra)
  * "Renderizar" reprocessa com a transcrição editada.
  */
-export default function TimelineEditor({ transcript, durationSec, sourceId, onGenerate, onBack, busy }) {
+export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, busy }) {
+  const cap0 = options || {};
+  // Ajustes de legenda editáveis aqui na timeline (posição, fonte, estilo, etc.).
+  const [cap, setCap] = useState({
+    captions: cap0.captions !== false,
+    captionTemplate: cap0.captionTemplate || 'clean',
+    captionFont: cap0.captionFont || 'auto',
+    captionColor: cap0.captionColor || 'white',
+    captionBackground: cap0.captionBackground || 'auto',
+    captionPosition: cap0.captionPosition || 'auto',
+    captionMode: cap0.captionMode || 'auto',
+    captionScale: cap0.captionScale || 1,
+  });
+  const setCapField = (patch) => setCap((c) => ({ ...c, ...patch }));
   const videoRef = useRef(null);
   const previewVideoRef = useRef(null);
   const previewBoxRef = useRef(null);
@@ -49,7 +63,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
   // ── Pausas de silêncio (gaps entre palavras mantidas). O usuário decide, na
   // timeline, quais cortar. Por padrão TODA pausa visível é cortada (o cliente
   // reclamou que sobrava silêncio); clicar numa pausa a preserva.
-  const MIN_PAUSE = 0.35; // só mostra/oferece corte a partir daqui
+  const MIN_PAUSE = 0.28; // só mostra/oferece corte a partir daqui (mais sensível = corta mais silêncio)
   const [keptPauses, setKeptPauses] = useState(() => new Set());
   const pauseKey = (p) => p.start.toFixed(2);
 
@@ -261,6 +275,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
         ...(framingMode === 'manual'
           ? { personFocusX: +focus.x.toFixed(3), personFocusY: +focus.y.toFixed(3) }
           : {}),
+        // Ajustes de legenda escolhidos aqui na timeline (sobrepõem os das opções).
+        ...cap,
       },
     );
   }
@@ -364,6 +380,35 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
               );
             })()}
           </div>
+
+          {/* Ajustes de legenda (posição, fonte, estilo…) direto na edição */}
+          {catalog && cap.captions && (
+            <div style={{ marginTop: 14, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Legenda</div>
+              </div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <CapRow label="Estilo"><Sel value={cap.captionTemplate} opts={catalog.captionTemplates} onChange={(v) => setCapField({ captionTemplate: v })} /></CapRow>
+                <CapRow label="Fonte"><Sel value={cap.captionFont} opts={catalog.captionFonts} onChange={(v) => setCapField({ captionFont: v })} /></CapRow>
+                <CapRow label="Modo (palavra / frase)"><Sel value={cap.captionMode} opts={catalog.captionModes} onChange={(v) => setCapField({ captionMode: v })} /></CapRow>
+                <CapRow label="Fundo do texto"><Sel value={cap.captionBackground} opts={catalog.captionBackgrounds} onChange={(v) => setCapField({ captionBackground: v })} /></CapRow>
+                <CapRow label="Posição"><Sel value={cap.captionPosition} opts={catalog.captionPositions} onChange={(v) => setCapField({ captionPosition: v })} /></CapRow>
+                <CapRow label="Cor">
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {(catalog.captionColors || []).map((o) => (
+                      <button key={o.id} onClick={() => setCapField({ captionColor: o.id })} title={o.label}
+                        style={{ width: 24, height: 24, borderRadius: '50%', cursor: 'pointer', background: o.hex, border: cap.captionColor === o.id ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)' }} />
+                    ))}
+                  </div>
+                </CapRow>
+                <CapRow label={`Tamanho (${Math.round((cap.captionScale ?? 1) * 100)}%)`}>
+                  <input type="range" min="0.6" max="1.4" step="0.05" value={cap.captionScale ?? 1} onChange={(e) => setCapField({ captionScale: Number(e.target.value) })} style={{ width: '100%' }} />
+                </CapRow>
+              </div>
+              <div style={{ marginTop: 8 }}><CaptionPreview options={cap} /></div>
+            </div>
+          )}
         </div>
 
         <div>
@@ -521,6 +566,21 @@ function framingTab(active) {
   return { flex: 1, border: `1px solid ${active ? C.orange : C.border}`, background: active ? 'rgba(255,107,53,0.16)' : 'rgba(255,255,255,0.05)', color: active ? C.orange : C.muted, borderRadius: 9, padding: '7px 8px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' };
 }
 const zoomBtn = { width: 26, height: 26, flexShrink: 0, borderRadius: 7, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.06)', color: C.text, fontSize: 16, fontWeight: 700, lineHeight: 1, cursor: 'pointer', display: 'grid', placeItems: 'center', fontFamily: 'inherit' };
+function Sel({ value, opts, onChange }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ width: '100%', background: '#13131B', color: C.text, border: `1px solid ${C.border}`, borderRadius: 9, padding: '8px 10px', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>
+      {(opts || []).map((o) => (<option key={o.id} value={o.id}>{o.label}</option>))}
+    </select>
+  );
+}
+function CapRow({ label, children }) {
+  return (
+    <label style={{ display: 'grid', gap: 4 }}>
+      <span style={{ fontSize: 11, color: C.faint, fontWeight: 600 }}>{label}</span>
+      {children}
+    </label>
+  );
+}
 function Chip({ label, value, sub, color }) {
   return (
     <div style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 11, padding: '7px 12px' }}>
