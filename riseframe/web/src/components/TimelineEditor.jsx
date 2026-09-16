@@ -20,6 +20,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
   const videoRef = useRef(null);
   const previewVideoRef = useRef(null);
   const previewBoxRef = useRef(null);
+  const panRef = useRef(null); // arraste na prévia: {startX,startY,fx,fy,w,h,zoom}
   const trackRef = useRef(null);
   const dragRef = useRef(null); // { si, edge: 'left'|'right' }
   const [cur, setCur] = useState(0);
@@ -149,8 +150,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
     setFocus({ x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) });
   }
   useEffect(() => {
-    function move(e) { if (focusDragRef.current) { e.preventDefault(); setFocusFromClient(e.clientX, e.clientY); } }
-    function up() { focusDragRef.current = false; }
+    const clamp01 = (v) => Math.min(1, Math.max(0, v));
+    function move(e) {
+      if (focusDragRef.current) { e.preventDefault(); setFocusFromClient(e.clientX, e.clientY); return; }
+      if (panRef.current) {
+        e.preventDefault();
+        const p = panRef.current;
+        // Arrastar a imagem move o enquadramento no sentido inverso (arrastar p/ direita
+        // mostra mais da esquerda). Divide pelo zoom p/ um ajuste mais fino quando ampliado.
+        const dx = (e.clientX - p.startX) / (p.w * p.zoom);
+        const dy = (e.clientY - p.startY) / (p.h * p.zoom);
+        setFocus({ x: clamp01(p.fx - dx), y: clamp01(p.fy - dy) });
+      }
+    }
+    function up() { focusDragRef.current = false; panRef.current = null; }
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
@@ -310,8 +323,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, onGe
                   <span style={{ width: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
                 </label>
                 {/* Prévia AO VIVO do enquadramento da metade da pessoa (9:16 → metade = 9:8). */}
-                <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase' }}>Prévia da sua metade · role o mouse para dar zoom</div>
-                <div ref={previewBoxRef} style={{ position: 'relative', width: '100%', aspectRatio: '9 / 8', overflow: 'hidden', borderRadius: 10, border: `1px solid ${C.orange}`, background: '#000', cursor: 'ns-resize' }}>
+                <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase' }}>Prévia da sua metade · arraste para posicionar · role para dar zoom</div>
+                <div
+                  ref={previewBoxRef}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    const r = previewBoxRef.current.getBoundingClientRect();
+                    panRef.current = { startX: e.clientX, startY: e.clientY, fx: focus.x, fy: focus.y, w: r.width, h: r.height, zoom };
+                  }}
+                  style={{ position: 'relative', width: '100%', aspectRatio: '9 / 8', overflow: 'hidden', borderRadius: 10, border: `1px solid ${C.orange}`, background: '#000', cursor: 'grab', touchAction: 'none' }}
+                >
                   <video
                     ref={previewVideoRef}
                     src={sourceUrl(sourceId)}
