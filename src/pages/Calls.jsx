@@ -108,6 +108,9 @@ export const Calls = () => {
 
   const FILTERS = [['all', 'Todas'], ['answered', 'Atendidas'], ['scheduled', 'Agendadas'], ['won', 'Convertidas'], ['lost', 'Perdidas']]
 
+  // Click-to-call: abre o discador do aparelho (celular liga direto; PC abre o app de chamadas).
+  const telHref = (p) => { const d = String(p || '').replace(/\D/g, ''); return d ? `tel:+${d}` : undefined }
+
   return (
     <Layout title="Ligações" subtitle="Registro e desempenho das chamadas">
       {isDemoMode && (
@@ -159,14 +162,17 @@ export const Calls = () => {
                     <tr key={r.id} style={{ borderBottom: `1px solid ${C.bd}66` }}>
                       <td style={{ padding: '11px 14px' }}>
                         <p style={{ margin: 0, fontSize: 13, color: C.tx, fontWeight: 600 }}>{r.contact_name || '—'}</p>
-                        {r.phone && <p style={{ margin: 0, fontSize: 11, color: C.mut }}>{r.phone}</p>}
+                        {r.phone && <a href={telHref(r.phone)} title="Ligar (abre o discador)" style={{ fontSize: 11, color: C.blue, textDecoration: 'none', fontWeight: 600 }}>{r.phone}</a>}
                       </td>
                       <td style={{ padding: '11px 14px' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.mut }}><Dir size={13} /> {r.direction === 'inbound' ? 'Recebida' : 'Feita'}</span></td>
                       <td style={{ padding: '11px 14px' }}><span style={{ fontSize: 11, fontWeight: 700, color: o.color, background: o.color + '1c', border: `1px solid ${o.color}44`, borderRadius: 20, padding: '3px 10px', whiteSpace: 'nowrap' }}>{o.label}</span></td>
                       <td style={{ padding: '11px 14px', fontSize: 13, color: C.tx, fontVariantNumeric: 'tabular-nums' }}>{fmtDur(r.duration_sec)}</td>
                       <td style={{ padding: '11px 14px', fontSize: 12, color: C.mut, whiteSpace: 'nowrap' }}>{d ? d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                       <td style={{ padding: '11px 14px', textAlign: 'right' }}>
-                        <button onClick={() => del(r)} title="Excluir" style={{ background: 'none', border: `1px solid ${C.bd}`, cursor: 'pointer', color: C.red, borderRadius: 7, padding: '5px 7px' }}><Trash2 size={14} /></button>
+                        <div style={{ display: 'inline-flex', gap: 6 }}>
+                          {r.phone && <a href={telHref(r.phone)} title="Ligar (abre o discador)" style={{ display: 'inline-flex', alignItems: 'center', border: `1px solid ${C.green}55`, background: C.green + '18', color: C.green, borderRadius: 7, padding: '5px 8px', textDecoration: 'none' }}><PhoneCall size={14} /></a>}
+                          <button onClick={() => del(r)} title="Excluir" style={{ background: 'none', border: `1px solid ${C.bd}`, cursor: 'pointer', color: C.red, borderRadius: 7, padding: '5px 7px' }}><Trash2 size={14} /></button>
+                        </div>
                       </td>
                     </tr>
                   )
