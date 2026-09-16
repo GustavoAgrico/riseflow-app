@@ -20,7 +20,7 @@ const INSTRUCTION = (duration, maxCount, niche, source = 'pexels') => {
 ${niche
     ? `O NICHO/LINGUAGEM do vídeo é: ${niche}. TODAS as buscas devem ser visualmente coerentes com esse nicho (o clima, as pessoas e os cenários precisam combinar com ${niche}).`
     : `Primeiro, identifique o NICHO/tema do vídeo (ex.: liderança, medicina, mentoria, finanças, fitness) e mantenha TODAS as buscas visualmente coerentes com ele.`}
-Escolha até ${maxCount} momentos onde inserir imagens de apoio, distribuídos ao longo do vídeo (evite a introdução e não repita a mesma imagem em sequência).
+Escolha até ${maxCount} momentos onde inserir imagens de apoio, distribuídos ao longo do vídeo (evite a introdução). IMPORTANTE: cada "query" deve ser DIFERENTE das demais — nunca repita o mesmo termo de busca, para não repetir imagens ao longo do vídeo.
 Para cada momento devolva: "start" (segundo de início, número), "end" (fim, número, 1.5–4s após o start) e ${queryRule}
 Também devolva "niche" (o nicho em 1-2 palavras, em português) e "themes": 3–6 temas centrais.
 Responda APENAS com JSON no formato: {"niche":"...","themes":["..."],"brollMoments":[{"start":0,"end":0,"query":"..."}]}`;
@@ -37,6 +37,7 @@ function parseJson(text) {
 }
 
 function normalize(data, duration, maxCount) {
+  const seen = new Set(); // dedupe de query → evita repetir a mesma imagem
   const moments = (data.brollMoments || data.moments || [])
     .map((m) => ({
       start: Math.max(0, Number(m.start) || 0),
@@ -44,6 +45,12 @@ function normalize(data, duration, maxCount) {
       query: String(m.query || m.q || '').trim(),
     }))
     .filter((m) => m.query && m.end - m.start >= 0.8 && m.start < duration)
+    .filter((m) => {
+      const k = m.query.toLowerCase().trim();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
     .slice(0, maxCount);
   const themes = (data.themes || []).map((t) => ({ term: String(t).toLowerCase(), count: 1 })).slice(0, 6);
   return { themes, brollMoments: moments };

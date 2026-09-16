@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractThemes, translateQuery, pickBrollMoments, pickPhrasePt } from '../src/pipeline/analyze.js';
-import { pickBestVideoFile, pickOpenverseHit, faceCropGeometry } from '../src/pipeline/broll.js';
+import { pickBestVideoFile, pickOpenverseHit, faceCropGeometry, pickVaried } from '../src/pipeline/broll.js';
 
 test('translateQuery: mapeia pt→en e faz passthrough', () => {
   assert.equal(translateQuery('vídeo'), 'video');
@@ -81,6 +81,27 @@ test('pickOpenverseHit: pega 1ª imagem válida e respeita dedupe', () => {
   const second = pickOpenverseHit(items, used);
   assert.equal(second.link, 'https://example.com/2.jpg', 'não repete a já usada');
   assert.equal(pickOpenverseHit([], new Set()), null);
+});
+
+test('pickBrollMoments: não repete a mesma query no vídeo inteiro', () => {
+  // 12 trechos com a MESMA palavra → só deve gerar 1 momento (sem repetir imagem).
+  const segments = [];
+  for (let i = 0; i < 12; i++) segments.push({ start: i * 2.5, end: i * 2.5 + 2, text: 'disciplina', words: [] });
+  const themes = extractThemes('disciplina');
+  const moments = pickBrollMoments(segments, themes, 30, { imageSource: 'google', brollMax: 6, brollSkipIntro: 2 });
+  assert.equal(moments.length, 1, 'query repetida vira 1 momento só');
+  const qs = moments.map((m) => m.query.toLowerCase());
+  assert.equal(new Set(qs).size, qs.length, 'todas as queries distintas');
+});
+
+test('pickVaried: escolhe dentro dos primeiros N e trata vazio', () => {
+  assert.equal(pickVaried([], 5), null);
+  assert.deepEqual(pickVaried([{ id: 1 }], 5), { id: 1 });
+  const list = [{ id: 1 }, { id: 2 }, { id: 3 }];
+  for (let i = 0; i < 30; i++) {
+    const p = pickVaried(list, 2);
+    assert.ok(p.id === 1 || p.id === 2, 'só entre os 2 primeiros quando top=2');
+  }
 });
 
 test('faceCropGeometry: cobre a região e centraliza no foco, dentro dos limites', () => {
