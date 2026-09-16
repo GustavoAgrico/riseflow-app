@@ -172,8 +172,13 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
                 <Select value={options.captionAnimation || 'auto'} options={catalog.captionAnimations} onChange={(v) => set({ captionAnimation: v })} />
               </Row>
             )}
+            {catalog.captionModes && (
+              <Row label="Modo da legenda" hint="Palavra por palavra (uma de cada vez) ou frase (várias palavras juntas)">
+                <Select value={options.captionMode || 'auto'} options={catalog.captionModes} onChange={(v) => set({ captionMode: v })} />
+              </Row>
+            )}
             {catalog.captionBackgrounds && (
-              <Row label="Fundo do texto" hint="Sombra, caixa, barra translúcida, brilho neon ou só contorno">
+              <Row label="Fundo do texto" hint="Limpo (sem contorno/caixa), sombra, caixa, barra, brilho ou só contorno">
                 <Select value={options.captionBackground || 'auto'} options={catalog.captionBackgrounds} onChange={(v) => set({ captionBackground: v })} />
               </Row>
             )}

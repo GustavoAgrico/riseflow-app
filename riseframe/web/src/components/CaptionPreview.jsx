@@ -39,11 +39,13 @@ export default function CaptionPreview({ options }) {
   const color = COLOR_HEX[options.captionColor] || '#FFFFFF';
   const scale = options.captionScale || 1;
   // Fundo do texto (escolha manual): sombra | caixa | sem sombra. 'auto' segue o estilo.
-  const bg = ['shadow', 'box', 'bar', 'glow', 'none'].includes(options.captionBackground)
+  const bg = ['shadow', 'box', 'bar', 'glow', 'none', 'clean'].includes(options.captionBackground)
     ? options.captionBackground
     : (T.box ? 'box' : 'shadow');
   const useBox = bg === 'box' || bg === 'bar';
   const glowOn = bg === 'glow' || (options.captionBackground == null && T.glow);
+  // Modo: escolha do usuário (word|phrase) OU o padrão do estilo.
+  const mode = ['word', 'phrase'].includes(options.captionMode) ? options.captionMode : T.mode;
   // Posição vertical no quadro de prévia (auto = centralizado).
   const pos = ['top', 'center', 'bottom'].includes(options.captionPosition) ? options.captionPosition : 'auto';
   const vAlign = pos === 'top' ? 'flex-start' : pos === 'bottom' ? 'flex-end' : 'center';
@@ -51,17 +53,17 @@ export default function CaptionPreview({ options }) {
   const [i, setI] = useState(0);
   // No modo palavra, cicla as palavras para dar a sensação de dinâmica.
   useEffect(() => {
-    if (T.mode !== 'word') return undefined;
+    if (mode !== 'word') return undefined;
     const id = setInterval(() => setI((v) => (v + 1) % SAMPLE.length), 900);
     return () => clearInterval(id);
-  }, [T.mode, tplKey, animKind]);
+  }, [mode, tplKey, animKind]);
   // reinicia o ciclo de frase para reanimar
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    if (T.mode === 'word') return undefined;
+    if (mode === 'word') return undefined;
     const id = setInterval(() => setTick((v) => v + 1), 1800);
     return () => clearInterval(id);
-  }, [T.mode, tplKey, animKind]);
+  }, [mode, tplKey, animKind]);
 
   const fontPx = Math.round(T.size * scale);
   const outline = Math.max(2, Math.round(fontPx * 0.09));
@@ -72,7 +74,8 @@ export default function CaptionPreview({ options }) {
   // Sombra: contorno + sombra. Brilho: halo colorido. Sem sombra: só contorno.
   const baseShadow = glowOn
     ? `0 0 10px ${color}, 0 0 20px ${color}, 0 0 30px ${color}, ${stroke}`
-    : bg === 'none' ? stroke : `${stroke}, ${shadow}`;
+    : bg === 'clean' ? shadow // limpo: só sombra suave, sem contorno
+      : bg === 'none' ? stroke : `${stroke}, ${shadow}`;
   const textStyle = {
     fontFamily: `'${fontFamily}', system-ui, sans-serif`,
     fontWeight: 800,
@@ -88,7 +91,7 @@ export default function CaptionPreview({ options }) {
       ? bg === 'bar'
         // Barra translúcida escura, texto branco (destaque colorido por cima).
         ? { background: 'rgba(16,16,20,0.55)', color: '#fff', textShadow: 'none', borderRadius: 6 }
-        : T.mode === 'phrase'
+        : mode === 'phrase'
           // Caixa sólida escura + texto branco (destaque colorido por cima).
           ? { background: '#101014', color: '#fff', textShadow: 'none', borderRadius: 6 }
           : { background: options.captionColor === 'white' ? '#fff' : color, color: options.captionColor === 'white' ? '#111' : '#fff', textShadow: 'none', borderRadius: 6 }
@@ -110,7 +113,7 @@ export default function CaptionPreview({ options }) {
         }}
       >
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 120%, rgba(255,107,53,0.18), transparent 60%)' }} />
-        {T.mode === 'word' ? (
+        {mode === 'word' ? (
           <span key={`${i}-${animKind}-${fontFamily}`} style={textStyle}>{SAMPLE[i]}</span>
         ) : T.highlightKeyword ? (
           <span key={`${tick}-${animKind}-${fontFamily}`} style={{ ...textStyle, color: '#FFFFFF', maxWidth: '86%', textAlign: 'center' }}>
@@ -126,7 +129,7 @@ export default function CaptionPreview({ options }) {
         )}
       </div>
       <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>
-        {fontFamily} · {options.captionColor || 'white'} · {animKind} · {{ box: 'caixa', bar: 'barra', glow: 'brilho', none: 'sem sombra' }[bg] || 'sombra'}
+        {fontFamily} · {options.captionColor || 'white'} · {animKind} · {{ box: 'caixa', bar: 'barra', glow: 'brilho', none: 'sem sombra', clean: 'limpo' }[bg] || 'sombra'} · {mode === 'word' ? 'palavra' : 'frase'}
       </div>
     </div>
   );
