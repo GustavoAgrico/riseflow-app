@@ -284,6 +284,8 @@ export default function App({ embedded = false, onHome, onSettings } = {}) {
             transcript={transcriptData}
             durationSec={durationSec}
             sourceId={sourceId}
+            catalog={catalog}
+            options={options}
             onGenerate={generateFromEdits}
             onBack={reset}
           />

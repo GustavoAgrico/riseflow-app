@@ -106,10 +106,13 @@ export function markFillers(transcript, opts = {}) {
     // remove o marcador e a 1ª cópia, mantém a 2ª. Marcadores só são removidos
     // AQUI (entre palavras iguais), nunca soltos, para não mudar o tom da fala.
     const WEAK = new Set(['ne', 'ta', 'tipo', 'assim', 'sabe', 'entao', 'ai', 'olha', 'entendeu']);
+    // Conector no meio de uma repetição (engasgo): muleta fraca, hesitação, ou —
+    // no modo forte — palavra bem curta (ex.: "quero é quero", "vou ah vou").
+    const midIsConnector = (n) => WEAK.has(n) || isFiller(n, aggressive) || (aggressive && n.length <= 2);
     let list = kept();
     for (let i = 0; i + 2 < list.length; i++) {
       if (list[i].w.removed) continue;
-      if (list[i].n === list[i + 2].n && WEAK.has(list[i + 1].n)) {
+      if (list[i].n === list[i + 2].n && midIsConnector(list[i + 1].n)) {
         list[i].w.removed = true;
         list[i + 1].w.removed = true;
         removedCount += 2;

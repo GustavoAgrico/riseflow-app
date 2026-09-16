@@ -75,3 +75,9 @@ test('markFillers: corta falso começo (fragmento prefixo), preserva palavra com
   const prot = markFillers({ segments: [seg('com', 'computador', 'novo')] });
   assert.deepEqual(prot.segments[0].words.filter((w) => !w.removed).map((w) => w.word), ['com', 'computador', 'novo']);
 });
+
+test('markFillers: engasgo com muleta no meio (forte) → "quero é quero"', () => {
+  const r = markFillers({ segments: [seg('quero', 'é', 'quero', 'isso')] }, { aggressive: true });
+  const kept = r.segments[0].words.filter((w) => !w.removed).map((w) => w.word);
+  assert.deepEqual(kept, ['quero', 'isso'], 'remove a 1ª cópia e o conector, mantém a 2ª');
+});
