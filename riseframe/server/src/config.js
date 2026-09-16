@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v30';
+export const APP_VERSION = 'v31';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
