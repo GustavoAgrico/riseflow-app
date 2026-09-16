@@ -172,7 +172,22 @@ export const Chat = () => {
   // `direction` tem vocabulário misto no banco: o frontend grava 'outbound'/'inbound',
   // mas o servidor (flowEngine, inbox) e a Edge Function deployada gravam 'sent'/'received'.
   // Sem normalizar, mensagens 'sent' (funil / enviadas pelo app) caíam no lado errado.
-  const mapMsg = m => ({ id: m.id, dir: (m.direction === 'outbound' || m.direction === 'sent') ? 'out' : 'in', type: 'text', text: m.content ?? m.text ?? m.body ?? '', t: m.created_at ? new Date(m.created_at).getTime() : Date.now(), s: m.status || 'delivered' })
+  const mapMsg = m => {
+    const dir = (m.direction === 'outbound' || m.direction === 'sent') ? 'out' : 'in'
+    const raw = m.content ?? m.text ?? m.body ?? ''
+    // Só vira mídia quando há URL hospedada E um tipo de mídia conhecido.
+    const type = (m.media_url && ['image', 'audio', 'video', 'document'].includes(m.type)) ? m.type : 'text'
+    const isPlaceholder = /^\s*(📷|🎵|🎬|📄|🎭)/.test(raw) || ['imagem', 'áudio', 'audio', 'vídeo', 'video', 'documento'].includes(raw.trim().toLowerCase())
+    return {
+      id: m.id, dir, type,
+      text: raw,
+      src: m.media_url || undefined,
+      cap: type === 'image' && raw && !isPlaceholder ? raw : undefined,
+      fn: type === 'document' ? (isPlaceholder || !raw ? 'arquivo' : raw) : undefined,
+      t: m.created_at ? new Date(m.created_at).getTime() : Date.now(),
+      s: m.status || 'delivered',
+    }
+  }
 
   const loadConvs = async (uid) => {
     const filter = isMember && memberRecord ? { assignedTo: memberRecord.name } : {}
@@ -797,9 +812,13 @@ export const Chat = () => {
                 <div style={{ maxWidth: '70%', padding: '8px 12px', background: out ? C.purple : C.panel, color: C.text, fontSize: 13.5, lineHeight: 1.45, borderRadius: out ? '16px 16px 0 16px' : '16px 16px 16px 0', boxShadow: '0 1px 1px rgba(0,0,0,.2)' }}>
                   {m.type === 'image' ? (
                     <div>
-                      <img src={m.src || 'https://placehold.co/200x150/1E293B/7C3AED?text=Foto'} alt="" style={{ width: 200, height: 150, borderRadius: 8, display: 'block', objectFit: 'cover' }} />
+                      <a href={m.src || undefined} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }} title="Abrir imagem">
+                        <img src={m.src || 'https://placehold.co/200x150/1E293B/7C3AED?text=Foto'} alt="" style={{ maxWidth: 240, maxHeight: 260, borderRadius: 8, display: 'block', objectFit: 'cover', cursor: 'zoom-in' }} />
+                      </a>
                       {m.cap && <p style={{ margin: '5px 0 0', fontSize: 13 }}>{m.cap}</p>}
                     </div>
+                  ) : m.type === 'video' ? (
+                    <video src={m.src} controls preload="metadata" style={{ maxWidth: 260, maxHeight: 300, borderRadius: 8, display: 'block', background: '#000' }} />
                   ) : m.type === 'audio' ? <Audio src={m.src} dur={m.dur} out={out} />
                   : m.type === 'document' ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--border)', borderRadius: 8, padding: 10 }}>

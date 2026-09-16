@@ -6,14 +6,16 @@ const { supabase, isConfigured } = require('./supabaseClient')
 
 const nowIso = () => new Date().toISOString()
 
-async function saveIncomingMessage({ userId, phone, name, text, channel = 'chat' }) {
-  if (!isConfigured || !userId || !text) return
+async function saveIncomingMessage({ userId, phone, name, text, channel = 'chat', mediaUrl = null, type = 'text' }) {
+  if (!isConfigured || !userId || (!text && !mediaUrl)) return
+  const mediaType = mediaUrl && ['image', 'audio', 'video', 'document'].includes(type) ? type : 'text'
+  const preview = text || (mediaType === 'image' ? '📷 Imagem' : mediaType === 'audio' ? '🎵 Áudio' : mediaType === 'video' ? '🎬 Vídeo' : mediaType === 'document' ? '📄 Documento' : '')
   try {
     const { data: conv } = await supabase.from('conversations').upsert({
       user_id: userId,
       contact_phone: phone,
       contact_name: name || phone,
-      last_message: text,
+      last_message: preview,
       last_message_at: nowIso(),
       updated_at: nowIso(),
     }, { onConflict: 'user_id,contact_phone' }).select('id').single()
@@ -21,9 +23,10 @@ async function saveIncomingMessage({ userId, phone, name, text, channel = 'chat'
       user_id: userId,
       conversation_id: conv?.id,
       contact_phone: phone,
-      content: text,
+      content: preview,
       direction: 'inbound',
-      type: 'text',
+      type: mediaType,
+      media_url: mediaUrl || null,
       external_id: `${channel}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       status: 'delivered',
       read: false,

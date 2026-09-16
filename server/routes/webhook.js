@@ -75,8 +75,9 @@ module.exports = function createWebhookRouter(io) {
           })
           // Persiste a mensagem RECEBIDA já escopada ao dono da sessão (fonte única
           // no proxy; a Edge Function não é mais necessária no modelo multi-sessão).
-          if (!fromMe && userId && text) {
-            saveIncomingMessage({ userId, phone: jidToNumber(jid), name: pushName, text, channel: 'whatsapp' })
+          // Inclui a mídia hospedada (media_url/type) quando o wa-server a enviou.
+          if (!fromMe && userId && (text || m.mediaUrl)) {
+            saveIncomingMessage({ userId, phone: jidToNumber(jid), name: pushName, text, channel: 'whatsapp', mediaUrl: m.mediaUrl || null, type: m.messageType || 'text' })
               .catch((err) => console.error('[webhook] saveIncoming:', err?.message ?? err))
           }
           // Atendimento IA primeiro; se a IA respondeu, os funis não rodam para
