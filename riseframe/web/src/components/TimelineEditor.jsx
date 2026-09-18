@@ -38,6 +38,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const panRef = useRef(null); // arraste na prévia: {startX,startY,fx,fy,w,h,zoom}
   const trackRef = useRef(null);
   const dragRef = useRef(null); // { si, edge: 'left'|'right' }
+  const mediaDragRef = useRef(null); // { key, mode: 'move'|'left'|'right', x0, start0, dur0 }
   const [cur, setCur] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [sel, setSel] = useState(0);
@@ -136,6 +137,40 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     window.addEventListener('mouseup', up);
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
   }, []);
+
+  // ── arrastar/redimensionar os blocos de mídia direto na régua ──
+  useEffect(() => {
+    function move(e) {
+      const d = mediaDragRef.current;
+      if (!d) return;
+      const dt = (e.clientX - d.x0) / pps;
+      const maxDur = d.kind === 'audio' ? dur : Math.min(d.srcDuration || dur, dur);
+      if (d.mode === 'move') {
+        const start = Math.max(0, Math.min(d.start0 + dt, dur - Math.min(d.dur0, dur)));
+        updateMedia(d.key, { start: +start.toFixed(2) });
+      } else if (d.mode === 'right') {
+        const duration = Math.max(0.3, Math.min(d.dur0 + dt, maxDur, dur - d.start0));
+        updateMedia(d.key, { duration: +duration.toFixed(2) });
+      } else { // left
+        const start = Math.max(0, Math.min(d.start0 + dt, d.start0 + d.dur0 - 0.3));
+        const duration = Math.min(d.start0 + d.dur0 - start, maxDur);
+        updateMedia(d.key, { start: +start.toFixed(2), duration: +duration.toFixed(2) });
+      }
+    }
+    function up() {
+      if (mediaDragRef.current) { mediaDragRef.current = null; document.body.style.userSelect = ''; }
+    }
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, [pps, dur]);
+
+  function startMediaDrag(m, mode, e) {
+    e.stopPropagation();
+    e.preventDefault();
+    mediaDragRef.current = { key: m.key, mode, x0: e.clientX, start0: m.start, dur0: m.duration, kind: m.kind, srcDuration: m.srcDuration };
+    document.body.style.userSelect = 'none';
+  }
 
   function timeAtClientX(clientX) {
     const el = trackRef.current;
@@ -596,7 +631,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
       {/* Timeline */}
       <div ref={trackRef} onClick={onTrackClick} style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', border: `1px solid ${C.border}`, borderRadius: 12, background: 'rgba(0,0,0,0.3)', paddingBottom: 6 }}>
-        <div style={{ position: 'relative', width, height: 124 }}>
+        <div style={{ position: 'relative', width, height: media.length ? 160 : 124 }}>
           <div style={{ position: 'relative', height: 20, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
             {Array.from({ length: Math.ceil(dur) + 1 }).map((_, s) => (
               <div key={s} style={{ position: 'absolute', left: s * pps, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
@@ -662,12 +697,40 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               );
             })}
           </div>
+          {/* Lane das minhas mídias — arraste para mover, pontas para redimensionar */}
+          {media.length > 0 && (
+            <div style={{ position: 'relative', height: 30, marginTop: 4 }}>
+              {media.map((m) => {
+                const left = m.start * pps;
+                const w = Math.max(16, m.duration * pps - 1);
+                const col = m.kind === 'audio' ? C.purple : m.kind === 'video' ? C.orange : '#22D3EE';
+                return (
+                  <div
+                    key={m.key}
+                    onMouseDown={(e) => startMediaDrag(m, 'move', e)}
+                    onClick={(e) => { e.stopPropagation(); seek(m.start); }}
+                    title={`${m.filename} — arraste para mover, pontas para ajustar a duração`}
+                    style={{
+                      position: 'absolute', left, top: 0, width: w, height: 28, borderRadius: 7, overflow: 'hidden',
+                      cursor: 'grab', display: 'flex', alignItems: 'center', gap: 5, padding: '0 9px',
+                      background: `${col}2b`, border: `1px solid ${col}`, color: C.text, userSelect: 'none',
+                    }}
+                  >
+                    <span style={{ display: 'flex', flexShrink: 0, color: col }}><Icon name={m.kind === 'audio' ? 'play' : m.kind === 'video' ? 'film' : 'image'} size={11} strokeWidth={2.2} /></span>
+                    {w > 44 && <span style={{ fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.filename}</span>}
+                    <div onMouseDown={(e) => startMediaDrag(m, 'left', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
+                    <div onMouseDown={(e) => startMediaDrag(m, 'right', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div style={{ position: 'absolute', left: cur * pps, top: 0, bottom: 0, width: 2, background: C.orange, boxShadow: `0 0 8px ${C.orange}`, pointerEvents: 'none' }}>
             <div style={{ position: 'absolute', top: -1, left: -4, width: 10, height: 10, borderRadius: '50%', background: C.orange }} />
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Blocos = fala · a faixa de baixo são as <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar</div>
+      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Blocos = fala · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
 
       <PrimaryButton onClick={generate} disabled={busy || allGone} style={{ width: '100%', marginTop: 18 }}>
         {allGone ? 'Você cortou tudo — reinclua algo' : busy ? 'Gerando…' : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Icon name="clapper" size={18} strokeWidth={1.9} /> Renderizar vídeo final</span>)}
