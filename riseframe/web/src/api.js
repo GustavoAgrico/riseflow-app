@@ -122,6 +122,33 @@ export function generateClips(file, options, onProgress) {
   return uploadTo('/clips', file, options, onProgress);
 }
 
+/** Sobe uma mídia própria (imagem/vídeo/música) para usar na timeline.
+ *  Resolve com { id, kind, filename, durationSec }. */
+export function uploadMedia(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append('file', file);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${BASE}/media`);
+    const t = getToken();
+    if (t) xhr.setRequestHeader('Authorization', `Bearer ${t}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+        else reject(new Error(data.error || `erro ${xhr.status}`));
+      } catch {
+        reject(new Error(`resposta inválida (${xhr.status})`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('falha de rede no upload'));
+    xhr.send(form);
+  });
+}
+
 export const clipPreviewUrl = (id, i) => `${BASE}/jobs/${id}/clips/${i}/preview`;
 export const clipDownloadUrl = (id, i) => `${BASE}/jobs/${id}/clips/${i}/download`;
 

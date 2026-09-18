@@ -7,6 +7,8 @@ import { config } from '../config.js';
 import { queue } from '../queue.js';
 import { requireAuth } from './auth.js';
 import { getSettings } from '../auth/settings.js';
+import { registerMedia, resolveMedia } from '../mediaStore.js';
+import { probeSummary } from '../pipeline/ffmpeg.js';
 
 /** Opções do job com as chaves salvas do usuário (Pexels/Anthropic) — o servidor manda. */
 function optionsForUser(req) {
@@ -14,6 +16,17 @@ function optionsForUser(req) {
   const s = getSettings(req.user.id);
   if (s.pexelsKey) o.pexelsKey = s.pexelsKey;
   if (s.anthropicKey) o.anthropicKey = s.anthropicKey;
+  // Resolve cada mídia própria (mediaId → caminho do arquivo). O cliente nunca
+  // manda caminho; itens cuja mídia não existe/expirou são descartados.
+  if (o.userMedia?.length) {
+    o.userMedia = o.userMedia
+      .map((m) => {
+        const found = resolveMedia(m.mediaId);
+        if (!found) return null;
+        return { ...m, kind: m.kind || found.kind, file: found.path };
+      })
+      .filter(Boolean);
+  }
   return o;
 }
 
@@ -36,6 +49,27 @@ const upload = multer({
     const ext = path.extname(file.originalname).toLowerCase();
     if (ALLOWED.has(ext)) cb(null, true);
     else cb(new Error(`formato não suportado: ${ext || 'desconhecido'}`));
+  },
+});
+
+// Mídias próprias do usuário para a timeline (imagens, vídeos e músicas).
+const MEDIA_IMAGE = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp']);
+const MEDIA_VIDEO = new Set(['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v']);
+const MEDIA_AUDIO = new Set(['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac']);
+function mediaKind(ext) {
+  if (MEDIA_IMAGE.has(ext)) return 'image';
+  if (MEDIA_VIDEO.has(ext)) return 'video';
+  if (MEDIA_AUDIO.has(ext)) return 'audio';
+  return null;
+}
+
+const uploadMedia = multer({
+  storage,
+  limits: { fileSize: config.maxUploadBytes },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (mediaKind(ext)) cb(null, true);
+    else cb(new Error(`formato de mídia não suportado: ${ext || 'desconhecido'}`));
   },
 });
 
@@ -66,6 +100,32 @@ function sanitizeSilenceCuts(raw) {
       out.push({ start: s, end: e });
     }
     if (out.length >= 1000) break; // teto de segurança
+  }
+  return out;
+}
+
+// Sanitiza a lista de mídias próprias colocadas na timeline. Cada item referencia
+// uma mídia já enviada (mediaId); o caminho do arquivo é resolvido no servidor.
+function sanitizeUserMedia(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const m of raw) {
+    if (!m || typeof m.mediaId !== 'string' || !m.mediaId) continue;
+    const kind = ['image', 'video', 'audio'].includes(m.kind) ? m.kind : null;
+    const item = {
+      mediaId: m.mediaId,
+      kind,
+      start: clampNum(m.start, 0, 100000, 0),
+      duration: clampNum(m.duration, 0.2, 100000, kind === 'image' ? 4 : 5),
+      mode: ['cover', 'pip'].includes(m.mode) ? m.mode : 'cover',
+      px: clampNum(m.px, 0, 1, 0.62),
+      py: clampNum(m.py, 0, 1, 0.06),
+      scale: clampNum(m.scale, 0.15, 0.95, 0.4),
+      opacity: clampNum(m.opacity, 0.1, 1, 1),
+      volume: clampNum(m.volume, 0, 2, 0.35),
+    };
+    out.push(item);
+    if (out.length >= 40) break; // teto de segurança
   }
   return out;
 }
@@ -144,6 +204,9 @@ function parseOptions(raw) {
     clipAspect: ['original', '9:16', '16:9', '1:1'].includes(o.clipAspect) ? o.clipAspect : '9:16',
     clipMin: clampNum(o.clipMin, 5, 60, 15),
     clipMax: clampNum(o.clipMax, 15, 120, 50),
+    // Mídias próprias do usuário na timeline (imagens/vídeos/músicas). Resolvidas
+    // para caminhos de arquivo no servidor (ver optionsForUser).
+    userMedia: sanitizeUserMedia(o.userMedia),
   };
 }
 
@@ -205,6 +268,36 @@ jobsRouter.post('/render', requireAuth, (req, res) => {
     editedTranscript,
   });
   res.status(201).json(queue.public(job));
+});
+
+// POST /api/media  (multipart: file) → sobe uma mídia própria (imagem/vídeo/música)
+// para usar na timeline. Devolve { id, kind, filename, durationSec }.
+jobsRouter.post('/media', requireAuth, uploadMedia.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
+  const ext = path.extname(req.file.filename).toLowerCase();
+  const kind = mediaKind(ext);
+  if (!kind) {
+    fs.unlink(req.file.path, () => {});
+    return res.status(400).json({ error: 'formato de mídia não suportado' });
+  }
+  let durationSec = null;
+  if (kind !== 'image') {
+    try {
+      const meta = await probeSummary(req.file.path);
+      durationSec = Number.isFinite(meta.duration) ? Math.round(meta.duration * 100) / 100 : null;
+    } catch {
+      durationSec = null;
+    }
+  }
+  const id = path.parse(req.file.filename).name; // já é um nanoid gerado no storage
+  const pub = registerMedia({
+    id,
+    filePath: req.file.path,
+    kind,
+    originalname: req.file.originalname,
+    durationSec,
+  });
+  res.status(201).json(pub);
 });
 
 // (removido) GET /api/jobs — não expomos a listagem global de jobs: ela vazava os

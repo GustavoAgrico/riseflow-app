@@ -6,6 +6,7 @@ import { silenceRemovalRanges } from './silence.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep } from './timeline.js';
 import { insertBroll } from './broll.js';
 import { applyManualFrame } from './frame.js';
+import { applyUserMedia } from './overlay.js';
 import { applyMotion } from './motion.js';
 import { enhanceVoice } from './voice.js';
 import { markFillers } from './cleanup.js';
@@ -50,6 +51,7 @@ function buildPlan(mode, options) {
       { key: 'motion', label: 'Aplicando movimento (zoom)', weight: 12, enabled: Boolean(options.videoMotion) && options.videoMotion !== 'none' },
       { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
       { key: 'frame', label: 'Reenquadrando o vídeo', weight: 8, enabled: (Number(options.personZoom) || 1) > 1.001 },
+      { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: Array.isArray(options.userMedia) && options.userMedia.length > 0 },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true },
       { key: 'color', label: 'Aplicando color grade', weight: 11, enabled: (options.colorLook || 'teal-orange') !== 'none' },
@@ -296,6 +298,19 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (r.applied) meta = { ...meta, ...(await probeSummary(input)) };
     report.frame = { applied: r.applied };
     st.record(report.frame);
+    st.onProgress(1);
+  }
+
+  // 6-. Mídias do usuário (imagens/vídeos/músicas próprias) — por baixo das legendas.
+  if (has('usermedia')) {
+    const st = enter('usermedia');
+    const r = await applyUserMedia(input, work, meta, options, st.onProgress);
+    if (r.applied) {
+      input = r.output;
+      meta = { ...meta, ...(await probeSummary(input)) };
+    }
+    report.userMedia = { applied: r.applied, visual: r.visual, audio: r.audio };
+    st.record(report.userMedia);
     st.onProgress(1);
   }
 

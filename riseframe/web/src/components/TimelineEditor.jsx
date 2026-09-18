@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl } from '../api.js';
+import { sourceUrl, uploadMedia } from '../api.js';
 import { APP_VERSION } from '../version.js';
 import CaptionPreview from './CaptionPreview.jsx';
 
@@ -50,6 +50,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [focus, setFocus] = useState({ x: 0.5, y: 0.4 });
   const [zoom, setZoom] = useState(1);
   const [personSide, setPersonSide] = useState('top'); // só p/ a prévia da composição
+  const [media, setMedia] = useState([]); // minhas mídias na timeline (imagens/vídeos/músicas)
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const [mediaErr, setMediaErr] = useState('');
+  const mediaInputRef = useRef(null);
   const framingBoxRef = useRef(null);
   const focusDragRef = useRef(false);
 
@@ -257,6 +261,44 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setSegments((prev) => prev.map((s, i) => (i !== si ? s : { ...s, words: s.words.map((w, j) => (j !== wi ? w : { ...w, word: next })) })));
   }
 
+  async function onPickMedia(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ''; // permite reenviar o mesmo arquivo
+    if (!files.length) return;
+    setMediaErr('');
+    setMediaBusy(true);
+    try {
+      for (const file of files) {
+        const info = await uploadMedia(file);
+        const srcDur = Number(info.durationSec) || (info.kind === 'image' ? 4 : 5);
+        setMedia((prev) => [
+          ...prev,
+          {
+            key: `${info.id}-${prev.length}-${Date.now()}`,
+            mediaId: info.id,
+            kind: info.kind,
+            filename: info.filename || file.name,
+            srcDuration: srcDur,
+            start: +cur.toFixed(2), // entra no ponto atual do playhead
+            duration: info.kind === 'audio' ? Math.min(srcDur, dur) : Math.min(info.kind === 'image' ? 4 : srcDur, 8),
+            mode: 'cover', // cobre a tela (visual). PiP = canto.
+            volume: 0.35, // música de fundo
+            scale: 0.4, // tamanho do PiP
+            px: 0.62,
+            py: 0.06,
+            opacity: 1,
+          },
+        ]);
+      }
+    } catch (err) {
+      setMediaErr(err.message || 'falha ao enviar a mídia');
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+  const updateMedia = (key, patch) => setMedia((prev) => prev.map((m) => (m.key === key ? { ...m, ...patch } : m)));
+  const removeMedia = (key) => setMedia((prev) => prev.filter((m) => m.key !== key));
+
   function generate() {
     // Cortes de silêncio escolhidos: uma pequena folga interna evita cortar o
     // ataque/finalização das palavras vizinhas.
@@ -280,6 +322,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           : {}),
         // Ajustes de legenda escolhidos aqui na timeline (sobrepõem os das opções).
         ...cap,
+        // Minhas mídias colocadas na timeline (imagens/vídeos/músicas próprias).
+        userMedia: media.map((m) => ({
+          mediaId: m.mediaId,
+          kind: m.kind,
+          start: +Number(m.start).toFixed(2),
+          duration: +Number(m.duration).toFixed(2),
+          mode: m.mode,
+          volume: +Number(m.volume).toFixed(2),
+          scale: +Number(m.scale).toFixed(2),
+          px: +Number(m.px).toFixed(3),
+          py: +Number(m.py).toFixed(3),
+          opacity: +Number(m.opacity).toFixed(2),
+        })),
       },
     );
   }
@@ -412,6 +467,70 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ marginTop: 8 }}><CaptionPreview options={cap} /></div>
             </div>
           )}
+
+          {/* Minhas mídias: coloque suas imagens/vídeos/músicas na timeline */}
+          <div style={{ marginTop: 14, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="film" size={15} strokeWidth={2} /></span>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Minhas mídias</div>
+            </div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
+              Adicione suas <b>imagens</b>, <b>vídeos</b> e <b>músicas</b>. Elas entram no ponto atual do vídeo (playhead) e você ajusta o tempo abaixo.
+            </div>
+            <input ref={mediaInputRef} type="file" accept="image/*,video/*,audio/*" multiple onChange={onPickMedia} style={{ display: 'none' }} />
+            <button onClick={() => mediaInputRef.current?.click()} disabled={mediaBusy} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: mediaBusy ? 0.6 : 1, cursor: mediaBusy ? 'wait' : 'pointer' }}>
+              <Icon name="image" size={13} strokeWidth={2} /> {mediaBusy ? 'Enviando…' : '+ Adicionar mídia'}
+            </button>
+            {mediaErr && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{mediaErr}</div>}
+            {media.length > 0 && (
+              <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                {media.map((m) => {
+                  const isAudio = m.kind === 'audio';
+                  const maxDur = isAudio ? Math.max(0.5, dur) : Math.max(0.5, Math.min(m.srcDuration || dur, dur));
+                  return (
+                    <div key={m.key} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 10, padding: 9 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <Icon name={isAudio ? 'play' : m.kind === 'video' ? 'film' : 'image'} size={12} strokeWidth={2} />
+                        <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{m.filename}</div>
+                        <button onClick={() => removeMedia(m.key)} title="Remover" style={{ ...zoomBtn, width: 22, height: 22, color: C.red }}>×</button>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.muted, marginBottom: 6 }}>
+                        <span>Começa em <b style={{ color: C.text, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(m.start)}</b></span>
+                        <button onClick={() => updateMedia(m.key, { start: +cur.toFixed(2) })} style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 10.5, fontWeight: 600 }} title="Usar o ponto atual do vídeo">↧ aqui</button>
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted, marginBottom: isAudio ? 6 : 8 }}>
+                        <span style={{ width: 58 }}>Duração</span>
+                        <input type="range" min="0.5" max={maxDur.toFixed(2)} step="0.1" value={Math.min(m.duration, maxDur)} onChange={(e) => updateMedia(m.key, { duration: Number(e.target.value) })} style={{ flex: 1 }} />
+                        <span style={{ width: 42, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(m.duration)}</span>
+                      </label>
+                      {isAudio ? (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted }}>
+                          <span style={{ width: 58 }}>Volume</span>
+                          <input type="range" min="0" max="1.5" step="0.05" value={m.volume} onChange={(e) => updateMedia(m.key, { volume: Number(e.target.value) })} style={{ flex: 1 }} />
+                          <span style={{ width: 42, textAlign: 'right' }}>{Math.round(m.volume * 100)}%</span>
+                        </label>
+                      ) : (
+                        <>
+                          <div style={{ display: 'flex', gap: 6, marginBottom: m.mode === 'pip' ? 8 : 0 }}>
+                            {[{ id: 'cover', label: 'Tela cheia' }, { id: 'pip', label: 'Cantinho (PiP)' }].map((o) => (
+                              <button key={o.id} onClick={() => updateMedia(m.key, { mode: o.id })} style={framingTab(m.mode === o.id)}>{o.label}</button>
+                            ))}
+                          </div>
+                          {m.mode === 'pip' && (
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted }}>
+                              <span style={{ width: 58 }}>Tamanho</span>
+                              <input type="range" min="0.15" max="0.9" step="0.05" value={m.scale} onChange={(e) => updateMedia(m.key, { scale: Number(e.target.value) })} style={{ flex: 1 }} />
+                              <span style={{ width: 42, textAlign: 'right' }}>{Math.round(m.scale * 100)}%</span>
+                            </label>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         <div>
