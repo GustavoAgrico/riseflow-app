@@ -6,7 +6,8 @@ import { sourceUrl } from '../api.js';
 import { APP_VERSION } from '../version.js';
 import CaptionPreview from './CaptionPreview.jsx';
 
-const PPS = 64; // pixels por segundo na timeline
+const PPS_MIN = 24;
+const PPS_MAX = 240;
 
 /**
  * Editor em timeline (fase 2): pré-visualiza o vídeo original, mostra as legendas
@@ -40,6 +41,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [cur, setCur] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [sel, setSel] = useState(0);
+  const [pps, setPps] = useState(64); // zoom da timeline (pixels por segundo)
+  const zoomTl = (dir) => setPps((p) => Math.max(PPS_MIN, Math.min(PPS_MAX, Math.round(p * (dir > 0 ? 1.4 : 1 / 1.4)))));
 
   // Enquadramento no rosto (tela dividida): 'auto' detecta o rosto no servidor;
   // 'manual' usa o foco (arrastável) + zoom escolhidos aqui.
@@ -58,7 +61,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   );
 
   const dur = durationSec || segments.reduce((m, s) => Math.max(m, s.end || 0), 0) || 1;
-  const width = Math.max(320, Math.round(dur * PPS));
+  const width = Math.max(320, Math.round(dur * pps));
 
   // ── Pausas de silêncio (gaps entre palavras mantidas). O usuário decide, na
   // timeline, quais cortar. Por padrão TODA pausa visível é cortada (o cliente
@@ -133,13 +136,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function timeAtClientX(clientX) {
     const el = trackRef.current;
     const r = el.getBoundingClientRect();
-    return Math.max(0, Math.min(dur, (clientX - r.left + el.scrollLeft) / PPS));
+    return Math.max(0, Math.min(dur, (clientX - r.left + el.scrollLeft) / pps));
   }
 
   useEffect(() => {
     const el = trackRef.current;
     if (!el) return;
-    const x = cur * PPS;
+    const x = cur * pps;
     if (x < el.scrollLeft + 40 || x > el.scrollLeft + el.clientWidth - 40) el.scrollLeft = Math.max(0, x - el.clientWidth / 2);
   }, [cur]);
 
@@ -463,6 +466,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </button>
           </>
         )}
+        {/* Zoom da timeline (aproxima/afasta os blocos) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+          <span style={{ fontSize: 11.5, color: C.faint }}>Zoom</span>
+          <button onClick={() => zoomTl(-1)} disabled={pps <= PPS_MIN} style={toolBtn(pps <= PPS_MIN)} title="Afastar">−</button>
+          <button onClick={() => zoomTl(1)} disabled={pps >= PPS_MAX} style={toolBtn(pps >= PPS_MAX)} title="Aproximar">+</button>
+          <button onClick={() => setPps(64)} style={toolBtn(false)} title="Zoom padrão">Ajustar</button>
+        </div>
       </div>
 
       {/* Timeline */}
@@ -470,15 +480,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <div style={{ position: 'relative', width, height: 124 }}>
           <div style={{ position: 'relative', height: 20, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
             {Array.from({ length: Math.ceil(dur) + 1 }).map((_, s) => (
-              <div key={s} style={{ position: 'absolute', left: s * PPS, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
+              <div key={s} style={{ position: 'absolute', left: s * pps, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
                 {s % 5 === 0 && <span style={{ position: 'absolute', left: 3, top: 3, fontSize: 9.5, color: C.faint }}>{s}s</span>}
               </div>
             ))}
           </div>
           <div style={{ position: 'relative', height: 64, marginTop: 6 }}>
             {segments.map((s, si) => {
-              const left = s.start * PPS;
-              const fullW = Math.max(10, (Math.max(s.end, s.start + 0.2) - s.start) * PPS - 2);
+              const left = s.start * pps;
+              const fullW = Math.max(10, (Math.max(s.end, s.start + 0.2) - s.start) * pps - 2);
               const gone = segRemoved(s);
               const isSel = si === sel;
               const isActive = si === activeIndex;
@@ -491,10 +501,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     color: gone ? C.red : C.text, boxShadow: isSel ? `0 0 0 2px ${C.orange}33` : 'none' }}>
                   {/* máscaras das pontas cortadas (trim) */}
                   {kr && !gone && kr[0] > s.start + 0.01 && (
-                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: (kr[0] - s.start) * PPS, background: 'rgba(240,82,107,0.22)', borderRight: `1px dashed ${C.red}` }} />
+                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: (kr[0] - s.start) * pps, background: 'rgba(240,82,107,0.22)', borderRight: `1px dashed ${C.red}` }} />
                   )}
                   {kr && !gone && kr[1] < s.end - 0.01 && (
-                    <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: (s.end - kr[1]) * PPS, background: 'rgba(240,82,107,0.22)', borderLeft: `1px dashed ${C.red}` }} />
+                    <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: (s.end - kr[1]) * pps, background: 'rgba(240,82,107,0.22)', borderLeft: `1px dashed ${C.red}` }} />
                   )}
                   <span style={{ position: 'relative', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', padding: '5px 9px', fontSize: 10.5, lineHeight: 1.25, textDecoration: gone ? 'line-through' : 'none' }}>
                     {s.words.map((x) => x.word).join(' ')}
@@ -514,14 +524,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div style={{ position: 'relative', height: 24, marginTop: 4 }}>
             {pauses.map((p, pi) => {
               const cut = isPauseCut(p);
-              const w = Math.max(6, p.dur * PPS - 1);
+              const w = Math.max(6, p.dur * pps - 1);
               return (
                 <div
                   key={pi}
                   onClick={(e) => { e.stopPropagation(); togglePause(p); }}
                   title={`Pausa de ${p.dur.toFixed(1)}s — ${cut ? 'será cortada (clique p/ manter)' : 'mantida (clique p/ cortar)'}`}
                   style={{
-                    position: 'absolute', left: p.start * PPS, top: 0, width: w, height: 22, borderRadius: 6,
+                    position: 'absolute', left: p.start * pps, top: 0, width: w, height: 22, borderRadius: 6,
                     cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
                     background: cut ? 'repeating-linear-gradient(45deg, rgba(240,82,107,0.28), rgba(240,82,107,0.28) 5px, rgba(240,82,107,0.14) 5px, rgba(240,82,107,0.14) 10px)' : 'rgba(255,255,255,0.05)',
                     border: `1px ${cut ? 'solid' : 'dashed'} ${cut ? 'rgba(240,82,107,0.55)' : C.border}`,
@@ -533,7 +543,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               );
             })}
           </div>
-          <div style={{ position: 'absolute', left: cur * PPS, top: 0, bottom: 0, width: 2, background: C.orange, boxShadow: `0 0 8px ${C.orange}`, pointerEvents: 'none' }}>
+          <div style={{ position: 'absolute', left: cur * pps, top: 0, bottom: 0, width: 2, background: C.orange, boxShadow: `0 0 8px ${C.orange}`, pointerEvents: 'none' }}>
             <div style={{ position: 'absolute', top: -1, left: -4, width: 10, height: 10, borderRadius: '50%', background: C.orange }} />
           </div>
         </div>
