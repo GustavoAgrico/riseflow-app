@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl, uploadMedia } from '../api.js';
+import { sourceUrl, uploadMedia, fetchBrollPlan } from '../api.js';
 import { APP_VERSION } from '../version.js';
 import CaptionPreview from './CaptionPreview.jsx';
 
@@ -55,6 +55,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaErr, setMediaErr] = useState('');
   const mediaInputRef = useRef(null);
+  // Revisão de B-roll: null = ainda não revisou; senão { moments:[{...escolhas}] }
+  const [brollReview, setBrollReview] = useState(null);
+  const [brollBusy, setBrollBusy] = useState(false);
+  const [brollErr, setBrollErr] = useState('');
+  const brollUploadRef = useRef(null); // input file para "usar minha mídia" num momento
+  const brollTargetIdx = useRef(null);
   const framingBoxRef = useRef(null);
   const focusDragRef = useRef(false);
 
@@ -334,6 +340,70 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const updateMedia = (key, patch) => setMedia((prev) => prev.map((m) => (m.key === key ? { ...m, ...patch } : m)));
   const removeMedia = (key) => setMedia((prev) => prev.filter((m) => m.key !== key));
 
+  // Transcrição atual (edições da timeline) — usada para planejar o B-roll.
+  function currentTranscript() {
+    return {
+      provider: transcript.provider,
+      language: transcript.language,
+      segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map((w) => ({ start: w.start, end: w.end, word: w.word, removed: !!w.removed })) })),
+    };
+  }
+
+  async function reviewBroll() {
+    setBrollErr('');
+    setBrollBusy(true);
+    try {
+      const plan = await fetchBrollPlan(sourceId, currentTranscript(), { ...options, ...cap, broll: true });
+      const moments = (plan.moments || []).map((m) => ({
+        start: m.start, end: m.end, term: m.term, query: m.query,
+        candidates: m.candidates || [],
+        pick: (m.candidates || []).length ? 0 : -1, // índice do candidato escolhido (-1 = nenhum)
+        removed: (m.candidates || []).length === 0, // sem candidato → começa removido
+        myThumb: null, myMediaId: null, myKind: null,
+      }));
+      setBrollReview({ source: plan.source, moments });
+      if (!moments.length) setBrollErr('Nenhum momento de B-roll foi sugerido para este vídeo.');
+    } catch (err) {
+      setBrollErr(err.message || 'falha ao planejar o B-roll');
+    } finally {
+      setBrollBusy(false);
+    }
+  }
+  const setMoment = (i, patch) => setBrollReview((r) => ({ ...r, moments: r.moments.map((m, j) => (j === i ? { ...m, ...patch } : m)) }));
+  const cycleCand = (i, dir) => setBrollReview((r) => ({ ...r, moments: r.moments.map((m, j) => {
+    if (j !== i || !m.candidates.length) return m;
+    const n = m.candidates.length;
+    return { ...m, pick: ((m.pick + dir) % n + n) % n, removed: false, myThumb: null, myMediaId: null };
+  }) }));
+
+  async function onPickBrollMedia(e) {
+    const file = (e.target.files || [])[0];
+    e.target.value = '';
+    const i = brollTargetIdx.current;
+    if (!file || i == null) return;
+    setBrollBusy(true);
+    try {
+      const info = await uploadMedia(file);
+      setMoment(i, { myMediaId: info.id, myKind: info.kind, myThumb: URL.createObjectURL(file), removed: false });
+    } catch (err) {
+      setBrollErr(err.message || 'falha ao enviar a mídia');
+    } finally {
+      setBrollBusy(false);
+    }
+  }
+
+  // Monta o plano de B-roll travado para enviar no render (a partir da revisão).
+  function brollPlanForRender() {
+    if (!brollReview) return null;
+    return brollReview.moments.map((m) => {
+      if (m.removed) return { start: m.start, end: m.end, remove: true };
+      if (m.myMediaId) return { start: m.start, end: m.end, mediaId: m.myMediaId, kind: m.myKind, query: m.term };
+      const c = m.candidates[m.pick];
+      if (!c) return { start: m.start, end: m.end, remove: true };
+      return { start: m.start, end: m.end, url: c.link, kind: c.kind, query: m.term };
+    });
+  }
+
   function generate() {
     // Cortes de silêncio escolhidos: uma pequena folga interna evita cortar o
     // ataque/finalização das palavras vizinhas.
@@ -370,6 +440,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           py: +Number(m.py).toFixed(3),
           opacity: +Number(m.opacity).toFixed(2),
         })),
+        // B-roll revisado: trava o que entra em cada momento (e liga o B-roll).
+        ...(brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}),
       },
     );
   }
@@ -573,6 +645,61 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+
+          {/* B-roll: revisar/trocar as imagens automáticas antes de renderizar */}
+          <div style={{ marginTop: 14, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>B-roll · imagens automáticas</div>
+            </div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
+              Veja as imagens/vídeos que o sistema escolheu para cada trecho e <b>troque, substitua pela sua mídia ou remova</b> antes de gerar.
+            </div>
+            <input ref={brollUploadRef} type="file" accept="image/*,video/*" onChange={onPickBrollMedia} style={{ display: 'none' }} />
+            {!brollReview && (
+              <button onClick={reviewBroll} disabled={brollBusy} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: brollBusy ? 0.6 : 1, cursor: brollBusy ? 'wait' : 'pointer' }}>
+                <Icon name="image" size={13} strokeWidth={2} /> {brollBusy ? 'Analisando o vídeo…' : 'Revisar / trocar imagens'}
+              </button>
+            )}
+            {brollErr && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{brollErr}</div>}
+            {brollReview && (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: 11, color: C.faint }}>{brollReview.moments.length} momento(s) · fonte: {brollReview.source}</div>
+                  <button onClick={reviewBroll} disabled={brollBusy} style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 10.5, fontWeight: 600 }} title="Analisar de novo">↻ refazer</button>
+                </div>
+                {brollReview.moments.map((m, i) => {
+                  const n = m.candidates.length;
+                  const thumb = m.removed ? null : (m.myThumb || m.candidates[m.pick]?.thumb);
+                  return (
+                    <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 10, padding: 8, opacity: m.removed ? 0.55 : 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <span style={{ fontSize: 10.5, color: C.faint, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(m.start)}</span>
+                        <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{m.term}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+                        <div style={{ width: 64, height: 54, flexShrink: 0, borderRadius: 8, overflow: 'hidden', background: '#000', border: `1px solid ${C.border}`, display: 'grid', placeItems: 'center' }}>
+                          {thumb ? <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 9.5, color: C.faint, textAlign: 'center' }}>sem<br />imagem</span>}
+                        </div>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <button onClick={() => cycleCand(i, -1)} disabled={n < 2 || m.removed} style={{ ...zoomBtn, width: 24, height: 22 }} title="Anterior">‹</button>
+                            <span style={{ fontSize: 10.5, color: C.muted, minWidth: 34, textAlign: 'center' }}>{m.removed ? '—' : m.myMediaId ? 'minha' : n ? `${m.pick + 1}/${n}` : '0'}</span>
+                            <button onClick={() => cycleCand(i, 1)} disabled={n < 2 || m.removed} style={{ ...zoomBtn, width: 24, height: 22 }} title="Próxima">›</button>
+                          </div>
+                          <div style={{ display: 'flex', gap: 5 }}>
+                            <button onClick={() => { brollTargetIdx.current = i; brollUploadRef.current?.click(); }} style={{ ...zoomBtn, width: 'auto', flex: 1, padding: '0 6px', fontSize: 10, fontWeight: 600 }} title="Usar minha imagem/vídeo">Minha</button>
+                            <button onClick={() => setMoment(i, { removed: !m.removed })} style={{ ...zoomBtn, width: 'auto', flex: 1, padding: '0 6px', fontSize: 10, fontWeight: 600, color: m.removed ? C.green : C.red }}>{m.removed ? 'Repor' : 'Remover'}</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 10.5, color: C.faint }}>As trocas são aplicadas quando você clicar em <b>Gerar vídeo</b>.</div>
               </div>
             )}
           </div>

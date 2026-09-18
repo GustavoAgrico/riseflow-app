@@ -9,6 +9,8 @@ import { requireAuth } from './auth.js';
 import { getSettings } from '../auth/settings.js';
 import { registerMedia, resolveMedia } from '../mediaStore.js';
 import { probeSummary } from '../pipeline/ffmpeg.js';
+import { analyze } from '../pipeline/analyze.js';
+import { brollCandidates } from '../pipeline/broll.js';
 
 /** Opções do job com as chaves salvas do usuário (Pexels/Anthropic) — o servidor manda. */
 function optionsForUser(req) {
@@ -26,6 +28,17 @@ function optionsForUser(req) {
         return { ...m, kind: m.kind || found.kind, file: found.path };
       })
       .filter(Boolean);
+  }
+  // Plano de B-roll: itens com mídia própria (mediaId) viram caminho de arquivo.
+  if (o.brollPlan?.length) {
+    o.brollPlan = o.brollPlan.map((p) => {
+      if (p.mediaId) {
+        const found = resolveMedia(p.mediaId);
+        if (found) return { ...p, file: found.path, kind: found.kind || p.kind };
+        return { ...p, remove: true }; // mídia sumiu → não insere nada torto
+      }
+      return p;
+    });
   }
   return o;
 }
@@ -130,6 +143,33 @@ function sanitizeUserMedia(raw) {
   return out;
 }
 
+// Sanitiza o plano de B-roll travado na tela de revisão. Cada item fixa o que
+// entra num momento: uma URL do banco (candidato escolhido), uma mídia própria
+// (mediaId) ou a marcação de remover. Sem isso, o servidor volta a escolher sozinho.
+function sanitizeBrollPlan(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const p of raw) {
+    if (!p) continue;
+    const start = Number(p.start);
+    const end = Number(p.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    const item = {
+      start: Math.max(0, start),
+      end,
+      kind: p.kind === 'video' ? 'video' : 'image',
+      remove: p.remove === true,
+      query: typeof p.query === 'string' ? p.query.slice(0, 80) : '',
+    };
+    // URL do banco: só http(s) de imagem/vídeo (o download roda no pipeline).
+    if (typeof p.url === 'string' && /^https:\/\/[^\s]+$/i.test(p.url)) item.url = p.url;
+    if (typeof p.mediaId === 'string' && p.mediaId) item.mediaId = p.mediaId;
+    out.push(item);
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+
 // Looks permitidos via API pública. O caminho `lut:<arquivo>` NÃO é exposto ao
 // cliente (evita injeção de filtro/leitura de caminho no filtergraph do ffmpeg);
 // LUTs ficam a cargo de configuração do servidor, não da requisição.
@@ -207,6 +247,8 @@ function parseOptions(raw) {
     // Mídias próprias do usuário na timeline (imagens/vídeos/músicas). Resolvidas
     // para caminhos de arquivo no servidor (ver optionsForUser).
     userMedia: sanitizeUserMedia(o.userMedia),
+    // Plano de B-roll travado na revisão (o que entra em cada momento).
+    brollPlan: sanitizeBrollPlan(o.brollPlan),
   };
 }
 
@@ -268,6 +310,44 @@ jobsRouter.post('/render', requireAuth, (req, res) => {
     editedTranscript,
   });
   res.status(201).json(queue.public(job));
+});
+
+// POST /api/broll/plan  (JSON: sourceId + editedTranscript + options) → devolve os
+// momentos de B-roll planejados COM candidatos (miniaturas) para o usuário revisar
+// e trocar antes de renderizar. Não baixa nem renderiza nada.
+jobsRouter.post('/broll/plan', requireAuth, async (req, res) => {
+  try {
+    const { sourceId, editedTranscript } = req.body || {};
+    const source = sourceId && queue.get(sourceId);
+    if (!source || !fs.existsSync(source.inputPath)) {
+      return res.status(410).json({ error: 'o vídeo de origem expirou; reenvie' });
+    }
+    const transcript = editedTranscript?.segments?.length ? editedTranscript : source.report?.transcript;
+    if (!transcript?.segments?.length) return res.status(400).json({ error: 'transcrição ausente' });
+
+    const options = optionsForUser(req);
+    const meta = await probeSummary(source.inputPath);
+    const analysis = await analyze(transcript, meta, options);
+    const moments = (analysis.brollMoments || []).slice(0, options.brollMax ?? 6);
+
+    const orientation = (meta.height || 1920) >= (meta.width || 1080) ? 'portrait' : 'landscape';
+    const apiKey = options.pexelsKey || config.broll.pexelsKey;
+    const google = { key: config.broll.googleImagesKey, cx: config.broll.googleImagesCx, unrestricted: config.broll.googleImagesUnrestricted };
+    const src = options.imageSource === 'google' && google.key && google.cx ? 'google' : options.imageSource === 'openverse' ? 'openverse' : 'pexels';
+
+    const out = [];
+    for (const m of moments) {
+      const candidates = await brollCandidates(m.query, {
+        source: src, apiKey, google, orientation,
+        targetH: Math.round((meta.height || 1920) / (src === 'pexels' ? 1 : 2)),
+        limit: 6, unrestricted: google.unrestricted,
+      });
+      out.push({ start: m.start, end: m.end, term: m.term || m.query, query: m.query, candidates });
+    }
+    res.json({ source: src, moments: out });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'falha ao planejar o B-roll' });
+  }
 });
 
 // POST /api/media  (multipart: file) → sobe uma mídia própria (imagem/vídeo/música)

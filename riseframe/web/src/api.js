@@ -122,6 +122,19 @@ export function generateClips(file, options, onProgress) {
   return uploadTo('/clips', file, options, onProgress);
 }
 
+/** Planeja o B-roll (momentos + candidatos com miniaturas) para o usuário revisar
+ *  e trocar antes de renderizar. */
+export async function fetchBrollPlan(sourceId, editedTranscript, options) {
+  const r = await fetch(`${BASE}/broll/plan`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ sourceId, editedTranscript, options }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data; // { source, moments: [{start,end,term,query,candidates:[{id,link,thumb,kind}]}] }
+}
+
 /** Sobe uma mídia própria (imagem/vídeo/música) para usar na timeline.
  *  Resolve com { id, kind, filename, durationSec }. */
 export function uploadMedia(file, onProgress) {
