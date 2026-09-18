@@ -82,7 +82,7 @@ E rode as regras de firewall do passo **2b** (se ainda não rodou).
 ## 4. Baixar o projeto e subir
 
 ```bash
-# git já vem no Ubuntu; clone o repositório (informe login + token do GitHub):
+# git já vem no Ubuntu; o repositório é PÚBLICO, então o clone NÃO pede login/senha:
 git clone https://github.com/GustavoAgrico/riseflow-app.git
 cd riseflow-app/riseframe/deploy
 
