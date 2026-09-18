@@ -337,6 +337,25 @@ export const Dashboard = () => {
   const stagePie = stageRows.filter(s => s.count > 0).map(s => ({ name: s.label, value: s.count, color: s.color }))
   const hasCrm = dealRows.length > 0
 
+  // ── Atividade REAL de mensagens (fallback quando o CRM ainda está vazio) ──
+  // Enquanto não há negócios no CRM, o topo (cards + gráfico grande) mostra os
+  // números reais de WhatsApp em vez de zerar. Assim o dashboard nunca fica morto.
+  const msgs7 = chartData.reduce((a, d) => a + (d.messages || 0), 0)
+  const sent7 = chartData.reduce((a, d) => a + (d.sent || 0), 0)
+  const recv7 = Math.max(0, msgs7 - sent7)
+  const sentSpark = chartData.map(d => d.sent)
+  const recvSpark = chartData.map(d => Math.max(0, (d.messages || 0) - (d.sent || 0)))
+  const activityCards = [
+    { icon: MessageCircle, label: 'Mensagens (total)', value: totalMessages.toLocaleString('pt-BR'), change: `${msgs7} em 7 dias`, color: 'bg-brand-orange', hex: '#FF6B35', sparkData: sparkline },
+    { icon: Users2,        label: 'Conversas',         value: totalConversations.toLocaleString('pt-BR'), change: `${conversations.length} recentes`, color: 'bg-brand-blue', hex: '#3B82F6', sparkData: sparkline },
+    { icon: ArrowUpRight,  label: 'Enviadas (7 dias)', value: sent7.toLocaleString('pt-BR'), change: 'últimos 7 dias', color: 'bg-brand-green', hex: '#10B981', sparkData: sentSpark },
+    { icon: ArrowDownRight,label: 'Recebidas (7 dias)',value: recv7.toLocaleString('pt-BR'), change: 'últimos 7 dias', color: 'bg-purple-500', hex: '#A855F7', sparkData: recvSpark },
+  ]
+  // Cards do topo: KPIs de vendas quando há CRM; atividade real de mensagens caso contrário.
+  const topCards = hasCrm ? salesCards : activityCards
+  // Gráfico grande do topo tem série de atividade real quando o CRM está vazio.
+  const hasActivity = msgs7 > 0 || totalMessages > 0
+
   return (
     <Layout title="Dashboard" subtitle="Visão geral do seu negócio">
       {showOnboarding && <OnboardingWizard isOpen={showOnboarding} onComplete={completeOnboarding} />}
@@ -400,19 +419,29 @@ export const Dashboard = () => {
         </div>
       </div>
 
-      {/* ── Conversas ao vivo (pessoa ↔ atendente) — destaque no topo ── */}
-      {/* ── KPIs de vendas — comparativo com o período anterior (sparkline + delta real) ── */}
+      {/* ── KPIs do topo — vendas (CRM) OU atividade real de WhatsApp quando o CRM está vazio ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {salesCards.map((s, i) => <StatCard key={i} {...s} sparkData={sparkline} />)}
+        {topCards.map((s, i) => <StatCard key={i} sparkData={sparkline} {...s} />)}
       </div>
 
       {/* ── Gráfico grande — desempenho ao longo do tempo (destaque no topo, estilo referência) ── */}
       <div className="glass rounded-2xl p-5 mb-6">
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-          <h4 className="font-display font-semibold text-white" style={{ fontSize: 14 }}>Desempenho ao longo do tempo</h4>
+          <h4 className="font-display font-semibold text-white" style={{ fontSize: 14 }}>
+            {hasCrm ? 'Desempenho ao longo do tempo' : 'Atividade de mensagens (últimos 7 dias)'}
+          </h4>
           <div style={{ display: 'flex', gap: 16, fontSize: 11, color: '#475569' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 2.5, background: '#FF6B35', borderRadius: 2, boxShadow: '0 0 6px #FF6B35' }} />Valor</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 2.5, background: '#A855F7', borderRadius: 2, boxShadow: '0 0 6px #A855F7' }} />Negócios</span>
+            {hasCrm ? (
+              <>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 2.5, background: '#FF6B35', borderRadius: 2, boxShadow: '0 0 6px #FF6B35' }} />Valor</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 2.5, background: '#A855F7', borderRadius: 2, boxShadow: '0 0 6px #A855F7' }} />Negócios</span>
+              </>
+            ) : (
+              <>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 2.5, background: '#FF6B35', borderRadius: 2, boxShadow: '0 0 6px #FF6B35' }} />Total</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 2.5, background: '#3B82F6', borderRadius: 2, boxShadow: '0 0 6px #3B82F6' }} />Enviadas</span>
+              </>
+            )}
           </div>
         </div>
         {hasCrm ? (
@@ -433,6 +462,29 @@ export const Dashboard = () => {
               <Area yAxisId="v" type="monotone" dataKey="valor" name="Valor" stroke="#FF6B35" strokeWidth={2.5} fill="url(#perfBlue)" dot={false} activeDot={<ActiveDot fill="#FF6B35" />} />
               <Line yAxisId="n" type="monotone" dataKey="negocios" name="Negócios" stroke="#A855F7" strokeWidth={2} dot={false} activeDot={<ActiveDot fill="#A855F7" />} />
             </ComposedChart>
+          </ResponsiveContainer>
+        ) : hasActivity ? (
+          <ResponsiveContainer width="100%" height={280}>
+            <AreaChart data={chartData} margin={{ top: 6, right: 6, bottom: 0, left: -12 }}>
+              <defs>
+                <linearGradient id="actOrange" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#FF6B35" stopOpacity={0.36} />
+                  <stop offset="60%" stopColor="#FF6B35" stopOpacity={0.06} />
+                  <stop offset="100%" stopColor="#FF6B35" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="actBlue" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.26} />
+                  <stop offset="60%" stopColor="#3B82F6" stopOpacity={0.05} />
+                  <stop offset="100%" stopColor="#3B82F6" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="2 8" stroke="rgba(255,255,255,0.04)" vertical={false} />
+              <XAxis dataKey="day" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} dy={6} />
+              <YAxis tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
+              <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.07)', strokeWidth: 1, strokeDasharray: '4 4' }} />
+              <Area type="monotone" dataKey="messages" name="Total" stroke="#FF6B35" strokeWidth={2.5} fill="url(#actOrange)" dot={false} activeDot={<ActiveDot fill="#FF6B35" />} />
+              <Area type="monotone" dataKey="sent" name="Enviadas" stroke="#3B82F6" strokeWidth={2} fill="url(#actBlue)" dot={false} activeDot={<ActiveDot fill="#3B82F6" />} />
+            </AreaChart>
           </ResponsiveContainer>
         ) : (
           <div style={{ height: 280, display: 'grid', placeItems: 'center', color: '#2D3A55', fontSize: 13 }}>Sem dados no período</div>
