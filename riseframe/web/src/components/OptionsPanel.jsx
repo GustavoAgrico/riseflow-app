@@ -4,7 +4,7 @@ import Icon from './Icon.jsx';
 import CaptionPreview from './CaptionPreview.jsx';
 import LayoutPreview from './LayoutPreview.jsx';
 
-function Row({ label, hint, children }) {
+export function Row({ label, hint, children }) {
   return (
     <div style={{ padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
@@ -55,7 +55,7 @@ function Section({ icon, title, subtitle, badge, defaultOpen = false, children }
   );
 }
 
-function Toggle({ on, onChange, disabled }) {
+export function Toggle({ on, onChange, disabled }) {
   return (
     <button
       onClick={() => !disabled && onChange(!on)}
@@ -82,7 +82,7 @@ function Segmented({ value, options, onChange }) {
   );
 }
 
-function Select({ value, options, onChange }) {
+export function Select({ value, options, onChange }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} style={{ background: '#13131B', color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', fontSize: 13, minWidth: 210, cursor: 'pointer', fontFamily: 'inherit' }}>
       {options.map((o) => (<option key={o.id} value={o.id} disabled={o.disabled}>{o.label}</option>))}
@@ -90,7 +90,7 @@ function Select({ value, options, onChange }) {
   );
 }
 
-function Swatches({ value, options, onChange }) {
+export function Swatches({ value, options, onChange }) {
   return (
     <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
       {options.map((o) => {

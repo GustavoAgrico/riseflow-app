@@ -4,7 +4,7 @@ import { getOptions, getHealth, getSettings, createJob, transcribe, generateClip
 import { PrimaryButton, Card, Spinner } from './components/ui.jsx';
 import Icon, { Logo } from './components/Icon.jsx';
 import Uploader from './components/Uploader.jsx';
-import OptionsPanel from './components/OptionsPanel.jsx';
+import OptionsPanel, { Row, Toggle, Select, Swatches } from './components/OptionsPanel.jsx';
 import Pipeline from './components/Pipeline.jsx';
 import Result from './components/Result.jsx';
 import ClipsResult from './components/ClipsResult.jsx';
@@ -350,10 +350,12 @@ const CTA = {
   clips: { icon: 'film', label: 'Gerar clipes curtos' },
 };
 
-function ClipsOptions({ options, onChange }) {
+function ClipsOptions({ catalog, options, onChange }) {
   const set = (patch) => onChange({ ...options, ...patch });
   const count = options.clipsCount ?? 3;
   const aspect = options.clipAspect ?? '9:16';
+  const cap = catalog || {};
+  const captionsOn = options.captions !== false;
   const aspects = [
     { id: '9:16', label: 'Vertical 9:16' },
     { id: '1:1', label: 'Quadrado' },
@@ -372,7 +374,8 @@ function ClipsOptions({ options, onChange }) {
           <span style={{ fontWeight: 700, width: 18, textAlign: 'center' }}>{count}</span>
         </div>
       </div>
-      <div style={{ padding: '15px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
+
+      <div style={{ padding: '15px 0', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
         <div style={{ fontWeight: 600, fontSize: 14 }}>Formato dos clipes</div>
         <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.05)', padding: 4, borderRadius: 11, flexWrap: 'wrap' }}>
           {aspects.map((a) => {
@@ -392,6 +395,57 @@ function ClipsOptions({ options, onChange }) {
           })}
         </div>
       </div>
+
+      {/* Duração de cada clipe (mín/máx) */}
+      <div style={{ padding: '15px 0', borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>Duração de cada clipe</div>
+        <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: C.muted }}>
+            Mínimo
+            <input type="range" min={5} max={60} value={options.clipMin ?? 15} onChange={(e) => set({ clipMin: Number(e.target.value) })} />
+            <span style={{ fontWeight: 700, width: 34, textAlign: 'right' }}>{options.clipMin ?? 15}s</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: C.muted }}>
+            Máximo
+            <input type="range" min={15} max={120} value={options.clipMax ?? 50} onChange={(e) => set({ clipMax: Number(e.target.value) })} />
+            <span style={{ fontWeight: 700, width: 34, textAlign: 'right' }}>{options.clipMax ?? 50}s</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Legenda — igual ao modo automático */}
+      <Row label="Legendas nos clipes" hint="Transcrição queimada no vídeo (palavra a palavra por padrão)">
+        <Toggle on={captionsOn} onChange={(v) => set({ captions: v })} />
+      </Row>
+      {captionsOn && cap.captionTemplates && (
+        <>
+          <Row label="Estilo da legenda" hint="Look + movimento das legendas">
+            <Select value={options.captionTemplate || 'pop'} options={cap.captionTemplates} onChange={(v) => set({ captionTemplate: v })} />
+          </Row>
+          {cap.captionFonts && (
+            <Row label="Tipografia (fonte)" hint="Fonte premium embutida — igual em qualquer máquina">
+              <Select value={options.captionFont || 'auto'} options={cap.captionFonts} onChange={(v) => set({ captionFont: v })} />
+            </Row>
+          )}
+          {cap.captionModes && (
+            <Row label="Modo da legenda" hint="Palavra por palavra ou frase inteira">
+              <Select value={options.captionMode || 'auto'} options={cap.captionModes} onChange={(v) => set({ captionMode: v })} />
+            </Row>
+          )}
+          {cap.captionColors && (
+            <Row label="Cor de destaque" hint="Padrão branco">
+              <Swatches value={options.captionColor || 'white'} options={cap.captionColors} onChange={(v) => set({ captionColor: v })} />
+            </Row>
+          )}
+        </>
+      )}
+
+      {/* Cor — igual ao modo automático */}
+      {cap.colorLooks && (
+        <Row label="Color grade" hint="Acabamento de cor cinematográfico (automático analisa o vídeo)">
+          <Select value={options.colorLook || 'auto'} options={cap.colorLooks} onChange={(v) => set({ colorLook: v })} />
+        </Row>
+      )}
     </div>
   );
 }
