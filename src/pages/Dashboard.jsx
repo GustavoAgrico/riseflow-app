@@ -359,48 +359,43 @@ export const Dashboard = () => {
         border: '1px solid var(--hero-border)',
         background: 'var(--hero-bg)',
         boxShadow: 'var(--hero-shadow)' }}>
-        <div style={{ position: 'absolute', right: -70, top: -90, width: 300, height: 300, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,58,237,0.32), transparent 62%)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', left: -60, bottom: -110, width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,107,53,0.20), transparent 62%)', pointerEvents: 'none' }} />
-        <div style={{ position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', justifyContent: 'space-between', padding: '26px 28px' }}>
-          <div style={{ minWidth: 240 }}>
-            <p style={{ margin: 0, fontSize: 12, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--hero-eyebrow)' }}>Olá{firstName ? `, ${firstName}` : ''} 👋</p>
-            <p style={{ margin: '10px 0 0', fontSize: 13, color: 'var(--hero-ink-2)' }}>{hasCrm ? 'Pipeline em aberto' : 'Mensagens processadas'}</p>
-            <p className="font-display" style={{ margin: '2px 0 0', fontSize: 40, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1, color: 'var(--hero-ink-1)', fontVariantNumeric: 'tabular-nums' }}>
-              {hasCrm ? ('R$ ' + Math.round(pipelineValue).toLocaleString('pt-BR')) : totalMessages.toLocaleString('pt-BR')}
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 12, fontSize: 12.5, color: 'var(--hero-ink-3)' }}>
+        <div style={{ position: 'absolute', right: -60, top: -80, width: 220, height: 220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,58,237,0.30), transparent 62%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', left: -50, bottom: -90, width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,107,53,0.18), transparent 62%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'center', justifyContent: 'space-between', padding: '16px 22px' }}>
+          <div style={{ minWidth: 220 }}>
+            <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--hero-eyebrow)' }}>Olá{firstName ? `, ${firstName}` : ''} 👋</p>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginTop: 7, flexWrap: 'wrap' }}>
+              <p className="font-display" style={{ margin: 0, fontSize: 30, fontWeight: 800, letterSpacing: '-.02em', lineHeight: 1, color: 'var(--hero-ink-1)', fontVariantNumeric: 'tabular-nums' }}>
+                {hasCrm ? ('R$ ' + Math.round(pipelineValue).toLocaleString('pt-BR')) : totalMessages.toLocaleString('pt-BR')}
+              </p>
+              <span style={{ fontSize: 12, color: 'var(--hero-ink-2)' }}>{hasCrm ? 'em aberto' : 'mensagens processadas'}</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 9, fontSize: 12, color: 'var(--hero-ink-3)' }}>
               <span><b style={{ color: '#10B981' }}>{won}</b> ganhos</span>
               <span>conversão <b style={{ color: 'var(--hero-ink-1)' }}>{convRate}%</b></span>
               <span>ticket <b style={{ color: 'var(--hero-ink-1)' }}>{brlShort(ticket)}</b></span>
-            </div>
-            <div style={{ marginTop: 14, maxWidth: 360 }}>
-              <div style={{ height: 8, borderRadius: 999, background: 'var(--hero-track)', overflow: 'hidden' }}>
-                <div style={{ width: `${Math.min(100, convRate)}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#FF6B35,#7C3AED)' }} />
-              </div>
-              <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--hero-ink-3)' }}>Taxa de conversão do funil{isDemoMode && <span style={{ color: '#EAB308', marginLeft: 6 }}>(modo demo)</span>}</p>
+              {isDemoMode && <span style={{ color: '#EAB308', fontWeight: 600 }}>modo demo</span>}
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'stretch' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             {hasAnyIntegration ? (
-              <div style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.28)', borderRadius: 12, padding: '8px 14px' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.30)', borderRadius: 999, padding: '6px 12px' }}>
                 <Wifi size={13} className="text-brand-green animate-pulse-slow" />
                 <span style={{ fontSize: 12, color: '#10B981', fontWeight: 600 }}>{connectedIntegrations.length} canal{connectedIntegrations.length !== 1 ? 'is' : ''} online</span>
               </div>
             ) : (
-              <Link to="/integrations" style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--hero-tile-bg)', border: '1px solid var(--hero-tile-border)', borderRadius: 12, padding: '8px 14px', textDecoration: 'none' }}>
+              <Link to="/integrations" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--hero-tile-bg)', border: '1px solid var(--hero-tile-border)', borderRadius: 999, padding: '6px 12px', textDecoration: 'none' }}>
                 <LinkIcon size={13} style={{ color: 'var(--hero-ink-2)' }} />
                 <span style={{ fontSize: 12, color: 'var(--hero-ink-2)' }}>Conectar integração</span>
               </Link>
             )}
-            <div style={{ display: 'flex', gap: 10 }}>
-              {[{ l: 'Mensagens', v: totalMessages.toLocaleString('pt-BR') }, { l: 'Conversas', v: totalConversations.toLocaleString('pt-BR') }].map(t => (
-                <div key={t.l} style={{ minWidth: 120, background: 'var(--hero-tile-bg)', border: '1px solid var(--hero-tile-border)', borderRadius: 14, padding: '12px 16px' }}>
-                  <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--hero-ink-1)', fontVariantNumeric: 'tabular-nums' }}>{t.v}</p>
-                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--hero-ink-3)' }}>{t.l}</p>
-                </div>
-              ))}
-            </div>
+            {[{ l: 'Mensagens', v: totalMessages.toLocaleString('pt-BR') }, { l: 'Conversas', v: totalConversations.toLocaleString('pt-BR') }].map(t => (
+              <div key={t.l} style={{ minWidth: 96, background: 'var(--hero-tile-bg)', border: '1px solid var(--hero-tile-border)', borderRadius: 12, padding: '9px 14px' }}>
+                <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--hero-ink-1)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{t.v}</p>
+                <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--hero-ink-3)' }}>{t.l}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>
