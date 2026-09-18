@@ -401,6 +401,44 @@ export const Dashboard = () => {
       </div>
 
       {/* ── Conversas ao vivo (pessoa ↔ atendente) — destaque no topo ── */}
+      {/* ── KPIs de vendas — comparativo com o período anterior (sparkline + delta real) ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {salesCards.map((s, i) => <StatCard key={i} {...s} sparkData={sparkline} />)}
+      </div>
+
+      {/* ── Gráfico grande — desempenho ao longo do tempo (destaque no topo, estilo referência) ── */}
+      <div className="glass rounded-2xl p-5 mb-6">
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <h4 className="font-display font-semibold text-white" style={{ fontSize: 14 }}>Desempenho ao longo do tempo</h4>
+          <div style={{ display: 'flex', gap: 16, fontSize: 11, color: '#475569' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 2.5, background: '#FF6B35', borderRadius: 2, boxShadow: '0 0 6px #FF6B35' }} />Valor</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 2.5, background: '#A855F7', borderRadius: 2, boxShadow: '0 0 6px #A855F7' }} />Negócios</span>
+          </div>
+        </div>
+        {hasCrm ? (
+          <ResponsiveContainer width="100%" height={280}>
+            <ComposedChart data={perfSeries} margin={{ top: 6, right: 6, bottom: 0, left: -8 }}>
+              <defs>
+                <linearGradient id="perfBlue" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#FF6B35" stopOpacity={0.36} />
+                  <stop offset="60%" stopColor="#FF6B35" stopOpacity={0.06} />
+                  <stop offset="100%" stopColor="#FF6B35" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="2 8" stroke="rgba(255,255,255,0.04)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} dy={6} />
+              <YAxis yAxisId="v" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} width={46} tickFormatter={v => brlShort(v)} />
+              <YAxis yAxisId="n" orientation="right" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} width={26} allowDecimals={false} />
+              <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.07)', strokeWidth: 1, strokeDasharray: '4 4' }} />
+              <Area yAxisId="v" type="monotone" dataKey="valor" name="Valor" stroke="#FF6B35" strokeWidth={2.5} fill="url(#perfBlue)" dot={false} activeDot={<ActiveDot fill="#FF6B35" />} />
+              <Line yAxisId="n" type="monotone" dataKey="negocios" name="Negócios" stroke="#A855F7" strokeWidth={2} dot={false} activeDot={<ActiveDot fill="#A855F7" />} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        ) : (
+          <div style={{ height: 280, display: 'grid', placeItems: 'center', color: '#2D3A55', fontSize: 13 }}>Sem dados no período</div>
+        )}
+      </div>
+
       <LiveConversations />
 
       {/* ── Plan usage ── */}
@@ -439,50 +477,12 @@ export const Dashboard = () => {
         )
       })()}
 
-      {/* ── KPIs de vendas — comparativo com o período anterior (sparkline + delta real) ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {salesCards.map((s, i) => <StatCard key={i} {...s} sparkData={sparkline} />)}
-      </div>
-
       {/* ── Desempenho de vendas (funil real dos clients) ── */}
       <div className="mb-6">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
           <h3 className="rf-section-title">Desempenho de vendas</h3>
           <span className="rf-chip">{m.total} negócio{m.total !== 1 ? 's' : ''} no período</span>
           <Link to="/crm" style={{ marginLeft: 'auto', fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Abrir CRM →</Link>
-        </div>
-
-        {/* Gráfico grande — desempenho ao longo do tempo (peça central do modelo) */}
-        <div className="glass rounded-2xl p-5 mb-4">
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-            <h4 className="font-display font-semibold text-white" style={{ fontSize: 13 }}>Desempenho ao longo do tempo</h4>
-            <div style={{ display: 'flex', gap: 16, fontSize: 11, color: '#475569' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 2.5, background: '#FF6B35', borderRadius: 2, boxShadow: '0 0 6px #FF6B35' }} />Valor</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 18, height: 2.5, background: '#A855F7', borderRadius: 2, boxShadow: '0 0 6px #A855F7' }} />Negócios</span>
-            </div>
-          </div>
-          {hasCrm ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <ComposedChart data={perfSeries} margin={{ top: 6, right: 6, bottom: 0, left: -8 }}>
-                <defs>
-                  <linearGradient id="perfBlue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#FF6B35" stopOpacity={0.36} />
-                    <stop offset="60%" stopColor="#FF6B35" stopOpacity={0.06} />
-                    <stop offset="100%" stopColor="#FF6B35" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="2 8" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} dy={6} />
-                <YAxis yAxisId="v" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} width={46} tickFormatter={v => brlShort(v)} />
-                <YAxis yAxisId="n" orientation="right" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} width={26} allowDecimals={false} />
-                <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.07)', strokeWidth: 1, strokeDasharray: '4 4' }} />
-                <Area yAxisId="v" type="monotone" dataKey="valor" name="Valor" stroke="#FF6B35" strokeWidth={2.5} fill="url(#perfBlue)" dot={false} activeDot={<ActiveDot fill="#FF6B35" />} />
-                <Line yAxisId="n" type="monotone" dataKey="negocios" name="Negócios" stroke="#A855F7" strokeWidth={2} dot={false} activeDot={<ActiveDot fill="#A855F7" />} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ height: 260, display: 'grid', placeItems: 'center', color: '#2D3A55', fontSize: 13 }}>Sem dados no período</div>
-          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
