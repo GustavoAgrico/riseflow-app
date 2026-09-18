@@ -18,6 +18,21 @@ const HOOKS = new Set(
     .split(/\s+/),
 );
 
+// Palavras que ABREM dependendo do que veio antes (o clipe começa "no meio" e
+// fica sem contexto se começar por elas): conectivos e pronomes de referência.
+const CONTEXT_OPENERS = new Set(
+  ('e mas porque porém porem então entao aí ai daí dai pois logo assim portanto ' +
+    'isso isto esse essa esses essas aquilo aquele aquela ele ela eles elas dele dela ' +
+    'ou seja além alem também tambem por depois antes')
+    .split(/\s+/),
+);
+
+function firstContentWord(segs) {
+  const t = String(segs?.[0]?.text || '').toLowerCase();
+  const m = t.match(/[a-záàâãéêíóôõúüç0-9]+/i);
+  return m ? m[0] : '';
+}
+
 function windowText(segs) {
   return segs.map((s) => s.text).join(' ');
 }
@@ -72,8 +87,15 @@ export function findHighlights(transcript, meta, options = {}) {
     // encaixe de duração: melhor entre 20–45s
     const lenFit = dur >= 20 && dur <= 45 ? 1 : dur < 20 ? dur / 20 : Math.max(0.3, 45 / dur);
 
+    // CONTEXTO: penaliza clipe que começa "no meio" (por conectivo/pronome) e
+    // premia clipe que termina numa frase completa (pontuação final). Assim o
+    // corte curto tende a ser autoexplicativo, não um pedaço solto.
+    const opensCold = CONTEXT_OPENERS.has(firstContentWord(w.segs)) ? 1 : 0;
+    const endsComplete = /[.!?]\s*$/.test(windowText(w.segs).trim()) ? 1 : 0;
+
     const score =
-      pace * 1.0 + density * 2.0 + hookHits * 1.5 + hasQuestion * 1.2 + hasNumber * 0.6 + lenFit * 1.5;
+      pace * 1.0 + density * 2.0 + hookHits * 1.5 + hasQuestion * 1.2 + hasNumber * 0.6 + lenFit * 1.5
+      - opensCold * 2.5 + endsComplete * 1.0;
 
     const themes = extractThemes(text, 3).map((t) => t.term);
     const title = titleFor(w.segs, themes);
@@ -115,8 +137,11 @@ export async function generateClips(ctx, onProgress = () => {}) {
     const cwork = path.join(work, `clip${i}`);
     await fs.mkdir(cwork, { recursive: true });
 
-    // 1) corta a fonte para a janela
-    const keep = [{ start: w.start, end: w.end }];
+    // 1) corta a fonte para a janela — com uma pequena folga (lead-in/out) para
+    //    não decepar a 1ª/última palavra e dar um respiro de contexto.
+    const leadIn = 0.4;
+    const leadOut = 0.35;
+    const keep = [{ start: Math.max(0, w.start - leadIn), end: Math.min(meta.duration, w.end + leadOut) }];
     const cut = await remuxByKeepSegments(source, cwork, meta, keep, () => {}, 'clipcut');
     let input = cut.output;
     const trackInput = input; // corte limpo (antes das legendas) para o tracker de reframe

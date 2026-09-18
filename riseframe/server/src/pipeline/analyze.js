@@ -161,8 +161,10 @@ function candidateTerms(seg, themeTerms = []) {
     .map((w) => String(w).toLowerCase().replace(/[^a-záàâãéêíóôõúüç0-9]/gi, ''))
     .filter((w) => w.length >= 4 && !STOP.has(w));
   const uniq = [...new Set(words)];
+  // Prioriza os termos que TAMBÉM são tema do vídeo (mais relevantes), depois os
+  // mais longos/específicos. NÃO adiciona temas que não foram ditos neste trecho —
+  // isso evitava B-roll fora de contexto (imagem do tema num trecho genérico).
   uniq.sort((a, b) => ((themeTerms.includes(b) ? 1 : 0) - (themeTerms.includes(a) ? 1 : 0)) || b.length - a.length);
-  for (const t of themeTerms) if (t && !uniq.includes(t)) uniq.push(t);
   return uniq;
 }
 
@@ -185,12 +187,16 @@ export function pickBrollMoments(segments, themes, duration, opts = {}) {
     if (seg.start < skipIntro || seg.start < nextAt) continue;
     const niche = opts.niche; // {core, fallback, label} | null — casa o B-roll com o tema
     const cands = candidateTerms(seg, themeTerms);
+    // RELEVÂNCIA: só usa termos que casam com o CONTEXTO — um tema do vídeo ou uma
+    // palavra específica (>=5 letras). Palavra genérica solta é ignorada (melhor
+    // ficar sem B-roll do que colocar uma imagem fora de contexto).
+    const relevant = cands.filter((c) => themeTerms.includes(c) || c.length >= 5);
     let query = null;
     let kw = null;
 
     if (source === 'google') {
       // Google Imagens: contexto real da fala em pt (sem dicionário/tradução).
-      for (const c of cands) {
+      for (const c of relevant) {
         if (!usedQueries.has(nq(c))) { query = c; kw = c; break; }
       }
       if (!query) {
@@ -199,7 +205,7 @@ export function pickBrollMoments(segments, themes, duration, opts = {}) {
       }
     } else {
       // Pexels: banco indexado em inglês → traduz e casa com o nicho (inglês).
-      for (const c of cands) {
+      for (const c of relevant) {
         if (!isTranslatable(c)) continue;
         const q = (niche ? `${niche.core} ${translateQuery(c)}` : translateQuery(c)).trim();
         if (!usedQueries.has(nq(q))) { query = q; kw = c; break; }

@@ -106,6 +106,13 @@ export function markFillers(transcript, opts = {}) {
     // remove o marcador e a 1ª cópia, mantém a 2ª. Marcadores só são removidos
     // AQUI (entre palavras iguais), nunca soltos, para não mudar o tom da fala.
     const WEAK = new Set(['ne', 'ta', 'tipo', 'assim', 'sabe', 'entao', 'ai', 'olha', 'entendeu']);
+    // Palavras repetidas DE PROPÓSITO (ênfase) — não são engasgo: "muito muito
+    // bom", "não não", "nunca nunca". Mantém as duas para não perder o sentido.
+    const EMPHATIC = new Set([
+      'muito', 'muita', 'nao', 'sim', 'nunca', 'sempre', 'bem', 'mal', 'tao', 'mais', 'menos',
+      'agora', 'ja', 'mesmo', 'super', 'mega', 'grande', 'forte', 'rapido', 'devagar', 'calma',
+      'cada', 'todo', 'toda', 'bom', 'boa', 'ruim', 'lindo', 'linda', 'enorme', 'demais',
+    ]);
     // Conector no meio de uma repetição (engasgo): muleta fraca, hesitação, ou —
     // no modo forte — palavra bem curta (ex.: "quero é quero", "vou ah vou").
     const midIsConnector = (n) => WEAK.has(n) || isFiller(n, aggressive) || (aggressive && n.length <= 2);
@@ -140,6 +147,8 @@ export function markFillers(transcript, opts = {}) {
         for (let k = 0; k < n; k++) {
           if (list[i + k].n !== list[i + n + k].n) { equal = false; break; }
         }
+        // Repetição de UMA palavra que é ênfase intencional → mantém as duas.
+        if (equal && n === 1 && EMPHATIC.has(list[i].n)) equal = false;
         if (equal) {
           for (let k = 0; k < n; k++) { list[i + k].w.removed = true; removedCount++; }
           i += n; // pula o bloco removido; a cópia mantida pode repetir de novo adiante
