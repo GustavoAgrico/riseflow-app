@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2, MonitorPlay, User, Plus, Square, CheckSquare, X, ChevronUp, ChevronDown, Layers } from 'lucide-react'
+import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2, MonitorPlay, User, Plus, Square, CheckSquare, X, ChevronUp, ChevronDown, Layers, Flame, Snowflake, CloudSun, Clock, CalendarCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { LeadScorePanel } from '@components/LeadScorePanel'
@@ -142,10 +142,25 @@ const TasksPanel = ({ clientId, userId }) => {
   )
 }
 
+const deriveTemp = (tags, updatedAt) => {
+  const t = (tags || []).map(x => x.toLowerCase())
+  if (t.some(x => /hot|quente|urgente/.test(x))) return 'hot'
+  if (t.some(x => /frio|cold/.test(x))) return 'cold'
+  if (updatedAt) {
+    const days = (Date.now() - new Date(updatedAt).getTime()) / 86400000
+    if (days > 7) return 'cold'
+    if (days > 3) return 'warm'
+  }
+  return 'warm'
+}
+const TEMP_MAP = { hot: { Icon: Flame, label: 'Quente', color: '#FF6B35' }, warm: { Icon: CloudSun, label: 'Morno', color: '#EAB308' }, cold: { Icon: Snowflake, label: 'Frio', color: '#38BDF8' } }
+
 const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, onAssign, members = [], stages = DEFAULT_STAGES, userId, mobile }) => {
   const st = stageAt(stages, contact.stage)
   const navigate = useNavigate()
   const [msgs, setMsgs] = useState(null)
+  const [nextTask, setNextTask] = useState(null)
+  const [timeline, setTimeline] = useState(null)
 
   useEffect(() => {
     if (!userId || !contact.phone) { setMsgs([]); return }
@@ -162,23 +177,79 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, o
         .from('messages')
         .select('id, body, text, from_me, created_at, timestamp')
         .eq('conversation_id', convs[0].id)
-        .order('created_at', { ascending: true })
-        .limit(50)
-      setMsgs(rows || [])
+        .order('created_at', { ascending: false })
+        .limit(30)
+      setMsgs((rows || []).reverse())
     })()
   }, [userId, contact.phone])
 
+  useEffect(() => {
+    if (!userId || !contact.id) return
+    const today = new Date().toISOString().slice(0, 10)
+    ;(async () => {
+      const { data } = await supabase
+        .from('crm_tasks')
+        .select('id, title, due_date')
+        .eq('client_id', contact.id)
+        .eq('done', false)
+        .not('due_date', 'is', null)
+        .order('due_date', { ascending: true })
+        .limit(1)
+      setNextTask(data?.[0] || null)
+    })()
+  }, [userId, contact.id])
+
+  useEffect(() => {
+    if (!msgs) return
+    const items = (msgs || []).map(m => ({
+      kind: m.from_me ? 'sent' : 'received',
+      text: m.body || m.text || '',
+      time: m.created_at ? new Date(m.created_at) : m.timestamp ? new Date(m.timestamp * 1000) : new Date(),
+    }))
+    items.sort((a, b) => b.time - a.time)
+    setTimeline(items.slice(0, 40))
+  }, [msgs])
+
+  const temp = deriveTemp(contact.tags, contact.updated_at || contact.time)
+  const tp = TEMP_MAP[temp]
+  const today = new Date().toISOString().slice(0, 10)
+
   return (
-    <div style={{ width: mobile ? '100%' : 320, flexShrink: 0, borderLeft: `1px solid ${C.bd}`, background: C.card, display: 'flex', flexDirection: 'column', fontFamily: 'DM Sans,sans-serif', overflow: 'hidden', ...(mobile ? { position: 'fixed', inset: 0, zIndex: 60 } : {}) }}>
+    <div style={{ width: mobile ? '100%' : 340, flexShrink: 0, borderLeft: `1px solid ${C.bd}`, background: C.card, display: 'flex', flexDirection: 'column', fontFamily: 'DM Sans,sans-serif', overflow: 'hidden', ...(mobile ? { position: 'fixed', inset: 0, zIndex: 60 } : {}) }}>
       <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.bd}`, display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ width: 42, height: 42, borderRadius: '50%', background: st.color + '22', color: st.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, flexShrink: 0 }}>{ini(contact.name)}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: 14, fontWeight: 700, color: C.tx, margin: 0 }}>{contact.name}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: C.tx, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</p>
+            <span title={`Lead ${tp.label}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: tp.color + '18', color: tp.color, borderRadius: 6, padding: '2px 7px', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+              <tp.Icon size={10} /> {tp.label}
+            </span>
+          </div>
           <p style={{ fontSize: 12, color: C.mut, margin: 0 }}>{contact.company}</p>
         </div>
         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: C.mut, padding: 0, lineHeight: 1 }}>×</button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px' }}>
+        {/* Próxima ação */}
+        {nextTask && (() => {
+          const overdue = nextTask.due_date < today
+          const acColor = overdue ? '#EF4444' : '#7C3AED'
+          return (
+            <div style={{ background: acColor + '0C', border: `1px solid ${acColor}28`, borderRadius: 10, padding: '10px 12px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <CalendarCheck size={16} color={acColor} style={{ flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: acColor, margin: 0, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                  {overdue ? 'Ação atrasada' : 'Próxima ação'}
+                </p>
+                <p style={{ fontSize: 12, color: C.tx, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nextTask.title}</p>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 600, color: acColor, display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                <Clock size={11} /> {nextTask.due_date.slice(8, 10)}/{nextTask.due_date.slice(5, 7)}
+              </span>
+            </div>
+          )
+        })()}
+
         <p style={{ fontSize: 12, fontWeight: 700, color: C.tx, marginBottom: 8 }}>Informações</p>
         {[[Phone, contact.phone], [Mail, contact.email], [DollarSign, `R$ ${contact.value.toLocaleString('pt-BR')}`]].map(([Ic, val]) => (
           <p key={val} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.tx, marginBottom: 6 }}><Ic size={14} color={C.mut} /><span>{val}</span></p>
@@ -205,27 +276,37 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, o
             )})}
           </div>
         </div>
-        <p style={{ fontSize: 12, fontWeight: 700, color: C.tx, marginBottom: 8 }}>Histórico de conversas</p>
-        <div style={{ background: C.bg, borderRadius: 8, padding: 10, marginBottom: 14, maxHeight: 200, overflowY: 'auto' }}>
-          {msgs === null && (
+
+        {/* Timeline unificada */}
+        <p style={{ fontSize: 12, fontWeight: 700, color: C.tx, marginBottom: 8 }}>Timeline</p>
+        <div style={{ background: C.bg, borderRadius: 8, padding: 10, marginBottom: 14, maxHeight: 260, overflowY: 'auto' }}>
+          {timeline === null && (
             <p style={{ fontSize: 12, color: C.mut, textAlign: 'center', margin: '8px 0' }}>Carregando…</p>
           )}
-          {msgs?.length === 0 && (
-            <p style={{ fontSize: 12, color: C.mut, textAlign: 'center', margin: '8px 0' }}>Nenhuma mensagem encontrada</p>
+          {timeline?.length === 0 && (
+            <p style={{ fontSize: 12, color: C.mut, textAlign: 'center', margin: '8px 0' }}>Nenhuma interação encontrada</p>
           )}
-          {msgs?.map((m, i) => {
-            const d = m.created_at ? new Date(m.created_at) : m.timestamp ? new Date(m.timestamp * 1000) : null
-            const time = d ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''
+          {timeline?.map((ev, i) => {
+            const time = ev.time ? ev.time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''
+            const dateStr = ev.time ? ev.time.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : ''
+            const prev = i > 0 ? timeline[i - 1] : null
+            const prevDate = prev?.time ? prev.time.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : ''
+            const showDate = dateStr !== prevDate
+            const isSent = ev.kind === 'sent'
             return (
-              <div key={m.id || i} style={{ display: 'flex', justifyContent: m.from_me ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
-                <div style={{ maxWidth: '80%', background: m.from_me ? st.color : C.bd, color: m.from_me ? '#fff' : C.tx, borderRadius: 8, padding: '5px 10px', fontSize: 12 }}>
-                  <p style={{ margin: 0 }}>{m.body || m.text || ''}</p>
-                  {time && <p style={{ margin: 0, fontSize: 10, opacity: .6, textAlign: 'right' }}>{time}</p>}
+              <React.Fragment key={i}>
+                {showDate && <p style={{ fontSize: 10, color: C.mut, textAlign: 'center', margin: '10px 0 6px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{dateStr}</p>}
+                <div style={{ display: 'flex', justifyContent: isSent ? 'flex-end' : 'flex-start', marginBottom: 6 }}>
+                  <div style={{ maxWidth: '80%', background: isSent ? st.color : C.bd, color: isSent ? '#fff' : C.tx, borderRadius: 8, padding: '5px 10px', fontSize: 12 }}>
+                    <p style={{ margin: 0 }}>{ev.text}</p>
+                    {time && <p style={{ margin: 0, fontSize: 10, opacity: .6, textAlign: 'right' }}>{time}</p>}
+                  </div>
                 </div>
-              </div>
+              </React.Fragment>
             )
           })}
         </div>
+
         <TasksPanel clientId={contact.id} userId={userId} />
         <NotesPanel contactId={contact.id} userId={userId} />
         <button onClick={() => navigate('/chat')} style={{ ...S.btn('#7C3AED'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, marginTop: 14 }}>Abrir conversa</button>
