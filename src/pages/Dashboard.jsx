@@ -1,17 +1,19 @@
 import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { usePlan } from '@hooks/usePlan'
 import { Layout } from '@components/Layout/Layout'
 import {
   MessageCircle, Users, Users2, Zap, TrendingUp, ArrowUpRight, ArrowDownRight,
   CheckCircle, AlertCircle, Wifi, Sparkles, GitBranch, DollarSign, Target, Ticket,
   Instagram, Facebook, Link as LinkIcon, Activity,
+  AlertTriangle, Clock, Flame, Calendar,
 } from 'lucide-react'
 import {
   AreaChart, Area, BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts'
 import { useDashboardData } from '@hooks/useDashboardData'
+import { useTodayData } from '@hooks/useTodayData'
 import { useStages } from '@hooks/useStages'
 import { usePeriod } from '@hooks/usePeriod'
 import { computeSalesMetrics, periodRange } from '@lib/metrics'
@@ -227,6 +229,7 @@ const EmptyState = ({ userName, onCreateFlow }) => (
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export const Dashboard = () => {
+  const navigate = useNavigate()
   const { flowsVersion, setNewFlowModalOpen } = useApp()
   const { user, isDemoMode } = useAuth()
   const { stages } = useStages()
@@ -241,6 +244,7 @@ export const Dashboard = () => {
   } = useDashboardData(flowsVersion)
 
   const { plan: usage } = usePlan()
+  const { overdueTasks, todayTasks, coldLeads, hotLeads, todaySchedules, recentConversations: unreadConvs } = useTodayData()
   const { showOnboarding, completeOnboarding } = useOnboarding()
   // Dois tipos de gráfico premium no card de Atividade (Área / Barras).
   // A preferência persiste no localStorage entre sessões.
@@ -490,6 +494,49 @@ export const Dashboard = () => {
           <div style={{ height: 280, display: 'grid', placeItems: 'center', color: '#2D3A55', fontSize: 13 }}>Sem dados no período</div>
         )}
       </div>
+
+      {/* ── Prioridades do dia — alertas compactos (P0.2) ── */}
+      {(() => {
+        const items = [
+          overdueTasks.length > 0 && { icon: AlertTriangle, color: '#EF4444', label: `${overdueTasks.length} tarefa${overdueTasks.length > 1 ? 's' : ''} atrasada${overdueTasks.length > 1 ? 's' : ''}`, sub: overdueTasks.slice(0, 2).map(t => t.title).join(', '), to: '/hoje' },
+          hotLeads.length > 0 && { icon: Flame, color: '#FF6B35', label: `${hotLeads.length} lead${hotLeads.length > 1 ? 's' : ''} quente${hotLeads.length > 1 ? 's' : ''}`, sub: hotLeads.slice(0, 2).map(l => l.name).join(', '), to: '/crm' },
+          coldLeads.length > 0 && { icon: Clock, color: '#38BDF8', label: `${coldLeads.length} lead${coldLeads.length > 1 ? 's' : ''} esfriando`, sub: 'Sem interação há +3 dias', to: '/hoje' },
+          unreadConvs.length > 0 && { icon: MessageCircle, color: '#3B82F6', label: `${unreadConvs.length} conversa${unreadConvs.length > 1 ? 's' : ''} não lida${unreadConvs.length > 1 ? 's' : ''}`, sub: unreadConvs.slice(0, 2).map(c => c.contact_name || c.contact_phone).join(', '), to: '/chat' },
+          todaySchedules.length > 0 && { icon: Calendar, color: '#7C3AED', label: `${todaySchedules.length} envio${todaySchedules.length > 1 ? 's' : ''} agendado${todaySchedules.length > 1 ? 's' : ''} hoje`, sub: todaySchedules.slice(0, 2).map(s => s.name || s.phone).join(', '), to: '/schedules' },
+        ].filter(Boolean)
+        if (!items.length) return null
+        return (
+          <div className="glass rounded-2xl p-4 mb-6">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h3 className="rf-section-title">Prioridades</h3>
+              <Link to="/hoje" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Ver tudo →</Link>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+              {items.map((it, i) => (
+                <div
+                  key={i}
+                  onClick={() => navigate(it.to)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+                    background: it.color + '0A', border: `1px solid ${it.color}22`,
+                    borderRadius: 12, cursor: 'pointer', transition: 'border-color .15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = it.color + '55'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = it.color + '22'}
+                >
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: it.color + '18', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <it.icon size={16} color={it.color} />
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-1)', margin: 0 }}>{it.label}</p>
+                    <p style={{ fontSize: 11, color: 'var(--ink-4)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.sub}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
 
       <LiveConversations />
 
