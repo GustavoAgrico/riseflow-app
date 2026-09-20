@@ -8,7 +8,7 @@ import { useStages } from '@hooks/useStages'
 import { usePeriod } from '@hooks/usePeriod'
 import { computeSalesMetrics, periodRange, brl, pct } from '@lib/metrics'
 import { DEMO_DEALS } from '@constants/demoDeals'
-import { BarChart3, Users, TrendingUp, DollarSign, Ticket, ChevronDown, Phone, ArrowLeft, X } from 'lucide-react'
+import { BarChart3, Users, TrendingUp, DollarSign, Ticket, Target, ChevronDown, Phone, ArrowLeft, X } from 'lucide-react'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED' }
 const F = 'DM Sans, sans-serif'
@@ -62,7 +62,10 @@ export const Funnel = () => {
   const avgT = id => { const l = list(id); return l.length ? Math.round(l.reduce((s, c) => s + daysAgo(c.created_at), 0) / l.length) + 'd' : '—' }
 
   const total = m.total
-  const totalValue = m.byStage.reduce((s, x) => s + x.value, 0) // soma de todas as etapas (rodapé da tabela)
+  const totalValue = m.byStage.reduce((s, x) => s + x.value, 0)
+  const stageProb = new Map(stages.map(s => [s.key, s.probability ?? 0]))
+  const weightedPipeline = m.byStage.reduce((s, x) => s + x.value * (stageProb.get(x.key) ?? 0) / 100, 0)
+  const wValue = id => value(id) * (stageProb.get(id) ?? 0) / 100
 
   const buckets = [0, 0, 0, 0]
   const span = Math.max(1, (Date.now() - start) / 4)
@@ -116,6 +119,7 @@ export const Funnel = () => {
                       style={{ width: st.w + '%', minWidth: 200, maxWidth: '100%', margin: '0 auto', height: 56, background: st.color, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '0 14px', boxSizing: 'border-box', color: '#fff', cursor: 'pointer', filter: hover === st.k ? 'brightness(1.18)' : 'none', transition: 'filter .15s' }}>
                       <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>{st.k}</span>
                       <span style={{ fontSize: 18, fontWeight: 800 }}>{count(st.id).toLocaleString('pt-BR')}</span>
+                      <span style={{ fontSize: 11, opacity: .75, background: '#ffffff22', borderRadius: 4, padding: '1px 6px' }}>{stageProb.get(st.id) ?? 0}%</span>
                       <span style={{ fontSize: 12, opacity: .85 }}>{share(st.id)}</span>
                     </div>
                     {i < STAGES.length - 1 && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.mut, margin: '4px 0' }}><ChevronDown size={16} /></div>}
@@ -125,7 +129,7 @@ export const Funnel = () => {
 
               {/* SEÇÃO 2 — KPIs */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginTop: 28 }}>
-                {[[Users, 'Total de Contatos', total.toLocaleString('pt-BR')], [TrendingUp, 'Taxa de Conversão', pct(m.convRate)], [DollarSign, 'Pipeline em aberto', brl(m.pipeline)], [Ticket, 'Ticket Médio', brl(m.ticket)]].map(([Ic, lb, v]) => (
+                {[[Users, 'Total de Contatos', total.toLocaleString('pt-BR')], [TrendingUp, 'Taxa de Conversão', pct(m.convRate)], [DollarSign, 'Pipeline em aberto', brl(m.pipeline)], [Target, 'Pipeline ponderado', brl(weightedPipeline)], [Ticket, 'Ticket Médio', brl(m.ticket)]].map(([Ic, lb, v]) => (
                   <div key={lb} style={{ background: C.card, border: `1px solid ${C.bd}`, borderRadius: 12, padding: 16 }}>
                     <Ic size={22} color={C.pur} />
                     <p style={{ margin: '8px 0 2px', fontSize: 12, color: C.mut }}>{lb}</p>
@@ -152,13 +156,15 @@ export const Funnel = () => {
               <div style={panel}>
                 <p className="rf-section-title" style={{ marginBottom: 16 }}>Detalhamento por etapa</p>
                 <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
-                  <thead><tr>{['Etapa', 'Quantidade', 'Valor Total', '% do Total', 'Tempo Médio'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                  <thead><tr>{['Etapa', 'Qtd', 'Valor Total', 'Prob.', 'Valor Ponderado', '% Total', 'Tempo Médio'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
                   <tbody>
-                    {STAGES.map(st => { const cl = st.kind === 'won' ? '#22C55E' : st.kind === 'lost' ? '#F87171' : C.tx; return (
+                    {STAGES.map(st => { const cl = st.kind === 'won' ? '#22C55E' : st.kind === 'lost' ? '#F87171' : C.tx; const prob = stageProb.get(st.id) ?? 0; return (
                       <tr key={st.id}>
                         <td style={{ ...td, color: cl, fontWeight: 600 }}>{st.k}</td>
                         <td style={td}>{count(st.id).toLocaleString('pt-BR')}</td>
                         <td style={td}>{brl(value(st.id))}</td>
+                        <td style={{ ...td, color: C.mut }}>{prob}%</td>
+                        <td style={{ ...td, fontWeight: 600, color: C.pur }}>{brl(wValue(st.id))}</td>
                         <td style={td}>{share(st.id)}</td>
                         <td style={td}>{avgT(st.id)}</td>
                       </tr>
@@ -168,6 +174,8 @@ export const Funnel = () => {
                     <td style={{ ...td, fontWeight: 800 }}>Total</td>
                     <td style={{ ...td, fontWeight: 800 }}>{total.toLocaleString('pt-BR')}</td>
                     <td style={{ ...td, fontWeight: 800 }}>{brl(totalValue)}</td>
+                    <td style={td}>—</td>
+                    <td style={{ ...td, fontWeight: 800, color: C.pur }}>{brl(weightedPipeline)}</td>
                     <td style={td}>—</td><td style={td}>—</td>
                   </tr></tfoot>
                 </table></div>
