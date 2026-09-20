@@ -189,8 +189,8 @@ const LoadingSkeleton = () => (
 // ── Empty state ───────────────────────────────────────────────────────────────
 const EmptyState = ({ userName, onCreateFlow }) => (
   <div className="flex flex-col items-center justify-center min-h-[60vh] text-center animate-fade-in">
-    <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-brand-orange/20 to-brand-blue/20 border border-brand-orange/30 flex items-center justify-center mx-auto mb-6 animate-float glow-orange">
-      <Sparkles size={40} className="text-brand-orange" />
+    <div className="w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-6 animate-float glow-orange" style={{ background: 'linear-gradient(135deg, #FF6B35, #E55100)', boxShadow: '0 8px 32px #FF6B3540' }}>
+      <span style={{ fontSize: 36, fontWeight: 900, color: '#fff', letterSpacing: '-1px', fontFamily: 'DM Sans, sans-serif' }}>RF</span>
     </div>
     <h2 className="font-display font-bold text-3xl text-white mb-3">
       Bem-vindo ao RiseFlow{userName ? `, ${userName}` : ''}!
