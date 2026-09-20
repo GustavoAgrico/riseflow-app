@@ -153,13 +153,13 @@ export const Topbar = ({ title, subtitle, onMenu }) => {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-slate-100 truncate">{n.title}</p>
                       {n.message && <p className="text-xs text-slate-400 mt-0.5 break-words">{n.message}</p>}
-                      <p className="text-[11px] text-slate-500 mt-0.5">{relTime(n.time)}</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">{relTime(n.time || n.created_at)}</p>
                     </div>
                   </div>
                 ))}
               </div>
               <div className="px-4 py-2.5 border-t border-dark-400 flex justify-between items-center">
-                <span className="text-xs text-slate-400 cursor-pointer hover:text-white" onClick={() => setShowNotif(false)}>Ver todas</span>
+                <span className="text-xs text-slate-400 cursor-pointer hover:text-white" onClick={() => { setShowNotif(false); navigate('/notifications') }}>Ver todas</span>
                 <span className="text-xs text-brand-red cursor-pointer" onClick={clearAll}>Limpar todas</span>
               </div>
             </div>

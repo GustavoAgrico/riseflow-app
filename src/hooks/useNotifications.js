@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 
 export function useNotifications() {
-  const { ownerUserId } = useAuth()
-  const [notifications, setNotifications] = useState([]) // histórico (sino) — máx 20
-  const [toasts, setToasts] = useState([])               // transitórios — máx 4
+  const { ownerUserId, isDemoMode } = useAuth()
+  const [notifications, setNotifications] = useState([])
+  const [toasts, setToasts] = useState([])
+  const loaded = useRef(false)
 
-  // Som de notificação gerado via AudioContext (sem arquivo de áudio).
   const playSound = () => {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)()
@@ -19,13 +19,29 @@ export function useNotifications() {
   }
 
   const dismissToast = useCallback((id) => setToasts(t => t.filter(n => n.id !== id)), [])
-  const dismiss = useCallback((id) => setNotifications(p => p.filter(n => n.id !== id)), [])
-  const markAllRead = useCallback(() => setNotifications(p => p.map(n => ({ ...n, read: true }))), [])
-  const clearAll = useCallback(() => { setNotifications([]); setToasts([]) }, [])
 
-  const addNotification = useCallback((type, title, message) => {
-    const item = { id: Date.now() + Math.random(), type, title, message, time: new Date(), read: false }
-    setNotifications(prev => [item, ...prev].slice(0, 20))
+  const dismiss = useCallback(async (id) => {
+    setNotifications(p => p.filter(n => n.id !== id))
+    if (!isDemoMode) await supabase.from('notifications').delete().eq('id', id).catch(() => {})
+  }, [isDemoMode])
+
+  const markAllRead = useCallback(async () => {
+    setNotifications(p => p.map(n => ({ ...n, read: true })))
+    if (!isDemoMode && ownerUserId) {
+      await supabase.from('notifications').update({ read: true }).eq('user_id', ownerUserId).eq('read', false).catch(() => {})
+    }
+  }, [isDemoMode, ownerUserId])
+
+  const clearAll = useCallback(async () => {
+    setNotifications([]); setToasts([])
+    if (!isDemoMode && ownerUserId) {
+      await supabase.from('notifications').delete().eq('user_id', ownerUserId).catch(() => {})
+    }
+  }, [isDemoMode, ownerUserId])
+
+  const addNotification = useCallback(async (type, title, message) => {
+    const item = { id: crypto.randomUUID?.() || (Date.now() + '-' + Math.random()), type, title, message, created_at: new Date().toISOString(), read: false }
+    setNotifications(prev => [item, ...prev].slice(0, 50))
     setToasts(prev => [item, ...prev].slice(0, 4))
     playSound()
     try {
@@ -33,21 +49,34 @@ export function useNotifications() {
         new Notification(title, { body: message, icon: '/favicon.ico' })
     } catch {}
     setTimeout(() => setToasts(t => t.filter(n => n.id !== item.id)), 5000)
-  }, [])
 
-  // Pede permissão de notificação do browser apenas 1 vez.
+    if (!isDemoMode && ownerUserId) {
+      const { data } = await supabase.from('notifications').insert({
+        user_id: ownerUserId, type, title, message,
+      }).select('id').single().catch(() => ({}))
+      if (data?.id) setNotifications(prev => prev.map(n => n.id === item.id ? { ...n, id: data.id } : n))
+    }
+  }, [isDemoMode, ownerUserId])
+
   useEffect(() => {
     try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission() } catch {}
   }, [])
 
-  // Tempo real (schema real: messages.direction='inbound', clients=leads, usage). Falha → segue sem realtime.
+  // Carrega notificações do banco ao montar
+  useEffect(() => {
+    if (!ownerUserId || isDemoMode || loaded.current) return
+    loaded.current = true
+    ;(async () => {
+      const { data } = await supabase.from('notifications').select('*').eq('user_id', ownerUserId).order('created_at', { ascending: false }).limit(50)
+      if (data?.length) setNotifications(data)
+    })()
+  }, [ownerUserId, isDemoMode])
+
+  // Realtime: novas mensagens, leads, limites
   useEffect(() => {
     if (!ownerUserId) return
-    // Escuta os eventos da CONTA (dono). Membros de equipe usam o ownerUserId,
-    // então recebem em tempo real o que acontece no sistema, igual ao dono.
     const acct = ownerUserId
-    let channel
-    let cancelled = false
+    let channel, cancelled = false
     ;(async () => {
       try {
         if (cancelled) return
