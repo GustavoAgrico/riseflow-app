@@ -34,6 +34,7 @@ import { Plans } from '@pages/Plans'
 import { Product } from '@pages/Product'
 import { PlanDetails } from '@pages/PlanDetails'
 import { ActivityLogs } from '@pages/ActivityLogs'
+import { Today } from '@pages/Today'
 import { PageTransition } from '@components/PageTransition'
 import { AuthCallback } from '@pages/AuthCallback'
 
@@ -129,6 +130,7 @@ function App() {
 
               {/* Protected routes */}
               <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+              <Route path="/hoje" element={<PrivateRoute><Today /></PrivateRoute>} />
               <Route path="/chat" element={<PrivateRoute><Chat /></PrivateRoute>} />
               <Route path="/smart-attendant" element={<PrivateRoute><SmartAttendant /></PrivateRoute>} />
               <Route path="/flow-builder" element={<PrivateRoute><FlowBuilder /></PrivateRoute>} />

@@ -61,6 +61,7 @@ export const NAV_GROUPS = [
     id: 'operacao', label: 'Operação', kind: 'op',
     items: [
       { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/dashboard' },
+      { id: 'hoje', label: 'Hoje', icon: 'CalendarCheck', path: '/hoje' },
       { id: 'chat', label: 'Chat', icon: 'MessageSquare', path: '/chat' },
       { id: 'crm', label: 'CRM', icon: 'Users', path: '/crm' },
       { id: 'clients', label: 'Clientes', icon: 'ContactRound', path: '/clients' },

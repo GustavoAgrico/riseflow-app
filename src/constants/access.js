@@ -23,7 +23,7 @@ export const ROLES = {
 
 // Base operacional — o que TODO membro sempre acessa (paridade com o legado).
 const BASE = [
-  '/dashboard', '/chat', '/smart-attendant',
+  '/dashboard', '/hoje', '/chat', '/smart-attendant',
   '/flows', '/flows-novo', '/flow-builder',
   '/crm', '/clients', '/analytics', '/funnel',
   '/campaigns', '/schedules', '/templates', '/calls',
