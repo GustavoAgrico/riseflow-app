@@ -1,8 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bot, Trash2, Plus, Upload } from 'lucide-react'
+import { Bot, Trash2, Plus, Upload, Send, Sparkles } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { AIService } from '@services/aiService'
 import { useAuth } from '@context/AuthContext'
+
+const ai = new AIService(supabase)
 
 const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-4)', pur:'#7C3AED' }
 const DEFAULTS = {
@@ -37,6 +40,78 @@ const Row = ({ label, children }) => (
     <span style={{ fontSize:13 }}>{label}</span>{children}
   </div>
 )
+
+const TestChat = ({ personality, companyName, customRules, isDemoMode }) => {
+  const [msgs, setMsgs] = useState([])
+  const [input, setInput] = useState('')
+  const [busy, setBusy] = useState(false)
+  const endRef = useRef(null)
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
+
+  const send = async () => {
+    const txt = input.trim()
+    if (!txt || busy) return
+    setInput('')
+    const userMsg = { role: 'user', text: txt }
+    setMsgs(p => [...p, userMsg])
+
+    if (isDemoMode) {
+      setBusy(true)
+      setTimeout(() => {
+        setMsgs(p => [...p, { role: 'assistant', text: 'Olá! Sou o assistente de demonstração. Configure suas chaves de IA nas configurações para testar respostas reais.' }])
+        setBusy(false)
+      }, 800)
+      return
+    }
+
+    setBusy(true)
+    const systemPrompt = [
+      personality || 'Você é um atendente de WhatsApp profissional e simpático.',
+      companyName ? `Empresa: ${companyName}.` : '',
+      customRules || '',
+      'Responda em português do Brasil, de forma natural e objetiva (2 a 5 frases).',
+    ].filter(Boolean).join('\n')
+
+    const history = msgs.slice(-10).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }))
+    const res = await ai.chat({ systemPrompt, userMessage: txt, conversationHistory: history })
+    setMsgs(p => [...p, { role: 'assistant', text: res.success ? res.response : `Erro: ${res.error}` }])
+    setBusy(false)
+  }
+
+  return (
+    <div style={S.card}>
+      <h3 style={S.h}><Sparkles size={16} color="#FF6B35" /> Testar IA ao vivo</h3>
+      <p style={{ fontSize: 12, color: C.mut, margin: '-8px 0 12px' }}>Simule uma conversa com seu atendente para verificar tom e regras antes de ativar.</p>
+      <div style={{ background: C.bg, border: `1px solid ${C.bd}`, borderRadius: 10, height: 240, overflowY: 'auto', padding: 12, marginBottom: 10 }}>
+        {msgs.length === 0 && <p style={{ textAlign: 'center', color: C.mut, fontSize: 12, margin: '40px 0' }}>Envie uma mensagem para testar</p>}
+        {msgs.map((m, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+            <div style={{ maxWidth: '80%', background: m.role === 'user' ? C.pur : C.bd, color: m.role === 'user' ? '#fff' : C.tx, borderRadius: 10, padding: '8px 12px', fontSize: 13 }}>
+              {m.text}
+            </div>
+          </div>
+        ))}
+        {busy && (
+          <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8 }}>
+            <div style={{ background: C.bd, borderRadius: 10, padding: '8px 12px', fontSize: 13, color: C.mut }}>Digitando…</div>
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()}
+          placeholder="Simule uma mensagem do cliente…" style={{ ...S.inp, flex: 1 }} />
+        <button onClick={send} disabled={busy} style={{ ...S.btn(), display: 'flex', alignItems: 'center', gap: 6, opacity: busy ? .6 : 1 }}>
+          <Send size={14} /> Enviar
+        </button>
+      </div>
+      {msgs.length > 0 && (
+        <button onClick={() => setMsgs([])} style={{ ...S.ghost, marginTop: 8, fontSize: 12 }}>Limpar conversa</button>
+      )}
+    </div>
+  )
+}
 
 export const SmartAttendant = () => {
   const { user, ownerUserId, isDemoMode } = useAuth()
@@ -120,7 +195,9 @@ export const SmartAttendant = () => {
     <div style={{ minHeight:'100vh', background:C.bg, color:C.tx, fontFamily:'DM Sans,sans-serif', paddingBottom:40 }}>
       <div style={S.top}>
         <Link to="/dashboard" style={S.ghost}>← Voltar</Link>
-        <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}>🤖 Atendimento Inteligente</span>
+        <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}>
+          <Bot size={20} color={C.pur} /> IA Central
+        </span>
       </div>
 
       <div style={{ maxWidth:760, margin:'0 auto', padding:'24px 24px 0' }}>
@@ -209,6 +286,9 @@ export const SmartAttendant = () => {
             ))}
           </div>
         </div>
+
+        {/* 6 — Sandbox de teste */}
+        <TestChat personality={cfg.personality} companyName={cfg.company_name} customRules={cfg.custom_rules} isDemoMode={isDemoMode} />
 
         <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:24 }}>
           <button onClick={save} disabled={saving} style={{ ...S.btn(), opacity:saving?.6:1 }}>{saving ? 'Salvando…' : 'Salvar configuração'}</button>

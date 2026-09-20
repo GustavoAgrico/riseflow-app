@@ -78,7 +78,7 @@ export const NAV_GROUPS = [
   {
     id: 'automacao', label: 'Automação', kind: 'op',
     items: [
-      { id: 'smart-attendant', label: 'Atendimento IA', icon: 'Bot', path: '/smart-attendant', badge: 'IA' },
+      { id: 'smart-attendant', label: 'IA Central', icon: 'Bot', path: '/smart-attendant', badge: 'IA' },
       { id: 'flows', label: 'Fluxos', icon: 'GitBranch', path: '/flows', badge: 'NEW' },
       { id: 'automation', label: 'Automação', icon: 'Zap', path: '/automation' },
       { id: 'campaigns', label: 'Campanhas', icon: 'Megaphone', path: '/campaigns' },
