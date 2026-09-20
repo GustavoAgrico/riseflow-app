@@ -26,7 +26,7 @@ const BASE = [
   '/dashboard', '/hoje', '/chat', '/smart-attendant',
   '/flows', '/flows-novo', '/flow-builder',
   '/crm', '/clients', '/analytics', '/funnel',
-  '/campaigns', '/schedules', '/templates', '/calls', '/proposals',
+  '/campaigns', '/schedules', '/templates', '/calls', '/proposals', '/agenda',
 ]
 
 // Extras somados por cargo (cumulativos).

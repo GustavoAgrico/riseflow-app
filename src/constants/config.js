@@ -72,6 +72,7 @@ export const NAV_GROUPS = [
     items: [
       { id: 'funnel', label: 'Funil de vendas', icon: 'Filter', path: '/funnel' },
       { id: 'proposals', label: 'Propostas', icon: 'FileText', path: '/proposals' },
+      { id: 'agenda', label: 'Agenda', icon: 'CalendarCheck', path: '/agenda' },
       { id: 'schedules', label: 'Agendamentos', icon: 'Calendar', path: '/schedules' },
       { id: 'calls', label: 'Ligações', icon: 'PhoneCall', path: '/calls' },
     ],
