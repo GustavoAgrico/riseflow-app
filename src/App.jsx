@@ -37,6 +37,7 @@ import { ActivityLogs } from '@pages/ActivityLogs'
 import { Today } from '@pages/Today'
 import { Reports } from '@pages/Reports'
 import { Marketing } from '@pages/Marketing'
+import { Proposals } from '@pages/Proposals'
 import { PageTransition } from '@components/PageTransition'
 import { AuthCallback } from '@pages/AuthCallback'
 
@@ -154,6 +155,7 @@ function App() {
               <Route path="/analytics" element={<PrivateRoute><Analytics /></PrivateRoute>} />
               <Route path="/reports" element={<PrivateRoute><Reports /></PrivateRoute>} />
               <Route path="/marketing" element={<PrivateRoute><Marketing /></PrivateRoute>} />
+              <Route path="/proposals" element={<PrivateRoute><Proposals /></PrivateRoute>} />
               <Route path="/funnel" element={<PrivateRoute><Funnel /></PrivateRoute>} />
               <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
               <Route path="/activity-logs" element={<PrivateRoute><ActivityLogs /></PrivateRoute>} />

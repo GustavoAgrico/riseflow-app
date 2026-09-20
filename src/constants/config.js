@@ -71,6 +71,7 @@ export const NAV_GROUPS = [
     id: 'vendas', label: 'Vendas', kind: 'op',
     items: [
       { id: 'funnel', label: 'Funil de vendas', icon: 'Filter', path: '/funnel' },
+      { id: 'proposals', label: 'Propostas', icon: 'FileText', path: '/proposals' },
       { id: 'schedules', label: 'Agendamentos', icon: 'Calendar', path: '/schedules' },
       { id: 'calls', label: 'Ligações', icon: 'PhoneCall', path: '/calls' },
     ],
