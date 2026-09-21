@@ -135,44 +135,46 @@ const VideoEditor = () => {
   );
 
   return (
-    <div style={{ backgroundColor: colors.bg, color: colors.text, minHeight: '100vh', padding: '20px' }}>
-      <div className="max-w-7xl mx-auto">
+    <div style={{ backgroundColor: colors.bg, color: colors.text, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div className="max-w-full mx-auto" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '20px' }}>
         {/* Header */}
-        <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: 0 }}>Editor de Vídeo</h1>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              style={{
-                backgroundColor: colors.accent,
-                color: '#000',
-                padding: '8px 16px',
-                borderRadius: '6px',
-                border: 'none',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}
-              className="hover:opacity-90"
-            >
-              <Download size={18} />
-              Exportar
-            </button>
+        <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '15px', borderBottom: `1px solid ${colors.border}` }}>
+          <div>
+            <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 5px 0' }}>Editor de Vídeo</h1>
+            <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Timeline • Edite todo o vídeo</p>
           </div>
+          <button
+            style={{
+              backgroundColor: colors.accent,
+              color: '#000',
+              padding: '10px 16px',
+              borderRadius: '6px',
+              border: 'none',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+            className="hover:opacity-90"
+          >
+            <Download size={18} />
+            Exportar
+          </button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '15px', flex: 1, minHeight: 0, overflow: 'hidden' }}>
           {/* Main Editor */}
-          <div>
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             {/* Video Preview */}
             <div
               style={{
                 backgroundColor: colors.panel,
                 borderRadius: '8px',
                 border: `1px solid ${colors.border}`,
-                marginBottom: '20px',
+                marginBottom: '15px',
                 overflow: 'hidden',
+                flexShrink: 0,
               }}
             >
               {video ? (
@@ -374,7 +376,8 @@ const VideoEditor = () => {
                     borderRadius: '8px',
                     border: `1px solid ${colors.border}`,
                     padding: '15px',
-                    marginBottom: '20px',
+                    marginBottom: '15px',
+                    flexShrink: 0,
                   }}
                 >
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -416,6 +419,209 @@ const VideoEditor = () => {
                     >
                       + Legenda
                     </button>
+                  </div>
+                </div>
+
+                {/* Advanced Timeline with Tracks */}
+                <div
+                  style={{
+                    backgroundColor: colors.panel,
+                    borderRadius: '8px',
+                    border: `1px solid ${colors.border}`,
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minHeight: 0,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div style={{ padding: '12px 15px', borderBottom: `1px solid ${colors.border}`, fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                    Timeline
+                  </div>
+
+                  {/* Tracks Container */}
+                  <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+                    {/* Ruler/Timecode */}
+                    <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}` }}>
+                      <div style={{ width: '150px', borderRight: `1px solid ${colors.border}`, padding: '8px', fontSize: '11px', color: '#94a3b8' }}>
+                        Tracks
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+                        {Array.from({ length: Math.ceil(duration / 5) }).map((_, i) => (
+                          <div
+                            key={i}
+                            style={{
+                              flex: 1,
+                              minWidth: '80px',
+                              borderRight: `1px solid ${colors.border}`,
+                              padding: '8px 4px',
+                              fontSize: '10px',
+                              color: '#94a3b8',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {formatTime(i * 5)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Video Track */}
+                    <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}` }}>
+                      <div style={{ width: '150px', borderRight: `1px solid ${colors.border}`, padding: '12px', fontSize: '11px', fontWeight: '500', color: colors.text }}>
+                        🎬 Vídeo
+                      </div>
+                      <div
+                        style={{
+                          flex: 1,
+                          position: 'relative',
+                          height: '60px',
+                          backgroundColor: colors.bg,
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            height: '100%',
+                            backgroundColor: '#7C3AED',
+                            opacity: 0.3,
+                            width: '100%',
+                            left: 0,
+                          }}
+                        />
+                        <div
+                          style={{
+                            position: 'absolute',
+                            height: '100%',
+                            width: '2px',
+                            backgroundColor: colors.accent,
+                            left: `${(currentTime / duration) * 100}%`,
+                            zIndex: 10,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Audio Track */}
+                    <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}` }}>
+                      <div style={{ width: '150px', borderRight: `1px solid ${colors.border}`, padding: '12px', fontSize: '11px', fontWeight: '500', color: colors.text }}>
+                        🔊 Áudio
+                      </div>
+                      <div
+                        style={{
+                          flex: 1,
+                          position: 'relative',
+                          height: '50px',
+                          backgroundColor: colors.bg,
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            height: '100%',
+                            backgroundColor: '#10B981',
+                            opacity: 0.2,
+                            width: '100%',
+                          }}
+                        />
+                        <div
+                          style={{
+                            position: 'absolute',
+                            height: '100%',
+                            width: '2px',
+                            backgroundColor: colors.accent,
+                            left: `${(currentTime / duration) * 100}%`,
+                            zIndex: 10,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Subtitles Track */}
+                    {subtitles.length > 0 && (
+                      <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}` }}>
+                        <div style={{ width: '150px', borderRight: `1px solid ${colors.border}`, padding: '12px', fontSize: '11px', fontWeight: '500', color: colors.text }}>
+                          📝 Legendas
+                        </div>
+                        <div
+                          style={{
+                            flex: 1,
+                            position: 'relative',
+                            height: '50px',
+                            backgroundColor: colors.bg,
+                            overflow: 'hidden',
+                          }}
+                        >
+                          {subtitles.map(sub => (
+                            <div
+                              key={sub.id}
+                              style={{
+                                position: 'absolute',
+                                height: '100%',
+                                backgroundColor: colors.accent,
+                                opacity: 0.5,
+                                left: `${(sub.startTime / duration) * 100}%`,
+                                width: `${((sub.endTime - sub.startTime) / duration) * 100}%`,
+                              }}
+                            />
+                          ))}
+                          <div
+                            style={{
+                              position: 'absolute',
+                              height: '100%',
+                              width: '2px',
+                              backgroundColor: colors.accent,
+                              left: `${(currentTime / duration) * 100}%`,
+                              zIndex: 10,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* B-Roll Track */}
+                    {clips.length > 0 && (
+                      <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}` }}>
+                        <div style={{ width: '150px', borderRight: `1px solid ${colors.border}`, padding: '12px', fontSize: '11px', fontWeight: '500', color: colors.text }}>
+                          🎞️ B-Roll
+                        </div>
+                        <div
+                          style={{
+                            flex: 1,
+                            position: 'relative',
+                            height: '50px',
+                            backgroundColor: colors.bg,
+                            overflow: 'hidden',
+                          }}
+                        >
+                          {clips.map(clip => (
+                            <div
+                              key={clip.id}
+                              style={{
+                                position: 'absolute',
+                                height: '100%',
+                                backgroundColor: '#F59E0B',
+                                opacity: 0.5,
+                                left: `${(clip.startTime / duration) * 100}%`,
+                                width: `${((clip.endTime - clip.startTime) / duration) * 100}%`,
+                              }}
+                            />
+                          ))}
+                          <div
+                            style={{
+                              position: 'absolute',
+                              height: '100%',
+                              width: '2px',
+                              backgroundColor: colors.accent,
+                              left: `${(currentTime / duration) * 100}%`,
+                              zIndex: 10,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </>
