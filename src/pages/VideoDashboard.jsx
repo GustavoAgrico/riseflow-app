@@ -327,6 +327,44 @@ const VideoDashboard = () => {
               </button>
 
               <button
+                onClick={() => navigate('/video-editor')}
+                style={{
+                  width: '100%',
+                  backgroundColor: colors.bg,
+                  color: colors.text,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '8px',
+                  padding: '12px 16px',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  fontSize: '14px',
+                  marginBottom: '12px',
+                }}
+                className="hover:border-current"
+              >
+                🎨 Editar vídeo
+              </button>
+
+              <button
+                onClick={() => navigate('/broll-manager')}
+                style={{
+                  width: '100%',
+                  backgroundColor: colors.bg,
+                  color: colors.text,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: '8px',
+                  padding: '12px 16px',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  fontSize: '14px',
+                  marginBottom: '12px',
+                }}
+                className="hover:border-current"
+              >
+                🎬 Ajustar B-Roll
+              </button>
+
+              <button
                 style={{
                   width: '100%',
                   backgroundColor: colors.bg,
