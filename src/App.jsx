@@ -38,6 +38,7 @@ import { PageTransition } from '@components/PageTransition'
 import { AuthCallback } from '@pages/AuthCallback'
 import VideoEditor from '@pages/VideoEditor'
 import BrollManager from '@pages/BrollManager'
+import VideoDashboard from '@pages/VideoDashboard'
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -144,6 +145,7 @@ function App() {
               <Route path="/calls" element={<PrivateRoute><Calls /></PrivateRoute>} />
               <Route path="/clients" element={<PrivateRoute><Clients /></PrivateRoute>} />
               <Route path="/campaigns" element={<PrivateRoute><Campaigns /></PrivateRoute>} />
+              <Route path="/video-dashboard" element={<PrivateRoute><VideoDashboard /></PrivateRoute>} />
               <Route path="/video-editor" element={<PrivateRoute><VideoEditor /></PrivateRoute>} />
               <Route path="/broll-manager" element={<PrivateRoute><BrollManager /></PrivateRoute>} />
               <Route path="/schedules" element={<PrivateRoute><Schedules /></PrivateRoute>} />
