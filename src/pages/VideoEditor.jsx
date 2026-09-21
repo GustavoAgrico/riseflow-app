@@ -16,6 +16,20 @@ const VideoEditor = () => {
   const [clips, setClips] = useState([]);
   const [subtitles, setSubtitles] = useState([]);
   const [effects, setEffects] = useState([]);
+  const [sidebarTab, setSidebarTab] = useState('properties'); // properties | adjustments | effects
+  const [videoAdjustments, setVideoAdjustments] = useState({
+    brightness: 0,
+    contrast: 0,
+    saturation: 0,
+    hue: 0,
+    temperature: 0,
+    blur: 0,
+    scale: 1,
+    rotation: 0,
+    flipH: false,
+    flipV: false,
+    speed: 1,
+  });
 
   const colors = {
     bg: '#0f172a',
@@ -629,169 +643,501 @@ const VideoEditor = () => {
           </div>
 
           {/* Right Sidebar */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', height: 'fit-content' }}>
-            {/* Video Info */}
-            {video && (
-              <div
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0', height: '100%', minHeight: 0, overflow: 'hidden', backgroundColor: colors.panel, borderRadius: '8px', border: `1px solid ${colors.border}` }}>
+            {/* Sidebar Tabs */}
+            <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}` }}>
+              <button
+                onClick={() => setSidebarTab('properties')}
                 style={{
-                  backgroundColor: colors.panel,
-                  borderRadius: '8px',
-                  border: `1px solid ${colors.border}`,
-                  padding: '15px',
+                  flex: 1,
+                  padding: '12px',
+                  backgroundColor: sidebarTab === 'properties' ? colors.accent : colors.panel,
+                  color: sidebarTab === 'properties' ? '#000' : colors.text,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  textTransform: 'uppercase',
                 }}
+                className="hover:opacity-80"
               >
-                <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '5px' }}>ARQUIVO</div>
-                <div style={{ fontSize: '13px', fontWeight: '500', wordBreak: 'break-all', marginBottom: '10px' }}>
-                  {video.name}
-                </div>
-                <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                  Duração: {formatTime(duration)}
-                </div>
-              </div>
-            )}
+                📋 Propriedades
+              </button>
+              <button
+                onClick={() => setSidebarTab('adjustments')}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  backgroundColor: sidebarTab === 'adjustments' ? colors.accent : colors.panel,
+                  color: sidebarTab === 'adjustments' ? '#000' : colors.text,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  textTransform: 'uppercase',
+                  borderLeft: `1px solid ${colors.border}`,
+                }}
+                className="hover:opacity-80"
+              >
+                🎨 Ajustar
+              </button>
+              <button
+                onClick={() => setSidebarTab('effects')}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  backgroundColor: sidebarTab === 'effects' ? colors.accent : colors.panel,
+                  color: sidebarTab === 'effects' ? '#000' : colors.text,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  textTransform: 'uppercase',
+                  borderLeft: `1px solid ${colors.border}`,
+                }}
+                className="hover:opacity-80"
+              >
+                ✨ Efeitos
+              </button>
+            </div>
 
-            {/* Clips */}
-            {clips.length > 0 && (
-              <div
-                style={{
-                  backgroundColor: colors.panel,
-                  borderRadius: '8px',
-                  border: `1px solid ${colors.border}`,
-                  padding: '15px',
-                }}
-              >
-                <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase' }}>
-                  Clipes ({clips.length})
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {clips.map(clip => (
-                    <div
-                      key={clip.id}
-                      style={{
-                        backgroundColor: colors.bg,
-                        borderRadius: '6px',
-                        padding: '10px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        fontSize: '12px',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: '500' }}>{clip.name}</div>
-                        <div style={{ color: '#94a3b8', fontSize: '11px' }}>
-                          {formatTime(clip.startTime)} - {formatTime(clip.endTime)}
-                        </div>
+            {/* Sidebar Content */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '15px' }}>
+                {/* Properties Tab */}
+              {sidebarTab === 'properties' && (
+                <>
+                  {video && (
+                    <div style={{ marginBottom: '15px' }}>
+                      <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px', fontWeight: '600', textTransform: 'uppercase' }}>Arquivo</div>
+                      <div style={{ fontSize: '13px', fontWeight: '500', wordBreak: 'break-all', marginBottom: '8px' }}>
+                        {video.name}
                       </div>
+                      <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                        Duração: {formatTime(duration)}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Adjustments Tab */}
+              {sidebarTab === 'adjustments' && (
+                <div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '15px', fontWeight: '600', textTransform: 'uppercase' }}>Editar Vídeo</div>
+
+                  {/* Brightness */}
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: colors.text, display: 'block', marginBottom: '6px' }}>
+                      ☀️ Brilho ({videoAdjustments.brightness})
+                    </label>
+                    <input
+                      type="range"
+                      min="-100"
+                      max="100"
+                      value={videoAdjustments.brightness}
+                      onChange={(e) => setVideoAdjustments({...videoAdjustments, brightness: parseInt(e.target.value)})}
+                      style={{ width: '100%', cursor: 'pointer' }}
+                    />
+                  </div>
+
+                  {/* Contrast */}
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: colors.text, display: 'block', marginBottom: '6px' }}>
+                      ◆ Contraste ({videoAdjustments.contrast})
+                    </label>
+                    <input
+                      type="range"
+                      min="-100"
+                      max="100"
+                      value={videoAdjustments.contrast}
+                      onChange={(e) => setVideoAdjustments({...videoAdjustments, contrast: parseInt(e.target.value)})}
+                      style={{ width: '100%', cursor: 'pointer' }}
+                    />
+                  </div>
+
+                  {/* Saturation */}
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: colors.text, display: 'block', marginBottom: '6px' }}>
+                      🎨 Saturação ({videoAdjustments.saturation})
+                    </label>
+                    <input
+                      type="range"
+                      min="-100"
+                      max="100"
+                      value={videoAdjustments.saturation}
+                      onChange={(e) => setVideoAdjustments({...videoAdjustments, saturation: parseInt(e.target.value)})}
+                      style={{ width: '100%', cursor: 'pointer' }}
+                    />
+                  </div>
+
+                  {/* Hue */}
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: colors.text, display: 'block', marginBottom: '6px' }}>
+                      🌈 Matiz ({videoAdjustments.hue})
+                    </label>
+                    <input
+                      type="range"
+                      min="-180"
+                      max="180"
+                      value={videoAdjustments.hue}
+                      onChange={(e) => setVideoAdjustments({...videoAdjustments, hue: parseInt(e.target.value)})}
+                      style={{ width: '100%', cursor: 'pointer' }}
+                    />
+                  </div>
+
+                  {/* Temperature */}
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: colors.text, display: 'block', marginBottom: '6px' }}>
+                      🔥 Temperatura ({videoAdjustments.temperature})
+                    </label>
+                    <input
+                      type="range"
+                      min="-50"
+                      max="50"
+                      value={videoAdjustments.temperature}
+                      onChange={(e) => setVideoAdjustments({...videoAdjustments, temperature: parseInt(e.target.value)})}
+                      style={{ width: '100%', cursor: 'pointer' }}
+                    />
+                  </div>
+
+                  <hr style={{ borderColor: colors.border, margin: '15px 0' }} />
+
+                  {/* Scale */}
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: colors.text, display: 'block', marginBottom: '6px' }}>
+                      📏 Escala ({(videoAdjustments.scale * 100).toFixed(0)}%)
+                    </label>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="2"
+                      step="0.1"
+                      value={videoAdjustments.scale}
+                      onChange={(e) => setVideoAdjustments({...videoAdjustments, scale: parseFloat(e.target.value)})}
+                      style={{ width: '100%', cursor: 'pointer' }}
+                    />
+                  </div>
+
+                  {/* Rotation */}
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: colors.text, display: 'block', marginBottom: '6px' }}>
+                      🔄 Rotação ({videoAdjustments.rotation}°)
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
                       <button
-                        onClick={() => removeClip(clip.id)}
+                        onClick={() => setVideoAdjustments({...videoAdjustments, rotation: (videoAdjustments.rotation - 90) % 360})}
                         style={{
-                          backgroundColor: 'transparent',
-                          border: 'none',
+                          flex: 1,
+                          backgroundColor: colors.bg,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '4px',
+                          padding: '6px',
+                          color: colors.text,
                           cursor: 'pointer',
-                          color: '#ef4444',
-                          padding: '4px',
+                          fontSize: '11px',
                         }}
                       >
-                        <X size={16} />
+                        ↶ -90°
+                      </button>
+                      <button
+                        onClick={() => setVideoAdjustments({...videoAdjustments, rotation: (videoAdjustments.rotation + 90) % 360})}
+                        style={{
+                          flex: 1,
+                          backgroundColor: colors.bg,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '4px',
+                          padding: '6px',
+                          color: colors.text,
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                        }}
+                      >
+                        ↷ +90°
                       </button>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                  </div>
 
-            {/* Subtitles */}
-            {subtitles.length > 0 && (
-              <div
-                style={{
-                  backgroundColor: colors.panel,
-                  borderRadius: '8px',
-                  border: `1px solid ${colors.border}`,
-                  padding: '15px',
-                  maxHeight: '300px',
-                  overflowY: 'auto',
-                }}
-              >
-                <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase' }}>
-                  Legendas ({subtitles.length})
+                  {/* Flip */}
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: colors.text, display: 'block', marginBottom: '6px' }}>
+                      🔀 Flip
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => setVideoAdjustments({...videoAdjustments, flipH: !videoAdjustments.flipH})}
+                        style={{
+                          flex: 1,
+                          backgroundColor: videoAdjustments.flipH ? colors.accent : colors.bg,
+                          border: `1px solid ${videoAdjustments.flipH ? colors.accent : colors.border}`,
+                          borderRadius: '4px',
+                          padding: '6px',
+                          color: videoAdjustments.flipH ? '#000' : colors.text,
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          fontWeight: videoAdjustments.flipH ? '600' : '400',
+                        }}
+                      >
+                        ↔️ Horizontal
+                      </button>
+                      <button
+                        onClick={() => setVideoAdjustments({...videoAdjustments, flipV: !videoAdjustments.flipV})}
+                        style={{
+                          flex: 1,
+                          backgroundColor: videoAdjustments.flipV ? colors.accent : colors.bg,
+                          border: `1px solid ${videoAdjustments.flipV ? colors.accent : colors.border}`,
+                          borderRadius: '4px',
+                          padding: '6px',
+                          color: videoAdjustments.flipV ? '#000' : colors.text,
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          fontWeight: videoAdjustments.flipV ? '600' : '400',
+                        }}
+                      >
+                        ↕️ Vertical
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Speed */}
+                  <div style={{ marginBottom: '15px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: colors.text, display: 'block', marginBottom: '6px' }}>
+                      ⏱️ Velocidade ({videoAdjustments.speed.toFixed(1)}x)
+                    </label>
+                    <input
+                      type="range"
+                      min="0.25"
+                      max="2"
+                      step="0.25"
+                      value={videoAdjustments.speed}
+                      onChange={(e) => setVideoAdjustments({...videoAdjustments, speed: parseFloat(e.target.value)})}
+                      style={{ width: '100%', cursor: 'pointer' }}
+                    />
+                    <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px' }}>
+                      0.25x Lento | 1x Normal | 2x Rápido
+                    </div>
+                  </div>
+
+                  {/* Reset Button */}
+                  <button
+                    onClick={() => setVideoAdjustments({
+                      brightness: 0,
+                      contrast: 0,
+                      saturation: 0,
+                      hue: 0,
+                      temperature: 0,
+                      blur: 0,
+                      scale: 1,
+                      rotation: 0,
+                      flipH: false,
+                      flipV: false,
+                      speed: 1,
+                    })}
+                    style={{
+                      width: '100%',
+                      backgroundColor: colors.border,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: '4px',
+                      padding: '8px',
+                      color: colors.text,
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      marginTop: '10px',
+                    }}
+                    className="hover:opacity-80"
+                  >
+                    ↺ Resetar Ajustes
+                  </button>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {subtitles.map(sub => (
-                    <div
-                      key={sub.id}
-                      style={{
-                        backgroundColor: colors.bg,
-                        borderRadius: '6px',
-                        padding: '10px',
-                        fontSize: '12px',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
-                        <input
-                          type="text"
-                          value={sub.text}
-                          onChange={(e) => updateSubtitle(sub.id, { text: e.target.value })}
-                          style={{
-                            backgroundColor: colors.panel,
-                            border: `1px solid ${colors.border}`,
-                            borderRadius: '4px',
-                            padding: '6px',
-                            color: colors.text,
-                            fontSize: '12px',
-                            flex: 1,
-                            marginRight: '8px',
-                          }}
-                        />
-                        <button
-                          onClick={() => removeSubtitle(sub.id)}
-                          style={{
-                            backgroundColor: 'transparent',
-                            border: 'none',
-                            cursor: 'pointer',
-                            color: '#ef4444',
-                            padding: '4px',
-                          }}
-                        >
-                          <X size={16} />
-                        </button>
+              )}
+
+              {/* Effects Tab */}
+              {sidebarTab === 'effects' && (
+                <div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '15px', fontWeight: '600', textTransform: 'uppercase' }}>Efeitos Visuais</div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {['Preto & Branco', 'Sépia', 'Negativo', 'Blur', 'Sharpen', 'Invert', 'Fade In', 'Fade Out'].map((effect, i) => (
+                      <button
+                        key={i}
+                        style={{
+                          backgroundColor: colors.bg,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '4px',
+                          padding: '10px 8px',
+                          color: colors.text,
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          fontWeight: '500',
+                        }}
+                        className="hover:border-current hover:bg-opacity-80"
+                      >
+                        {effect}
+                      </button>
+                    ))}
+                  </div>
+
+                  <hr style={{ borderColor: colors.border, margin: '15px 0' }} />
+
+                  <div style={{ fontSize: '12px', fontWeight: '600', color: colors.text, marginBottom: '10px' }}>
+                    Transições
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {['Fade', 'Slide', 'Zoom', 'Wipe', 'Push', 'Cover', 'Uncover', 'Cross'].map((trans, i) => (
+                      <button
+                        key={i}
+                        style={{
+                          backgroundColor: colors.bg,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '4px',
+                          padding: '10px 8px',
+                          color: colors.text,
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          fontWeight: '500',
+                        }}
+                        className="hover:border-current hover:bg-opacity-80"
+                      >
+                        {trans}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+              {/* Show clips and subtitles in properties tab */}
+              {sidebarTab === 'properties' && (
+                <>
+                  {/* Clips */}
+                  {clips.length > 0 && (
+                    <div style={{ marginBottom: '15px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase', color: '#94a3b8' }}>
+                        Clipes ({clips.length})
                       </div>
-                      <div style={{ display: 'flex', gap: '8px', fontSize: '11px', color: '#94a3b8' }}>
-                        <input
-                          type="number"
-                          value={sub.startTime.toFixed(2)}
-                          onChange={(e) => updateSubtitle(sub.id, { startTime: parseFloat(e.target.value) })}
-                          style={{
-                            backgroundColor: colors.bg,
-                            border: `1px solid ${colors.border}`,
-                            borderRadius: '4px',
-                            padding: '4px',
-                            color: colors.text,
-                            width: '50px',
-                          }}
-                          step="0.1"
-                        />
-                        <span style={{ color: '#64748b' }}>→</span>
-                        <input
-                          type="number"
-                          value={sub.endTime.toFixed(2)}
-                          onChange={(e) => updateSubtitle(sub.id, { endTime: parseFloat(e.target.value) })}
-                          style={{
-                            backgroundColor: colors.bg,
-                            border: `1px solid ${colors.border}`,
-                            borderRadius: '4px',
-                            padding: '4px',
-                            color: colors.text,
-                            width: '50px',
-                          }}
-                          step="0.1"
-                        />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {clips.map(clip => (
+                          <div
+                            key={clip.id}
+                            style={{
+                              backgroundColor: colors.bg,
+                              borderRadius: '6px',
+                              padding: '10px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              fontSize: '12px',
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: '500' }}>{clip.name}</div>
+                              <div style={{ color: '#94a3b8', fontSize: '11px' }}>
+                                {formatTime(clip.startTime)} - {formatTime(clip.endTime)}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => removeClip(clip.id)}
+                              style={{
+                                backgroundColor: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                color: '#ef4444',
+                                padding: '4px',
+                              }}
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                  )}
+
+                  {/* Subtitles */}
+                  {subtitles.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase', color: '#94a3b8' }}>
+                        Legendas ({subtitles.length})
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {subtitles.map(sub => (
+                          <div
+                            key={sub.id}
+                            style={{
+                              backgroundColor: colors.bg,
+                              borderRadius: '6px',
+                              padding: '10px',
+                              fontSize: '12px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
+                              <input
+                                type="text"
+                                value={sub.text}
+                                onChange={(e) => updateSubtitle(sub.id, { text: e.target.value })}
+                                style={{
+                                  backgroundColor: colors.panel,
+                                  border: `1px solid ${colors.border}`,
+                                  borderRadius: '4px',
+                                  padding: '6px',
+                                  color: colors.text,
+                                  fontSize: '12px',
+                                  flex: 1,
+                                  marginRight: '8px',
+                                }}
+                              />
+                              <button
+                                onClick={() => removeSubtitle(sub.id)}
+                                style={{
+                                  backgroundColor: 'transparent',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  color: '#ef4444',
+                                  padding: '4px',
+                                }}
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', fontSize: '11px', color: '#94a3b8' }}>
+                              <input
+                                type="number"
+                                value={sub.startTime.toFixed(2)}
+                                onChange={(e) => updateSubtitle(sub.id, { startTime: parseFloat(e.target.value) })}
+                                style={{
+                                  backgroundColor: colors.bg,
+                                  border: `1px solid ${colors.border}`,
+                                  borderRadius: '4px',
+                                  padding: '4px',
+                                  color: colors.text,
+                                  width: '50px',
+                                }}
+                                step="0.1"
+                              />
+                              <span style={{ color: '#64748b' }}>→</span>
+                              <input
+                                type="number"
+                                value={sub.endTime.toFixed(2)}
+                                onChange={(e) => updateSubtitle(sub.id, { endTime: parseFloat(e.target.value) })}
+                                style={{
+                                  backgroundColor: colors.bg,
+                                  border: `1px solid ${colors.border}`,
+                                  borderRadius: '4px',
+                                  padding: '4px',
+                                  color: colors.text,
+                                  width: '50px',
+                                }}
+                                step="0.1"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
