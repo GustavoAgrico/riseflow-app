@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
+import { useApp } from '@context/AppContext'
 import { Layout } from '@components/Layout/Layout'
-import { ChevronLeft, ChevronRight, Calendar, Clock, CheckSquare, FileText, MessageSquare } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar, Clock, CheckSquare, FileText, MessageSquare, Download, Link2, Bell, BellOff, Copy, Check, RefreshCw, ExternalLink } from 'lucide-react'
 import { SkeletonCards } from '@components/ui/Skeleton'
+import { downloadICS } from '@utils/icalUtils'
+import { usePushNotifications } from '@hooks/usePushNotifications'
+import api from '@services/api'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED', org: '#FF6B35' }
 
@@ -19,6 +23,8 @@ const TYPE_COLORS = {
   task: { bg: '#22C55E', label: 'Tarefa', icon: CheckSquare },
   proposal: { bg: '#7C3AED', label: 'Proposta', icon: FileText },
 }
+
+const btnStyle = { display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: `1px solid var(--border)`, background: 'transparent', color: 'var(--ink-1)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }
 
 const DEMO_EVENTS = (() => {
   const today = new Date()
@@ -37,11 +43,17 @@ const DEMO_EVENTS = (() => {
 
 export const Agenda = () => {
   const { ownerUserId, isDemoMode } = useAuth()
+  const { addToast } = useApp()
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [month, setMonth] = useState(() => new Date().getMonth())
   const [year, setYear] = useState(() => new Date().getFullYear())
   const [selectedDay, setSelectedDay] = useState(null)
+  const [showSyncPanel, setShowSyncPanel] = useState(false)
+  const [calToken, setCalToken] = useState(null)
+  const [copied, setCopied] = useState(false)
+  const [tokenLoading, setTokenLoading] = useState(false)
+  const push = usePushNotifications()
 
   useEffect(() => {
     if (isDemoMode) { setEvents(DEMO_EVENTS); setLoading(false); return }
@@ -61,6 +73,48 @@ export const Agenda = () => {
       setLoading(false)
     })()
   }, [ownerUserId, isDemoMode])
+
+  const fetchCalToken = useCallback(async () => {
+    if (isDemoMode) return
+    setTokenLoading(true)
+    try {
+      const { data } = await api.post('/api/calendar/token')
+      setCalToken(data.token)
+    } catch { /* ignore */ }
+    setTokenLoading(false)
+  }, [isDemoMode])
+
+  const regenerateToken = useCallback(async () => {
+    if (isDemoMode) return
+    setTokenLoading(true)
+    try {
+      const { data } = await api.post('/api/calendar/token/regenerate')
+      setCalToken(data.token)
+      addToast?.({ title: 'URL renovada', type: 'system' })
+    } catch { /* ignore */ }
+    setTokenLoading(false)
+  }, [isDemoMode, addToast])
+
+  const calFeedUrl = calToken
+    ? `${window.location.origin}/api/calendar/feed/${calToken}.ics`
+    : null
+
+  const copyFeedUrl = useCallback(() => {
+    if (!calFeedUrl) return
+    navigator.clipboard.writeText(calFeedUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }, [calFeedUrl])
+
+  const handleTogglePush = useCallback(async () => {
+    if (push.subscribed) {
+      await push.unsubscribe()
+      addToast?.({ title: 'Notificações desativadas', type: 'system' })
+    } else {
+      const ok = await push.subscribe()
+      if (ok) addToast?.({ title: 'Notificações ativadas!', message: 'Você receberá lembretes 15min antes dos eventos.', type: 'system' })
+    }
+  }, [push, addToast])
 
   const prev = () => { if (month === 0) { setMonth(11); setYear(y => y - 1) } else setMonth(m => m - 1) }
   const next = () => { if (month === 11) { setMonth(0); setYear(y => y + 1) } else setMonth(m => m + 1) }
@@ -86,6 +140,118 @@ export const Agenda = () => {
 
   return (
     <Layout title="Agenda" subtitle="Calendário unificado">
+      {/* Toolbar de sincronização */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button onClick={() => downloadICS(events)} style={btnStyle}>
+            <Download size={13} /> Exportar .ics
+          </button>
+          <button onClick={() => { setShowSyncPanel(p => !p); if (!calToken && !isDemoMode) fetchCalToken() }} style={{ ...btnStyle, background: showSyncPanel ? C.org + '18' : 'transparent', borderColor: showSyncPanel ? C.org : C.bd }}>
+            <Link2 size={13} color={showSyncPanel ? C.org : undefined} /> Sincronizar
+          </button>
+        </div>
+        <button onClick={goToday} style={{ background: C.org, border: 'none', borderRadius: 8, padding: '6px 14px', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Hoje</button>
+      </div>
+
+      {/* Painel de sincronização expandido */}
+      {showSyncPanel && (
+        <div style={{ background: C.card, border: `1px solid ${C.bd}`, borderRadius: 14, padding: 20, marginBottom: 20 }}>
+          <p className="rf-section-title" style={{ marginBottom: 16 }}>Sincronização e Notificações</p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+            {/* iCal subscription */}
+            <div style={{ background: C.bg, border: `1px solid ${C.bd}`, borderRadius: 12, padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 10, background: '#3B82F618', display: 'grid', placeItems: 'center' }}>
+                  <Calendar size={16} color="#3B82F6" />
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>Assinar calendário</p>
+                  <p style={{ margin: 0, fontSize: 11, color: C.mut }}>Google Calendar, Apple, Outlook</p>
+                </div>
+              </div>
+              {isDemoMode ? (
+                <p style={{ fontSize: 12, color: C.mut }}>Disponível com conta ativa. Faça login para gerar o link.</p>
+              ) : calToken ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ flex: 1, background: 'var(--surface-1)', border: '1px solid var(--hairline-1)', borderRadius: 8, padding: '7px 10px', fontSize: 11, color: C.mut, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {calFeedUrl}
+                    </div>
+                    <button onClick={copyFeedUrl} style={{ ...btnStyle, padding: '6px 10px', minWidth: 0 }}>
+                      {copied ? <Check size={13} color="#22C55E" /> : <Copy size={13} />}
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <a href={`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(calFeedUrl)}`} target="_blank" rel="noopener noreferrer" style={{ ...btnStyle, textDecoration: 'none', fontSize: 11 }}>
+                      <ExternalLink size={11} /> Google Calendar
+                    </a>
+                    <button onClick={regenerateToken} disabled={tokenLoading} style={{ ...btnStyle, fontSize: 11, opacity: tokenLoading ? 0.5 : 1 }}>
+                      <RefreshCw size={11} /> Renovar URL
+                    </button>
+                  </div>
+                  <p style={{ fontSize: 10, color: C.mut, margin: 0 }}>Cole essa URL no seu app de calendário para receber eventos automaticamente.</p>
+                </div>
+              ) : (
+                <button onClick={fetchCalToken} disabled={tokenLoading} style={{ ...btnStyle, opacity: tokenLoading ? 0.5 : 1 }}>
+                  {tokenLoading ? 'Gerando...' : 'Gerar link de assinatura'}
+                </button>
+              )}
+            </div>
+
+            {/* Push notifications */}
+            <div style={{ background: C.bg, border: `1px solid ${C.bd}`, borderRadius: 12, padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 10, background: C.org + '18', display: 'grid', placeItems: 'center' }}>
+                  <Bell size={16} color={C.org} />
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>Notificações push</p>
+                  <p style={{ margin: 0, fontSize: 11, color: C.mut }}>Lembretes no navegador e celular</p>
+                </div>
+              </div>
+              {!push.supported ? (
+                <p style={{ fontSize: 12, color: C.mut }}>Navegador não suporta notificações push{!import.meta.env.VITE_VAPID_PUBLIC_KEY && ' (VAPID não configurado)'}.</p>
+              ) : push.permission === 'denied' ? (
+                <p style={{ fontSize: 12, color: '#EF4444' }}>Notificações bloqueadas. Altere nas configurações do navegador.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button onClick={handleTogglePush} disabled={push.loading} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none',
+                    background: push.subscribed ? 'var(--surface-1)' : `linear-gradient(135deg, ${C.org}, ${C.pur})`,
+                    color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', opacity: push.loading ? 0.5 : 1,
+                  }}>
+                    {push.subscribed ? <><BellOff size={13} /> Desativar notificações</> : <><Bell size={13} /> Ativar notificações</>}
+                  </button>
+                  {push.subscribed && (
+                    <p style={{ fontSize: 11, color: '#22C55E', margin: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Check size={11} /> Ativo — você receberá lembretes 15min antes dos eventos
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Download .ics */}
+            <div style={{ background: C.bg, border: `1px solid ${C.bd}`, borderRadius: 12, padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 10, background: '#22C55E18', display: 'grid', placeItems: 'center' }}>
+                  <Download size={16} color="#22C55E" />
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>Exportar arquivo .ics</p>
+                  <p style={{ margin: 0, fontSize: 11, color: C.mut }}>Importar manualmente no calendário</p>
+                </div>
+              </div>
+              <button onClick={() => downloadICS(events)} style={btnStyle}>
+                <Download size={13} /> Baixar {events.length} evento{events.length !== 1 && 's'}
+              </button>
+              <p style={{ fontSize: 10, color: C.mut, margin: '8px 0 0' }}>Inclui agendamentos, tarefas e propostas.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <SkeletonCards count={6} />
       ) : (
@@ -94,13 +260,10 @@ export const Agenda = () => {
           <div style={{ flex: 2, minWidth: 340 }}>
             <div style={{ background: C.card, border: `1px solid ${C.bd}`, borderRadius: 14, padding: 20 }}>
               {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button onClick={prev} style={{ background: 'none', border: `1px solid ${C.bd}`, borderRadius: 8, padding: '6px 8px', cursor: 'pointer', color: C.tx, display: 'flex' }}><ChevronLeft size={16} /></button>
-                  <span style={{ fontSize: 16, fontWeight: 800, minWidth: 160, textAlign: 'center' }}>{MONTHS[month]} {year}</span>
-                  <button onClick={next} style={{ background: 'none', border: `1px solid ${C.bd}`, borderRadius: 8, padding: '6px 8px', cursor: 'pointer', color: C.tx, display: 'flex' }}><ChevronRight size={16} /></button>
-                </div>
-                <button onClick={goToday} style={{ background: C.org, border: 'none', borderRadius: 8, padding: '6px 14px', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Hoje</button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, gap: 8 }}>
+                <button onClick={prev} style={{ background: 'none', border: `1px solid ${C.bd}`, borderRadius: 8, padding: '6px 8px', cursor: 'pointer', color: C.tx, display: 'flex' }}><ChevronLeft size={16} /></button>
+                <span style={{ fontSize: 16, fontWeight: 800, minWidth: 160, textAlign: 'center' }}>{MONTHS[month]} {year}</span>
+                <button onClick={next} style={{ background: 'none', border: `1px solid ${C.bd}`, borderRadius: 8, padding: '6px 8px', cursor: 'pointer', color: C.tx, display: 'flex' }}><ChevronRight size={16} /></button>
               </div>
 
               {/* Weekday headers */}
