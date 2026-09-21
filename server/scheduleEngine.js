@@ -3,6 +3,7 @@
 // Substitui o dispatch client-side (setInterval no browser) da página Schedules.
 const { supabase, isConfigured } = require('./supabaseClient')
 const { baileys } = require('./baileysClient')
+const { sendPush } = require('./pushSender')
 
 const POLL_INTERVAL_MS = 60_000
 
@@ -114,14 +115,69 @@ async function tick() {
   }
 }
 
+const notifiedSet = new Set()
+
+async function reminderTick() {
+  if (!isConfigured) return
+  try {
+    const now = new Date()
+    const in15 = new Date(now.getTime() + 15 * 60_000)
+    const todayStr = dstr(now)
+    const nowTime = `${pad(now.getHours())}:${pad(now.getMinutes())}`
+    const futTime = `${pad(in15.getHours())}:${pad(in15.getMinutes())}`
+
+    const { data: upcoming } = await supabase
+      .from('schedules')
+      .select('id, user_id, name, send_date, send_time')
+      .eq('status', 'agendado')
+      .eq('send_date', todayStr)
+      .gte('send_time', nowTime)
+      .lte('send_time', futTime)
+
+    for (const s of (upcoming ?? [])) {
+      const key = `${s.id}-${s.send_date}`
+      if (notifiedSet.has(key)) continue
+      notifiedSet.add(key)
+      sendPush(s.user_id, {
+        title: 'Lembrete de agendamento',
+        body: `${s.name || 'Agendamento'} às ${s.send_time}`,
+      }).catch(() => {})
+    }
+
+    const { data: tasks } = await supabase
+      .from('crm_tasks')
+      .select('id, user_id, title, due_date')
+      .eq('done', false)
+      .not('due_date', 'is', null)
+
+    for (const t of (tasks ?? [])) {
+      const due = new Date(t.due_date)
+      if (due < now || due > in15) continue
+      const key = `task-${t.id}`
+      if (notifiedSet.has(key)) continue
+      notifiedSet.add(key)
+      sendPush(t.user_id, {
+        title: 'Lembrete de tarefa',
+        body: t.title || 'Tarefa pendente',
+      }).catch(() => {})
+    }
+
+    if (notifiedSet.size > 500) notifiedSet.clear()
+  } catch (e) {
+    console.error('[reminder] erro:', e.message)
+  }
+}
+
 function start() {
   if (!isConfigured) {
     console.warn('[schedule] Supabase não configurado — motor de agendamentos desativado')
     return
   }
   tick()
+  reminderTick()
   setInterval(tick, POLL_INTERVAL_MS)
-  console.log('[schedule] motor iniciado — verifica a cada 60s')
+  setInterval(reminderTick, POLL_INTERVAL_MS)
+  console.log('[schedule] motor iniciado — verifica a cada 60s (envios + lembretes push)')
 }
 
 module.exports = { start }
