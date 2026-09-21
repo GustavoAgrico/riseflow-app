@@ -4,7 +4,8 @@ import { useAuth } from '@context/AuthContext'
 import { usePeriod } from '@hooks/usePeriod'
 import { periodRange, brl } from '@lib/metrics'
 import { Layout } from '@components/Layout/Layout'
-import { FileText, Plus, Send, Check, X, Clock, Eye, Trash2, ChevronDown } from 'lucide-react'
+import { FileText, Plus, Send, Check, X, Clock, Eye, Trash2, ChevronDown, Download } from 'lucide-react'
+import { exportCSV, exportPremiumPDF } from '@utils/exportUtils'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED', org: '#FF6B35' }
 
@@ -116,9 +117,13 @@ export const Proposals = () => {
   return (
     <Layout title="Propostas" subtitle="Orçamentos e contratos">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-        <button onClick={() => setShowForm(f => !f)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10, border: 'none', background: C.org, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-          <Plus size={16} /> Nova proposta
-        </button>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button onClick={() => setShowForm(f => !f)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10, border: 'none', background: C.org, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+            <Plus size={16} /> Nova proposta
+          </button>
+          <button onClick={() => exportCSV(filtered.map(p => ({ Título: p.title, Cliente: p.client_name, Valor: p.value, Status: (STATUS[p.status] || STATUS.draft).label, Criada: new Date(p.created_at).toLocaleDateString('pt-BR'), Validade: p.valid_until || '—' })), 'propostas')} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: `1px solid ${C.bd}`, background: 'transparent', color: C.tx, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Download size={13} /> CSV</button>
+          <button onClick={() => exportPremiumPDF({ filename: 'Propostas_Report', title: 'Propostas — Orçamentos e Contratos', subtitle: `Período: ${period}`, kpis: [{ label: 'Total', value: stats.total }, { label: 'Valor total', value: brl(stats.totalValue) }, { label: 'Aceitas', value: stats.acceptedCount }, { label: 'Conversão', value: stats.convRate.toFixed(0) + '%' }], tables: [{ title: 'Propostas', columns: ['Título', 'Cliente', 'Valor', 'Status', 'Criada', 'Validade'], rows: filtered.map(p => [p.title, p.client_name, brl(Number(p.value) || 0), (STATUS[p.status] || STATUS.draft).label, new Date(p.created_at).toLocaleDateString('pt-BR'), p.valid_until || '—']) }] })} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: `1px solid ${C.bd}`, background: 'transparent', color: C.tx, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Download size={13} /> PDF</button>
+        </div>
         <div className="rf-seg" role="group">
           {periodOptions.map(o => <button key={o.key} aria-pressed={period === o.key} onClick={() => setPeriod(o.key)}>{o.label}</button>)}
         </div>

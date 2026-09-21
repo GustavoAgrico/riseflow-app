@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, Users, DollarSign, TrendingUp, Clock, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react'
+import { BarChart3, Users, DollarSign, TrendingUp, Clock, ArrowLeft, ChevronDown, ChevronUp, Download } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { useStages } from '@hooks/useStages'
 import { usePeriod } from '@hooks/usePeriod'
 import { periodRange, brl, pct } from '@lib/metrics'
 import { Layout } from '@components/Layout/Layout'
+import { exportCSV, exportPremiumPDF } from '@utils/exportUtils'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED', org: '#FF6B35' }
 const PAL = ['#7C3AED', '#2563EB', '#059669', '#D97706', '#EC4899', '#0891B2', '#8B5CF6', '#EF4444', '#FF6B35', '#14B8A6']
@@ -87,7 +88,11 @@ export const Reports = () => {
 
   return (
     <Layout title="Relatórios" subtitle="Desempenho por vendedor">
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => exportCSV(sorted.map(r => ({ Vendedor: r.name, Leads: r.leads, Ganhos: r.won, Perdidos: r.lost, 'Taxa Conv.': pct(r.convRate), 'Receita Ganha': r.wonValue, Pipeline: r.pipeline })), 'relatorios_vendedores')} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: `1px solid ${C.bd}`, background: 'transparent', color: C.tx, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Download size={13} /> CSV</button>
+          <button onClick={() => exportPremiumPDF({ filename: 'Relatorio_Vendedores', title: 'Relatórios por Vendedor', subtitle: `Período: ${period}`, kpis: [{ label: 'Leads', value: totals.leads }, { label: 'Conversão', value: pct(totals.convRate) }, { label: 'Receita', value: brl(totals.wonValue) }], tables: [{ title: 'Desempenho por vendedor', columns: ['Vendedor', 'Leads', 'Ganhos', 'Perdidos', 'Conversão', 'Receita', 'Pipeline'], rows: sorted.map(r => [r.name, r.leads, r.won, r.lost, pct(r.convRate), brl(r.wonValue), brl(r.pipeline)]) }] })} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: `1px solid ${C.bd}`, background: 'transparent', color: C.tx, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Download size={13} /> PDF</button>
+        </div>
         <div className="rf-seg" role="group" aria-label="Período">
           {periodOptions.map(o => <button key={o.key} aria-pressed={period === o.key} onClick={() => setPeriod(o.key)}>{o.label}</button>)}
         </div>

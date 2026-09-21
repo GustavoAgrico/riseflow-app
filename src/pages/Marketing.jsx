@@ -5,7 +5,8 @@ import { useStages } from '@hooks/useStages'
 import { usePeriod } from '@hooks/usePeriod'
 import { periodRange, brl } from '@lib/metrics'
 import { Layout } from '@components/Layout/Layout'
-import { DollarSign, TrendingUp, Target, Users, Megaphone, ArrowUpRight, ArrowDownRight } from 'lucide-react'
+import { DollarSign, TrendingUp, Target, Users, Megaphone, ArrowUpRight, ArrowDownRight, Download } from 'lucide-react'
+import { exportCSV, exportPremiumPDF } from '@utils/exportUtils'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED', org: '#FF6B35' }
 
@@ -110,7 +111,11 @@ export const Marketing = () => {
 
   return (
     <Layout title="Marketing" subtitle="CPL · CAC · ROAS">
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => exportCSV(metrics.rows.map(r => ({ Campanha: r.name, Canal: r.channel, Investimento: r.spend, Leads: r.leads, Ganhos: r.won, Receita: r.revenue, CPL: r.cpl.toFixed(2), CAC: r.cac.toFixed(2), ROAS: r.roas.toFixed(1) })), 'marketing')} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: `1px solid ${C.bd}`, background: 'transparent', color: C.tx, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Download size={13} /> CSV</button>
+          <button onClick={() => exportPremiumPDF({ filename: 'Marketing_Report', title: 'Marketing — CPL · CAC · ROAS', subtitle: `Período: ${period}`, kpis: [{ label: 'Investimento', value: brl(metrics.totalSpend) }, { label: 'Leads', value: metrics.totalLeads }, { label: 'ROAS', value: metrics.roas > 0 ? metrics.roas.toFixed(1) + 'x' : '—' }], tables: [{ title: 'Por campanha', columns: ['Campanha', 'Canal', 'Invest.', 'Leads', 'Ganhos', 'Receita', 'CPL', 'CAC', 'ROAS'], rows: metrics.rows.map(r => [r.name, r.channel, brl(r.spend), r.leads, r.won, brl(r.revenue), r.cpl > 0 ? brl(r.cpl) : '—', r.cac > 0 ? brl(r.cac) : '—', r.roas > 0 ? r.roas.toFixed(1) + 'x' : '—']) }] })} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: `1px solid ${C.bd}`, background: 'transparent', color: C.tx, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Download size={13} /> PDF</button>
+        </div>
         <div className="rf-seg" role="group">
           {periodOptions.map(o => <button key={o.key} aria-pressed={period === o.key} onClick={() => setPeriod(o.key)}>{o.label}</button>)}
         </div>
