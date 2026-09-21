@@ -717,6 +717,133 @@ const VideoEditor = () => {
                       </div>
                     </div>
                   )}
+
+                  {/* Clips */}
+                  {clips.length > 0 && (
+                    <div style={{ marginBottom: '15px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase', color: '#94a3b8' }}>
+                        Clipes ({clips.length})
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {clips.map(clip => (
+                          <div
+                            key={clip.id}
+                            style={{
+                              backgroundColor: colors.bg,
+                              borderRadius: '6px',
+                              padding: '10px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              fontSize: '12px',
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: '500' }}>{clip.name}</div>
+                              <div style={{ color: '#94a3b8', fontSize: '11px' }}>
+                                {formatTime(clip.startTime)} - {formatTime(clip.endTime)}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => removeClip(clip.id)}
+                              style={{
+                                backgroundColor: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                color: '#ef4444',
+                                padding: '4px',
+                              }}
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Subtitles */}
+                  {subtitles.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase', color: '#94a3b8' }}>
+                        Legendas ({subtitles.length})
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {subtitles.map(sub => (
+                          <div
+                            key={sub.id}
+                            style={{
+                              backgroundColor: colors.bg,
+                              borderRadius: '6px',
+                              padding: '10px',
+                              fontSize: '12px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
+                              <input
+                                type="text"
+                                value={sub.text}
+                                onChange={(e) => updateSubtitle(sub.id, { text: e.target.value })}
+                                style={{
+                                  backgroundColor: colors.panel,
+                                  border: `1px solid ${colors.border}`,
+                                  borderRadius: '4px',
+                                  padding: '6px',
+                                  color: colors.text,
+                                  fontSize: '12px',
+                                  flex: 1,
+                                  marginRight: '8px',
+                                }}
+                              />
+                              <button
+                                onClick={() => removeSubtitle(sub.id)}
+                                style={{
+                                  backgroundColor: 'transparent',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  color: '#ef4444',
+                                  padding: '4px',
+                                }}
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', fontSize: '11px', color: '#94a3b8' }}>
+                              <input
+                                type="number"
+                                value={sub.startTime.toFixed(2)}
+                                onChange={(e) => updateSubtitle(sub.id, { startTime: parseFloat(e.target.value) })}
+                                style={{
+                                  backgroundColor: colors.bg,
+                                  border: `1px solid ${colors.border}`,
+                                  borderRadius: '4px',
+                                  padding: '4px',
+                                  color: colors.text,
+                                  width: '50px',
+                                }}
+                                step="0.1"
+                              />
+                              <span style={{ color: '#64748b' }}>→</span>
+                              <input
+                                type="number"
+                                value={sub.endTime.toFixed(2)}
+                                onChange={(e) => updateSubtitle(sub.id, { endTime: parseFloat(e.target.value) })}
+                                style={{
+                                  backgroundColor: colors.bg,
+                                  border: `1px solid ${colors.border}`,
+                                  borderRadius: '4px',
+                                  padding: '4px',
+                                  color: colors.text,
+                                  width: '50px',
+                                }}
+                                step="0.1"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -1003,139 +1130,6 @@ const VideoEditor = () => {
                     ))}
                   </div>
                 </div>
-              )}
-            </div>
-
-              {/* Show clips and subtitles in properties tab */}
-              {sidebarTab === 'properties' && (
-                <>
-                  {/* Clips */}
-                  {clips.length > 0 && (
-                    <div style={{ marginBottom: '15px' }}>
-                      <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase', color: '#94a3b8' }}>
-                        Clipes ({clips.length})
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {clips.map(clip => (
-                          <div
-                            key={clip.id}
-                            style={{
-                              backgroundColor: colors.bg,
-                              borderRadius: '6px',
-                              padding: '10px',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              fontSize: '12px',
-                            }}
-                          >
-                            <div>
-                              <div style={{ fontWeight: '500' }}>{clip.name}</div>
-                              <div style={{ color: '#94a3b8', fontSize: '11px' }}>
-                                {formatTime(clip.startTime)} - {formatTime(clip.endTime)}
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => removeClip(clip.id)}
-                              style={{
-                                backgroundColor: 'transparent',
-                                border: 'none',
-                                cursor: 'pointer',
-                                color: '#ef4444',
-                                padding: '4px',
-                              }}
-                            >
-                              <X size={16} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Subtitles */}
-                  {subtitles.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '10px', textTransform: 'uppercase', color: '#94a3b8' }}>
-                        Legendas ({subtitles.length})
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {subtitles.map(sub => (
-                          <div
-                            key={sub.id}
-                            style={{
-                              backgroundColor: colors.bg,
-                              borderRadius: '6px',
-                              padding: '10px',
-                              fontSize: '12px',
-                            }}
-                          >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
-                              <input
-                                type="text"
-                                value={sub.text}
-                                onChange={(e) => updateSubtitle(sub.id, { text: e.target.value })}
-                                style={{
-                                  backgroundColor: colors.panel,
-                                  border: `1px solid ${colors.border}`,
-                                  borderRadius: '4px',
-                                  padding: '6px',
-                                  color: colors.text,
-                                  fontSize: '12px',
-                                  flex: 1,
-                                  marginRight: '8px',
-                                }}
-                              />
-                              <button
-                                onClick={() => removeSubtitle(sub.id)}
-                                style={{
-                                  backgroundColor: 'transparent',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  color: '#ef4444',
-                                  padding: '4px',
-                                }}
-                              >
-                                <X size={16} />
-                              </button>
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px', fontSize: '11px', color: '#94a3b8' }}>
-                              <input
-                                type="number"
-                                value={sub.startTime.toFixed(2)}
-                                onChange={(e) => updateSubtitle(sub.id, { startTime: parseFloat(e.target.value) })}
-                                style={{
-                                  backgroundColor: colors.bg,
-                                  border: `1px solid ${colors.border}`,
-                                  borderRadius: '4px',
-                                  padding: '4px',
-                                  color: colors.text,
-                                  width: '50px',
-                                }}
-                                step="0.1"
-                              />
-                              <span style={{ color: '#64748b' }}>→</span>
-                              <input
-                                type="number"
-                                value={sub.endTime.toFixed(2)}
-                                onChange={(e) => updateSubtitle(sub.id, { endTime: parseFloat(e.target.value) })}
-                                style={{
-                                  backgroundColor: colors.bg,
-                                  border: `1px solid ${colors.border}`,
-                                  borderRadius: '4px',
-                                  padding: '4px',
-                                  color: colors.text,
-                                  width: '50px',
-                                }}
-                                step="0.1"
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
               )}
             </div>
           </div>
