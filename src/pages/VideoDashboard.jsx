@@ -339,8 +339,9 @@ const VideoDashboard = () => {
                   fontWeight: '600',
                   fontSize: '14px',
                   marginBottom: '12px',
+                  transition: 'all 0.2s',
                 }}
-                className="hover:border-current"
+                className="hover:border-current hover:opacity-80"
               >
                 🎨 Editar vídeo
               </button>
