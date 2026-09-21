@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { Layout } from '@components/Layout/Layout'
 import { ChevronLeft, ChevronRight, Calendar, Clock, CheckSquare, FileText, MessageSquare } from 'lucide-react'
+import { SkeletonCards } from '@components/ui/Skeleton'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED', org: '#FF6B35' }
 
@@ -86,7 +87,7 @@ export const Agenda = () => {
   return (
     <Layout title="Agenda" subtitle="Calendário unificado">
       {loading ? (
-        <div style={{ textAlign: 'center', color: C.mut, padding: 40 }}>Carregando…</div>
+        <SkeletonCards count={6} />
       ) : (
         <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
           {/* Calendário */}

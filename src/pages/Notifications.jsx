@@ -2,6 +2,7 @@ import React from 'react'
 import { Bell, MessageCircle, User, Megaphone, Zap, AlertTriangle, Trash2, CheckCheck } from 'lucide-react'
 import { useApp } from '@context/AppContext'
 import { Layout } from '@components/Layout/Layout'
+import { EmptyState } from '@components/ui/EmptyState'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', org: '#FF6B35' }
 
@@ -43,9 +44,8 @@ export const Notifications = () => {
       </div>
 
       {notifications.length === 0 ? (
-        <div style={{ background: C.card, border: `1px solid ${C.bd}`, borderRadius: 14, padding: 60, textAlign: 'center' }}>
-          <Bell size={36} color={C.mut} style={{ marginBottom: 12 }} />
-          <p style={{ color: C.mut, fontSize: 14, margin: 0 }}>Nenhuma notificação</p>
+        <div style={{ background: C.card, border: `1px solid ${C.bd}`, borderRadius: 14 }}>
+          <EmptyState icon={Bell} title="Nenhuma notificação" message="Quando novos leads, mensagens ou alertas chegarem, eles aparecerão aqui." />
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

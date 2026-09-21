@@ -7,6 +7,8 @@ import { periodRange, brl } from '@lib/metrics'
 import { Layout } from '@components/Layout/Layout'
 import { DollarSign, TrendingUp, Target, Users, Megaphone, ArrowUpRight, ArrowDownRight, Download } from 'lucide-react'
 import { exportCSV, exportPremiumPDF } from '@utils/exportUtils'
+import { SkeletonKPI, SkeletonTable } from '@components/ui/Skeleton'
+import { EmptyState } from '@components/ui/EmptyState'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED', org: '#FF6B35' }
 
@@ -130,7 +132,12 @@ export const Marketing = () => {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', color: C.mut, padding: 40 }}>Carregando…</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <SkeletonKPI count={4} />
+          <SkeletonTable rows={4} cols={6} />
+        </div>
+      ) : metrics.rows.length === 0 && !isDemoMode ? (
+        <EmptyState icon={Megaphone} title="Nenhuma campanha ainda" message="Crie campanhas para acompanhar CPL, CAC e ROAS aqui." action="Ir para Campanhas" onAction={() => window.location.href = '/campaigns'} />
       ) : (
         <>
           {/* Gráfico — receita por campanha */}

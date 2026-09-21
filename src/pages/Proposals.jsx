@@ -6,6 +6,8 @@ import { periodRange, brl } from '@lib/metrics'
 import { Layout } from '@components/Layout/Layout'
 import { FileText, Plus, Send, Check, X, Clock, Eye, Trash2, ChevronDown, Download } from 'lucide-react'
 import { exportCSV, exportPremiumPDF } from '@utils/exportUtils'
+import { SkeletonKPI, SkeletonTable } from '@components/ui/Skeleton'
+import { EmptyState } from '@components/ui/EmptyState'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED', org: '#FF6B35' }
 
@@ -173,12 +175,12 @@ export const Proposals = () => {
 
       {/* Tabela de propostas */}
       {loading ? (
-        <div style={{ textAlign: 'center', color: C.mut, padding: 40 }}>Carregando…</div>
-      ) : filtered.length === 0 ? (
-        <div style={{ background: C.card, border: `1px solid ${C.bd}`, borderRadius: 14, padding: 40, textAlign: 'center' }}>
-          <FileText size={32} color={C.mut} style={{ marginBottom: 12 }} />
-          <p style={{ color: C.mut, fontSize: 14 }}>Nenhuma proposta neste período</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <SkeletonKPI count={4} />
+          <SkeletonTable rows={3} cols={5} />
         </div>
+      ) : filtered.length === 0 ? (
+        <EmptyState icon={FileText} title="Nenhuma proposta neste período" message="Crie sua primeira proposta usando o botão acima." action="Nova proposta" onAction={() => setShowForm(true)} />
       ) : (
         <div style={{ background: C.card, border: `1px solid ${C.bd}`, borderRadius: 14, padding: 20 }}>
           <div style={{ overflowX: 'auto' }}>

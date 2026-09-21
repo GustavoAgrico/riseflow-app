@@ -8,6 +8,8 @@ import { usePeriod } from '@hooks/usePeriod'
 import { periodRange, brl, pct } from '@lib/metrics'
 import { Layout } from '@components/Layout/Layout'
 import { exportCSV, exportPremiumPDF } from '@utils/exportUtils'
+import { SkeletonKPI, SkeletonTable } from '@components/ui/Skeleton'
+import { EmptyState } from '@components/ui/EmptyState'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED', org: '#FF6B35' }
 const PAL = ['#7C3AED', '#2563EB', '#059669', '#D97706', '#EC4899', '#0891B2', '#8B5CF6', '#EF4444', '#FF6B35', '#14B8A6']
@@ -115,9 +117,12 @@ export const Reports = () => {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', color: C.mut, padding: 40, fontSize: 14 }}>Carregando…</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <SkeletonKPI count={4} />
+          <SkeletonTable rows={4} cols={6} />
+        </div>
       ) : sellers.length === 0 ? (
-        <div style={{ textAlign: 'center', color: C.mut, padding: 40, fontSize: 14 }}>Nenhum lead com responsável atribuído neste período</div>
+        <EmptyState icon={Users} title="Nenhum dado neste período" message="Atribua responsáveis aos leads para ver o desempenho por vendedor." />
       ) : (
         <>
           {/* Gráfico de barras horizontais — receita por vendedor */}

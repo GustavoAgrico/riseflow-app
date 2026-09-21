@@ -101,6 +101,42 @@
   --hero-tile-border: rgba(255,255,255,0.09);
   --hero-track: rgba(255,255,255,0.09);
 }
+/* ── Responsivo global ──────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .rf-seg { gap: 1px; padding: 2px; }
+  .rf-seg button { padding: 4px 9px; font-size: 11px; }
+  .rf-section-title { font-size: 13px; }
+  .rf-chip { font-size: 10px; padding: 3px 8px; }
+}
+
+/* Tabelas dentro de cards: garantir scroll horizontal no mobile */
+@media (max-width: 768px) {
+  table { font-size: 12px !important; }
+  table th, table td { padding: 8px 6px !important; }
+}
+
+/* Skeleton shimmer (usado por .rf-skeleton) */
+@keyframes rf-skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.rf-skeleton {
+  border-radius: var(--r-md);
+  background: linear-gradient(90deg, var(--surface-1) 25%, var(--surface-2) 50%, var(--surface-1) 75%);
+  background-size: 200% 100%;
+  animation: rf-skeleton-shimmer 1.5s var(--ease) infinite;
+}
+
+/* Transição suave de entrada para páginas/cards */
+@keyframes rf-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.rf-fade-up { animation: rf-fade-up .35s var(--ease) both; }
+
+/* Stagger de cards (atribua --i via style) */
+.rf-stagger { animation-delay: calc(var(--i, 0) * 60ms); }
+
 :root[data-theme="light"] {
   --bg: #EEF2F7;
   --panel: #FFFFFF;
