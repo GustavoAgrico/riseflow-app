@@ -7,10 +7,17 @@ const {
   VAPID_SUBJECT = 'mailto:noreply@riseflow.app',
 } = process.env
 
-const ready = VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY
-if (ready) {
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
-  console.log('[push] VAPID configurado — notificações push ativas')
+let ready = false
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  try {
+    const pub = VAPID_PUBLIC_KEY.replace(/=+$/, '')
+    const priv = VAPID_PRIVATE_KEY.replace(/=+$/, '')
+    webpush.setVapidDetails(VAPID_SUBJECT, pub, priv)
+    ready = true
+    console.log('[push] VAPID configurado — notificações push ativas')
+  } catch (err) {
+    console.warn('[push] VAPID inválido — push desativado:', err.message)
+  }
 } else {
   console.log('[push] VAPID_PUBLIC_KEY ou VAPID_PRIVATE_KEY ausente — push desativado')
 }
