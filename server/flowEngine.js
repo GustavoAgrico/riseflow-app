@@ -388,6 +388,37 @@ async function runFlow(flow, execution, startNodeId, ctx) {
         if (delay) await sleep(delay * 1000)
         await sendEmailAction(ctx, data, variables)
         currentId = nextNodeId(edges, currentId)
+      } else if (type === 'actionDelay') {
+        const v = Number(data.value) || 1
+        const unit = data.unit || 'minutes'
+        const ms = unit === 'seconds' ? v * 1000 : unit === 'hours' ? v * 3600000 : unit === 'days' ? v * 86400000 : v * 60000
+        await sleep(Math.min(ms, 300000))
+        currentId = nextNodeId(edges, currentId)
+      } else if (type === 'actionCondition') {
+        const op = data.operator || 'hasTag'
+        let result = false
+        const tags = ctx.contact?.tags || []
+        if (op === 'hasTag') result = data.tag && tags.map(t => t.toLowerCase()).includes(data.tag.toLowerCase())
+        else if (op === 'noTag') result = !data.tag || !tags.map(t => t.toLowerCase()).includes(data.tag.toLowerCase())
+        else if (op === 'varEquals') result = String(variables[data.varName] ?? '') === String(data.varValue ?? '')
+        else if (op === 'varContains') result = String(variables[data.varName] ?? '').toLowerCase().includes(String(data.varValue ?? '').toLowerCase())
+        else if (op === 'replied') result = !!ctx.text
+        currentId = nextNodeId(edges, currentId, result ? 'yes' : 'no')
+      } else if (type === 'actionAIReply') {
+        try {
+          const aiRespond = require('./aiAttendant')
+          const reply = await aiRespond.generateFlowReply(ctx, data, variables)
+          if (reply) await sendText(ctx, reply)
+        } catch (e) { console.warn('[flowEngine] actionAIReply falhou:', e?.message ?? e) }
+        currentId = nextNodeId(edges, currentId)
+      } else if (type === 'actionRemoveTag') {
+        if (ctx.contact && Array.isArray(data.tags) && data.tags.length) {
+          const remove = new Set(data.tags.map(t => t.toLowerCase()))
+          const kept = (ctx.contact.tags || []).filter(t => !remove.has(t.toLowerCase()))
+          await supabase.from('contacts').update({ tags: kept }).eq('id', ctx.contact.id)
+          ctx.contact.tags = kept
+        }
+        currentId = nextNodeId(edges, currentId)
       } else {
         currentId = nextNodeId(edges, currentId)
       }
