@@ -608,17 +608,27 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
       </div>
 
-      {/* Timeline */}
-      <div ref={trackRef} onClick={onTrackClick} style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', border: `1px solid ${C.border}`, borderRadius: 12, background: 'rgba(0,0,0,0.3)', paddingBottom: 6 }}>
-        <div style={{ position: 'relative', width, height: 210 + (brollOn ? 34 : 0) + (media.length ? 34 : 0) }}>
-          <div style={{ position: 'relative', height: 20, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
+      {/* Timeline: coluna fixa com o nome das faixas + área que rola */}
+      <div style={{ display: 'flex', border: `1px solid ${C.border}`, borderRadius: 12, background: 'rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+        <div style={{ width: 104, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.25)', paddingBottom: 6 }}>
+          <div style={{ height: LANE.ruler }} />
+          <Rotulo h={LANE.legenda} gap={6} nome="LEGENDA" dica="clique na palavra" />
+          <Rotulo h={LANE.video} gap={4} nome="VÍDEO" dica={cuts.length ? null : 'arraste para cortar'} />
+          <Rotulo h={LANE.broll} gap={4} nome="B-ROLL" dica={!brollOn ? 'ligue na aba' : brollLoading ? 'procurando…' : broll.length === 0 ? 'nada sugerido' : null} />
+          <Rotulo h={LANE.audio} gap={4} nome="ÁUDIO" dica={gains.length ? null : 'use a aba Áudio'} />
+          <Rotulo h={LANE.pausas} gap={4} nome="PAUSAS" dica={pauses.length ? 'clique p/ manter' : null} />
+          {media.length > 0 && <Rotulo h={LANE.midias} gap={4} nome="MÍDIAS" />}
+        </div>
+        <div ref={trackRef} onClick={onTrackClick} style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6 }}>
+          <div style={{ position: 'relative', width, height: LANE.ruler + 6 + LANE.legenda + 4 + LANE.video + 4 + LANE.broll + 4 + LANE.audio + 4 + LANE.pausas + (media.length ? 4 + LANE.midias : 0) }}>
+          <div style={{ position: 'relative', height: LANE.ruler, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
             {Array.from({ length: Math.ceil(dur) + 1 }).map((_, s) => (
               <div key={s} style={{ position: 'absolute', left: s * pps, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
                 {s % 5 === 0 && <span style={{ position: 'absolute', left: 3, top: 3, fontSize: 9.5, color: C.faint }}>{s}s</span>}
               </div>
             ))}
           </div>
-          <div style={{ position: 'relative', height: 64, marginTop: 6 }}>
+          <div style={{ position: 'relative', height: LANE.legenda, marginTop: 6 }}>
             {segments.map((s, si) => {
               const left = s.start * pps;
               const fullW = Math.max(10, (Math.max(s.end, s.start + 0.2) - s.start) * pps - 2);
@@ -657,7 +667,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div
             onMouseDown={startCutDraw}
             title="Arraste para cortar um trecho"
-            style={{ position: 'relative', height: 44, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.45)', cursor: 'crosshair' }}
+            style={{ position: 'relative', height: LANE.video, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.45)', cursor: 'crosshair' }}
           >
             <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat' }} />
             {cuts.map((c) => (
@@ -691,14 +701,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
 
           {/* Faixa de B-roll: momentos sugeridos pela análise, ajustáveis aqui */}
-          {brollOn && (
-            <div style={{ position: 'relative', height: 30, marginTop: 4 }}>
-              {broll.length === 0 && (
-                <div style={{ position: 'absolute', left: 8, top: 7, fontSize: 11.5, color: C.faint }}>
-                  {brollLoading ? 'Procurando momentos para B-roll…' : 'A análise não sugeriu momentos de B-roll.'}
-                </div>
-              )}
-              {broll.map((b) => {
+          {(
+            <div style={{ position: 'relative', height: LANE.broll, marginTop: 4 }}>
+              {brollOn && broll.map((b) => {
                 const left = b.start * pps;
                 const w = Math.max(18, (b.end - b.start) * pps - 1);
                 return (
@@ -736,7 +741,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           )}
 
           {/* Faixa de áudio: forma de onda da fala original */}
-          <div style={{ position: 'relative', height: 34, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(124,58,237,0.10)' }}>
+          <div style={{ position: 'relative', height: LANE.audio, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(124,58,237,0.10)' }}>
             {wave && (
               <svg width={width} height={34} viewBox={`0 0 ${peaks.length} 100`} preserveAspectRatio="none" style={{ display: 'block' }}>
                 <path d={wave} fill={C.purpleSoft} opacity={0.6} />
@@ -769,7 +774,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
 
           {/* Lane de pausas (silêncio entre palavras) — clique alterna cortar/manter */}
-          <div style={{ position: 'relative', height: 24, marginTop: 4 }}>
+          <div style={{ position: 'relative', height: LANE.pausas, marginTop: 4 }}>
             {pauses.map((p, pi) => {
               const cut = isPauseCut(p);
               const w = Math.max(6, p.dur * pps - 1);
@@ -793,7 +798,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
           {/* Lane das minhas mídias — arraste para mover, pontas para redimensionar */}
           {media.length > 0 && (
-            <div style={{ position: 'relative', height: 30, marginTop: 4 }}>
+            <div style={{ position: 'relative', height: LANE.midias, marginTop: 4 }}>
               {media.map((m) => {
                 const left = m.start * pps;
                 const w = Math.max(16, m.duration * pps - 1);
@@ -821,6 +826,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           )}
           <div style={{ position: 'absolute', left: cur * pps, top: 0, bottom: 0, width: 2, background: C.orange, boxShadow: `0 0 8px ${C.orange}`, pointerEvents: 'none' }}>
             <div style={{ position: 'absolute', top: -1, left: -4, width: 10, height: 10, borderRadius: '50%', background: C.orange }} />
+          </div>
           </div>
         </div>
       </div>
@@ -1079,6 +1085,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       </PrimaryButton>
 
       <style>{`@media (max-width: 860px){ .rf-tl-grid{ grid-template-columns: 1fr !important; } }`}</style>
+    </div>
+  );
+}
+
+// Altura de cada faixa. A coluna de nomes e as faixas leem daqui, para não
+// desalinharem quando uma mudar.
+const LANE = { ruler: 20, legenda: 64, video: 44, broll: 30, audio: 34, pausas: 24, midias: 30 };
+
+/** Nome de uma faixa, na coluna fixa à esquerda da timeline. */
+function Rotulo({ h, gap, nome, dica }) {
+  return (
+    <div style={{ height: h, marginTop: gap, padding: '0 8px', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
+      <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 0.6, color: C.muted, whiteSpace: 'nowrap' }}>{nome}</div>
+      {dica && <div style={{ fontSize: 9, color: C.faint, lineHeight: 1.15, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={dica}>{dica}</div>}
     </div>
   );
 }
