@@ -211,8 +211,9 @@ app.post('/api/auth/login', async (req, res) => {
   return res.json({ token: proxyToken })
 })
 
-// Webhook da AbacatePay — PÚBLICO (AbacatePay não envia JWT).
+// Webhooks públicos — PÚBLICO (AbacatePay não envia JWT).
 app.use('/api/billing/webhook', billingRoutes)
+app.post('/api/payments/webhook', express.json(), paymentRoutes.webhookHandler)
 
 // Webhook da Meta (Messenger/Instagram) — PÚBLICO, mas ANTES do webhook da
 // Evolution: o router da Evolution captura POST /:event e engoliria /meta.

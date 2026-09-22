@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
-const { auth } = require('../../middleware/auth');
-const { supabase, isConfigured } = require('../supabaseClient');
+const auth = require('../../middleware/auth');
+const { supabase, isConfigured } = require('../../supabaseClient');
 
 const router = express.Router();
 
@@ -262,4 +262,71 @@ router.post('/webhook', express.json(), async (req, res) => {
   }
 });
 
+// Export both the router (for protected routes) and the webhook handler (for public route)
 module.exports = router;
+module.exports.webhookHandler = async (req, res) => {
+  try {
+    const { transactionId, status, metadata } = req.body;
+    const signature = req.headers['x-abacate-signature'];
+
+    // Valida assinatura do webhook (importante para segurança)
+    if (!validateWebhookSignature(req.body, signature)) {
+      console.warn(`[webhook] Assinatura inválida para transação ${transactionId}`);
+      return res.status(401).json({ error: 'Assinatura do webhook inválida' });
+    }
+
+    if (status === 'paid' && metadata?.userId) {
+      const { userId, credits, planId } = metadata;
+
+      if (!isConfigured) {
+        console.warn(`[webhook] Supabase não configurado, ignorando atualização de créditos para ${transactionId}`);
+        return res.json({ ok: true, warning: 'Supabase não configurado' });
+      }
+
+      // Adiciona créditos ao usuário
+      const { data: user, error: fetchError } = await supabase
+        .from('users')
+        .select('credits')
+        .eq('id', userId)
+        .single();
+
+      if (fetchError) {
+        console.error(`[webhook] Erro ao buscar usuário ${userId}:`, fetchError);
+        return res.status(500).json({ error: 'Erro ao atualizar créditos' });
+      }
+
+      const newCredits = (user?.credits || 0) + (credits || 0);
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ credits: newCredits })
+        .eq('id', userId);
+
+      if (updateError) {
+        console.error(`[webhook] Erro ao atualizar créditos para ${userId}:`, updateError);
+        return res.status(500).json({ error: 'Erro ao adicionar créditos' });
+      }
+
+      // Registra transação no histórico (se tabela existir)
+      await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: userId,
+          action: 'payment_completed',
+          details: {
+            transactionId,
+            planId,
+            creditsAdded: credits,
+            newTotal: newCredits
+          }
+        })
+        .catch(err => console.warn('[webhook] Não foi possível registrar atividade:', err?.message));
+
+      console.log(`[webhook] Pagamento ${transactionId} confirmado: +${credits} créditos para ${userId} (total: ${newCredits})`);
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[webhook] Erro ao processar webhook:', err);
+    res.status(500).json({ error: 'Erro ao processar webhook' });
+  }
+};
