@@ -55,6 +55,7 @@ export function createUser({ email, password, name }) {
     name: String(name || '').trim() || e.split('@')[0],
     salt,
     hash,
+    plan: 'basic',
     createdAt: new Date().toISOString(),
   };
   users.push(user);
@@ -85,6 +86,7 @@ export function findOrCreateGoogleUser({ email, name, sub }) {
     // Sem senha local: só pode entrar via Google até definir uma senha.
     salt: null,
     hash: null,
+    plan: 'basic',
     createdAt: new Date().toISOString(),
   };
   users.push(user);
@@ -115,7 +117,19 @@ export function verifyCredentials(email, password) {
   return publicUser(user);
 }
 
+/** Atualiza o plano de um usuário. */
+export function updateUserPlan(email, plan) {
+  load();
+  const user = users.find((u) => u.email === norm(email));
+  if (!user) return null;
+  if (['basic', 'premium'].includes(plan)) {
+    user.plan = plan;
+    persist();
+  }
+  return publicUser(user);
+}
+
 /** Só os campos seguros para enviar ao cliente. */
 export function publicUser(u) {
-  return { id: u.id, email: u.email, name: u.name, createdAt: u.createdAt };
+  return { id: u.id, email: u.email, name: u.name, plan: u.plan || 'basic', createdAt: u.createdAt };
 }

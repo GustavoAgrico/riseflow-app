@@ -49,6 +49,17 @@ export async function fetchMe() {
   if (!r.ok) throw new Error('sessão inválida');
   return (await r.json()).user;
 }
+/** Atualiza o plano do usuário para premium (para teste/demo). */
+export async function upgradeToPremium() {
+  const r = await fetch(`${BASE}/auth/me/plan`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ plan: 'premium' }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data.user;
+}
 
 // ─── Configurações do usuário ─────────────────────────────────────────
 export async function getSettings() {
