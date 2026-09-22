@@ -7,6 +7,7 @@ import { config, capabilities, APP_VERSION } from './config.js';
 import { ensureDirs, startCleanupTimer } from './storage.js';
 import { ensureDemoSample } from './demo.js';
 import { jobsRouter } from './routes/jobs.js';
+import { queue } from './queue.js';
 import { optionsRouter } from './routes/options.js';
 import { authRouter } from './routes/auth.js';
 import { settingsRouter } from './routes/settings.js';
@@ -17,6 +18,7 @@ import { log } from './logger.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 await ensureDirs();
+await queue.restore(); // reabre na timeline vídeos processados antes deste restart
 startCleanupTimer();
 ensureDemoSample().catch(() => {}); // gera o vídeo de exemplo em segundo plano
 

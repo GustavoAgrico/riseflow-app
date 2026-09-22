@@ -6,6 +6,13 @@ import { listJobs } from '../history.js';
 const MODE_LABEL = { auto: 'Edição automática', render: 'Editado na timeline', clips: 'Clipes curtos', transcribe: 'Transcrição' };
 const fmtDate = (ms) => new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 
+const railBtn = {
+  width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+  background: 'rgba(255,255,255,0.04)', color: C.text, border: `1px solid ${C.border}`,
+  borderRadius: 12, padding: '12px 14px', fontSize: 14, fontWeight: 600,
+  cursor: 'pointer', fontFamily: 'inherit',
+};
+
 function StatCard({ icon, label, value, tint }) {
   return (
     <div style={{ ...glass({ padding: 18 }), position: 'relative', overflow: 'hidden' }}>
@@ -19,7 +26,7 @@ function StatCard({ icon, label, value, tint }) {
   );
 }
 
-export default function Dashboard({ user, onNewVideo, onLibrary, onSettings }) {
+export default function Dashboard({ user, onNewVideo, onEditVideo, onBroll, onLibrary, onSettings }) {
   const first = (user?.name || '').split(' ')[0] || 'você';
   const jobs = useMemo(() => listJobs(), []);
   const stats = useMemo(() => {
@@ -110,9 +117,17 @@ export default function Dashboard({ user, onNewVideo, onLibrary, onSettings }) {
               <button onClick={onNewVideo} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, background: GRAD, color: '#fff', border: 'none', borderRadius: 12, padding: '13px 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10, boxShadow: '0 8px 20px -8px rgba(255,107,53,0.5)' }}>
                 <Icon name="upload" size={17} strokeWidth={2} /> Novo vídeo
               </button>
-              <button onClick={onLibrary} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.04)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 12, padding: '12px 14px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                <Icon name="folder" size={17} strokeWidth={1.9} /> Ver biblioteca
-              </button>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <button onClick={onEditVideo} style={railBtn}>
+                  <Icon name="edit" size={17} strokeWidth={1.9} /> Editar vídeo
+                </button>
+                <button onClick={onBroll} style={railBtn}>
+                  <Icon name="image" size={17} strokeWidth={1.9} /> Ajustar B-Roll
+                </button>
+                <button onClick={onLibrary} style={railBtn}>
+                  <Icon name="folder" size={17} strokeWidth={1.9} /> Ver biblioteca
+                </button>
+              </div>
             </div>
 
             <div style={{ ...glass({ padding: 18 }), background: 'linear-gradient(180deg, rgba(124,58,237,0.1), rgba(255,255,255,0.015))' }}>

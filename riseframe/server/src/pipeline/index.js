@@ -9,6 +9,7 @@ import { applyManualFrame } from './frame.js';
 import { applyUserMedia } from './overlay.js';
 import { applyMotion } from './motion.js';
 import { enhanceVoice } from './voice.js';
+import { applyAudioGain, gainAf } from './gain.js';
 import { markFillers } from './cleanup.js';
 import { classifyNarrative } from './narrative.js';
 import { cleanupWithClaude } from './cleanupLLM.js';
@@ -45,6 +46,7 @@ function buildPlan(mode, options) {
     all = [
       { key: 'probe', label: 'Sondando o vídeo', weight: 2, enabled: true },
       { key: 'voice', label: 'Corrigindo a voz (áudio)', weight: 10, enabled: options.voiceEnhance === true },
+      { key: 'gain', label: 'Ajustando o volume', weight: 6, enabled: Boolean(gainAf(options)) },
       { key: 'transcribe', label: 'Transcrevendo a fala', weight: 15, enabled: mode !== 'render' },
       { key: 'cut', label: 'Aplicando cortes na timeline', weight: 20, enabled: hasRemoval },
       { key: 'analyze', label: 'Analisando temas', weight: 3, enabled: true },
@@ -141,6 +143,19 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
+  // Volume da fala (geral/mudo/por trecho). Antes dos cortes, então os trechos usam
+  // o tempo original — o mesmo que a timeline mostra.
+  if (has('gain')) {
+    const st = enter('gain');
+    const r = await applyAudioGain(input, work, meta, options, st.onProgress);
+    if (r.applied) {
+      input = r.output;
+      trackInput = r.output;
+      report.gain = { mute: options.audioMute === true, volume: Number(options.audioVolume ?? 1), ranges: (options.audioGains || []).length };
+    }
+    st.onProgress(1);
+  }
+
   // 2. Transcrição (ASR no auto/transcribe; já vem do cliente no render)
   let transcript;
   // Cópia da transcrição na TIMELINE ORIGINAL (com as remoções da limpeza marcadas),
@@ -222,6 +237,10 @@ export async function runPipeline(job, onUpdate = () => {}) {
       }
     } else if (options.cutSilence !== false) {
       removals.push(...(await silenceRemovalRanges(input, meta, options)));
+    }
+    // Trechos cortados à mão na faixa de vídeo: valem sempre, com ou sem corte de silêncio.
+    for (const c of options.videoCuts || []) {
+      if (c && c.end > c.start) removals.push({ start: Math.max(0, c.start), end: Math.min(meta.duration, c.end) });
     }
     // Palavras marcadas como removidas: edição manual do cliente (render) e/ou limpeza automática.
     removals.push(...transcriptRemovalRanges(transcript));
