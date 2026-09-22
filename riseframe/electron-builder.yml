@@ -6,7 +6,7 @@ directories:
 
 files:
   - package.json
-  - dist/**/*
+  - web/dist/**/*
   - electron/**/*
   - server/src/**/*
   - server/package.json
