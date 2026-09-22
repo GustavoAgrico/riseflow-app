@@ -40,6 +40,7 @@ import { Marketing } from '@pages/Marketing'
 import { Proposals } from '@pages/Proposals'
 import { Agenda } from '@pages/Agenda'
 import { Notifications } from '@pages/Notifications'
+import { Credits } from '@pages/Credits'
 import { PageTransition } from '@components/PageTransition'
 import { AuthCallback } from '@pages/AuthCallback'
 
@@ -167,6 +168,7 @@ function App() {
               <Route path="/produto" element={<PrivateRoute><Product /></PrivateRoute>} />
               <Route path="/plans" element={<PrivateRoute><Plans /></PrivateRoute>} />
               <Route path="/plans/:planId" element={<PrivateRoute><PlanDetails /></PrivateRoute>} />
+              <Route path="/credits" element={<PrivateRoute><Credits /></PrivateRoute>} />
 
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>

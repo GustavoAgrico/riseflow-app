@@ -207,6 +207,39 @@ export const Sidebar = ({ mobile = false, drawerOpen = false, onNavigate }) => {
         )}
       </nav>
 
+      {/* ASSINATURA + CRÉDITOS */}
+      {expanded && (
+        <div className="px-3 py-3 border-t border-dark-400 space-y-3">
+          {/* ASSINATURA */}
+          <div className="rounded-xl p-3 bg-brand-orange/10 border border-brand-orange/30">
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Assinatura</div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-white">Plano Premium</span>
+              <Crown size={14} className="text-brand-yellow" />
+            </div>
+            <p className="text-xs text-slate-400 mb-3">Acesso completo a todos os recursos.</p>
+            <button className="w-full px-3 py-1.5 text-xs font-medium text-brand-orange bg-brand-orange/15 rounded-lg hover:bg-brand-orange/25 transition-colors">
+              Gerenciar plano
+            </button>
+          </div>
+
+          {/* CRÉDITOS */}
+          <div className="rounded-xl p-3 bg-brand-blue/10 border border-brand-blue/30">
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Créditos</div>
+            <div className="mb-3">
+              <div className="text-2xl font-bold text-white">0</div>
+              <p className="text-xs text-slate-400">tokens disponíveis para renderização</p>
+            </div>
+            <Link
+              to="/credits"
+              className="w-full block text-center px-3 py-1.5 text-xs font-medium text-brand-blue bg-brand-blue/15 rounded-lg hover:bg-brand-blue/25 transition-colors"
+            >
+              + Comprar créditos
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Usuário + Plano */}
       <div className="p-3 border-t border-dark-400">
         {expanded ? (
