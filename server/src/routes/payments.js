@@ -1,9 +1,17 @@
 const express = require('express');
 const crypto = require('crypto');
 const auth = require('../../middleware/auth');
+const createRateLimit = require('../../middleware/rateLimit');
 const { supabase, isConfigured } = require('../../supabaseClient');
 
 const router = express.Router();
+
+// Rate limit: max 5 payment requests per user per 15 minutes
+const paymentRateLimit = createRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many payment requests. Please try again in 15 minutes.'
+});
 
 // Configuração do AbacatePay (substitua com suas chaves reais)
 // Usando API v2: https://docs.abacatepay.com/v2
@@ -44,7 +52,7 @@ function validateWebhookSignature(payload, signature) {
 }
 
 /** POST /api/payments/abacate - Inicia pagamento via AbacatePay */
-router.post('/abacate', auth, async (req, res) => {
+router.post('/abacate', auth, paymentRateLimit, async (req, res) => {
   try {
     const { planId, paymentMethod } = req.body;
     const userId = req.user.sub;
