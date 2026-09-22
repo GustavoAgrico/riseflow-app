@@ -96,6 +96,26 @@ export const config = {
     appUrl: process.env.APP_URL || '',
   },
 
+  // Assinatura via AbacatePay (Pix/cartão). Sem ABACATE_PAY_API_KEY o paywall fica
+  // desligado e todo usuário logado usa à vontade (modo local/desktop).
+  billing: {
+    abacateKey: process.env.ABACATE_PAY_API_KEY || '',
+    webhookSecret: process.env.ABACATE_WEBHOOK_SECRET || '',
+    planName: process.env.BILLING_PLAN_NAME || 'Riseframe Pro',
+    priceCents: num(process.env.BILLING_PRICE_CENTS, 4990),
+    periodDays: num(process.env.BILLING_PERIOD_DAYS, 30),
+    freeVideos: num(process.env.BILLING_FREE_VIDEOS, 3),
+    // Mesmos métodos do RiseFlow. Se a AbacatePay recusar o cartão, use BILLING_METHODS=PIX.
+    methods: (process.env.BILLING_METHODS || 'PIX,CREDIT_CARD')
+      .split(',')
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean),
+    adminEmails: (process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  },
+
   debug: bool(process.env.DEBUG, false),
 };
 
@@ -126,5 +146,6 @@ export function capabilities() {
     googleClientId: config.auth.googleClientId,
     // Recuperação de senha só aparece se houver SMTP configurado.
     emailReady: Boolean(config.auth.smtp.host && config.auth.smtp.user && config.auth.smtp.pass),
+    billingEnabled: Boolean(config.billing.abacateKey),
   };
 }

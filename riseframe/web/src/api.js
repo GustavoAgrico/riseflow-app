@@ -67,6 +67,23 @@ export async function saveSettings(patch) {
   return data;
 }
 
+// ─── Assinatura ───────────────────────────────────────────────────────
+async function billingCall(path, method = 'GET', body) {
+  const r = await fetch(`${BASE}${path}`, {
+    method,
+    headers: authHeaders(body ? { 'Content-Type': 'application/json' } : {}),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data;
+}
+export const getBilling = () => billingCall('/billing');
+/** Gera o pagamento (Pix/cartão) e devolve { url } do checkout da AbacatePay. */
+export const startCheckout = (info) => billingCall('/billing/checkout', 'POST', info);
+/** Confere se o pagamento já caiu; devolve o status atualizado + { activated }. */
+export const syncBilling = () => billingCall('/billing/sync', 'POST');
+
 export async function getHealth() {
   const r = await fetch(`${BASE}/health`);
   if (!r.ok) throw new Error('API indisponível');

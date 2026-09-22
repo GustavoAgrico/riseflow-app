@@ -7,6 +7,7 @@ import { config } from '../config.js';
 import { queue } from '../queue.js';
 import { requireAuth } from './auth.js';
 import { getSettings } from '../auth/settings.js';
+import { billingStatus, consumeVideo } from '../auth/billing.js';
 import { registerMedia, resolveMedia } from '../mediaStore.js';
 import { probeSummary, runFfmpeg } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
@@ -32,6 +33,17 @@ function optionsForUser(req) {
 }
 
 export const jobsRouter = Router();
+
+// Barra o envio de vídeo novo quando os grátis acabaram e não há assinatura.
+// Roda ANTES do multer, para não receber um upload grande à toa.
+function requireVideoCredit(req, res, next) {
+  const s = billingStatus(req.user);
+  if (s.canCreate) return next();
+  res.status(402).json({
+    code: 'PAYMENT_REQUIRED',
+    error: `Seus ${s.freeLimit} vídeos grátis acabaram. Assine o ${s.plan.name} em Conta → Assinatura para continuar.`,
+  });
+}
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, config.paths.uploads),
@@ -231,7 +243,7 @@ function parseOptions(raw) {
 }
 
 // POST /api/jobs  (multipart: file + options) → pipeline automático completo
-jobsRouter.post('/jobs', requireAuth, upload.single('file'), (req, res) => {
+jobsRouter.post('/jobs', requireAuth, requireVideoCredit, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   const job = queue.create({
     mode: 'auto',
@@ -239,12 +251,13 @@ jobsRouter.post('/jobs', requireAuth, upload.single('file'), (req, res) => {
     inputPath: req.file.path,
     options: optionsForUser(req),
   });
+  consumeVideo(req.user);
   res.status(201).json(queue.public(job));
 });
 
 // POST /api/transcribe  (multipart: file) → transcreve e para; o upload fica salvo
 // para depois ser reusado por /api/render com a transcrição editada.
-jobsRouter.post('/transcribe', requireAuth, upload.single('file'), (req, res) => {
+jobsRouter.post('/transcribe', requireAuth, requireVideoCredit, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   const job = queue.create({
     mode: 'transcribe',
@@ -252,11 +265,12 @@ jobsRouter.post('/transcribe', requireAuth, upload.single('file'), (req, res) =>
     inputPath: req.file.path,
     options: optionsForUser(req),
   });
+  consumeVideo(req.user);
   res.status(201).json(queue.public(job));
 });
 
 // POST /api/clips  (multipart: file) → gera vários clipes curtos do vídeo longo
-jobsRouter.post('/clips', requireAuth, upload.single('file'), (req, res) => {
+jobsRouter.post('/clips', requireAuth, requireVideoCredit, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   const job = queue.create({
     mode: 'clips',
@@ -264,6 +278,7 @@ jobsRouter.post('/clips', requireAuth, upload.single('file'), (req, res) => {
     inputPath: req.file.path,
     options: optionsForUser(req),
   });
+  consumeVideo(req.user);
   res.status(201).json(queue.public(job));
 });
 

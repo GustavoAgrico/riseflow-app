@@ -8,6 +8,7 @@ import Auth from './pages/Auth.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Library from './pages/Library.jsx';
 import Settings from './pages/Settings.jsx';
+import Plan from './pages/Plan.jsx';
 import Editor from './App.jsx';
 
 const NAV = [
@@ -56,6 +57,7 @@ function Sidebar({ user, view, onView, onLogout }) {
 
       <div className="rf-sec" style={{ marginTop: 20, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px' }}>CONTA</div>
       <div className="rf-nav" style={{ display: 'grid', gap: 4 }}>
+        <NavItem item={{ id: 'plan', label: 'Assinatura', icon: 'shield' }} active={view === 'plan'} onClick={() => onView('plan')} />
         <NavItem item={{ id: 'settings', label: 'Configurações', icon: 'gear' }} active={view === 'settings'} onClick={() => onView('settings')} />
         <NavItem item={{ id: 'logout', label: 'Sair', icon: 'logout' }} active={false} onClick={onLogout} />
       </div>
@@ -90,11 +92,25 @@ function clearResetToken() {
   }
 }
 
+// ?billing=return: volta do checkout da AbacatePay → abre a Assinatura e confere o pagamento.
+function readBillingReturn() {
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('billing') !== 'return') return false;
+    url.searchParams.delete('billing');
+    window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function Root() {
   const { user, ready, logout } = useAuth();
   const [resetToken] = useState(readResetToken);
   const [publicRoute, setPublicRoute] = useState(resetToken ? 'login' : 'landing');
-  const [view, setView] = useState('dashboard');
+  const [billingReturn] = useState(readBillingReturn);
+  const [view, setView] = useState(billingReturn ? 'plan' : 'dashboard');
   // Intenção com que o editor abre: 'editor' (timeline) ou 'broll' (B-roll ligado).
   const [editorIntent, setEditorIntent] = useState(null);
 
@@ -144,6 +160,7 @@ export default function Root() {
         )}
         {view === 'library' && <Library onNewVideo={() => go('editor')} />}
         {view === 'settings' && <Settings onNewVideo={() => go('editor')} />}
+        {view === 'plan' && <Plan user={user} checkOnOpen={billingReturn} onNewVideo={() => go('editor')} />}
         {view === 'editor' && <Editor key={editorIntent || 'new'} embedded intent={editorIntent} onSettings={() => go('settings')} />}
       </div>
       <style>{`

@@ -47,6 +47,25 @@ services:
       #   sync: false
       # - key: ANTHROPIC_API_KEY   # correção de fala + color grade por IA
       #   sync: false
+      # ── Assinatura (AbacatePay) — sem a chave, o site fica liberado como antes ──
+      # ⚠️ Assinaturas ficam em data/billing.json: ANTES de cobrar, ative o disco
+      #   (bloco abaixo). No free sem disco, quem pagou perde o acesso a cada deploy.
+      # - key: ABACATE_PAY_API_KEY     # mesma chave do RiseFlow (app.abacatepay.com → API)
+      #   sync: false
+      # - key: ABACATE_WEBHOOK_SECRET  # invente um valor; use o mesmo no webhook da AbacatePay:
+      #   sync: false                  #   https://SEU-APP.onrender.com/api/billing/webhook?webhookSecret=VALOR
+      # - key: APP_URL                 # para onde o cliente volta após pagar
+      #   value: https://SEU-APP.onrender.com
+      # - key: ADMIN_EMAILS            # contas com acesso liberado sem pagar (separe por vírgula)
+      #   value: seu-email@exemplo.com
+      # - key: BILLING_PRICE_CENTS     # preço em centavos (4990 = R$ 49,90)
+      #   value: 4990
+      # - key: BILLING_PERIOD_DAYS     # dias liberados por pagamento
+      #   value: 30
+      # - key: BILLING_FREE_VIDEOS     # vídeos grátis por conta antes de pedir assinatura
+      #   value: 3
+      # - key: BILLING_METHODS         # PIX,CREDIT_CARD (ou só PIX se o cartão não estiver liberado)
+      #   value: PIX,CREDIT_CARD
 
     # ── Para uso REAL (plano pago): descomente o disco e suba o modelo ──
     # plan: starter

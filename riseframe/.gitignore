@@ -17,6 +17,7 @@ data/cache/*
 data/users.json
 data/auth_secret
 data/settings.json
+data/billing.json
 
 # logs
 *.log
