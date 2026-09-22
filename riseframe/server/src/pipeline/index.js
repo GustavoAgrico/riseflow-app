@@ -3,7 +3,7 @@ import { probeSummary } from './ffmpeg.js';
 import { transcribe } from './transcribe/index.js';
 import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
-import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep } from './timeline.js';
+import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime } from './timeline.js';
 import { insertBroll } from './broll.js';
 import { applyManualFrame } from './frame.js';
 import { applyUserMedia } from './overlay.js';
@@ -106,6 +106,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
   // Fonte "limpa" para o tracker de reframe (antes de legendas/B-roll). Atualizada
   // após o corte de timeline (mesma geometria/timeline do vídeo final).
   let trackInput = input;
+  let cutKeep = null; // trechos preservados, quando houve corte (para remapear tempos)
   const report = { mode, stages: [], provider: {}, options };
   const stageByKey = Object.fromEntries(plan.map((s) => [s.key, s]));
   const emit = (patch) => onUpdate(patch);
@@ -237,6 +238,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       input = r.output;
       trackInput = input; // fonte limpa (pós-corte, pré-legendas/B-roll) para o tracker
       transcript = remapTranscript(transcript, keep); // sincroniza legendas com a nova timeline
+      cutKeep = keep; // tempos deslocaram: momentos escolhidos na timeline precisam do mesmo remap
       meta = { ...meta, ...(await probeSummary(input)) };
       report.cut = { removedSeconds: Math.round(removedSeconds * 10) / 10, kept: keep.length };
     } else {
@@ -254,6 +256,18 @@ export async function runPipeline(job, onUpdate = () => {}) {
   {
     const st = enter('analyze');
     analysis = await analyze(transcript, meta, options);
+    // O usuário escolheu os momentos na timeline: eles mandam. Vêm no tempo do vídeo
+    // original, então passam pelo mesmo remap dos cortes antes de valer.
+    if (Array.isArray(options.brollMoments)) {
+      analysis.brollMoments = options.brollMoments
+        .map((m) => ({
+          ...m,
+          start: cutKeep ? remapTime(m.start, cutKeep) : m.start,
+          end: cutKeep ? remapTime(m.end, cutKeep) : m.end,
+        }))
+        .filter((m) => m.end > m.start + 0.2);
+      log.info(`B-roll: ${analysis.brollMoments.length} momento(s) escolhidos na timeline`);
+    }
     report.themes = analysis.themes;
     if (analysis.niche) report.niche = analysis.niche;
     // Classificação narrativa (heurística): marca gancho/desenvolvimento/clímax/CTA.

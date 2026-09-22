@@ -9,6 +9,7 @@ import { requireAuth } from './auth.js';
 import { getSettings } from '../auth/settings.js';
 import { registerMedia, resolveMedia } from '../mediaStore.js';
 import { probeSummary, runFfmpeg } from '../pipeline/ffmpeg.js';
+import { analyze } from '../pipeline/analyze.js';
 
 /** Opções do job com as chaves salvas do usuário (Pexels/Anthropic) — o servidor manda. */
 function optionsForUser(req) {
@@ -186,6 +187,14 @@ function parseOptions(raw) {
     pexelsKey: typeof o.pexelsKey === 'string' && /^[A-Za-z0-9]{20,80}$/.test(o.pexelsKey.trim()) ? o.pexelsKey.trim() : '',
     brollEverySec: clampNum(o.brollEverySec, 4, 30, 8),
     brollMax: clampNum(o.brollMax, 1, 12, 6),
+    // Momentos escolhidos na timeline, no tempo do vídeo ORIGINAL. null = deixa a
+    // análise decidir, como sempre foi.
+    brollMoments: Array.isArray(o.brollMoments)
+      ? o.brollMoments
+          .filter((m) => m && Number.isFinite(Number(m.start)) && Number(m.end) > Number(m.start))
+          .slice(0, 24)
+          .map((m) => ({ start: Math.max(0, Number(m.start)), end: Number(m.end), query: typeof m.query === 'string' ? m.query.slice(0, 120) : '' }))
+      : null,
     aspect: ['original', '9:16', '16:9', '1:1'].includes(o.aspect) ? o.aspect : 'original',
     reframeTrack: o.reframeTrack !== false, // seguir o sujeito no reframe
     silenceNoiseDb: clampNum(o.silenceNoiseDb, -60, -10, sp.noiseDb),
@@ -468,6 +477,22 @@ jobsRouter.get('/jobs/:id/peaks', async (req, res) => {
   try {
     if (!fs.existsSync(out)) await once(out, () => buildPeaks(job, out));
     res.type('application/json').send(fs.readFileSync(out, 'utf8'));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/jobs/:id/broll-moments → momentos sugeridos para a faixa de B-roll,
+// no tempo do vídeo ORIGINAL. O cliente ajusta na timeline e devolve em /render.
+jobsRouter.post('/jobs/:id/broll-moments', requireAuth, async (req, res) => {
+  const job = queue.get(req.params.id);
+  const tr = job?.report?.editorTranscript || job?.report?.transcript;
+  if (!tr?.segments?.length) return res.status(404).json({ error: 'transcrição não disponível' });
+  try {
+    const options = { ...optionsForUser(req), broll: true };
+    const meta = { ...(job.report?.input || {}), duration: job.report?.input?.duration || 0 };
+    const a = await analyze(tr, meta, options);
+    res.json({ moments: (a.brollMoments || []).slice(0, options.brollMax ?? 6) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

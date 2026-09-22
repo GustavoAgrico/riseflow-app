@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl, filmstripUrl, getPeaks, uploadMedia } from '../api.js';
+import { sourceUrl, filmstripUrl, getPeaks, suggestBrollMoments, uploadMedia } from '../api.js';
 import { APP_VERSION } from '../version.js';
 import CaptionPreview from './CaptionPreview.jsx';
 
@@ -34,12 +34,32 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const setCapField = (patch) => setCap((c) => ({ ...c, ...patch }));
   const [tab, setTab] = useState('enquadramento');
   const [peaks, setPeaks] = useState([]);
+  // Momentos de B-roll no tempo do vídeo ORIGINAL. off = o usuário tirou.
+  const [broll, setBroll] = useState([]);
+  const [brollLoading, setBrollLoading] = useState(false);
+  const brollDragRef = useRef(null);
   const wave = useMemo(() => wavePath(peaks), [peaks]);
   useEffect(() => {
     let vivo = true;
     getPeaks(sourceId).then((p) => { if (vivo) setPeaks(p); }).catch(() => {});
     return () => { vivo = false; };
   }, [sourceId]);
+
+  useEffect(() => {
+    if (!options?.broll) return undefined;
+    let vivo = true;
+    setBrollLoading(true);
+    suggestBrollMoments(sourceId, options)
+      .then((ms) => {
+        if (!vivo) return;
+        setBroll(ms.map((m, i) => ({ key: `b${i}`, start: m.start, end: m.end, query: m.query || '', off: false })));
+      })
+      .catch(() => {})
+      .finally(() => { if (vivo) setBrollLoading(false); });
+    return () => { vivo = false; };
+    // options muda de identidade a cada render do pai; só o id do vídeo e o liga/desliga importam.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceId, options?.broll]);
   const videoRef = useRef(null);
   const previewVideoRef = useRef(null);
   const previewBoxRef = useRef(null);
@@ -172,6 +192,36 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     window.addEventListener('mouseup', up);
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
   }, [pps, dur]);
+
+  useEffect(() => {
+    function move(e) {
+      const d = brollDragRef.current;
+      if (!d) return;
+      const dt = (e.clientX - d.x0) / pps;
+      setBroll((list) => list.map((b) => {
+        if (b.key !== d.key) return b;
+        if (d.mode === 'move') {
+          const start = Math.max(0, Math.min(d.start0 + dt, dur - (d.end0 - d.start0)));
+          return { ...b, start: +start.toFixed(2), end: +(start + (d.end0 - d.start0)).toFixed(2) };
+        }
+        if (d.mode === 'right') return { ...b, end: +Math.min(dur, Math.max(d.start0 + 0.4, d.end0 + dt)).toFixed(2) };
+        return { ...b, start: +Math.max(0, Math.min(d.end0 - 0.4, d.start0 + dt)).toFixed(2) };
+      }));
+    }
+    function up() {
+      if (brollDragRef.current) { brollDragRef.current = null; document.body.style.userSelect = ''; }
+    }
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, [pps, dur]);
+
+  function startBrollDrag(b, mode, e) {
+    e.stopPropagation();
+    e.preventDefault();
+    brollDragRef.current = { key: b.key, mode, x0: e.clientX, start0: b.start, end0: b.end };
+    document.body.style.userSelect = 'none';
+  }
 
   function startMediaDrag(m, mode, e) {
     e.stopPropagation();
@@ -365,6 +415,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           : {}),
         // Ajustes de legenda escolhidos aqui na timeline (sobrepõem os das opções).
         ...cap,
+        // Momentos de B-roll da faixa (tempo original; o servidor remapeia após os cortes).
+        ...(options?.broll
+          ? { brollMoments: broll.filter((b) => !b.off).map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2), query: b.query })) }
+          : {}),
         // Minhas mídias colocadas na timeline (imagens/vídeos/músicas próprias).
         userMedia: media.map((m) => ({
           mediaId: m.mediaId,
@@ -481,7 +535,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
       {/* Timeline */}
       <div ref={trackRef} onClick={onTrackClick} style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', border: `1px solid ${C.border}`, borderRadius: 12, background: 'rgba(0,0,0,0.3)', paddingBottom: 6 }}>
-        <div style={{ position: 'relative', width, height: media.length ? 244 : 210 }}>
+        <div style={{ position: 'relative', width, height: 210 + (options?.broll ? 34 : 0) + (media.length ? 34 : 0) }}>
           <div style={{ position: 'relative', height: 20, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
             {Array.from({ length: Math.ceil(dur) + 1 }).map((_, s) => (
               <div key={s} style={{ position: 'absolute', left: s * pps, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
@@ -528,6 +582,51 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div style={{ position: 'relative', height: 44, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.45)' }}>
             <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat' }} />
           </div>
+
+          {/* Faixa de B-roll: momentos sugeridos pela análise, ajustáveis aqui */}
+          {options?.broll && (
+            <div style={{ position: 'relative', height: 30, marginTop: 4 }}>
+              {broll.length === 0 && (
+                <div style={{ position: 'absolute', left: 8, top: 7, fontSize: 11.5, color: C.faint }}>
+                  {brollLoading ? 'Procurando momentos para B-roll…' : 'A análise não sugeriu momentos de B-roll.'}
+                </div>
+              )}
+              {broll.map((b) => {
+                const left = b.start * pps;
+                const w = Math.max(18, (b.end - b.start) * pps - 1);
+                return (
+                  <div
+                    key={b.key}
+                    title={b.query || 'B-roll'}
+                    onMouseDown={(e) => { if (!b.off) startBrollDrag(b, 'move', e); }}
+                    onClick={(e) => { e.stopPropagation(); if (b.off) setBroll((l) => l.map((x) => (x.key === b.key ? { ...x, off: false } : x))); }}
+                    style={{
+                      position: 'absolute', left, width: w, top: 2, height: 26, borderRadius: 7, overflow: 'hidden',
+                      display: 'flex', alignItems: 'center', gap: 4, paddingLeft: 8, paddingRight: 4,
+                      cursor: b.off ? 'pointer' : 'grab',
+                      border: `1px solid ${b.off ? C.border : 'rgba(46,212,122,0.55)'}`,
+                      background: b.off ? 'rgba(255,255,255,0.04)' : 'rgba(46,212,122,0.18)',
+                      color: b.off ? C.faint : C.text, opacity: b.off ? 0.6 : 1,
+                    }}
+                  >
+                    <Icon name="image" size={12} strokeWidth={2} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: b.off ? 'line-through' : 'none' }}>
+                      {b.query || 'B-roll'}
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setBroll((l) => l.map((x) => (x.key === b.key ? { ...x, off: !x.off } : x))); }}
+                      title={b.off ? 'Usar este momento' : 'Tirar este momento'}
+                      style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 5, border: 'none', background: 'rgba(0,0,0,0.3)', color: 'inherit', cursor: 'pointer', fontSize: 12, lineHeight: 1, fontFamily: 'inherit' }}
+                    >
+                      {b.off ? '+' : '×'}
+                    </button>
+                    {!b.off && <div onMouseDown={(e) => startBrollDrag(b, 'left', e)} style={handleStyle('left')} />}
+                    {!b.off && <div onMouseDown={(e) => startBrollDrag(b, 'right', e)} style={handleStyle('right')} />}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Faixa de áudio: forma de onda da fala original */}
           <div style={{ position: 'relative', height: 34, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(124,58,237,0.10)' }}>
@@ -594,7 +693,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> · <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
+      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b>{options?.broll && <> · <b>B-roll</b> (arraste para mover, × para tirar)</>} · <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
 
       {/* Ajustes em abas: mantém o vídeo e a timeline no topo, sem rolagem. */}
       <div style={{ marginTop: 18, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
