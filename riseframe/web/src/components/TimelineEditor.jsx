@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan, upgradeToPremium } from '../api.js';
+import { sourceUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan } from '../api.js';
+import CostLine from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
 
@@ -19,8 +20,7 @@ const PPS_MAX = 240;
  * "Renderizar" reprocessa com a transcrição editada.
  */
 export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, onSettings, busy }) {
-  const { user } = useAuth();
-  const isPremium = user?.plan === 'premium';
+  const { billing } = useAuth();
   const cap0 = options || {};
   // Ajustes de legenda editáveis aqui na timeline (posição, fonte, estilo, etc.).
   const [cap, setCap] = useState({
@@ -47,21 +47,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [drawing, setDrawing] = useState(null);
   // Corte marcado pelo playhead: guarda o início até o usuário fechar no fim.
   const [cutStart, setCutStart] = useState(null);
-  // Upgrade para premium
-  const [upgradeBusy, setUpgradeBusy] = useState(false);
-  const handleUpgrade = async () => {
-    try {
-      setUpgradeBusy(true);
-      const updatedUser = await upgradeToPremium();
-      // Atualiza o contexto de autenticação (faz rerender)
-      window.location.reload();
-    } catch (err) {
-      console.error('Erro ao fazer upgrade:', err.message);
-      alert(`Erro ao fazer upgrade: ${err.message}`);
-    } finally {
-      setUpgradeBusy(false);
-    }
-  };
   const wave = useMemo(() => wavePath(peaks), [peaks]);
   useEffect(() => {
     let vivo = true;
@@ -959,27 +944,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
         {/* B-roll: revisar/trocar as imagens escolhidas antes de renderizar */}
         {tab === 'broll' && (
-          <div style={{ marginTop: 14, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, opacity: isPremium ? 1 : 0.6 }}>
+          <div style={{ marginTop: 14, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>B-roll · imagens automáticas {!isPremium && <span style={{ fontSize: 11, color: C.orange, fontWeight: 400, marginLeft: 6 }}>PREMIUM</span>}</div>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>B-roll · imagens automáticas</div>
             </div>
-            {!isPremium && (
-              <div style={{ fontSize: 11.5, color: C.orange, marginBottom: 10, background: 'rgba(255,107,53,0.12)', border: `1px solid ${C.orange}`, borderRadius: 8, padding: 8 }}>
-                <div>Recurso premium. Clique abaixo para ativar B-roll automático.</div>
-                <button onClick={handleUpgrade} disabled={upgradeBusy} style={{ marginTop: 8, width: '100%', padding: '6px 12px', background: C.orange, color: '#000', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: upgradeBusy ? 'wait' : 'pointer', opacity: upgradeBusy ? 0.7 : 1 }}>
-                  {upgradeBusy ? 'Atualizando…' : '✨ Virar Premium'}
-                </button>
-              </div>
-            )}
-            {isPremium && (
-              <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
-                Veja as imagens/vídeos que o sistema escolheu para cada trecho e <b>troque, substitua pela sua mídia ou remova</b> antes de gerar.
-              </div>
-            )}
-            <input ref={brollUploadRef} type="file" accept="image/*,video/*" onChange={onPickBrollMedia} style={{ display: 'none' }} disabled={!isPremium} />
+            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
+              Veja as imagens/vídeos que o sistema escolheu para cada trecho e <b>troque, substitua pela sua mídia ou remova</b> antes de gerar.
+              {billing && !billing.unlimited && <> Cada imagem inserida custa <b>{billing.costs.image} créditos</b>.</>}
+            </div>
+            <input ref={brollUploadRef} type="file" accept="image/*,video/*" onChange={onPickBrollMedia} style={{ display: 'none' }} />
             {!brollReview && (
-              <button onClick={reviewBroll} disabled={brollBusy || !isPremium} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: (brollBusy || !isPremium) ? 0.6 : 1, cursor: (brollBusy || !isPremium) ? 'not-allowed' : 'pointer' }}>
+              <button onClick={reviewBroll} disabled={brollBusy} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: brollBusy ? 0.6 : 1, cursor: brollBusy ? 'not-allowed' : 'pointer' }}>
                 <Icon name="image" size={13} strokeWidth={2} /> {brollBusy ? 'Analisando o vídeo…' : 'Revisar / trocar imagens'}
               </button>
             )}
@@ -1182,7 +1158,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         )}
       </div>
 
-      <PrimaryButton onClick={generate} disabled={busy || allGone} style={{ width: '100%', marginTop: 18 }}>
+      <CostLine
+        mode="render"
+        options={{ ...options, ...cap, ...(brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}) }}
+        style={{ marginTop: 18 }}
+      />
+      <PrimaryButton onClick={generate} disabled={busy || allGone} style={{ width: '100%', marginTop: 12 }}>
         {allGone ? 'Você cortou tudo — reinclua algo' : busy ? 'Gerando…' : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Icon name="clapper" size={18} strokeWidth={1.9} /> Renderizar vídeo final</span>)}
       </PrimaryButton>
 

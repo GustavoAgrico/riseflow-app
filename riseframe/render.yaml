@@ -47,6 +47,25 @@ services:
       #   sync: false
       # - key: ANTHROPIC_API_KEY   # correção de fala + color grade por IA
       #   sync: false
+      # ── Créditos (AbacatePay) — sem a chave, não há cobrança (uso liberado) ──
+      # ⚠️ Saldos ficam em data/billing.json: ANTES de vender, ative o disco
+      #   (bloco abaixo). No free sem disco, os créditos comprados somem a cada deploy.
+      # - key: ABACATE_PAY_API_KEY     # mesma chave do RiseFlow (app.abacatepay.com → API)
+      #   sync: false
+      # - key: ABACATE_WEBHOOK_SECRET  # invente um valor; use o mesmo no webhook da AbacatePay:
+      #   sync: false                  #   https://SEU-APP.onrender.com/api/billing/webhook?webhookSecret=VALOR
+      # - key: APP_URL                 # para onde o cliente volta após pagar
+      #   value: https://SEU-APP.onrender.com
+      # - key: ADMIN_EMAILS            # contas com uso ilimitado (separe por vírgula)
+      #   value: seu-email@exemplo.com
+      # - key: BILLING_SIGNUP_CREDITS  # créditos grátis para cada conta nova
+      #   value: 60
+      # - key: CREDIT_COSTS            # custo por recurso (JSON; o que faltar usa o padrão)
+      #   value: '{"video":20,"captionStyle":10,"image":5,"ai":10,"clips":40}'
+      # - key: CREDIT_PACKS            # pacotes à venda (priceCents: 2990 = R$ 29,90)
+      #   value: '[{"id":"starter","name":"Starter","credits":500,"priceCents":2990},{"id":"pro","name":"Pro","credits":2000,"priceCents":9990,"popular":true},{"id":"enterprise","name":"Enterprise","credits":5000,"priceCents":24990}]'
+      # - key: BILLING_METHODS         # PIX,CREDIT_CARD (ou só PIX se o cartão não estiver liberado)
+      #   value: PIX,CREDIT_CARD
 
     # ── Para uso REAL (plano pago): descomente o disco e suba o modelo ──
     # plan: starter

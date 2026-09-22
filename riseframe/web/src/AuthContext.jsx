@@ -7,6 +7,7 @@ import {
   register as apiRegister,
   loginWithGoogle as apiGoogle,
   resetPassword as apiReset,
+  getBilling,
 } from './api.js';
 
 const AuthCtx = createContext(null);
@@ -14,6 +15,20 @@ const AuthCtx = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false); // sessão já checada?
+  // Saldo de créditos + tabela de custos (null até carregar).
+  const [billing, setBilling] = useState(null);
+
+  async function refreshBilling() {
+    try {
+      setBilling(await getBilling());
+    } catch {
+      /* sem saldo visível; o servidor continua cobrando/recusando */
+    }
+  }
+  useEffect(() => {
+    if (user) refreshBilling();
+    else setBilling(null);
+  }, [user?.id]);
 
   // Restaura a sessão (se houver token salvo) na abertura.
   useEffect(() => {
@@ -67,7 +82,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthCtx.Provider value={{ user, ready, login, register, loginWithGoogle, resetPassword, logout }}>
+    <AuthCtx.Provider value={{ user, ready, login, register, loginWithGoogle, resetPassword, logout, billing, refreshBilling, setBilling }}>
       {children}
     </AuthCtx.Provider>
   );

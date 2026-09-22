@@ -2,7 +2,8 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#08080C" />
     <title>Riseframe — Editor de vídeo com IA</title>
     <meta name="description" content="Do upload ao vídeo pronto: corte de pausas, legendas dinâmicas, B-roll e color grade cinematográfico — no navegador." />
     <link
@@ -55,6 +56,24 @@
       ::selection { background: rgba(255, 107, 53, 0.32); color: #fff; }
 
       input[type='range'] { accent-color: #FF6B35; }
+
+      /* Celular: margens menores nas páginas internas (a barra de abas já reserva o rodapé) */
+      @media (max-width: 820px) {
+        .rf-page { padding: 20px 16px 32px !important; }
+        /* Linhas de opção (exceto interruptores): rótulo em cima, controle na largura toda */
+        .rf-row:not(:has(.rf-toggle)) { flex-wrap: wrap; gap: 10px !important; }
+        .rf-row:not(:has(.rf-toggle)) > .rf-row-ctl { flex-basis: 100%; }
+        .rf-row:not(:has(.rf-toggle)) > .rf-row-ctl > * { justify-content: flex-start !important; }
+        /* Editor: título de marketing menor; some de vez durante a edição */
+        .rf-hero { margin-bottom: 20px !important; }
+        .rf-hero-title { font-size: 30px !important; letter-spacing: -0.9px !important; }
+        .rf-hero-chips { display: none !important; }
+        .rf-hero-compact { display: none !important; }
+        .rf-select { width: 100%; min-width: 0 !important; font-size: 16px !important; min-height: 44px; }
+        button, a, input, select { -webkit-tap-highlight-color: transparent; }
+        /* iOS dá zoom ao focar campos com fonte < 16px */
+        input:not([type='range']):not([type='checkbox']):not([type='file']), textarea, select { font-size: 16px !important; }
+      }
 
       @keyframes rf-fade-up {
         from { opacity: 0; transform: translateY(14px); }

@@ -11,6 +11,7 @@ import { queue } from './queue.js';
 import { optionsRouter } from './routes/options.js';
 import { authRouter } from './routes/auth.js';
 import { settingsRouter } from './routes/settings.js';
+import { billingRouter } from './routes/billing.js';
 import { ffmpegPath } from './pipeline/ffmpeg.js';
 import { whisperLocalAvailable } from './pipeline/transcribe/providers.js';
 import { log } from './logger.js';
@@ -62,7 +63,7 @@ app.get('/api/health', (_req, res) => {
 // notas de segurança no README — um deploy multiusuário real precisa de login/tenant.
 if (config.apiToken) {
   app.use('/api', (req, res, next) => {
-    if (req.path === '/health') return next();
+    if (req.path === '/health' || req.path === '/billing/webhook') return next();
     const hdr = req.get('authorization') || '';
     const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : '';
     if (token && token === config.apiToken) return next();
@@ -82,6 +83,7 @@ app.use('/api/fonts', express.static(path.join(__dirname, '..', 'assets', 'fonts
 
 app.use('/api', authRouter);
 app.use('/api', settingsRouter);
+app.use('/api', billingRouter);
 app.use('/api', optionsRouter);
 app.use('/api', jobsRouter);
 

@@ -10,8 +10,11 @@ import Result from './components/Result.jsx';
 import ClipsResult from './components/ClipsResult.jsx';
 import TimelineEditor from './components/TimelineEditor.jsx';
 import { recordJob, listJobs } from './history.js';
+import CostLine from './components/CostLine.jsx';
+import { useAuth } from './AuthContext.jsx';
 
 export default function App({ embedded = false, onHome, onSettings, intent = null } = {}) {
+  const { refreshBilling } = useAuth();
   const [catalog, setCatalog] = useState(null);
   const [health, setHealth] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -85,9 +88,11 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   function fail(msg) {
     setError(msg);
     setPhase('error');
+    refreshBilling();
   }
 
   function watchRender(created) {
+    refreshBilling();
     setJob(created);
     setPhase('processing');
     subscribeJob(created.id, (u) => {
@@ -126,6 +131,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
         watchRender(created);
       } else if (editMode === 'editor') {
         const t = await transcribe(file, options, setUploadPct);
+        refreshBilling();
         setPhase('transcribing');
         setJob(t);
         subscribeJob(t.id, (u) => {
@@ -227,9 +233,9 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   }
 
   return (
-    <Shell health={health} embedded={embedded}>
+    <Shell health={health} embedded={embedded} compact={phase !== 'setup'}>
       {phase === 'setup' && (
-        <div style={{ display: 'grid', gap: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 18 }}>
           {intent === 'editor' && reeditable.length > 0 && (
             <Card style={{ padding: '6px 24px 20px' }}>
               <h3 style={sectionLabel}>Continuar um vídeo recente</h3>
@@ -308,6 +314,11 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
           )}
 
           <div className="rf-anim" style={{ animationDelay: '0.15s' }}>
+            <CostLine
+              mode={editMode === 'clips' ? 'clips' : editMode === 'editor' ? 'transcribe' : 'auto'}
+              options={options}
+              style={{ marginTop: 0, marginBottom: 12 }}
+            />
             <PrimaryButton onClick={start} disabled={!file} style={{ width: '100%', padding: '17px' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
                 <Icon name={CTA[editMode].icon} size={18} strokeWidth={1.9} />
@@ -518,7 +529,7 @@ function ModeChooser({ value, onChange }) {
   ];
   const [hover, setHover] = useState(null);
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
       {opts.map((o) => {
         const on = value === o.id;
         const hovered = hover === o.id;
@@ -650,7 +661,7 @@ export function ProgressBar({ pct }) {
   );
 }
 
-function Shell({ children, health, embedded }) {
+function Shell({ children, health, embedded, compact = false }) {
   return (
     <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
       {!embedded && (
@@ -691,8 +702,8 @@ function Shell({ children, health, embedded }) {
         </header>
       )}
 
-      <main style={{ maxWidth: 1000, width: '100%', margin: 0, padding: '40px 32px 80px', flex: 1 }}>
-        <div className="rf-anim" style={{ position: 'relative', marginBottom: 30 }}>
+      <main className="rf-page" style={{ maxWidth: 1000, width: '100%', minWidth: 0, margin: 0, padding: '40px 32px 80px', flex: 1 }}>
+        <div className={`rf-anim rf-hero${compact ? ' rf-hero-compact' : ''}`} style={{ position: 'relative', marginBottom: 30 }}>
           {/* halo suave atrás do título */}
           <div style={{ position: 'absolute', top: -60, left: -20, width: 280, height: 200, background: 'radial-gradient(circle, rgba(255,107,53,0.14), transparent 65%)', pointerEvents: 'none', filter: 'blur(4px)' }} />
           <div
@@ -715,6 +726,7 @@ function Shell({ children, health, embedded }) {
             Processamento na nuvem · FFmpeg + IA
           </div>
           <h1
+            className="rf-hero-title"
             style={{
               position: 'relative',
               fontSize: 42,
@@ -733,7 +745,7 @@ function Shell({ children, health, embedded }) {
             e aplica um color grade cinematográfico — ou ajuste tudo você mesmo na timeline.
           </p>
           {/* chips das capacidades */}
-          <div style={{ position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 18 }}>
+          <div className="rf-hero-chips" style={{ position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 18 }}>
             {[
               { icon: 'scissors', label: 'Corta pausas' },
               { icon: 'captions', label: 'Legendas dinâmicas' },
