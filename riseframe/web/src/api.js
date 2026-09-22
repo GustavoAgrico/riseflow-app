@@ -231,3 +231,26 @@ export async function getPeaks(id) {
   const d = await r.json().catch(() => ({}));
   return Array.isArray(d.peaks) ? d.peaks : [];
 }
+
+// ─── Pagamentos / Créditos ─────────────────────────────────────────
+/** Processa pagamento via AbacatePay. */
+export async function processPaymentAbacate(planId, paymentMethod) {
+  const r = await fetch(`${BASE}/payments/abacate`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ planId, paymentMethod }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data; // { transactionId, redirectUrl, status }
+}
+
+/** Verifica status de uma transação de pagamento. */
+export async function checkPaymentStatus(transactionId) {
+  const r = await fetch(`${BASE}/payments/status/${transactionId}`, {
+    headers: authHeaders(),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || 'não foi possível verificar o status');
+  return data; // { status, credits, message }
+}

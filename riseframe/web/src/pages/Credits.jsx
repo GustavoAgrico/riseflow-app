@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY, fmtDuration } from '../theme.js';
 import Icon from '../components/Icon.jsx';
+import { processPaymentAbacate } from '../api.js';
 
 const PLANS = [
   { id: 'starter', tokens: 500, price: 29.90, priceDisplay: 'R$ 29,90', color: C.orange },
@@ -8,34 +9,46 @@ const PLANS = [
   { id: 'enterprise', tokens: 5000, price: 249.90, priceDisplay: 'R$ 249,90', color: C.cyan || '#22D3EE' },
 ];
 
+const PAYMENT_METHODS = [
+  { id: 'pix', label: 'PIX', icon: 'zap', desc: 'Instantâneo', color: '#22D3EE' },
+  { id: 'credit_card', label: 'Cartão de Crédito', icon: 'credit', desc: 'Parcelado até 12x', color: C.orange },
+  { id: 'boleto', label: 'Boleto', icon: 'document', desc: '2-3 dias úteis', color: C.purple },
+];
+
 export default function Credits({ user, onBack }) {
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('pix');
   const [processing, setProcessing] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [purchaseHistory, setPurchaseHistory] = useState([
     // Mock data - será substituído por dados reais do backend
     // { id: 1, plan: 'pro', tokens: 2000, price: 99.90, date: new Date(Date.now() - 86400000), status: 'completed' }
   ]);
 
   const handleBuy = async (plan) => {
+    setSelectedPlan(plan);
+    setShowPaymentModal(true);
+  };
+
+  const handleProcessPayment = async () => {
+    if (!selectedPlan) return;
+
     try {
       setProcessing(true);
-      setSelectedPlan(plan.id);
-      // Simula transação bem-sucedida
-      const newPurchase = {
-        id: purchaseHistory.length + 1,
-        plan: plan.id,
-        tokens: plan.tokens,
-        price: plan.price,
-        priceDisplay: plan.priceDisplay,
-        date: new Date(),
-        status: 'completed'
-      };
 
-      // Aqui você integraria com Stripe, PagSeguro, etc.
-      alert(`Plano ${plan.id} selecionado: ${plan.tokens} tokens por ${plan.priceDisplay}\n\nIntegração de pagamento em desenvolvimento.`);
+      // Chama API do backend que integra com AbacatePay
+      const response = await processPaymentAbacate(selectedPlan.id, selectedPaymentMethod);
 
-      // Descomente quando integrar com backend
-      // setPurchaseHistory([newPurchase, ...purchaseHistory]);
+      if (response.redirectUrl) {
+        // Redireciona para AbacatePay ou gateway de pagamento
+        window.location.href = response.redirectUrl;
+      } else if (response.status === 'pending') {
+        // Para PIX, mostra QR code ou dados de pagamento
+        alert(`Pagamento iniciado!\n\nTransação: ${response.transactionId}\n\nAguarde confirmação...`);
+        setShowPaymentModal(false);
+      }
+    } catch (err) {
+      alert(`Erro ao processar pagamento: ${err.message}`);
     } finally {
       setProcessing(false);
     }
@@ -140,7 +153,7 @@ export default function Credits({ user, onBack }) {
 
                 <button
                   onClick={() => handleBuy(plan)}
-                  disabled={processing && selectedPlan === plan.id}
+                  disabled={processing}
                   style={{
                     width: '100%',
                     background: plan.popular ? GRAD : `rgba(${plan.color === C.purple ? '124,58,237' : '34,211,238'},0.15)`,
@@ -150,13 +163,13 @@ export default function Credits({ user, onBack }) {
                     padding: '12px',
                     fontSize: 13,
                     fontWeight: 700,
-                    cursor: (processing && selectedPlan === plan.id) ? 'wait' : 'pointer',
-                    opacity: (processing && selectedPlan === plan.id) ? 0.7 : 1,
+                    cursor: processing ? 'wait' : 'pointer',
+                    opacity: processing ? 0.7 : 1,
                     fontFamily: 'inherit',
                     boxShadow: plan.popular ? '0 8px 20px -8px rgba(255,107,53,0.55)' : 'none',
                   }}
                 >
-                  {processing && selectedPlan === plan.id ? 'Processando…' : 'Comprar agora'}
+                  Comprar agora
                 </button>
               </div>
             </div>
@@ -209,6 +222,113 @@ export default function Credits({ user, onBack }) {
             </div>
             <div style={{ fontSize: 12, color: C.faint }}>
               Escolha um dos planos acima para começar a renderizar seus vídeos.
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Pagamento */}
+        {showPaymentModal && selectedPlan && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div style={{ ...glass({ padding: 32 }), maxWidth: 500, width: '90%', borderRadius: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Checkout</h2>
+                <button onClick={() => setShowPaymentModal(false)} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 24, cursor: 'pointer', padding: 0 }}>×</button>
+              </div>
+
+              {/* Resumo do pedido */}
+              <div style={{ background: 'rgba(124,58,237,0.1)', border: `1px solid rgba(124,58,237,0.2)`, borderRadius: 12, padding: 16, marginBottom: 24 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ fontSize: 14, color: C.muted }}>Plano</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: C.text, textTransform: 'capitalize' }}>{selectedPlan.id}</div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ fontSize: 14, color: C.muted }}>Tokens</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{selectedPlan.tokens}</div>
+                </div>
+                <div style={{ borderTop: `1px solid rgba(124,58,237,0.2)`, paddingTop: 12, display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Total</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: selectedPlan.color }}>{selectedPlan.priceDisplay}</div>
+                </div>
+              </div>
+
+              {/* Métodos de Pagamento */}
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.faint, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Método de pagamento</div>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {PAYMENT_METHODS.map((method) => (
+                    <button
+                      key={method.id}
+                      onClick={() => setSelectedPaymentMethod(method.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '12px 14px',
+                        background: selectedPaymentMethod === method.id ? `rgba(${method.id === 'pix' ? '34,211,238' : method.id === 'credit_card' ? '255,107,53' : '124,58,237'},0.15)` : 'rgba(255,255,255,0.04)',
+                        border: selectedPaymentMethod === method.id ? `2px solid ${method.color}` : `1px solid ${C.border}`,
+                        borderRadius: 10,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => { if (selectedPaymentMethod !== method.id) e.target.style.background = 'rgba(255,255,255,0.08)'; }}
+                      onMouseLeave={(e) => { if (selectedPaymentMethod !== method.id) e.target.style.background = 'rgba(255,255,255,0.04)'; }}
+                    >
+                      <Icon name={method.icon} size={18} strokeWidth={2} color={method.color} />
+                      <div style={{ flex: 1, textAlign: 'left' }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{method.label}</div>
+                        <div style={{ fontSize: 11, color: C.faint }}>{method.desc}</div>
+                      </div>
+                      {selectedPaymentMethod === method.id && (
+                        <Icon name="check" size={20} strokeWidth={2.5} color={method.color} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Botões de ação */}
+              <div style={{ display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr' }}>
+                <button
+                  onClick={() => setShowPaymentModal(false)}
+                  style={{
+                    background: 'transparent',
+                    border: `1px solid ${C.border}`,
+                    color: C.text,
+                    borderRadius: 10,
+                    padding: '12px',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleProcessPayment}
+                  disabled={processing}
+                  style={{
+                    background: GRAD,
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: '12px',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: processing ? 'wait' : 'pointer',
+                    opacity: processing ? 0.7 : 1,
+                    fontFamily: 'inherit',
+                    boxShadow: '0 8px 20px -8px rgba(255,107,53,0.55)'
+                  }}
+                >
+                  {processing ? 'Processando…' : 'Pagar com AbacatePay'}
+                </button>
+              </div>
+
+              <div style={{ fontSize: 11, color: C.faint, marginTop: 16, textAlign: 'center' }}>
+                Seu pagamento é seguro. Processado por <b>AbacatePay</b>.
+              </div>
             </div>
           </div>
         )}
