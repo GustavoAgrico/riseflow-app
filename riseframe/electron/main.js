@@ -3,7 +3,6 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync } from 'fs';
-import { autoUpdater } from 'electron-updater';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -85,7 +84,6 @@ app.on('ready', async () => {
   try {
     await startServer();
     await createWindow();
-    setupAutoUpdate();
   } catch (error) {
     console.error('Erro ao iniciar aplicação:', error);
     app.quit();
@@ -151,47 +149,9 @@ const template = [
 const menu = Menu.buildFromTemplate(template);
 Menu.setApplicationMenu(menu);
 
-// Auto-Update
-function setupAutoUpdate() {
-  if (isDev) return;
-
-  autoUpdater.checkForUpdatesAndNotify();
-
-  autoUpdater.on('update-available', () => {
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Atualização Disponível',
-      message: 'Uma nova versão do Riseframe está disponível.',
-      detail: 'A atualização será instalada quando você fechar a aplicação.',
-      buttons: ['OK'],
-    });
-  });
-
-  autoUpdater.on('update-downloaded', () => {
-    dialog
-      .showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Atualização Pronta',
-        message: 'A atualização foi baixada e está pronta para instalar.',
-        detail: 'A aplicação será reiniciada agora.',
-        buttons: ['Reiniciar Agora', 'Depois'],
-      })
-      .then((result) => {
-        if (result.response === 0) {
-          autoUpdater.quitAndInstall();
-        }
-      });
-  });
-
-  autoUpdater.on('error', (error) => {
-    console.error('Erro ao atualizar:', error);
-  });
-}
+// Auto-Update (habilitado quando distribuído via GitHub)
+// Será ativado depois, quando tiver GitHub Release setup
 
 // IPC Handlers
 ipcMain.handle('get-data-dir', () => dataDir);
 ipcMain.handle('get-version', () => app.getVersion());
-ipcMain.handle('check-for-updates', async () => {
-  const result = await autoUpdater.checkForUpdates();
-  return result;
-});
