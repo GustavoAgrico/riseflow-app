@@ -3,8 +3,9 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync } from 'fs';
-import isDev from 'electron-is-dev';
 import { autoUpdater } from 'electron-updater';
+
+const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');

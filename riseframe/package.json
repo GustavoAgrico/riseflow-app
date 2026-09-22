@@ -4,15 +4,17 @@
   "private": true,
   "description": "Editor de vídeo web com IA — MVP do pipeline (corte de silêncio, legendas, B-roll, color grade).",
   "type": "module",
+  "main": "electron/main.js",
   "workspaces": [
     "server",
     "web"
   ],
   "scripts": {
-    "dev": "concurrently -n server,web,electron -c cyan,magenta,green \"npm:dev:server\" \"npm:dev:web\" \"npm:dev:electron\"",
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
     "dev:server": "npm --workspace server run dev",
     "dev:web": "npm --workspace web run dev",
-    "dev:electron": "electron-dev",
+    "dev:electron": "electron .",
+    "dev:all": "concurrently -n server,web,electron -c cyan,magenta,green \"npm:dev:server\" \"npm:dev:web\" \"npm:dev:electron\"",
     "build": "npm --workspace web run build",
     "build:desktop": "npm run build && electron-builder",
     "start": "npm --workspace server run start",
