@@ -42,6 +42,16 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      # ── Planos e créditos (AbacatePay). Sem a chave, não há cobrança. ──
+      ABACATE_PAY_API_KEY: ${ABACATE_PAY_API_KEY:-}
+      ABACATE_WEBHOOK_SECRET: ${ABACATE_WEBHOOK_SECRET:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      BILLING_METHODS: ${BILLING_METHODS:-PIX,CREDIT_CARD}
+      BILLING_SIGNUP_CREDITS: ${BILLING_SIGNUP_CREDITS:-60}
+      BILLING_PERIOD_DAYS: ${BILLING_PERIOD_DAYS:-30}
+      BILLING_PLANS: ${BILLING_PLANS:-}       # JSON; vazio = Básico/Pro/Premium padrão
+      CREDIT_PACKS: ${CREDIT_PACKS:-}         # JSON; vazio = recargas padrão
+      CREDIT_COSTS: ${CREDIT_COSTS:-}         # JSON; vazio = custos padrão
     volumes:
       - riseframe_data:/app/data   # usuários, uploads e renders persistentes
 
