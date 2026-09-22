@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
+import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { runPipeline } from './pipeline/index.js';
 import { config } from './config.js';
@@ -95,6 +96,69 @@ class JobQueue extends EventEmitter {
     };
   }
 
+  /**
+   * Grava em disco os jobs que dão para reabrir na timeline depois (têm sourceId +
+   * transcrição no relatório). Sem isso o registro morre junto com o processo e o
+   * vídeo enviado vira inacessível mesmo estando no disco.
+   */
+  _persist(job) {
+    if (!job.report?.sourceId) return;
+    const snap = {
+      id: job.id,
+      mode: job.mode,
+      status: 'done',
+      progress: 100,
+      stage: 'done',
+      stageLabel: 'Concluído',
+      filename: job.filename,
+      inputPath: job.inputPath,
+      report: job.report,
+      createdAt: job.createdAt,
+      startedAt: job.startedAt,
+      finishedAt: job.finishedAt,
+    };
+    fs.writeFile(path.join(config.paths.jobs, `${job.id}.json`), JSON.stringify(snap)).catch((err) => {
+      log.warn(`não deu para gravar o job ${job.id} em disco: ${err.message}`);
+    });
+  }
+
+  /** Recarrega os jobs gravados cujo vídeo de origem ainda existe (chamado no boot). */
+  async restore() {
+    let names;
+    try {
+      names = await fs.readdir(config.paths.jobs);
+    } catch {
+      return;
+    }
+    let restored = 0;
+    for (const name of names) {
+      if (!name.endsWith('.json')) continue;
+      const full = path.join(config.paths.jobs, name);
+      try {
+        const snap = JSON.parse(await fs.readFile(full, 'utf8'));
+        // Upload já expirou pela limpeza por TTL: o snapshot não serve para mais nada.
+        if (!snap?.id || !snap.inputPath || !fsSync.existsSync(snap.inputPath)) {
+          await fs.rm(full, { force: true });
+          continue;
+        }
+        this.jobs.set(snap.id, {
+          ...snap,
+          workDir: workDirFor(snap.id),
+          outputsDir: config.paths.outputs,
+          options: null,
+          editedTranscript: null,
+          error: null,
+        });
+        restored++;
+      } catch (err) {
+        log.warn(`job gravado ilegível (${name}): ${err.message}`);
+        await fs.rm(full, { force: true }).catch(() => {});
+      }
+    }
+    this._evict();
+    if (restored) log.info(`${restored} job(s) restaurados do disco`);
+  }
+
   _patch(job, patch) {
     Object.assign(job, patch);
     this.emit('update', this.public(job));
@@ -121,6 +185,7 @@ class JobQueue extends EventEmitter {
         report,
         finishedAt: Date.now(),
       });
+      this._persist(job);
       log.ok(`job ${id} concluído em ${((job.finishedAt - job.startedAt) / 1000).toFixed(1)}s`);
     } catch (err) {
       this._patch(job, {

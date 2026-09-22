@@ -6,7 +6,7 @@ import { makeLogger } from './logger.js';
 const log = makeLogger('storage');
 
 export async function ensureDirs() {
-  for (const dir of [config.paths.uploads, config.paths.outputs, config.paths.work]) {
+  for (const dir of [config.paths.uploads, config.paths.outputs, config.paths.work, config.paths.jobs]) {
     await fs.mkdir(dir, { recursive: true });
   }
 }
@@ -19,7 +19,7 @@ export function workDirFor(jobId) {
 export async function cleanupOldOutputs() {
   if (!config.outputTtlHours) return;
   const cutoff = Date.now() - config.outputTtlHours * 3600 * 1000;
-  for (const dir of [config.paths.outputs, config.paths.uploads]) {
+  for (const dir of [config.paths.outputs, config.paths.uploads, config.paths.jobs]) {
     let entries = [];
     try {
       entries = await fs.readdir(dir);

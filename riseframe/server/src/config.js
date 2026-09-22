@@ -34,6 +34,7 @@ export const config = {
     uploads: path.join(DATA, 'uploads'),
     outputs: path.join(DATA, 'outputs'),
     work: path.join(DATA, 'work'),
+    jobs: path.join(DATA, 'jobs'),
   },
 
   maxUploadBytes: num(process.env.MAX_UPLOAD_MB, 512) * 1024 * 1024,

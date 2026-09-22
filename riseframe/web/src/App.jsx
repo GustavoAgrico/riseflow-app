@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from './theme.js';
-import { getOptions, getHealth, getSettings, createJob, transcribe, generateClips, renderEdited, subscribeJob, sampleFile } from './api.js';
+import { getOptions, getHealth, getSettings, createJob, transcribe, generateClips, renderEdited, subscribeJob, sampleFile, getJob } from './api.js';
 import { PrimaryButton, Card, Spinner } from './components/ui.jsx';
 import Icon, { Logo } from './components/Icon.jsx';
 import Uploader from './components/Uploader.jsx';
@@ -9,7 +9,7 @@ import Pipeline from './components/Pipeline.jsx';
 import Result from './components/Result.jsx';
 import ClipsResult from './components/ClipsResult.jsx';
 import TimelineEditor from './components/TimelineEditor.jsx';
-import { recordJob } from './history.js';
+import { recordJob, listJobs } from './history.js';
 
 export default function App({ embedded = false, onHome, onSettings, intent = null } = {}) {
   const [catalog, setCatalog] = useState(null);
@@ -29,6 +29,9 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   const [transcriptData, setTranscriptData] = useState(null);
   const [durationSec, setDurationSec] = useState(0);
   const [loadingSample, setLoadingSample] = useState(false);
+  const [reopening, setReopening] = useState('');
+  const [reopenError, setReopenError] = useState('');
+  const reeditable = useMemo(() => listJobs().filter((j) => j.sourceId).slice(0, 5), []);
 
   async function useExample() {
     setLoadingSample(true);
@@ -105,6 +108,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
           sizeBytes: rep.output?.sizeBytes || 0,
           clips: rep.clips?.length || 0,
           downloadUrl: u.downloadUrl || null,
+          sourceId: rep.sourceId || null,
         });
       }
       if (u.status === 'error') fail(u.error);
@@ -155,6 +159,24 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     setTranscriptData(tr);
     setDurationSec(doneJob?.report?.input?.duration || 0);
     setPhase('editing');
+  }
+
+  // Reabre na timeline um vídeo já processado: o servidor guarda a transcrição e o
+  // upload original, então basta buscar o job pelo id salvo no histórico.
+  async function reopenFromHistory(entry) {
+    setReopening(entry.sourceId);
+    setReopenError('');
+    try {
+      const j = await getJob(entry.sourceId);
+      if (!j?.report?.editorTranscript?.segments?.length) {
+        throw new Error('este vídeo não tem transcrição guardada');
+      }
+      openTimeline(j);
+    } catch (e) {
+      setReopenError(`Não deu para reabrir “${entry.title}”: ${e.message}.`);
+    } finally {
+      setReopening('');
+    }
   }
 
   async function generateFromEdits(editedTranscript, extra = {}) {
@@ -208,6 +230,43 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     <Shell health={health} embedded={embedded}>
       {phase === 'setup' && (
         <div style={{ display: 'grid', gap: 18 }}>
+          {intent === 'editor' && reeditable.length > 0 && (
+            <Card style={{ padding: '6px 24px 20px' }}>
+              <h3 style={sectionLabel}>Continuar um vídeo recente</h3>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {reeditable.map((j) => {
+                  const loading = reopening === j.sourceId;
+                  return (
+                    <button
+                      key={j.sourceId}
+                      onClick={() => reopenFromHistory(j)}
+                      disabled={!!reopening}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
+                        background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 12,
+                        padding: '11px 14px', color: C.text, fontFamily: 'inherit', fontSize: 14,
+                        cursor: reopening ? 'wait' : 'pointer',
+                      }}
+                    >
+                      <span style={{ width: 34, height: 34, borderRadius: 9, background: C.panel2, display: 'grid', placeItems: 'center', color: C.orangeSoft, flexShrink: 0 }}>
+                        {loading ? <Spinner size={15} color={C.orange} /> : <Icon name="clapper" size={17} strokeWidth={1.8} />}
+                      </span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.title}</span>
+                        <span style={{ display: 'block', fontSize: 12, color: C.faint, marginTop: 2 }}>
+                          {new Date(j.at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                        </span>
+                      </span>
+                      <Icon name="edit" size={16} strokeWidth={1.9} color={C.muted} />
+                    </button>
+                  );
+                })}
+              </div>
+              {reopenError && <div style={{ color: C.red, fontSize: 12.5, marginTop: 10, lineHeight: 1.5 }}>{reopenError}</div>}
+              <div style={{ color: C.faint, fontSize: 12.5, marginTop: 10 }}>Ou envie um vídeo novo abaixo.</div>
+            </Card>
+          )}
+
           <div className="rf-anim">
             <Uploader file={file} onFile={setFile} />
             {!file && (
