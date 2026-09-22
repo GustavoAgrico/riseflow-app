@@ -239,6 +239,10 @@ export async function runPipeline(job, onUpdate = () => {}) {
     } else if (options.cutSilence !== false) {
       removals.push(...(await silenceRemovalRanges(input, meta, options)));
     }
+    // Trechos cortados à mão na faixa de vídeo: valem sempre, com ou sem corte de silêncio.
+    for (const c of options.videoCuts || []) {
+      if (c && c.end > c.start) removals.push({ start: Math.max(0, c.start), end: Math.min(meta.duration, c.end) });
+    }
     // Palavras marcadas como removidas: edição manual do cliente (render) e/ou limpeza automática.
     removals.push(...transcriptRemovalRanges(transcript));
 

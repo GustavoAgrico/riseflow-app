@@ -52,6 +52,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [audioMute, setAudioMute] = useState(options?.audioMute === true);
   const [audioVolume, setAudioVolume] = useState(Number(options?.audioVolume ?? 1));
   const [gains, setGains] = useState([]);
+  // Trechos cortados à mão na faixa de vídeo (tempo original).
+  const [cuts, setCuts] = useState([]);
+  const drawRef = useRef(null);
+  const [drawing, setDrawing] = useState(null);
   const wave = useMemo(() => wavePath(peaks), [peaks]);
   useEffect(() => {
     let vivo = true;
@@ -231,6 +235,42 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
   }, [pps, dur]);
 
+  // Desenhar um corte arrastando sobre a faixa de vídeo.
+  useEffect(() => {
+    function move(e) {
+      const d = drawRef.current;
+      if (!d) return;
+      const t = Math.max(0, Math.min(dur, (e.clientX - d.left) / pps));
+      d.cur = t;
+      setDrawing({ start: Math.min(d.t0, t), end: Math.max(d.t0, t) });
+    }
+    function up() {
+      const d = drawRef.current;
+      if (!d) return;
+      drawRef.current = null;
+      document.body.style.userSelect = '';
+      setDrawing(null);
+      const a = Math.min(d.t0, d.cur ?? d.t0);
+      const b = Math.max(d.t0, d.cur ?? d.t0);
+      // Clique seco (sem arrastar) não vira corte — seria fácil criar um sem querer.
+      if (b - a > 0.15) setCuts((l) => [...l, { key: `c${Date.now()}`, start: +a.toFixed(2), end: +b.toFixed(2) }]);
+    }
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, [pps, dur]);
+
+  function startCutDraw(e) {
+    if (e.button !== 0) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    const t = Math.max(0, Math.min(dur, (e.clientX - box.left) / pps));
+    drawRef.current = { t0: t, cur: t, left: box.left };
+    setDrawing({ start: t, end: t });
+    e.stopPropagation();
+    e.preventDefault();
+    document.body.style.userSelect = 'none';
+  }
+
   function startRangeDrag(setList, r, mode, e) {
     e.stopPropagation();
     e.preventDefault();
@@ -352,12 +392,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
 
   const activeIndex = useMemo(() => segments.findIndex((s) => cur >= s.start && cur < (s.end || s.start + 0.1)), [segments, cur]);
+  // Segundos cobertos por pausas cortadas + cortes da faixa de vídeo, unindo os
+  // trechos que se sobrepõem para não descontar o mesmo pedaço duas vezes.
+  const cortadoSec = useMemo(() => {
+    const rs = [...pausesCut.map((p) => ({ start: p.start, end: p.end })), ...cuts]
+      .sort((a, b) => a.start - b.start);
+    let total = 0, fim = -1;
+    for (const r of rs) {
+      const ini = Math.max(r.start, fim);
+      if (r.end > ini) { total += r.end - ini; fim = r.end; }
+    }
+    return total;
+  }, [pausesCut, cuts]);
   const stats = useMemo(() => {
     let total = 0, removed = 0, removedSec = 0;
     for (const s of segments) for (const w of s.words) { total++; if (w.removed) { removed++; removedSec += Math.max(0, w.end - w.start); } }
-    const keptSec = Math.max(0, dur - removedSec - pauseCutSec);
+    const keptSec = Math.max(0, dur - removedSec - cortadoSec);
     return { total, removed, removedSec, keptSec };
-  }, [segments, dur, pauseCutSec]);
+  }, [segments, dur, cortadoSec]);
   const segRemoved = (s) => s.words.every((w) => w.removed);
   const canSplit = segments.some((s) => cur > s.start + 0.05 && cur < s.end - 0.05);
 
@@ -430,6 +482,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           : {}),
         // Ajustes de legenda escolhidos aqui na timeline (sobrepõem os das opções).
         ...cap,
+        // Trechos cortados à mão na faixa de vídeo (tempo original).
+        videoCuts: cuts.map((c) => ({ start: +c.start.toFixed(2), end: +c.end.toFixed(2) })),
         // Volume da fala (tempo original — este estágio roda antes dos cortes).
         audioMute,
         audioVolume: +Number(audioVolume).toFixed(2),
@@ -498,7 +552,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <Chip label="Palavras" value={stats.total} color={C.text} />
             <Chip label="Cortadas" value={stats.removed} color={C.red} />
             <Chip label="Pausas cortadas" value={pausesCut.length} sub={pauseCutSec > 0.1 ? `−${fmtDuration(pauseCutSec)}` : null} color={C.orangeSoft} />
-            <Chip label="Duração final" value={fmtDuration(stats.keptSec)} sub={(stats.removedSec + pauseCutSec) > 0.1 ? `−${fmtDuration(stats.removedSec + pauseCutSec)}` : null} color={C.green} />
+            <Chip label="Duração final" value={fmtDuration(stats.keptSec)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
           </div>
 
           {selSeg && (
@@ -599,9 +653,41 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               );
             })}
           </div>
-          {/* Faixa de vídeo: tira de miniaturas do arquivo original */}
-          <div style={{ position: 'relative', height: 44, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.45)' }}>
+          {/* Faixa de vídeo: miniaturas + cortes desenhados arrastando */}
+          <div
+            onMouseDown={startCutDraw}
+            title="Arraste para cortar um trecho"
+            style={{ position: 'relative', height: 44, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.45)', cursor: 'crosshair' }}
+          >
             <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat' }} />
+            {cuts.map((c) => (
+              <div
+                key={c.key}
+                title={`Corte ${fmtDuration(c.start)} → ${fmtDuration(c.end)}`}
+                onMouseDown={(e) => startRangeDrag(setCuts, c, 'move', e)}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: 'absolute', left: c.start * pps, width: Math.max(10, (c.end - c.start) * pps), top: 0, bottom: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab',
+                  border: `1px solid ${C.red}`,
+                  background: 'repeating-linear-gradient(45deg, rgba(240,82,107,0.55), rgba(240,82,107,0.55) 5px, rgba(240,82,107,0.3) 5px, rgba(240,82,107,0.3) 10px)',
+                }}
+              >
+                <button
+                  onClick={(e) => { e.stopPropagation(); setCuts((l) => l.filter((x) => x.key !== c.key)); }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  title="Desfazer este corte"
+                  style={{ width: 18, height: 18, borderRadius: 5, border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', fontSize: 12, lineHeight: 1, fontFamily: 'inherit' }}
+                >
+                  ×
+                </button>
+                <div onMouseDown={(e) => startRangeDrag(setCuts, c, 'left', e)} style={handleStyle('left')} />
+                <div onMouseDown={(e) => startRangeDrag(setCuts, c, 'right', e)} style={handleStyle('right')} />
+              </div>
+            ))}
+            {drawing && drawing.end > drawing.start && (
+              <div style={{ position: 'absolute', left: drawing.start * pps, width: (drawing.end - drawing.start) * pps, top: 0, bottom: 0, background: 'rgba(240,82,107,0.3)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
+            )}
           </div>
 
           {/* Faixa de B-roll: momentos sugeridos pela análise, ajustáveis aqui */}
@@ -738,7 +824,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b>{brollOn && <> · <b>B-roll</b> (arraste para mover, × para tirar)</>} · <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
+      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> (arraste sobre ele para cortar um trecho){brollOn && <> · <b>B-roll</b> (arraste para mover, × para tirar)</>} · <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
 
       {/* Ajustes em abas: mantém o vídeo e a timeline no topo, sem rolagem. */}
       <div style={{ marginTop: 18, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>

@@ -217,6 +217,8 @@ function parseOptions(raw) {
     // manualSilence=true, o pipeline usa exatamente estes trechos em vez de detectar.
     manualSilence: o.manualSilence === true,
     silenceCuts: sanitizeSilenceCuts(o.silenceCuts),
+    // Trechos cortados à mão na faixa de vídeo (tempo original), independentes do silêncio.
+    videoCuts: sanitizeSilenceCuts(o.videoCuts),
     // clipes curtos
     clipsCount: clampNum(o.clipsCount, 1, 8, 3),
     clipAspect: ['original', '9:16', '16:9', '1:1'].includes(o.clipAspect) ? o.clipAspect : '9:16',
