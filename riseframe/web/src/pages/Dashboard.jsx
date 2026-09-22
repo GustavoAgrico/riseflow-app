@@ -1,7 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY, fmtDuration } from '../theme.js';
 import Icon from '../components/Icon.jsx';
 import { listJobs } from '../history.js';
+import { useAuth } from '../AuthContext.jsx';
+import { upgradeToPremium } from '../api.js';
 
 const MODE_LABEL = { auto: 'Edição automática', render: 'Editado na timeline', clips: 'Clipes curtos', transcribe: 'Transcrição' };
 const fmtDate = (ms) => new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -27,8 +29,24 @@ function StatCard({ icon, label, value, tint }) {
 }
 
 export default function Dashboard({ user, onNewVideo, onEditVideo, onBroll, onLibrary, onSettings }) {
+  const { user: authUser } = useAuth();
+  const [upgradeBusy, setUpgradeBusy] = useState(false);
+  const isPremium = authUser?.plan === 'premium';
   const first = (user?.name || '').split(' ')[0] || 'você';
   const jobs = useMemo(() => listJobs(), []);
+
+  const handleUpgrade = async () => {
+    try {
+      setUpgradeBusy(true);
+      await upgradeToPremium();
+      window.location.reload();
+    } catch (err) {
+      console.error('Erro ao fazer upgrade:', err.message);
+      alert(`Erro ao fazer upgrade: ${err.message}`);
+    } finally {
+      setUpgradeBusy(false);
+    }
+  };
   const stats = useMemo(() => {
     const now = Date.now();
     const monthAgo = now - 30 * 864e5;
@@ -128,6 +146,30 @@ export default function Dashboard({ user, onNewVideo, onEditVideo, onBroll, onLi
                   <Icon name="folder" size={17} strokeWidth={1.9} /> Ver biblioteca
                 </button>
               </div>
+            </div>
+
+            {/* Seu plano/Assinatura */}
+            <div style={{ ...glass({ padding: 18 }), background: isPremium ? 'linear-gradient(180deg, rgba(34,211,238,0.1), rgba(255,255,255,0.015))' : 'linear-gradient(180deg, rgba(255,107,53,0.1), rgba(255,255,255,0.015))' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+                <span style={{ width: 32, height: 32, borderRadius: 10, background: isPremium ? 'rgba(34,211,238,0.18)' : 'rgba(255,107,53,0.18)', border: isPremium ? '1px solid rgba(34,211,238,0.35)' : '1px solid rgba(255,107,53,0.35)', display: 'grid', placeItems: 'center', color: isPremium ? C.cyan || '#22D3EE' : C.orange }}>
+                  <Icon name={isPremium ? 'star' : 'zap'} size={17} strokeWidth={1.9} />
+                </span>
+                <div style={{ fontSize: 13.5, fontWeight: 700 }}>Seu plano</div>
+              </div>
+              <div style={{ color: C.muted, fontSize: 12.5, lineHeight: 1.55, marginBottom: 12 }}>
+                Plano <b style={{ color: C.text }}>{isPremium ? 'Premium' : 'Básico'}</b>
+                {!isPremium && ' · Desbloqueie B-roll automático, legendas avançadas e muito mais.'}
+              </div>
+              {!isPremium && (
+                <button onClick={handleUpgrade} disabled={upgradeBusy} style={{ width: '100%', background: C.orange, color: '#000', border: 'none', borderRadius: 11, padding: '11px', fontSize: 13.5, fontWeight: 700, cursor: upgradeBusy ? 'wait' : 'pointer', fontFamily: 'inherit', opacity: upgradeBusy ? 0.7 : 1 }}>
+                  {upgradeBusy ? 'Atualizando…' : '✨ Fazer upgrade'}
+                </button>
+              )}
+              {isPremium && (
+                <div style={{ fontSize: 12, color: C.green || '#2ED47A', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Icon name="check" size={14} strokeWidth={2.5} /> Você tem acesso a todos os recursos
+                </div>
+              )}
             </div>
 
             <div style={{ ...glass({ padding: 18 }), background: 'linear-gradient(180deg, rgba(124,58,237,0.1), rgba(255,255,255,0.015))' }}>
