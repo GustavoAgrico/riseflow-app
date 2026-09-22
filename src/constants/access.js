@@ -23,14 +23,14 @@ export const ROLES = {
 
 // Base operacional — o que TODO membro sempre acessa (paridade com o legado).
 const BASE = [
-  '/dashboard', '/chat', '/smart-attendant',
+  '/dashboard', '/hoje', '/chat', '/smart-attendant',
   '/flows', '/flows-novo', '/flow-builder',
   '/crm', '/clients', '/analytics', '/funnel',
-  '/campaigns', '/schedules', '/templates', '/calls',
+  '/campaigns', '/schedules', '/templates', '/calls', '/proposals', '/agenda', '/notifications',
 ]
 
 // Extras somados por cargo (cumulativos).
-const SUPERVISOR_EXTRA = ['/monitor', '/activity-logs', '/teams']
+const SUPERVISOR_EXTRA = ['/monitor', '/reports', '/marketing', '/activity-logs', '/teams']
 const ADMIN_EXTRA = [...SUPERVISOR_EXTRA, '/integrations', '/automation']
 
 const PATHS_BY_ROLE = {

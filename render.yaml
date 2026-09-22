@@ -78,3 +78,10 @@ services:
       # para páginas New Pages Experience). Se vazio, usa o fluxo por scope.
       - key: META_CONFIG_ID
         sync: false
+      # ── Web Push (VAPID) — notificações push para lembretes de agenda ──
+      - key: VITE_VAPID_PUBLIC_KEY       # build arg do Vite (chave pública)
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false

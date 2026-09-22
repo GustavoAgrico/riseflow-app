@@ -2,10 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl, filmstripUrl, getPeaks, suggestBrollMoments, uploadMedia } from '../api.js';
+import { sourceUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan, upgradeToPremium } from '../api.js';
 import { APP_VERSION } from '../version.js';
-import CaptionPreview from './CaptionPreview.jsx';
-import { BrollControls } from './OptionsPanel.jsx';
+import { useAuth } from '../AuthContext.jsx';
 
 const PPS_MIN = 24;
 const PPS_MAX = 240;
@@ -20,6 +19,8 @@ const PPS_MAX = 240;
  * "Renderizar" reprocessa com a transcrição editada.
  */
 export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, onSettings, busy }) {
+  const { user } = useAuth();
+  const isPremium = user?.plan === 'premium';
   const cap0 = options || {};
   // Ajustes de legenda editáveis aqui na timeline (posição, fonte, estilo, etc.).
   const [cap, setCap] = useState({
@@ -35,18 +36,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const setCapField = (patch) => setCap((c) => ({ ...c, ...patch }));
   const [tab, setTab] = useState('enquadramento');
   const [peaks, setPeaks] = useState([]);
-  // Ajustes de B-roll editáveis aqui na timeline (sobrepõem os das opções).
-  const [brollOpts, setBrollOpts] = useState({
-    broll: options?.broll === true,
-    imageSource: options?.imageSource,
-    niche: options?.niche,
-    brollLayout: options?.brollLayout,
-    personCrop: options?.personCrop,
-  });
-  const brollOn = brollOpts.broll === true;
-  // Momentos de B-roll no tempo do vídeo ORIGINAL. off = o usuário tirou.
-  const [broll, setBroll] = useState([]);
-  const [brollLoading, setBrollLoading] = useState(false);
   const rangeDragRef = useRef(null);
   // Volume da fala: geral, mudo e trechos com volume próprio (tempo original).
   const [audioMute, setAudioMute] = useState(options?.audioMute === true);
@@ -58,6 +47,21 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [drawing, setDrawing] = useState(null);
   // Corte marcado pelo playhead: guarda o início até o usuário fechar no fim.
   const [cutStart, setCutStart] = useState(null);
+  // Upgrade para premium
+  const [upgradeBusy, setUpgradeBusy] = useState(false);
+  const handleUpgrade = async () => {
+    try {
+      setUpgradeBusy(true);
+      const updatedUser = await upgradeToPremium();
+      // Atualiza o contexto de autenticação (faz rerender)
+      window.location.reload();
+    } catch (err) {
+      console.error('Erro ao fazer upgrade:', err.message);
+      alert(`Erro ao fazer upgrade: ${err.message}`);
+    } finally {
+      setUpgradeBusy(false);
+    }
+  };
   const wave = useMemo(() => wavePath(peaks), [peaks]);
   useEffect(() => {
     let vivo = true;
@@ -65,21 +69,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return () => { vivo = false; };
   }, [sourceId]);
 
-  useEffect(() => {
-    if (!brollOn) return undefined;
-    let vivo = true;
-    setBrollLoading(true);
-    suggestBrollMoments(sourceId, { ...options, ...brollOpts })
-      .then((ms) => {
-        if (!vivo) return;
-        setBroll(ms.map((m, i) => ({ key: `b${i}`, start: m.start, end: m.end, query: m.query || '', off: false })));
-      })
-      .catch(() => {})
-      .finally(() => { if (vivo) setBrollLoading(false); });
-    return () => { vivo = false; };
-    // options muda de identidade a cada render do pai; só estes valores mudam a sugestão.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceId, brollOn, brollOpts.niche]);
   const videoRef = useRef(null);
   const previewVideoRef = useRef(null);
   const previewBoxRef = useRef(null);
@@ -103,6 +92,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaErr, setMediaErr] = useState('');
   const mediaInputRef = useRef(null);
+  // Revisão de B-roll: null = ainda não revisou; senão { moments:[{...escolhas}] }
+  const [brollReview, setBrollReview] = useState(null);
+  const [brollBusy, setBrollBusy] = useState(false);
+  const [brollErr, setBrollErr] = useState('');
+  const brollUploadRef = useRef(null); // input file para "usar minha mídia" num momento
+  const brollTargetIdx = useRef(null);
   const framingBoxRef = useRef(null);
   const focusDragRef = useRef(false);
 
@@ -461,6 +456,70 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const updateMedia = (key, patch) => setMedia((prev) => prev.map((m) => (m.key === key ? { ...m, ...patch } : m)));
   const removeMedia = (key) => setMedia((prev) => prev.filter((m) => m.key !== key));
 
+  // Transcrição atual (edições da timeline) — usada para planejar o B-roll.
+  function currentTranscript() {
+    return {
+      provider: transcript.provider,
+      language: transcript.language,
+      segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map((w) => ({ start: w.start, end: w.end, word: w.word, removed: !!w.removed })) })),
+    };
+  }
+
+  async function reviewBroll() {
+    setBrollErr('');
+    setBrollBusy(true);
+    try {
+      const plan = await fetchBrollPlan(sourceId, currentTranscript(), { ...options, ...cap, broll: true });
+      const moments = (plan.moments || []).map((m) => ({
+        start: m.start, end: m.end, term: m.term, query: m.query,
+        candidates: m.candidates || [],
+        pick: (m.candidates || []).length ? 0 : -1, // índice do candidato escolhido (-1 = nenhum)
+        removed: (m.candidates || []).length === 0, // sem candidato → começa removido
+        myThumb: null, myMediaId: null, myKind: null,
+      }));
+      setBrollReview({ source: plan.source, moments });
+      if (!moments.length) setBrollErr('Nenhum momento de B-roll foi sugerido para este vídeo.');
+    } catch (err) {
+      setBrollErr(err.message || 'falha ao planejar o B-roll');
+    } finally {
+      setBrollBusy(false);
+    }
+  }
+  const setMoment = (i, patch) => setBrollReview((r) => ({ ...r, moments: r.moments.map((m, j) => (j === i ? { ...m, ...patch } : m)) }));
+  const cycleCand = (i, dir) => setBrollReview((r) => ({ ...r, moments: r.moments.map((m, j) => {
+    if (j !== i || !m.candidates.length) return m;
+    const n = m.candidates.length;
+    return { ...m, pick: ((m.pick + dir) % n + n) % n, removed: false, myThumb: null, myMediaId: null };
+  }) }));
+
+  async function onPickBrollMedia(e) {
+    const file = (e.target.files || [])[0];
+    e.target.value = '';
+    const i = brollTargetIdx.current;
+    if (!file || i == null) return;
+    setBrollBusy(true);
+    try {
+      const info = await uploadMedia(file);
+      setMoment(i, { myMediaId: info.id, myKind: info.kind, myThumb: URL.createObjectURL(file), removed: false });
+    } catch (err) {
+      setBrollErr(err.message || 'falha ao enviar a mídia');
+    } finally {
+      setBrollBusy(false);
+    }
+  }
+
+  // Monta o plano de B-roll travado para enviar no render (a partir da revisão).
+  function brollPlanForRender() {
+    if (!brollReview) return null;
+    return brollReview.moments.map((m) => {
+      if (m.removed) return { start: m.start, end: m.end, remove: true };
+      if (m.myMediaId) return { start: m.start, end: m.end, mediaId: m.myMediaId, kind: m.myKind, query: m.term };
+      const c = m.candidates[m.pick];
+      if (!c) return { start: m.start, end: m.end, remove: true };
+      return { start: m.start, end: m.end, url: c.link, kind: c.kind, query: m.term };
+    });
+  }
+
   function generate() {
     // Cortes de silêncio escolhidos: uma pequena folga interna evita cortar o
     // ataque/finalização das palavras vizinhas.
@@ -490,12 +549,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         audioMute,
         audioVolume: +Number(audioVolume).toFixed(2),
         audioGains: gains.map((g) => ({ start: +g.start.toFixed(2), end: +g.end.toFixed(2), volume: +Number(g.volume).toFixed(2) })),
-        // B-roll: ajustes da aba + momentos da faixa (tempo original; o servidor
-        // remapeia depois dos cortes).
-        ...brollOpts,
-        ...(brollOn
-          ? { brollMoments: broll.filter((b) => !b.off).map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2), query: b.query })) }
-          : {}),
         // Minhas mídias colocadas na timeline (imagens/vídeos/músicas próprias).
         userMedia: media.map((m) => ({
           mediaId: m.mediaId,
@@ -509,12 +562,50 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           py: +Number(m.py).toFixed(3),
           opacity: +Number(m.opacity).toFixed(2),
         })),
+        // B-roll revisado: trava o que entra em cada momento (e liga o B-roll).
+        ...(brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}),
       },
     );
   }
 
   const allGone = stats.removed >= stats.total;
   const selSeg = segments[sel];
+
+  // Prévia da composição 9:16 (sua metade interativa + metade do B-roll). Fica ao
+  // lado do vídeo (mesma linha) quando o enquadramento é manual.
+  const personHalf = (
+    <div
+      key="person"
+      ref={previewBoxRef}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        const r = previewBoxRef.current.getBoundingClientRect();
+        panRef.current = { startX: e.clientX, startY: e.clientY, fx: focus.x, fy: focus.y, w: r.width, h: r.height, zoom };
+      }}
+      style={{ position: 'relative', height: '50%', overflow: 'hidden', cursor: 'grab', touchAction: 'none', boxShadow: `inset 0 0 0 2px ${C.orange}` }}
+    >
+      <video
+        ref={previewVideoRef}
+        src={sourceUrl(sourceId)}
+        muted loop autoPlay playsInline
+        style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, transform: `scale(${zoom})`, transformOrigin: `${focus.x * 100}% ${focus.y * 100}%` }}
+      />
+      <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>você (arraste/role)</div>
+    </div>
+  );
+  const brollHalf = (
+    <div key="broll" style={{ height: '50%', display: 'grid', placeItems: 'center', background: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.05), rgba(255,255,255,0.05) 8px, rgba(255,255,255,0.02) 8px, rgba(255,255,255,0.02) 16px)', color: C.faint }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+        <Icon name="image" size={18} strokeWidth={1.8} />
+        <div style={{ fontSize: 10.5, fontWeight: 700 }}>B-roll</div>
+      </div>
+    </div>
+  );
+  const composedPreview = (
+    <div style={{ width: '100%', maxWidth: 200, margin: '0 auto', aspectRatio: '9 / 16', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
+      {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
+    </div>
+  );
 
   return (
     <div style={{ ...glass(), padding: 22 }}>
@@ -527,24 +618,36 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </GhostButton>
       </div>
 
-      <div className="rf-tl-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 420px) 1fr', gap: 18, alignItems: 'start' }}>
+      <div className="rf-tl-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 440px) 1fr', gap: 18, alignItems: 'start' }}>
         <div>
-          <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
-            <video ref={videoRef} src={sourceUrl(sourceId)} style={{ width: '100%', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#000' }} onClick={framingMode === 'manual' ? undefined : togglePlay} playsInline />
+          {/* Vídeo principal + prévia 9:16 do ajuste, LADO A LADO (mesma linha) */}
+          <div style={{ display: 'grid', gridTemplateColumns: framingMode === 'manual' ? 'minmax(0,1fr) minmax(130px, 180px)' : '1fr', gap: 12, alignItems: 'start' }}>
+            <div>
+              <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
+                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ width: '100%', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#000' }} onClick={framingMode === 'manual' ? undefined : togglePlay} playsInline />
+                {framingMode === 'manual' && (
+                  <div
+                    ref={framingBoxRef}
+                    onPointerDown={(e) => { e.preventDefault(); focusDragRef.current = true; setFocusFromClient(e.clientX, e.clientY); }}
+                    style={{ position: 'absolute', inset: 0, cursor: 'crosshair' }}
+                    title="Arraste para escolher o ponto do rosto"
+                  >
+                    <div style={{ position: 'absolute', left: `${focus.x * 100}%`, top: `${focus.y * 100}%`, width: 34, height: 34, marginLeft: -17, marginTop: -17, borderRadius: '50%', border: `2px solid ${C.orange}`, boxShadow: '0 0 0 2px rgba(0,0,0,0.5), 0 0 14px rgba(0,0,0,0.6)', background: 'rgba(255,107,53,0.18)', pointerEvents: 'none' }} />
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+                <button onClick={togglePlay} style={playBtn}><Icon name={playing ? 'pause' : 'play'} size={16} strokeWidth={2} /></button>
+                <div style={{ fontSize: 12.5, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(cur)} <span style={{ color: C.faint }}>/ {fmtDuration(dur)}</span></div>
+              </div>
+            </div>
             {framingMode === 'manual' && (
-              <div
-                ref={framingBoxRef}
-                onPointerDown={(e) => { e.preventDefault(); focusDragRef.current = true; setFocusFromClient(e.clientX, e.clientY); }}
-                style={{ position: 'absolute', inset: 0, cursor: 'crosshair' }}
-                title="Arraste para escolher o ponto do rosto"
-              >
-                <div style={{ position: 'absolute', left: `${focus.x * 100}%`, top: `${focus.y * 100}%`, width: 34, height: 34, marginLeft: -17, marginTop: -17, borderRadius: '50%', border: `2px solid ${C.orange}`, boxShadow: '0 0 0 2px rgba(0,0,0,0.5), 0 0 14px rgba(0,0,0,0.6)', background: 'rgba(255,107,53,0.18)', pointerEvents: 'none' }} />
+              <div>
+                <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', textAlign: 'center', marginBottom: 6 }}>Prévia 9:16</div>
+                {composedPreview}
+                <button onClick={() => setPersonSide((s) => (s === 'top' ? 'bottom' : 'top'))} style={{ ...zoomBtn, width: '100%', padding: '6px 0', marginTop: 8, fontSize: 11, fontWeight: 600 }}>Você: {personSide === 'top' ? 'em cima' : 'embaixo'}</button>
               </div>
             )}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
-            <button onClick={togglePlay} style={playBtn}><Icon name={playing ? 'pause' : 'play'} size={16} strokeWidth={2} /></button>
-            <div style={{ fontSize: 12.5, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(cur)} <span style={{ color: C.faint }}>/ {fmtDuration(dur)}</span></div>
           </div>
 
         </div>
@@ -634,13 +737,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div style={{ height: LANE.ruler }} />
           <Rotulo h={LANE.legenda} gap={6} nome="LEGENDA" dica="clique na palavra" />
           <Rotulo h={LANE.video} gap={4} nome="VÍDEO" dica={cuts.length ? null : 'arraste ou use o botão'} />
-          <Rotulo h={LANE.broll} gap={4} nome="B-ROLL" dica={!brollOn ? 'ligue na aba' : brollLoading ? 'procurando…' : broll.length === 0 ? 'nada sugerido' : null} />
           <Rotulo h={LANE.audio} gap={4} nome="ÁUDIO" dica={gains.length ? null : 'use a aba Áudio'} />
           <Rotulo h={LANE.pausas} gap={4} nome="PAUSAS" dica={pauses.length ? 'clique p/ manter' : null} />
           {media.length > 0 && <Rotulo h={LANE.midias} gap={4} nome="MÍDIAS" />}
         </div>
         <div ref={trackRef} onClick={onTrackClick} style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6 }}>
-          <div style={{ position: 'relative', width, height: LANE.ruler + 6 + LANE.legenda + 4 + LANE.video + 4 + LANE.broll + 4 + LANE.audio + 4 + LANE.pausas + (media.length ? 4 + LANE.midias : 0) }}>
+          <div style={{ position: 'relative', width, height: LANE.ruler + 6 + LANE.legenda + 4 + LANE.video + 4 + LANE.audio + 4 + LANE.pausas + (media.length ? 4 + LANE.midias : 0) }}>
           <div style={{ position: 'relative', height: LANE.ruler, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
             {Array.from({ length: Math.ceil(dur) + 1 }).map((_, s) => (
               <div key={s} style={{ position: 'absolute', left: s * pps, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
@@ -722,46 +824,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ position: 'absolute', left: drawing.start * pps, width: (drawing.end - drawing.start) * pps, top: 0, bottom: 0, background: 'rgba(240,82,107,0.3)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
             )}
           </div>
-
-          {/* Faixa de B-roll: momentos sugeridos pela análise, ajustáveis aqui */}
-          {(
-            <div style={{ position: 'relative', height: LANE.broll, marginTop: 4 }}>
-              {brollOn && broll.map((b) => {
-                const left = b.start * pps;
-                const w = Math.max(18, (b.end - b.start) * pps - 1);
-                return (
-                  <div
-                    key={b.key}
-                    title={b.query || 'B-roll'}
-                    onMouseDown={(e) => { if (!b.off) startRangeDrag(setBroll, b, 'move', e); }}
-                    onClick={(e) => { e.stopPropagation(); if (b.off) setBroll((l) => l.map((x) => (x.key === b.key ? { ...x, off: false } : x))); }}
-                    style={{
-                      position: 'absolute', left, width: w, top: 2, height: 26, borderRadius: 7, overflow: 'hidden',
-                      display: 'flex', alignItems: 'center', gap: 4, paddingLeft: 8, paddingRight: 4,
-                      cursor: b.off ? 'pointer' : 'grab',
-                      border: `1px solid ${b.off ? C.border : 'rgba(46,212,122,0.55)'}`,
-                      background: b.off ? 'rgba(255,255,255,0.04)' : 'rgba(46,212,122,0.18)',
-                      color: b.off ? C.faint : C.text, opacity: b.off ? 0.6 : 1,
-                    }}
-                  >
-                    <Icon name="image" size={12} strokeWidth={2} />
-                    <span style={{ flex: 1, minWidth: 0, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: b.off ? 'line-through' : 'none' }}>
-                      {b.query || 'B-roll'}
-                    </span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setBroll((l) => l.map((x) => (x.key === b.key ? { ...x, off: !x.off } : x))); }}
-                      title={b.off ? 'Usar este momento' : 'Tirar este momento'}
-                      style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 5, border: 'none', background: 'rgba(0,0,0,0.3)', color: 'inherit', cursor: 'pointer', fontSize: 12, lineHeight: 1, fontFamily: 'inherit' }}
-                    >
-                      {b.off ? '+' : '×'}
-                    </button>
-                    {!b.off && <div onMouseDown={(e) => startRangeDrag(setBroll, b, 'left', e)} style={handleStyle('left')} />}
-                    {!b.off && <div onMouseDown={(e) => startRangeDrag(setBroll, b, 'right', e)} style={handleStyle('right')} />}
-                  </div>
-                );
-              })}
-            </div>
-          )}
 
           {/* Faixa de áudio: forma de onda da fala original */}
           <div style={{ position: 'relative', height: LANE.audio, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(124,58,237,0.10)' }}>
@@ -853,7 +915,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> (arraste sobre ele para cortar um trecho){brollOn && <> · <b>B-roll</b> (arraste para mover, × para tirar)</>} · <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
+      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> (arraste sobre ele para cortar um trecho)· <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
 
       {/* Ajustes em abas: mantém o vídeo e a timeline no topo, sem rolagem. */}
       <div style={{ marginTop: 18, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
@@ -880,77 +942,85 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 <button key={o.id} onClick={() => setFramingMode(o.id)} style={framingTab(framingMode === o.id)}>{o.label}</button>
               ))}
             </div>
-            {framingMode === 'manual' && (() => {
-              const personHalf = (
-                <div
-                  key="person"
-                  ref={previewBoxRef}
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    const r = previewBoxRef.current.getBoundingClientRect();
-                    panRef.current = { startX: e.clientX, startY: e.clientY, fx: focus.x, fy: focus.y, w: r.width, h: r.height, zoom };
-                  }}
-                  style={{ position: 'relative', height: '50%', overflow: 'hidden', cursor: 'grab', touchAction: 'none', boxShadow: `inset 0 0 0 2px ${C.orange}` }}
-                >
-                  <video
-                    ref={previewVideoRef}
-                    src={sourceUrl(sourceId)}
-                    muted loop autoPlay playsInline
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, transform: `scale(${zoom})`, transformOrigin: `${focus.x * 100}% ${focus.y * 100}%` }}
-                  />
-                  <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>você (arraste/role)</div>
-                </div>
-              );
-              const brollHalf = (
-                <div key="broll" style={{ height: '50%', display: 'grid', placeItems: 'center', background: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.05), rgba(255,255,255,0.05) 8px, rgba(255,255,255,0.02) 8px, rgba(255,255,255,0.02) 16px)', color: C.faint }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <Icon name="image" size={18} strokeWidth={1.8} />
-                    <div style={{ fontSize: 10.5, fontWeight: 700 }}>B-roll</div>
-                  </div>
-                </div>
-              );
-              return (
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
-                    <span style={{ width: 46 }}>Zoom</span>
-                    <button onClick={() => setZoom((z) => clampZoom(z - 0.1))} style={zoomBtn} title="Diminuir">−</button>
-                    <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(e) => setZoom(clampZoom(Number(e.target.value)))} style={{ flex: 1 }} />
-                    <button onClick={() => setZoom((z) => clampZoom(z + 0.1))} style={zoomBtn} title="Aumentar">+</button>
-                    <span style={{ width: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
-                  </label>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase' }}>Prévia (as duas metades)</div>
-                    <button onClick={() => setPersonSide((s) => (s === 'top' ? 'bottom' : 'top'))} style={{ ...zoomBtn, width: 'auto', padding: '0 10px', fontSize: 11, fontWeight: 600 }}>Você: {personSide === 'top' ? 'em cima' : 'embaixo'}</button>
-                  </div>
-                  {/* Composição 9:16 = sua metade (interativa) + B-roll. Arraste/role na sua metade. */}
-                  <div style={{ width: '100%', maxWidth: 190, margin: '0 auto', aspectRatio: '9 / 16', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
-                    {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
-                  </div>
-                  <div style={{ fontSize: 11, color: C.faint, textAlign: 'center' }}>Sem B-roll, o mesmo ajuste (zoom) reenquadra o vídeo inteiro.</div>
-                </div>
-              );
-            })()}
+            {framingMode === 'manual' && (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
+                  <span style={{ width: 46 }}>Zoom</span>
+                  <button onClick={() => setZoom((z) => clampZoom(z - 0.1))} style={zoomBtn} title="Diminuir">−</button>
+                  <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(e) => setZoom(clampZoom(Number(e.target.value)))} style={{ flex: 1 }} />
+                  <button onClick={() => setZoom((z) => clampZoom(z + 0.1))} style={zoomBtn} title="Aumentar">+</button>
+                  <span style={{ width: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
+                </label>
+                <div style={{ fontSize: 11, color: C.faint }}>Arraste no ponto do rosto (vídeo) e veja o resultado na <b>Prévia 9:16</b> ao lado. Sem B-roll, o mesmo ajuste (zoom) reenquadra o vídeo inteiro.</div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* B-roll: liga/desliga e ajustes, sem precisar voltar para as opções */}
+        {/* B-roll: revisar/trocar as imagens escolhidas antes de renderizar */}
         {tab === 'broll' && (
-          <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: '4px 14px 10px' }}>
-            <BrollControls
-              catalog={catalog}
-              options={{ ...options, ...brollOpts }}
-              onChange={(next) => setBrollOpts({
-                broll: next.broll,
-                imageSource: next.imageSource,
-                niche: next.niche,
-                brollLayout: next.brollLayout,
-                personCrop: next.personCrop,
-              })}
-              onSettings={onSettings}
-            />
-            <div style={{ fontSize: 11.5, color: C.faint, paddingTop: 4 }}>
-              {brollOn ? 'Os momentos aparecem na faixa verde da timeline — arraste para mover, × para tirar.' : 'Ligue para escolher os momentos na timeline.'}
+          <div style={{ marginTop: 14, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, opacity: isPremium ? 1 : 0.6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>B-roll · imagens automáticas {!isPremium && <span style={{ fontSize: 11, color: C.orange, fontWeight: 400, marginLeft: 6 }}>PREMIUM</span>}</div>
             </div>
+            {!isPremium && (
+              <div style={{ fontSize: 11.5, color: C.orange, marginBottom: 10, background: 'rgba(255,107,53,0.12)', border: `1px solid ${C.orange}`, borderRadius: 8, padding: 8 }}>
+                <div>Recurso premium. Clique abaixo para ativar B-roll automático.</div>
+                <button onClick={handleUpgrade} disabled={upgradeBusy} style={{ marginTop: 8, width: '100%', padding: '6px 12px', background: C.orange, color: '#000', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: upgradeBusy ? 'wait' : 'pointer', opacity: upgradeBusy ? 0.7 : 1 }}>
+                  {upgradeBusy ? 'Atualizando…' : '✨ Virar Premium'}
+                </button>
+              </div>
+            )}
+            {isPremium && (
+              <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
+                Veja as imagens/vídeos que o sistema escolheu para cada trecho e <b>troque, substitua pela sua mídia ou remova</b> antes de gerar.
+              </div>
+            )}
+            <input ref={brollUploadRef} type="file" accept="image/*,video/*" onChange={onPickBrollMedia} style={{ display: 'none' }} disabled={!isPremium} />
+            {!brollReview && (
+              <button onClick={reviewBroll} disabled={brollBusy || !isPremium} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: (brollBusy || !isPremium) ? 0.6 : 1, cursor: (brollBusy || !isPremium) ? 'not-allowed' : 'pointer' }}>
+                <Icon name="image" size={13} strokeWidth={2} /> {brollBusy ? 'Analisando o vídeo…' : 'Revisar / trocar imagens'}
+              </button>
+            )}
+            {brollErr && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{brollErr}</div>}
+            {brollReview && (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: 11, color: C.faint }}>{brollReview.moments.length} momento(s) · fonte: {brollReview.source}</div>
+                  <button onClick={reviewBroll} disabled={brollBusy} style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 10.5, fontWeight: 600 }} title="Analisar de novo">↻ refazer</button>
+                </div>
+                {brollReview.moments.map((m, i) => {
+                  const n = m.candidates.length;
+                  const thumb = m.removed ? null : (m.myThumb || m.candidates[m.pick]?.thumb);
+                  return (
+                    <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 10, padding: 8, opacity: m.removed ? 0.55 : 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <span style={{ fontSize: 10.5, color: C.faint, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(m.start)}</span>
+                        <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{m.term}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+                        <div style={{ width: 64, height: 54, flexShrink: 0, borderRadius: 8, overflow: 'hidden', background: '#000', border: `1px solid ${C.border}`, display: 'grid', placeItems: 'center' }}>
+                          {thumb ? <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 9.5, color: C.faint, textAlign: 'center' }}>sem<br />imagem</span>}
+                        </div>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <button onClick={() => cycleCand(i, -1)} disabled={n < 2 || m.removed} style={{ ...zoomBtn, width: 24, height: 22 }} title="Anterior">‹</button>
+                            <span style={{ fontSize: 10.5, color: C.muted, minWidth: 34, textAlign: 'center' }}>{m.removed ? '—' : m.myMediaId ? 'minha' : n ? `${m.pick + 1}/${n}` : '0'}</span>
+                            <button onClick={() => cycleCand(i, 1)} disabled={n < 2 || m.removed} style={{ ...zoomBtn, width: 24, height: 22 }} title="Próxima">›</button>
+                          </div>
+                          <div style={{ display: 'flex', gap: 5 }}>
+                            <button onClick={() => { brollTargetIdx.current = i; brollUploadRef.current?.click(); }} style={{ ...zoomBtn, width: 'auto', flex: 1, padding: '0 6px', fontSize: 10, fontWeight: 600 }} title="Usar minha imagem/vídeo">Minha</button>
+                            <button onClick={() => setMoment(i, { removed: !m.removed })} style={{ ...zoomBtn, width: 'auto', flex: 1, padding: '0 6px', fontSize: 10, fontWeight: 600, color: m.removed ? C.green : C.red }}>{m.removed ? 'Repor' : 'Remover'}</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 10.5, color: C.faint }}>As trocas são aplicadas quando você clicar em <b>Gerar vídeo</b>.</div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1005,12 +1075,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         )}
 
         {/* Ajustes de legenda (posição, fonte, estilo…) direto na edição */}
-        {tab === 'legenda' && catalog && cap.captions && (
-            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>Legenda</div>
-              </div>
+        {tab === 'legenda' && (
+          <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="captions" size={15} strokeWidth={2} /></span>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Legenda</div>
+            </div>
+            <CapRow label="Legendas no vídeo">
+              <button onClick={() => setCapField({ captions: !cap.captions })} style={miniBtn(!cap.captions, false)}>
+                {cap.captions ? 'Ligadas' : 'Desligadas'}
+              </button>
+            </CapRow>
+            {cap.captions && catalog ? (
+              <>
               <div style={{ display: 'grid', gap: 8 }}>
                 <CapRow label="Estilo"><Sel value={cap.captionTemplate} opts={catalog.captionTemplates} onChange={(v) => setCapField({ captionTemplate: v })} /></CapRow>
                 <CapRow label="Fonte"><Sel value={cap.captionFont} opts={catalog.captionFonts} onChange={(v) => setCapField({ captionFont: v })} /></CapRow>
@@ -1029,11 +1106,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <input type="range" min="0.6" max="1.4" step="0.05" value={cap.captionScale ?? 1} onChange={(e) => setCapField({ captionScale: Number(e.target.value) })} style={{ width: '100%' }} />
                 </CapRow>
               </div>
-              <div style={{ marginTop: 8 }}><CaptionPreview options={cap} /></div>
-            </div>
-        )}
-        {tab === 'legenda' && !(catalog && cap.captions) && (
-          <div style={{ fontSize: 12.5, color: C.faint }}>As legendas estão desligadas nas opções deste vídeo.</div>
+              </>
+            ) : (
+              <div style={{ fontSize: 11.5, color: C.faint, paddingTop: 8 }}>
+                O vídeo final sai <b>sem legendas</b>. Os blocos de fala continuam valendo para cortar e ajustar a timeline.
+              </div>
+            )}
+          </div>
         )}
 
         {/* Minhas mídias: coloque suas imagens/vídeos/músicas na timeline */}
@@ -1114,7 +1193,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
 // Altura de cada faixa. A coluna de nomes e as faixas leem daqui, para não
 // desalinharem quando uma mudar.
-const LANE = { ruler: 20, legenda: 64, video: 44, broll: 30, audio: 34, pausas: 24, midias: 30 };
+const LANE = { ruler: 20, legenda: 64, video: 44, audio: 34, pausas: 24, midias: 30 };
 
 /** Nome de uma faixa, na coluna fixa à esquerda da timeline. */
 function Rotulo({ h, gap, nome, dica }) {

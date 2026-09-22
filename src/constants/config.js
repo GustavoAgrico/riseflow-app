@@ -61,6 +61,7 @@ export const NAV_GROUPS = [
     id: 'operacao', label: 'Operação', kind: 'op',
     items: [
       { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/dashboard' },
+      { id: 'hoje', label: 'Hoje', icon: 'CalendarCheck', path: '/hoje' },
       { id: 'chat', label: 'Chat', icon: 'MessageSquare', path: '/chat' },
       { id: 'crm', label: 'CRM', icon: 'Users', path: '/crm' },
       { id: 'clients', label: 'Clientes', icon: 'ContactRound', path: '/clients' },
@@ -70,6 +71,8 @@ export const NAV_GROUPS = [
     id: 'vendas', label: 'Vendas', kind: 'op',
     items: [
       { id: 'funnel', label: 'Funil de vendas', icon: 'Filter', path: '/funnel' },
+      { id: 'proposals', label: 'Propostas', icon: 'FileText', path: '/proposals' },
+      { id: 'agenda', label: 'Agenda', icon: 'CalendarCheck', path: '/agenda' },
       { id: 'schedules', label: 'Agendamentos', icon: 'Calendar', path: '/schedules' },
       { id: 'calls', label: 'Ligações', icon: 'PhoneCall', path: '/calls' },
     ],
@@ -77,7 +80,7 @@ export const NAV_GROUPS = [
   {
     id: 'automacao', label: 'Automação', kind: 'op',
     items: [
-      { id: 'smart-attendant', label: 'Atendimento IA', icon: 'Bot', path: '/smart-attendant', badge: 'IA' },
+      { id: 'smart-attendant', label: 'IA Central', icon: 'Bot', path: '/smart-attendant', badge: 'IA' },
       { id: 'flows', label: 'Fluxos', icon: 'GitBranch', path: '/flows', badge: 'NEW' },
       { id: 'automation', label: 'Automação', icon: 'Zap', path: '/automation' },
       { id: 'campaigns', label: 'Campanhas', icon: 'Megaphone', path: '/campaigns' },
@@ -88,6 +91,8 @@ export const NAV_GROUPS = [
     id: 'analise', label: 'Análise', kind: 'op',
     items: [
       { id: 'monitor', label: 'Monitor do time', icon: 'Activity', path: '/monitor' },
+      { id: 'marketing', label: 'Marketing', icon: 'TrendingUp', path: '/marketing' },
+      { id: 'reports', label: 'Relatórios', icon: 'PieChart', path: '/reports' },
       { id: 'analytics', label: 'Analytics', icon: 'BarChart3', path: '/analytics' },
       { id: 'logs', label: 'Logs', icon: 'ClipboardList', path: '/activity-logs' },
     ],

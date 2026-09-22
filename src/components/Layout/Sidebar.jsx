@@ -2,15 +2,15 @@ import React, { useEffect, useState } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import {
   LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, MessageSquare,
-  BarChart3, Settings, ChevronLeft, ChevronRight, ChevronDown, Search,
-  Crown, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Bot, Sparkles, Receipt, PhoneCall, Activity,
+  BarChart3, PieChart, Settings, ChevronLeft, ChevronRight, ChevronDown, Search,
+  Crown, Filter, Megaphone, Calendar, CalendarCheck, UserCog, FileText, ClipboardList, Bot, Sparkles, Receipt, PhoneCall, Activity, TrendingUp,
 } from 'lucide-react'
 import { useApp } from '@context/AppContext'
 import { useAuth } from '@context/AuthContext'
 import { NAV_GROUPS, NAV_DEFAULT_OPEN } from '@constants/config'
 import clsx from 'clsx'
 
-const ICONS = { LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, MessageSquare, BarChart3, Settings, Filter, Megaphone, Calendar, UserCog, FileText, ClipboardList, Crown, Bot, Sparkles, Receipt, PhoneCall, Activity }
+const ICONS = { LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, MessageSquare, BarChart3, PieChart, Settings, Filter, Megaphone, Calendar, CalendarCheck, UserCog, FileText, ClipboardList, Crown, Bot, Sparkles, Receipt, PhoneCall, Activity, TrendingUp }
 
 const getInitials = (name = '') =>
   name.split(' ').slice(0, 2).map(w => w[0] ?? '').join('').toUpperCase() || 'U'

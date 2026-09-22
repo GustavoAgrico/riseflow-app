@@ -176,6 +176,62 @@ export function faceCropGeometry(inW, inH, regionW, regionH, focus = {}, zoom = 
   return { scaledW, scaledH, cropX, cropY };
 }
 
+/**
+ * Lista VÁRIOS candidatos de B-roll para uma busca (para a tela de revisão do
+ * usuário escolher/trocar). Não baixa nada — só devolve links + miniaturas.
+ * @returns {Promise<Array<{id:string, link:string, thumb:string, kind:'image'|'video'}>>}
+ */
+export async function brollCandidates(query, opts = {}) {
+  const { source, apiKey, google, orientation = 'portrait', targetH = 1280, limit = 6, unrestricted = false } = opts;
+  const out = [];
+  try {
+    if (source === 'openverse') {
+      const params = new URLSearchParams({ q: query, page_size: String(limit * 2), mature: 'false' });
+      if (!unrestricted) params.set('license_type', 'commercial');
+      const res = await fetch(`https://api.openverse.org/v1/images/?${params}`, {
+        headers: { Accept: 'application/json', 'User-Agent': 'Riseframe/1.0 (video editor)' },
+      });
+      if (res.ok) {
+        const d = await res.json();
+        for (const it of d.results || []) {
+          if (it.url && /^https?:\/\//i.test(it.url)) out.push({ id: `o${it.id || it.url}`, link: it.url, thumb: it.thumbnail || it.url, kind: 'image' });
+        }
+      }
+    } else if (source === 'google' && google?.key && google?.cx) {
+      const params = new URLSearchParams({ key: google.key, cx: google.cx, q: query, searchType: 'image', num: String(limit * 2), safe: 'active', imgType: 'photo', imgSize: 'xlarge' });
+      if (!google.unrestricted) params.set('rights', 'cc_publicdomain,cc_attribute,cc_sharealike');
+      const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`);
+      if (res.ok) {
+        const d = await res.json();
+        for (const it of d.items || []) {
+          const link = it.link;
+          if (link && /\.(jpe?g|png|webp)(\?|$)/i.test(link)) out.push({ id: `g${it.image?.thumbnailLink || link}`, link, thumb: it.image?.thumbnailLink || link, kind: 'image' });
+        }
+      }
+    } else if (apiKey) {
+      const rv = await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}`, { headers: { Authorization: apiKey } });
+      if (rv.ok) {
+        const d = await rv.json();
+        for (const v of d.videos || []) {
+          const f = pickBestVideoFile(v.video_files, targetH);
+          if (f) out.push({ id: String(v.id), link: f.link, thumb: v.image, kind: 'video' });
+        }
+      }
+      const rp = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}`, { headers: { Authorization: apiKey } });
+      if (rp.ok) {
+        const d = await rp.json();
+        for (const p of d.photos || []) {
+          const link = pickBestPhotoFile(p.src);
+          if (link) out.push({ id: `p${p.id}`, link, thumb: p.src?.medium || link, kind: 'image' });
+        }
+      }
+    }
+  } catch (err) {
+    log.warn(`candidatos de B-roll "${query}": ${err.message}`);
+  }
+  return out.slice(0, limit);
+}
+
 async function download(url, dest) {
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`download falhou ${res.status}`);
@@ -211,7 +267,8 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     return { output: input, inserted: 0 };
   }
   const moments = (analysis.brollMoments || []).slice(0, options.brollMax ?? 6);
-  if (!moments.length) return { output: input, inserted: 0 };
+  const hasPlan = Array.isArray(options.brollPlan) && options.brollPlan.length > 0;
+  if (!moments.length && !hasPlan) return { output: input, inserted: 0 };
 
   const W = meta.width || 1080;
   const H = meta.height || 1920;
@@ -235,7 +292,33 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   // VÍDEO para o momento, cai para uma FOTO do Pexels (mesmo contexto/nicho).
   const usedIds = new Set();
   const clips = [];
-  for (const m of moments) {
+
+  // ── PLANO TRAVADO (revisão do B-roll): o usuário já escolheu na tela de revisão
+  //    o que entra em cada momento. Usa exatamente essas mídias (arquivo próprio ou
+  //    URL do banco), sem buscar de novo; itens marcados como removidos são pulados.
+  const plan = Array.isArray(options.brollPlan) && options.brollPlan.length ? options.brollPlan : null;
+  if (plan) {
+    for (const p of plan) {
+      if (!p || p.remove) continue;
+      const start = Math.max(0, Number(p.start) || 0);
+      const end = Math.min(meta.duration, Number(p.end) || start + 3.2);
+      if (end - start < 0.6) continue;
+      const isImage = p.kind !== 'video';
+      try {
+        let file = p.file || null; // mídia própria já resolvida pelo servidor
+        if (!file && p.url) {
+          const ext = isImage ? 'jpg' : 'mp4';
+          file = path.join(work, `broll_${clips.length}.${ext}`);
+          await download(p.url, file);
+        }
+        if (!file) continue;
+        clips.push({ start, end, query: p.query || 'mídia', term: p.query || null, file, isImage });
+      } catch (err) {
+        log.warn(`B-roll (plano) falhou em ${start.toFixed(1)}s: ${err.message}`);
+      }
+      if (clips.length >= (options.brollMax ?? 12)) break;
+    }
+  } else for (const m of moments) {
     try {
       let hit = null;
       let isImage = false;

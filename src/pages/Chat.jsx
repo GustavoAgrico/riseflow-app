@@ -638,7 +638,23 @@ export const Chat = () => {
     setTimeout(() => upd(id, 'read'), 3000)
   }
 
-  const filtered = conversations.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()))
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [filterChannel, setFilterChannel] = useState('all')
+  const [filterAI, setFilterAI] = useState('all')
+
+  const filtered = conversations.filter(c => {
+    if (search && !c.name.toLowerCase().includes(search.toLowerCase())) return false
+    if (filterStatus === 'unread' && !(c.unread > 0)) return false
+    if (filterStatus === 'ai' && !c.auto) return false
+    if (filterChannel !== 'all') {
+      const ch = (c.phone || '').startsWith('tg/') ? 'telegram'
+        : (c.phone || '').startsWith('fb/') ? 'facebook'
+        : (c.phone || '').startsWith('ig/') ? 'instagram'
+        : 'whatsapp'
+      if (ch !== filterChannel) return false
+    }
+    return true
+  })
 
   return (
     <div style={{ display: 'flex', fontFamily: F, height: '100vh', overflow: 'hidden' }}>
@@ -706,6 +722,18 @@ export const Chat = () => {
           )}
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar conversa"
             style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', color: C.text, fontSize: 13, outline: 'none', fontFamily: F, boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+            {[['all', 'Todas'], ['unread', 'Não lidas'], ['ai', 'Com IA']].map(([v, l]) => (
+              <button key={v} onClick={() => setFilterStatus(v)} style={{ fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 6, border: `1px solid ${filterStatus === v ? C.purple + '66' : C.border}`, background: filterStatus === v ? C.purple + '22' : 'transparent', color: filterStatus === v ? '#A78BFA' : C.muted, cursor: 'pointer', fontFamily: F }}>{l}</button>
+            ))}
+            <select value={filterChannel} onChange={e => setFilterChannel(e.target.value)} style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 6, border: `1px solid ${filterChannel !== 'all' ? C.purple + '66' : C.border}`, background: filterChannel !== 'all' ? C.purple + '22' : 'transparent', color: filterChannel !== 'all' ? '#A78BFA' : C.muted, cursor: 'pointer', fontFamily: F, outline: 'none' }}>
+              <option value="all" style={{ background: C.bg, color: C.text }}>Canal</option>
+              <option value="whatsapp" style={{ background: C.bg, color: C.text }}>WhatsApp</option>
+              <option value="instagram" style={{ background: C.bg, color: C.text }}>Instagram</option>
+              <option value="facebook" style={{ background: C.bg, color: C.text }}>Facebook</option>
+              <option value="telegram" style={{ background: C.bg, color: C.text }}>Telegram</option>
+            </select>
+          </div>
           {!isMember && <button onClick={doSync} disabled={syncing} title="Sincronizar conversas do WhatsApp"
             style={{ width: '100%', boxSizing: 'border-box', marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               background: syncing ? C.border : 'linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)', border: 'none', borderRadius: 10, padding: '11px 14px',

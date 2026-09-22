@@ -3,12 +3,14 @@ import { C, GRAD, FONT_DISPLAY } from './theme.js';
 import Icon, { Logo } from './components/Icon.jsx';
 import { Spinner } from './components/ui.jsx';
 import { useAuth } from './AuthContext.jsx';
+import { upgradeToPremium } from './api.js';
 import Landing from './pages/Landing.jsx';
 import Auth from './pages/Auth.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Library from './pages/Library.jsx';
 import Settings from './pages/Settings.jsx';
 import Plan from './pages/Plan.jsx';
+import Credits from './pages/Credits.jsx';
 import Editor from './App.jsx';
 
 const NAV = [
@@ -41,6 +43,21 @@ function NavItem({ item, active, onClick }) {
 
 function Sidebar({ user, view, onView, onLogout }) {
   const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
+  const isPremium = user?.plan === 'premium';
+  const [upgradeBusy, setUpgradeBusy] = useState(false);
+
+  const handleUpgrade = async () => {
+    try {
+      setUpgradeBusy(true);
+      await upgradeToPremium();
+      window.location.reload();
+    } catch (err) {
+      console.error('Erro ao fazer upgrade:', err.message);
+    } finally {
+      setUpgradeBusy(false);
+    }
+  };
+
   return (
     <aside className="rf-sidebar" style={{ width: 244, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: 'rgba(10,10,15,0.6)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', display: 'flex', flexDirection: 'column', padding: '18px 14px', position: 'sticky', top: 0, height: '100vh' }}>
       <button className="rf-brand" onClick={() => onView('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px 16px' }}>
@@ -55,7 +72,37 @@ function Sidebar({ user, view, onView, onLogout }) {
         {NAV.map((n) => <NavItem key={n.id} item={n} active={view === n.id} onClick={() => onView(n.id)} />)}
       </div>
 
-      <div className="rf-sec" style={{ marginTop: 20, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px' }}>CONTA</div>
+      {/* Seção de Assinatura/Créditos */}
+      <div className="rf-sec" style={{ marginTop: 20, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px' }}>ASSINATURA</div>
+      <div style={{ background: isPremium ? 'rgba(34,211,238,0.08)' : 'rgba(255,107,53,0.08)', border: isPremium ? `1px solid rgba(34,211,238,0.2)` : `1px solid rgba(255,107,53,0.2)`, borderRadius: 10, padding: 12, marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+          <Icon name={isPremium ? 'star' : 'zap'} size={14} strokeWidth={2} color={isPremium ? '#22D3EE' : C.orange} />
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Plano {isPremium ? 'Premium' : 'Básico'}</div>
+        </div>
+        <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4, marginBottom: 10 }}>
+          {isPremium ? 'Acesso completo a todos os recursos.' : 'Desbloqueie B-roll automático e mais.'}
+        </div>
+        {!isPremium && (
+          <button onClick={handleUpgrade} disabled={upgradeBusy} style={{ width: '100%', background: C.orange, color: '#000', border: 'none', borderRadius: 8, padding: '8px', fontSize: 12, fontWeight: 700, cursor: upgradeBusy ? 'wait' : 'pointer', opacity: upgradeBusy ? 0.7 : 1, fontFamily: 'inherit' }}>
+            {upgradeBusy ? 'Atualizando…' : '✨ Fazer upgrade'}
+          </button>
+        )}
+      </div>
+
+      {/* Créditos de tokens */}
+      <div style={{ background: 'rgba(124,58,237,0.08)', border: `1px solid rgba(124,58,237,0.2)`, borderRadius: 10, padding: 12, marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+          <Icon name="zap" size={14} strokeWidth={2} color={C.purple} />
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Créditos</div>
+        </div>
+        <div style={{ fontSize: 24, fontWeight: 800, color: C.purple, marginBottom: 8 }}>{user?.credits || 0}</div>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>tokens disponíveis para renderização</div>
+        <button onClick={() => onView('credits')} style={{ width: '100%', background: 'rgba(124,58,237,0.15)', color: C.purple, border: `1px solid rgba(124,58,237,0.3)`, borderRadius: 8, padding: '8px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+          + Comprar créditos
+        </button>
+      </div>
+
+      <div className="rf-sec" style={{ marginTop: 8, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px' }}>CONTA</div>
       <div className="rf-nav" style={{ display: 'grid', gap: 4 }}>
         <NavItem item={{ id: 'plan', label: 'Assinatura', icon: 'shield' }} active={view === 'plan'} onClick={() => onView('plan')} />
         <NavItem item={{ id: 'settings', label: 'Configurações', icon: 'gear' }} active={view === 'settings'} onClick={() => onView('settings')} />
@@ -161,6 +208,7 @@ export default function Root() {
         {view === 'library' && <Library onNewVideo={() => go('editor')} />}
         {view === 'settings' && <Settings onNewVideo={() => go('editor')} />}
         {view === 'plan' && <Plan user={user} checkOnOpen={billingReturn} onNewVideo={() => go('editor')} />}
+        {view === 'credits' && <Credits user={user} onBack={() => go('dashboard')} />}
         {view === 'editor' && <Editor key={editorIntent || 'new'} embedded intent={editorIntent} onSettings={() => go('settings')} />}
       </div>
       <style>{`

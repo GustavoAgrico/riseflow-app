@@ -6,6 +6,7 @@ import {
   publicUser,
   findOrCreateGoogleUser,
   setPassword,
+  updateUserPlan,
 } from '../auth/store.js';
 import { signToken, verifyToken } from '../auth/tokens.js';
 import { createResetToken, consumeResetToken } from '../auth/reset.js';
@@ -117,6 +118,18 @@ authRouter.get('/auth/me', requireAuth, (req, res) => {
   const user = findByEmail(req.user.email);
   if (!user) return res.status(401).json({ error: 'sessão inválida' });
   res.json({ user: publicUser(user) });
+});
+
+// PUT /api/auth/me/plan { plan } → { user } (atualiza plano do usuário, para teste/demo)
+authRouter.put('/auth/me/plan', requireAuth, (req, res) => {
+  const { plan } = req.body || {};
+  if (!['basic', 'premium'].includes(plan)) {
+    return res.status(400).json({ error: 'plano inválido' });
+  }
+  const user = updateUserPlan(req.user.email, plan);
+  if (!user) return res.status(401).json({ error: 'sessão inválida' });
+  log.ok(`plano atualizado para ${req.user.email}: ${plan}`);
+  res.json({ user });
 });
 
 /** Middleware: exige um token de usuário válido em `Authorization: Bearer <token>`. */

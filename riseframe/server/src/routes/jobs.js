@@ -11,6 +11,7 @@ import { billingStatus, consumeVideo } from '../auth/billing.js';
 import { registerMedia, resolveMedia } from '../mediaStore.js';
 import { probeSummary, runFfmpeg } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
+import { brollCandidates } from '../pipeline/broll.js';
 
 /** Opções do job com as chaves salvas do usuário (Pexels/Anthropic) — o servidor manda. */
 function optionsForUser(req) {
@@ -28,6 +29,17 @@ function optionsForUser(req) {
         return { ...m, kind: m.kind || found.kind, file: found.path };
       })
       .filter(Boolean);
+  }
+  // Plano de B-roll: itens com mídia própria (mediaId) viram caminho de arquivo.
+  if (o.brollPlan?.length) {
+    o.brollPlan = o.brollPlan.map((p) => {
+      if (p.mediaId) {
+        const found = resolveMedia(p.mediaId);
+        if (found) return { ...p, file: found.path, kind: found.kind || p.kind };
+        return { ...p, remove: true }; // mídia sumiu → não insere nada torto
+      }
+      return p;
+    });
   }
   return o;
 }
@@ -143,6 +155,33 @@ function sanitizeUserMedia(raw) {
   return out;
 }
 
+// Sanitiza o plano de B-roll travado na tela de revisão. Cada item fixa o que
+// entra num momento: uma URL do banco (candidato escolhido), uma mídia própria
+// (mediaId) ou a marcação de remover. Sem isso, o servidor volta a escolher sozinho.
+function sanitizeBrollPlan(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const p of raw) {
+    if (!p) continue;
+    const start = Number(p.start);
+    const end = Number(p.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    const item = {
+      start: Math.max(0, start),
+      end,
+      kind: p.kind === 'video' ? 'video' : 'image',
+      remove: p.remove === true,
+      query: typeof p.query === 'string' ? p.query.slice(0, 80) : '',
+    };
+    // URL do banco: só http(s) de imagem/vídeo (o download roda no pipeline).
+    if (typeof p.url === 'string' && /^https:\/\/[^\s]+$/i.test(p.url)) item.url = p.url;
+    if (typeof p.mediaId === 'string' && p.mediaId) item.mediaId = p.mediaId;
+    out.push(item);
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+
 // Looks permitidos via API pública. O caminho `lut:<arquivo>` NÃO é exposto ao
 // cliente (evita injeção de filtro/leitura de caminho no filtergraph do ffmpeg);
 // LUTs ficam a cargo de configuração do servidor, não da requisição.
@@ -199,46 +238,7 @@ function parseOptions(raw) {
     pexelsKey: typeof o.pexelsKey === 'string' && /^[A-Za-z0-9]{20,80}$/.test(o.pexelsKey.trim()) ? o.pexelsKey.trim() : '',
     brollEverySec: clampNum(o.brollEverySec, 4, 30, 8),
     brollMax: clampNum(o.brollMax, 1, 12, 6),
-    // Momentos escolhidos na timeline, no tempo do vídeo ORIGINAL. null = deixa a
-    // análise decidir, como sempre foi.
-    // Volume da fala: geral, mudo e trechos com volume próprio (tempo original).
-    audioMute: o.audioMute === true,
-    audioVolume: clampNum(o.audioVolume, 0, 4, 1),
-    audioGains: Array.isArray(o.audioGains)
-      ? o.audioGains
-          .filter((g) => g && Number(g.end) > Number(g.start))
-          .slice(0, 40)
-          .map((g) => ({ start: Math.max(0, Number(g.start)), end: Number(g.end), volume: clampNum(g.volume, 0, 4, 1) }))
-      : [],
-    brollMoments: Array.isArray(o.brollMoments)
-      ? o.brollMoments
-          .filter((m) => m && Number.isFinite(Number(m.start)) && Number(m.end) > Number(m.start))
-          .slice(0, 24)
-          .map((m) => ({ start: Math.max(0, Number(m.start)), end: Number(m.end), query: typeof m.query === 'string' ? m.query.slice(0, 120) : '' }))
-      : null,
-    aspect: ['original', '9:16', '16:9', '1:1'].includes(o.aspect) ? o.aspect : 'original',
-    reframeTrack: o.reframeTrack !== false, // seguir o sujeito no reframe
-    silenceNoiseDb: clampNum(o.silenceNoiseDb, -60, -10, sp.noiseDb),
-    silenceMinDuration: clampNum(o.silenceMinDuration, 0.2, 3, sp.min),
-    silencePadding: clampNum(o.silencePadding, 0, 0.5, sp.pad),
-    // Piso de ruído adaptativo (mede o áudio). Padrão ligado; corta melhor em
-    // qualquer gravação. silenceHeadroomDb = distância abaixo do pico (por força).
-    silenceAdaptive: o.silenceAdaptive !== false,
-    silenceHeadroomDb: clampNum(o.silenceHeadroomDb, 16, 44, sp.headroom),
-    // Cortes de silêncio escolhidos manualmente na timeline (modo render). Quando
-    // manualSilence=true, o pipeline usa exatamente estes trechos em vez de detectar.
-    manualSilence: o.manualSilence === true,
-    silenceCuts: sanitizeSilenceCuts(o.silenceCuts),
-    // Trechos cortados à mão na faixa de vídeo (tempo original), independentes do silêncio.
-    videoCuts: sanitizeSilenceCuts(o.videoCuts),
-    // clipes curtos
-    clipsCount: clampNum(o.clipsCount, 1, 8, 3),
-    clipAspect: ['original', '9:16', '16:9', '1:1'].includes(o.clipAspect) ? o.clipAspect : '9:16',
-    clipMin: clampNum(o.clipMin, 5, 60, 15),
-    clipMax: clampNum(o.clipMax, 15, 120, 50),
-    // Mídias próprias do usuário na timeline (imagens/vídeos/músicas). Resolvidas
-    // para caminhos de arquivo no servidor (ver optionsForUser).
-    userMedia: sanitizeUserMedia(o.userMedia),
+    brollPlan: sanitizeBrollPlan(o.brollPlan),
   };
 }
 
@@ -303,6 +303,44 @@ jobsRouter.post('/render', requireAuth, (req, res) => {
     editedTranscript,
   });
   res.status(201).json(queue.public(job));
+});
+
+// POST /api/broll/plan  (JSON: sourceId + editedTranscript + options) → devolve os
+// momentos de B-roll planejados COM candidatos (miniaturas) para o usuário revisar
+// e trocar antes de renderizar. Não baixa nem renderiza nada.
+jobsRouter.post('/broll/plan', requireAuth, async (req, res) => {
+  try {
+    const { sourceId, editedTranscript } = req.body || {};
+    const source = sourceId && queue.get(sourceId);
+    if (!source || !fs.existsSync(source.inputPath)) {
+      return res.status(410).json({ error: 'o vídeo de origem expirou; reenvie' });
+    }
+    const transcript = editedTranscript?.segments?.length ? editedTranscript : source.report?.transcript;
+    if (!transcript?.segments?.length) return res.status(400).json({ error: 'transcrição ausente' });
+
+    const options = optionsForUser(req);
+    const meta = await probeSummary(source.inputPath);
+    const analysis = await analyze(transcript, meta, options);
+    const moments = (analysis.brollMoments || []).slice(0, options.brollMax ?? 6);
+
+    const orientation = (meta.height || 1920) >= (meta.width || 1080) ? 'portrait' : 'landscape';
+    const apiKey = options.pexelsKey || config.broll.pexelsKey;
+    const google = { key: config.broll.googleImagesKey, cx: config.broll.googleImagesCx, unrestricted: config.broll.googleImagesUnrestricted };
+    const src = options.imageSource === 'google' && google.key && google.cx ? 'google' : options.imageSource === 'openverse' ? 'openverse' : 'pexels';
+
+    const out = [];
+    for (const m of moments) {
+      const candidates = await brollCandidates(m.query, {
+        source: src, apiKey, google, orientation,
+        targetH: Math.round((meta.height || 1920) / (src === 'pexels' ? 1 : 2)),
+        limit: 6, unrestricted: google.unrestricted,
+      });
+      out.push({ start: m.start, end: m.end, term: m.term || m.query, query: m.query, candidates });
+    }
+    res.json({ source: src, moments: out });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'falha ao planejar o B-roll' });
+  }
 });
 
 // POST /api/media  (multipart: file) → sobe uma mídia própria (imagem/vídeo/música)
@@ -503,22 +541,6 @@ jobsRouter.get('/jobs/:id/peaks', async (req, res) => {
   try {
     if (!fs.existsSync(out)) await once(out, () => buildPeaks(job, out));
     res.type('application/json').send(fs.readFileSync(out, 'utf8'));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/jobs/:id/broll-moments → momentos sugeridos para a faixa de B-roll,
-// no tempo do vídeo ORIGINAL. O cliente ajusta na timeline e devolve em /render.
-jobsRouter.post('/jobs/:id/broll-moments', requireAuth, async (req, res) => {
-  const job = queue.get(req.params.id);
-  const tr = job?.report?.editorTranscript || job?.report?.transcript;
-  if (!tr?.segments?.length) return res.status(404).json({ error: 'transcrição não disponível' });
-  try {
-    const options = { ...optionsForUser(req), broll: true };
-    const meta = { ...(job.report?.input || {}), duration: job.report?.input?.duration || 0 };
-    const a = await analyze(tr, meta, options);
-    res.json({ moments: (a.brollMoments || []).slice(0, options.brollMax ?? 6) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

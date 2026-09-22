@@ -225,4 +225,49 @@ async function aiRespond({ jid, text, pushName, fromMe, userId: ownerId }) {
   }
 }
 
-module.exports = { aiRespond }
+/* Gera resposta de IA dentro de um nó de funil (actionAIReply).
+   Diferente do aiRespond() que é o interceptador do webhook, esta função é
+   chamada diretamente pelo flow engine como ação sequencial. */
+async function generateFlowReply(ctx, nodeData = {}, vars = {}) {
+  if (!isConfigured) return null
+  const userId = ctx.userId
+  if (!userId) return null
+
+  try {
+    const { data: settings } = await supabase.from('settings').select('*').eq('user_id', userId).maybeSingle()
+    if (!settings) return null
+
+    let systemPrompt = nodeData.instructions || ''
+    if (nodeData.useSavedConfig) {
+      const { data: config } = await supabase.from('attendant_config').select('*').eq('user_id', userId).eq('enabled', true).limit(1).maybeSingle()
+      if (config) {
+        const { data: faqs } = await supabase.from('knowledge_base').select('question, answer').eq('user_id', userId)
+        systemPrompt = buildSystemPrompt(config, faqs, '', ctx.contact?.name || ctx.pushName || '')
+      }
+    }
+    if (!systemPrompt) systemPrompt = 'Você é um assistente prestativo. Responda de forma breve e objetiva.'
+
+    const userMessage = ctx.text || '(contato enviou mensagem vazia)'
+    const maxTokens = Math.min(Number(nodeData.maxTokens) || 500, 2000)
+
+    const keys = {
+      gemini: settings.gemini_key,
+      groq: settings.groq_key,
+      openai: settings.openai_key,
+      anthropic: settings.anthropic_key,
+    }
+
+    let response = null
+    if (keys.gemini) response = await askGemini(keys.gemini, systemPrompt, userMessage)
+    if (!response && keys.groq) response = await askGroq(keys.groq, systemPrompt, userMessage)
+    if (!response && keys.openai) response = await askOpenAI(keys.openai, systemPrompt, userMessage)
+    if (!response && keys.anthropic) response = await askClaude(keys.anthropic, systemPrompt, userMessage)
+
+    return response ? response.trim().slice(0, maxTokens * 4) : null
+  } catch (e) {
+    console.warn('[IA] generateFlowReply falhou:', e?.message ?? e)
+    return null
+  }
+}
+
+module.exports = { aiRespond, generateFlowReply }

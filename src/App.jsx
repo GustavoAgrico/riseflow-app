@@ -34,6 +34,12 @@ import { Plans } from '@pages/Plans'
 import { Product } from '@pages/Product'
 import { PlanDetails } from '@pages/PlanDetails'
 import { ActivityLogs } from '@pages/ActivityLogs'
+import { Today } from '@pages/Today'
+import { Reports } from '@pages/Reports'
+import { Marketing } from '@pages/Marketing'
+import { Proposals } from '@pages/Proposals'
+import { Agenda } from '@pages/Agenda'
+import { Notifications } from '@pages/Notifications'
 import { PageTransition } from '@components/PageTransition'
 import { AuthCallback } from '@pages/AuthCallback'
 
@@ -129,6 +135,7 @@ function App() {
 
               {/* Protected routes */}
               <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+              <Route path="/hoje" element={<PrivateRoute><Today /></PrivateRoute>} />
               <Route path="/chat" element={<PrivateRoute><Chat /></PrivateRoute>} />
               <Route path="/smart-attendant" element={<PrivateRoute><SmartAttendant /></PrivateRoute>} />
               <Route path="/flow-builder" element={<PrivateRoute><FlowBuilder /></PrivateRoute>} />
@@ -148,6 +155,11 @@ function App() {
               <Route path="/integrations" element={<PrivateRoute><Integrations /></PrivateRoute>} />
               <Route path="/automation" element={<PrivateRoute><Automation /></PrivateRoute>} />
               <Route path="/analytics" element={<PrivateRoute><Analytics /></PrivateRoute>} />
+              <Route path="/reports" element={<PrivateRoute><Reports /></PrivateRoute>} />
+              <Route path="/marketing" element={<PrivateRoute><Marketing /></PrivateRoute>} />
+              <Route path="/proposals" element={<PrivateRoute><Proposals /></PrivateRoute>} />
+              <Route path="/agenda" element={<PrivateRoute><Agenda /></PrivateRoute>} />
+              <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
               <Route path="/funnel" element={<PrivateRoute><Funnel /></PrivateRoute>} />
               <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
               <Route path="/activity-logs" element={<PrivateRoute><ActivityLogs /></PrivateRoute>} />

@@ -24,6 +24,8 @@ const createWebhookRouter = require('./routes/webhook')
 const billingRoutes = require('./routes/billing')
 const aiRoutes = require('./routes/ai')
 const legalRoutes = require('./routes/legal')
+const calendarRoutes = require('./routes/calendar')
+const pushRoutes = require('./routes/push')
 const telegram = require('./telegramClient')
 const metaClient = require('./metaClient')
 const whatsappCloud = require('./whatsappCloudClient')
@@ -230,6 +232,9 @@ app.use('/api/telegram/webhook', telegramRoutes.webhookRouter)
 // OAuth callback da Meta — PÚBLICO (o navegador volta do login sem JWT).
 app.use('/api/meta/oauth', metaRoutes.oauthRouter)
 
+// iCal feed público — autenticado por token na URL (assinatura Google Calendar/Apple Calendar).
+app.use('/api/calendar', calendarRoutes)
+
 // Telegram e Meta: injetam Socket.io + a mesma cadeia IA→funis do WhatsApp.
 const incomingHandler = ({ jid, text, pushName, fromMe, userId }) =>
   aiRespond({ jid, text, pushName, fromMe, userId })
@@ -269,6 +274,8 @@ app.use('/api/meta', auth, metaRoutes)
 app.use('/api/whatsapp-cloud', auth, whatsappCloudRoutes)
 app.use('/api/billing', auth, billingRoutes)
 app.use('/api/ai', auth, aiRoutes)
+app.use('/api/calendar', auth, calendarRoutes)
+app.use('/api/push', auth, pushRoutes)
 
 // Páginas legais públicas (Política de Privacidade / Exclusão de dados) — exigidas
 // pela App Review da Meta. Montadas ANTES do fallback do SPA para terem URL própria.
