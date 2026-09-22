@@ -53,36 +53,101 @@ async function createWindow() {
 function findNodePath() {
   // Em desenvolvimento, usa 'node' do PATH
   if (isDev) {
+    console.log('Modo desenvolvimento: usando "node" do PATH');
     return 'node';
   }
 
-  // Em produção, procura Node.js
+  console.log('=== Procurando Node.js ===');
+
+  // Método 1: Tentar 'where node' no Windows
   try {
-    // Tenta encontrar no PATH do Windows
-    const result = spawnSync('where', ['node'], { encoding: 'utf-8', windowsHide: true });
-    if (result.stdout) {
-      return result.stdout.trim().split('\n')[0];
+    const result = spawnSync('where', ['node'], {
+      encoding: 'utf-8',
+      windowsHide: true,
+      timeout: 5000
+    });
+    if (result.stdout && result.status === 0) {
+      const nodePath = result.stdout.trim().split('\n')[0];
+      if (nodePath && existsSync(nodePath)) {
+        console.log(`✓ Encontrado via 'where': ${nodePath}`);
+        // Valida se o caminho funciona
+        try {
+          const versionResult = spawnSync(nodePath, ['--version'], {
+            encoding: 'utf-8',
+            timeout: 5000
+          });
+          if (versionResult.status === 0) {
+            console.log(`✓ Node.js validado: ${versionResult.stdout.trim()}`);
+            return nodePath;
+          }
+        } catch (e) {
+          console.warn(`⚠ Node encontrado mas não validado: ${e.message}`);
+        }
+      }
+    } else {
+      console.warn(`⚠ 'where node' retornou erro ou vazio (status: ${result.status})`);
     }
   } catch (e) {
-    console.log('Node não encontrado no PATH');
+    console.warn(`⚠ Erro ao executar 'where node': ${e.message}`);
   }
 
-  // Fallback: caminhos comuns no Windows
+  // Método 2: Caminhos comuns no Windows
   const commonPaths = [
     'C:\\Program Files\\nodejs\\node.exe',
     'C:\\Program Files (x86)\\nodejs\\node.exe',
     path.join(process.env.APPDATA || '', '..', 'Local', 'Programs', 'nodejs', 'node.exe'),
     path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs', 'node.exe'),
+    path.join(process.env.ProgramW6432 || '', 'nodejs', 'node.exe'),
   ];
 
   for (const p of commonPaths) {
-    if (existsSync(p)) {
-      console.log(`Encontrado Node.js em: ${p}`);
-      return p;
+    if (p && existsSync(p)) {
+      console.log(`✓ Encontrado em caminho comum: ${p}`);
+      // Valida se funciona
+      try {
+        const versionResult = spawnSync(p, ['--version'], {
+          encoding: 'utf-8',
+          timeout: 5000
+        });
+        if (versionResult.status === 0) {
+          console.log(`✓ Node.js validado: ${versionResult.stdout.trim()}`);
+          return p;
+        }
+      } catch (e) {
+        console.warn(`⚠ Encontrado mas não validado: ${p}`);
+      }
     }
   }
 
-  console.warn('Node.js não encontrado! Tentando usar "node" do PATH.');
+  // Método 3: Procurar no registro do Windows
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync('reg query "HKLM\\Software\\Node.js" /v InstallPath 2>nul', {
+      encoding: 'utf-8'
+    }).match(/InstallPath\s+REG_SZ\s+(.+)/);
+
+    if (result && result[1]) {
+      const installPath = path.join(result[1].trim(), 'node.exe');
+      if (existsSync(installPath)) {
+        console.log(`✓ Encontrado no registro: ${installPath}`);
+        const versionResult = spawnSync(installPath, ['--version'], {
+          encoding: 'utf-8',
+          timeout: 5000
+        });
+        if (versionResult.status === 0) {
+          console.log(`✓ Node.js validado: ${versionResult.stdout.trim()}`);
+          return installPath;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(`⚠ Registro do Windows não encontrado`);
+  }
+
+  console.warn('⚠⚠ Node.js NÃO ENCONTRADO! Usando fallback "node"');
+  console.warn('   O app pode não funcionar sem Node.js instalado globalmente.');
+  console.warn('   Instale de: https://nodejs.org/');
+
   return 'node';
 }
 
@@ -91,8 +156,18 @@ function startServer() {
     const serverPath = path.join(projectRoot, 'server/src/index.js');
     const nodePath = findNodePath();
 
-    console.log(`Iniciando servidor com Node.js: ${nodePath}`);
-    console.log(`Caminho do servidor: ${serverPath}`);
+    console.log(`\n=== Iniciando Express Server ===`);
+    console.log(`Node.js: ${nodePath}`);
+    console.log(`Servidor: ${serverPath}`);
+    console.log(`Diretório de dados: ${dataDir}`);
+
+    // Verifica se o arquivo do servidor existe
+    if (!existsSync(serverPath)) {
+      const error = new Error(`Arquivo do servidor não encontrado: ${serverPath}`);
+      console.error('✗ ERRO:', error.message);
+      reject(error);
+      return;
+    }
 
     // Passa variáveis de ambiente necessárias
     const env = {
@@ -105,19 +180,40 @@ function startServer() {
       TRANSCRIBE_PROVIDER: 'whisper-local',
     };
 
+    console.log('Spawning processo...');
+
     serverProcess = spawn(nodePath, [serverPath], {
       cwd: projectRoot,
       env,
       stdio: 'inherit',
+      detached: false,
     });
 
     serverProcess.on('error', (error) => {
-      console.error('Erro ao iniciar servidor:', error);
+      console.error('\n✗✗✗ ERRO AO INICIAR SERVIDOR ✗✗✗');
+      console.error(`Código do erro: ${error.code}`);
+      console.error(`Mensagem: ${error.message}`);
+      console.error(`Path: ${nodePath}`);
+
+      if (error.code === 'ENOENT') {
+        console.error('\n⚠ Node.js não encontrado! Possíveis soluções:');
+        console.error('  1. Instale Node.js de https://nodejs.org/');
+        console.error('  2. Adicione Node.js ao PATH do Windows');
+        console.error('  3. Reinicie o computador após instalar Node.js');
+      }
+
       reject(error);
     });
 
+    serverProcess.on('exit', (code, signal) => {
+      console.log(`\nServidor encerrado (código: ${code}, sinal: ${signal})`);
+    });
+
     // Aguarda um pouco para o servidor inicializar
-    setTimeout(() => resolve(), 2000);
+    setTimeout(() => {
+      console.log('✓ Servidor iniciado com sucesso');
+      resolve();
+    }, 2000);
   });
 }
 
@@ -126,7 +222,18 @@ app.on('ready', async () => {
     await startServer();
     await createWindow();
   } catch (error) {
-    console.error('Erro ao iniciar aplicação:', error);
+    console.error('\n✗✗✗ ERRO CRÍTICO ✗✗✗');
+    console.error(error);
+
+    // Mostra erro em dialog para o usuário
+    dialog.showErrorBox(
+      'Erro ao Iniciar Riseframe',
+      `Não foi possível iniciar o aplicativo.\n\nErro: ${error.message}\n\n` +
+      `Verifique se você tem Node.js instalado em seu sistema.\n` +
+      `Baixe de: https://nodejs.org/\n\n` +
+      `Após instalar Node.js, reinicie o computador e tente novamente.`
+    );
+
     app.quit();
   }
 });
