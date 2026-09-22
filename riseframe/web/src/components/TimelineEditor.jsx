@@ -3,7 +3,7 @@ import { C, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import { sourceUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan } from '../api.js';
-import CostLine from './CostLine.jsx';
+import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
 
@@ -953,6 +953,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               Veja as imagens/vídeos que o sistema escolheu para cada trecho e <b>troque, substitua pela sua mídia ou remova</b> antes de gerar.
               {billing && !billing.unlimited && <> Cada imagem inserida custa <b>{billing.costs.image} créditos</b>.</>}
             </div>
+            {billing && !billing.features.includes('image') && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#FCA5B4', background: 'rgba(240,82,107,0.1)', border: `1px solid ${C.red}55`, borderRadius: 9, padding: '8px 10px', marginBottom: 10 }}>
+                <Icon name="lock" size={14} strokeWidth={2} />
+                <span style={{ flex: 1 }}>B-roll faz parte do plano Pro ou acima.</span>
+                <button onClick={openPlans} style={{ background: 'none', border: 'none', color: C.orangeSoft, fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>Ver planos</button>
+              </div>
+            )}
             <input ref={brollUploadRef} type="file" accept="image/*,video/*" onChange={onPickBrollMedia} style={{ display: 'none' }} />
             {!brollReview && (
               <button onClick={reviewBroll} disabled={brollBusy} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: brollBusy ? 0.6 : 1, cursor: brollBusy ? 'not-allowed' : 'pointer' }}>

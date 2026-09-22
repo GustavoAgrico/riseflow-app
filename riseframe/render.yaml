@@ -47,9 +47,9 @@ services:
       #   sync: false
       # - key: ANTHROPIC_API_KEY   # correção de fala + color grade por IA
       #   sync: false
-      # ── Créditos (AbacatePay) — sem a chave, não há cobrança (uso liberado) ──
-      # ⚠️ Saldos ficam em data/billing.json: ANTES de vender, ative o disco
-      #   (bloco abaixo). No free sem disco, os créditos comprados somem a cada deploy.
+      # ── Planos e créditos (AbacatePay) — sem a chave, não há cobrança (uso liberado) ──
+      # ⚠️ Planos e saldos ficam em data/billing.json: ANTES de vender, ative o disco
+      #   (bloco abaixo). No free sem disco, planos e créditos pagos somem a cada deploy.
       # - key: ABACATE_PAY_API_KEY     # mesma chave do RiseFlow (app.abacatepay.com → API)
       #   sync: false
       # - key: ABACATE_WEBHOOK_SECRET  # invente um valor; use o mesmo no webhook da AbacatePay:
@@ -58,12 +58,14 @@ services:
       #   value: https://SEU-APP.onrender.com
       # - key: ADMIN_EMAILS            # contas com uso ilimitado (separe por vírgula)
       #   value: seu-email@exemplo.com
-      # - key: BILLING_SIGNUP_CREDITS  # créditos grátis para cada conta nova
+      # - key: BILLING_SIGNUP_CREDITS  # créditos de teste para cada conta nova (recursos básicos)
       #   value: 60
+      # - key: BILLING_PLANS           # planos mensais (features: captionStyle, image, ai, clips)
+      #   value: '[{"id":"basico","name":"Básico","priceCents":2990,"credits":300,"features":[]},{"id":"pro","name":"Pro","priceCents":6990,"credits":1000,"features":["captionStyle","image","ai"],"popular":true},{"id":"premium","name":"Premium","priceCents":14990,"credits":3000,"features":["captionStyle","image","ai","clips"]}]'
+      # - key: CREDIT_PACKS            # recarga avulsa (não expira)
+      #   value: '[{"id":"recarga-100","name":"Recarga 100","credits":100,"priceCents":1490},{"id":"recarga-300","name":"Recarga 300","credits":300,"priceCents":3990},{"id":"recarga-1000","name":"Recarga 1000","credits":1000,"priceCents":11990}]'
       # - key: CREDIT_COSTS            # custo por recurso (JSON; o que faltar usa o padrão)
       #   value: '{"video":20,"captionStyle":10,"image":5,"ai":10,"clips":40}'
-      # - key: CREDIT_PACKS            # pacotes à venda (priceCents: 2990 = R$ 29,90)
-      #   value: '[{"id":"starter","name":"Starter","credits":500,"priceCents":2990},{"id":"pro","name":"Pro","credits":2000,"priceCents":9990,"popular":true},{"id":"enterprise","name":"Enterprise","credits":5000,"priceCents":24990}]'
       # - key: BILLING_METHODS         # PIX,CREDIT_CARD (ou só PIX se o cartão não estiver liberado)
       #   value: PIX,CREDIT_CARD
 

@@ -8,7 +8,7 @@ import Auth from './pages/Auth.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Library from './pages/Library.jsx';
 import Settings from './pages/Settings.jsx';
-import Credits from './pages/Credits.jsx';
+import Plans from './pages/Plans.jsx';
 import Editor from './App.jsx';
 
 const NAV = [
@@ -44,12 +44,13 @@ function CreditsCard({ billing, onOpen }) {
   return (
     <button onClick={onOpen} style={{ width: '100%', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer', background: 'rgba(124,58,237,0.09)', border: '1px solid rgba(124,58,237,0.25)', borderRadius: 12, padding: 12, color: C.text }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, color: C.muted }}>
-        <Icon name="zap" size={14} strokeWidth={2} color={C.purpleSoft} /> Créditos
+        <Icon name="zap" size={14} strokeWidth={2} color={C.purpleSoft} />
+        {billing.unlimited ? 'Uso ilimitado' : billing.plan ? `Plano ${billing.plan.name}` : 'Sem plano'}
       </div>
       <div style={{ fontSize: 24, fontWeight: 800, fontFamily: FONT_DISPLAY, margin: '4px 0 6px' }}>
-        {billing.unlimited ? 'Ilimitado' : billing.credits.toLocaleString('pt-BR')}
+        {billing.unlimited ? 'Ilimitado' : <>{billing.credits.toLocaleString('pt-BR')} <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>créditos</span></>}
       </div>
-      {!billing.unlimited && <div style={{ fontSize: 12, fontWeight: 700, color: C.purpleSoft }}>+ Comprar créditos</div>}
+      {!billing.unlimited && <div style={{ fontSize: 12, fontWeight: 700, color: C.purpleSoft }}>{billing.plan ? 'Ver planos' : 'Assinar um plano →'}</div>}
     </button>
   );
 }
@@ -71,7 +72,7 @@ function Sidebar({ user, billing, view, onView, onLogout }) {
       </div>
 
       <div style={{ marginTop: 20 }}>
-        <CreditsCard billing={billing} onOpen={() => onView('credits')} />
+        <CreditsCard billing={billing} onOpen={() => onView('plans')} />
       </div>
 
       <div style={{ marginTop: 20, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px' }}>CONTA</div>
@@ -100,7 +101,7 @@ function MobileTopBar({ billing, onView }) {
         <span style={{ fontWeight: 800, fontSize: 16, fontFamily: FONT_DISPLAY, letterSpacing: -0.4, color: C.text }}>Riseframe</span>
       </button>
       {billing && (
-        <button onClick={() => onView('credits')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 12px', borderRadius: 999, background: 'rgba(124,58,237,0.14)', border: '1px solid rgba(124,58,237,0.35)', color: C.text, fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
+        <button onClick={() => onView('plans')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 12px', borderRadius: 999, background: 'rgba(124,58,237,0.14)', border: '1px solid rgba(124,58,237,0.35)', color: C.text, fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
           <Icon name="zap" size={14} strokeWidth={2.2} color={C.purpleSoft} />
           {billing.unlimited ? 'Ilimitado' : billing.credits.toLocaleString('pt-BR')}
         </button>
@@ -113,7 +114,7 @@ const TABS = [
   { id: 'dashboard', label: 'Início', icon: 'grid' },
   { id: 'library', label: 'Biblioteca', icon: 'folder' },
   { id: 'editor', label: 'Novo', icon: 'sparkles', cta: true },
-  { id: 'credits', label: 'Créditos', icon: 'zap' },
+  { id: 'plans', label: 'Planos', icon: 'zap' },
   { id: 'settings', label: 'Conta', icon: 'user' },
 ];
 
@@ -176,7 +177,7 @@ export default function Root() {
   const [resetToken] = useState(readResetToken);
   const [publicRoute, setPublicRoute] = useState(resetToken ? 'login' : 'landing');
   const [billingReturn] = useState(readBillingReturn);
-  const [view, setView] = useState(billingReturn ? 'credits' : 'dashboard');
+  const [view, setView] = useState(billingReturn ? 'plans' : 'dashboard');
   // Intenção com que o editor abre: 'editor' (timeline) ou 'broll' (B-roll ligado).
   const [editorIntent, setEditorIntent] = useState(null);
 
@@ -186,11 +187,11 @@ export default function Root() {
     window.scrollTo(0, 0);
   }
 
-  // Qualquer tela pode pedir a página de créditos (ex.: "saldo insuficiente").
+  // Qualquer tela pode pedir a página de planos (ex.: saldo insuficiente, recurso bloqueado).
   useEffect(() => {
-    const open = () => go('credits');
-    window.addEventListener('rf:open-credits', open);
-    return () => window.removeEventListener('rf:open-credits', open);
+    const open = () => go('plans');
+    window.addEventListener('rf:open-plans', open);
+    return () => window.removeEventListener('rf:open-plans', open);
   }, []);
 
   if (!ready) {
@@ -235,7 +236,7 @@ export default function Root() {
         )}
         {view === 'library' && <Library onNewVideo={() => go('editor')} />}
         {view === 'settings' && <Settings onNewVideo={() => go('editor')} onLogout={logout} />}
-        {view === 'credits' && <Credits user={user} checkOnOpen={billingReturn} />}
+        {view === 'plans' && <Plans user={user} checkOnOpen={billingReturn} />}
         {view === 'editor' && <Editor key={editorIntent || 'new'} embedded intent={editorIntent} onSettings={() => go('settings')} />}
       </div>
       <MobileTabBar view={view} onView={go} />

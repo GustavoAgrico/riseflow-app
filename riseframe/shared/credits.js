@@ -37,3 +37,14 @@ export function creditItems(mode, options = {}, costs = DEFAULT_COSTS) {
 }
 
 export const creditTotal = (items) => items.reduce((s, i) => s + i.credits, 0);
+
+/** Itens que o plano não libera (o vídeo básico é sempre liberado). */
+export function lockedItems(items, allowedFeatures = []) {
+  return items.filter((i) => i.id !== 'video' && !allowedFeatures.includes(i.id));
+}
+
+/** Nome do plano mais barato que libera o recurso (para a mensagem de bloqueio). */
+export function cheapestPlanFor(featureId, plans = []) {
+  const p = [...plans].sort((a, b) => a.priceCents - b.priceCents).find((x) => x.features.includes(featureId));
+  return p ? p.name : null;
+}
