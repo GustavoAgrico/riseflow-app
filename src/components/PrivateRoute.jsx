@@ -8,17 +8,13 @@ export const PrivateRoute = ({ children }) => {
 
   if (loading) return null
 
-  // Allow video routes without authentication for testing
-  const videoRoutes = ['/video-dashboard', '/video-editor', '/broll-manager']
-  const isVideoRoute = videoRoutes.some(route => location.pathname.startsWith(route))
-
-  if (!user && !isDemoMode && !isVideoRoute) {
+  if (!user && !isDemoMode) {
     return <Navigate to="/login" replace />
   }
 
   // Guarda por cargo: um membro que digitar uma rota fora do seu acesso
   // (ex.: /billing) é levado de volta ao painel. O dono passa sempre.
-  if (!isDemoMode && !canAccess(location.pathname) && !isVideoRoute) {
+  if (!isDemoMode && !canAccess(location.pathname)) {
     return <Navigate to="/dashboard" replace />
   }
 
