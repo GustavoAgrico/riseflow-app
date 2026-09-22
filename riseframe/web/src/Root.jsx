@@ -44,6 +44,7 @@ function Sidebar({ user, view, onView, onLogout }) {
   const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
   const isPremium = user?.plan === 'premium';
   const [upgradeBusy, setUpgradeBusy] = useState(false);
+  const [expandedMenu, setExpandedMenu] = useState(null);
 
   const handleUpgrade = async () => {
     try {
@@ -55,6 +56,10 @@ function Sidebar({ user, view, onView, onLogout }) {
     } finally {
       setUpgradeBusy(false);
     }
+  };
+
+  const toggleMenu = (menu) => {
+    setExpandedMenu(expandedMenu === menu ? null : menu);
   };
 
   return (
@@ -71,8 +76,13 @@ function Sidebar({ user, view, onView, onLogout }) {
         {NAV.map((n) => <NavItem key={n.id} item={n} active={view === n.id} onClick={() => onView(n.id)} />)}
       </div>
 
-      {/* Seção de Assinatura/Créditos */}
-      <div className="rf-sec" style={{ marginTop: 20, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px' }}>ASSINATURA</div>
+      {/* Seção de Assinatura com opções */}
+      <div className="rf-sec" style={{ marginTop: 20, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        ASSINATURA
+        <button onClick={() => toggleMenu('plan')} style={{ background: 'none', border: 'none', color: C.faint, cursor: 'pointer', fontSize: 14, padding: 0 }}>
+          {expandedMenu === 'plan' ? '−' : '+'}
+        </button>
+      </div>
       <div style={{ background: isPremium ? 'rgba(34,211,238,0.08)' : 'rgba(255,107,53,0.08)', border: isPremium ? `1px solid rgba(34,211,238,0.2)` : `1px solid rgba(255,107,53,0.2)`, borderRadius: 10, padding: 12, marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
           <Icon name={isPremium ? 'star' : 'zap'} size={14} strokeWidth={2} color={isPremium ? '#22D3EE' : C.orange} />
@@ -86,19 +96,50 @@ function Sidebar({ user, view, onView, onLogout }) {
             {upgradeBusy ? 'Atualizando…' : '✨ Fazer upgrade'}
           </button>
         )}
+        {expandedMenu === 'plan' && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${isPremium ? 'rgba(34,211,238,0.2)' : 'rgba(255,107,53,0.2)'}`, display: 'grid', gap: 8 }}>
+            <button onClick={() => onView('settings')} style={{ textAlign: 'left', background: 'none', border: 'none', color: C.muted, fontSize: 11, cursor: 'pointer', padding: 0, fontFamily: 'inherit', transition: 'color 0.15s' }} onMouseEnter={(e) => e.target.style.color = C.text} onMouseLeave={(e) => e.target.style.color = C.muted}>
+              → Gerenciar plano
+            </button>
+            <div style={{ fontSize: 11, color: C.faint }}>Válido até: 30 set 2027</div>
+            {isPremium && (
+              <button onClick={() => alert('Downgrade em breve')} style={{ textAlign: 'left', background: 'none', border: 'none', color: C.muted, fontSize: 11, cursor: 'pointer', padding: 0, fontFamily: 'inherit', transition: 'color 0.15s' }} onMouseEnter={(e) => e.target.style.color = C.text} onMouseLeave={(e) => e.target.style.color = C.muted}>
+                → Fazer downgrade
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Créditos de tokens */}
+      {/* Créditos de tokens com opções de recarga */}
       <div style={{ background: 'rgba(124,58,237,0.08)', border: `1px solid rgba(124,58,237,0.2)`, borderRadius: 10, padding: 12, marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
           <Icon name="zap" size={14} strokeWidth={2} color={C.purple} />
           <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Créditos</div>
+          <button onClick={() => toggleMenu('credits')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.faint, cursor: 'pointer', fontSize: 14, padding: 0 }}>
+            {expandedMenu === 'credits' ? '−' : '+'}
+          </button>
         </div>
         <div style={{ fontSize: 24, fontWeight: 800, color: C.purple, marginBottom: 8 }}>{user?.credits || 0}</div>
         <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>tokens disponíveis para renderização</div>
         <button onClick={() => onView('credits')} style={{ width: '100%', background: 'rgba(124,58,237,0.15)', color: C.purple, border: `1px solid rgba(124,58,237,0.3)`, borderRadius: 8, padding: '8px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
           + Comprar créditos
         </button>
+        {expandedMenu === 'credits' && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid rgba(124,58,237,0.2)`, display: 'grid', gap: 6 }}>
+            <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Planos rápidos</div>
+            <button onClick={() => onView('credits')} style={{ textAlign: 'left', background: 'rgba(124,58,237,0.1)', border: `1px solid rgba(124,58,237,0.2)`, color: C.text, borderRadius: 6, padding: '8px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }} onMouseEnter={(e) => { e.target.style.background = 'rgba(124,58,237,0.15)'; }} onMouseLeave={(e) => { e.target.style.background = 'rgba(124,58,237,0.1)'; }}>
+              Starter — 500 tokens
+            </button>
+            <button onClick={() => onView('credits')} style={{ textAlign: 'left', background: 'rgba(124,58,237,0.1)', border: `1px solid rgba(124,58,237,0.2)`, color: C.text, borderRadius: 6, padding: '8px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }} onMouseEnter={(e) => { e.target.style.background = 'rgba(124,58,237,0.15)'; }} onMouseLeave={(e) => { e.target.style.background = 'rgba(124,58,237,0.1)'; }}>
+              Pro — 2000 tokens
+            </button>
+            <button onClick={() => onView('credits')} style={{ textAlign: 'left', background: 'rgba(124,58,237,0.1)', border: `1px solid rgba(124,58,237,0.2)`, color: C.text, borderRadius: 6, padding: '8px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }} onMouseEnter={(e) => { e.target.style.background = 'rgba(124,58,237,0.15)'; }} onMouseLeave={(e) => { e.target.style.background = 'rgba(124,58,237,0.1)'; }}>
+              Enterprise — 5000 tokens
+            </button>
+            <div style={{ fontSize: 10, color: C.faint, marginTop: 4 }}>Últimas compras: Nenhuma</div>
+          </div>
+        )}
       </div>
 
       <div className="rf-sec" style={{ marginTop: 8, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px' }}>CONTA</div>
