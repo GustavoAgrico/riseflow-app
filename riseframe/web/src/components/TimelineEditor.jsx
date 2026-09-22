@@ -56,6 +56,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [cuts, setCuts] = useState([]);
   const drawRef = useRef(null);
   const [drawing, setDrawing] = useState(null);
+  // Corte marcado pelo playhead: guarda o início até o usuário fechar no fim.
+  const [cutStart, setCutStart] = useState(null);
   const wave = useMemo(() => wavePath(peaks), [peaks]);
   useEffect(() => {
     let vivo = true;
@@ -587,6 +589,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <button onClick={splitAtPlayhead} disabled={!canSplit} style={toolBtn(!canSplit)}>
           <Icon name="scissors" size={14} strokeWidth={2} /> Dividir no playhead
         </button>
+        <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />
+        <button
+          onClick={() => {
+            if (cutStart == null) { setCutStart(cur); return; }
+            const a = Math.min(cutStart, cur);
+            const b = Math.max(cutStart, cur);
+            if (b - a > 0.15) setCuts((l) => [...l, { key: `c${Date.now()}`, start: +a.toFixed(2), end: +b.toFixed(2) }]);
+            setCutStart(null);
+          }}
+          style={cutStart == null ? toolBtn(false) : miniBtn(true, false)}
+          title="Posicione o playhead, marque o início, mova e feche o corte"
+        >
+          <Icon name="scissors" size={14} strokeWidth={2} />
+          {cutStart == null ? 'Cortar deste ponto' : `Fechar corte em ${fmtDuration(cur)}`}
+        </button>
+        {cutStart != null && (
+          <button onClick={() => setCutStart(null)} style={toolBtn(false)}>Cancelar</button>
+        )}
         {pauses.length > 0 && (
           <>
             <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />
@@ -613,7 +633,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <div style={{ width: 104, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.25)', paddingBottom: 6 }}>
           <div style={{ height: LANE.ruler }} />
           <Rotulo h={LANE.legenda} gap={6} nome="LEGENDA" dica="clique na palavra" />
-          <Rotulo h={LANE.video} gap={4} nome="VÍDEO" dica={cuts.length ? null : 'arraste para cortar'} />
+          <Rotulo h={LANE.video} gap={4} nome="VÍDEO" dica={cuts.length ? null : 'arraste ou use o botão'} />
           <Rotulo h={LANE.broll} gap={4} nome="B-ROLL" dica={!brollOn ? 'ligue na aba' : brollLoading ? 'procurando…' : broll.length === 0 ? 'nada sugerido' : null} />
           <Rotulo h={LANE.audio} gap={4} nome="ÁUDIO" dica={gains.length ? null : 'use a aba Áudio'} />
           <Rotulo h={LANE.pausas} gap={4} nome="PAUSAS" dica={pauses.length ? 'clique p/ manter' : null} />
@@ -695,6 +715,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 <div onMouseDown={(e) => startRangeDrag(setCuts, c, 'right', e)} style={handleStyle('right')} />
               </div>
             ))}
+            {cutStart != null && Math.abs(cur - cutStart) > 0.02 && (
+              <div style={{ position: 'absolute', left: Math.min(cutStart, cur) * pps, width: Math.abs(cur - cutStart) * pps, top: 0, bottom: 0, background: 'rgba(240,82,107,0.22)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
+            )}
             {drawing && drawing.end > drawing.start && (
               <div style={{ position: 'absolute', left: drawing.start * pps, width: (drawing.end - drawing.start) * pps, top: 0, bottom: 0, background: 'rgba(240,82,107,0.3)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
             )}
