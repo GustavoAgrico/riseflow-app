@@ -202,4 +202,21 @@ export function subscribeJob(id, onUpdate) {
 export const downloadUrl = (id) => `${BASE}/jobs/${id}/download`;
 export const previewUrl = (id) => `${BASE}/jobs/${id}/preview`;
 /** URL do vídeo ORIGINAL enviado (para o editor/timeline pré-visualizar). */
+/** Job já processado — usado para reabrir a timeline a partir do histórico. */
+export async function getJob(id) {
+  const r = await fetch(`${BASE}/jobs/${id}`, { headers: authHeaders() });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || (r.status === 404 ? 'o vídeo de origem não está mais disponível' : `erro ${r.status}`));
+  return data;
+}
+
 export const sourceUrl = (id) => `${BASE}/jobs/${id}/source`;
+/** Tira de miniaturas da faixa de vídeo da timeline. */
+export const filmstripUrl = (id) => `${BASE}/jobs/${id}/filmstrip`;
+/** Picos de áudio (0..1) para desenhar a forma de onda. */
+export async function getPeaks(id) {
+  const r = await fetch(`${BASE}/jobs/${id}/peaks`);
+  if (!r.ok) return [];
+  const d = await r.json().catch(() => ({}));
+  return Array.isArray(d.peaks) ? d.peaks : [];
+}

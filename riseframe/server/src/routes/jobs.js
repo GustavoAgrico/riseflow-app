@@ -8,7 +8,7 @@ import { queue } from '../queue.js';
 import { requireAuth } from './auth.js';
 import { getSettings } from '../auth/settings.js';
 import { registerMedia, resolveMedia } from '../mediaStore.js';
-import { probeSummary } from '../pipeline/ffmpeg.js';
+import { probeSummary, runFfmpeg } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
 import { brollCandidates } from '../pipeline/broll.js';
 
@@ -226,28 +226,6 @@ function parseOptions(raw) {
     pexelsKey: typeof o.pexelsKey === 'string' && /^[A-Za-z0-9]{20,80}$/.test(o.pexelsKey.trim()) ? o.pexelsKey.trim() : '',
     brollEverySec: clampNum(o.brollEverySec, 4, 30, 8),
     brollMax: clampNum(o.brollMax, 1, 12, 6),
-    aspect: ['original', '9:16', '16:9', '1:1'].includes(o.aspect) ? o.aspect : 'original',
-    reframeTrack: o.reframeTrack !== false, // seguir o sujeito no reframe
-    silenceNoiseDb: clampNum(o.silenceNoiseDb, -60, -10, sp.noiseDb),
-    silenceMinDuration: clampNum(o.silenceMinDuration, 0.2, 3, sp.min),
-    silencePadding: clampNum(o.silencePadding, 0, 0.5, sp.pad),
-    // Piso de ruído adaptativo (mede o áudio). Padrão ligado; corta melhor em
-    // qualquer gravação. silenceHeadroomDb = distância abaixo do pico (por força).
-    silenceAdaptive: o.silenceAdaptive !== false,
-    silenceHeadroomDb: clampNum(o.silenceHeadroomDb, 16, 44, sp.headroom),
-    // Cortes de silêncio escolhidos manualmente na timeline (modo render). Quando
-    // manualSilence=true, o pipeline usa exatamente estes trechos em vez de detectar.
-    manualSilence: o.manualSilence === true,
-    silenceCuts: sanitizeSilenceCuts(o.silenceCuts),
-    // clipes curtos
-    clipsCount: clampNum(o.clipsCount, 1, 8, 3),
-    clipAspect: ['original', '9:16', '16:9', '1:1'].includes(o.clipAspect) ? o.clipAspect : '9:16',
-    clipMin: clampNum(o.clipMin, 5, 60, 15),
-    clipMax: clampNum(o.clipMax, 15, 120, 50),
-    // Mídias próprias do usuário na timeline (imagens/vídeos/músicas). Resolvidas
-    // para caminhos de arquivo no servidor (ver optionsForUser).
-    userMedia: sanitizeUserMedia(o.userMedia),
-    // Plano de B-roll travado na revisão (o que entra em cada momento).
     brollPlan: sanitizeBrollPlan(o.brollPlan),
   };
 }
@@ -475,6 +453,84 @@ const MIME_BY_EXT = {
   '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime',
   '.webm': 'video/webm', '.mkv': 'video/x-matroska', '.avi': 'video/x-msvideo',
 };
+// Miniaturas e forma de onda da timeline. Gerados uma vez com ffmpeg e guardados
+// em data/cache (o TTL da limpeza leva junto). Um Map evita duas gerações do mesmo
+// arquivo quando o cliente pede as duas faixas ao mesmo tempo.
+const FRAMES = 120;
+const inFlight = new Map();
+function once(key, fn) {
+  if (!inFlight.has(key)) inFlight.set(key, fn().finally(() => inFlight.delete(key)));
+  return inFlight.get(key);
+}
+
+/** Job com o vídeo de origem ainda no disco, ou null. */
+function sourceJob(id) {
+  const job = queue.get(id);
+  if (!job?.inputPath || !fs.existsSync(job.inputPath)) return null;
+  return job;
+}
+
+async function buildFilmstrip(job, out) {
+  const dur = Math.max(1, job.report?.input?.duration || (await probeSummary(job.inputPath)).duration || 1);
+  await runFfmpeg(
+    ['-y', '-i', job.inputPath, '-vf', `fps=${FRAMES}/${dur},scale=80:45:force_original_aspect_ratio=increase,crop=80:45,tile=${FRAMES}x1`, '-frames:v', '1', '-q:v', '6', out],
+    { label: 'filmstrip' },
+  );
+}
+
+async function buildPeaks(job, out) {
+  const pcm = `${out}.pcm`;
+  try {
+    await runFfmpeg(['-y', '-i', job.inputPath, '-vn', '-ac', '1', '-ar', '8000', '-f', 's16le', pcm], { label: 'peaks' });
+    const buf = fs.readFileSync(pcm);
+    const total = Math.floor(buf.length / 2);
+    const buckets = 1200;
+    const per = Math.max(1, Math.floor(total / buckets));
+    const peaks = [];
+    for (let b = 0; b < buckets && b * per < total; b++) {
+      let max = 0;
+      for (let i = b * per; i < Math.min((b + 1) * per, total); i++) {
+        const v = Math.abs(buf.readInt16LE(i * 2));
+        if (v > max) max = v;
+      }
+      peaks.push(max / 32768);
+    }
+    // Normaliza pelo pico do próprio áudio: gravação baixa também preenche a faixa.
+    const loudest = Math.max(0.02, ...peaks);
+    fs.writeFileSync(out, JSON.stringify({ peaks: peaks.map((v) => Math.round((v / loudest) * 100) / 100) }));
+  } catch {
+    fs.writeFileSync(out, JSON.stringify({ peaks: [] })); // vídeo sem áudio
+  } finally {
+    fs.rmSync(pcm, { force: true });
+  }
+}
+
+// GET /api/jobs/:id/filmstrip → tira de miniaturas (JPEG) da faixa de vídeo
+jobsRouter.get('/jobs/:id/filmstrip', async (req, res) => {
+  const job = sourceJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'vídeo de origem indisponível' });
+  const out = path.join(config.paths.cache, `${job.id}.strip.jpg`);
+  try {
+    if (!fs.existsSync(out)) await once(out, () => buildFilmstrip(job, out));
+    res.type('image/jpeg').sendFile(path.resolve(out));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/jobs/:id/peaks → picos de áudio normalizados (0..1) da forma de onda
+jobsRouter.get('/jobs/:id/peaks', async (req, res) => {
+  const job = sourceJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'vídeo de origem indisponível' });
+  const out = path.join(config.paths.cache, `${job.id}.peaks.json`);
+  try {
+    if (!fs.existsSync(out)) await once(out, () => buildPeaks(job, out));
+    res.type('application/json').send(fs.readFileSync(out, 'utf8'));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 jobsRouter.get('/jobs/:id/source', (req, res) => {
   const job = queue.get(req.params.id);
   if (!job) return res.status(404).json({ error: 'job não encontrado' });
