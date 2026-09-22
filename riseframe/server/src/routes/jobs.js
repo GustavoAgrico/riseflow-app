@@ -189,6 +189,15 @@ function parseOptions(raw) {
     brollMax: clampNum(o.brollMax, 1, 12, 6),
     // Momentos escolhidos na timeline, no tempo do vídeo ORIGINAL. null = deixa a
     // análise decidir, como sempre foi.
+    // Volume da fala: geral, mudo e trechos com volume próprio (tempo original).
+    audioMute: o.audioMute === true,
+    audioVolume: clampNum(o.audioVolume, 0, 4, 1),
+    audioGains: Array.isArray(o.audioGains)
+      ? o.audioGains
+          .filter((g) => g && Number(g.end) > Number(g.start))
+          .slice(0, 40)
+          .map((g) => ({ start: Math.max(0, Number(g.start)), end: Number(g.end), volume: clampNum(g.volume, 0, 4, 1) }))
+      : [],
     brollMoments: Array.isArray(o.brollMoments)
       ? o.brollMoments
           .filter((m) => m && Number.isFinite(Number(m.start)) && Number(m.end) > Number(m.start))

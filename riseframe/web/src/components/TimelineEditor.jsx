@@ -47,7 +47,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Momentos de B-roll no tempo do vídeo ORIGINAL. off = o usuário tirou.
   const [broll, setBroll] = useState([]);
   const [brollLoading, setBrollLoading] = useState(false);
-  const brollDragRef = useRef(null);
+  const rangeDragRef = useRef(null);
+  // Volume da fala: geral, mudo e trechos com volume próprio (tempo original).
+  const [audioMute, setAudioMute] = useState(options?.audioMute === true);
+  const [audioVolume, setAudioVolume] = useState(Number(options?.audioVolume ?? 1));
+  const [gains, setGains] = useState([]);
   const wave = useMemo(() => wavePath(peaks), [peaks]);
   useEffect(() => {
     let vivo = true;
@@ -203,33 +207,34 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
   }, [pps, dur]);
 
+  // Arrastar/redimensionar faixas de tempo (B-roll e trechos de volume).
   useEffect(() => {
     function move(e) {
-      const d = brollDragRef.current;
+      const d = rangeDragRef.current;
       if (!d) return;
       const dt = (e.clientX - d.x0) / pps;
-      setBroll((list) => list.map((b) => {
-        if (b.key !== d.key) return b;
+      d.setList((list) => list.map((r) => {
+        if (r.key !== d.key) return r;
         if (d.mode === 'move') {
           const start = Math.max(0, Math.min(d.start0 + dt, dur - (d.end0 - d.start0)));
-          return { ...b, start: +start.toFixed(2), end: +(start + (d.end0 - d.start0)).toFixed(2) };
+          return { ...r, start: +start.toFixed(2), end: +(start + (d.end0 - d.start0)).toFixed(2) };
         }
-        if (d.mode === 'right') return { ...b, end: +Math.min(dur, Math.max(d.start0 + 0.4, d.end0 + dt)).toFixed(2) };
-        return { ...b, start: +Math.max(0, Math.min(d.end0 - 0.4, d.start0 + dt)).toFixed(2) };
+        if (d.mode === 'right') return { ...r, end: +Math.min(dur, Math.max(d.start0 + 0.4, d.end0 + dt)).toFixed(2) };
+        return { ...r, start: +Math.max(0, Math.min(d.end0 - 0.4, d.start0 + dt)).toFixed(2) };
       }));
     }
     function up() {
-      if (brollDragRef.current) { brollDragRef.current = null; document.body.style.userSelect = ''; }
+      if (rangeDragRef.current) { rangeDragRef.current = null; document.body.style.userSelect = ''; }
     }
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
   }, [pps, dur]);
 
-  function startBrollDrag(b, mode, e) {
+  function startRangeDrag(setList, r, mode, e) {
     e.stopPropagation();
     e.preventDefault();
-    brollDragRef.current = { key: b.key, mode, x0: e.clientX, start0: b.start, end0: b.end };
+    rangeDragRef.current = { setList, key: r.key, mode, x0: e.clientX, start0: r.start, end0: r.end };
     document.body.style.userSelect = 'none';
   }
 
@@ -425,6 +430,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           : {}),
         // Ajustes de legenda escolhidos aqui na timeline (sobrepõem os das opções).
         ...cap,
+        // Volume da fala (tempo original — este estágio roda antes dos cortes).
+        audioMute,
+        audioVolume: +Number(audioVolume).toFixed(2),
+        audioGains: gains.map((g) => ({ start: +g.start.toFixed(2), end: +g.end.toFixed(2), volume: +Number(g.volume).toFixed(2) })),
         // B-roll: ajustes da aba + momentos da faixa (tempo original; o servidor
         // remapeia depois dos cortes).
         ...brollOpts,
@@ -610,7 +619,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <div
                     key={b.key}
                     title={b.query || 'B-roll'}
-                    onMouseDown={(e) => { if (!b.off) startBrollDrag(b, 'move', e); }}
+                    onMouseDown={(e) => { if (!b.off) startRangeDrag(setBroll, b, 'move', e); }}
                     onClick={(e) => { e.stopPropagation(); if (b.off) setBroll((l) => l.map((x) => (x.key === b.key ? { ...x, off: false } : x))); }}
                     style={{
                       position: 'absolute', left, width: w, top: 2, height: 26, borderRadius: 7, overflow: 'hidden',
@@ -632,8 +641,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     >
                       {b.off ? '+' : '×'}
                     </button>
-                    {!b.off && <div onMouseDown={(e) => startBrollDrag(b, 'left', e)} style={handleStyle('left')} />}
-                    {!b.off && <div onMouseDown={(e) => startBrollDrag(b, 'right', e)} style={handleStyle('right')} />}
+                    {!b.off && <div onMouseDown={(e) => startRangeDrag(setBroll, b, 'left', e)} style={handleStyle('left')} />}
+                    {!b.off && <div onMouseDown={(e) => startRangeDrag(setBroll, b, 'right', e)} style={handleStyle('right')} />}
                   </div>
                 );
               })}
@@ -647,6 +656,30 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 <path d={wave} fill={C.purpleSoft} opacity={0.6} />
               </svg>
             )}
+            {gains.map((g) => {
+              const left = g.start * pps;
+              const w = Math.max(16, (g.end - g.start) * pps - 1);
+              const mudo = Number(g.volume) < 0.005;
+              return (
+                <div
+                  key={g.key}
+                  title={`Volume ${mudo ? 'mudo' : `${Number(g.volume).toFixed(2)}×`}`}
+                  onMouseDown={(e) => startRangeDrag(setGains, g, 'move', e)}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: 'absolute', left, width: w, top: 0, bottom: 0, borderRadius: 5,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab',
+                    border: `1px solid ${mudo ? C.red : C.orange}`,
+                    background: mudo ? 'rgba(240,82,107,0.28)' : 'rgba(255,107,53,0.22)',
+                    fontSize: 10.5, fontWeight: 700, color: C.text, overflow: 'hidden', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {mudo ? 'mudo' : `${Number(g.volume).toFixed(2)}×`}
+                  <div onMouseDown={(e) => startRangeDrag(setGains, g, 'left', e)} style={handleStyle('left')} />
+                  <div onMouseDown={(e) => startRangeDrag(setGains, g, 'right', e)} style={handleStyle('right')} />
+                </div>
+              );
+            })}
           </div>
 
           {/* Lane de pausas (silêncio entre palavras) — clique alterna cortar/manter */}
@@ -806,6 +839,56 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
         )}
 
+        {/* Volume da fala: geral, mudo e trechos com volume próprio */}
+        {tab === 'audio' && (
+          <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+            <CapRow label="Mudo">
+              <button onClick={() => setAudioMute((m) => !m)} style={miniBtn(audioMute, false)}>
+                {audioMute ? 'Fala silenciada' : 'Fala com som'}
+              </button>
+            </CapRow>
+            <CapRow label="Volume da fala">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: audioMute ? 0.4 : 1 }}>
+                <input type="range" min="0" max="2" step="0.05" value={audioVolume} disabled={audioMute}
+                  onChange={(e) => setAudioVolume(Number(e.target.value))} style={{ flex: 1 }} />
+                <span style={{ width: 46, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12.5 }}>{Number(audioVolume).toFixed(2)}×</span>
+              </label>
+            </CapRow>
+            <CapRow label="Trecho com volume próprio">
+              <button
+                onClick={() => setGains((l) => {
+                  // Trechos sobrepostos multiplicam o volume no ffmpeg; começa depois do que já cobre o playhead.
+                  const cobre = l.filter((g) => cur >= g.start && cur < g.end);
+                  const inicio = cobre.length ? Math.max(...cobre.map((g) => g.end)) : cur;
+                  if (inicio >= dur - 0.4) return l;
+                  return [...l, { key: `g${Date.now()}`, start: +inicio.toFixed(2), end: +Math.min(dur, inicio + 2).toFixed(2), volume: 0.3 }];
+                })}
+                disabled={audioMute || cur >= dur - 0.4}
+                style={toolBtn(audioMute || cur >= dur - 0.4)}
+              >
+                <Icon name="scissors" size={14} strokeWidth={2} /> Abaixar a partir do playhead
+              </button>
+            </CapRow>
+            {gains.map((g) => (
+              <CapRow key={g.key} label={`${fmtDuration(g.start)} → ${fmtDuration(g.end)}`}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <input type="range" min="0" max="2" step="0.05" value={g.volume}
+                    onChange={(e) => setGains((l) => l.map((x) => (x.key === g.key ? { ...x, volume: Number(e.target.value) } : x)))} style={{ flex: 1 }} />
+                  <span style={{ width: 46, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12.5 }}>
+                    {Number(g.volume) < 0.005 ? 'mudo' : `${Number(g.volume).toFixed(2)}×`}
+                  </span>
+                  <button onClick={() => setGains((l) => l.filter((x) => x.key !== g.key))} style={miniBtn(false, false)} title="Tirar este trecho">×</button>
+                </div>
+              </CapRow>
+            ))}
+            <div style={{ fontSize: 11.5, color: C.faint, paddingTop: 6 }}>
+              {audioMute
+                ? 'A fala original sai muda no vídeo final — a música de Minhas mídias continua.'
+                : 'Os trechos aparecem na faixa de áudio — arraste para mover e puxe as pontas para ajustar.'}
+            </div>
+          </div>
+        )}
+
         {/* Ajustes de legenda (posição, fonte, estilo…) direto na edição */}
         {tab === 'legenda' && catalog && cap.captions && (
             <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
@@ -940,6 +1023,7 @@ function miniBtn(active, disabled) {
 const TABS = [
   { id: 'enquadramento', label: 'Enquadramento', icon: 'crop' },
   { id: 'broll', label: 'B-roll', icon: 'image' },
+  { id: 'audio', label: 'Áudio', icon: 'mic' },
   { id: 'legenda', label: 'Legenda', icon: 'captions' },
   { id: 'midias', label: 'Minhas mídias', icon: 'film' },
 ];
