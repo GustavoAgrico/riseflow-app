@@ -95,6 +95,13 @@ export default function Root() {
   const [resetToken] = useState(readResetToken);
   const [publicRoute, setPublicRoute] = useState(resetToken ? 'login' : 'landing');
   const [view, setView] = useState('dashboard');
+  // Intenção com que o editor abre: 'editor' (timeline) ou 'broll' (B-roll ligado).
+  const [editorIntent, setEditorIntent] = useState(null);
+
+  function go(next, intent = null) {
+    setEditorIntent(next === 'editor' ? intent : null);
+    setView(next);
+  }
 
   if (!ready) {
     return (
@@ -123,12 +130,21 @@ export default function Root() {
 
   return (
     <div className="rf-root" style={{ minHeight: '100vh', display: 'flex' }}>
-      <Sidebar user={user} view={view} onView={setView} onLogout={logout} />
+      <Sidebar user={user} view={view} onView={go} onLogout={logout} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        {view === 'dashboard' && <Dashboard user={user} onNewVideo={() => setView('editor')} onLibrary={() => setView('library')} onSettings={() => setView('settings')} />}
-        {view === 'library' && <Library onNewVideo={() => setView('editor')} />}
-        {view === 'settings' && <Settings onNewVideo={() => setView('editor')} />}
-        {view === 'editor' && <Editor embedded onSettings={() => setView('settings')} />}
+        {view === 'dashboard' && (
+          <Dashboard
+            user={user}
+            onNewVideo={() => go('editor')}
+            onEditVideo={() => go('editor', 'editor')}
+            onBroll={() => go('editor', 'broll')}
+            onLibrary={() => go('library')}
+            onSettings={() => go('settings')}
+          />
+        )}
+        {view === 'library' && <Library onNewVideo={() => go('editor')} />}
+        {view === 'settings' && <Settings onNewVideo={() => go('editor')} />}
+        {view === 'editor' && <Editor key={editorIntent || 'new'} embedded intent={editorIntent} onSettings={() => go('settings')} />}
       </div>
       <style>{`
         @media (max-width: 820px){

@@ -11,14 +11,14 @@ import ClipsResult from './components/ClipsResult.jsx';
 import TimelineEditor from './components/TimelineEditor.jsx';
 import { recordJob } from './history.js';
 
-export default function App({ embedded = false, onHome, onSettings } = {}) {
+export default function App({ embedded = false, onHome, onSettings, intent = null } = {}) {
   const [catalog, setCatalog] = useState(null);
   const [health, setHealth] = useState(null);
   const [loadError, setLoadError] = useState(null);
 
   const [file, setFile] = useState(null);
   const [options, setOptions] = useState(null);
-  const [editMode, setEditMode] = useState('auto');
+  const [editMode, setEditMode] = useState(intent === 'editor' ? 'editor' : 'auto');
 
   const [phase, setPhase] = useState('setup');
   const [uploadPct, setUploadPct] = useState(0);
@@ -64,7 +64,7 @@ export default function App({ embedded = false, onHome, onSettings } = {}) {
             savedKey = '';
           }
           if (cancelled) return;
-          setOptions({ ...c.defaults, pexelsKey: savedKey });
+          setOptions({ ...c.defaults, pexelsKey: savedKey, ...(intent === 'broll' ? { broll: true } : null) });
           setLoadError(null);
           return;
         } catch (e) {
