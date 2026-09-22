@@ -49,17 +49,6 @@ export async function fetchMe() {
   if (!r.ok) throw new Error('sessão inválida');
   return (await r.json()).user;
 }
-/** Atualiza o plano do usuário para premium (para teste/demo). */
-export async function upgradeToPremium() {
-  const r = await fetch(`${BASE}/auth/me/plan`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ plan: 'premium' }),
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
-  return data.user;
-}
 
 // ─── Configurações do usuário ─────────────────────────────────────────
 export async function getSettings() {
@@ -78,7 +67,7 @@ export async function saveSettings(patch) {
   return data;
 }
 
-// ─── Assinatura ───────────────────────────────────────────────────────
+// ─── Créditos ───────────────────────────────────────────────────────
 async function billingCall(path, method = 'GET', body) {
   const r = await fetch(`${BASE}${path}`, {
     method,
@@ -90,9 +79,9 @@ async function billingCall(path, method = 'GET', body) {
   return data;
 }
 export const getBilling = () => billingCall('/billing');
-/** Gera o pagamento (Pix/cartão) e devolve { url } do checkout da AbacatePay. */
+/** Gera o pagamento de um pacote (Pix/cartão): { packId, name, cpf, phone } → { url } do checkout. */
 export const startCheckout = (info) => billingCall('/billing/checkout', 'POST', info);
-/** Confere se o pagamento já caiu; devolve o status atualizado + { activated }. */
+/** Confere se o pagamento já caiu; devolve o saldo atualizado + { added }. */
 export const syncBilling = () => billingCall('/billing/sync', 'POST');
 
 export async function getHealth() {

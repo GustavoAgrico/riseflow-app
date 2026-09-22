@@ -26,6 +26,8 @@ RUN pip3 install --no-cache-dir --break-system-packages -r server/requirements.t
 COPY package.json ./
 COPY server/package.json ./server/
 COPY web/package.json ./web/
+# O Electron (app desktop) é só devDependency da raiz: não baixa o binário no servidor.
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 RUN npm install --workspaces --include-workspace-root
 
 # Copia o código e builda o frontend.

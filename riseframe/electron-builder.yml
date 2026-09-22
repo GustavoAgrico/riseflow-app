@@ -8,6 +8,7 @@ files:
   - package.json
   - web/dist/**/*
   - electron/**/*
+  - shared/**/*
   - server/src/**/*
   - server/package.json
   - node_modules/**/*

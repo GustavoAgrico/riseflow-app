@@ -7,12 +7,12 @@ import LayoutPreview from './LayoutPreview.jsx';
 export function Row({ label, hint, children }) {
   return (
     <div style={{ padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
-        <div>
+      <div className="rf-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
+        <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 14 }}>{label}</div>
           {hint && <div style={{ color: C.faint, fontSize: 12, marginTop: 3, lineHeight: 1.4 }}>{hint}</div>}
         </div>
-        <div style={{ flexShrink: 0 }}>{children}</div>
+        <div className="rf-row-ctl" style={{ flexShrink: 0, maxWidth: '100%' }}>{children}</div>
       </div>
     </div>
   );
@@ -58,6 +58,9 @@ function Section({ icon, title, subtitle, badge, defaultOpen = false, children }
 export function Toggle({ on, onChange, disabled }) {
   return (
     <button
+      className="rf-toggle"
+      role="switch"
+      aria-checked={on}
       onClick={() => !disabled && onChange(!on)}
       disabled={disabled}
       style={{ width: 48, height: 27, borderRadius: 20, border: 'none', background: on ? GRAD : 'rgba(255,255,255,0.1)', position: 'relative', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1, transition: 'background .2s', boxShadow: on ? '0 4px 12px -3px rgba(255,107,53,0.6)' : 'inset 0 0 0 1px rgba(255,255,255,0.06)' }}
@@ -84,7 +87,7 @@ function Segmented({ value, options, onChange }) {
 
 export function Select({ value, options, onChange }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ background: '#13131B', color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', fontSize: 13, minWidth: 210, cursor: 'pointer', fontFamily: 'inherit' }}>
+    <select className="rf-select" value={value} onChange={(e) => onChange(e.target.value)} style={{ background: '#13131B', color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', fontSize: 13, minWidth: 210, cursor: 'pointer', fontFamily: 'inherit' }}>
       {options.map((o) => (<option key={o.id} value={o.id} disabled={o.disabled}>{o.label}</option>))}
     </select>
   );

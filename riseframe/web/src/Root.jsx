@@ -1,15 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { C, GRAD, FONT_DISPLAY } from './theme.js';
 import Icon, { Logo } from './components/Icon.jsx';
 import { Spinner } from './components/ui.jsx';
 import { useAuth } from './AuthContext.jsx';
-import { upgradeToPremium } from './api.js';
 import Landing from './pages/Landing.jsx';
 import Auth from './pages/Auth.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Library from './pages/Library.jsx';
 import Settings from './pages/Settings.jsx';
-import Plan from './pages/Plan.jsx';
 import Credits from './pages/Credits.jsx';
 import Editor from './App.jsx';
 
@@ -41,26 +39,26 @@ function NavItem({ item, active, onClick }) {
   );
 }
 
-function Sidebar({ user, view, onView, onLogout }) {
-  const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
-  const isPremium = user?.plan === 'premium';
-  const [upgradeBusy, setUpgradeBusy] = useState(false);
-
-  const handleUpgrade = async () => {
-    try {
-      setUpgradeBusy(true);
-      await upgradeToPremium();
-      window.location.reload();
-    } catch (err) {
-      console.error('Erro ao fazer upgrade:', err.message);
-    } finally {
-      setUpgradeBusy(false);
-    }
-  };
-
+function CreditsCard({ billing, onOpen }) {
+  if (!billing) return null;
   return (
-    <aside className="rf-sidebar" style={{ width: 244, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: 'rgba(10,10,15,0.6)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', display: 'flex', flexDirection: 'column', padding: '18px 14px', position: 'sticky', top: 0, height: '100vh' }}>
-      <button className="rf-brand" onClick={() => onView('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px 16px' }}>
+    <button onClick={onOpen} style={{ width: '100%', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer', background: 'rgba(124,58,237,0.09)', border: '1px solid rgba(124,58,237,0.25)', borderRadius: 12, padding: 12, color: C.text }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, color: C.muted }}>
+        <Icon name="zap" size={14} strokeWidth={2} color={C.purpleSoft} /> Créditos
+      </div>
+      <div style={{ fontSize: 24, fontWeight: 800, fontFamily: FONT_DISPLAY, margin: '4px 0 6px' }}>
+        {billing.unlimited ? 'Ilimitado' : billing.credits.toLocaleString('pt-BR')}
+      </div>
+      {!billing.unlimited && <div style={{ fontSize: 12, fontWeight: 700, color: C.purpleSoft }}>+ Comprar créditos</div>}
+    </button>
+  );
+}
+
+function Sidebar({ user, billing, view, onView, onLogout }) {
+  const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
+  return (
+    <aside className="rf-sidebar" style={{ width: 244, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: 'rgba(10,10,15,0.6)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', display: 'flex', flexDirection: 'column', padding: '18px 14px', position: 'sticky', top: 0, height: '100vh', boxSizing: 'border-box' }}>
+      <button onClick={() => onView('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px 16px' }}>
         <Logo size={32} />
         <div style={{ textAlign: 'left' }}>
           <div style={{ fontWeight: 800, fontSize: 16, fontFamily: FONT_DISPLAY, letterSpacing: -0.4, color: C.text }}>Riseframe</div>
@@ -68,48 +66,21 @@ function Sidebar({ user, view, onView, onLogout }) {
         </div>
       </button>
 
-      <div className="rf-nav" style={{ display: 'grid', gap: 4 }}>
+      <div style={{ display: 'grid', gap: 4 }}>
         {NAV.map((n) => <NavItem key={n.id} item={n} active={view === n.id} onClick={() => onView(n.id)} />)}
       </div>
 
-      {/* Seção de Assinatura/Créditos */}
-      <div className="rf-sec" style={{ marginTop: 20, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px' }}>ASSINATURA</div>
-      <div style={{ background: isPremium ? 'rgba(34,211,238,0.08)' : 'rgba(255,107,53,0.08)', border: isPremium ? `1px solid rgba(34,211,238,0.2)` : `1px solid rgba(255,107,53,0.2)`, borderRadius: 10, padding: 12, marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
-          <Icon name={isPremium ? 'star' : 'zap'} size={14} strokeWidth={2} color={isPremium ? '#22D3EE' : C.orange} />
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Plano {isPremium ? 'Premium' : 'Básico'}</div>
-        </div>
-        <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4, marginBottom: 10 }}>
-          {isPremium ? 'Acesso completo a todos os recursos.' : 'Desbloqueie B-roll automático e mais.'}
-        </div>
-        {!isPremium && (
-          <button onClick={handleUpgrade} disabled={upgradeBusy} style={{ width: '100%', background: C.orange, color: '#000', border: 'none', borderRadius: 8, padding: '8px', fontSize: 12, fontWeight: 700, cursor: upgradeBusy ? 'wait' : 'pointer', opacity: upgradeBusy ? 0.7 : 1, fontFamily: 'inherit' }}>
-            {upgradeBusy ? 'Atualizando…' : '✨ Fazer upgrade'}
-          </button>
-        )}
+      <div style={{ marginTop: 20 }}>
+        <CreditsCard billing={billing} onOpen={() => onView('credits')} />
       </div>
 
-      {/* Créditos de tokens */}
-      <div style={{ background: 'rgba(124,58,237,0.08)', border: `1px solid rgba(124,58,237,0.2)`, borderRadius: 10, padding: 12, marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
-          <Icon name="zap" size={14} strokeWidth={2} color={C.purple} />
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Créditos</div>
-        </div>
-        <div style={{ fontSize: 24, fontWeight: 800, color: C.purple, marginBottom: 8 }}>{user?.credits || 0}</div>
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>tokens disponíveis para renderização</div>
-        <button onClick={() => onView('credits')} style={{ width: '100%', background: 'rgba(124,58,237,0.15)', color: C.purple, border: `1px solid rgba(124,58,237,0.3)`, borderRadius: 8, padding: '8px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-          + Comprar créditos
-        </button>
-      </div>
-
-      <div className="rf-sec" style={{ marginTop: 8, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px' }}>CONTA</div>
-      <div className="rf-nav" style={{ display: 'grid', gap: 4 }}>
-        <NavItem item={{ id: 'plan', label: 'Assinatura', icon: 'shield' }} active={view === 'plan'} onClick={() => onView('plan')} />
+      <div style={{ marginTop: 20, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px' }}>CONTA</div>
+      <div style={{ display: 'grid', gap: 4 }}>
         <NavItem item={{ id: 'settings', label: 'Configurações', icon: 'gear' }} active={view === 'settings'} onClick={() => onView('settings')} />
         <NavItem item={{ id: 'logout', label: 'Sair', icon: 'logout' }} active={false} onClick={onLogout} />
       </div>
 
-      <div className="rf-user" style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderTop: `1px solid ${C.border}` }}>
+      <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderTop: `1px solid ${C.border}` }}>
         <div style={{ width: 34, height: 34, borderRadius: '50%', background: GRAD, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 14, color: '#fff', flexShrink: 0 }}>{initial}</div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || 'Você'}</div>
@@ -117,6 +88,54 @@ function Sidebar({ user, view, onView, onLogout }) {
         </div>
       </div>
     </aside>
+  );
+}
+
+// ── Celular: barra superior (marca + saldo) e abas fixas embaixo ──
+function MobileTopBar({ billing, onView }) {
+  return (
+    <header className="rf-mtop" style={{ position: 'sticky', top: 0, zIndex: 30, display: 'none', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: 'calc(10px + env(safe-area-inset-top)) 16px 10px', background: 'rgba(8,8,12,0.82)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderBottom: `1px solid ${C.border}` }}>
+      <button onClick={() => onView('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', padding: 4, cursor: 'pointer' }}>
+        <Logo size={28} />
+        <span style={{ fontWeight: 800, fontSize: 16, fontFamily: FONT_DISPLAY, letterSpacing: -0.4, color: C.text }}>Riseframe</span>
+      </button>
+      {billing && (
+        <button onClick={() => onView('credits')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 12px', borderRadius: 999, background: 'rgba(124,58,237,0.14)', border: '1px solid rgba(124,58,237,0.35)', color: C.text, fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
+          <Icon name="zap" size={14} strokeWidth={2.2} color={C.purpleSoft} />
+          {billing.unlimited ? 'Ilimitado' : billing.credits.toLocaleString('pt-BR')}
+        </button>
+      )}
+    </header>
+  );
+}
+
+const TABS = [
+  { id: 'dashboard', label: 'Início', icon: 'grid' },
+  { id: 'library', label: 'Biblioteca', icon: 'folder' },
+  { id: 'editor', label: 'Novo', icon: 'sparkles', cta: true },
+  { id: 'credits', label: 'Créditos', icon: 'zap' },
+  { id: 'settings', label: 'Conta', icon: 'user' },
+];
+
+function MobileTabBar({ view, onView }) {
+  return (
+    <nav className="rf-mtabs" style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, display: 'none', justifyContent: 'space-around', alignItems: 'stretch', padding: '6px 6px calc(6px + env(safe-area-inset-bottom))', background: 'rgba(10,10,15,0.92)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)', borderTop: `1px solid ${C.border}` }}>
+      {TABS.map((t) => {
+        const on = view === t.id;
+        return (
+          <button key={t.id} onClick={() => onView(t.id)} aria-current={on ? 'page' : undefined} style={{ flex: 1, minWidth: 0, minHeight: 52, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', color: on ? C.text : C.faint, fontSize: 10.5, fontWeight: 700 }}>
+            {t.cta ? (
+              <span style={{ width: 44, height: 32, borderRadius: 12, background: GRAD, display: 'grid', placeItems: 'center', boxShadow: '0 6px 16px -6px rgba(255,107,53,0.6)' }}>
+                <Icon name={t.icon} size={18} strokeWidth={2} color="#fff" />
+              </span>
+            ) : (
+              <Icon name={t.icon} size={21} strokeWidth={on ? 2.2 : 1.8} color={on ? C.orangeSoft : 'currentColor'} />
+            )}
+            {t.label}
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -153,18 +172,26 @@ function readBillingReturn() {
 }
 
 export default function Root() {
-  const { user, ready, logout } = useAuth();
+  const { user, ready, logout, billing } = useAuth();
   const [resetToken] = useState(readResetToken);
   const [publicRoute, setPublicRoute] = useState(resetToken ? 'login' : 'landing');
   const [billingReturn] = useState(readBillingReturn);
-  const [view, setView] = useState(billingReturn ? 'plan' : 'dashboard');
+  const [view, setView] = useState(billingReturn ? 'credits' : 'dashboard');
   // Intenção com que o editor abre: 'editor' (timeline) ou 'broll' (B-roll ligado).
   const [editorIntent, setEditorIntent] = useState(null);
 
   function go(next, intent = null) {
     setEditorIntent(next === 'editor' ? intent : null);
     setView(next);
+    window.scrollTo(0, 0);
   }
+
+  // Qualquer tela pode pedir a página de créditos (ex.: "saldo insuficiente").
+  useEffect(() => {
+    const open = () => go('credits');
+    window.addEventListener('rf:open-credits', open);
+    return () => window.removeEventListener('rf:open-credits', open);
+  }, []);
 
   if (!ready) {
     return (
@@ -193,8 +220,9 @@ export default function Root() {
 
   return (
     <div className="rf-root" style={{ minHeight: '100vh', display: 'flex' }}>
-      <Sidebar user={user} view={view} onView={go} onLogout={logout} />
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <Sidebar user={user} billing={billing} view={view} onView={go} onLogout={logout} />
+      <div className="rf-main" style={{ flex: 1, minWidth: 0 }}>
+        <MobileTopBar billing={billing} onView={go} />
         {view === 'dashboard' && (
           <Dashboard
             user={user}
@@ -206,18 +234,17 @@ export default function Root() {
           />
         )}
         {view === 'library' && <Library onNewVideo={() => go('editor')} />}
-        {view === 'settings' && <Settings onNewVideo={() => go('editor')} />}
-        {view === 'plan' && <Plan user={user} checkOnOpen={billingReturn} onNewVideo={() => go('editor')} />}
-        {view === 'credits' && <Credits user={user} onBack={() => go('dashboard')} />}
+        {view === 'settings' && <Settings onNewVideo={() => go('editor')} onLogout={logout} />}
+        {view === 'credits' && <Credits user={user} checkOnOpen={billingReturn} />}
         {view === 'editor' && <Editor key={editorIntent || 'new'} embedded intent={editorIntent} onSettings={() => go('settings')} />}
       </div>
+      <MobileTabBar view={view} onView={go} />
       <style>{`
         @media (max-width: 820px){
-          .rf-root{ flex-direction: column !important; }
-          .rf-sidebar{ position: sticky; top: 0; z-index: 30; width: 100% !important; height: auto !important; flex-direction: row !important; align-items: center; overflow-x: auto; gap: 6px; padding: 8px 10px !important; border-right: none !important; border-bottom: 1px solid rgba(255,255,255,0.06); }
-          .rf-sidebar .rf-brand{ padding: 4px 6px !important; margin-right: 2px; flex-shrink: 0; }
-          .rf-sidebar .rf-nav{ display: flex !important; gap: 6px; flex-shrink: 0; }
-          .rf-sidebar .rf-sec, .rf-sidebar .rf-user{ display: none !important; }
+          .rf-sidebar{ display: none !important; }
+          .rf-mtop{ display: flex !important; }
+          .rf-mtabs{ display: flex !important; }
+          .rf-main{ padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
         }
       `}</style>
     </div>

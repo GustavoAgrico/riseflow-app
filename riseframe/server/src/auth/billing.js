@@ -6,18 +6,17 @@ import { makeLogger } from '../logger.js';
 const log = makeLogger('billing');
 
 /**
- * Assinatura pré-paga: cada cobrança paga na AbacatePay libera `periodDays` dias
- * (somando ao que ainda resta). Sem assinatura, cada conta tem `freeVideos` vídeos
- * grátis. Estado em data/billing.json:
- *   { users:   { [userId]: { freeUsed, paidUntil, paidBillings: [billingId] } },
- *     pending: { [billingId]: { userId, createdAt } } }
- * Pagamento só é aceito depois de confirmado na API da AbacatePay (status PAID) —
- * nunca pelo conteúdo do webhook, que qualquer um poderia forjar.
+ * Créditos pré-pagos. Cada conta nova ganha `signupCredits`; depois compra pacotes
+ * (AbacatePay, Pix/cartão). Cada job desconta créditos conforme os recursos usados
+ * (ver shared/credits.js). Estado em data/billing.json:
+ *   { users:   { [userId]: { credits, purchases: [billingId] } },
+ *     pending: { [billingId]: { userId, packId, credits, createdAt } } }
+ * Um pagamento só vira crédito depois de confirmado na API da AbacatePay (status
+ * PAID) — nunca pelo conteúdo do webhook, que qualquer um poderia forjar.
  */
 const FILE = path.join(config.paths.data, 'billing.json');
 const API = 'https://api.abacatepay.com/v1';
-const DAY_MS = 24 * 3600 * 1000;
-const PENDING_TTL_MS = 7 * DAY_MS;
+const PENDING_TTL_MS = 7 * 24 * 3600 * 1000;
 
 let db = null;
 
@@ -41,43 +40,52 @@ function persist() {
 
 function entry(userId) {
   load();
-  db.users[userId] ||= { freeUsed: 0, paidUntil: null, paidBillings: [] };
+  if (!db.users[userId]) {
+    db.users[userId] = { credits: config.billing.signupCredits, purchases: [] };
+    persist();
+  }
   return db.users[userId];
 }
 
 export const billingEnabled = () => Boolean(config.billing.abacateKey);
 const isAdmin = (email) => config.billing.adminEmails.includes(String(email || '').toLowerCase());
+/** Sem cobrança para admins e quando os pagamentos não estão configurados. */
+const unlimited = (user) => !billingEnabled() || isAdmin(user.email);
 
-/** Situação da assinatura do usuário (seguro para mandar ao cliente). */
+/** Situação dos créditos do usuário (seguro para mandar ao cliente). */
 export function billingStatus(user) {
   const b = config.billing;
-  const e = load().users[user.id] || { freeUsed: 0, paidUntil: null };
-  const admin = isAdmin(user.email);
-  const paidUntilMs = e.paidUntil ? Date.parse(e.paidUntil) : 0;
-  const active = admin || paidUntilMs > Date.now();
-  const freeLeft = Math.max(0, b.freeVideos - e.freeUsed);
-  const enabled = billingEnabled();
-  const hasPending = Object.values(load().pending).some((p) => p.userId === user.id);
   return {
-    enabled,
-    active,
-    admin,
-    paidUntil: active && !admin ? e.paidUntil : null,
-    freeUsed: e.freeUsed,
-    freeLimit: b.freeVideos,
-    freeLeft,
-    canCreate: !enabled || active || freeLeft > 0,
-    hasPending,
-    plan: { name: b.planName, priceCents: b.priceCents, periodDays: b.periodDays },
+    enabled: billingEnabled(),
+    admin: isAdmin(user.email),
+    unlimited: unlimited(user),
+    credits: entry(user.id).credits,
+    costs: b.costs,
+    packs: b.packs.map(({ id, name, credits, priceCents, popular }) => ({ id, name, credits, priceCents, popular: Boolean(popular) })),
+    hasPending: Object.values(load().pending).some((p) => p.userId === user.id),
   };
 }
 
-/** Desconta um vídeo grátis (só quando o paywall está ligado e não há assinatura). */
-export function consumeVideo(user) {
-  const s = billingStatus(user);
-  if (!s.enabled || s.active) return;
-  entry(user.id).freeUsed += 1;
+/** Tem saldo para `amount`? (sempre sim quando ilimitado). */
+export function canAfford(user, amount) {
+  return unlimited(user) || entry(user.id).credits >= amount;
+}
+
+/** Desconta `amount`. Retorna os créditos cobrados (0 quando ilimitado) ou null se faltar saldo. */
+export function charge(user, amount) {
+  if (unlimited(user) || amount <= 0) return 0;
+  const e = entry(user.id);
+  if (e.credits < amount) return null;
+  e.credits -= amount;
   persist();
+  return amount;
+}
+
+export function refund(userId, amount) {
+  if (!amount) return;
+  entry(userId).credits += amount;
+  persist();
+  log.info(`${amount} crédito(s) devolvidos (user ${userId})`);
 }
 
 async function abacate(pathname, { method = 'GET', body } = {}) {
@@ -95,21 +103,22 @@ async function abacate(pathname, { method = 'GET', body } = {}) {
   return data.data ?? data;
 }
 
-/** Cria a cobrança na AbacatePay e devolve a URL do checkout (Pix/cartão). */
-export async function createCheckout(user, { name, taxId, cellphone, returnUrl }) {
-  const b = config.billing;
+/** Cria a cobrança de um pacote na AbacatePay e devolve a URL do checkout. */
+export async function createCheckout(user, { packId, name, taxId, cellphone, returnUrl }) {
+  const pack = config.billing.packs.find((p) => p.id === packId);
+  if (!pack) throw Object.assign(new Error('pacote inválido'), { status: 400 });
   const billing = await abacate('/billing/create', {
     method: 'POST',
     body: {
       frequency: 'ONE_TIME',
-      methods: b.methods,
+      methods: config.billing.methods,
       products: [
         {
-          externalId: `riseframe-pro-${b.periodDays}d`,
-          name: b.planName,
-          description: `${b.planName} — ${b.periodDays} dias de acesso`,
+          externalId: `riseframe-credits-${pack.id}`,
+          name: `Riseframe · ${pack.credits} créditos`,
+          description: `Pacote ${pack.name} — ${pack.credits} créditos de edição`,
           quantity: 1,
-          price: b.priceCents,
+          price: pack.priceCents,
         },
       ],
       returnUrl,
@@ -119,26 +128,25 @@ export async function createCheckout(user, { name, taxId, cellphone, returnUrl }
   });
   if (!billing?.id || !billing?.url) throw new Error('a AbacatePay não retornou o link de pagamento');
   load();
-  db.pending[billing.id] = { userId: user.id, createdAt: new Date().toISOString() };
+  db.pending[billing.id] = { userId: user.id, packId: pack.id, credits: pack.credits, createdAt: new Date().toISOString() };
   persist();
-  log.info(`checkout criado ${billing.id} para ${user.email}`);
+  log.info(`checkout ${billing.id} (${pack.credits} créditos) para ${user.email}`);
   return billing.url;
 }
 
-function grant(userId, billingId) {
+function grant(userId, billingId, credits) {
   const e = entry(userId);
-  if (e.paidBillings.includes(billingId)) return false;
-  const base = Math.max(Date.now(), e.paidUntil ? Date.parse(e.paidUntil) : 0);
-  e.paidUntil = new Date(base + config.billing.periodDays * DAY_MS).toISOString();
-  e.paidBillings.push(billingId);
-  log.ok(`pagamento ${billingId} confirmado — acesso até ${e.paidUntil} (user ${userId})`);
+  if (e.purchases.includes(billingId)) return false;
+  e.credits += credits;
+  e.purchases.push(billingId);
+  log.ok(`pagamento ${billingId} confirmado — +${credits} créditos (user ${userId})`);
   return true;
 }
 
 /**
  * Confere na AbacatePay as cobranças pendentes (de um usuário, de uma cobrança
- * específica ou todas) e libera o acesso das que estão pagas. Idempotente.
- * Retorna quantas cobranças foram ativadas agora.
+ * específica ou todas) e credita as que estão pagas. Idempotente.
+ * Retorna quantos créditos foram adicionados agora.
  */
 export async function syncPayments({ userId, billingId } = {}) {
   if (!billingEnabled()) return 0;
@@ -151,19 +159,17 @@ export async function syncPayments({ userId, billingId } = {}) {
 
   const list = await abacate('/billing/list');
   const byId = new Map((Array.isArray(list) ? list : []).map((b) => [b.id, b]));
-  let activated = 0;
+  let added = 0;
   for (const id of ids) {
-    const remote = byId.get(id);
-    const status = String(remote?.status || '').toUpperCase();
+    const p = db.pending[id];
+    const status = String(byId.get(id)?.status || '').toUpperCase();
     if (status === 'PAID') {
-      if (grant(db.pending[id].userId, id)) activated += 1;
+      if (grant(p.userId, id, p.credits)) added += p.credits;
       delete db.pending[id];
-    } else if (['EXPIRED', 'CANCELLED', 'REFUNDED'].includes(status)) {
-      delete db.pending[id];
-    } else if (now - Date.parse(db.pending[id].createdAt) > PENDING_TTL_MS) {
+    } else if (['EXPIRED', 'CANCELLED', 'REFUNDED'].includes(status) || now - Date.parse(p.createdAt) > PENDING_TTL_MS) {
       delete db.pending[id];
     }
   }
   persist();
-  return activated;
+  return added;
 }

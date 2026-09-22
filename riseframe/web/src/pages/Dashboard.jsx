@@ -40,7 +40,7 @@ export default function Dashboard({ user, onNewVideo, onEditVideo, onBroll, onLi
   const recent = jobs.slice(0, 6);
 
   return (
-    <div style={{ maxWidth: 1180, margin: 0, padding: '40px 32px 90px', position: 'relative' }}>
+    <div className="rf-page" style={{ maxWidth: 1180, margin: 0, padding: '40px 32px 90px', position: 'relative' }}>
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
         <div style={{ position: 'absolute', top: '-12%', right: '2%', width: 460, height: 460, borderRadius: '50%', background: C.purple, filter: 'blur(190px)', opacity: 0.12 }} />
         <div style={{ position: 'absolute', top: '20%', left: '-6%', width: 340, height: 340, borderRadius: '50%', background: C.orange, filter: 'blur(180px)', opacity: 0.09 }} />
@@ -53,7 +53,7 @@ export default function Dashboard({ user, onNewVideo, onEditVideo, onBroll, onLi
         </h1>
 
         {/* Stat cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 26 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 26 }}>
           <StatCard icon="film" label="Vídeos editados" value={stats.total} tint={C.orange} />
           <StatCard icon="sparkles" label="Nos últimos 30 dias" value={stats.thisMonth} tint={C.purple} />
           <StatCard icon="scissors" label="Tempo economizado" value={fmtDuration(stats.savedSec)} tint={C.green} />

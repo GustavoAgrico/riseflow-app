@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
 import { Spinner } from '../components/ui.jsx';
 import { getSettings, saveSettings } from '../api.js';
+import { useAuth } from '../AuthContext.jsx';
 
 function StatusDot({ on }) {
   return (
@@ -21,7 +22,8 @@ function Section({ title, children }) {
   );
 }
 
-export default function Settings({ onNewVideo }) {
+export default function Settings({ onNewVideo, onLogout }) {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [pexelsKey, setPexelsKey] = useState('');
@@ -77,11 +79,25 @@ export default function Settings({ onNewVideo }) {
   }
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '44px 24px 80px' }}>
+    <div className="rf-page" style={{ maxWidth: 720, margin: '0 auto', padding: '44px 24px 80px' }}>
       <h1 style={{ fontSize: 'clamp(26px,5vw,38px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 6px' }}>
         <span style={gradientText}>Configurações</span>
       </h1>
-      <p style={{ color: C.muted, fontSize: 15, margin: '0 0 30px' }}>Integrações e chaves de API — salvas na sua conta.</p>
+      <p style={{ color: C.muted, fontSize: 15, margin: '0 0 30px' }}>Sua conta, integrações e chaves de API.</p>
+
+      <Section title="Conta">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>{user?.name || 'Você'}</div>
+            <div style={{ fontSize: 13, color: C.faint, overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</div>
+          </div>
+          {onLogout && (
+            <button onClick={onLogout} style={{ minHeight: 44, padding: '0 18px', background: 'transparent', border: `1px solid ${C.borderStrong}`, color: C.text, borderRadius: 11, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Sair da conta
+            </button>
+          )}
+        </div>
+      </Section>
 
       {/* Pexels */}
       <Section title="B-roll · Pexels">

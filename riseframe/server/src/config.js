@@ -1,10 +1,11 @@
 import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v41';
+export const APP_VERSION = 'v42';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,6 +16,15 @@ const DATA = path.join(ROOT, 'data');
 function bool(v, def = false) {
   if (v === undefined) return def;
   return ['1', 'true', 'yes', 'on'].includes(String(v).toLowerCase());
+}
+function json(v, def) {
+  if (!v) return def;
+  try {
+    return JSON.parse(v);
+  } catch {
+    console.warn(`[config] JSON inválido ignorado: ${v}`);
+    return def;
+  }
 }
 function num(v, def) {
   const n = Number(v);
@@ -96,15 +106,20 @@ export const config = {
     appUrl: process.env.APP_URL || '',
   },
 
-  // Assinatura via AbacatePay (Pix/cartão). Sem ABACATE_PAY_API_KEY o paywall fica
-  // desligado e todo usuário logado usa à vontade (modo local/desktop).
+  // Créditos pré-pagos via AbacatePay (Pix/cartão). Sem ABACATE_PAY_API_KEY não há
+  // cobrança: todo usuário logado usa à vontade (modo local/desktop).
   billing: {
     abacateKey: process.env.ABACATE_PAY_API_KEY || '',
     webhookSecret: process.env.ABACATE_WEBHOOK_SECRET || '',
-    planName: process.env.BILLING_PLAN_NAME || 'Riseframe Pro',
-    priceCents: num(process.env.BILLING_PRICE_CENTS, 4990),
-    periodDays: num(process.env.BILLING_PERIOD_DAYS, 30),
-    freeVideos: num(process.env.BILLING_FREE_VIDEOS, 3),
+    signupCredits: num(process.env.BILLING_SIGNUP_CREDITS, 60),
+    // Custo de cada recurso. Sobrescreva com CREDIT_COSTS='{"video":20,"image":5}'.
+    costs: { ...DEFAULT_COSTS, ...json(process.env.CREDIT_COSTS, {}) },
+    // Pacotes à venda. Sobrescreva com CREDIT_PACKS='[{"id":"starter","name":"Starter","credits":500,"priceCents":2990}]'.
+    packs: json(process.env.CREDIT_PACKS, [
+      { id: 'starter', name: 'Starter', credits: 500, priceCents: 2990 },
+      { id: 'pro', name: 'Pro', credits: 2000, priceCents: 9990, popular: true },
+      { id: 'enterprise', name: 'Enterprise', credits: 5000, priceCents: 24990 },
+    ]),
     // Mesmos métodos do RiseFlow. Se a AbacatePay recusar o cartão, use BILLING_METHODS=PIX.
     methods: (process.env.BILLING_METHODS || 'PIX,CREDIT_CARD')
       .split(',')
