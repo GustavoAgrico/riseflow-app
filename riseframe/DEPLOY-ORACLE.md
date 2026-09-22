@@ -149,6 +149,32 @@ Pronto — Riseframe no ar, sem dormir e com RAM de sobra. 🎉
 
 ---
 
+## Migrar de um site que já está no ar (sem derrubar o domínio)
+
+Se o domínio já aponta para outro host (ex.: Render) e você está trocando para esta
+VM, **não mude o DNS primeiro**. O Caddy pede o certificado no primeiro acesso, e o
+build inicial leva 10–20 min — apontar o domínio antes deixa o site fora do ar nesse
+intervalo e o certificado falha.
+
+Faça na ordem inversa, com zero downtime:
+
+1. Suba a VM com `SITE_ADDRESS=SEU_IP.sslip.io` e teste tudo por esse endereço
+   (login, upload, render). O site antigo continua no ar o tempo todo.
+2. Quando estiver satisfeito, troque no `.env` para o domínio real e recarregue:
+   ```bash
+   nano .env      # SITE_ADDRESS=seudominio.com
+   docker compose up -d
+   ```
+3. Só então mude o DNS (registro **A** → IP da VM) e apague o registro antigo que
+   apontava para o host anterior.
+4. No primeiro acesso pelo domínio o Caddy emite o certificado (alguns segundos).
+
+> As contas de usuário **não migram** entre os dois hosts — o banco é um arquivo no
+> disco de cada máquina. Se já houver gente cadastrada no site antigo, elas precisam
+> se cadastrar de novo, ou você copia o `data/` do host antigo antes de virar o DNS.
+
+---
+
 ## Manutenção
 
 **Atualizar para a versão mais nova** (depois de mudanças no repo):
