@@ -1,6 +1,9 @@
-# Integração AbacatePay - Riseframe
+# Integração AbacatePay v2 - Riseframe
 
-Guia de setup e configuração do sistema de pagamentos com AbacatePay.
+Guia de setup e configuração do sistema de pagamentos com **AbacatePay API v2**.
+
+**Versão API**: v2 (Checkout, Assinaturas, Transparente e recursos compartilhados)  
+**Documentação Oficial**: https://docs.abacatepay.com/v2
 
 ## 📋 Visão Geral
 
@@ -17,9 +20,10 @@ O sistema de pagamentos Riseframe foi integrado com a plataforma **AbacatePay** 
 Adicione no arquivo `server/.env`:
 
 ```env
-# AbacatePay Configuration
+# AbacatePay Configuration (API v2)
 ABACATE_API_KEY=seu_api_key_aqui
-ABACATE_API_URL=https://api.abacatepay.com
+ABACATE_API_URL=https://api.abacatepay.com/v2
+ABACATE_WEBHOOK_SECRET=seu_webhook_secret_aqui
 NODE_ENV=production  # ou development para testes
 
 # Payment URLs (para produção)
@@ -27,13 +31,19 @@ PAYMENT_RETURN_URL=https://riseframe.com.br/dashboard
 SERVER_URL=https://api.riseframe.com.br
 ```
 
-### 2. Obter Credenciais AbacatePay
+### 2. Obter Credenciais AbacatePay v2
 
 1. Acesse https://dashboard.abacatepay.com
 2. Faça login ou crie uma conta
-3. Vá para "Integrations" → "API Keys"
-4. Copie sua chave de API (Public e Secret)
-5. Guarde com segurança - nunca commite no Git
+3. Vá para **"Integrações"** → **"Chaves de API"**
+4. Clique em **"Nova chave"**
+5. Selecione **"API v2"** (com Checkout, Assinaturas, etc)
+6. Escolha **Escopo**: "Pagamentos" ou similar
+7. Configure **Permissões**: Leitura e Escrita
+8. Dê uma descrição: "Riseframe - Pagamento de Créditos"
+9. Salve e copie a chave (só aparece uma vez!)
+10. Copie também o **Webhook Secret** para validação de assinatura
+11. Guarde com segurança - **nunca commite no Git**
 
 ### 3. Configurar URLs de Callback
 
@@ -127,24 +137,62 @@ AbacatePay enviará POST para `https://api.riseframe.com.br/api/payments/webhook
   "status": "paid",
   "metadata": {
     "userId": "user_uuid",
-    "credits": 2000
+    "credits": 2000,
+    "planId": "pro"
   }
 }
 ```
 
 ### Segurança do Webhook
 
-O endpoint valida a assinatura HMAC (TODO - implementar):
+O endpoint valida a assinatura HMAC-SHA256 usando o header `x-abacate-signature`:
 
 ```javascript
-// TODO: Adicionar validação HMAC
+const crypto = require('crypto');
+
 const signature = req.headers['x-abacate-signature'];
+const payloadStr = JSON.stringify(req.body);
 const hmac = crypto
-  .createHmac('sha256', ABACATE_WEBHOOK_SECRET)
-  .update(req.body)
+  .createHmac('sha256', process.env.ABACATE_WEBHOOK_SECRET)
+  .update(payloadStr)
   .digest('hex');
-if (signature !== hmac) return res.status(401).json({ error: 'Invalid signature' });
+
+if (hmac !== signature) {
+  return res.status(401).json({ error: 'Assinatura inválida' });
+}
 ```
+
+✅ **Implementado** em `server/src/routes/payments.js`:
+- Validação de assinatura HMAC-SHA256
+- Verificação da origem (header `x-abacate-signature`)
+- Retorno 401 se assinatura for inválida
+
+### Integração com Banco de Dados
+
+Quando um webhook com `status: "paid"` é recebido:
+
+1. **Validação** de assinatura (segurança)
+2. **Busca** do usuário na tabela `users`
+3. **Adição** de créditos: `user.credits += metadata.credits`
+4. **Registro** da transação em `activity_logs`:
+   ```json
+   {
+     "user_id": "uuid",
+     "action": "payment_completed",
+     "details": {
+       "transactionId": "tx_xxx",
+       "planId": "pro",
+       "creditsAdded": 2000,
+       "newTotal": 2500
+     }
+   }
+   ```
+
+✅ **Implementado** em `server/src/routes/payments.js`:
+- Integração com Supabase `users` table
+- Atualização atômica de créditos
+- Registro de histórico de transações em `activity_logs`
+- Logging estruturado para auditorias
 
 ## 📊 Endpoints API
 
@@ -209,22 +257,26 @@ Webhook para confirmações de pagamento. Sem autenticação (protegido por HMAC
 ## 📝 TODOs
 
 1. **Backend:**
-   - [ ] Implementar validação de assinatura HMAC
-   - [ ] Registrar créditos no banco quando pagamento confirmado
-   - [ ] Registrar histórico de transações
+   - [x] Implementar validação de assinatura HMAC
+   - [x] Registrar créditos no banco quando pagamento confirmado
+   - [x] Registrar histórico de transações
    - [ ] Enviar email de confirmação
    - [ ] Implementar retry logic para webhook
+   - [ ] Tratamento de refund/chargeback
 
 2. **Frontend:**
-   - [ ] Página de status de pagamento (pending, completed, failed)
-   - [ ] Integração de PIX QR code display
+   - [ ] Página de status de pagamento (pending, completed, failed) com polling
+   - [ ] Integração de PIX QR code display para metodo PIX
    - [ ] Resgate de cupons/descontos
-   - [ ] Histórico de transações estilizado
+   - [ ] Histórico de transações estilizado com filtros
+   - [ ] Notificação de sucesso/erro após pagamento
 
 3. **DevOps:**
-   - [ ] CI/CD para secrets
+   - [ ] CI/CD para secrets (ABACATE_API_KEY, WEBHOOK_SECRET)
    - [ ] Monitoring de pagamentos falhados
-   - [ ] Alertas para transações suspeitas
+   - [ ] Alertas para transações suspeitas (múltiplas tentativas, valores alto)
+   - [ ] Rate limiting no endpoint /api/payments/abacate
+   - [ ] Logs estruturados para conformidade PCI
 
 ## 📞 Suporte AbacatePay
 
