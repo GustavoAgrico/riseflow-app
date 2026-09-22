@@ -33,8 +33,21 @@ Tempo total: ~30 min (a maior parte é esperar o 1º build).
    - **Networking:** deixe criar uma VCN nova (padrão).
 4. **Create.** Quando ficar **Running**, anote o **Public IP address** (ex.: `123.45.67.89`).
 
+> ⚠️ **Não use `VM.Standard.E2.1.Micro`.** É o shape que a Oracle oferece por padrão,
+> mas tem **1 núcleo e 1 GB de RAM** — não dá nem para o `docker build` terminar (o
+> `npm install` + build do frontend + faster-whisper estouram a memória), e o Whisper
+> local não roda. O Always Free dá direito à Ampere A1 **e** aos Micro; use a A1.
+> Se a capacidade A1 não abrir, o robô do passo abaixo tenta sozinho.
+
 > ⚠️ **"Out of capacity" no shape Ampere?** É comum. Tente de novo mais tarde, ou
 > troque a **Availability Domain** (AD-1/2/3) na criação, ou reduza para 2 OCPU/12 GB.
+> Em vez de ficar tentando na mão, rode o robô no **Cloud Shell** (ícone `>_` no topo
+> do console), que tenta em loop até abrir vaga:
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/GustavoAgrico/riseflow-app/master/riseframe/deploy/oracle-retry.sh | OCPUS=2 MEM=12 bash
+> ```
+> Pedir menos (`OCPUS=1 MEM=6`) consegue vaga muito mais rápido e ainda é 6× a RAM
+> de um Micro — suficiente para rodar o Riseframe.
 > Persistindo, crie a conta numa **Home Region** diferente (a capacidade varia por região).
 
 ---
@@ -55,6 +68,26 @@ sudo iptables -I INPUT -p tcp -m multiport --dports 80,443 -j ACCEPT
 sudo netfilter-persistent save
 ```
 (Sem isso, o site simplesmente **não abre**, mesmo com o app rodando.)
+
+---
+
+## 2c. Apontar o seu domínio para a VM (se tiver um)
+
+No painel do seu registrador, crie um registro **A**:
+
+| Tipo | Nome | Valor | TTL |
+|---|---|---|---|
+| A | `@` (ou `app`, para `app.seudominio.com`) | o **IP público** da VM | 300 |
+
+Confirme que já propagou **antes** de subir o app — o Caddy pede o certificado no
+primeiro acesso e o Let's Encrypt precisa que o domínio já resolva para o IP:
+```bash
+dig +short seudominio.com     # deve responder o IP da VM
+```
+> Usando Cloudflare, deixe o registro **sem proxy** (nuvem cinza) até o certificado
+> ser emitido; com a nuvem laranja o Let's Encrypt não consegue validar.
+
+Sem domínio próprio, pule este passo e use `SEU_IP.sslip.io` no `SITE_ADDRESS`.
 
 ---
 
@@ -131,8 +164,21 @@ docker compose restart app    # reinicia só o app
 docker compose down           # para tudo (os dados no volume permanecem)
 ```
 
-**Onde ficam os dados:** num volume Docker (`riseframe_data`) — usuários, uploads e
-renders sobrevivem a `down`/`up` e reinícios da VM.
+**Onde ficam os dados:** num volume Docker (`riseframe_data`), montado em
+`/app/data` — sobrevive a `down`/`up` e a reinícios da VM:
+
+| Pasta | O que guarda |
+|---|---|
+| `uploads/` | os vídeos enviados |
+| `outputs/` | os vídeos renderizados (o que o usuário baixa) |
+| `jobs/` | registro dos vídeos que dá para **reabrir na timeline** |
+| `cache/` | miniaturas e forma de onda das faixas da timeline |
+| `users.json`, `auth_secret` | contas e o segredo que assina os logins |
+
+**`OUTPUT_TTL_HOURS` varre `outputs/`, `uploads/`, `jobs/` e `cache/`.** Ele define,
+na prática, por quanto tempo um vídeo continua podendo ser reaberto na timeline —
+passado o prazo, o arquivo de origem some e o registro é descartado no próximo boot.
+Com disco sobrando, subir para `72` dá uma janela mais confortável.
 
 ---
 
