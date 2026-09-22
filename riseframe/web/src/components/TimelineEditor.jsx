@@ -1048,12 +1048,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         )}
 
         {/* Ajustes de legenda (posição, fonte, estilo…) direto na edição */}
-        {tab === 'legenda' && catalog && cap.captions && (
-            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>Legenda</div>
-              </div>
+        {tab === 'legenda' && (
+          <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="captions" size={15} strokeWidth={2} /></span>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Legenda</div>
+            </div>
+            <CapRow label="Legendas no vídeo">
+              <button onClick={() => setCapField({ captions: !cap.captions })} style={miniBtn(!cap.captions, false)}>
+                {cap.captions ? 'Ligadas' : 'Desligadas'}
+              </button>
+            </CapRow>
+            {cap.captions && catalog ? (
+              <>
               <div style={{ display: 'grid', gap: 8 }}>
                 <CapRow label="Estilo"><Sel value={cap.captionTemplate} opts={catalog.captionTemplates} onChange={(v) => setCapField({ captionTemplate: v })} /></CapRow>
                 <CapRow label="Fonte"><Sel value={cap.captionFont} opts={catalog.captionFonts} onChange={(v) => setCapField({ captionFont: v })} /></CapRow>
@@ -1073,10 +1080,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 </CapRow>
               </div>
               <div style={{ marginTop: 8 }}><CaptionPreview options={cap} /></div>
-            </div>
-        )}
-        {tab === 'legenda' && !(catalog && cap.captions) && (
-          <div style={{ fontSize: 12.5, color: C.faint }}>As legendas estão desligadas nas opções deste vídeo.</div>
+              </>
+            ) : (
+              <div style={{ fontSize: 11.5, color: C.faint, paddingTop: 8 }}>
+                O vídeo final sai <b>sem legendas</b>. Os blocos de fala continuam valendo para cortar e ajustar a timeline.
+              </div>
+            )}
+          </div>
         )}
 
         {/* Minhas mídias: coloque suas imagens/vídeos/músicas na timeline */}
