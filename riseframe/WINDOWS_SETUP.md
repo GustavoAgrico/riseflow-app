@@ -113,6 +113,43 @@ python --version
 # Reinicie PowerShell
 ```
 
+### Erro: "spawn node ENOENT" ou "Erro ao Iniciar Riseframe"
+
+Este erro significa que Node.js não foi encontrado pelo aplicativo.
+
+**Solução:**
+
+1. Verifique se Node.js está instalado:
+```powershell
+node --version   # deve mostrar v20+
+where node       # deve mostrar caminho como C:\Program Files\nodejs\node.exe
+```
+
+2. Se `node --version` não funcionar:
+   - **Node.js não está instalado**
+   - Baixe de https://nodejs.org/ (versão 20 ou mais recente)
+   - Durante instalação, marque "Add to PATH"
+   - Reinicie o PowerShell completamente (feche todas as abas)
+   - Verifique novamente: `node --version`
+
+3. Se `where node` não encontrar mas `node --version` funciona:
+   - Node.js está instalado mas não no PATH padrão
+   - Adicione manualmente ao PATH:
+     * Windows: Tecla Win + "editar variáveis de ambiente"
+     * Encontre PATH em "Variáveis de ambiente do sistema"
+     * Clique "Editar" e adicione: `C:\Program Files\nodejs\`
+     * Reinicie o computador
+
+4. Se Node.js é v18 ou mais antigo:
+   - Atualize para v20+
+   - Baixe de https://nodejs.org/
+   - Execute o instalador (atualiza a instalação existente)
+   - Reinicie o computador
+
+5. Depois de qualquer mudança:
+   - Feche e reabra o PowerShell completamente
+   - Tente abrir o app novamente
+
 ### Erro: "Porta 3333 já em uso"
 
 Matando o processo:
@@ -127,6 +164,26 @@ taskkill /PID 1234 /F
 ### App lenta na primeira execução
 
 Normal! Whisper está baixando o modelo (~140MB). Depois fica rápido.
+
+### App mostra diagnóstico detalhado
+
+A versão mais recente mostra no console:
+```
+=== Procurando Node.js ===
+✓ Encontrado via 'where': C:\Program Files\nodejs\node.exe
+✓ Node.js validado: v20.x.x
+✓ Servidor iniciado com sucesso
+```
+
+Ou se houver problema:
+```
+=== Procurando Node.js ===
+⚠ Erro ao executar 'where node'
+⚠ Registro do Windows não encontrado
+⚠⚠ Node.js NÃO ENCONTRADO!
+```
+
+Neste caso, Node.js não está instalado. Veja solução acima.
 
 ## 📁 Dados Salvos
 
