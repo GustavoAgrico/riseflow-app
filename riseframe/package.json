@@ -9,16 +9,26 @@
     "web"
   ],
   "scripts": {
-    "dev": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev": "concurrently -n server,web,electron -c cyan,magenta,green \"npm:dev:server\" \"npm:dev:web\" \"npm:dev:electron\"",
     "dev:server": "npm --workspace server run dev",
     "dev:web": "npm --workspace web run dev",
+    "dev:electron": "electron-dev",
     "build": "npm --workspace web run build",
+    "build:desktop": "npm run build && electron-builder",
     "start": "npm --workspace server run start",
     "sample": "npm --workspace server run sample",
     "test": "npm --workspace server run test"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.1.0",
+    "electron": "^32.0.0",
+    "electron-builder": "^25.1.1",
+    "electron-dev": "^1.0.1",
+    "electron-is-dev": "^3.0.1"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "electron-updater": "^6.3.4"
   },
   "engines": {
     "node": ">=20"
