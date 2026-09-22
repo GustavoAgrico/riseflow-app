@@ -1,8 +1,9 @@
 import { app, BrowserWindow, Menu, ipcMain, dialog } from 'electron';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync } from 'fs';
+import { execSync } from 'child_process';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -49,27 +50,49 @@ async function createWindow() {
   });
 }
 
+function findNodePath() {
+  // Em desenvolvimento, usa 'node' do PATH
+  if (isDev) {
+    return 'node';
+  }
+
+  // Em produção, procura Node.js
+  try {
+    // Tenta encontrar no PATH do Windows
+    const result = spawnSync('where', ['node'], { encoding: 'utf-8', windowsHide: true });
+    if (result.stdout) {
+      return result.stdout.trim().split('\n')[0];
+    }
+  } catch (e) {
+    console.log('Node não encontrado no PATH');
+  }
+
+  // Fallback: caminhos comuns no Windows
+  const commonPaths = [
+    'C:\\Program Files\\nodejs\\node.exe',
+    'C:\\Program Files (x86)\\nodejs\\node.exe',
+    path.join(process.env.APPDATA || '', '..', 'Local', 'Programs', 'nodejs', 'node.exe'),
+    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs', 'node.exe'),
+  ];
+
+  for (const p of commonPaths) {
+    if (existsSync(p)) {
+      console.log(`Encontrado Node.js em: ${p}`);
+      return p;
+    }
+  }
+
+  console.warn('Node.js não encontrado! Tentando usar "node" do PATH.');
+  return 'node';
+}
+
 function startServer() {
   return new Promise((resolve, reject) => {
     const serverPath = path.join(projectRoot, 'server/src/index.js');
+    const nodePath = findNodePath();
 
-    // Encontra o path do Node.js
-    let nodePath = 'node';
-    if (!isDev) {
-      // Em produção, procura node nos caminhos comuns
-      const possiblePaths = [
-        path.join(projectRoot, 'node_modules/.bin/node'),
-        process.execPath.replace('Electron.exe', 'node.exe'),
-        'C:\\Program Files\\nodejs\\node.exe',
-        'C:\\Program Files (x86)\\nodejs\\node.exe',
-      ];
-      for (const p of possiblePaths) {
-        if (existsSync(p)) {
-          nodePath = p;
-          break;
-        }
-      }
-    }
+    console.log(`Iniciando servidor com Node.js: ${nodePath}`);
+    console.log(`Caminho do servidor: ${serverPath}`);
 
     // Passa variáveis de ambiente necessárias
     const env = {
@@ -86,7 +109,6 @@ function startServer() {
       cwd: projectRoot,
       env,
       stdio: 'inherit',
-      shell: true,
     });
 
     serverProcess.on('error', (error) => {
