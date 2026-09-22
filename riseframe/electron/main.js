@@ -53,6 +53,24 @@ function startServer() {
   return new Promise((resolve, reject) => {
     const serverPath = path.join(projectRoot, 'server/src/index.js');
 
+    // Encontra o path do Node.js
+    let nodePath = 'node';
+    if (!isDev) {
+      // Em produção, procura node nos caminhos comuns
+      const possiblePaths = [
+        path.join(projectRoot, 'node_modules/.bin/node'),
+        process.execPath.replace('Electron.exe', 'node.exe'),
+        'C:\\Program Files\\nodejs\\node.exe',
+        'C:\\Program Files (x86)\\nodejs\\node.exe',
+      ];
+      for (const p of possiblePaths) {
+        if (existsSync(p)) {
+          nodePath = p;
+          break;
+        }
+      }
+    }
+
     // Passa variáveis de ambiente necessárias
     const env = {
       ...process.env,
@@ -64,10 +82,11 @@ function startServer() {
       TRANSCRIBE_PROVIDER: 'whisper-local',
     };
 
-    serverProcess = spawn('node', [serverPath], {
+    serverProcess = spawn(nodePath, [serverPath], {
       cwd: projectRoot,
       env,
       stdio: 'inherit',
+      shell: true,
     });
 
     serverProcess.on('error', (error) => {
