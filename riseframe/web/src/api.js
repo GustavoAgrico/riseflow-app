@@ -198,3 +198,12 @@ export async function getJob(id) {
 }
 
 export const sourceUrl = (id) => `${BASE}/jobs/${id}/source`;
+/** Tira de miniaturas da faixa de vídeo da timeline. */
+export const filmstripUrl = (id) => `${BASE}/jobs/${id}/filmstrip`;
+/** Picos de áudio (0..1) para desenhar a forma de onda. */
+export async function getPeaks(id) {
+  const r = await fetch(`${BASE}/jobs/${id}/peaks`);
+  if (!r.ok) return [];
+  const d = await r.json().catch(() => ({}));
+  return Array.isArray(d.peaks) ? d.peaks : [];
+}

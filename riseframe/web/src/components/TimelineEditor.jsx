@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl, uploadMedia } from '../api.js';
+import { sourceUrl, filmstripUrl, getPeaks, uploadMedia } from '../api.js';
 import { APP_VERSION } from '../version.js';
 import CaptionPreview from './CaptionPreview.jsx';
 
@@ -33,6 +33,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   });
   const setCapField = (patch) => setCap((c) => ({ ...c, ...patch }));
   const [tab, setTab] = useState('enquadramento');
+  const [peaks, setPeaks] = useState([]);
+  const wave = useMemo(() => wavePath(peaks), [peaks]);
+  useEffect(() => {
+    let vivo = true;
+    getPeaks(sourceId).then((p) => { if (vivo) setPeaks(p); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [sourceId]);
   const videoRef = useRef(null);
   const previewVideoRef = useRef(null);
   const previewBoxRef = useRef(null);
@@ -474,7 +481,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
       {/* Timeline */}
       <div ref={trackRef} onClick={onTrackClick} style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', border: `1px solid ${C.border}`, borderRadius: 12, background: 'rgba(0,0,0,0.3)', paddingBottom: 6 }}>
-        <div style={{ position: 'relative', width, height: media.length ? 160 : 124 }}>
+        <div style={{ position: 'relative', width, height: media.length ? 244 : 210 }}>
           <div style={{ position: 'relative', height: 20, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
             {Array.from({ length: Math.ceil(dur) + 1 }).map((_, s) => (
               <div key={s} style={{ position: 'absolute', left: s * pps, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
@@ -517,6 +524,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               );
             })}
           </div>
+          {/* Faixa de vídeo: tira de miniaturas do arquivo original */}
+          <div style={{ position: 'relative', height: 44, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.45)' }}>
+            <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat' }} />
+          </div>
+
+          {/* Faixa de áudio: forma de onda da fala original */}
+          <div style={{ position: 'relative', height: 34, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(124,58,237,0.10)' }}>
+            {wave && (
+              <svg width={width} height={34} viewBox={`0 0 ${peaks.length} 100`} preserveAspectRatio="none" style={{ display: 'block' }}>
+                <path d={wave} fill={C.purpleSoft} opacity={0.6} />
+              </svg>
+            )}
+          </div>
+
           {/* Lane de pausas (silêncio entre palavras) — clique alterna cortar/manter */}
           <div style={{ position: 'relative', height: 24, marginTop: 4 }}>
             {pauses.map((p, pi) => {
@@ -573,7 +594,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Blocos = fala · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
+      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> · <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
 
       {/* Ajustes em abas: mantém o vídeo e a timeline no topo, sem rolagem. */}
       <div style={{ marginTop: 18, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
@@ -759,6 +780,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       <style>{`@media (max-width: 860px){ .rf-tl-grid{ grid-template-columns: 1fr !important; } }`}</style>
     </div>
   );
+}
+
+/** Caminho SVG do envelope do áudio (espelhado), em viewBox 0..n por 0..100. */
+function wavePath(peaks) {
+  if (!peaks.length) return '';
+  const top = peaks.map((v, i) => `${i === 0 ? 'M' : 'L'} ${i} ${50 - v * 46}`).join(' ');
+  const bottom = peaks.map((_, i) => { const j = peaks.length - 1 - i; return `L ${j} ${50 + peaks[j] * 46}`; }).join(' ');
+  return `${top} ${bottom} Z`;
 }
 
 function handleStyle(side) {
