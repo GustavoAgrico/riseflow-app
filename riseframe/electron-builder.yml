@@ -16,6 +16,8 @@ files:
 extraMetadata:
   main: electron/main.js
 
+asar: false
+
 win:
   target:
     - nsis
