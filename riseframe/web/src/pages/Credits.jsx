@@ -11,14 +11,31 @@ const PLANS = [
 export default function Credits({ user, onBack }) {
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [processing, setProcessing] = useState(false);
+  const [purchaseHistory, setPurchaseHistory] = useState([
+    // Mock data - será substituído por dados reais do backend
+    // { id: 1, plan: 'pro', tokens: 2000, price: 99.90, date: new Date(Date.now() - 86400000), status: 'completed' }
+  ]);
 
   const handleBuy = async (plan) => {
     try {
       setProcessing(true);
       setSelectedPlan(plan.id);
+      // Simula transação bem-sucedida
+      const newPurchase = {
+        id: purchaseHistory.length + 1,
+        plan: plan.id,
+        tokens: plan.tokens,
+        price: plan.price,
+        priceDisplay: plan.priceDisplay,
+        date: new Date(),
+        status: 'completed'
+      };
+
       // Aqui você integraria com Stripe, PagSeguro, etc.
-      // Por enquanto, mostramos um alert
       alert(`Plano ${plan.id} selecionado: ${plan.tokens} tokens por ${plan.priceDisplay}\n\nIntegração de pagamento em desenvolvimento.`);
+
+      // Descomente quando integrar com backend
+      // setPurchaseHistory([newPurchase, ...purchaseHistory]);
     } finally {
       setProcessing(false);
     }
@@ -47,13 +64,27 @@ export default function Credits({ user, onBack }) {
         <div style={{ ...glass({ padding: 24 }), marginBottom: 32 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
             <Icon name="zap" size={24} strokeWidth={1.9} color={C.purple} />
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, color: C.faint }}>Créditos disponíveis</div>
               <div style={{ fontSize: 32, fontWeight: 800, color: C.purple, fontFamily: FONT_DISPLAY, letterSpacing: -0.6 }}>{user?.credits || 0}</div>
             </div>
           </div>
-          <div style={{ fontSize: 12, color: C.muted }}>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
             Cada renderização em HD consome ~50-100 tokens, dependendo da duração.
+          </div>
+
+          {/* Barra de uso */}
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: C.faint }}>Uso este mês</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: C.text }}>150 / 1000 tokens</div>
+            </div>
+            <div style={{ width: '100%', height: 6, background: C.panel2, borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ width: '15%', height: '100%', background: C.purple, borderRadius: 3 }} />
+            </div>
+            <div style={{ fontSize: 10, color: C.faint, marginTop: 6 }}>
+              Créditos expiram em: 30 set 2027
+            </div>
           </div>
         </div>
 
@@ -133,7 +164,7 @@ export default function Credits({ user, onBack }) {
         </div>
 
         {/* FAQ */}
-        <div style={{ ...glass({ padding: 28 }), maxWidth: 600, margin: '0 auto' }}>
+        <div style={{ ...glass({ padding: 28 }), maxWidth: 600, margin: '0 auto', marginBottom: 32 }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Perguntas frequentes</h2>
           <div style={{ display: 'grid', gap: 16 }}>
             <div>
@@ -150,6 +181,37 @@ export default function Credits({ user, onBack }) {
             </div>
           </div>
         </div>
+
+        {/* Histórico de compras */}
+        {purchaseHistory.length > 0 && (
+          <div style={{ ...glass({ padding: 28 }), maxWidth: 600, margin: '0 auto' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Histórico de compras</h2>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {purchaseHistory.map((p) => (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', borderRadius: 8, background: 'rgba(124,58,237,0.05)', border: `1px solid ${C.border}` }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text, textTransform: 'capitalize' }}>{p.plan} — {p.tokens} tokens</div>
+                    <div style={{ fontSize: 11, color: C.faint, marginTop: 2 }}>
+                      {new Date(p.date).toLocaleDateString('pt-BR')} • {p.priceDisplay}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: C.green, background: 'rgba(34,197,94,0.15)', padding: '4px 10px', borderRadius: 6 }}>✓ Concluído</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {purchaseHistory.length === 0 && (
+          <div style={{ ...glass({ padding: 28 }), maxWidth: 600, margin: '0 auto', textAlign: 'center' }}>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>
+              Você ainda não realizou nenhuma compra de créditos.
+            </div>
+            <div style={{ fontSize: 12, color: C.faint }}>
+              Escolha um dos planos acima para começar a renderizar seus vídeos.
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
