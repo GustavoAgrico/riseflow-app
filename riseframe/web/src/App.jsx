@@ -347,6 +347,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
             options={options}
             onGenerate={generateFromEdits}
             onBack={reset}
+            onSettings={onSettings}
           />
         </div>
       )}

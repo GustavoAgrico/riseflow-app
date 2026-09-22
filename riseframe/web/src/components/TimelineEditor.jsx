@@ -5,6 +5,7 @@ import Icon from './Icon.jsx';
 import { sourceUrl, filmstripUrl, getPeaks, suggestBrollMoments, uploadMedia } from '../api.js';
 import { APP_VERSION } from '../version.js';
 import CaptionPreview from './CaptionPreview.jsx';
+import { BrollControls } from './OptionsPanel.jsx';
 
 const PPS_MIN = 24;
 const PPS_MAX = 240;
@@ -18,7 +19,7 @@ const PPS_MAX = 240;
  * - corrigir o texto (duplo-clique na palavra)
  * "Renderizar" reprocessa com a transcrição editada.
  */
-export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, busy }) {
+export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, onSettings, busy }) {
   const cap0 = options || {};
   // Ajustes de legenda editáveis aqui na timeline (posição, fonte, estilo, etc.).
   const [cap, setCap] = useState({
@@ -34,6 +35,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const setCapField = (patch) => setCap((c) => ({ ...c, ...patch }));
   const [tab, setTab] = useState('enquadramento');
   const [peaks, setPeaks] = useState([]);
+  // Ajustes de B-roll editáveis aqui na timeline (sobrepõem os das opções).
+  const [brollOpts, setBrollOpts] = useState({
+    broll: options?.broll === true,
+    imageSource: options?.imageSource,
+    niche: options?.niche,
+    brollLayout: options?.brollLayout,
+    personCrop: options?.personCrop,
+  });
+  const brollOn = brollOpts.broll === true;
   // Momentos de B-roll no tempo do vídeo ORIGINAL. off = o usuário tirou.
   const [broll, setBroll] = useState([]);
   const [brollLoading, setBrollLoading] = useState(false);
@@ -46,10 +56,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }, [sourceId]);
 
   useEffect(() => {
-    if (!options?.broll) return undefined;
+    if (!brollOn) return undefined;
     let vivo = true;
     setBrollLoading(true);
-    suggestBrollMoments(sourceId, options)
+    suggestBrollMoments(sourceId, { ...options, ...brollOpts })
       .then((ms) => {
         if (!vivo) return;
         setBroll(ms.map((m, i) => ({ key: `b${i}`, start: m.start, end: m.end, query: m.query || '', off: false })));
@@ -57,9 +67,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       .catch(() => {})
       .finally(() => { if (vivo) setBrollLoading(false); });
     return () => { vivo = false; };
-    // options muda de identidade a cada render do pai; só o id do vídeo e o liga/desliga importam.
+    // options muda de identidade a cada render do pai; só estes valores mudam a sugestão.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceId, options?.broll]);
+  }, [sourceId, brollOn, brollOpts.niche]);
   const videoRef = useRef(null);
   const previewVideoRef = useRef(null);
   const previewBoxRef = useRef(null);
@@ -415,8 +425,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           : {}),
         // Ajustes de legenda escolhidos aqui na timeline (sobrepõem os das opções).
         ...cap,
-        // Momentos de B-roll da faixa (tempo original; o servidor remapeia após os cortes).
-        ...(options?.broll
+        // B-roll: ajustes da aba + momentos da faixa (tempo original; o servidor
+        // remapeia depois dos cortes).
+        ...brollOpts,
+        ...(brollOn
           ? { brollMoments: broll.filter((b) => !b.off).map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2), query: b.query })) }
           : {}),
         // Minhas mídias colocadas na timeline (imagens/vídeos/músicas próprias).
@@ -535,7 +547,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
       {/* Timeline */}
       <div ref={trackRef} onClick={onTrackClick} style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', border: `1px solid ${C.border}`, borderRadius: 12, background: 'rgba(0,0,0,0.3)', paddingBottom: 6 }}>
-        <div style={{ position: 'relative', width, height: 210 + (options?.broll ? 34 : 0) + (media.length ? 34 : 0) }}>
+        <div style={{ position: 'relative', width, height: 210 + (brollOn ? 34 : 0) + (media.length ? 34 : 0) }}>
           <div style={{ position: 'relative', height: 20, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
             {Array.from({ length: Math.ceil(dur) + 1 }).map((_, s) => (
               <div key={s} style={{ position: 'absolute', left: s * pps, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
@@ -584,7 +596,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
 
           {/* Faixa de B-roll: momentos sugeridos pela análise, ajustáveis aqui */}
-          {options?.broll && (
+          {brollOn && (
             <div style={{ position: 'relative', height: 30, marginTop: 4 }}>
               {broll.length === 0 && (
                 <div style={{ position: 'absolute', left: 8, top: 7, fontSize: 11.5, color: C.faint }}>
@@ -693,7 +705,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b>{options?.broll && <> · <b>B-roll</b> (arraste para mover, × para tirar)</>} · <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
+      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b>{brollOn && <> · <b>B-roll</b> (arraste para mover, × para tirar)</>} · <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
 
       {/* Ajustes em abas: mantém o vídeo e a timeline no topo, sem rolagem. */}
       <div style={{ marginTop: 18, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
@@ -770,6 +782,27 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 </div>
               );
             })()}
+          </div>
+        )}
+
+        {/* B-roll: liga/desliga e ajustes, sem precisar voltar para as opções */}
+        {tab === 'broll' && (
+          <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: '4px 14px 10px' }}>
+            <BrollControls
+              catalog={catalog}
+              options={{ ...options, ...brollOpts }}
+              onChange={(next) => setBrollOpts({
+                broll: next.broll,
+                imageSource: next.imageSource,
+                niche: next.niche,
+                brollLayout: next.brollLayout,
+                personCrop: next.personCrop,
+              })}
+              onSettings={onSettings}
+            />
+            <div style={{ fontSize: 11.5, color: C.faint, paddingTop: 4 }}>
+              {brollOn ? 'Os momentos aparecem na faixa verde da timeline — arraste para mover, × para tirar.' : 'Ligue para escolher os momentos na timeline.'}
+            </div>
           </div>
         )}
 
@@ -905,7 +938,8 @@ function miniBtn(active, disabled) {
   return { display: 'inline-flex', alignItems: 'center', gap: 5, border: `1px solid ${active ? C.red : C.border}`, background: active ? 'rgba(240,82,107,0.18)' : 'rgba(255,255,255,0.05)', color: active ? C.red : C.muted, borderRadius: 8, padding: '5px 10px', fontSize: 11.5, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, fontFamily: 'inherit' };
 }
 const TABS = [
-  { id: 'enquadramento', label: 'Enquadramento', icon: 'image' },
+  { id: 'enquadramento', label: 'Enquadramento', icon: 'crop' },
+  { id: 'broll', label: 'B-roll', icon: 'image' },
   { id: 'legenda', label: 'Legenda', icon: 'captions' },
   { id: 'midias', label: 'Minhas mídias', icon: 'film' },
 ];

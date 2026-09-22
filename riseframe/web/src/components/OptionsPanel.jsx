@@ -215,58 +215,7 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
 
       {/* ── B-roll ── */}
       <Section icon="image" title="B-roll (imagens de apoio)" subtitle={options.broll && brollUsable ? 'ligado' : 'desligado'}>
-        <Row
-          label="B-roll automático"
-          hint="Insere imagens de apoio contextuais nos melhores momentos da fala. Openverse (Creative Commons) funciona sem configurar nada."
-        >
-          <Toggle on={options.broll} onChange={(v) => set({ broll: v })} disabled={!brollUsable} />
-        </Row>
-        {options.broll && brollUsable && catalog.imageSources && (() => {
-          const googleReady = !!caps.googleImagesReady;
-          const pexelsReady = !!caps.brollReady || keyValid;
-          // Cada fonte indisponível aparece desabilitada, com o motivo no rótulo.
-          const srcOpts = catalog.imageSources.map((o) => {
-            if (o.id === 'google' && !googleReady) return { ...o, label: `${o.label} — requer configuração`, disabled: true };
-            if (o.id === 'pexels' && !pexelsReady) return { ...o, label: `${o.label} — requer chave`, disabled: true };
-            return o;
-          });
-          // Se a fonte escolhida não está disponível, mostra Openverse (sempre funciona).
-          let value = options.imageSource || 'openverse';
-          if ((value === 'google' && !googleReady) || (value === 'pexels' && !pexelsReady)) value = 'openverse';
-          return (
-            <Row
-              label="Fonte das imagens"
-              hint="Openverse: Creative Commons, grátis e sem chave (padrão). Pexels: vídeos + fotos livres de direitos (precisa de chave). Google: mais opções, porém a maioria tem copyright."
-            >
-              <Select value={value} options={srcOpts} onChange={(v) => set({ imageSource: v })} />
-            </Row>
-          );
-        })()}
-        {options.broll && brollUsable && catalog.niches && (
-          <Row label="Nicho do vídeo" hint="As imagens de apoio combinam com o tema (liderança, médico, mentor...)">
-            <Select value={options.niche || 'auto'} options={catalog.niches} onChange={(v) => set({ niche: v })} />
-          </Row>
-        )}
-        {options.broll && brollUsable && (
-          <Row label="Layout do B-roll" hint="Tela cheia OU dividida (você numa metade, o apoio na outra). Sem vídeo, usa imagem.">
-            <Segmented value={options.brollLayout || 'fullscreen'} options={catalog.brollLayouts || [{ id: 'fullscreen', label: 'Tela cheia' }, { id: 'top', label: 'Apoio em cima' }, { id: 'bottom', label: 'Apoio embaixo' }]} onChange={(v) => set({ brollLayout: v })} />
-          </Row>
-        )}
-        {options.broll && brollUsable && (options.brollLayout === 'top' || options.brollLayout === 'bottom') && (
-          <Row label="Posição da pessoa" hint="A pessoa aparece INTEIRA (sem cortar a cabeça), com fundo desfocado. Isto só alinha ela na metade: topo, centro ou base.">
-            <Segmented value={options.personCrop || 'center'} options={catalog.personCrops || [{ id: 'top', label: 'Topo' }, { id: 'center', label: 'Centro' }, { id: 'bottom', label: 'Base' }]} onChange={(v) => set({ personCrop: v })} />
-          </Row>
-        )}
-        {options.broll && brollUsable && (
-          <div style={{ padding: '4px 0 12px' }}><LayoutPreview layout={options.brollLayout || 'fullscreen'} personCrop={options.personCrop || 'center'} /></div>
-        )}
-        {!caps.brollReady && !keyValid && (
-          <Row label="Chave do Pexels" hint="Configure sua chave em Configurações para ativar o B-roll">
-            <button onClick={() => onSettings?.()} style={{ background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-              Abrir Configurações →
-            </button>
-          </Row>
-        )}
+        <BrollControls catalog={catalog} options={options} onChange={onChange} onSettings={onSettings} />
       </Section>
 
       {/* ── Formato de saída ── */}
@@ -281,5 +230,73 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
         )}
       </Section>
     </div>
+  );
+}
+
+
+/**
+ * Controles de B-roll (liga/desliga, fonte das imagens, nicho, layout).
+ * Usado na tela de opções e na aba de B-roll da timeline.
+ */
+export function BrollControls({ catalog, options, onChange, onSettings }) {
+  const set = (patch) => onChange({ ...options, ...patch });
+  const caps = catalog?.capabilities || {};
+  const keyValid = /^[A-Za-z0-9]{20,80}$/.test((options.pexelsKey || '').trim());
+  const brollUsable = caps.openverseReady || caps.brollReady || keyValid || caps.googleImagesReady;
+  return (
+    <>
+          <Row
+            label="B-roll automático"
+            hint="Insere imagens de apoio contextuais nos melhores momentos da fala. Openverse (Creative Commons) funciona sem configurar nada."
+          >
+            <Toggle on={options.broll} onChange={(v) => set({ broll: v })} disabled={!brollUsable} />
+          </Row>
+          {options.broll && brollUsable && catalog.imageSources && (() => {
+            const googleReady = !!caps.googleImagesReady;
+            const pexelsReady = !!caps.brollReady || keyValid;
+            // Cada fonte indisponível aparece desabilitada, com o motivo no rótulo.
+            const srcOpts = catalog.imageSources.map((o) => {
+              if (o.id === 'google' && !googleReady) return { ...o, label: `${o.label} — requer configuração`, disabled: true };
+              if (o.id === 'pexels' && !pexelsReady) return { ...o, label: `${o.label} — requer chave`, disabled: true };
+              return o;
+            });
+            // Se a fonte escolhida não está disponível, mostra Openverse (sempre funciona).
+            let value = options.imageSource || 'openverse';
+            if ((value === 'google' && !googleReady) || (value === 'pexels' && !pexelsReady)) value = 'openverse';
+            return (
+              <Row
+                label="Fonte das imagens"
+                hint="Openverse: Creative Commons, grátis e sem chave (padrão). Pexels: vídeos + fotos livres de direitos (precisa de chave). Google: mais opções, porém a maioria tem copyright."
+              >
+                <Select value={value} options={srcOpts} onChange={(v) => set({ imageSource: v })} />
+              </Row>
+            );
+          })()}
+          {options.broll && brollUsable && catalog.niches && (
+            <Row label="Nicho do vídeo" hint="As imagens de apoio combinam com o tema (liderança, médico, mentor...)">
+              <Select value={options.niche || 'auto'} options={catalog.niches} onChange={(v) => set({ niche: v })} />
+            </Row>
+          )}
+          {options.broll && brollUsable && (
+            <Row label="Layout do B-roll" hint="Tela cheia OU dividida (você numa metade, o apoio na outra). Sem vídeo, usa imagem.">
+              <Segmented value={options.brollLayout || 'fullscreen'} options={catalog.brollLayouts || [{ id: 'fullscreen', label: 'Tela cheia' }, { id: 'top', label: 'Apoio em cima' }, { id: 'bottom', label: 'Apoio embaixo' }]} onChange={(v) => set({ brollLayout: v })} />
+            </Row>
+          )}
+          {options.broll && brollUsable && (options.brollLayout === 'top' || options.brollLayout === 'bottom') && (
+            <Row label="Posição da pessoa" hint="A pessoa aparece INTEIRA (sem cortar a cabeça), com fundo desfocado. Isto só alinha ela na metade: topo, centro ou base.">
+              <Segmented value={options.personCrop || 'center'} options={catalog.personCrops || [{ id: 'top', label: 'Topo' }, { id: 'center', label: 'Centro' }, { id: 'bottom', label: 'Base' }]} onChange={(v) => set({ personCrop: v })} />
+            </Row>
+          )}
+          {options.broll && brollUsable && (
+            <div style={{ padding: '4px 0 12px' }}><LayoutPreview layout={options.brollLayout || 'fullscreen'} personCrop={options.personCrop || 'center'} /></div>
+          )}
+          {!caps.brollReady && !keyValid && (
+            <Row label="Chave do Pexels" hint="Configure sua chave em Configurações para ativar o B-roll">
+              <button onClick={() => onSettings?.()} style={{ background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Abrir Configurações →
+              </button>
+            </Row>
+          )}
+    </>
   );
 }
