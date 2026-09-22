@@ -7,8 +7,8 @@ import { config } from '../config.js';
 import { queue } from '../queue.js';
 import { requireAuth } from './auth.js';
 import { getSettings } from '../auth/settings.js';
-import { billingStatus, canAfford, charge, refund } from '../auth/billing.js';
-import { creditItems, creditTotal } from '../../../shared/credits.js';
+import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod } from '../auth/billing.js';
+import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../../shared/credits.js';
 import { registerMedia, resolveMedia } from '../mediaStore.js';
 import { probeSummary, runFfmpeg } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
@@ -47,7 +47,18 @@ function optionsForUser(req) {
 
 export const jobsRouter = Router();
 
-const costOf = (mode, options) => creditTotal(creditItems(mode, options, config.billing.costs));
+/** Recusa (403) quando o job usa recurso que o plano do usuário não libera. */
+function planBlocks(req, res, items) {
+  const locked = lockedItems(items, allowedFeatures(req.user));
+  if (!locked.length) return false;
+  const plan = cheapestPlanFor(locked[0].id, config.billing.plans) || 'superior';
+  res.status(403).json({
+    code: 'PLAN_REQUIRED',
+    locked: locked.map((i) => i.id),
+    error: `${locked.map((i) => i.label).join(', ')}: disponível a partir do plano ${plan}. Veja em Planos, no menu, ou desligue o recurso.`,
+  });
+  return true;
+}
 
 function noCredits(req, res, cost) {
   const { credits } = billingStatus(req.user);
@@ -55,14 +66,17 @@ function noCredits(req, res, cost) {
     code: 'PAYMENT_REQUIRED',
     cost,
     credits,
-    error: `Este vídeo custa ${cost} créditos e você tem ${credits}. Compre mais em Créditos, no menu.`,
+    error: `Este vídeo custa ${cost} créditos e você tem ${credits}. Assine um plano ou faça uma recarga em Planos, no menu.`,
   });
 }
 
-// Checagem antes do multer: sem saldo nem para o mínimo, recusa sem receber o upload.
+// Checagem antes do multer: recurso fora do plano (ex.: clipes) ou sem saldo nem para o
+// mínimo → recusa sem receber o upload.
 function requireCredits(mode) {
   return (req, res, next) => {
-    const min = costOf(mode, {});
+    const items = creditItems(mode, {}, config.billing.costs);
+    if (planBlocks(req, res, items)) return;
+    const min = creditTotal(items);
     if (canAfford(req.user, min)) return next();
     noCredits(req, res, min);
   };
@@ -74,20 +88,24 @@ queue.on('update', (j) => {
   const held = heldCredits.get(j.id);
   if (!held || (j.status !== 'error' && j.status !== 'done')) return;
   heldCredits.delete(j.id);
-  if (j.status === 'error') refund(held.userId, held.credits);
+  if (j.status === 'error') refund(held.userId, held);
 });
 
 /** Cobra o job e cria na fila; responde 402 (e apaga o upload) se faltar saldo. */
 function chargeAndQueue(req, res, mode, jobInput) {
-  const cost = costOf(mode, jobInput.options);
+  const items = creditItems(mode, jobInput.options, config.billing.costs);
+  const dropUpload = () => req.file && fs.unlink(req.file.path, () => {});
+  if (planBlocks(req, res, items)) return dropUpload();
+  const cost = creditTotal(items);
+  const until = currentPeriod(req.user.id);
   const charged = charge(req.user, cost);
   if (charged === null) {
-    if (req.file) fs.unlink(req.file.path, () => {});
+    dropUpload();
     return noCredits(req, res, cost);
   }
   const job = queue.create({ mode, ...jobInput });
-  if (charged) heldCredits.set(job.id, { userId: req.user.id, credits: charged });
-  res.status(201).json({ ...queue.public(job), creditsCharged: charged });
+  if (charged.total) heldCredits.set(job.id, { userId: req.user.id, monthly: charged.monthly, extra: charged.extra, until });
+  res.status(201).json({ ...queue.public(job), creditsCharged: charged.total });
 }
 
 const storage = multer.diskStorage({

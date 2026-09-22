@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v42';
+export const APP_VERSION = 'v43';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -106,19 +106,30 @@ export const config = {
     appUrl: process.env.APP_URL || '',
   },
 
-  // Créditos pré-pagos via AbacatePay (Pix/cartão). Sem ABACATE_PAY_API_KEY não há
-  // cobrança: todo usuário logado usa à vontade (modo local/desktop).
+  // Planos mensais + recarga avulsa via AbacatePay (Pix/cartão). Sem ABACATE_PAY_API_KEY
+  // não há cobrança: todo usuário logado usa tudo à vontade (modo local/desktop).
   billing: {
     abacateKey: process.env.ABACATE_PAY_API_KEY || '',
     webhookSecret: process.env.ABACATE_WEBHOOK_SECRET || '',
+    // Créditos de teste para cada conta nova (usam os recursos de quem não tem plano).
     signupCredits: num(process.env.BILLING_SIGNUP_CREDITS, 60),
     // Custo de cada recurso. Sobrescreva com CREDIT_COSTS='{"video":20,"image":5}'.
     costs: { ...DEFAULT_COSTS, ...json(process.env.CREDIT_COSTS, {}) },
-    // Pacotes à venda. Sobrescreva com CREDIT_PACKS='[{"id":"starter","name":"Starter","credits":500,"priceCents":2990}]'.
+    periodDays: num(process.env.BILLING_PERIOD_DAYS, 30),
+    // Recursos de quem não tem plano ativo (o vídeo básico é sempre liberado).
+    freeFeatures: json(process.env.BILLING_FREE_FEATURES, []),
+    // Planos mensais: créditos renovam a cada período e não acumulam. `features` usa os
+    // ids de shared/credits.js (captionStyle, image, ai, clips). Sobrescreva com BILLING_PLANS.
+    plans: json(process.env.BILLING_PLANS, [
+      { id: 'basico', name: 'Básico', priceCents: 2990, credits: 300, features: [] },
+      { id: 'pro', name: 'Pro', priceCents: 6990, credits: 1000, features: ['captionStyle', 'image', 'ai'], popular: true },
+      { id: 'premium', name: 'Premium', priceCents: 14990, credits: 3000, features: ['captionStyle', 'image', 'ai', 'clips'] },
+    ]),
+    // Recarga avulsa (não expira; mais cara por crédito que os planos). Sobrescreva com CREDIT_PACKS.
     packs: json(process.env.CREDIT_PACKS, [
-      { id: 'starter', name: 'Starter', credits: 500, priceCents: 2990 },
-      { id: 'pro', name: 'Pro', credits: 2000, priceCents: 9990, popular: true },
-      { id: 'enterprise', name: 'Enterprise', credits: 5000, priceCents: 24990 },
+      { id: 'recarga-100', name: 'Recarga 100', credits: 100, priceCents: 1490 },
+      { id: 'recarga-300', name: 'Recarga 300', credits: 300, priceCents: 3990 },
+      { id: 'recarga-1000', name: 'Recarga 1000', credits: 1000, priceCents: 11990 },
     ]),
     // Mesmos métodos do RiseFlow. Se a AbacatePay recusar o cartão, use BILLING_METHODS=PIX.
     methods: (process.env.BILLING_METHODS || 'PIX,CREDIT_CARD')

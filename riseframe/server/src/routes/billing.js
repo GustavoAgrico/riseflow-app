@@ -16,17 +16,17 @@ function safeEqual(a, b) {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
 
-// GET /api/billing → saldo de créditos, custos e pacotes
+// GET /api/billing → plano, saldo, recursos liberados, custos, planos e recargas
 billingRouter.get('/billing', requireAuth, (req, res) => {
   res.json(billingStatus(req.user));
 });
 
-// POST /api/billing/checkout { packId, name, cpf, phone } → { url } do pagamento
+// POST /api/billing/checkout { kind: 'plan'|'pack', itemId, name, cpf, phone } → { url } do pagamento
 billingRouter.post('/billing/checkout', requireAuth, async (req, res) => {
   if (!billingEnabled()) return res.status(400).json({ error: 'pagamentos não estão configurados' });
   if (billingStatus(req.user).admin) return res.status(400).json({ error: 'conta de administrador já tem uso ilimitado' });
 
-  const { packId, name, cpf, phone } = req.body || {};
+  const { kind, itemId, name, cpf, phone } = req.body || {};
   const taxId = digits(cpf);
   const cellphone = digits(phone);
   if (taxId.length !== 11 && taxId.length !== 14) return res.status(400).json({ error: 'informe um CPF ou CNPJ válido' });
@@ -35,7 +35,8 @@ billingRouter.post('/billing/checkout', requireAuth, async (req, res) => {
   const base = (config.auth.appUrl || req.get('origin') || '').replace(/\/+$/, '');
   try {
     const url = await createCheckout(req.user, {
-      packId: String(packId || ''),
+      kind: String(kind || ''),
+      itemId: String(itemId || ''),
       name: String(name || '').trim().slice(0, 120),
       taxId,
       cellphone,
@@ -49,11 +50,11 @@ billingRouter.post('/billing/checkout', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/billing/sync → confere na AbacatePay se o pagamento do usuário caiu; { added, ...status }
+// POST /api/billing/sync → confere na AbacatePay se o pagamento caiu; { applied: [...], ...status }
 billingRouter.post('/billing/sync', requireAuth, async (req, res) => {
   try {
-    const added = await syncPayments({ userId: req.user.id });
-    res.json({ added, ...billingStatus(req.user) });
+    const applied = await syncPayments({ userId: req.user.id });
+    res.json({ applied, ...billingStatus(req.user) });
   } catch (err) {
     log.error(`sync: ${err.message}`);
     res.status(502).json({ error: 'não foi possível consultar o pagamento agora; tente de novo em instantes' });
