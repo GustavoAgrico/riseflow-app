@@ -16,7 +16,7 @@
     "dev:electron": "electron .",
     "dev:all": "concurrently -n server,web,electron -c cyan,magenta,green \"npm:dev:server\" \"npm:dev:web\" \"npm:dev:electron\"",
     "build": "npm --workspace web run build",
-    "build:desktop": "npm run build && electron-builder",
+    "build:desktop": "npm run build && electron-builder --publish never",
     "start": "npm --workspace server run start",
     "sample": "npm --workspace server run sample",
     "test": "npm --workspace server run test"
