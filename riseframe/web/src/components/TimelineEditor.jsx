@@ -617,8 +617,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </GhostButton>
       </div>
 
-      <div className="rf-tl-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 440px) 1fr', gap: 18, alignItems: 'start' }}>
-        <div>
+      <div className="rf-tl-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 440px) minmax(0, 1fr)', gap: 18, alignItems: 'start' }}>
+        <div className="rf-tl-preview">
           {/* Vídeo principal + prévia 9:16 do ajuste, LADO A LADO (mesma linha) */}
           <div style={{ display: 'grid', gridTemplateColumns: framingMode === 'manual' ? 'minmax(0,1fr) minmax(130px, 180px)' : '1fr', gap: 12, alignItems: 'start' }}>
             <div>
@@ -652,36 +652,323 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
         </div>
 
-        <div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-            <Chip label="Palavras" value={stats.total} color={C.text} />
-            <Chip label="Cortadas" value={stats.removed} color={C.red} />
-            <Chip label="Pausas cortadas" value={pausesCut.length} sub={pauseCutSec > 0.1 ? `−${fmtDuration(pauseCutSec)}` : null} color={C.orangeSoft} />
-            <Chip label="Duração final" value={fmtDuration(stats.keptSec)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
+        {/* Ajustes em abas, AO LADO da prévia: dá para ver o efeito enquanto ajusta. */}
+          <div className="rf-tl-adjust" style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            {TABS.map((t) => (
+              <button key={t.id} onClick={() => setTab(t.id)} style={sectionTab(tab === t.id)}>
+                <Icon name={t.icon} size={14} strokeWidth={2} /> {t.label}
+              </button>
+            ))}
           </div>
 
-          {selSeg && (
-            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.4 }}>TRECHO {sel + 1}/{segments.length} · {fmtDuration(selSeg.start)}</div>
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <button onClick={() => mergeNext(sel)} disabled={sel >= segments.length - 1} style={miniBtn(false, sel >= segments.length - 1)}>
-                    <Icon name="arrowLeft" size={12} strokeWidth={2.2} style={{ transform: 'rotate(180deg)' }} /> Juntar
-                  </button>
-                  <button onClick={() => toggleSeg(sel)} style={miniBtn(segRemoved(selSeg))}>
-                    <Icon name={segRemoved(selSeg) ? 'undo' : 'close'} size={12} strokeWidth={2.2} /> {segRemoved(selSeg) ? 'Reincluir' : 'Cortar trecho'}
-                  </button>
-                </div>
+          {/* Enquadramento na tela dividida */}
+          {tab === 'enquadramento' && (
+            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Enquadramento no rosto</div>
               </div>
-              <div style={{ lineHeight: 2 }}>
-                {selSeg.words.map((w, wi) => (
-                  <span key={wi} onClick={() => toggleWord(sel, wi)} onDoubleClick={() => editWord(sel, wi)} title={`${w.start.toFixed(1)}s — clique corta, 2 cliques edita`}
-                    style={{ display: 'inline-block', margin: '0 3px', padding: '2px 6px', borderRadius: 7, cursor: 'pointer', userSelect: 'none', textDecoration: w.removed ? 'line-through' : 'none', opacity: w.removed ? 0.42 : 1, background: w.removed ? 'rgba(240,82,107,0.14)' : 'transparent', color: w.removed ? C.red : C.text }}>
-                    {w.word}
-                  </span>
+              <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
+                Ajusta como você aparece: na <b>tela dividida</b> (sua metade) e, com zoom, também no <b>vídeo em tela cheia</b> (aproxima e reposiciona).
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                {[{ id: 'auto', label: 'Automático (rosto)' }, { id: 'manual', label: 'Ajustar eu mesmo' }].map((o) => (
+                  <button key={o.id} onClick={() => setFramingMode(o.id)} style={framingTab(framingMode === o.id)}>{o.label}</button>
                 ))}
               </div>
-              <div style={{ fontSize: 11.5, color: C.faint, marginTop: 8 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir · arraste as bordas do bloco na timeline</div>
+              {framingMode === 'manual' && (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
+                    <span style={{ width: 46 }}>Zoom</span>
+                    <button onClick={() => setZoom((z) => clampZoom(z - 0.1))} style={zoomBtn} title="Diminuir">−</button>
+                    <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(e) => setZoom(clampZoom(Number(e.target.value)))} style={{ flex: 1 }} />
+                    <button onClick={() => setZoom((z) => clampZoom(z + 0.1))} style={zoomBtn} title="Aumentar">+</button>
+                    <span style={{ width: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
+                  </label>
+                  <div style={{ fontSize: 11, color: C.faint }}>Arraste no ponto do rosto (vídeo) e veja o resultado na <b>Prévia 9:16</b> ao lado. Sem B-roll, o mesmo ajuste (zoom) reenquadra o vídeo inteiro.</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* B-roll: revisar/trocar as imagens escolhidas antes de renderizar */}
+          {tab === 'broll' && (
+            <div style={{ marginTop: 14, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>B-roll · imagens automáticas</div>
+              </div>
+              <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
+                Veja as imagens/vídeos que o sistema escolheu para cada trecho e <b>troque, substitua pela sua mídia ou remova</b> antes de gerar.
+                {billing && !billing.unlimited && <> Cada imagem inserida custa <b>{billing.costs.image} créditos</b>.</>}
+              </div>
+              {billing && !billing.features.includes('image') && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#FCA5B4', background: 'rgba(240,82,107,0.1)', border: `1px solid ${C.red}55`, borderRadius: 9, padding: '8px 10px', marginBottom: 10 }}>
+                  <Icon name="lock" size={14} strokeWidth={2} />
+                  <span style={{ flex: 1 }}>B-roll faz parte do plano Pro ou acima.</span>
+                  <button onClick={openPlans} style={{ background: 'none', border: 'none', color: C.orangeSoft, fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>Ver planos</button>
+                </div>
+              )}
+              <input ref={brollUploadRef} type="file" accept="image/*,video/*" onChange={onPickBrollMedia} style={{ display: 'none' }} />
+              {!brollReview && (
+                <button onClick={reviewBroll} disabled={brollBusy} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: brollBusy ? 0.6 : 1, cursor: brollBusy ? 'not-allowed' : 'pointer' }}>
+                  <Icon name="image" size={13} strokeWidth={2} /> {brollBusy ? 'Analisando o vídeo…' : 'Revisar / trocar imagens'}
+                </button>
+              )}
+              {brollErr && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{brollErr}</div>}
+              {brollReview && (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ fontSize: 11, color: C.faint }}>{brollReview.moments.length} momento(s) · fonte: {brollReview.source}</div>
+                    <button onClick={reviewBroll} disabled={brollBusy} style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 10.5, fontWeight: 600 }} title="Analisar de novo">↻ refazer</button>
+                  </div>
+                  {brollReview.moments.map((m, i) => {
+                    const n = m.candidates.length;
+                    const thumb = m.removed ? null : (m.myThumb || m.candidates[m.pick]?.thumb);
+                    return (
+                      <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 10, padding: 8, opacity: m.removed ? 0.55 : 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                          <span style={{ fontSize: 10.5, color: C.faint, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(m.start)}</span>
+                          <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{m.term}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+                          <div style={{ width: 64, height: 54, flexShrink: 0, borderRadius: 8, overflow: 'hidden', background: '#000', border: `1px solid ${C.border}`, display: 'grid', placeItems: 'center' }}>
+                            {thumb ? <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 9.5, color: C.faint, textAlign: 'center' }}>sem<br />imagem</span>}
+                          </div>
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <button onClick={() => cycleCand(i, -1)} disabled={n < 2 || m.removed} style={{ ...zoomBtn, width: 24, height: 22 }} title="Anterior">‹</button>
+                              <span style={{ fontSize: 10.5, color: C.muted, minWidth: 34, textAlign: 'center' }}>{m.removed ? '—' : m.myMediaId ? 'minha' : n ? `${m.pick + 1}/${n}` : '0'}</span>
+                              <button onClick={() => cycleCand(i, 1)} disabled={n < 2 || m.removed} style={{ ...zoomBtn, width: 24, height: 22 }} title="Próxima">›</button>
+                            </div>
+                            <div style={{ display: 'flex', gap: 5 }}>
+                              <button onClick={() => { brollTargetIdx.current = i; brollUploadRef.current?.click(); }} style={{ ...zoomBtn, width: 'auto', flex: 1, padding: '0 6px', fontSize: 10, fontWeight: 600 }} title="Usar minha imagem/vídeo">Minha</button>
+                              <button onClick={() => setMoment(i, { removed: !m.removed })} style={{ ...zoomBtn, width: 'auto', flex: 1, padding: '0 6px', fontSize: 10, fontWeight: 600, color: m.removed ? C.green : C.red }}>{m.removed ? 'Repor' : 'Remover'}</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div style={{ fontSize: 10.5, color: C.faint }}>As trocas são aplicadas quando você clicar em <b>Gerar vídeo</b>.</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Volume da fala: geral, mudo e trechos com volume próprio */}
+          {tab === 'audio' && (
+            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+              <CapRow label="Mudo">
+                <button onClick={() => setAudioMute((m) => !m)} style={miniBtn(audioMute, false)}>
+                  {audioMute ? 'Fala silenciada' : 'Fala com som'}
+                </button>
+              </CapRow>
+              <CapRow label="Volume da fala">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: audioMute ? 0.4 : 1 }}>
+                  <input type="range" min="0" max="2" step="0.05" value={audioVolume} disabled={audioMute}
+                    onChange={(e) => setAudioVolume(Number(e.target.value))} style={{ flex: 1 }} />
+                  <span style={{ width: 46, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12.5 }}>{Number(audioVolume).toFixed(2)}×</span>
+                </label>
+              </CapRow>
+              <CapRow label="Trecho com volume próprio">
+                <button
+                  onClick={() => setGains((l) => {
+                    // Trechos sobrepostos multiplicam o volume no ffmpeg; começa depois do que já cobre o playhead.
+                    const cobre = l.filter((g) => cur >= g.start && cur < g.end);
+                    const inicio = cobre.length ? Math.max(...cobre.map((g) => g.end)) : cur;
+                    if (inicio >= dur - 0.4) return l;
+                    return [...l, { key: `g${Date.now()}`, start: +inicio.toFixed(2), end: +Math.min(dur, inicio + 2).toFixed(2), volume: 0.3 }];
+                  })}
+                  disabled={audioMute || cur >= dur - 0.4}
+                  style={toolBtn(audioMute || cur >= dur - 0.4)}
+                >
+                  <Icon name="scissors" size={14} strokeWidth={2} /> Abaixar a partir do playhead
+                </button>
+              </CapRow>
+              {gains.map((g) => (
+                <CapRow key={g.key} label={`${fmtDuration(g.start)} → ${fmtDuration(g.end)}`}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <input type="range" min="0" max="2" step="0.05" value={g.volume}
+                      onChange={(e) => setGains((l) => l.map((x) => (x.key === g.key ? { ...x, volume: Number(e.target.value) } : x)))} style={{ flex: 1 }} />
+                    <span style={{ width: 46, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12.5 }}>
+                      {Number(g.volume) < 0.005 ? 'mudo' : `${Number(g.volume).toFixed(2)}×`}
+                    </span>
+                    <button onClick={() => setGains((l) => l.filter((x) => x.key !== g.key))} style={miniBtn(false, false)} title="Tirar este trecho">×</button>
+                  </div>
+                </CapRow>
+              ))}
+              <div style={{ fontSize: 11.5, color: C.faint, paddingTop: 6 }}>
+                {audioMute
+                  ? 'A fala original sai muda no vídeo final — a música de Minhas mídias continua.'
+                  : 'Os trechos aparecem na faixa de áudio — arraste para mover e puxe as pontas para ajustar.'}
+              </div>
+            </div>
+          )}
+
+          {tab === 'efeitos' && (
+            <div style={{ display: 'grid', gap: 12, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+              <CapRow label="Movimento (zoom)">
+                <Sel value={fx.videoMotion} opts={catalog?.videoMotions} onChange={(v) => setFx((f) => ({ ...f, videoMotion: v }))} />
+              </CapRow>
+              {fx.videoMotion !== 'none' && (
+                <CapRow label="Intensidade do zoom">
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {INTENSITIES.map((o) => (
+                      <button key={o.id} onClick={() => setFx((f) => ({ ...f, motionIntensity: o.id }))} style={framingTab(fx.motionIntensity === o.id)}>{o.label}</button>
+                    ))}
+                  </div>
+                </CapRow>
+              )}
+              <CapRow label="Efeitos sonoros (whoosh)">
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => setFx((f) => ({ ...f, soundEffects: false }))} style={framingTab(!fx.soundEffects)}>Desligados</button>
+                  <button onClick={() => setFx((f) => ({ ...f, soundEffects: true }))} style={framingTab(fx.soundEffects)}>Ligados</button>
+                </div>
+              </CapRow>
+              {fx.soundEffects && (
+                <CapRow label="Volume dos efeitos">
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {INTENSITIES.map((o) => (
+                      <button key={o.id} onClick={() => setFx((f) => ({ ...f, sfxIntensity: o.id }))} style={framingTab(fx.sfxIntensity === o.id)}>{o.label}</button>
+                    ))}
+                  </div>
+                </CapRow>
+              )}
+              <div style={{ fontSize: 11.5, color: C.faint }}>
+                O <b>zoom dinâmico</b> aproxima em frases alternadas, no ritmo da fala. Os efeitos sonoros tocam um whoosh suave nas entradas de B-roll e nesses zooms — sem bip nas legendas.
+              </div>
+            </div>
+          )}
+
+          {tab === 'cor' && (
+            <div style={{ display: 'grid', gap: 12, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+              <CapRow label="Look (estilo de cor)">
+                <Sel value={colorLook} opts={catalog?.colorLooks} onChange={setColorLook} />
+              </CapRow>
+              {COLOR_SLIDERS.map((sl) => (
+                <CapRow key={sl.id} label={sl.hint ? `${sl.label} (${sl.hint})` : sl.label}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <input type="range" min="-100" max="100" step="1" value={colorAdj[sl.id]}
+                      onChange={(e) => setColorAdj((a) => ({ ...a, [sl.id]: Number(e.target.value) }))} style={{ flex: 1 }} />
+                    <span style={{ width: 38, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12.5 }}>{colorAdj[sl.id] > 0 ? '+' : ''}{colorAdj[sl.id]}</span>
+                  </div>
+                </CapRow>
+              ))}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 11.5, color: C.faint, flex: 1, minWidth: 200 }}>
+                  A prévia acima mostra o ajuste manual na hora. O look é aplicado por cima no render final, e o ajuste manual vem depois dele.
+                </div>
+                <button onClick={() => setColorAdj({ brightness: 0, contrast: 0, saturation: 0, temperature: 0 })} style={miniBtn(false, false)}>Zerar ajustes</button>
+              </div>
+            </div>
+          )}
+
+          {/* Ajustes de legenda (posição, fonte, estilo…) direto na edição */}
+          {tab === 'legenda' && (
+            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="captions" size={15} strokeWidth={2} /></span>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Legenda</div>
+              </div>
+              <CapRow label="Legendas no vídeo">
+                <button onClick={() => setCapField({ captions: !cap.captions })} style={miniBtn(!cap.captions, false)}>
+                  {cap.captions ? 'Ligadas' : 'Desligadas'}
+                </button>
+              </CapRow>
+              {cap.captions && catalog ? (
+                <>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <CapRow label="Estilo"><Sel value={cap.captionTemplate} opts={catalog.captionTemplates} onChange={(v) => setCapField({ captionTemplate: v })} /></CapRow>
+                  <CapRow label="Fonte"><Sel value={cap.captionFont} opts={catalog.captionFonts} onChange={(v) => setCapField({ captionFont: v })} /></CapRow>
+                  <CapRow label="Modo (palavra / frase)"><Sel value={cap.captionMode} opts={catalog.captionModes} onChange={(v) => setCapField({ captionMode: v })} /></CapRow>
+                  <CapRow label="Fundo do texto"><Sel value={cap.captionBackground} opts={catalog.captionBackgrounds} onChange={(v) => setCapField({ captionBackground: v })} /></CapRow>
+                  <CapRow label="Posição"><Sel value={cap.captionPosition} opts={catalog.captionPositions} onChange={(v) => setCapField({ captionPosition: v })} /></CapRow>
+                  <CapRow label="Cor">
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {(catalog.captionColors || []).map((o) => (
+                        <button key={o.id} onClick={() => setCapField({ captionColor: o.id })} title={o.label}
+                          style={{ width: 24, height: 24, borderRadius: '50%', cursor: 'pointer', background: o.hex, border: cap.captionColor === o.id ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)' }} />
+                      ))}
+                    </div>
+                  </CapRow>
+                  <CapRow label={`Tamanho (${Math.round((cap.captionScale ?? 1) * 100)}%)`}>
+                    <input type="range" min="0.6" max="1.4" step="0.05" value={cap.captionScale ?? 1} onChange={(e) => setCapField({ captionScale: Number(e.target.value) })} style={{ width: '100%' }} />
+                  </CapRow>
+                </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 11.5, color: C.faint, paddingTop: 8 }}>
+                  O vídeo final sai <b>sem legendas</b>. Os blocos de fala continuam valendo para cortar e ajustar a timeline.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Minhas mídias: coloque suas imagens/vídeos/músicas na timeline */}
+          {tab === 'midias' && (
+            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="film" size={15} strokeWidth={2} /></span>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Minhas mídias</div>
+              </div>
+              <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
+                Adicione suas <b>imagens</b>, <b>vídeos</b> e <b>músicas</b>. Elas entram no ponto atual do vídeo (playhead) e você ajusta o tempo abaixo.
+              </div>
+              <input ref={mediaInputRef} type="file" accept="image/*,video/*,audio/*" multiple onChange={onPickMedia} style={{ display: 'none' }} />
+              <button onClick={() => mediaInputRef.current?.click()} disabled={mediaBusy} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: mediaBusy ? 0.6 : 1, cursor: mediaBusy ? 'wait' : 'pointer' }}>
+                <Icon name="image" size={13} strokeWidth={2} /> {mediaBusy ? 'Enviando…' : '+ Adicionar mídia'}
+              </button>
+              {mediaErr && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{mediaErr}</div>}
+              {media.length > 0 && (
+                <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                  {media.map((m) => {
+                    const isAudio = m.kind === 'audio';
+                    const maxDur = isAudio ? Math.max(0.5, dur) : Math.max(0.5, Math.min(m.srcDuration || dur, dur));
+                    return (
+                      <div key={m.key} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 10, padding: 9 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                          <Icon name={isAudio ? 'play' : m.kind === 'video' ? 'film' : 'image'} size={12} strokeWidth={2} />
+                          <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{m.filename}</div>
+                          <button onClick={() => removeMedia(m.key)} title="Remover" style={{ ...zoomBtn, width: 22, height: 22, color: C.red }}>×</button>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.muted, marginBottom: 6 }}>
+                          <span>Começa em <b style={{ color: C.text, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(m.start)}</b></span>
+                          <button onClick={() => updateMedia(m.key, { start: +cur.toFixed(2) })} style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 10.5, fontWeight: 600 }} title="Usar o ponto atual do vídeo">↧ aqui</button>
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted, marginBottom: isAudio ? 6 : 8 }}>
+                          <span style={{ width: 58 }}>Duração</span>
+                          <input type="range" min="0.5" max={maxDur.toFixed(2)} step="0.1" value={Math.min(m.duration, maxDur)} onChange={(e) => updateMedia(m.key, { duration: Number(e.target.value) })} style={{ flex: 1 }} />
+                          <span style={{ width: 42, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(m.duration)}</span>
+                        </label>
+                        {isAudio ? (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted }}>
+                            <span style={{ width: 58 }}>Volume</span>
+                            <input type="range" min="0" max="1.5" step="0.05" value={m.volume} onChange={(e) => updateMedia(m.key, { volume: Number(e.target.value) })} style={{ flex: 1 }} />
+                            <span style={{ width: 42, textAlign: 'right' }}>{Math.round(m.volume * 100)}%</span>
+                          </label>
+                        ) : (
+                          <>
+                            <div style={{ display: 'flex', gap: 6, marginBottom: m.mode === 'pip' ? 8 : 0 }}>
+                              {[{ id: 'cover', label: 'Tela cheia' }, { id: 'pip', label: 'Cantinho (PiP)' }].map((o) => (
+                                <button key={o.id} onClick={() => updateMedia(m.key, { mode: o.id })} style={framingTab(m.mode === o.id)}>{o.label}</button>
+                              ))}
+                            </div>
+                            {m.mode === 'pip' && (
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted }}>
+                                <span style={{ width: 58 }}>Tamanho</span>
+                                <input type="range" min="0.15" max="0.9" step="0.05" value={m.scale} onChange={(e) => updateMedia(m.key, { scale: Number(e.target.value) })} style={{ flex: 1 }} />
+                                <span style={{ width: 42, textAlign: 'right' }}>{Math.round(m.scale * 100)}%</span>
+                              </label>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -917,323 +1204,37 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       </div>
       <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> (arraste sobre ele para cortar um trecho)· <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
 
-      {/* Ajustes em abas: mantém o vídeo e a timeline no topo, sem rolagem. */}
-      <div style={{ marginTop: 18, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          {TABS.map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={sectionTab(tab === t.id)}>
-              <Icon name={t.icon} size={14} strokeWidth={2} /> {t.label}
-            </button>
-          ))}
+      {/* Resumo + trecho selecionado na timeline (editar palavras) */}
+      <div style={{ marginTop: 14 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          <Chip label="Palavras" value={stats.total} color={C.text} />
+          <Chip label="Cortadas" value={stats.removed} color={C.red} />
+          <Chip label="Pausas cortadas" value={pausesCut.length} sub={pauseCutSec > 0.1 ? `−${fmtDuration(pauseCutSec)}` : null} color={C.orangeSoft} />
+          <Chip label="Duração final" value={fmtDuration(stats.keptSec)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
         </div>
 
-        {/* Enquadramento na tela dividida */}
-        {tab === 'enquadramento' && (
-          <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>Enquadramento no rosto</div>
+        {selSeg && (
+          <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.4 }}>TRECHO {sel + 1}/{segments.length} · {fmtDuration(selSeg.start)}</div>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button onClick={() => mergeNext(sel)} disabled={sel >= segments.length - 1} style={miniBtn(false, sel >= segments.length - 1)}>
+                  <Icon name="arrowLeft" size={12} strokeWidth={2.2} style={{ transform: 'rotate(180deg)' }} /> Juntar
+                </button>
+                <button onClick={() => toggleSeg(sel)} style={miniBtn(segRemoved(selSeg))}>
+                  <Icon name={segRemoved(selSeg) ? 'undo' : 'close'} size={12} strokeWidth={2.2} /> {segRemoved(selSeg) ? 'Reincluir' : 'Cortar trecho'}
+                </button>
+              </div>
             </div>
-            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
-              Ajusta como você aparece: na <b>tela dividida</b> (sua metade) e, com zoom, também no <b>vídeo em tela cheia</b> (aproxima e reposiciona).
-            </div>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-              {[{ id: 'auto', label: 'Automático (rosto)' }, { id: 'manual', label: 'Ajustar eu mesmo' }].map((o) => (
-                <button key={o.id} onClick={() => setFramingMode(o.id)} style={framingTab(framingMode === o.id)}>{o.label}</button>
+            <div style={{ lineHeight: 2 }}>
+              {selSeg.words.map((w, wi) => (
+                <span key={wi} onClick={() => toggleWord(sel, wi)} onDoubleClick={() => editWord(sel, wi)} title={`${w.start.toFixed(1)}s — clique corta, 2 cliques edita`}
+                  style={{ display: 'inline-block', margin: '0 3px', padding: '2px 6px', borderRadius: 7, cursor: 'pointer', userSelect: 'none', textDecoration: w.removed ? 'line-through' : 'none', opacity: w.removed ? 0.42 : 1, background: w.removed ? 'rgba(240,82,107,0.14)' : 'transparent', color: w.removed ? C.red : C.text }}>
+                  {w.word}
+                </span>
               ))}
             </div>
-            {framingMode === 'manual' && (
-              <div style={{ display: 'grid', gap: 8 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
-                  <span style={{ width: 46 }}>Zoom</span>
-                  <button onClick={() => setZoom((z) => clampZoom(z - 0.1))} style={zoomBtn} title="Diminuir">−</button>
-                  <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(e) => setZoom(clampZoom(Number(e.target.value)))} style={{ flex: 1 }} />
-                  <button onClick={() => setZoom((z) => clampZoom(z + 0.1))} style={zoomBtn} title="Aumentar">+</button>
-                  <span style={{ width: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
-                </label>
-                <div style={{ fontSize: 11, color: C.faint }}>Arraste no ponto do rosto (vídeo) e veja o resultado na <b>Prévia 9:16</b> ao lado. Sem B-roll, o mesmo ajuste (zoom) reenquadra o vídeo inteiro.</div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* B-roll: revisar/trocar as imagens escolhidas antes de renderizar */}
-        {tab === 'broll' && (
-          <div style={{ marginTop: 14, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>B-roll · imagens automáticas</div>
-            </div>
-            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
-              Veja as imagens/vídeos que o sistema escolheu para cada trecho e <b>troque, substitua pela sua mídia ou remova</b> antes de gerar.
-              {billing && !billing.unlimited && <> Cada imagem inserida custa <b>{billing.costs.image} créditos</b>.</>}
-            </div>
-            {billing && !billing.features.includes('image') && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#FCA5B4', background: 'rgba(240,82,107,0.1)', border: `1px solid ${C.red}55`, borderRadius: 9, padding: '8px 10px', marginBottom: 10 }}>
-                <Icon name="lock" size={14} strokeWidth={2} />
-                <span style={{ flex: 1 }}>B-roll faz parte do plano Pro ou acima.</span>
-                <button onClick={openPlans} style={{ background: 'none', border: 'none', color: C.orangeSoft, fontWeight: 700, fontSize: 12, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>Ver planos</button>
-              </div>
-            )}
-            <input ref={brollUploadRef} type="file" accept="image/*,video/*" onChange={onPickBrollMedia} style={{ display: 'none' }} />
-            {!brollReview && (
-              <button onClick={reviewBroll} disabled={brollBusy} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: brollBusy ? 0.6 : 1, cursor: brollBusy ? 'not-allowed' : 'pointer' }}>
-                <Icon name="image" size={13} strokeWidth={2} /> {brollBusy ? 'Analisando o vídeo…' : 'Revisar / trocar imagens'}
-              </button>
-            )}
-            {brollErr && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{brollErr}</div>}
-            {brollReview && (
-              <div style={{ display: 'grid', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ fontSize: 11, color: C.faint }}>{brollReview.moments.length} momento(s) · fonte: {brollReview.source}</div>
-                  <button onClick={reviewBroll} disabled={brollBusy} style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 10.5, fontWeight: 600 }} title="Analisar de novo">↻ refazer</button>
-                </div>
-                {brollReview.moments.map((m, i) => {
-                  const n = m.candidates.length;
-                  const thumb = m.removed ? null : (m.myThumb || m.candidates[m.pick]?.thumb);
-                  return (
-                    <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 10, padding: 8, opacity: m.removed ? 0.55 : 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                        <span style={{ fontSize: 10.5, color: C.faint, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(m.start)}</span>
-                        <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{m.term}</div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-                        <div style={{ width: 64, height: 54, flexShrink: 0, borderRadius: 8, overflow: 'hidden', background: '#000', border: `1px solid ${C.border}`, display: 'grid', placeItems: 'center' }}>
-                          {thumb ? <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 9.5, color: C.faint, textAlign: 'center' }}>sem<br />imagem</span>}
-                        </div>
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                            <button onClick={() => cycleCand(i, -1)} disabled={n < 2 || m.removed} style={{ ...zoomBtn, width: 24, height: 22 }} title="Anterior">‹</button>
-                            <span style={{ fontSize: 10.5, color: C.muted, minWidth: 34, textAlign: 'center' }}>{m.removed ? '—' : m.myMediaId ? 'minha' : n ? `${m.pick + 1}/${n}` : '0'}</span>
-                            <button onClick={() => cycleCand(i, 1)} disabled={n < 2 || m.removed} style={{ ...zoomBtn, width: 24, height: 22 }} title="Próxima">›</button>
-                          </div>
-                          <div style={{ display: 'flex', gap: 5 }}>
-                            <button onClick={() => { brollTargetIdx.current = i; brollUploadRef.current?.click(); }} style={{ ...zoomBtn, width: 'auto', flex: 1, padding: '0 6px', fontSize: 10, fontWeight: 600 }} title="Usar minha imagem/vídeo">Minha</button>
-                            <button onClick={() => setMoment(i, { removed: !m.removed })} style={{ ...zoomBtn, width: 'auto', flex: 1, padding: '0 6px', fontSize: 10, fontWeight: 600, color: m.removed ? C.green : C.red }}>{m.removed ? 'Repor' : 'Remover'}</button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                <div style={{ fontSize: 10.5, color: C.faint }}>As trocas são aplicadas quando você clicar em <b>Gerar vídeo</b>.</div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Volume da fala: geral, mudo e trechos com volume próprio */}
-        {tab === 'audio' && (
-          <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
-            <CapRow label="Mudo">
-              <button onClick={() => setAudioMute((m) => !m)} style={miniBtn(audioMute, false)}>
-                {audioMute ? 'Fala silenciada' : 'Fala com som'}
-              </button>
-            </CapRow>
-            <CapRow label="Volume da fala">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: audioMute ? 0.4 : 1 }}>
-                <input type="range" min="0" max="2" step="0.05" value={audioVolume} disabled={audioMute}
-                  onChange={(e) => setAudioVolume(Number(e.target.value))} style={{ flex: 1 }} />
-                <span style={{ width: 46, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12.5 }}>{Number(audioVolume).toFixed(2)}×</span>
-              </label>
-            </CapRow>
-            <CapRow label="Trecho com volume próprio">
-              <button
-                onClick={() => setGains((l) => {
-                  // Trechos sobrepostos multiplicam o volume no ffmpeg; começa depois do que já cobre o playhead.
-                  const cobre = l.filter((g) => cur >= g.start && cur < g.end);
-                  const inicio = cobre.length ? Math.max(...cobre.map((g) => g.end)) : cur;
-                  if (inicio >= dur - 0.4) return l;
-                  return [...l, { key: `g${Date.now()}`, start: +inicio.toFixed(2), end: +Math.min(dur, inicio + 2).toFixed(2), volume: 0.3 }];
-                })}
-                disabled={audioMute || cur >= dur - 0.4}
-                style={toolBtn(audioMute || cur >= dur - 0.4)}
-              >
-                <Icon name="scissors" size={14} strokeWidth={2} /> Abaixar a partir do playhead
-              </button>
-            </CapRow>
-            {gains.map((g) => (
-              <CapRow key={g.key} label={`${fmtDuration(g.start)} → ${fmtDuration(g.end)}`}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <input type="range" min="0" max="2" step="0.05" value={g.volume}
-                    onChange={(e) => setGains((l) => l.map((x) => (x.key === g.key ? { ...x, volume: Number(e.target.value) } : x)))} style={{ flex: 1 }} />
-                  <span style={{ width: 46, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12.5 }}>
-                    {Number(g.volume) < 0.005 ? 'mudo' : `${Number(g.volume).toFixed(2)}×`}
-                  </span>
-                  <button onClick={() => setGains((l) => l.filter((x) => x.key !== g.key))} style={miniBtn(false, false)} title="Tirar este trecho">×</button>
-                </div>
-              </CapRow>
-            ))}
-            <div style={{ fontSize: 11.5, color: C.faint, paddingTop: 6 }}>
-              {audioMute
-                ? 'A fala original sai muda no vídeo final — a música de Minhas mídias continua.'
-                : 'Os trechos aparecem na faixa de áudio — arraste para mover e puxe as pontas para ajustar.'}
-            </div>
-          </div>
-        )}
-
-        {tab === 'efeitos' && (
-          <div style={{ display: 'grid', gap: 12, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
-            <CapRow label="Movimento (zoom)">
-              <Sel value={fx.videoMotion} opts={catalog?.videoMotions} onChange={(v) => setFx((f) => ({ ...f, videoMotion: v }))} />
-            </CapRow>
-            {fx.videoMotion !== 'none' && (
-              <CapRow label="Intensidade do zoom">
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {INTENSITIES.map((o) => (
-                    <button key={o.id} onClick={() => setFx((f) => ({ ...f, motionIntensity: o.id }))} style={framingTab(fx.motionIntensity === o.id)}>{o.label}</button>
-                  ))}
-                </div>
-              </CapRow>
-            )}
-            <CapRow label="Efeitos sonoros (whoosh)">
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={() => setFx((f) => ({ ...f, soundEffects: false }))} style={framingTab(!fx.soundEffects)}>Desligados</button>
-                <button onClick={() => setFx((f) => ({ ...f, soundEffects: true }))} style={framingTab(fx.soundEffects)}>Ligados</button>
-              </div>
-            </CapRow>
-            {fx.soundEffects && (
-              <CapRow label="Volume dos efeitos">
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {INTENSITIES.map((o) => (
-                    <button key={o.id} onClick={() => setFx((f) => ({ ...f, sfxIntensity: o.id }))} style={framingTab(fx.sfxIntensity === o.id)}>{o.label}</button>
-                  ))}
-                </div>
-              </CapRow>
-            )}
-            <div style={{ fontSize: 11.5, color: C.faint }}>
-              O <b>zoom dinâmico</b> aproxima em frases alternadas, no ritmo da fala. Os efeitos sonoros tocam um whoosh suave nas entradas de B-roll e nesses zooms — sem bip nas legendas.
-            </div>
-          </div>
-        )}
-
-        {tab === 'cor' && (
-          <div style={{ display: 'grid', gap: 12, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
-            <CapRow label="Look (estilo de cor)">
-              <Sel value={colorLook} opts={catalog?.colorLooks} onChange={setColorLook} />
-            </CapRow>
-            {COLOR_SLIDERS.map((sl) => (
-              <CapRow key={sl.id} label={sl.hint ? `${sl.label} (${sl.hint})` : sl.label}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <input type="range" min="-100" max="100" step="1" value={colorAdj[sl.id]}
-                    onChange={(e) => setColorAdj((a) => ({ ...a, [sl.id]: Number(e.target.value) }))} style={{ flex: 1 }} />
-                  <span style={{ width: 38, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12.5 }}>{colorAdj[sl.id] > 0 ? '+' : ''}{colorAdj[sl.id]}</span>
-                </div>
-              </CapRow>
-            ))}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 11.5, color: C.faint, flex: 1, minWidth: 200 }}>
-                A prévia acima mostra o ajuste manual na hora. O look é aplicado por cima no render final, e o ajuste manual vem depois dele.
-              </div>
-              <button onClick={() => setColorAdj({ brightness: 0, contrast: 0, saturation: 0, temperature: 0 })} style={miniBtn(false, false)}>Zerar ajustes</button>
-            </div>
-          </div>
-        )}
-
-        {/* Ajustes de legenda (posição, fonte, estilo…) direto na edição */}
-        {tab === 'legenda' && (
-          <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="captions" size={15} strokeWidth={2} /></span>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>Legenda</div>
-            </div>
-            <CapRow label="Legendas no vídeo">
-              <button onClick={() => setCapField({ captions: !cap.captions })} style={miniBtn(!cap.captions, false)}>
-                {cap.captions ? 'Ligadas' : 'Desligadas'}
-              </button>
-            </CapRow>
-            {cap.captions && catalog ? (
-              <>
-              <div style={{ display: 'grid', gap: 8 }}>
-                <CapRow label="Estilo"><Sel value={cap.captionTemplate} opts={catalog.captionTemplates} onChange={(v) => setCapField({ captionTemplate: v })} /></CapRow>
-                <CapRow label="Fonte"><Sel value={cap.captionFont} opts={catalog.captionFonts} onChange={(v) => setCapField({ captionFont: v })} /></CapRow>
-                <CapRow label="Modo (palavra / frase)"><Sel value={cap.captionMode} opts={catalog.captionModes} onChange={(v) => setCapField({ captionMode: v })} /></CapRow>
-                <CapRow label="Fundo do texto"><Sel value={cap.captionBackground} opts={catalog.captionBackgrounds} onChange={(v) => setCapField({ captionBackground: v })} /></CapRow>
-                <CapRow label="Posição"><Sel value={cap.captionPosition} opts={catalog.captionPositions} onChange={(v) => setCapField({ captionPosition: v })} /></CapRow>
-                <CapRow label="Cor">
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {(catalog.captionColors || []).map((o) => (
-                      <button key={o.id} onClick={() => setCapField({ captionColor: o.id })} title={o.label}
-                        style={{ width: 24, height: 24, borderRadius: '50%', cursor: 'pointer', background: o.hex, border: cap.captionColor === o.id ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)' }} />
-                    ))}
-                  </div>
-                </CapRow>
-                <CapRow label={`Tamanho (${Math.round((cap.captionScale ?? 1) * 100)}%)`}>
-                  <input type="range" min="0.6" max="1.4" step="0.05" value={cap.captionScale ?? 1} onChange={(e) => setCapField({ captionScale: Number(e.target.value) })} style={{ width: '100%' }} />
-                </CapRow>
-              </div>
-              </>
-            ) : (
-              <div style={{ fontSize: 11.5, color: C.faint, paddingTop: 8 }}>
-                O vídeo final sai <b>sem legendas</b>. Os blocos de fala continuam valendo para cortar e ajustar a timeline.
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Minhas mídias: coloque suas imagens/vídeos/músicas na timeline */}
-        {tab === 'midias' && (
-          <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="film" size={15} strokeWidth={2} /></span>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>Minhas mídias</div>
-            </div>
-            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
-              Adicione suas <b>imagens</b>, <b>vídeos</b> e <b>músicas</b>. Elas entram no ponto atual do vídeo (playhead) e você ajusta o tempo abaixo.
-            </div>
-            <input ref={mediaInputRef} type="file" accept="image/*,video/*,audio/*" multiple onChange={onPickMedia} style={{ display: 'none' }} />
-            <button onClick={() => mediaInputRef.current?.click()} disabled={mediaBusy} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: mediaBusy ? 0.6 : 1, cursor: mediaBusy ? 'wait' : 'pointer' }}>
-              <Icon name="image" size={13} strokeWidth={2} /> {mediaBusy ? 'Enviando…' : '+ Adicionar mídia'}
-            </button>
-            {mediaErr && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{mediaErr}</div>}
-            {media.length > 0 && (
-              <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-                {media.map((m) => {
-                  const isAudio = m.kind === 'audio';
-                  const maxDur = isAudio ? Math.max(0.5, dur) : Math.max(0.5, Math.min(m.srcDuration || dur, dur));
-                  return (
-                    <div key={m.key} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 10, padding: 9 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                        <Icon name={isAudio ? 'play' : m.kind === 'video' ? 'film' : 'image'} size={12} strokeWidth={2} />
-                        <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{m.filename}</div>
-                        <button onClick={() => removeMedia(m.key)} title="Remover" style={{ ...zoomBtn, width: 22, height: 22, color: C.red }}>×</button>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.muted, marginBottom: 6 }}>
-                        <span>Começa em <b style={{ color: C.text, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(m.start)}</b></span>
-                        <button onClick={() => updateMedia(m.key, { start: +cur.toFixed(2) })} style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 10.5, fontWeight: 600 }} title="Usar o ponto atual do vídeo">↧ aqui</button>
-                      </div>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted, marginBottom: isAudio ? 6 : 8 }}>
-                        <span style={{ width: 58 }}>Duração</span>
-                        <input type="range" min="0.5" max={maxDur.toFixed(2)} step="0.1" value={Math.min(m.duration, maxDur)} onChange={(e) => updateMedia(m.key, { duration: Number(e.target.value) })} style={{ flex: 1 }} />
-                        <span style={{ width: 42, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(m.duration)}</span>
-                      </label>
-                      {isAudio ? (
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted }}>
-                          <span style={{ width: 58 }}>Volume</span>
-                          <input type="range" min="0" max="1.5" step="0.05" value={m.volume} onChange={(e) => updateMedia(m.key, { volume: Number(e.target.value) })} style={{ flex: 1 }} />
-                          <span style={{ width: 42, textAlign: 'right' }}>{Math.round(m.volume * 100)}%</span>
-                        </label>
-                      ) : (
-                        <>
-                          <div style={{ display: 'flex', gap: 6, marginBottom: m.mode === 'pip' ? 8 : 0 }}>
-                            {[{ id: 'cover', label: 'Tela cheia' }, { id: 'pip', label: 'Cantinho (PiP)' }].map((o) => (
-                              <button key={o.id} onClick={() => updateMedia(m.key, { mode: o.id })} style={framingTab(m.mode === o.id)}>{o.label}</button>
-                            ))}
-                          </div>
-                          {m.mode === 'pip' && (
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted }}>
-                              <span style={{ width: 58 }}>Tamanho</span>
-                              <input type="range" min="0.15" max="0.9" step="0.05" value={m.scale} onChange={(e) => updateMedia(m.key, { scale: Number(e.target.value) })} style={{ flex: 1 }} />
-                              <span style={{ width: 42, textAlign: 'right' }}>{Math.round(m.scale * 100)}%</span>
-                            </label>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <div style={{ fontSize: 11.5, color: C.faint, marginTop: 8 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir · arraste as bordas do bloco na timeline</div>
           </div>
         )}
       </div>
@@ -1247,7 +1248,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         {allGone ? 'Você cortou tudo — reinclua algo' : busy ? 'Gerando…' : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Icon name="clapper" size={18} strokeWidth={1.9} /> Renderizar vídeo final</span>)}
       </PrimaryButton>
 
-      <style>{`@media (max-width: 860px){ .rf-tl-grid{ grid-template-columns: 1fr !important; } }`}</style>
+      <style>{`.rf-tl-preview{ position: sticky; top: 12px; z-index: 2; } @media (max-width: 860px){ .rf-tl-grid{ grid-template-columns: 1fr !important; } .rf-tl-preview{ position: static; } }`}</style>
     </div>
   );
 }
