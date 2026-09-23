@@ -25,10 +25,6 @@ win:
   target:
     - nsis
     - portable
-  certificateFile: null
-  certificatePassword: null
-  signingHashAlgorithms:
-    - sha256
 
 nsis:
   oneClick: false
@@ -66,5 +62,6 @@ appImage:
 deb:
   artifactName: ${productName}-${version}.${ext}
 
-publish:
-  provider: github
+# Sem publicação automática (o instalador fica em dist/builds). Sem isto o
+# electron-builder tenta achar um repositório GitHub e o build falha no final.
+publish: null
