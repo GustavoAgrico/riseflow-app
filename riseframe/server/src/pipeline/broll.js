@@ -164,6 +164,20 @@ async function searchOpenverse(query, usedIds, cfg = {}) {
  * porque o foco fica dentro dos limites). Puro/exportado para teste.
  * @returns {{scaledW:number, scaledH:number, cropX:number, cropY:number}}
  */
+/**
+ * Enquadra o B-roll na região (cobre sem distorcer). Com o ajuste do usuário, amplia
+ * (zoom 1–2.5) e posiciona o recorte no ponto de foco (fx/fy 0–1). Puro/testável.
+ */
+export function brollFrameVf(regionW, regionH, c = {}) {
+  const z = Math.min(2.5, Math.max(1, Number(c.zoom) || 1));
+  const fx = Math.min(1, Math.max(0, Number.isFinite(Number(c.fx)) ? Number(c.fx) : 0.5));
+  const fy = Math.min(1, Math.max(0, Number.isFinite(Number(c.fy)) ? Number(c.fy) : 0.5));
+  const even = (n) => Math.max(2, Math.round(n / 2) * 2);
+  const sw = even(regionW * z);
+  const sh = even(regionH * z);
+  return `scale=${sw}:${sh}:force_original_aspect_ratio=increase,crop=${regionW}:${regionH}:(iw-ow)*${fx.toFixed(3)}:(ih-oh)*${fy.toFixed(3)}`;
+}
+
 export function faceCropGeometry(inW, inH, regionW, regionH, focus = {}, zoom = 1) {
   const base = Math.max(regionW / inW, regionH / inH);
   const s = base * Math.min(2.5, Math.max(1, zoom));
@@ -312,7 +326,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
           await download(p.url, file);
         }
         if (!file) continue;
-        clips.push({ start, end, query: p.query || 'mídia', term: p.query || null, file, isImage });
+        clips.push({ start, end, query: p.query || 'mídia', term: p.query || null, file, isImage, zoom: p.zoom, fx: p.fx, fy: p.fy });
       } catch (err) {
         log.warn(`B-roll (plano) falhou em ${start.toFixed(1)}s: ${err.message}`);
       }
@@ -381,7 +395,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   clips.forEach((c, i) => {
     const dur = Math.max(0.6, c.end - c.start).toFixed(2);
     parts.push(
-      `[${i + 1}:v]scale=${regionW}:${regionH}:force_original_aspect_ratio=increase,crop=${regionW}:${regionH},setsar=1,` +
+      `[${i + 1}:v]${brollFrameVf(regionW, regionH, c)},setsar=1,` +
         `trim=0:${dur},setpts=PTS-STARTPTS+${c.start.toFixed(3)}/TB[b${i}]`,
     );
   });

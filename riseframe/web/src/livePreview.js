@@ -5,22 +5,6 @@
 /** Intensidade → zoom máximo (igual ao servidor). */
 export const MOTION_Z = { suave: 1.06, medio: 1.12, forte: 1.2 };
 
-/** Janelas [início, fim] dos punch-ins do zoom dinâmico: frases alternadas. */
-export function zoomWindows(segments, dur) {
-  const starts = (segments || [])
-    .filter((s) => !(s.words?.length && s.words.every((w) => w.removed)))
-    .map((s) => Number(s.start))
-    .filter((n) => Number.isFinite(n) && n >= 0)
-    .sort((a, b) => a - b);
-  const out = [];
-  for (let i = 1; i < starts.length; i += 2) {
-    const a = starts[i];
-    const b = i + 1 < starts.length ? starts[i + 1] : dur;
-    if (b - a > 0.15) out.push([a, Math.min(b, dur)]);
-  }
-  return out;
-}
-
 const NONE = { scale: 1, ox: 50, oy: 50 };
 
 /** Zoom no instante t (segundos) do vídeo. ox/oy = origem do zoom em %. */
@@ -28,8 +12,11 @@ export function motionAt(kind, intensity, t, dur, windows) {
   const z = MOTION_Z[intensity] || MOTION_Z.medio;
   const p = Math.max(0, Math.min(1, t / Math.max(0.5, dur)));
   switch (kind) {
-    case 'dynamic':
-      return (windows || []).some(([a, b]) => t >= a && t < b) ? { scale: z, ox: 50, oy: 50 } : NONE;
+    case 'dynamic': {
+      // windows = momentos-chave [início, fim, zoom próprio | null]
+      const hit = (windows || []).find(([a, b]) => t >= a && t < b);
+      return hit ? { scale: hit[2] || z, ox: 50, oy: 50 } : NONE;
+    }
     case 'zoom-in':
       return { scale: 1 + (z - 1) * p, ox: 50, oy: 50 };
     case 'zoom-out':

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
+import { keyZoomMoments } from '../../../shared/keyMoments.js';
 
 const log = makeLogger('motion');
 
@@ -19,43 +20,49 @@ export const MOTION_LABELS = {
   pulse: 'Pulse (respiração sutil)',
 };
 
-/** Janelas [início, fim] dos punch-ins (frases alternadas). Também usadas pelos SFX. */
-export function dynamicZoomWindows(segments, meta) {
+/**
+ * Momentos do zoom "punch-in": só nos MOMENTOS-CHAVE da fala (ênfase, pausa antes,
+ * números, perguntas…), não o vídeo inteiro. Também usados pelos SFX (whoosh).
+ * `custom` = momentos definidos/ajustados pelo usuário na timeline (já na timeline final).
+ * @returns {Array<[number, number, number|null]>} [início, fim, zoom próprio ou null]
+ */
+export function dynamicZoomWindows(segments, meta, custom) {
   const dur = Math.max(0.5, meta.duration || 1);
-  const starts = (segments || [])
-    .map((s) => Number(s.start))
-    .filter((n) => Number.isFinite(n) && n >= 0)
-    .sort((a, b) => a - b);
-  if (starts.length < 2) return [];
-  // Punch em frases alternadas (índices ímpares), com um mínimo de duração.
-  const windows = [];
-  for (let i = 1; i < starts.length; i += 2) {
-    const a = starts[i];
-    const b = i + 1 < starts.length ? starts[i + 1] : dur;
-    if (b - a > 0.15) windows.push([a, Math.min(b, dur)]);
+  if (Array.isArray(custom)) {
+    return custom
+      .map((m) => [Math.max(0, Number(m.start) || 0), Math.min(dur, Number(m.end) || 0), Number.isFinite(Number(m.scale)) ? Number(m.scale) : null])
+      .filter(([a, b]) => b - a > 0.15)
+      .sort((x, y) => x[0] - y[0])
+      // Sem sobreposição: dois zooms colados somariam o fator (zoom exagerado).
+      .reduce((acc, w) => {
+        const prev = acc[acc.length - 1];
+        const a = prev ? Math.max(w[0], prev[1]) : w[0];
+        if (w[1] - a > 0.15) acc.push([a, w[1], w[2]]);
+        return acc;
+      }, []);
   }
-  return windows;
+  return keyZoomMoments(segments, dur).map((m) => [m.start, m.end, null]);
 }
 
 /**
- * Zoom DINÂMICO (punch-ins): a cada frase alterna entre o quadro normal e um zoom
- * sutil, criando o "corte-zoom" que dá ritmo e cara de edição viral. Dirigido pelos
- * tempos das frases (transcrição). Puro/exportado para teste.
- * @param {Array<{start:number}>} segments frases na timeline final
- * @returns {string|null} filtro zoompan, ou null se não houver frases suficientes.
+ * Zoom DINÂMICO (punch-ins) nos momentos-chave: o quadro normal e, nesses pontos,
+ * um zoom rápido que dá ritmo e ênfase. Puro/exportado para teste.
+ * @returns {string|null} filtro zoompan, ou null se não houver momentos.
  */
-export function dynamicZoomVf(segments, meta, intensity = 'medio') {
+export function dynamicZoomVf(segments, meta, intensity = 'medio', custom) {
   const W = meta.width || 1080;
   const H = meta.height || 1920;
   const fps = Math.max(1, Math.round(meta.fps || 30));
   const zmax = MOTION_INTENSITY[intensity] || MOTION_INTENSITY.medio;
-  const K = (zmax - 1).toFixed(4);
-  const windows = dynamicZoomWindows(segments, meta);
+  const windows = dynamicZoomWindows(segments, meta, custom);
   if (!windows.length) return null;
 
   const t = `on/${fps}`;
-  const punch = windows.map(([a, b]) => `between(${t}\\,${a.toFixed(2)}\\,${b.toFixed(2)})`).join('+');
-  const z = `1+${K}*(${punch})`;
+  const terms = windows.map(([a, b, z]) => {
+    const k = (Math.min(1.6, Math.max(1.01, z || zmax)) - 1).toFixed(4);
+    return `${k}*between(${t}\\,${a.toFixed(2)}\\,${b.toFixed(2)})`;
+  });
+  const z = `1+${terms.join('+')}`;
   const x = 'iw/2-(iw/zoom/2)';
   const y = 'ih/2-(ih/zoom/2)';
   return `zoompan=z='${z}':d=1:x='${x}':y='${y}':s=${W}x${H}:fps=${fps}`;
@@ -115,7 +122,9 @@ export async function applyMotion(input, work, meta, options, onProgress, segmen
   let vf;
   let effective = kind;
   if (kind === 'dynamic') {
-    vf = dynamicZoomVf(segments, meta, options.motionIntensity);
+    vf = dynamicZoomVf(segments, meta, options.motionIntensity, options.zoomMoments);
+    // O usuário tirou todos os zooms na timeline → sem movimento (não inventa um zoom-in).
+    if (!vf && Array.isArray(options.zoomMoments)) return { output: input, motion: 'none' };
     if (!vf) { vf = motionVf('zoom-in', meta, options.motionIntensity); effective = 'zoom-in'; }
   } else {
     vf = motionVf(kind, meta, options.motionIntensity);

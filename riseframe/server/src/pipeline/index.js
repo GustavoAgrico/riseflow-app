@@ -3,7 +3,7 @@ import { probeSummary } from './ffmpeg.js';
 import { transcribe } from './transcribe/index.js';
 import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
-import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep } from './timeline.js';
+import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime } from './timeline.js';
 import { insertBroll } from './broll.js';
 import { applyManualFrame } from './frame.js';
 import { applyUserMedia } from './overlay.js';
@@ -101,7 +101,9 @@ function dropRemovedWords(transcript) {
 export async function runPipeline(job, onUpdate = () => {}) {
   const mode = job.mode || 'auto';
   const plan = buildPlan(mode, job.options);
-  const options = job.options;
+  // Cópia: depois do corte, os tempos do B-roll e dos zooms (definidos na timeline
+  // ORIGINAL) são remapeados para a timeline cortada.
+  const options = { ...job.options };
   const work = job.workDir;
   let input = job.inputPath;
 
@@ -259,6 +261,14 @@ export async function runPipeline(job, onUpdate = () => {}) {
       input = r.output;
       trackInput = input; // fonte limpa (pós-corte, pré-legendas/B-roll) para o tracker
       transcript = remapTranscript(transcript, keep); // sincroniza legendas com a nova timeline
+      // B-roll e zooms marcados na timeline original → mesma posição no vídeo cortado.
+      const remapRange = (x) => {
+        const start = remapTime(Number(x.start), keep);
+        const end = remapTime(Number(x.end), keep);
+        return end - start >= 0.3 ? { ...x, start: +start.toFixed(3), end: +end.toFixed(3) } : null;
+      };
+      if (Array.isArray(options.brollPlan)) options.brollPlan = options.brollPlan.map(remapRange).filter(Boolean);
+      if (Array.isArray(options.zoomMoments)) options.zoomMoments = options.zoomMoments.map(remapRange).filter(Boolean);
       meta = { ...meta, ...(await probeSummary(input)) };
       report.cut = { removedSeconds: Math.round(removedSeconds * 10) / 10, kept: keep.length };
     } else {
@@ -361,10 +371,11 @@ export async function runPipeline(job, onUpdate = () => {}) {
     const st = enter('sfx');
     const events = [];
     if (has('broll')) {
-      for (const m of analysis.brollMoments || []) events.push({ t: Math.max(0, m.start - 0.3), type: 'whoosh' });
+      const plan = Array.isArray(options.brollPlan) && options.brollPlan.length ? options.brollPlan.filter((p) => !p.remove) : null;
+      for (const m of plan || analysis.brollMoments || []) events.push({ t: Math.max(0, m.start - 0.3), type: 'whoosh' });
     }
     if (report.motion?.effect === 'dynamic') {
-      for (const [a] of dynamicZoomWindows(transcript.segments, meta)) events.push({ t: Math.max(0, a - 0.3), type: 'whoosh' });
+      for (const [a] of dynamicZoomWindows(transcript.segments, meta, options.zoomMoments)) events.push({ t: Math.max(0, a - 0.3), type: 'whoosh' });
     }
     // Dois whooshes quase juntos viram ruído: mantém um a cada 0,8 s no mínimo.
     events.sort((x, y) => x.t - y.t);

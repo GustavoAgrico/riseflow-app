@@ -19,18 +19,24 @@ test('motionVf: cada efeito (menos dynamic) gera um filtro zoompan com resoluç�
   }
 });
 
-test('dynamicZoomVf: punch em frases alternadas; poucas frases → null', () => {
+test('dynamicZoomVf: zoom só nos momentos-chave; momentos da timeline têm prioridade', () => {
   assert.equal(dynamicZoomVf([], meta), null);
-  assert.equal(dynamicZoomVf([{ start: 0 }], meta), null);
-  const segs = [{ start: 0 }, { start: 1 }, { start: 2 }, { start: 3 }];
-  const vf = dynamicZoomVf(segs, meta, 'medio');
+  const w = (start, text) => ({ start, end: start + 1.5, words: text.split(' ').map((word, i) => ({ word, start: start + i * 0.3, end: start + i * 0.3 + 0.25 })) });
+  // frases coladas e comuns, uma com número depois de pausa (momento-chave)
+  const segs = [w(0, 'oi tudo bem com você'), w(1.5, 'hoje eu vou falar'), w(3.0, 'de um assunto legal'), w(8.0, 'são 3 passos simples')];
+  const vf = dynamicZoomVf(segs, { ...meta, duration: 12 }, 'medio');
   assert.ok(vf.startsWith('zoompan='), 'usa zoompan');
   assert.ok(vf.includes('s=1080x1920'), 'preserva resolução');
-  // punch nos índices ímpares: [1,2) e [3,4=dur)
-  assert.ok(vf.includes('between(on/30\\,1.00\\,2.00)'), 'janela da 2ª frase');
-  assert.ok(vf.includes('between(on/30\\,3.00\\,4.00)'), 'janela da 4ª frase (até o fim)');
-  // fator de zoom = zmax-1 no médio
+  assert.ok(vf.includes('between(on/30\\,8.00\\,9.50)'), 'zoom no momento com número após pausa');
+  assert.ok(!vf.includes('between(on/30\\,1.50'), 'não dá zoom em frase comum colada');
   assert.ok(vf.includes(String((MOTION_INTENSITY.medio - 1).toFixed(4))), 'usa o fator do médio');
+  // momentos definidos na timeline (com zoom próprio) substituem o automático
+  const custom = dynamicZoomVf(segs, { ...meta, duration: 12 }, 'medio', [{ start: 1, end: 2, scale: 1.3 }]);
+  assert.ok(custom.includes('0.3000*between(on/30\\,1.00\\,2.00)'), custom);
+  assert.equal(dynamicZoomVf(segs, meta, 'medio', []), null, 'usuário tirou todos os zooms');
+  // zooms sobrepostos não somam: o segundo começa onde o primeiro termina
+  const ov = dynamicZoomVf(segs, { ...meta, duration: 12 }, 'medio', [{ start: 0, end: 1.8 }, { start: 1.4, end: 2.9 }]);
+  assert.ok(ov.includes('between(on/30\\,1.80\\,2.90)'), ov);
 });
 
 test('motionVf: intensidade forte amplia mais que suave', () => {
