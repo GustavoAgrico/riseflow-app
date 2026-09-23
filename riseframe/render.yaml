@@ -47,7 +47,7 @@ services:
       #   sync: false
       # - key: ANTHROPIC_API_KEY   # correção de fala + color grade por IA
       #   sync: false
-      # ── Planos e créditos (AbacatePay) — sem a chave, não há cobrança (uso liberado) ──
+      # ── Planos e créditos: os limites valem sempre (BILLING_MODE=off desliga). Sem a chave da AbacatePay, ninguém assina ainda ──
       # ⚠️ Planos e saldos ficam em data/billing.json: ANTES de vender, ative o disco
       #   (bloco abaixo). No free sem disco, planos e créditos pagos somem a cada deploy.
       # - key: ABACATE_PAY_API_KEY     # mesma chave do RiseFlow (app.abacatepay.com → API)
@@ -56,8 +56,8 @@ services:
       #   sync: false                  #   https://SEU-APP.onrender.com/api/billing/webhook?webhookSecret=VALOR
       # - key: APP_URL                 # para onde o cliente volta após pagar
       #   value: https://SEU-APP.onrender.com
-      # - key: ADMIN_EMAILS            # contas com uso ilimitado (separe por vírgula)
-      #   value: seu-email@exemplo.com
+      - key: ADMIN_EMAILS              # ÚNICAS contas com uso ilimitado (separe por vírgula); todos os outros têm limites
+        sync: false
       # - key: BILLING_SIGNUP_CREDITS  # créditos de teste para cada conta nova (recursos básicos)
       #   value: 60
       # - key: BILLING_PLANS           # planos mensais (features: captionStyle, image, ai, clips)

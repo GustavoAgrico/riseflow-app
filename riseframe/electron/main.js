@@ -178,6 +178,7 @@ function startServer() {
       DATA_DIR: dataDir,
       WHISPER_MODEL: 'base',
       TRANSCRIBE_PROVIDER: 'whisper-local',
+      BILLING_MODE: 'off', // app local: sem limites de créditos/planos
     };
 
     console.log('Spawning processo...');

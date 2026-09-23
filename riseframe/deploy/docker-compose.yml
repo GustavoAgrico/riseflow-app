@@ -43,6 +43,7 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
       # ── Planos e créditos (AbacatePay). Sem a chave, não há cobrança. ──
+      BILLING_MODE: ${BILLING_MODE:-on}
       ABACATE_PAY_API_KEY: ${ABACATE_PAY_API_KEY:-}
       ABACATE_WEBHOOK_SECRET: ${ABACATE_WEBHOOK_SECRET:-}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
