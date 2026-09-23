@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan } from '../api.js';
+import { sourceUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -188,6 +188,31 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // desenhar legenda, véus de cor e B-roll exatamente sobre a imagem.
   const [vbox, setVbox] = useState(null);
   const demoRef = useRef({ start: 0, until: 0 });
+  // Prévia de cor EXATA (quadro gerado pelo servidor com o mesmo filtro do render),
+  // mostrada na aba Cor com o vídeo pausado. Tocando, vale a prévia aproximada (CSS).
+  const [colorFrame, setColorFrame] = useState(null); // { url, loaded }
+  const curTenth = Math.round(cur * 10);
+  useEffect(() => {
+    if (tab !== 'cor' || playing || !sourceId) { setColorFrame(null); return undefined; }
+    const id = setTimeout(() => {
+      const url = colorFrameUrl(sourceId, curTenth / 10, colorLook, colorAdj);
+      setColorFrame((f) => (f?.url === url ? f : { url, loaded: false }));
+    }, 350);
+    return () => clearTimeout(id);
+  }, [tab, playing, sourceId, curTenth, colorLook, colorAdj.brightness, colorAdj.contrast, colorAdj.saturation, colorAdj.temperature]);
+
+  // Tamanho do quadro da pessoa na prévia 9:16 (para recortar igual ao servidor).
+  const [pbox, setPbox] = useState(null);
+  useEffect(() => {
+    const el = previewBoxRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      setPbox((b) => (b && Math.abs(b.w - r.width) < 0.5 && Math.abs(b.h - r.height) < 0.5 ? b : { w: r.width, h: r.height }));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
   function measureVideo() {
     const v = videoRef.current;
     if (!v || !v.videoWidth || !v.clientWidth) return;
@@ -196,8 +221,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const k = Math.min(ew / v.videoWidth, eh / v.videoHeight);
     const w = v.videoWidth * k;
     const h = v.videoHeight * k;
-    const next = { x: Math.round((ew - w) / 2), y: Math.round((eh - h) / 2), w: Math.round(w), h: Math.round(h) };
-    setVbox((b) => (b && b.x === next.x && b.y === next.y && b.w === next.w && b.h === next.h ? b : next));
+    const next = { x: Math.round((ew - w) / 2), y: Math.round((eh - h) / 2), w: Math.round(w), h: Math.round(h), vw: v.videoWidth, vh: v.videoHeight };
+    setVbox((b) => (b && b.x === next.x && b.y === next.y && b.w === next.w && b.h === next.h && b.vw === next.vw ? b : next));
   }
   useEffect(() => {
     const v = videoRef.current;
@@ -456,7 +481,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
   }, []);
 
-  const clampZoom = (z) => Math.min(3, Math.max(1, Math.round(z * 100) / 100));
+  const clampZoom = (z) => Math.min(2.5, Math.max(1, Math.round(z * 100) / 100)); // mesmo limite do servidor
   // Rolagem do mouse sobre a prévia = zoom (listener nativo para poder travar o scroll da página).
   useEffect(() => {
     const el = previewBoxRef.current;
@@ -728,6 +753,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // (ou B-roll em tela cheia); sem B-roll, o VÍDEO INTEIRO com o enquadramento.
   const brollLayout = brollLayoutSel === 'fullscreen' ? 'fullscreen' : 'split';
   const previewMode = brollMoment && thumbOf(brollMoment) ? (brollLayout === 'split' ? 'split' : 'broll') : 'video';
+  // Recorte da pessoa = a MESMA conta do servidor (faceCropGeometry): cobre o quadro,
+  // amplia pelo zoom e CENTRALIZA no ponto do rosto. Assim a prévia bate com o render.
+  const personCropStyle = (() => {
+    if (!vbox?.vw || !pbox?.w || !pbox?.h) {
+      return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, filter: videoFilter };
+    }
+    const g = coverCrop(vbox.vw, vbox.vh, pbox.w, pbox.h, focus, zoom);
+    return { position: 'absolute', left: -g.cropX, top: -g.cropY, width: g.scaledW, height: g.scaledH, maxWidth: 'none', objectFit: 'fill', filter: videoFilter };
+  })();
   const personHalf = (
     <div
       key="person"
@@ -744,7 +778,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           ref={previewVideoRef}
           src={sourceUrl(sourceId)}
           muted playsInline preload="auto"
-          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, transform: `scale(${zoom})`, transformOrigin: `${focus.x * 100}% ${focus.y * 100}%`, filter: videoFilter }}
+          style={personCropStyle}
         />
       </div>
       <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>
@@ -840,6 +874,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 10, fontWeight: 700, background: 'rgba(0,0,0,0.6)', color: '#fff', borderRadius: 6, padding: '2px 6px' }}>B-roll</span>
                   </div>
                 )}
+                {vbox && colorFrame && (
+                  <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none' }}>
+                    <img src={colorFrame.url} alt="" onLoad={() => setColorFrame((f) => (f ? { ...f, loaded: true } : f))} onError={() => setColorFrame(null)}
+                      style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block', opacity: colorFrame.loaded ? 1 : 0, transition: 'opacity .15s' }} />
+                    <span style={{ position: 'absolute', right: 6, top: 6, fontSize: 10, fontWeight: 700, background: 'rgba(0,0,0,0.65)', color: '#fff', borderRadius: 6, padding: '2px 7px' }}>
+                      {colorFrame.loaded ? '✓ cor exata do vídeo final' : 'gerando cor exata…'}
+                    </span>
+                  </div>
+                )}
                 {cap.captions && <CaptionOverlay videoRef={videoRef} segments={segments} options={cap} box={vbox} sample={tab === 'legenda'} />}
                 {framingMode === 'manual' && (
                   <div
@@ -898,7 +941,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
                     <span style={{ width: 46 }}>Zoom</span>
                     <button onClick={() => setZoom((z) => clampZoom(z - 0.1))} style={zoomBtn} title="Diminuir">−</button>
-                    <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(e) => setZoom(clampZoom(Number(e.target.value)))} style={{ flex: 1 }} />
+                    <input type="range" min="1" max="2.5" step="0.05" value={zoom} onChange={(e) => setZoom(clampZoom(Number(e.target.value)))} style={{ flex: 1 }} />
                     <button onClick={() => setZoom((z) => clampZoom(z + 0.1))} style={zoomBtn} title="Aumentar">+</button>
                     <span style={{ width: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
                   </label>
@@ -1155,7 +1198,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               ))}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 11.5, color: C.faint, flex: 1, minWidth: 200 }}>
-                  A prévia ao lado mostra o look (aproximado) e o ajuste manual na hora. No render final o look é aplicado primeiro e o ajuste manual por cima.
+                  Com o vídeo <b>pausado</b>, a prévia mostra a <b>cor exata</b> do vídeo final (gerada com o mesmo filtro do render). Tocando, a cor é uma aproximação rápida.
                 </div>
                 <button onClick={() => setColorAdj({ brightness: 0, contrast: 0, saturation: 0, temperature: 0 })} style={miniBtn(false, false)}>Zerar ajustes</button>
               </div>
@@ -1679,6 +1722,19 @@ const COLOR_SLIDERS = [
 ];
 
 /** Prévia aproximada do ajuste manual (mesmas proporções do filtro do servidor). */
+/** Mesma conta do faceCropGeometry do servidor (pipeline/broll.js), em px da prévia. */
+function coverCrop(inW, inH, regionW, regionH, focus = {}, zoom = 1) {
+  const base = Math.max(regionW / inW, regionH / inH);
+  const k = base * Math.min(2.5, Math.max(1, zoom));
+  const scaledW = Math.max(regionW, inW * k);
+  const scaledH = Math.max(regionH, inH * k);
+  const fx = Math.min(1, Math.max(0, Number.isFinite(focus.x) ? focus.x : 0.5));
+  const fy = Math.min(1, Math.max(0, Number.isFinite(focus.y) ? focus.y : 0.4));
+  const cropX = Math.min(Math.max(fx * scaledW - regionW / 2, 0), scaledW - regionW);
+  const cropY = Math.min(Math.max(fy * scaledH - regionH / 2, 0), scaledH - regionH);
+  return { scaledW, scaledH, cropX, cropY };
+}
+
 function colorPreviewCss(a) {
   const b = Number(a.brightness) || 0, c = Number(a.contrast) || 0, s = Number(a.saturation) || 0, t = Number(a.temperature) || 0;
   const filter = b || c || s ? `brightness(${1 + (b / 100) * 0.25}) contrast(${1 + (c / 100) * 0.35}) saturate(${1 + (s / 100) * 0.8})` : undefined;

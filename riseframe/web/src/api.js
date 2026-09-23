@@ -228,6 +228,9 @@ export async function getJob(id) {
 }
 
 export const sourceUrl = (id) => `${BASE}/jobs/${id}/source`;
+// Quadro do vídeo com a cor EXATA do render (mesma cadeia de filtros do servidor).
+export const colorFrameUrl = (id, t, look, a = {}) =>
+  `${BASE}/jobs/${id}/color-frame?t=${Number(t || 0).toFixed(1)}&look=${encodeURIComponent(look || 'auto')}&b=${a.brightness || 0}&c=${a.contrast || 0}&s=${a.saturation || 0}&tp=${a.temperature || 0}`;
 /** Tira de miniaturas da faixa de vídeo da timeline. */
 export const filmstripUrl = (id) => `${BASE}/jobs/${id}/filmstrip`;
 /** Picos de áudio (0..1) para desenhar a forma de onda. */

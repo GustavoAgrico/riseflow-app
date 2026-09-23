@@ -51,8 +51,8 @@ function buildPlan(mode, options) {
       { key: 'cut', label: 'Aplicando cortes na timeline', weight: 20, enabled: hasRemoval },
       { key: 'analyze', label: 'Analisando temas', weight: 3, enabled: true },
       { key: 'motion', label: 'Aplicando movimento (zoom)', weight: 12, enabled: Boolean(options.videoMotion) && options.videoMotion !== 'none' },
-      { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
       { key: 'frame', label: 'Reenquadrando o vídeo', weight: 8, enabled: (Number(options.personZoom) || 1) > 1.001 },
+      { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
       { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: Array.isArray(options.userMedia) && options.userMedia.length > 0 },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true },
@@ -308,28 +308,30 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
-  // 6. B-roll
-  let brollSplitUsed = false;
-  if (has('broll')) {
-    const st = enter('broll');
-    const r = await insertBroll(input, work, meta, analysis, options, st.onProgress);
-    input = r.output;
-    report.broll = { inserted: r.inserted };
-    // Tela dividida com clipes já consumiu o foco/zoom nas metades da pessoa.
-    brollSplitUsed = ['top', 'bottom'].includes(options.brollLayout) && r.inserted > 0;
-    st.record(report.broll);
-    st.onProgress(1);
-  }
-
-  // Reenquadramento manual (punch-in) do vídeo inteiro — vale SEM B-roll ou com
-  // B-roll em tela cheia. Na tela dividida o foco/zoom já foi aplicado nas metades.
-  if (has('frame') && !brollSplitUsed) {
+  // 5b. Reenquadramento manual (zoom + foco no rosto) do VÍDEO INTEIRO — antes do B-roll,
+  // para valer no vídeo todo (inclusive fora dos momentos de B-roll) e nunca cortar o
+  // B-roll. Na tela dividida, a metade da pessoa usa a fonte SEM este reenquadramento
+  // (preFrameInput) e aplica o mesmo foco/zoom no tamanho da metade — como na prévia.
+  let preFrameInput = null;
+  if (has('frame')) {
     const st = enter('frame');
+    preFrameInput = input;
     const r = await applyManualFrame(input, work, meta, options, st.onProgress);
     input = r.output;
     if (r.applied) meta = { ...meta, ...(await probeSummary(input)) };
+    else preFrameInput = null;
     report.frame = { applied: r.applied };
     st.record(report.frame);
+    st.onProgress(1);
+  }
+
+  // 6. B-roll
+  if (has('broll')) {
+    const st = enter('broll');
+    const r = await insertBroll(input, work, meta, analysis, { ...options, personInput: preFrameInput }, st.onProgress);
+    input = r.output;
+    report.broll = { inserted: r.inserted };
+    st.record(report.broll);
     st.onProgress(1);
   }
 

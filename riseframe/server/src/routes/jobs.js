@@ -13,7 +13,8 @@ import { registerMedia, resolveMedia } from '../mediaStore.js';
 import { probeSummary, runFfmpeg } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
 import { brollCandidates } from '../pipeline/broll.js';
-import { sanitizeColorAdjust } from '../pipeline/color.js';
+import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
+import { analyzeAndGrade } from '../pipeline/autoColor.js';
 
 /** Opções do job com as chaves salvas do usuário (Pexels/Anthropic) — o servidor manda. */
 function optionsForUser(req) {
@@ -609,6 +610,45 @@ jobsRouter.get('/jobs/:id/peaks', async (req, res) => {
     res.type('application/json').send(fs.readFileSync(out, 'utf8'));
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/jobs/:id/color-frame?t=&look=&b=&c=&s=&tp= → um quadro do vídeo original com
+// EXATAMENTE a mesma cadeia de cor do render final (look + ajuste manual). A prévia de cor
+// no navegador é aproximada; esta imagem é a referência fiel. (Público como /source: o id
+// do job não é adivinhável e a <img> não manda cabeçalho.)
+const autoGradeCache = new Map(); // id → vf do grade automático (a análise lê o vídeo todo)
+jobsRouter.get('/jobs/:id/color-frame', async (req, res) => {
+  try {
+    const job = queue.get(req.params.id);
+    if (!job?.inputPath || !fs.existsSync(job.inputPath)) return res.status(404).json({ error: 'vídeo não encontrado' });
+    const look = ALLOWED_LOOKS.has(String(req.query.look)) ? String(req.query.look) : 'auto';
+    const adj = sanitizeColorAdjust({ brightness: req.query.b, contrast: req.query.c, saturation: req.query.s, temperature: req.query.tp });
+    const t = Math.max(0, Math.min(100000, Number(req.query.t) || 0));
+
+    let vf;
+    if (look === 'auto') {
+      if (!autoGradeCache.has(job.id)) autoGradeCache.set(job.id, (await analyzeAndGrade(job.inputPath)).vf);
+      vf = fastColorChain([autoGradeCache.get(job.id), manualAdjustVf(adj)].filter(Boolean).join(','));
+    } else {
+      vf = (await colorFilter(job.inputPath, { colorLook: look, colorAdjust: adj })).vf;
+    }
+
+    const dir = path.join(config.paths.cache, 'colorframes');
+    fs.mkdirSync(dir, { recursive: true });
+    const key = `${job.id}_${Math.round(t * 10)}_${look}_${adj.brightness}_${adj.contrast}_${adj.saturation}_${adj.temperature}`;
+    const out = path.join(dir, `${key.replace(/[^A-Za-z0-9_-]/g, '')}.jpg`);
+    if (!fs.existsSync(out)) {
+      await runFfmpeg([
+        '-ss', t.toFixed(2), '-i', job.inputPath, '-frames:v', '1',
+        '-vf', [vf, 'scale=-2:720'].filter(Boolean).join(','),
+        '-q:v', '4', '-y', out,
+      ], { label: 'color-frame' });
+    }
+    res.set('Cache-Control', 'private, max-age=600');
+    res.type('image/jpeg').sendFile(path.resolve(out));
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'falha na prévia de cor' });
   }
 });
 
