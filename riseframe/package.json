@@ -1,6 +1,6 @@
 {
   "name": "riseframe",
-  "version": "0.57.0",
+  "version": "0.58.0",
   "private": true,
   "description": "Editor de vídeo web com IA — MVP do pipeline (corte de silêncio, legendas, B-roll, color grade).",
   "type": "module",

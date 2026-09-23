@@ -421,7 +421,15 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     // quadro (estilo Reels), e a pessoa é alinhada em topo/centro/base (alignY).
     const n = clips.length;
     const g = personFocus ? faceCropGeometry(W, H, regionW, regionH, personFocus, personZoom) : null;
-    parts.push(`[0:v]split=${n + 1}[base]${clips.map((_, i) => `[p${i}]`).join('')}`);
+    // A metade da pessoa vem da fonte SEM o reenquadramento do vídeo inteiro (quando houver),
+    // para o foco/zoom não ser aplicado duas vezes. O resto do vídeo usa a entrada 0.
+    const personIdx = options.personInput ? clips.length + 1 : 0;
+    if (personIdx) {
+      parts.push(`[0:v]null[base]`);
+      parts.push(`[${personIdx}:v]split=${n}${clips.map((_, i) => `[p${i}]`).join('')}`);
+    } else {
+      parts.push(`[0:v]split=${n + 1}[base]${clips.map((_, i) => `[p${i}]`).join('')}`);
+    }
     clips.forEach((_, i) => {
       if (g) {
         // Enquadrado no rosto: cobre a metade e centraliza no foco (preenche, sem cortar a cabeça).
@@ -473,6 +481,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     if (c.isImage) args.push('-loop', '1', '-t', Math.max(0.6, c.end - c.start).toFixed(2));
     args.push('-i', c.file);
   }
+  if (isSplit && options.personInput) args.push('-i', options.personInput);
   args.push('-filter_complex_script', scriptPath, '-map', '[outv]');
   if (meta.hasAudio) args.push('-map', '0:a', '-c:a', 'copy');
   args.push(...x264Fast(), '-movflags', '+faststart', '-y', output);
