@@ -13,6 +13,7 @@ import { registerMedia, resolveMedia } from '../mediaStore.js';
 import { probeSummary, runFfmpeg } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
 import { brollCandidates } from '../pipeline/broll.js';
+import { sanitizeColorAdjust } from '../pipeline/color.js';
 
 /** Opções do job com as chaves salvas do usuário (Pexels/Anthropic) — o servidor manda. */
 function optionsForUser(req) {
@@ -268,6 +269,8 @@ function parseOptions(raw) {
     captionMode: ['auto', 'word', 'phrase'].includes(o.captionMode) ? o.captionMode : 'auto',
     captionScale: clampNum(o.captionScale, 0.6, 1.6, 1),
     colorLook: ALLOWED_LOOKS.has(o.colorLook) ? o.colorLook : 'auto',
+    // Ajuste manual de cor (brilho, contraste, saturação, temperatura: -100..100).
+    colorAdjust: sanitizeColorAdjust(o.colorAdjust),
     videoMotion: ['none', 'dynamic', 'zoom-in', 'zoom-out', 'ken-burns', 'pulse'].includes(o.videoMotion) ? o.videoMotion : 'none',
     motionIntensity: ['suave', 'medio', 'forte'].includes(o.motionIntensity) ? o.motionIntensity : 'medio',
     broll: o.broll === true,

@@ -7,7 +7,7 @@ import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, sna
 import { insertBroll } from './broll.js';
 import { applyManualFrame } from './frame.js';
 import { applyUserMedia } from './overlay.js';
-import { applyMotion } from './motion.js';
+import { applyMotion, dynamicZoomWindows } from './motion.js';
 import { enhanceVoice } from './voice.js';
 import { applyAudioGain, gainAf } from './gain.js';
 import { markFillers } from './cleanup.js';
@@ -15,7 +15,7 @@ import { classifyNarrative } from './narrative.js';
 import { cleanupWithClaude } from './cleanupLLM.js';
 import { burnCaptions } from './captions.js';
 import { applySoundEffects } from './sfx.js';
-import { applyColor } from './color.js';
+import { applyColor, hasColorAdjust } from './color.js';
 import { finalRender } from './render.js';
 import { generateClips } from './clips.js';
 import { makeLogger } from '../logger.js';
@@ -56,7 +56,7 @@ function buildPlan(mode, options) {
       { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: Array.isArray(options.userMedia) && options.userMedia.length > 0 },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true },
-      { key: 'color', label: 'Aplicando color grade', weight: 11, enabled: (options.colorLook || 'teal-orange') !== 'none' },
+      { key: 'color', label: 'Aplicando color grade', weight: 11, enabled: (options.colorLook || 'teal-orange') !== 'none' || hasColorAdjust(options.colorAdjust) },
       { key: 'render', label: 'Renderização final', weight: 15, enabled: true },
     ].filter((s) => s.enabled);
   }
@@ -166,7 +166,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     report.provider.transcribe = 'edited';
   } else {
     const st = enter('transcribe');
-    transcript = await transcribe(input, work, meta);
+    transcript = await transcribe(input, work, meta, st.onProgress);
     report.provider.transcribe = transcript.provider;
     if (transcript.fallbackFrom) report.provider.transcribeFallback = transcript.fallbackReason;
     st.record({ segments: transcript.segments.length, provider: transcript.provider });
@@ -352,16 +352,20 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.record(report.captions);
   }
 
-  // 6b. Efeitos sonoros: pop quando a legenda entra + whoosh nas entradas de B-roll.
+  // 6b. Efeitos sonoros: whoosh nas entradas de B-roll e nos punch-ins do zoom
+  // dinâmico. (Sem "bip" nas legendas: a cada frase ficava repetitivo e cansativo.)
   if (has('sfx')) {
     const st = enter('sfx');
     const events = [];
-    if (options.captions !== false) {
-      for (const seg of transcript.segments || []) events.push({ t: seg.start, type: 'pop' });
-    }
     if (has('broll')) {
-      for (const m of analysis.brollMoments || []) events.push({ t: Math.max(0, m.start - 0.12), type: 'whoosh' });
+      for (const m of analysis.brollMoments || []) events.push({ t: Math.max(0, m.start - 0.3), type: 'whoosh' });
     }
+    if (report.motion?.effect === 'dynamic') {
+      for (const [a] of dynamicZoomWindows(transcript.segments, meta)) events.push({ t: Math.max(0, a - 0.3), type: 'whoosh' });
+    }
+    // Dois whooshes quase juntos viram ruído: mantém um a cada 0,8 s no mínimo.
+    events.sort((x, y) => x.t - y.t);
+    for (let i = events.length - 1; i > 0; i -= 1) if (events[i].t - events[i - 1].t < 0.8) events.splice(i, 1);
     const r = await applySoundEffects(input, work, meta, events, options, st.onProgress);
     if (r.applied) input = r.output;
     report.sfx = { count: r.count };

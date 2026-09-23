@@ -19,6 +19,24 @@ export const MOTION_LABELS = {
   pulse: 'Pulse (respiração sutil)',
 };
 
+/** Janelas [início, fim] dos punch-ins (frases alternadas). Também usadas pelos SFX. */
+export function dynamicZoomWindows(segments, meta) {
+  const dur = Math.max(0.5, meta.duration || 1);
+  const starts = (segments || [])
+    .map((s) => Number(s.start))
+    .filter((n) => Number.isFinite(n) && n >= 0)
+    .sort((a, b) => a - b);
+  if (starts.length < 2) return [];
+  // Punch em frases alternadas (índices ímpares), com um mínimo de duração.
+  const windows = [];
+  for (let i = 1; i < starts.length; i += 2) {
+    const a = starts[i];
+    const b = i + 1 < starts.length ? starts[i + 1] : dur;
+    if (b - a > 0.15) windows.push([a, Math.min(b, dur)]);
+  }
+  return windows;
+}
+
 /**
  * Zoom DINÂMICO (punch-ins): a cada frase alterna entre o quadro normal e um zoom
  * sutil, criando o "corte-zoom" que dá ritmo e cara de edição viral. Dirigido pelos
@@ -30,23 +48,9 @@ export function dynamicZoomVf(segments, meta, intensity = 'medio') {
   const W = meta.width || 1080;
   const H = meta.height || 1920;
   const fps = Math.max(1, Math.round(meta.fps || 30));
-  const dur = Math.max(0.5, meta.duration || 1);
   const zmax = MOTION_INTENSITY[intensity] || MOTION_INTENSITY.medio;
   const K = (zmax - 1).toFixed(4);
-
-  const starts = (segments || [])
-    .map((s) => Number(s.start))
-    .filter((n) => Number.isFinite(n) && n >= 0)
-    .sort((a, b) => a - b);
-  if (starts.length < 2) return null;
-
-  // Aplica o punch em frases alternadas (índices ímpares), com um mínimo de duração.
-  const windows = [];
-  for (let i = 1; i < starts.length; i += 2) {
-    const a = starts[i];
-    const b = i + 1 < starts.length ? starts[i + 1] : dur;
-    if (b - a > 0.15) windows.push([a, Math.min(b, dur)]);
-  }
+  const windows = dynamicZoomWindows(segments, meta);
   if (!windows.length) return null;
 
   const t = `on/${fps}`;
