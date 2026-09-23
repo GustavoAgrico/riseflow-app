@@ -10,6 +10,8 @@ files:
   - electron/**/*
   - shared/**/*
   - server/src/**/*
+  - server/assets/**/*
+  - server/requirements.txt
   - server/package.json
   - node_modules/**/*
   - server/node_modules/**/*

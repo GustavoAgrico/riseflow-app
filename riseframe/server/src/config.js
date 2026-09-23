@@ -11,7 +11,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // riseframe/server/src → riseframe/
 const ROOT = path.resolve(__dirname, '..', '..');
-const DATA = path.join(ROOT, 'data');
+// DATA_DIR permite guardar os dados fora da pasta do programa (app desktop).
+const DATA = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT, 'data');
 
 function bool(v, def = false) {
   if (v === undefined) return def;
