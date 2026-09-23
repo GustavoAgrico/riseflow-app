@@ -169,6 +169,13 @@ Faça na ordem inversa, com zero downtime:
    apontava para o host anterior.
 4. No primeiro acesso pelo domínio o Caddy emite o certificado (alguns segundos).
 
+Depois de virar o DNS, atualize o que aponta para o endereço do site:
+- **AbacatePay → Webhooks:** `https://seudominio.com/api/billing/webhook?webhookSecret=...`
+  (mesmo valor do `ABACATE_WEBHOOK_SECRET` do `.env`).
+- **Login com Google:** adicione o domínio nas *Authorized JavaScript origins*.
+- **Render:** com tudo funcionando na VM, suspenda o serviço antigo (Settings →
+  Suspend) para não ter dois sites cobrando/atendendo ao mesmo tempo.
+
 > As contas de usuário **não migram** entre os dois hosts — o banco é um arquivo no
 > disco de cada máquina. Se já houver gente cadastrada no site antigo, elas precisam
 > se cadastrar de novo, ou você copia o `data/` do host antigo antes de virar o DNS.
@@ -200,6 +207,7 @@ docker compose down           # para tudo (os dados no volume permanecem)
 | `jobs/` | registro dos vídeos que dá para **reabrir na timeline** |
 | `cache/` | miniaturas e forma de onda das faixas da timeline |
 | `users.json`, `auth_secret` | contas e o segredo que assina os logins |
+| `billing.json` | planos assinados, créditos e pagamentos de cada conta |
 
 **`OUTPUT_TTL_HOURS` varre `outputs/`, `uploads/`, `jobs/` e `cache/`.** Ele define,
 na prática, por quanto tempo um vídeo continua podendo ser reaberto na timeline —

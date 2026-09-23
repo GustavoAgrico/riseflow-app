@@ -30,8 +30,19 @@ services:
       # ── Transcrição (legendas) ──
       TRANSCRIBE_PROVIDER: ${TRANSCRIBE_PROVIDER:-whisper-local}
       WHISPER_MODEL: ${WHISPER_MODEL:-base}
+      DEEPGRAM_LANGUAGE: ${DEEPGRAM_LANGUAGE:-}
+      # ── IA (análise, B-roll, correção de fala) ──
+      ANALYZE_PROVIDER: ${ANALYZE_PROVIDER:-heuristic}
+      ANALYZE_MODEL: ${ANALYZE_MODEL:-}
+      ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
+      # ── Velocidade do FFmpeg (vazio = padrão rápido) ──
+      FFMPEG_PRESET: ${FFMPEG_PRESET:-}
+      FFMPEG_FINAL_PRESET: ${FFMPEG_FINAL_PRESET:-}
       # ── Chaves opcionais (deixe em branco se não usar) ──
       PEXELS_API_KEY: ${PEXELS_API_KEY:-}
+      GOOGLE_CSE_KEY: ${GOOGLE_CSE_KEY:-}
+      GOOGLE_CSE_ID: ${GOOGLE_CSE_ID:-}
+      GOOGLE_IMAGES_UNRESTRICTED: ${GOOGLE_IMAGES_UNRESTRICTED:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
