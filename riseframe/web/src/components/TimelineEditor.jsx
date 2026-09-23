@@ -7,7 +7,8 @@ import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
 import { CaptionOverlay } from './CaptionPreview.jsx';
-import { zoomWindows, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS } from '../livePreview.js';
+import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS } from '../livePreview.js';
+import { keyZoomMoments } from '../../../shared/keyMoments.js';
 
 const PPS_MIN = 24;
 const PPS_MAX = 240;
@@ -43,6 +44,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     soundEffects: cap0.soundEffects === true,
     sfxIntensity: cap0.sfxIntensity || 'medio',
   });
+  // Zoom nos MOMENTOS-CHAVE (faixa ZOOM da timeline). null = ainda não calculado.
+  const [zoomMoments, setZoomMoments] = useState(null);
+  const [selZoom, setSelZoom] = useState(null);
+  const [selBroll, setSelBroll] = useState(null); // momento de B-roll selecionado (índice)
+  const [badThumbs, setBadThumbs] = useState(() => new Set()); // miniaturas que não carregaram
   const [colorLook, setColorLook] = useState(cap0.colorLook || 'auto');
   const [colorAdj, setColorAdj] = useState({ brightness: 0, contrast: 0, saturation: 0, temperature: 0, ...(cap0.colorAdjust || {}) });
   const colorCss = colorPreviewCss(colorAdj);
@@ -367,6 +373,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (x < el.scrollLeft + 40 || x > el.scrollLeft + el.clientWidth - 40) el.scrollLeft = Math.max(0, x - el.clientWidth / 2);
   }, [cur]);
 
+  // ── Momentos de zoom (punch-in): automáticos nos momentos-chave e editáveis.
+  function autoZoomMoments() {
+    return keyZoomMoments(segments, dur).map((m, i) => ({ key: `z${i}_${Date.now()}`, start: m.start, end: m.end, scale: null }));
+  }
+  useEffect(() => {
+    if (fx.videoMotion === 'dynamic' && zoomMoments === null) setZoomMoments(autoZoomMoments());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fx.videoMotion]);
+  function addZoomAtPlayhead() {
+    const start = Math.max(0, Math.min(cur, dur - 0.5));
+    const z = { key: `z${Date.now()}`, start: +start.toFixed(2), end: +Math.min(dur, start + 1.8).toFixed(2), scale: null };
+    setZoomMoments((l) => [...(l || []), z].sort((a, b) => a.start - b.start));
+    setSelZoom(z.key);
+  }
+  const selZoomItem = (zoomMoments || []).find((z) => z.key === selZoom) || null;
+  const setBrollMoments = (fn) => setBrollReview((r) => (r ? { ...r, moments: fn(r.moments) } : r));
+
   function seek(t) { const v = videoRef.current; const c = Math.max(0, Math.min(dur, t)); if (v) v.currentTime = c; setCur(c); }
   function togglePlay() { const v = videoRef.current; if (!v) return; if (v.paused) v.play(); else v.pause(); }
   function onTrackClick(e) { seek(timeAtClientX(e.clientX)); }
@@ -542,7 +565,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setBrollBusy(true);
     try {
       const plan = await fetchBrollPlan(sourceId, currentTranscript(), { ...options, ...cap, broll: true });
-      const moments = (plan.moments || []).map((m) => ({
+      const moments = (plan.moments || []).map((m, i) => ({
+        key: `b${i}_${Date.now()}`, zoom: 1, fx: 0.5, fy: 0.5,
         start: m.start, end: m.end, term: m.term, query: m.query,
         candidates: m.candidates || [],
         pick: (m.candidates || []).length ? 0 : -1, // índice do candidato escolhido (-1 = nenhum)
@@ -585,10 +609,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (!brollReview) return null;
     return brollReview.moments.map((m) => {
       if (m.removed) return { start: m.start, end: m.end, remove: true };
-      if (m.myMediaId) return { start: m.start, end: m.end, mediaId: m.myMediaId, kind: m.myKind, query: m.term };
+      const frame = { zoom: +Number(m.zoom || 1).toFixed(2), fx: +Number(m.fx ?? 0.5).toFixed(3), fy: +Number(m.fy ?? 0.5).toFixed(3) };
+      if (m.myMediaId) return { start: m.start, end: m.end, mediaId: m.myMediaId, kind: m.myKind, query: m.term, ...frame };
       const c = m.candidates[m.pick];
       if (!c) return { start: m.start, end: m.end, remove: true };
-      return { start: m.start, end: m.end, url: c.link, kind: c.kind, query: m.term };
+      return { start: m.start, end: m.end, url: c.link, kind: c.kind, query: m.term, ...frame };
     });
   }
 
@@ -617,6 +642,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         ...cap,
         // Zoom, efeitos sonoros e cor escolhidos nas abas Efeitos e Cor.
         ...fx,
+        // Zooms nos momentos-chave (tempo original; o servidor remapeia após os cortes).
+        ...(fx.videoMotion === 'dynamic' && zoomMoments
+          ? { zoomMoments: zoomMoments.map((z) => ({ start: +z.start.toFixed(2), end: +z.end.toFixed(2), ...(z.scale ? { scale: +Number(z.scale).toFixed(2) } : {}) })) }
+          : {}),
         colorLook,
         colorAdjust: colorAdj,
         // Trechos cortados à mão na faixa de vídeo (tempo original).
@@ -645,10 +674,27 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
 
   const allGone = stats.removed >= stats.total;
+  const showZoomLane = fx.videoMotion === 'dynamic';
+  const showBrollLane = !!brollReview?.moments?.length;
+
   const selSeg = segments[sel];
 
   // Prévia da composição 9:16 (sua metade interativa + metade do B-roll). Fica ao
   // lado do vídeo (mesma linha) quando o enquadramento é manual.
+  // B-roll escolhido no instante atual (mostrado sobre o vídeo, como no render).
+  const brollMoment = (brollReview?.moments || []).find((m) => !m.removed && cur >= m.start && cur < m.end);
+  const thumbOf = (m) => (m && !m.removed ? (m.myThumb || m.candidates?.[m.pick]?.thumb || null) : null);
+  const brollNow = thumbOf(brollMoment);
+  // Na prévia 9:16 mostra o B-roll do momento atual ou, se nenhum, o selecionado na aba.
+  const brollShownIdx = brollMoment ? brollReview.moments.indexOf(brollMoment) : selBroll;
+  const brollShown = brollShownIdx != null ? brollReview?.moments?.[brollShownIdx] : null;
+  const brollImgStyle = (m) => ({
+    width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+    objectPosition: `${(m?.fx ?? 0.5) * 100}% ${(m?.fy ?? 0.5) * 100}%`,
+    transform: `scale(${m?.zoom || 1})`, transformOrigin: `${(m?.fx ?? 0.5) * 100}% ${(m?.fy ?? 0.5) * 100}%`,
+    filter: videoFilter,
+  });
+
   const personHalf = (
     <div
       key="person"
@@ -669,26 +715,52 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>você (arraste/role)</div>
     </div>
   );
-  const brollHalf = (
-    <div key="broll" style={{ height: '50%', display: 'grid', placeItems: 'center', background: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.05), rgba(255,255,255,0.05) 8px, rgba(255,255,255,0.02) 8px, rgba(255,255,255,0.02) 16px)', color: C.faint }}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-        <Icon name="image" size={18} strokeWidth={1.8} />
-        <div style={{ fontSize: 10.5, fontWeight: 700 }}>B-roll</div>
+  const brollHalf = (() => {
+    const th = thumbOf(brollShown);
+    const ok = th && !badThumbs.has(th);
+    const idx = brollShownIdx;
+    const onDown = (e) => {
+      if (!ok || idx == null) return;
+      e.preventDefault();
+      const box = e.currentTarget.getBoundingClientRect();
+      const m0 = brollReview.moments[idx];
+      const start = { x: e.clientX, y: e.clientY, fx: m0.fx ?? 0.5, fy: m0.fy ?? 0.5 };
+      setSelBroll(idx);
+      const move = (ev) => {
+        // arrastar a imagem para a direita mostra mais da esquerda (como mover a foto)
+        const fx = Math.min(1, Math.max(0, start.fx - (ev.clientX - start.x) / box.width));
+        const fy = Math.min(1, Math.max(0, start.fy - (ev.clientY - start.y) / box.height));
+        setMoment(idx, { fx: +fx.toFixed(3), fy: +fy.toFixed(3) });
+      };
+      const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    };
+    return (
+      <div key="broll" onPointerDown={onDown} style={{ height: '50%', position: 'relative', overflow: 'hidden', cursor: ok ? 'grab' : 'default', display: 'grid', placeItems: 'center', background: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.05), rgba(255,255,255,0.05) 8px, rgba(255,255,255,0.02) 8px, rgba(255,255,255,0.02) 16px)', color: C.faint }}>
+        {ok ? (
+          <>
+            <img src={th} alt="" draggable={false} onError={() => setBadThumbs((bt) => new Set(bt).add(th))} style={{ ...brollImgStyle(brollShown), position: 'absolute', inset: 0 }} />
+            <span style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 9.5, fontWeight: 700, background: 'rgba(0,0,0,0.6)', color: '#fff', borderRadius: 6, padding: '2px 6px' }}>B-roll · arraste</span>
+          </>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <Icon name="image" size={18} strokeWidth={1.8} />
+            <div style={{ fontSize: 10.5, fontWeight: 700 }}>B-roll</div>
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  })();
   const composedPreview = (
     <div style={{ width: '100%', maxWidth: 200, margin: '0 auto', aspectRatio: '9 / 16', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
       {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
     </div>
   );
 
-  // B-roll escolhido no instante atual (mostrado sobre o vídeo, como no render).
-  const brollMoment = (brollReview?.moments || []).find((m) => !m.removed && cur >= m.start && cur < m.end);
-  const brollNow = brollMoment ? (brollMoment.myThumb || brollMoment.candidates?.[brollMoment.pick]?.thumb || null) : null;
 
   // Dados usados pela prévia ao vivo (lidos pelo laço do player).
-  const liveWindows = fx.videoMotion === 'dynamic' ? zoomWindows(segments, dur) : [];
+  const liveWindows = fx.videoMotion === 'dynamic' ? (zoomMoments || []).map((z) => [z.start, z.end, z.scale]) : [];
   liveRef.current = {
     fx,
     dur,
@@ -722,7 +794,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 {vbox && colorCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...colorCss.tint }} />}
                 {vbox && brollNow && (
                   <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', overflow: 'hidden' }}>
-                    <img src={brollNow} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: videoFilter }} />
+                    <img src={brollNow} alt="" style={brollImgStyle(brollMoment)} />
                     <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 10, fontWeight: 700, background: 'rgba(0,0,0,0.6)', color: '#fff', borderRadius: 6, padding: '2px 6px' }}>B-roll</span>
                   </div>
                 )}
@@ -827,16 +899,21 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </div>
                   {brollReview.moments.map((m, i) => {
                     const n = m.candidates.length;
-                    const thumb = m.removed ? null : (m.myThumb || m.candidates[m.pick]?.thumb);
+                    const thumb0 = m.removed ? null : (m.myThumb || m.candidates[m.pick]?.thumb);
+                    const thumb = thumb0 && !badThumbs.has(thumb0) ? thumb0 : null;
+                    const isSel = i === selBroll;
                     return (
-                      <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 10, padding: 8, opacity: m.removed ? 0.55 : 1 }}>
+                      <div key={m.key || i} onClick={() => { setSelBroll(i); seek(m.start + 0.05); }}
+                        style={{ background: isSel ? 'rgba(124,58,237,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isSel ? C.purpleSoft : C.border}`, borderRadius: 10, padding: 8, opacity: m.removed ? 0.55 : 1, cursor: 'pointer' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                           <span style={{ fontSize: 10.5, color: C.faint, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(m.start)}</span>
                           <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{m.term}</div>
                         </div>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
                           <div style={{ width: 64, height: 54, flexShrink: 0, borderRadius: 8, overflow: 'hidden', background: '#000', border: `1px solid ${C.border}`, display: 'grid', placeItems: 'center' }}>
-                            {thumb ? <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 9.5, color: C.faint, textAlign: 'center' }}>sem<br />imagem</span>}
+                            {thumb
+                              ? <img src={thumb} alt="" onError={() => setBadThumbs((b) => new Set(b).add(thumb0))} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${(m.fx ?? 0.5) * 100}% ${(m.fy ?? 0.5) * 100}%` }} />
+                              : <span style={{ fontSize: 9.5, color: C.faint, textAlign: 'center' }}>{thumb0 ? <>sem<br />prévia</> : <>sem<br />imagem</>}</span>}
                           </div>
                           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -850,6 +927,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                             </div>
                           </div>
                         </div>
+                        {isSel && !m.removed && (
+                          <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
+                              <span style={{ width: 40 }}>Zoom</span>
+                              <input type="range" min="1" max="2.5" step="0.05" value={m.zoom || 1} onChange={(e) => setMoment(i, { zoom: Number(e.target.value) })} style={{ flex: 1 }} />
+                              <span style={{ width: 38, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Number(m.zoom || 1).toFixed(2)}×</span>
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
+                              <span style={{ width: 40 }}>Lado</span>
+                              <input type="range" min="0" max="1" step="0.01" value={m.fx ?? 0.5} onChange={(e) => setMoment(i, { fx: Number(e.target.value) })} style={{ flex: 1 }} />
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
+                              <span style={{ width: 40 }}>Altura</span>
+                              <input type="range" min="0" max="1" step="0.01" value={m.fy ?? 0.5} onChange={(e) => setMoment(i, { fy: Number(e.target.value) })} style={{ flex: 1 }} />
+                            </label>
+                            <div style={{ fontSize: 10.5, color: C.faint }}>Ajuste aparece na prévia (e na 9:16). Dica: arraste a imagem na prévia 9:16 para posicionar.</div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -923,6 +1018,32 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </div>
                 </CapRow>
               )}
+              {fx.videoMotion === 'dynamic' && (
+                <CapRow label={`Momentos de zoom (${(zoomMoments || []).length}) — faixa ZOOM na timeline`}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button onClick={addZoomAtPlayhead} style={toolBtn(false)}>+ Zoom no playhead ({fmtDuration(cur)})</button>
+                    <button onClick={() => { setZoomMoments(autoZoomMoments()); setSelZoom(null); }} style={toolBtn(false)}>
+                      <Icon name="undo" size={13} strokeWidth={2} /> Recalcular automático
+                    </button>
+                  </div>
+                </CapRow>
+              )}
+              {fx.videoMotion === 'dynamic' && selZoomItem && (
+                <div style={{ border: `1px solid ${C.orange}`, borderRadius: 10, padding: 10, background: 'rgba(255,107,53,0.06)', display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700 }}>
+                    Zoom em {fmtDuration(selZoomItem.start)} → {fmtDuration(selZoomItem.end)}
+                    <button onClick={() => { setZoomMoments((l) => l.filter((z) => z.key !== selZoomItem.key)); setSelZoom(null); }} style={{ ...miniBtn(false, false), marginLeft: 'auto', color: C.red }}>Remover</button>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: C.muted }}>
+                    <span style={{ width: 62 }}>Aproximar</span>
+                    <input type="range" min="1.03" max="1.5" step="0.01"
+                      value={selZoomItem.scale || MOTION_Z[fx.motionIntensity] || 1.12}
+                      onChange={(e) => { const v = Number(e.target.value); setZoomMoments((l) => l.map((z) => (z.key === selZoomItem.key ? { ...z, scale: v } : z))); demoRef.current = { start: performance.now(), until: performance.now() + 2500 }; }}
+                      style={{ flex: 1 }} />
+                    <span style={{ width: 44, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Number(selZoomItem.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}×</span>
+                  </label>
+                </div>
+              )}
               <CapRow label="Efeitos sonoros (whoosh)">
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button onClick={() => setFx((f) => ({ ...f, soundEffects: false }))} style={framingTab(!fx.soundEffects)}>Desligados</button>
@@ -939,7 +1060,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 </CapRow>
               )}
               <div style={{ fontSize: 11.5, color: C.faint }}>
-                <b>Prévia:</b> ao escolher um movimento, o player ao lado mostra o efeito na hora; dê play para ver no ritmo da fala e ouvir os whooshes. O <b>zoom dinâmico</b> aproxima em frases alternadas; os efeitos sonoros tocam nas entradas de B-roll e nesses zooms — sem bip nas legendas.
+                <b>Prévia:</b> ao escolher um movimento, o player ao lado mostra o efeito na hora; dê play para ver no ritmo da fala e ouvir os whooshes. O <b>zoom nos momentos-chave</b> só aproxima nos pontos de ênfase (pausa antes, números, perguntas, palavras fortes) — não o vídeo inteiro. Na faixa <b>ZOOM</b> da timeline: clique para ajustar, arraste para mover, puxe as pontas para mudar a duração. Os whooshes tocam nesses zooms e nas entradas de B-roll.
               </div>
             </div>
           )}
@@ -1126,12 +1247,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div style={{ height: LANE.ruler }} />
           <Rotulo h={LANE.legenda} gap={6} nome="LEGENDA" dica="clique na palavra" />
           <Rotulo h={LANE.video} gap={4} nome="VÍDEO" dica={cuts.length ? null : 'arraste ou use o botão'} />
+          {showZoomLane && <Rotulo h={LANE.zoom} gap={4} nome="ZOOM" dica="momentos-chave" />}
+          {showBrollLane && <Rotulo h={LANE.broll} gap={4} nome="B-ROLL" dica="clique p/ ajustar" />}
           <Rotulo h={LANE.audio} gap={4} nome="ÁUDIO" dica={gains.length ? null : 'use a aba Áudio'} />
           <Rotulo h={LANE.pausas} gap={4} nome="PAUSAS" dica={pauses.length ? 'clique p/ manter' : null} />
           {media.length > 0 && <Rotulo h={LANE.midias} gap={4} nome="MÍDIAS" />}
         </div>
         <div ref={trackRef} onClick={onTrackClick} style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6 }}>
-          <div style={{ position: 'relative', width, height: LANE.ruler + 6 + LANE.legenda + 4 + LANE.video + 4 + LANE.audio + 4 + LANE.pausas + (media.length ? 4 + LANE.midias : 0) }}>
+          <div style={{ position: 'relative', width, height: LANE.ruler + 6 + LANE.legenda + 4 + LANE.video + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + 4 + LANE.audio + 4 + LANE.pausas + (media.length ? 4 + LANE.midias : 0) }}>
           <div style={{ position: 'relative', height: LANE.ruler, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
             {Array.from({ length: Math.ceil(dur) + 1 }).map((_, s) => (
               <div key={s} style={{ position: 'absolute', left: s * pps, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
@@ -1213,6 +1336,62 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ position: 'absolute', left: drawing.start * pps, width: (drawing.end - drawing.start) * pps, top: 0, bottom: 0, background: 'rgba(240,82,107,0.3)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
             )}
           </div>
+
+          {/* Faixa ZOOM: momentos-chave do punch-in (editáveis) */}
+          {showZoomLane && (
+            <div style={{ position: 'relative', height: LANE.zoom, marginTop: 4 }}>
+              {(zoomMoments || []).map((z) => {
+                const isSel = z.key === selZoom;
+                return (
+                  <div
+                    key={z.key}
+                    title={`Zoom ${Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}× — clique para ajustar, arraste para mover`}
+                    onMouseDown={(e) => { setSelZoom(z.key); startRangeDrag(setZoomMoments, z, 'move', e); }}
+                    onClick={(e) => { e.stopPropagation(); setSelZoom(z.key); setTab('efeitos'); seek(z.start); }}
+                    style={{
+                      position: 'absolute', left: z.start * pps, width: Math.max(14, (z.end - z.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                      border: `1px solid ${isSel ? '#fff' : C.orange}`, background: isSel ? 'rgba(255,107,53,0.5)' : 'rgba(255,107,53,0.25)',
+                      fontSize: 10, fontWeight: 700, color: C.text,
+                    }}
+                  >
+                    <Icon name="search" size={10} strokeWidth={2.4} /> {Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}×
+                    <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'left', e)} style={handleStyle('left')} />
+                    <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'right', e)} style={handleStyle('right')} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Faixa B-ROLL: momentos revisados (clique abre o ajuste; arraste move) */}
+          {showBrollLane && (
+            <div style={{ position: 'relative', height: LANE.broll, marginTop: 4 }}>
+              {brollReview.moments.map((m, i) => {
+                const isSel = i === selBroll;
+                const th = thumbOf(m);
+                return (
+                  <div
+                    key={m.key || i}
+                    title={`${m.term} — clique para ajustar`}
+                    onMouseDown={(e) => { setSelBroll(i); startRangeDrag(setBrollMoments, m, 'move', e); }}
+                    onClick={(e) => { e.stopPropagation(); setSelBroll(i); setTab('broll'); seek(m.start + 0.05); }}
+                    style={{
+                      position: 'absolute', left: m.start * pps, width: Math.max(16, (m.end - m.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
+                      display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                      border: `1px solid ${isSel ? '#fff' : C.purpleSoft}`, background: m.removed ? 'rgba(255,255,255,0.05)' : isSel ? 'rgba(124,58,237,0.55)' : 'rgba(124,58,237,0.3)',
+                      opacity: m.removed ? 0.5 : 1, fontSize: 10, fontWeight: 700, color: C.text,
+                    }}
+                  >
+                    {th && !badThumbs.has(th) && <img src={th} alt="" style={{ height: 20, width: 20, objectFit: 'cover', borderRadius: 3, flexShrink: 0 }} />}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.term}</span>
+                    <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'left', e)} style={handleStyle('left')} />
+                    <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'right', e)} style={handleStyle('right')} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Faixa de áudio: forma de onda da fala original */}
           <div style={{ position: 'relative', height: LANE.audio, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(124,58,237,0.10)' }}>
@@ -1357,7 +1536,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
 // Altura de cada faixa. A coluna de nomes e as faixas leem daqui, para não
 // desalinharem quando uma mudar.
-const LANE = { ruler: 20, legenda: 64, video: 44, audio: 34, pausas: 24, midias: 30 };
+const LANE = { ruler: 20, legenda: 64, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };
 
 /** Nome de uma faixa, na coluna fixa à esquerda da timeline. */
 function Rotulo({ h, gap, nome, dica }) {

@@ -210,6 +210,22 @@ function sanitizeUserMedia(raw) {
 // Sanitiza o plano de B-roll travado na tela de revisão. Cada item fixa o que
 // entra num momento: uma URL do banco (candidato escolhido), uma mídia própria
 // (mediaId) ou a marcação de remover. Sem isso, o servidor volta a escolher sozinho.
+/** Momentos de zoom (punch-in) editados na timeline: [{start,end,scale?}]. null = automático. */
+function sanitizeZoomMoments(raw) {
+  if (!Array.isArray(raw)) return undefined;
+  const out = [];
+  for (const m of raw) {
+    const start = Number(m?.start);
+    const end = Number(m?.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < 0.15) continue;
+    const item = { start: Math.max(0, start), end: Math.min(start + 30, end) };
+    if (Number.isFinite(Number(m.scale))) item.scale = clampNum(m.scale, 1.01, 1.6, 1.12);
+    out.push(item);
+    if (out.length >= 60) break;
+  }
+  return out;
+}
+
 function sanitizeBrollPlan(raw) {
   if (!Array.isArray(raw)) return [];
   const out = [];
@@ -228,6 +244,10 @@ function sanitizeBrollPlan(raw) {
     // URL do banco: só http(s) de imagem/vídeo (o download roda no pipeline).
     if (typeof p.url === 'string' && /^https:\/\/[^\s]+$/i.test(p.url)) item.url = p.url;
     if (typeof p.mediaId === 'string' && p.mediaId) item.mediaId = p.mediaId;
+    // Ajuste do quadro do B-roll: zoom 1–2.5 e ponto de foco X/Y (0–1) dentro da imagem.
+    item.zoom = clampNum(p.zoom, 1, 2.5, 1);
+    item.fx = clampNum(p.fx, 0, 1, 0.5);
+    item.fy = clampNum(p.fy, 0, 1, 0.5);
     out.push(item);
     if (out.length >= 40) break;
   }
@@ -293,6 +313,7 @@ function parseOptions(raw) {
     brollEverySec: clampNum(o.brollEverySec, 4, 30, 8),
     brollMax: clampNum(o.brollMax, 1, 12, 6),
     brollPlan: sanitizeBrollPlan(o.brollPlan),
+    zoomMoments: sanitizeZoomMoments(o.zoomMoments),
   };
 }
 
