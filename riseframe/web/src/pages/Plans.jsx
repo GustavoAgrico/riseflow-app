@@ -95,6 +95,7 @@ export default function Plans({ user, checkOnOpen }) {
   const selected = pick && (pick.kind === 'plan' ? plans : packs).find((x) => x.id === pick.id);
   const switching = pick?.kind === 'plan' && current && current.id !== pick.id;
   const canPay = selected && cpf.replace(/\D/g, '').length >= 11 && phone.replace(/\D/g, '').length >= 10 && !paying;
+  // Botões sempre visíveis; só ficam ativos para clientes quando os pagamentos estão ligados.
   const canBuy = billing.enabled && !billing.admin;
 
   return (
@@ -142,6 +143,21 @@ export default function Plans({ user, checkOnOpen }) {
         )}
       </div>
 
+      {(billing.admin || !billing.enabled) && (
+        <div style={glass({ padding: '14px 18px', marginBottom: 18, borderColor: `${C.orange}55`, fontSize: 13.5, color: C.muted, lineHeight: 1.55 })}>
+          {billing.admin ? (
+            <>
+              <b style={{ color: C.text }}>Você é admin (uso ilimitado).</b> É assim que seus clientes veem esta página.{' '}
+              {billing.enabled
+                ? 'Para eles, os botões levam ao pagamento por Pix ou cartão.'
+                : <>Os botões de assinatura ficam ativos quando a <code>ABACATE_PAY_API_KEY</code> estiver configurada no servidor (Render → Environment).</>}
+            </>
+          ) : (
+            <>As assinaturas abrem em breve. Enquanto isso, use seus créditos de teste.</>
+          )}
+        </div>
+      )}
+
       {/* Planos mensais */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginBottom: 20 }}>
         {plans.map((p) => {
@@ -175,21 +191,21 @@ export default function Plans({ user, checkOnOpen }) {
                   );
                 })}
               </div>
-              {canBuy && (
-                <button
-                  onClick={() => setPick({ kind: 'plan', id: p.id })}
-                  style={{ marginTop: 'auto', width: '100%', minHeight: 46, borderRadius: 11, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: p.popular || on ? 'none' : `1px solid ${C.borderStrong}`, background: p.popular || on ? GRAD : 'transparent', color: C.text }}
-                >
-                  {cta}
-                </button>
-              )}
+              <button
+                onClick={() => canBuy && setPick({ kind: 'plan', id: p.id })}
+                disabled={!canBuy}
+                title={canBuy ? undefined : billing.admin ? 'Conta admin: uso ilimitado' : 'Assinaturas em breve'}
+                style={{ marginTop: 'auto', width: '100%', minHeight: 46, borderRadius: 11, fontSize: 14, fontWeight: 700, cursor: canBuy ? 'pointer' : 'not-allowed', opacity: canBuy ? 1 : 0.55, fontFamily: 'inherit', border: p.popular || on ? 'none' : `1px solid ${C.borderStrong}`, background: p.popular || on ? GRAD : 'transparent', color: C.text }}
+              >
+                {!billing.enabled && !billing.admin ? 'Em breve' : billing.admin ? `Assinar ${p.name}` : cta}
+              </button>
             </div>
           );
         })}
       </div>
 
       {/* Recarga avulsa */}
-      {canBuy && (
+      {(
         <div style={{ marginTop: 34 }}>
           <h2 style={h2}>Recarga avulsa</h2>
           <p style={{ color: C.muted, fontSize: 14, margin: '0 0 14px' }}>
@@ -199,7 +215,7 @@ export default function Plans({ user, checkOnOpen }) {
             {packs.map((p) => {
               const on = pick?.kind === 'pack' && pick.id === p.id;
               return (
-                <button key={p.id} onClick={() => setPick({ kind: 'pack', id: p.id })} style={{ ...glass({ padding: 16 }), textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', color: C.text, border: on ? `2px solid ${C.orange}` : `1px solid ${C.border}` }}>
+                <button key={p.id} onClick={() => canBuy && setPick({ kind: 'pack', id: p.id })} disabled={!canBuy} style={{ ...glass({ padding: 16 }), textAlign: 'left', cursor: canBuy ? 'pointer' : 'not-allowed', opacity: canBuy ? 1 : 0.6, fontFamily: 'inherit', color: C.text, border: on ? `2px solid ${C.orange}` : `1px solid ${C.border}` }}>
                   <div style={{ fontSize: 16, fontWeight: 800 }}>{num(p.credits)} créditos</div>
                   <div style={{ fontSize: 20, fontWeight: 800, fontFamily: FONT_DISPLAY, marginTop: 4 }}>{brl(p.priceCents)}</div>
                   <div style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>≈ {Math.floor(p.credits / costs.video)} vídeos básicos</div>
@@ -252,9 +268,6 @@ export default function Plans({ user, checkOnOpen }) {
         </div>
       )}
       {error && <p style={{ color: '#FCA5B4', fontSize: 13.5, marginTop: 12 }}>{error}</p>}
-      {!billing.enabled && (
-        <p style={{ color: C.faint, fontSize: 13, marginTop: 16 }}>As assinaturas abrem em breve. Enquanto isso, use seus créditos de teste.</p>
-      )}
 
       <style>{`@media (max-width: 720px){ .rf-plan-balance{ text-align: left !important; } }`}</style>
 
