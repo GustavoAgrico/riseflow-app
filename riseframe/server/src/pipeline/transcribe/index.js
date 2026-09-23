@@ -40,7 +40,7 @@ export async function transcribe(input, work, meta, onProgress) {
   } catch (err) {
     if (['deepgram', 'openai', 'assemblyai'].includes(provider)) {
       log.error(`provedor "${provider}" falhou: ${err.message}`);
-      throw new Error(`não foi possível transcrever a fala agora (${provider}). Tente de novo em instantes.`);
+      throw new Error(transcribeErrorMessage(provider, err));
     }
     if (provider !== 'mock') {
       log.warn(`provedor "${provider}" falhou (${err.message}); usando mock`);
@@ -51,4 +51,19 @@ export async function transcribe(input, work, meta, onProgress) {
     }
     throw err;
   }
+}
+
+/** Mensagem clara para o usuário a partir do erro do provedor (chave, saldo, rede...). */
+export function transcribeErrorMessage(provider, err) {
+  const name = { deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI' }[provider] || provider;
+  const msg = String(err?.message || err || '');
+  const status = Number((/\b(401|402|403|429)\b/.exec(msg) || [])[1]);
+  if (/ausente/i.test(msg)) return `falta a chave da ${name}. Configure a chave e tente de novo.`;
+  if (status === 401 || status === 403) return `a chave da ${name} foi recusada (inválida ou apagada). Confira a chave configurada.`;
+  if (status === 402) return `a conta da ${name} está sem saldo/créditos.`;
+  if (status === 429) return `a ${name} limitou as requisições agora. Tente de novo em instantes.`;
+  if (/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|fetch failed|network/i.test(msg)) {
+    return `sem conexão com a ${name}. Verifique a internet e tente de novo.`;
+  }
+  return `não foi possível transcrever a fala agora (${name}). Tente de novo em instantes.`;
 }
