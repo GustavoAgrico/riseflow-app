@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v49';
+export const APP_VERSION = 'v50';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -143,6 +143,17 @@ export const config = {
       .split(',')
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
+  },
+
+  // Velocidade do FFmpeg. As etapas intermediárias (zoom, B-roll, legendas...) usam um
+  // preset rápido com qualidade alta (CRF baixo) — o arquivo fica maior, mas é temporário.
+  // O render final comprime melhor. Em máquina com CPU sobrando dá para trocar por
+  // presets mais lentos (ex.: FFMPEG_FINAL_PRESET=medium) para arquivos menores.
+  encode: {
+    preset: process.env.FFMPEG_PRESET || 'ultrafast',
+    crf: num(process.env.FFMPEG_CRF, 17),
+    finalPreset: process.env.FFMPEG_FINAL_PRESET || 'veryfast',
+    finalCrf: num(process.env.FFMPEG_FINAL_CRF, 20),
   },
 
   debug: bool(process.env.DEBUG, false),

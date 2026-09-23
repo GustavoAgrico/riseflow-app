@@ -2,11 +2,26 @@ import { spawn } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
 import { makeLogger } from '../logger.js';
+import { config } from '../config.js';
 
 const ffprobePath = ffprobeStatic.path;
 const log = makeLogger('ffmpeg');
 
 export { ffmpegPath, ffprobePath };
+
+/**
+ * Codificação de vídeo das etapas intermediárias: preset rápido + CRF baixo (o arquivo
+ * é temporário; só o render final precisa comprimir bem). Cada etapa recodifica o
+ * vídeo inteiro, então isto é o que mais pesa no tempo total de edição.
+ */
+export function x264Fast() {
+  return ['-c:v', 'libx264', '-preset', config.encode.preset, '-crf', String(config.encode.crf)];
+}
+
+/** Codificação do render final (arquivo que o usuário baixa). */
+export function x264Final() {
+  return ['-c:v', 'libx264', '-preset', config.encode.finalPreset, '-crf', String(config.encode.finalCrf)];
+}
 
 /** Converte "HH:MM:SS.ms" (saída do ffmpeg) em segundos. */
 export function hmsToSeconds(hms) {

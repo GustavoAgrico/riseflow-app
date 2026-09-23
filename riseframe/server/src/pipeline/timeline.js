@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { runFfmpeg } from './ffmpeg.js';
+import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { groupIntoPhrases } from './narrative.js';
 import { makeLogger } from '../logger.js';
 
@@ -133,7 +133,7 @@ export async function remuxByKeepSegments(input, work, meta, keep, onProgress, t
 
   const args = ['-i', input, '-filter_complex_script', scriptPath, '-map', '[outv]'];
   if (wantAudio) args.push('-map', '[outa]', '-c:a', 'aac', '-b:a', '160k');
-  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-movflags', '+faststart', '-y', output);
+  args.push(...x264Fast(), '-movflags', '+faststart', '-y', output);
 
   await runFfmpeg(args, { label: tag, totalDuration: kd, onProgress });
   log.ok(`remux: ${keep.length} segmentos mantidos (${kd.toFixed(1)}s)`);

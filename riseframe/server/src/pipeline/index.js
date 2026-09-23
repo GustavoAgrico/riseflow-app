@@ -15,7 +15,7 @@ import { classifyNarrative } from './narrative.js';
 import { cleanupWithClaude } from './cleanupLLM.js';
 import { burnCaptions } from './captions.js';
 import { applySoundEffects } from './sfx.js';
-import { applyColor, hasColorAdjust } from './color.js';
+import { colorFilter, hasColorAdjust } from './color.js';
 import { finalRender } from './render.js';
 import { generateClips } from './clips.js';
 import { makeLogger } from '../logger.js';
@@ -56,8 +56,8 @@ function buildPlan(mode, options) {
       { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: Array.isArray(options.userMedia) && options.userMedia.length > 0 },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true },
-      { key: 'color', label: 'Aplicando color grade', weight: 11, enabled: (options.colorLook || 'teal-orange') !== 'none' || hasColorAdjust(options.colorAdjust) },
-      { key: 'render', label: 'Renderização final', weight: 15, enabled: true },
+      { key: 'color', label: 'Analisando as cores', weight: 3, enabled: (options.colorLook || 'teal-orange') !== 'none' || hasColorAdjust(options.colorAdjust) },
+      { key: 'render', label: 'Renderização final', weight: 18, enabled: true },
     ].filter((s) => s.enabled);
   }
   const total = all.reduce((a, s) => a + s.weight, 0);
@@ -123,6 +123,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
     emit({ progress: Math.round(s.from * 100), stage: key, stageLabel: s.label });
     return { onProgress: progressFor(key), record: (data) => report.stages.push({ key, ...data }) };
   }
+
+  // Etapas deste job (o site mostra só as que vão rodar, na ordem certa).
+  emit({ steps: plan.map((s) => ({ key: s.key, label: s.label })) });
 
   // 1. Probe
   enter('probe');
@@ -373,19 +376,22 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
-  // 7. Color grade
+  // 7. Color grade: só decide o filtro aqui; ele é aplicado no render final, na
+  // mesma passada (uma recodificação do vídeo inteiro a menos).
+  let colorVf = null;
   if (has('color')) {
     const st = enter('color');
-    const r = await applyColor(input, work, meta, options, st.onProgress);
-    input = r.output;
+    const r = await colorFilter(input, options);
+    colorVf = r.vf;
     report.color = { look: r.look, ai: r.ai || null };
     st.record({ look: r.look });
+    st.onProgress(1);
   }
 
   // 8. Render final
   {
     const st = enter('render');
-    const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput }, st.onProgress);
+    const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf }, st.onProgress);
     report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe };
     st.record({ aspect: r.aspect });
     st.onProgress(1);

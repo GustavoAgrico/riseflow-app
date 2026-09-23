@@ -2,20 +2,38 @@ import React from 'react';
 import { C, GRAD, glass, STAGE_ICONS } from '../theme.js';
 import Icon from './Icon.jsx';
 
-const FLOW = [
+// Lista padrão (antes do servidor mandar as etapas reais deste job).
+const DEFAULT_FLOW = [
   { key: 'probe', label: 'Sondagem' },
   { key: 'transcribe', label: 'Transcrição' },
   { key: 'cut', label: 'Cortes na timeline' },
   { key: 'analyze', label: 'Análise (IA)' },
-  { key: 'broll', label: 'B-roll' },
   { key: 'captions', label: 'Legendas' },
-  { key: 'color', label: 'Color grade' },
   { key: 'render', label: 'Render final' },
 ];
 
-const ORDER = FLOW.map((s) => s.key);
+// Nomes curtos para a lista (o título grande mostra o texto completo da etapa).
+const SHORT = {
+  probe: 'Sondagem',
+  voice: 'Correção de voz',
+  gain: 'Volume',
+  transcribe: 'Transcrição',
+  cut: 'Cortes na timeline',
+  analyze: 'Análise (IA)',
+  motion: 'Movimento (zoom)',
+  broll: 'B-roll',
+  frame: 'Reenquadramento',
+  usermedia: 'Suas mídias',
+  captions: 'Legendas',
+  sfx: 'Efeitos sonoros',
+  color: 'Cor',
+  clips: 'Clipes curtos',
+  render: 'Render final',
+};
 
 export default function Pipeline({ job }) {
+  const FLOW = job?.steps?.length ? job.steps.map((s) => ({ key: s.key, label: SHORT[s.key] || s.label })) : DEFAULT_FLOW;
+  const ORDER = FLOW.map((s) => s.key);
   const currentIdx = job?.stage === 'done' ? ORDER.length : ORDER.indexOf(job?.stage);
   const pct = job.progress ?? 0;
 

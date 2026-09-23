@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { runFfmpeg } from './ffmpeg.js';
+import { runFfmpeg, x264Final } from './ffmpeg.js';
 import { smartReframeVf, TARGETS } from './reframe.js';
 import { makeLogger } from '../logger.js';
 
@@ -12,6 +12,8 @@ const RESIZE = { original: null, ...TARGETS };
  * Render final: normaliza para o formato de saída escolhido e gera um MP4 web-ready
  * (yuv420p + faststart). Quando o formato exige reframe e `reframeTrack` está ligado,
  * segue o sujeito (rosto/movimento) com crop dinâmica; senão, crop central.
+ * `options.colorVf` (opcional) é aplicado antes, na mesma passada — evita recodificar
+ * o vídeo inteiro só para a cor.
  * @returns {Promise<{output:string, aspect:string, sizeBytes:number, reframe:object|null}>}
  */
 export async function finalRender(input, outputsDir, jobId, meta, options, onProgress) {
@@ -45,7 +47,8 @@ export async function finalRender(input, outputsDir, jobId, meta, options, onPro
     vf = 'format=yuv420p';
   }
 
-  const args = ['-i', input, '-vf', vf, '-c:v', 'libx264', '-preset', 'medium', '-crf', '18'];
+  if (options.colorVf) vf = `${options.colorVf},${vf}`;
+  const args = ['-i', input, '-vf', vf, ...x264Final()];
   if (meta.hasAudio) args.push('-c:a', 'aac', '-b:a', '160k');
   args.push('-movflags', '+faststart', '-y', output);
 
