@@ -66,8 +66,8 @@ services:
       #   value: '[{"id":"recarga-100","name":"Recarga 100","credits":100,"priceCents":1490},{"id":"recarga-300","name":"Recarga 300","credits":300,"priceCents":3990},{"id":"recarga-1000","name":"Recarga 1000","credits":1000,"priceCents":11990}]'
       # - key: CREDIT_COSTS            # custo por recurso (JSON; o que faltar usa o padrão)
       #   value: '{"video":20,"captionStyle":10,"image":5,"ai":10,"clips":40}'
-      # - key: BILLING_METHODS         # PIX,CREDIT_CARD (ou só PIX se o cartão não estiver liberado)
-      #   value: PIX,CREDIT_CARD
+      # - key: BILLING_METHODS         # PIX,CARD (se a AbacatePay recusar, o checkout cai para só PIX)
+      #   value: PIX,CARD
 
     # ── Para uso REAL (plano pago): descomente o disco e suba o modelo ──
     # plan: starter
