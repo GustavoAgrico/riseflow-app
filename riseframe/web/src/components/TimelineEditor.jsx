@@ -94,7 +94,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [focus, setFocus] = useState({ x: 0.5, y: 0.4 });
   const [zoom, setZoom] = useState(1);
   // Lado da pessoa na tela dividida: segue o layout do B-roll (apoio em cima → você embaixo).
-  const [personSide, setPersonSide] = useState(options?.brollLayout === 'top' ? 'bottom' : 'top');
+  // Layout do B-roll (igual à escolha do início, editável aqui): tela cheia ou tela
+  // dividida com o B-roll em cima (você embaixo) ou embaixo (você em cima).
+  const [brollLayoutSel, setBrollLayoutSel] = useState(['fullscreen', 'top', 'bottom'].includes(options?.brollLayout) ? options.brollLayout : 'fullscreen');
+  const personSide = brollLayoutSel === 'top' ? 'bottom' : 'top';
+  const setPersonSide = (fn) => {
+    const next = typeof fn === 'function' ? fn(personSide) : fn;
+    setBrollLayoutSel(next === 'top' ? 'bottom' : 'top');
+  };
   const motionWrapRef = useRef(null); // zoom dos momentos-chave na prévia 9:16
   const [media, setMedia] = useState([]); // minhas mídias na timeline (imagens/vídeos/músicas)
   const [mediaBusy, setMediaBusy] = useState(false);
@@ -684,6 +691,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         })),
         // B-roll revisado: trava o que entra em cada momento (e liga o B-roll).
         ...(brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}),
+        // Layout do B-roll escolhido aqui (tela cheia ou tela dividida).
+        brollLayout: brollLayoutSel,
       },
     );
   }
@@ -712,7 +721,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   // Prévia 9:16 = o que sai no vídeo naquele instante: com B-roll ativo, tela dividida
   // (ou B-roll em tela cheia); sem B-roll, o VÍDEO INTEIRO com o enquadramento.
-  const brollLayout = ['top', 'bottom'].includes(options?.brollLayout) ? 'split' : 'fullscreen';
+  const brollLayout = brollLayoutSel === 'fullscreen' ? 'fullscreen' : 'split';
   const previewMode = brollMoment && thumbOf(brollMoment) ? (brollLayout === 'split' ? 'split' : 'broll') : 'video';
   const personHalf = (
     <div
@@ -816,7 +825,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 {vbox && lookCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...lookCss.tint }} />}
                 {vbox && colorCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...colorCss.tint }} />}
                 {vbox && brollNow && (
-                  <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', overflow: 'hidden' }}>
+                  <div style={{
+                    position: 'absolute', left: vbox.x, width: vbox.w, pointerEvents: 'none', overflow: 'hidden',
+                    // Tela dividida: o B-roll ocupa só a metade dele (em cima ou embaixo).
+                    top: vbox.y + (brollLayoutSel === 'bottom' ? vbox.h / 2 : 0),
+                    height: brollLayoutSel === 'fullscreen' ? vbox.h : vbox.h / 2,
+                  }}>
                     <img src={brollNow} alt="" style={brollImgStyle(brollMoment)} />
                     <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 10, fontWeight: 700, background: 'rgba(0,0,0,0.6)', color: '#fff', borderRadius: 6, padding: '2px 6px' }}>B-roll</span>
                   </div>
@@ -895,6 +909,25 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>B-roll · imagens automáticas</div>
+              </div>
+              <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.3, marginBottom: 6 }}>COMO O B-ROLL APARECE</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, marginBottom: 12 }}>
+                {BROLL_LAYOUTS.map((o) => {
+                  const on = brollLayoutSel === o.id;
+                  return (
+                    <button key={o.id} onClick={() => setBrollLayoutSel(o.id)} title={o.hint}
+                      style={{ ...framingTab(on), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '8px 6px' }}>
+                      <span style={{ width: 22, height: 36, borderRadius: 4, overflow: 'hidden', display: 'flex', flexDirection: 'column', border: `1px solid ${on ? C.orange : C.border}` }}>
+                        {o.id === 'fullscreen'
+                          ? <span style={{ flex: 1, background: C.purpleSoft }} />
+                          : o.id === 'top'
+                            ? <><span style={{ flex: 1, background: C.purpleSoft }} /><span style={{ flex: 1, background: C.orange }} /></>
+                            : <><span style={{ flex: 1, background: C.orange }} /><span style={{ flex: 1, background: C.purpleSoft }} /></>}
+                      </span>
+                      <span style={{ fontSize: 11, lineHeight: 1.2, textAlign: 'center' }}>{o.label}</span>
+                    </button>
+                  );
+                })}
               </div>
               <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
                 Veja as imagens/vídeos que o sistema escolheu para cada trecho e <b>troque, substitua pela sua mídia ou remova</b> antes de gerar.
@@ -1602,6 +1635,13 @@ const TABS = [
   { id: 'midias', label: 'Minhas mídias', icon: 'film' },
   { id: 'efeitos', label: 'Efeitos', icon: 'wand' },
   { id: 'cor', label: 'Cor', icon: 'palette' },
+];
+
+// Layouts do B-roll: ids iguais aos do servidor (top = B-roll em cima → você embaixo).
+const BROLL_LAYOUTS = [
+  { id: 'fullscreen', label: 'Tela cheia', hint: 'O B-roll cobre o vídeo inteiro no momento dele' },
+  { id: 'top', label: 'Dividido · você embaixo', hint: 'B-roll na metade de cima, você na de baixo' },
+  { id: 'bottom', label: 'Dividido · você em cima', hint: 'Você na metade de cima, B-roll na de baixo' },
 ];
 
 const INTENSITIES = [{ id: 'suave', label: 'Suave' }, { id: 'medio', label: 'Médio' }, { id: 'forte', label: 'Forte' }];
