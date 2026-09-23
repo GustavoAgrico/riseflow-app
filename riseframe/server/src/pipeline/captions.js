@@ -329,6 +329,20 @@ export function buildAss(segments, meta, style = {}) {
   return `${header.join('\n')}\n${lines.join('\n')}\n`;
 }
 
+/**
+ * Caminho das fontes para o `fontsdir`, relativo à pasta do job. Se ele não for
+ * "seguro" para o filtro do FFmpeg — outro drive no Windows (C:\ vs D:\, vira
+ * absoluto com `:`), espaços, vírgulas, aspas… — copia as fontes para dentro da
+ * pasta do job e usa só `fonts`. Exportado para teste.
+ */
+export async function fontsDirArg(work, fontsDir = FONTS_DIR) {
+  const rel = path.relative(work, fontsDir).split(path.sep).join('/');
+  if (rel && !path.isAbsolute(rel) && /^[A-Za-z0-9._/-]+$/.test(rel)) return rel;
+  const local = path.join(work, 'fonts');
+  await fs.cp(fontsDir, local, { recursive: true, force: true });
+  return 'fonts';
+}
+
 /** Escreve o .ass e queima as legendas no vídeo. */
 export async function burnCaptions(input, work, meta, transcript, style, onProgress) {
   if (!transcript?.segments?.length) {
@@ -345,7 +359,7 @@ export async function burnCaptions(input, work, meta, transcript, style, onProgr
   // que quebravam o parser do FFmpeg no Windows (caminhos com espaço/`:`).
   // `fontsdir` (caminho RELATIVO, com "/" — sem drive/espaços) aponta para as fontes
   // premium empacotadas, garantindo a tipografia escolhida em qualquer máquina.
-  const fontsRel = path.relative(work, FONTS_DIR).split(path.sep).join('/');
+  const fontsRel = await fontsDirArg(work);
   const vf = `subtitles=${ASS_NAME}:fontsdir=${fontsRel}`;
   const args = ['-i', input, '-vf', vf, ...x264Fast()];
   if (meta.hasAudio) args.push('-c:a', 'copy');

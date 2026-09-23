@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v51';
+export const APP_VERSION = 'v52';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
