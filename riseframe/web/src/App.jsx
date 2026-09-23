@@ -302,7 +302,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
           {editMode === 'auto' && (
             <Card delay={0.1} style={{ padding: '6px 24px 20px' }}>
               <h3 style={sectionLabel}>O que fazer com o vídeo</h3>
-              <OptionsPanel catalog={catalog} options={options} onChange={setOptions} onSettings={onSettings} />
+              <OptionsPanel catalog={catalog} options={options} onChange={setOptions} />
             </Card>
           )}
 

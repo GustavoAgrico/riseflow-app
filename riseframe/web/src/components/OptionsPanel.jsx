@@ -106,7 +106,7 @@ export function Swatches({ value, options, onChange }) {
   );
 }
 
-export default function OptionsPanel({ catalog, options, onChange, disabled, onSettings }) {
+export default function OptionsPanel({ catalog, options, onChange, disabled }) {
   const set = (patch) => onChange({ ...options, ...patch });
   const caps = catalog?.capabilities || {};
   const keyValid = /^[A-Za-z0-9]{20,80}$/.test((options.pexelsKey || '').trim());
@@ -136,7 +136,7 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
             <Segmented value={options.cutStrength || 'forte'} options={catalog.cutStrengths || [{ id: 'suave', label: 'Suave' }, { id: 'equilibrado', label: 'Equilibrado' }, { id: 'forte', label: 'Forte' }]} onChange={(v) => set({ cutStrength: v })} />
           </Row>
         )}
-        <Row label="Corrigir a fala automaticamente" hint="Remove muletas (é..., hã, hmm), gagueiras e palavras repetidas. Em corte Forte fica mais agressiva. Com a chave da Anthropic (Configurações), a IA corta também falsos começos e autocorreções.">
+        <Row label="Corrigir a fala automaticamente" hint="Remove muletas (é..., hã, hmm), gagueiras e palavras repetidas. Em corte Forte fica mais agressiva. A IA também corta falsos começos e autocorreções.">
           <Toggle on={options.autoClean !== false} onChange={(v) => set({ autoClean: v })} />
         </Row>
         <Row label="Correção automática de voz" hint="Limpa o áudio: reduz ruído de fundo, normaliza o volume e dá mais clareza à voz">
@@ -220,26 +220,22 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
       <Section icon="image" title="B-roll (imagens de apoio)" subtitle={options.broll && brollUsable ? 'ligado' : 'desligado'}>
         <Row
           label="B-roll automático"
-          hint="Insere imagens de apoio contextuais nos melhores momentos da fala. Openverse (Creative Commons) funciona sem configurar nada."
+          hint="Insere imagens de apoio contextuais nos melhores momentos da fala."
         >
           <Toggle on={options.broll} onChange={(v) => set({ broll: v })} disabled={!brollUsable} />
         </Row>
         {options.broll && brollUsable && catalog.imageSources && (() => {
           const googleReady = !!caps.googleImagesReady;
           const pexelsReady = !!caps.brollReady || keyValid;
-          // Cada fonte indisponível aparece desabilitada, com o motivo no rótulo.
-          const srcOpts = catalog.imageSources.map((o) => {
-            if (o.id === 'google' && !googleReady) return { ...o, label: `${o.label} — requer configuração`, disabled: true };
-            if (o.id === 'pexels' && !pexelsReady) return { ...o, label: `${o.label} — requer chave`, disabled: true };
-            return o;
-          });
+          // Só aparecem as fontes que o servidor tem configuradas (o cliente nunca precisa de chave).
+          const srcOpts = catalog.imageSources.filter((o) => (o.id !== 'google' || googleReady) && (o.id !== 'pexels' || pexelsReady));
           // Se a fonte escolhida não está disponível, mostra Openverse (sempre funciona).
           let value = options.imageSource || 'openverse';
           if ((value === 'google' && !googleReady) || (value === 'pexels' && !pexelsReady)) value = 'openverse';
           return (
             <Row
               label="Fonte das imagens"
-              hint="Openverse: Creative Commons, grátis e sem chave (padrão). Pexels: vídeos + fotos livres de direitos (precisa de chave). Google: mais opções, porém a maioria tem copyright."
+              hint="Openverse: imagens Creative Commons (padrão). Pexels: vídeos e fotos livres de direitos. Google: mais opções, porém a maioria tem copyright."
             >
               <Select value={value} options={srcOpts} onChange={(v) => set({ imageSource: v })} />
             </Row>
@@ -262,13 +258,6 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, onS
         )}
         {options.broll && brollUsable && (
           <div style={{ padding: '4px 0 12px' }}><LayoutPreview layout={options.brollLayout || 'fullscreen'} personCrop={options.personCrop || 'center'} /></div>
-        )}
-        {!caps.brollReady && !keyValid && (
-          <Row label="Chave do Pexels" hint="Configure sua chave em Configurações para ativar o B-roll">
-            <button onClick={() => onSettings?.()} style={{ background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-              Abrir Configurações →
-            </button>
-          </Row>
         )}
       </Section>
 

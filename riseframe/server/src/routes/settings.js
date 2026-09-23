@@ -1,14 +1,15 @@
 import { Router } from 'express';
 import { getSettings, saveSettings } from '../auth/settings.js';
 import { requireAuth } from './auth.js';
-import { config } from '../config.js';
+import { config, capabilities } from '../config.js';
 
 export const settingsRouter = Router();
 
 /** Monta a resposta: settings do usuário + status das integrações. */
 function payload(userId) {
   const s = getSettings(userId);
-  const serverAnthropic = config.analyze.provider === 'anthropic' && Boolean(config.analyze.anthropicKey);
+  // O pipeline usa a chave da Anthropic do servidor sempre que ela existe (B-roll e limpeza de fala).
+  const serverAnthropic = Boolean(config.analyze.anthropicKey);
   return {
     settings: { pexelsKey: s.pexelsKey || '', anthropicKey: s.anthropicKey || '' },
     status: {
@@ -19,7 +20,10 @@ function payload(userId) {
       ai: Boolean(s.anthropicKey || serverAnthropic),
       aiFromServer: serverAnthropic,
       transcribeProvider: config.transcribe.provider,
+      transcribeReady: capabilities().transcribeReady,
       whisperReady: config.transcribe.whisperReady,
+      // Openverse (Creative Commons) não exige chave: o B-roll sempre tem uma fonte.
+      openverse: true,
     },
   };
 }

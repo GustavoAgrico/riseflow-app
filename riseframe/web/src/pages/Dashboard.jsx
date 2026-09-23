@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY, fmtDuration } from '../theme.js';
 import Icon from '../components/Icon.jsx';
 import { listJobs } from '../history.js';
+import { useAuth } from '../AuthContext.jsx';
+import { openPlans } from '../components/CostLine.jsx';
 
 const MODE_LABEL = { auto: 'Edição automática', render: 'Editado na timeline', clips: 'Clipes curtos', transcribe: 'Transcrição' };
 const fmtDate = (ms) => new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -26,7 +28,8 @@ function StatCard({ icon, label, value, tint }) {
   );
 }
 
-export default function Dashboard({ user, onNewVideo, onEditVideo, onBroll, onLibrary, onSettings }) {
+export default function Dashboard({ user, onNewVideo, onEditVideo, onBroll, onLibrary }) {
+  const { billing } = useAuth();
   const first = (user?.name || '').split(' ')[0] || 'você';
   const jobs = useMemo(() => listJobs(), []);
   const stats = useMemo(() => {
@@ -130,20 +133,22 @@ export default function Dashboard({ user, onNewVideo, onEditVideo, onBroll, onLi
               </div>
             </div>
 
-            <div style={{ ...glass({ padding: 18 }), background: 'linear-gradient(180deg, rgba(124,58,237,0.1), rgba(255,255,255,0.015))' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
-                <span style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.35)', display: 'grid', placeItems: 'center', color: C.purpleSoft }}>
-                  <Icon name="wand" size={17} strokeWidth={1.9} />
-                </span>
-                <div style={{ fontSize: 13.5, fontWeight: 700 }}>Turbine com IA</div>
+            {billing && !billing.unlimited && !billing.features.includes('image') && (
+              <div style={{ ...glass({ padding: 18 }), background: 'linear-gradient(180deg, rgba(124,58,237,0.1), rgba(255,255,255,0.015))' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+                  <span style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.35)', display: 'grid', placeItems: 'center', color: C.purpleSoft }}>
+                    <Icon name="wand" size={17} strokeWidth={1.9} />
+                  </span>
+                  <div style={{ fontSize: 13.5, fontWeight: 700 }}>Turbine com IA</div>
+                </div>
+                <div style={{ color: C.muted, fontSize: 12.5, lineHeight: 1.55, marginBottom: 14 }}>
+                  <b style={{ color: C.text }}>Legendas estilizadas</b>, <b style={{ color: C.text }}>B-roll automático</b> e <b style={{ color: C.text }}>limpeza de fala por IA</b> estão nos planos Pro e Premium.
+                </div>
+                <button onClick={openPlans} style={{ width: '100%', background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 11, padding: '10px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Ver planos →
+                </button>
               </div>
-              <div style={{ color: C.muted, fontSize: 12.5, lineHeight: 1.55, marginBottom: 14 }}>
-                Conecte a chave do <b style={{ color: C.text }}>Pexels</b> (B-roll grátis) e da <b style={{ color: C.text }}>Anthropic</b> (correção por IA) nas Configurações.
-              </div>
-              <button onClick={() => onSettings?.()} style={{ width: '100%', background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 11, padding: '10px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                Abrir Configurações →
-              </button>
-            </div>
+            )}
           </div>
         </div>
       </div>

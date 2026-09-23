@@ -77,7 +77,7 @@ function Sidebar({ user, billing, view, onView, onLogout }) {
 
       <div style={{ marginTop: 20, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px' }}>CONTA</div>
       <div style={{ display: 'grid', gap: 4 }}>
-        <NavItem item={{ id: 'settings', label: 'Configurações', icon: 'gear' }} active={view === 'settings'} onClick={() => onView('settings')} />
+        <NavItem item={{ id: 'settings', label: 'Conta', icon: 'user' }} active={view === 'settings'} onClick={() => onView('settings')} />
         <NavItem item={{ id: 'logout', label: 'Sair', icon: 'logout' }} active={false} onClick={onLogout} />
       </div>
 
@@ -231,7 +231,6 @@ export default function Root() {
             onEditVideo={() => go('editor', 'editor')}
             onBroll={() => go('editor', 'broll')}
             onLibrary={() => go('library')}
-            onSettings={() => go('settings')}
           />
         )}
         {view === 'library' && <Library onNewVideo={() => go('editor')} />}
