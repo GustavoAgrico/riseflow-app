@@ -61,7 +61,7 @@ services:
       # - key: BILLING_SIGNUP_CREDITS  # créditos de teste para cada conta nova (recursos básicos)
       #   value: 60
       # - key: BILLING_PLANS           # planos mensais (features: captionStyle, image, ai, clips)
-      #   value: '[{"id":"basico","name":"Básico","priceCents":2990,"credits":300,"features":[]},{"id":"pro","name":"Pro","priceCents":6990,"credits":1000,"features":["captionStyle","image","ai"],"popular":true},{"id":"premium","name":"Premium","priceCents":14990,"credits":3000,"features":["captionStyle","image","ai","clips"]}]'
+      #   value: '[{"id":"basico","name":"Básico","priceCents":2990,"credits":300,"features":[]},{"id":"pro","name":"Pro","priceCents":8990,"credits":1000,"features":["captionStyle","image","ai"],"popular":true},{"id":"premium","name":"Premium","priceCents":24790,"credits":3000,"features":["captionStyle","image","ai","clips"]}]'
       # - key: CREDIT_PACKS            # recarga avulsa (não expira)
       #   value: '[{"id":"recarga-100","name":"Recarga 100","credits":100,"priceCents":1490},{"id":"recarga-300","name":"Recarga 300","credits":300,"priceCents":3990},{"id":"recarga-1000","name":"Recarga 1000","credits":1000,"priceCents":11990}]'
       # - key: CREDIT_COSTS            # custo por recurso (JSON; o que faltar usa o padrão)

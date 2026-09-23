@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v44';
+export const APP_VERSION = 'v45';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -122,8 +122,8 @@ export const config = {
     // ids de shared/credits.js (captionStyle, image, ai, clips). Sobrescreva com BILLING_PLANS.
     plans: json(process.env.BILLING_PLANS, [
       { id: 'basico', name: 'Básico', priceCents: 2990, credits: 300, features: [] },
-      { id: 'pro', name: 'Pro', priceCents: 6990, credits: 1000, features: ['captionStyle', 'image', 'ai'], popular: true },
-      { id: 'premium', name: 'Premium', priceCents: 14990, credits: 3000, features: ['captionStyle', 'image', 'ai', 'clips'] },
+      { id: 'pro', name: 'Pro', priceCents: 8990, credits: 1000, features: ['captionStyle', 'image', 'ai'], popular: true },
+      { id: 'premium', name: 'Premium', priceCents: 24790, credits: 3000, features: ['captionStyle', 'image', 'ai', 'clips'] },
     ]),
     // Recarga avulsa (não expira; mais cara por crédito que os planos). Sobrescreva com CREDIT_PACKS.
     packs: json(process.env.CREDIT_PACKS, [
