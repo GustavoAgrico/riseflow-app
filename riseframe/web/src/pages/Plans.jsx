@@ -253,7 +253,7 @@ export default function Plans({ user, checkOnOpen }) {
       )}
       {error && <p style={{ color: '#FCA5B4', fontSize: 13.5, marginTop: 12 }}>{error}</p>}
       {!billing.enabled && (
-        <p style={{ color: C.faint, fontSize: 13, marginTop: 16 }}>Pagamentos ainda não estão ativos neste servidor — o uso está liberado.</p>
+        <p style={{ color: C.faint, fontSize: 13, marginTop: 16 }}>As assinaturas abrem em breve. Enquanto isso, use seus créditos de teste.</p>
       )}
 
       <style>{`@media (max-width: 720px){ .rf-plan-balance{ text-align: left !important; } }`}</style>

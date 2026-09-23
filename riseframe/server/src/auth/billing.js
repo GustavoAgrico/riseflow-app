@@ -53,8 +53,8 @@ function entry(userId) {
 
 export const billingEnabled = () => Boolean(config.billing.abacateKey);
 const isAdmin = (email) => config.billing.adminEmails.includes(String(email || '').toLowerCase());
-/** Sem cobrança para admins e quando os pagamentos não estão configurados. */
-const unlimited = (user) => !billingEnabled() || isAdmin(user.email);
+/** Ilimitado: admins (ADMIN_EMAILS), ou todos quando BILLING_MODE=off (desktop/local). */
+const unlimited = (user) => config.billing.mode === 'off' || isAdmin(user.email);
 const planConfig = (id) => config.billing.plans.find((p) => p.id === id) || null;
 
 /** Plano vigente (config + estado) ou null se não tem / venceu. */

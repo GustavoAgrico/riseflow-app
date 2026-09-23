@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v45';
+export const APP_VERSION = 'v46';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -106,9 +106,12 @@ export const config = {
     appUrl: process.env.APP_URL || '',
   },
 
-  // Planos mensais + recarga avulsa via AbacatePay (Pix/cartão). Sem ABACATE_PAY_API_KEY
-  // não há cobrança: todo usuário logado usa tudo à vontade (modo local/desktop).
+  // Planos mensais + recarga avulsa via AbacatePay (Pix/cartão). Os limites (créditos e
+  // recursos por plano) valem sempre; só quem está em ADMIN_EMAILS é ilimitado. Sem
+  // ABACATE_PAY_API_KEY ninguém consegue assinar ainda. BILLING_MODE=off desliga os
+  // limites para todos (app desktop / uso local).
   billing: {
+    mode: String(process.env.BILLING_MODE || 'on').toLowerCase() === 'off' ? 'off' : 'on',
     abacateKey: process.env.ABACATE_PAY_API_KEY || '',
     webhookSecret: process.env.ABACATE_WEBHOOK_SECRET || '',
     // Créditos de teste para cada conta nova (usam os recursos de quem não tem plano).
