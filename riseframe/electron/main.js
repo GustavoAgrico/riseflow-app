@@ -171,6 +171,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 700,
     backgroundColor: '#0b0b10',
+    icon: path.join(projectRoot, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

@@ -8,6 +8,8 @@ files:
   - package.json
   - web/dist/**/*
   - electron/**/*
+  - assets/icon.png
+  - assets/icon.ico
   - shared/**/*
   - server/src/**/*
   - server/assets/**/*
@@ -21,7 +23,11 @@ extraMetadata:
 
 asar: false
 
+# Ícone oficial (logo Riseframe). Gerado de assets/icon.svg.
+icon: assets/icon.png
+
 win:
+  icon: assets/icon.ico
   target:
     - nsis
     - portable
@@ -32,13 +38,16 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Riseframe
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  installerHeaderIcon: assets/icon.ico
 
 mac:
   target:
     - dmg
     - zip
   category: public.app-category.video
-  icon: assets/icon.icns
+  icon: assets/icon.png
 
 dmg:
   contents:
