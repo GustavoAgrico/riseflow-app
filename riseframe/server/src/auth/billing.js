@@ -164,17 +164,23 @@ export async function createCheckout(user, { kind, itemId, name, taxId, cellphon
           name: `Riseframe · ${item.credits} créditos`,
           description: `Recarga avulsa de ${item.credits} créditos (não expiram)`,
         };
-  const billing = await abacate('/billing/create', {
-    method: 'POST',
-    body: {
-      frequency: 'ONE_TIME',
-      methods: b.methods,
-      products: [{ ...product, quantity: 1, price: item.priceCents }],
-      returnUrl,
-      completionUrl: returnUrl,
-      customer: { name: name || user.name || user.email, email: user.email, cellphone, taxId },
-    },
+  const body = (methods) => ({
+    frequency: 'ONE_TIME',
+    methods,
+    products: [{ ...product, quantity: 1, price: item.priceCents }],
+    returnUrl,
+    completionUrl: returnUrl,
+    customer: { name: name || user.name || user.email, email: user.email, cellphone, taxId },
   });
+  let billing;
+  try {
+    billing = await abacate('/billing/create', { method: 'POST', body: body(b.methods) });
+  } catch (err) {
+    // Método não aceito pela conta (ex.: cartão não liberado): cobra só por Pix.
+    if (!/methods/i.test(err.message) || b.methods.join() === 'PIX') throw err;
+    log.warn(`AbacatePay recusou os métodos ${b.methods.join(',')} (${err.message}); tentando só PIX`);
+    billing = await abacate('/billing/create', { method: 'POST', body: body(['PIX']) });
+  }
   if (!billing?.id || !billing?.url) throw new Error('a AbacatePay não retornou o link de pagamento');
   load();
   db.pending[billing.id] = { userId: user.id, kind, itemId: item.id, credits: item.credits, createdAt: new Date().toISOString() };

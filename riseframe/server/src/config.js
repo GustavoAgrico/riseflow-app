@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v47';
+export const APP_VERSION = 'v48';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -134,8 +134,8 @@ export const config = {
       { id: 'recarga-300', name: 'Recarga 300', credits: 300, priceCents: 3990 },
       { id: 'recarga-1000', name: 'Recarga 1000', credits: 1000, priceCents: 11990 },
     ]),
-    // Mesmos métodos do RiseFlow. Se a AbacatePay recusar o cartão, use BILLING_METHODS=PIX.
-    methods: (process.env.BILLING_METHODS || 'PIX,CREDIT_CARD')
+    // Métodos da AbacatePay (PIX, CARD). Se ela recusar a lista, o checkout tenta só PIX.
+    methods: (process.env.BILLING_METHODS || 'PIX,CARD')
       .split(',')
       .map((s) => s.trim().toUpperCase())
       .filter(Boolean),
