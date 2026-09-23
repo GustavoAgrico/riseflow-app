@@ -1,206 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
+import { C, gradientText, glass, FONT_DISPLAY } from '../theme.js';
 import { Spinner } from '../components/ui.jsx';
-import { getSettings, saveSettings } from '../api.js';
+import { getSettings } from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
+import { openPlans } from '../components/CostLine.jsx';
 
-function StatusDot({ on }) {
+function StatusDot({ on, onLabel = 'Ativo', offLabel = 'Inativo' }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 600, color: on ? C.green : C.faint }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 600, color: on ? C.green : C.faint, whiteSpace: 'nowrap' }}>
       <span style={{ width: 8, height: 8, borderRadius: '50%', background: on ? C.green : C.faint, boxShadow: on ? `0 0 8px ${C.green}` : 'none' }} />
-      {on ? 'Ativo' : 'Inativo'}
+      {on ? onLabel : offLabel}
     </span>
   );
 }
 
 function Section({ title, children }) {
   return (
-    <div style={glass({ padding: 26, marginBottom: 20 })}>
+    <div style={glass({ padding: 24, marginBottom: 20 })}>
       <h2 style={{ fontSize: 17, fontWeight: 700, fontFamily: FONT_DISPLAY, margin: '0 0 4px' }}>{title}</h2>
       {children}
-    </div>
-  );
-}
-
-export default function Settings({ onNewVideo, onLogout }) {
-  const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState(null);
-  const [pexelsKey, setPexelsKey] = useState('');
-  const [anthropicKey, setAnthropicKey] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [savedMsg, setSavedMsg] = useState('');
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await getSettings();
-        setPexelsKey(data.settings.pexelsKey || '');
-        setAnthropicKey(data.settings.anthropicKey || '');
-        setStatus(data.status);
-      } catch (e) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const keyValid = /^[A-Za-z0-9]{20,80}$/.test(pexelsKey.trim());
-  const anthropicValid = /^sk-ant-[A-Za-z0-9_-]{20,240}$/.test(anthropicKey.trim());
-  const canSave = (pexelsKey.trim() === '' || keyValid) && (anthropicKey.trim() === '' || anthropicValid);
-
-  async function save() {
-    setSaving(true);
-    setError('');
-    setSavedMsg('');
-    try {
-      const data = await saveSettings({ pexelsKey: pexelsKey.trim(), anthropicKey: anthropicKey.trim() });
-      setStatus(data.status);
-      setPexelsKey(data.settings.pexelsKey || '');
-      setAnthropicKey(data.settings.anthropicKey || '');
-      setSavedMsg('Salvo!');
-      setTimeout(() => setSavedMsg(''), 2500);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', padding: 80, color: C.muted }}>
-        <Spinner size={24} color={C.orange} />
-        <div style={{ marginTop: 14 }}>Carregando configurações…</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rf-page" style={{ maxWidth: 720, margin: '0 auto', padding: '44px 24px 80px' }}>
-      <h1 style={{ fontSize: 'clamp(26px,5vw,38px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 6px' }}>
-        <span style={gradientText}>Configurações</span>
-      </h1>
-      <p style={{ color: C.muted, fontSize: 15, margin: '0 0 30px' }}>Sua conta, integrações e chaves de API.</p>
-
-      <Section title="Conta">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>{user?.name || 'Você'}</div>
-            <div style={{ fontSize: 13, color: C.faint, overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</div>
-          </div>
-          {onLogout && (
-            <button onClick={onLogout} style={{ minHeight: 44, padding: '0 18px', background: 'transparent', border: `1px solid ${C.borderStrong}`, color: C.text, borderRadius: 11, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-              Sair da conta
-            </button>
-          )}
-        </div>
-      </Section>
-
-      {/* Pexels */}
-      <Section title="B-roll · Pexels">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-          <StatusDot on={status?.broll} />
-          {status?.brollFromServer && <span style={{ fontSize: 12, color: C.faint }}>(chave também configurada no servidor)</span>}
-        </div>
-        <p style={{ color: C.muted, fontSize: 14, lineHeight: 1.55, margin: '0 0 16px' }}>
-          O B-roll insere vídeos de apoio do Pexels nos momentos certos da fala. Crie uma
-          chave gratuita em{' '}
-          <a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer" style={{ color: C.orangeSoft, fontWeight: 600 }}>
-            pexels.com/api
-          </a>{' '}
-          e cole abaixo.
-        </p>
-        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.muted, marginBottom: 7 }}>Chave da API do Pexels</label>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <input
-            type="password"
-            value={pexelsKey}
-            onChange={(e) => setPexelsKey(e.target.value.trim())}
-            placeholder="Cole a chave aqui"
-            spellCheck={false}
-            autoComplete="off"
-            style={{ flex: 1, minWidth: 220, boxSizing: 'border-box', background: '#13131B', color: C.text, border: `1px solid ${pexelsKey && !keyValid ? `${C.red}66` : keyValid ? '#2ED47A66' : C.border}`, borderRadius: 11, padding: '12px 14px', fontSize: 14, fontFamily: 'inherit', outline: 'none' }}
-          />
-          <button
-            onClick={save}
-            disabled={saving || !canSave}
-            style={{ background: GRAD, border: 'none', color: '#fff', borderRadius: 11, padding: '0 22px', fontSize: 14, fontWeight: 700, cursor: saving || !canSave ? 'not-allowed' : 'pointer', opacity: canSave ? 1 : 0.5, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8, minHeight: 44 }}
-          >
-            {saving && <Spinner size={14} color="#fff" />}
-            Salvar
-          </button>
-        </div>
-        {pexelsKey && !keyValid && (
-          <p style={{ color: '#FCA5B4', fontSize: 12.5, marginTop: 8 }}>A chave parece inválida (esperado: 20–80 caracteres alfanuméricos).</p>
-        )}
-        {savedMsg && (
-          <p style={{ color: C.green, fontSize: 13, marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontWeight: 800 }}>✓</span> {savedMsg}
-          </p>
-        )}
-        {error && <p style={{ color: '#FCA5B4', fontSize: 13, marginTop: 10 }}>{error}</p>}
-      </Section>
-
-      {/* Análise por IA · Anthropic */}
-      <Section title="Análise por IA · Anthropic (Claude)">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-          <StatusDot on={status?.ai} />
-          {status?.aiFromServer && <span style={{ fontSize: 12, color: C.faint }}>(chave também configurada no servidor)</span>}
-        </div>
-        <p style={{ color: C.muted, fontSize: 14, lineHeight: 1.55, margin: '0 0 16px' }}>
-          Com a IA da Anthropic, o Riseframe entende o conteúdo da fala e escolhe
-          momentos e buscas de <strong>B-roll muito mais relevantes</strong> (em vez da
-          heurística por palavras). Crie uma chave em{' '}
-          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" style={{ color: C.orangeSoft, fontWeight: 600 }}>
-            console.anthropic.com
-          </a>
-          . Usada apenas quando o B-roll está ligado.
-        </p>
-        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.muted, marginBottom: 7 }}>Chave da API da Anthropic</label>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <input
-            type="password"
-            value={anthropicKey}
-            onChange={(e) => setAnthropicKey(e.target.value.trim())}
-            placeholder="sk-ant-..."
-            spellCheck={false}
-            autoComplete="off"
-            style={{ flex: 1, minWidth: 220, boxSizing: 'border-box', background: '#13131B', color: C.text, border: `1px solid ${anthropicKey && !anthropicValid ? `${C.red}66` : anthropicValid ? '#2ED47A66' : C.border}`, borderRadius: 11, padding: '12px 14px', fontSize: 14, fontFamily: 'inherit', outline: 'none' }}
-          />
-          <button
-            onClick={save}
-            disabled={saving || !canSave}
-            style={{ background: GRAD, border: 'none', color: '#fff', borderRadius: 11, padding: '0 22px', fontSize: 14, fontWeight: 700, cursor: saving || !canSave ? 'not-allowed' : 'pointer', opacity: canSave ? 1 : 0.5, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8, minHeight: 44 }}
-          >
-            {saving && <Spinner size={14} color="#fff" />}
-            Salvar
-          </button>
-        </div>
-        {anthropicKey && !anthropicValid && (
-          <p style={{ color: '#FCA5B4', fontSize: 12.5, marginTop: 8 }}>A chave deve começar com “sk-ant-”.</p>
-        )}
-      </Section>
-
-      {/* Status do sistema */}
-      <Section title="Status do sistema">
-        <div style={{ display: 'grid', gap: 12 }}>
-          <Row label="Transcrição (Whisper local)" value={<StatusDot on={status?.whisperReady} />} hint={`Provedor: ${status?.transcribeProvider || '—'}`} />
-          <Row label="B-roll (Pexels)" value={<StatusDot on={status?.broll} />} />
-          <Row label="Análise por IA (Anthropic)" value={<StatusDot on={status?.ai} />} />
-        </div>
-      </Section>
-
-      <div style={{ textAlign: 'center', marginTop: 24 }}>
-        <button
-          onClick={onNewVideo}
-          style={{ background: 'transparent', border: `1px solid ${C.borderStrong}`, color: C.text, borderRadius: 12, padding: '12px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-        >
-          Ir para o editor →
-        </button>
-      </div>
     </div>
   );
 }
@@ -208,11 +26,85 @@ export default function Settings({ onNewVideo, onLogout }) {
 function Row({ label, value, hint }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 0', borderBottom: `1px solid ${C.border}` }}>
-      <div>
+      <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 14, fontWeight: 600 }}>{label}</div>
         {hint && <div style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>{hint}</div>}
       </div>
       {value}
+    </div>
+  );
+}
+
+const PROVIDERS = { 'whisper-local': 'Whisper local', deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI', mock: 'Exemplo (mock)' };
+const btn = { minHeight: 44, padding: '0 18px', background: 'transparent', border: `1px solid ${C.borderStrong}`, color: C.text, borderRadius: 11, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' };
+
+export default function Settings({ onNewVideo, onLogout }) {
+  const { user, billing } = useAuth();
+  // Status do servidor: só para o dono (admin) ou enquanto os pagamentos não estão ligados.
+  const showServer = Boolean(billing && (billing.admin || !billing.enabled));
+  const [status, setStatus] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!showServer) return;
+    getSettings()
+      .then((d) => setStatus(d.status))
+      .catch((e) => setError(e.message));
+  }, [showServer]);
+
+  const planLabel = !billing ? '' : billing.unlimited ? 'Uso ilimitado' : billing.plan ? `Plano ${billing.plan.name}` : 'Sem plano';
+
+  return (
+    <div className="rf-page" style={{ maxWidth: 720, margin: '0 auto', padding: '44px 24px 80px' }}>
+      <h1 style={{ fontSize: 'clamp(26px,5vw,38px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 24px' }}>
+        <span style={gradientText}>Conta</span>
+      </h1>
+
+      <Section title="Seus dados">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>{user?.name || 'Você'}</div>
+            <div style={{ fontSize: 13, color: C.faint, overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</div>
+          </div>
+          {onLogout && <button onClick={onLogout} style={btn}>Sair da conta</button>}
+        </div>
+      </Section>
+
+      {billing && (
+        <Section title="Plano">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>{planLabel}</div>
+              {!billing.unlimited && <div style={{ fontSize: 13, color: C.faint }}>{billing.credits.toLocaleString('pt-BR')} créditos disponíveis</div>}
+            </div>
+            <button onClick={openPlans} style={btn}>Ver planos</button>
+          </div>
+        </Section>
+      )}
+
+      {showServer && (
+        <Section title="Status do servidor">
+          <p style={{ color: C.muted, fontSize: 13.5, lineHeight: 1.55, margin: '6px 0 6px' }}>
+            Só você vê isto. As chaves ficam nas variáveis de ambiente do servidor
+            (<code>PEXELS_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>) e valem para todos os usuários — ninguém precisa colar chave.
+          </p>
+          {error && <p style={{ color: '#FCA5B4', fontSize: 13 }}>{error}</p>}
+          {!status && !error && <div style={{ padding: 16, textAlign: 'center' }}><Spinner size={18} color={C.orange} /></div>}
+          {status && (
+            <div style={{ display: 'grid' }}>
+              <Row label="Transcrição (legendas)" hint={PROVIDERS[status.transcribeProvider] || status.transcribeProvider} value={<StatusDot on={status.transcribeReady} />} />
+              <Row label="B-roll · Openverse" hint="Imagens Creative Commons, sem chave" value={<StatusDot on={status.openverse} />} />
+              <Row label="B-roll · Pexels" hint="PEXELS_API_KEY — vídeos e fotos livres" value={<StatusDot on={status.brollFromServer} offLabel="Sem chave" />} />
+              <Row label="IA · Anthropic (Claude)" hint="ANTHROPIC_API_KEY — B-roll mais relevante e limpeza de fala" value={<StatusDot on={status.aiFromServer} offLabel="Sem chave" />} />
+              <Row label="Pagamentos · AbacatePay" hint="ABACATE_PAY_API_KEY — sem ela, uso liberado para todos" value={<StatusDot on={billing.enabled} offLabel="Desligado" />} />
+            </div>
+          )}
+        </Section>
+      )}
+
+      <div style={{ textAlign: 'center', marginTop: 24 }}>
+        <button onClick={onNewVideo} style={{ ...btn, padding: '12px 24px' }}>Ir para o editor →</button>
+      </div>
     </div>
   );
 }
