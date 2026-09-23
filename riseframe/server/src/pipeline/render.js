@@ -49,7 +49,7 @@ export async function finalRender(input, outputsDir, jobId, meta, options, onPro
 
   if (options.colorVf) vf = `${options.colorVf},${vf}`;
   const args = ['-i', input, '-vf', vf, ...x264Final()];
-  if (meta.hasAudio) args.push('-c:a', 'aac', '-b:a', '160k');
+  if (meta.hasAudio) args.push('-c:a', 'aac', '-b:a', '192k');
   args.push('-movflags', '+faststart', '-y', output);
 
   await runFfmpeg(args, { label: 'render', totalDuration: meta.duration, onProgress });

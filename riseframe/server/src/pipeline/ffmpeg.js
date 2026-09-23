@@ -18,9 +18,26 @@ export function x264Fast() {
   return ['-c:v', 'libx264', '-preset', config.encode.preset, '-crf', String(config.encode.crf)];
 }
 
+/**
+ * Filtro que converte vídeo HDR (HLG do iPhone ou PQ/HDR10) para cor normal BT.709 8-bit,
+ * como o celular/navegador mostram. null se o vídeo já é SDR.
+ */
+export function sdrVf(meta) {
+  if (!meta?.hdr) return null;
+  const tin = meta.colorTransfer;
+  const pin = meta.colorPrimaries || 'bt2020';
+  const min = meta.colorSpace === 'bt2020c' ? 'bt2020c' : 'bt2020nc';
+  if (tin === 'arib-std-b67') {
+    // HLG é compatível com SDR: a conversão direta de transferência/primárias fica fiel.
+    return `zscale=tin=arib-std-b67:min=${min}:pin=${pin}:t=bt709:m=bt709:p=bt709:r=tv,format=yuv420p`;
+  }
+  // PQ (HDR10): precisa de tone mapping.
+  return `zscale=tin=smpte2084:min=${min}:pin=${pin}:t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=mobius:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p`;
+}
+
 /** Codificação do render final (arquivo que o usuário baixa). */
 export function x264Final() {
-  return ['-c:v', 'libx264', '-preset', config.encode.finalPreset, '-crf', String(config.encode.finalCrf)];
+  return ['-c:v', 'libx264', '-preset', config.encode.finalPreset, '-crf', String(config.encode.finalCrf), '-profile:v', 'high', '-pix_fmt', 'yuv420p'];
 }
 
 /** Converte "HH:MM:SS.ms" (saída do ffmpeg) em segundos. */
@@ -111,12 +128,27 @@ export async function probeSummary(inputPath) {
     const [n, d] = v.avg_frame_rate.split('/').map(Number);
     if (d) fps = n / d;
   }
+  // Rotação (vídeo de celular gravado em pé costuma vir "deitado" + metadado de rotação).
+  // O FFmpeg já gira ao decodificar, então as dimensões REAIS são as trocadas.
+  const rotTag = Number(v?.tags?.rotate);
+  const rotSide = (v?.side_data_list || []).map((d) => Number(d.rotation)).find((n) => Number.isFinite(n));
+  const rotation = Number.isFinite(rotSide) ? rotSide : Number.isFinite(rotTag) ? rotTag : 0;
+  const swap = Math.abs(rotation) % 180 === 90;
+  const transfer = v?.color_transfer || '';
   return {
     duration,
     hasAudio: Boolean(a),
     hasVideo: Boolean(v),
-    width: v?.width || 0,
-    height: v?.height || 0,
+    width: (swap ? v?.height : v?.width) || 0,
+    height: (swap ? v?.width : v?.height) || 0,
+    rotation,
+    pixFmt: v?.pix_fmt || '',
+    colorTransfer: transfer,
+    colorPrimaries: v?.color_primaries || '',
+    colorSpace: v?.color_space || '',
+    // HDR: HLG (iPhone) ou PQ/HDR10. Precisa converter para cor normal (SDR BT.709),
+    // senão sai lavado/escuro no vídeo final.
+    hdr: transfer === 'arib-std-b67' || transfer === 'smpte2084',
     fps: Math.round(fps * 1000) / 1000,
     videoCodec: v?.codec_name || null,
     audioCodec: a?.codec_name || null,

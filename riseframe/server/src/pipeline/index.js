@@ -1,5 +1,6 @@
+import path from 'node:path';
 import { config } from '../config.js';
-import { probeSummary } from './ffmpeg.js';
+import { probeSummary, runFfmpeg, sdrVf, x264Fast } from './ffmpeg.js';
 import { transcribe } from './transcribe/index.js';
 import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
@@ -134,6 +135,24 @@ export async function runPipeline(job, onUpdate = () => {}) {
   let meta = await probeSummary(input);
   report.input = meta;
   if (!meta.duration || meta.duration < 0.3) throw new Error('vídeo inválido ou muito curto');
+
+  // 1a. Vídeo HDR (iPhone grava em HLG 10-bit): converte UMA vez para cor normal
+  // (BT.709) em alta qualidade. Sem isso o vídeo final sai com a cor lavada/diferente
+  // do que se vê no celular e na prévia.
+  const toSdr = mode === 'transcribe' ? null : sdrVf(meta);
+  if (toSdr) {
+    const out = path.join(work, 'sdr.mp4');
+    emit({ stage: 'probe', stageLabel: 'Convertendo cor HDR do celular' });
+    const args = ['-i', input, '-vf', toSdr, ...x264Fast()];
+    if (meta.hasAudio) args.push('-c:a', 'copy');
+    args.push('-movflags', '+faststart', '-y', out);
+    await runFfmpeg(args, { label: 'hdr→sdr', totalDuration: meta.duration });
+    input = out;
+    trackInput = input;
+    meta = { ...meta, ...(await probeSummary(input)) };
+    report.hdrConverted = true;
+    log.ok(`HDR (${report.input.colorTransfer}) convertido para SDR BT.709`);
+  }
 
   // 1b. Correção de voz (áudio): denoise + normalização de volume. Antes da
   // transcrição — a ASR também se beneficia do áudio limpo. Fonte limpa p/ tracker.
