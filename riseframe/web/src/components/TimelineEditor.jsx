@@ -93,7 +93,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [framingMode, setFramingMode] = useState('manual');
   const [focus, setFocus] = useState({ x: 0.5, y: 0.4 });
   const [zoom, setZoom] = useState(1);
-  const [personSide, setPersonSide] = useState('top'); // só p/ a prévia da composição
+  // Lado da pessoa na tela dividida: segue o layout do B-roll (apoio em cima → você embaixo).
+  const [personSide, setPersonSide] = useState(options?.brollLayout === 'top' ? 'bottom' : 'top');
+  const motionWrapRef = useRef(null); // zoom dos momentos-chave na prévia 9:16
   const [media, setMedia] = useState([]); // minhas mídias na timeline (imagens/vídeos/músicas)
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaErr, setMediaErr] = useState('');
@@ -230,6 +232,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         if (v.style.transform !== tf) v.style.transform = tf;
         v.style.transformOrigin = `${m.ox}% ${m.oy}%`;
         v.style.transition = L.fx.videoMotion === 'dynamic' ? 'transform .12s ease-out' : 'none';
+        // Prévia 9:16 no mesmo instante do player (mesmo quadro, mesmo zoom).
+        const pv = previewVideoRef.current;
+        if (pv) {
+          if (Math.abs(pv.currentTime - t) > (v.paused ? 0.04 : 0.3)) { try { pv.currentTime = t; } catch { /* ainda carregando */ } }
+          if (v.paused && !pv.paused) pv.pause();
+          else if (!v.paused && pv.paused) pv.play().catch(() => {});
+        }
+        const mw = motionWrapRef.current;
+        if (mw) {
+          if (mw.style.transform !== tf) mw.style.transform = tf;
+          mw.style.transformOrigin = `${m.ox}% ${m.oy}%`;
+          mw.style.transition = v.style.transition;
+        }
         const vol = Math.max(0, Math.min(1, volumeAt(t, L.audio)));
         if (Math.abs(v.volume - vol) > 0.01) v.volume = vol;
         // whoosh nos mesmos pontos do render (entradas do zoom dinâmico e do B-roll)
@@ -695,6 +710,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     filter: videoFilter,
   });
 
+  // Prévia 9:16 = o que sai no vídeo naquele instante: com B-roll ativo, tela dividida
+  // (ou B-roll em tela cheia); sem B-roll, o VÍDEO INTEIRO com o enquadramento.
+  const brollLayout = ['top', 'bottom'].includes(options?.brollLayout) ? 'split' : 'fullscreen';
+  const previewMode = brollMoment && thumbOf(brollMoment) ? (brollLayout === 'split' ? 'split' : 'broll') : 'video';
   const personHalf = (
     <div
       key="person"
@@ -704,15 +723,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         const r = previewBoxRef.current.getBoundingClientRect();
         panRef.current = { startX: e.clientX, startY: e.clientY, fx: focus.x, fy: focus.y, w: r.width, h: r.height, zoom };
       }}
-      style={{ position: 'relative', height: '50%', overflow: 'hidden', cursor: 'grab', touchAction: 'none', boxShadow: `inset 0 0 0 2px ${C.orange}` }}
+      style={{ position: 'relative', height: previewMode === 'split' ? '50%' : previewMode === 'video' ? '100%' : '0%', display: previewMode === 'broll' ? 'none' : 'block', overflow: 'hidden', cursor: 'grab', touchAction: 'none', boxShadow: `inset 0 0 0 2px ${C.orange}` }}
     >
-      <video
-        ref={previewVideoRef}
-        src={sourceUrl(sourceId)}
-        muted loop autoPlay playsInline
-        style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, transform: `scale(${zoom})`, transformOrigin: `${focus.x * 100}% ${focus.y * 100}%`, filter: videoFilter }}
-      />
-      <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>você (arraste/role)</div>
+      <div ref={motionWrapRef} style={{ width: '100%', height: '100%' }}>
+        <video
+          ref={previewVideoRef}
+          src={sourceUrl(sourceId)}
+          muted playsInline preload="auto"
+          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, transform: `scale(${zoom})`, transformOrigin: `${focus.x * 100}% ${focus.y * 100}%`, filter: videoFilter }}
+        />
+      </div>
+      <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>
+        {previewMode === 'video' ? 'vídeo sem B-roll · arraste/role' : 'você (arraste/role)'}
+      </div>
     </div>
   );
   const brollHalf = (() => {
@@ -737,7 +760,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       window.addEventListener('pointerup', up);
     };
     return (
-      <div key="broll" onPointerDown={onDown} style={{ height: '50%', position: 'relative', overflow: 'hidden', cursor: ok ? 'grab' : 'default', display: 'grid', placeItems: 'center', background: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.05), rgba(255,255,255,0.05) 8px, rgba(255,255,255,0.02) 8px, rgba(255,255,255,0.02) 16px)', color: C.faint }}>
+      <div key="broll" onPointerDown={onDown} style={{ height: previewMode === 'split' ? '50%' : previewMode === 'broll' ? '100%' : '0%', display: previewMode === 'video' ? 'none' : 'grid', position: 'relative', overflow: 'hidden', cursor: ok ? 'grab' : 'default', placeItems: 'center', background: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.05), rgba(255,255,255,0.05) 8px, rgba(255,255,255,0.02) 8px, rgba(255,255,255,0.02) 16px)', color: C.faint }}>
         {ok ? (
           <>
             <img src={th} alt="" draggable={false} onError={() => setBadThumbs((bt) => new Set(bt).add(th))} style={{ ...brollImgStyle(brollShown), position: 'absolute', inset: 0 }} />
@@ -817,9 +840,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </div>
             {framingMode === 'manual' && (
               <div>
-                <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', textAlign: 'center', marginBottom: 6 }}>Prévia 9:16</div>
+                <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', textAlign: 'center', marginBottom: 6 }}>Prévia 9:16 · {previewMode === 'split' ? 'tela dividida' : previewMode === 'broll' ? 'B-roll' : 'vídeo'}</div>
                 {composedPreview}
-                <button onClick={() => setPersonSide((s) => (s === 'top' ? 'bottom' : 'top'))} style={{ ...zoomBtn, width: '100%', padding: '6px 0', marginTop: 8, fontSize: 11, fontWeight: 600 }}>Você: {personSide === 'top' ? 'em cima' : 'embaixo'}</button>
+                {previewMode === 'split' && <button onClick={() => setPersonSide((s) => (s === 'top' ? 'bottom' : 'top'))} style={{ ...zoomBtn, width: '100%', padding: '6px 0', marginTop: 8, fontSize: 11, fontWeight: 600 }}>Você: {personSide === 'top' ? 'em cima' : 'embaixo'}</button>}
               </div>
             )}
           </div>
@@ -860,7 +883,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <button onClick={() => setZoom((z) => clampZoom(z + 0.1))} style={zoomBtn} title="Aumentar">+</button>
                     <span style={{ width: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
                   </label>
-                  <div style={{ fontSize: 11, color: C.faint }}>Arraste no ponto do rosto (vídeo) e veja o resultado na <b>Prévia 9:16</b> ao lado. Sem B-roll, o mesmo ajuste (zoom) reenquadra o vídeo inteiro.</div>
+                  <div style={{ fontSize: 11, color: C.faint }}>Arraste no ponto do rosto (vídeo) ou direto na <b>Prévia 9:16</b>. A prévia mostra o que sai em cada ponto: <b>tela dividida</b> quando há B-roll naquele momento e o <b>vídeo inteiro</b> (com este zoom e enquadramento) quando não há.</div>
                 </div>
               )}
             </div>
