@@ -46,10 +46,18 @@ IMAGE="$(oci compute image list -c "$COMPARTMENT" \
   --query 'data[0].id' --raw-output 2>/dev/null)"
 [ -n "${IMAGE:-}" ] || die "não achei a imagem do Ubuntu 22.04 para ARM."
 
-SUBNET="$(oci network subnet list -c "$COMPARTMENT" --query 'data[0].id' --raw-output 2>/dev/null)"
+# Sub-rede PÚBLICA (aceita IP público). Com várias redes na conta, pega a primeira
+# pública; para forçar uma específica: SUBNET=ocid1.subnet... antes do bash.
 if [ -z "${SUBNET:-}" ]; then
+  SUBNET="$(oci network subnet list -c "$COMPARTMENT" --all \
+    --query 'data[?"prohibit-public-ip-on-vnic"==`false`].id | [0]' --raw-output 2>/dev/null)"
+fi
+if [ -z "${SUBNET:-}" ] || [ "$SUBNET" = "null" ]; then
   die "nenhuma sub-rede/VCN encontrada. Abra Menu → Networking → Virtual Cloud Networks e crie uma VCN (botão 'Start VCN Wizard' → 'VCN with Internet Connectivity'). Depois rode este comando de novo."
 fi
+
+SUBNET_NAME="$(oci network subnet get --subnet-id "$SUBNET" --query 'data."display-name"' --raw-output 2>/dev/null)"
+echo "     Sub-rede: ${SUBNET_NAME:-$SUBNET}  (libere as portas 80/443 na Security List desta rede)"
 
 say "3/4 · Preparando a chave SSH (como você vai entrar na máquina)…"
 KEY="$HOME/.ssh/${NAME}"
