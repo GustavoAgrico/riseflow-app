@@ -197,6 +197,18 @@ export function faceCropGeometry(inW, inH, regionW, regionH, focus = {}, zoom = 
  */
 export async function brollCandidates(query, opts = {}) {
   const { source, apiKey, google, orientation = 'portrait', targetH = 1280, limit = 6, unrestricted = false } = opts;
+  // 'mix': junta VÍDEOS (Pexels), Google Imagens e Creative Commons (Openverse) numa lista
+  // só, intercalada (vídeo primeiro), para o usuário escolher entre todos.
+  if (source === 'mix') {
+    const srcs = [apiKey ? 'pexels' : null, google?.key && google?.cx ? 'google' : null, 'openverse'].filter(Boolean);
+    const per = Math.max(3, Math.ceil((limit + 3) / srcs.length));
+    const lists = await Promise.all(srcs.map((src) => brollCandidates(query, { ...opts, source: src, limit: per })));
+    const mixed = [];
+    for (let i = 0; mixed.length < limit + 3 && lists.some((l) => l[i]); i++) {
+      for (const l of lists) if (l[i]) mixed.push(l[i]);
+    }
+    return mixed.slice(0, Math.max(limit, 9));
+  }
   const out = [];
   try {
     if (source === 'openverse') {
@@ -208,7 +220,7 @@ export async function brollCandidates(query, opts = {}) {
       if (res.ok) {
         const d = await res.json();
         for (const it of d.results || []) {
-          if (it.url && /^https?:\/\//i.test(it.url)) out.push({ id: `o${it.id || it.url}`, link: it.url, thumb: it.thumbnail || it.url, kind: 'image' });
+          if (it.url && /^https?:\/\//i.test(it.url)) out.push({ id: `o${it.id || it.url}`, link: it.url, thumb: it.thumbnail || it.url, kind: 'image', source: 'openverse' });
         }
       }
     } else if (source === 'google' && google?.key && google?.cx) {
@@ -219,7 +231,7 @@ export async function brollCandidates(query, opts = {}) {
         const d = await res.json();
         for (const it of d.items || []) {
           const link = it.link;
-          if (link && /\.(jpe?g|png|webp)(\?|$)/i.test(link)) out.push({ id: `g${it.image?.thumbnailLink || link}`, link, thumb: it.image?.thumbnailLink || link, kind: 'image' });
+          if (link && /\.(jpe?g|png|webp)(\?|$)/i.test(link)) out.push({ id: `g${it.image?.thumbnailLink || link}`, link, thumb: it.image?.thumbnailLink || link, kind: 'image', source: 'google' });
         }
       }
     } else if (apiKey) {
@@ -228,7 +240,7 @@ export async function brollCandidates(query, opts = {}) {
         const d = await rv.json();
         for (const v of d.videos || []) {
           const f = pickBestVideoFile(v.video_files, targetH);
-          if (f) out.push({ id: String(v.id), link: f.link, thumb: v.image, kind: 'video' });
+          if (f) out.push({ id: String(v.id), link: f.link, thumb: v.image, kind: 'video', source: 'pexels' });
         }
       }
       const rp = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}`, { headers: { Authorization: apiKey } });
@@ -236,7 +248,7 @@ export async function brollCandidates(query, opts = {}) {
         const d = await rp.json();
         for (const p of d.photos || []) {
           const link = pickBestPhotoFile(p.src);
-          if (link) out.push({ id: `p${p.id}`, link, thumb: p.src?.medium || link, kind: 'image' });
+          if (link) out.push({ id: `p${p.id}`, link, thumb: p.src?.medium || link, kind: 'image', source: 'pexels' });
         }
       }
     }
@@ -273,10 +285,12 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   // Fonte escolhida: pexels (padrão histórico) | google (Custom Search, exige chave) |
   // openverse (Creative Commons, grátis e SEM chave). Google sem credenciais cai para
   // Pexels; Openverse funciona sempre.
-  const source = options.imageSource;
+  // 'mix' (vídeos + Google + CC) no modo automático: usa a melhor fonte disponível.
+  const source = options.imageSource === 'mix' ? (apiKey ? 'pexels' : googleReady ? 'google' : 'openverse') : options.imageSource;
   const useGoogle = source === 'google' && googleReady;
   const useOpenverse = source === 'openverse';
-  if (!apiKey && !useGoogle && !useOpenverse) {
+  const planned = Array.isArray(options.brollPlan) && options.brollPlan.length > 0;
+  if (!planned && !apiKey && !useGoogle && !useOpenverse) {
     log.info('sem fonte de imagens (Pexels/Google/Openverse); pulando B-roll');
     return { output: input, inserted: 0 };
   }

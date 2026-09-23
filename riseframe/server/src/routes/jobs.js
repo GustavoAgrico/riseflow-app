@@ -305,7 +305,7 @@ function parseOptions(raw) {
     personFocusY: Number.isFinite(Number(o.personFocusY)) ? clampNum(o.personFocusY, 0, 1, undefined) : undefined,
     personZoom: clampNum(o.personZoom, 1, 2.5, 1),
     // Fonte das imagens de B-roll: openverse (CC, sem chave) | pexels (livre) | google (contextual, ver copyright).
-    imageSource: ['openverse', 'pexels', 'google'].includes(o.imageSource) ? o.imageSource : 'openverse',
+    imageSource: ['openverse', 'pexels', 'google', 'mix'].includes(o.imageSource) ? o.imageSource : 'openverse',
     niche: ['auto', 'leadership', 'mentor', 'medical', 'fitness', 'finance', 'business', 'marketing', 'education', 'tech', 'mindset', 'law', 'realestate'].includes(o.niche) ? o.niche : 'auto',
     // Chave do Pexels vinda da interface (opcional). Sanitiza: só o formato esperado
     // (alfanumérico, 20–80 chars) é aceito; qualquer outra coisa é descartada.
@@ -390,13 +390,15 @@ jobsRouter.post('/broll/plan', requireAuth, async (req, res) => {
     const orientation = (meta.height || 1920) >= (meta.width || 1080) ? 'portrait' : 'landscape';
     const apiKey = options.pexelsKey || config.broll.pexelsKey;
     const google = { key: config.broll.googleImagesKey, cx: config.broll.googleImagesCx, unrestricted: config.broll.googleImagesUnrestricted };
-    const src = options.imageSource === 'google' && google.key && google.cx ? 'google' : options.imageSource === 'openverse' ? 'openverse' : 'pexels';
+    const src = options.imageSource === 'mix' ? 'mix'
+      : options.imageSource === 'google' && google.key && google.cx ? 'google'
+        : options.imageSource === 'openverse' || !apiKey ? 'openverse' : 'pexels';
 
     const out = [];
     for (const m of moments) {
       const candidates = await brollCandidates(m.query, {
         source: src, apiKey, google, orientation,
-        targetH: Math.round((meta.height || 1920) / (src === 'pexels' ? 1 : 2)),
+        targetH: Math.round((meta.height || 1920) / (src === 'pexels' || src === 'mix' ? 1 : 2)),
         limit: 6, unrestricted: google.unrestricted,
       });
       out.push({ start: m.start, end: m.end, term: m.term || m.query, query: m.query, candidates });

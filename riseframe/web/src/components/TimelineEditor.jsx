@@ -24,6 +24,7 @@ const PPS_MAX = 240;
  */
 export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, onSettings, busy }) {
   const { billing } = useAuth();
+  const caps = catalog?.capabilities || {};
   const cap0 = options || {};
   // Ajustes de legenda editáveis aqui na timeline (posição, fonte, estilo, etc.).
   const [cap, setCap] = useState({
@@ -96,6 +97,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Lado da pessoa na tela dividida: segue o layout do B-roll (apoio em cima → você embaixo).
   // Layout do B-roll (igual à escolha do início, editável aqui): tela cheia ou tela
   // dividida com o B-roll em cima (você embaixo) ou embaixo (você em cima).
+  // Fonte das imagens/vídeos do B-roll (igual à escolha do início, editável aqui).
+  const [imageSource, setImageSource] = useState(['mix', 'openverse', 'pexels', 'google'].includes(options?.imageSource) ? options.imageSource : 'mix');
   const [brollLayoutSel, setBrollLayoutSel] = useState(['fullscreen', 'top', 'bottom'].includes(options?.brollLayout) ? options.brollLayout : 'fullscreen');
   const personSide = brollLayoutSel === 'top' ? 'bottom' : 'top';
   const setPersonSide = (fn) => {
@@ -582,11 +585,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     };
   }
 
-  async function reviewBroll() {
+  async function reviewBroll(srcOverride) {
     setBrollErr('');
     setBrollBusy(true);
     try {
-      const plan = await fetchBrollPlan(sourceId, currentTranscript(), { ...options, ...cap, broll: true });
+      const src = typeof srcOverride === 'string' ? srcOverride : imageSource;
+      const plan = await fetchBrollPlan(sourceId, currentTranscript(), { ...options, ...cap, broll: true, imageSource: src });
       const moments = (plan.moments || []).map((m, i) => ({
         key: `b${i}_${Date.now()}`, zoom: 1, fx: 0.5, fy: 0.5,
         start: m.start, end: m.end, term: m.term, query: m.query,
@@ -693,6 +697,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         ...(brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}),
         // Layout do B-roll escolhido aqui (tela cheia ou tela dividida).
         brollLayout: brollLayoutSel,
+        imageSource,
       },
     );
   }
@@ -929,6 +934,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   );
                 })}
               </div>
+              <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.3, marginBottom: 6 }}>DE ONDE VÊM AS IMAGENS</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                {BROLL_SOURCES.filter((o) => (o.id !== 'pexels' || caps.brollReady) && (o.id !== 'google' || caps.googleImagesReady)).map((o) => (
+                  <button key={o.id} title={o.hint} disabled={brollBusy}
+                    onClick={() => { setImageSource(o.id); if (brollReview) reviewBroll(o.id); }}
+                    style={{ ...framingTab(imageSource === o.id), flex: '1 1 auto' }}>{o.label}</button>
+                ))}
+              </div>
               <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
                 Veja as imagens/vídeos que o sistema escolheu para cada trecho e <b>troque, substitua pela sua mídia ou remova</b> antes de gerar.
                 {billing && !billing.unlimited && <> Cada imagem inserida custa <b>{billing.costs.image} créditos</b>.</>}
@@ -942,7 +955,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               )}
               <input ref={brollUploadRef} type="file" accept="image/*,video/*" onChange={onPickBrollMedia} style={{ display: 'none' }} />
               {!brollReview && (
-                <button onClick={reviewBroll} disabled={brollBusy} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: brollBusy ? 0.6 : 1, cursor: brollBusy ? 'not-allowed' : 'pointer' }}>
+                <button onClick={() => reviewBroll()} disabled={brollBusy} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: brollBusy ? 0.6 : 1, cursor: brollBusy ? 'not-allowed' : 'pointer' }}>
                   <Icon name="image" size={13} strokeWidth={2} /> {brollBusy ? 'Analisando o vídeo…' : 'Revisar / trocar imagens'}
                 </button>
               )}
@@ -951,7 +964,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ fontSize: 11, color: C.faint }}>{brollReview.moments.length} momento(s) · fonte: {brollReview.source}</div>
-                    <button onClick={reviewBroll} disabled={brollBusy} style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 10.5, fontWeight: 600 }} title="Analisar de novo">↻ refazer</button>
+                    <button onClick={() => reviewBroll()} disabled={brollBusy} style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 10.5, fontWeight: 600 }} title="Analisar de novo">↻ refazer</button>
                   </div>
                   {brollReview.moments.map((m, i) => {
                     const n = m.candidates.length;
@@ -975,6 +988,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                               <button onClick={() => cycleCand(i, -1)} disabled={n < 2 || m.removed} style={{ ...zoomBtn, width: 24, height: 22 }} title="Anterior">‹</button>
                               <span style={{ fontSize: 10.5, color: C.muted, minWidth: 34, textAlign: 'center' }}>{m.removed ? '—' : m.myMediaId ? 'minha' : n ? `${m.pick + 1}/${n}` : '0'}</span>
+                              {!m.removed && !m.myMediaId && m.candidates[m.pick] && (
+                                <span style={{ fontSize: 9.5, fontWeight: 700, borderRadius: 5, padding: '1px 5px', color: '#fff', background: m.candidates[m.pick].kind === 'video' ? C.purple : m.candidates[m.pick].source === 'google' ? '#1a73e8' : 'rgba(255,255,255,0.18)' }}>
+                                  {m.candidates[m.pick].kind === 'video' ? '▶ vídeo' : SOURCE_LABEL[m.candidates[m.pick].source] || 'imagem'}
+                                </span>
+                              )}
                               <button onClick={() => cycleCand(i, 1)} disabled={n < 2 || m.removed} style={{ ...zoomBtn, width: 24, height: 22 }} title="Próxima">›</button>
                             </div>
                             <div style={{ display: 'flex', gap: 5 }}>
@@ -1643,6 +1661,14 @@ const BROLL_LAYOUTS = [
   { id: 'top', label: 'Dividido · você embaixo', hint: 'B-roll na metade de cima, você na de baixo' },
   { id: 'bottom', label: 'Dividido · você em cima', hint: 'Você na metade de cima, B-roll na de baixo' },
 ];
+
+const BROLL_SOURCES = [
+  { id: 'mix', label: 'Tudo (vídeos + Google + CC)', hint: 'Mistura vídeos do Pexels, Google Imagens e Creative Commons — escolha entre todos' },
+  { id: 'pexels', label: '▶ Vídeos (Pexels)', hint: 'Vídeos e fotos livres de direitos' },
+  { id: 'google', label: 'Google Imagens', hint: 'Imagens contextuais — atenção a direitos autorais' },
+  { id: 'openverse', label: 'Creative Commons', hint: 'Openverse: imagens de uso livre' },
+];
+const SOURCE_LABEL = { google: 'Google', openverse: 'CC', pexels: 'Pexels' };
 
 const INTENSITIES = [{ id: 'suave', label: 'Suave' }, { id: 'medio', label: 'Médio' }, { id: 'forte', label: 'Forte' }];
 const COLOR_SLIDERS = [

@@ -235,7 +235,7 @@ export default function OptionsPanel({ catalog, options, onChange, disabled }) {
           return (
             <Row
               label="Fonte das imagens"
-              hint="Openverse: imagens Creative Commons (padrão). Pexels: vídeos e fotos livres de direitos. Google: mais opções, porém a maioria tem copyright."
+              hint="Tudo (padrão): mistura vídeos do Pexels, Google Imagens e Creative Commons para você escolher. Pexels: vídeos e fotos livres de direitos. Google: mais opções, porém a maioria tem copyright. Openverse: Creative Commons."
             >
               <Select value={value} options={srcOpts} onChange={(v) => set({ imageSource: v })} />
             </Row>

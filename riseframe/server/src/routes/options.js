@@ -75,7 +75,8 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'bottom', label: 'Base' },
     ],
     imageSources: [
-      { id: 'openverse', label: 'Openverse (Creative Commons, sem chave) ✨' },
+      { id: 'mix', label: 'Tudo: vídeos + Google + Creative Commons ✨' },
+      { id: 'openverse', label: 'Openverse (Creative Commons, sem chave)' },
       { id: 'pexels', label: 'Pexels (vídeos + fotos, livre de direitos)' },
       { id: 'google', label: 'Google Imagens (contextual) ⚠️ copyright' },
     ],
@@ -109,7 +110,7 @@ optionsRouter.get('/options', (_req, res) => {
       niche: 'auto',
       brollLayout: 'fullscreen',
       personCrop: 'center',
-      imageSource: 'openverse', // grátis e sem chave → B-roll funciona sem configurar nada
+      imageSource: 'mix', // vídeos + Google + Creative Commons (o que estiver disponível; CC sempre funciona)
       aspect: 'original',
       reframeTrack: true,
     },
