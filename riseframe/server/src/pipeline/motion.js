@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { runFfmpeg } from './ffmpeg.js';
+import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('motion');
@@ -123,7 +123,7 @@ export async function applyMotion(input, work, meta, options, onProgress, segmen
   if (!vf) return { output: input, motion: 'none' };
 
   const output = path.join(work, 'motion.mp4');
-  const args = ['-i', input, '-vf', vf, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16'];
+  const args = ['-i', input, '-vf', vf, ...x264Fast()];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push('-movflags', '+faststart', '-y', output);
 

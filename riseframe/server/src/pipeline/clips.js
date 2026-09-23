@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { probeSummary } from './ffmpeg.js';
 import { remapTranscript, remuxByKeepSegments } from './timeline.js';
 import { burnCaptions } from './captions.js';
-import { applyColor } from './color.js';
+import { colorFilter } from './color.js';
 import { finalRender } from './render.js';
 import { extractThemes } from './analyze.js';
 import { makeLogger } from '../logger.js';
@@ -165,16 +165,13 @@ export async function generateClips(ctx, onProgress = () => {}) {
     }
     prog(0.5);
 
-    // 4) color grade (auto por padrão)
+    // 4) color grade (auto por padrão) — aplicado dentro do render final
     const colorLook = options.colorLook || 'auto';
-    if (colorLook !== 'none') {
-      const r = await applyColor(input, cwork, cmeta, { ...options, colorLook }, () => {});
-      input = r.output;
-    }
+    const { vf: colorVf } = await colorFilter(input, { ...options, colorLook });
 
-    // 5) reframe + render final → outputs/<jobId>_clipN.mp4
+    // 5) cor + reframe + render final → outputs/<jobId>_clipN.mp4
     const clipId = `${jobId}_clip${i}`;
-    const r = await finalRender(input, outputsDir, clipId, cmeta, { ...options, aspect, trackInput }, () => {});
+    const r = await finalRender(input, outputsDir, clipId, cmeta, { ...options, aspect, trackInput, colorVf }, () => {});
     prog(1);
 
     results.push({

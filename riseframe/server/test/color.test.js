@@ -65,3 +65,17 @@ test('manualAdjustVf: tudo em zero → sem filtro; valores viram eq + colorbalan
   assert.ok(manualAdjustVf({ temperature: -50 }).includes('rs=-0.04:bs=0.04'), 'frio faz o contrário');
   assert.deepEqual(sanitizeColorAdjust({ brightness: 999, contrast: 'x' }), { brightness: 100, contrast: 0, saturation: 0, temperature: 0 });
 });
+
+test('fastColorChain: troca colorbalance/colorchannelmixer (lentos) por uma curves', async () => {
+  const { fastColorChain, LOOKS } = await import('../src/pipeline/color.js');
+  const out = fastColorChain(LOOKS['teal-orange']);
+  assert.ok(!out.includes('colorbalance'), out);
+  assert.ok(out.startsWith('eq=') && out.includes("curves=r='0/0 ") && out.endsWith('unsharp=3:3:0.5'), out);
+  // Cinza médio não muda com colorbalance neutro nos médios; sombras do azul sobem (teal).
+  const b = /:b='([^']+)'/.exec(out)[1].split(' ');
+  assert.equal(b[0], '0/0.063');
+  const wb = fastColorChain('colorchannelmixer=rr=1.1:gg=1:bb=0.9,eq=contrast=1.1');
+  assert.ok(wb.startsWith('curves=') && wb.includes("0.5/0.55") && wb.endsWith('eq=contrast=1.1'), wb);
+  assert.equal(fastColorChain('eq=contrast=1.1'), 'eq=contrast=1.1');
+  assert.equal(fastColorChain('colorchannelmixer=aa=0.5'), 'colorchannelmixer=aa=0.5', 'mistura/alpha fica como está');
+});

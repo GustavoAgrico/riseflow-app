@@ -4,7 +4,7 @@ import { createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline as streamPipeline } from 'node:stream/promises';
 import { config } from '../config.js';
-import { runFfmpeg } from './ffmpeg.js';
+import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { averageSubjectCenter } from './reframe.js';
 import { makeLogger } from '../logger.js';
 
@@ -447,7 +447,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   }
   args.push('-filter_complex_script', scriptPath, '-map', '[outv]');
   if (meta.hasAudio) args.push('-map', '0:a', '-c:a', 'copy');
-  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-movflags', '+faststart', '-y', output);
+  args.push(...x264Fast(), '-movflags', '+faststart', '-y', output);
 
   await runFfmpeg(args, { label: 'broll', totalDuration: meta.duration, onProgress });
   const nImg = clips.filter((c) => c.isImage).length;

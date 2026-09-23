@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { runFfmpeg } from './ffmpeg.js';
+import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('captions');
@@ -347,7 +347,7 @@ export async function burnCaptions(input, work, meta, transcript, style, onProgr
   // premium empacotadas, garantindo a tipografia escolhida em qualquer máquina.
   const fontsRel = path.relative(work, FONTS_DIR).split(path.sep).join('/');
   const vf = `subtitles=${ASS_NAME}:fontsdir=${fontsRel}`;
-  const args = ['-i', input, '-vf', vf, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16'];
+  const args = ['-i', input, '-vf', vf, ...x264Fast()];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push('-movflags', '+faststart', '-y', output);
 

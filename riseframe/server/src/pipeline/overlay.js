@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { runFfmpeg } from './ffmpeg.js';
+import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('usermedia');
@@ -146,7 +146,7 @@ export async function applyUserMedia(input, work, meta, options, onProgress = ()
   args.push('-map', vis.length ? '[vout]' : '0:v');
   if (wantAudioRebuild) args.push('-map', '[aout]', '-c:a', 'aac', '-b:a', '160k');
   else if (meta.hasAudio) args.push('-map', '0:a', '-c:a', 'copy');
-  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-movflags', '+faststart', '-t', dur.toFixed(3), '-y', output);
+  args.push(...x264Fast(), '-movflags', '+faststart', '-t', dur.toFixed(3), '-y', output);
 
   await runFfmpeg(args, { label: 'usermedia', totalDuration: dur, onProgress });
   log.ok(`mídias do usuário aplicadas: ${vis.length} visuais, ${music.length} música(s)`);

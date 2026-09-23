@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { runFfmpeg } from './ffmpeg.js';
+import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { faceCropGeometry } from './broll.js';
 import { makeLogger } from '../logger.js';
 
@@ -25,7 +25,7 @@ export async function applyManualFrame(input, work, meta, options, onProgress) {
   const out = path.join(work, 'frame.mp4');
   const args = ['-i', input, '-vf', `scale=${g.scaledW}:${g.scaledH}:flags=bicubic,crop=${W}:${H}:${g.cropX}:${g.cropY},setsar=1`];
   if (meta.hasAudio) args.push('-c:a', 'copy');
-  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-movflags', '+faststart', '-y', out);
+  args.push(...x264Fast(), '-movflags', '+faststart', '-y', out);
 
   await runFfmpeg(args, { label: 'frame', totalDuration: meta.duration, onProgress });
   log.ok(`reenquadramento ${zoom}x · foco (${focus.x.toFixed(2)}, ${focus.y.toFixed(2)})`);
