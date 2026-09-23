@@ -10,10 +10,10 @@ import { makeLogger } from '../../logger.js';
 const log = makeLogger('transcribe');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/** Extrai áudio mono 16kHz (formato ideal para ASR). */
+/** Extrai áudio mono 16kHz (formato ideal para ASR). mp3 a 48 kbps é ~8x menor que wav. */
 export async function extractAudio(input, work, ext = 'wav') {
   const out = path.join(work, `audio.${ext}`);
-  const codec = ext === 'mp3' ? ['-c:a', 'libmp3lame', '-q:a', '4'] : ['-c:a', 'pcm_s16le'];
+  const codec = ext === 'mp3' ? ['-c:a', 'libmp3lame', '-b:a', '48k'] : ['-c:a', 'pcm_s16le'];
   await runFfmpeg(
     ['-i', input, '-vn', '-ac', '1', '-ar', '16000', ...codec, '-y', out],
     { label: 'extract-audio' },
@@ -55,21 +55,63 @@ export async function transcribeOpenAI(input, work, meta, cfg) {
   };
 }
 
+/**
+ * Enquanto espera a resposta de uma API (sem progresso real), avança a barra de
+ * forma assintótica até ~95% do trecho, pela duração estimada. Retorna o `stop`.
+ */
+function waitProgress(onProgress, from, estimateMs) {
+  if (!onProgress) return () => {};
+  const t0 = Date.now();
+  const timer = setInterval(() => {
+    const k = 1 - Math.exp(-(Date.now() - t0) / Math.max(2000, estimateMs));
+    onProgress(from + (0.95 - from) * k);
+  }, 700);
+  return () => clearInterval(timer);
+}
+
+/** fetch com tempo máximo e UMA nova tentativa em falha de rede/timeout/5xx. */
+async function fetchRetry(url, init, timeoutMs, label) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+      if (res.status >= 500 && attempt < 2) {
+        log.warn(`${label} respondeu ${res.status}; tentando de novo`);
+        continue;
+      }
+      return res;
+    } catch (err) {
+      if (attempt >= 2) throw new Error(`${label}: ${err.name === 'TimeoutError' ? `sem resposta em ${Math.round(timeoutMs / 1000)}s` : err.message}`);
+      log.warn(`${label} falhou (${err.message}); tentando de novo`);
+    }
+  }
+}
+
 // ─── Deepgram ─────────────────────────────────────────────────────────
-export async function transcribeDeepgram(input, work, meta, cfg) {
-  const audio = await extractAudio(input, work, 'wav');
+export async function transcribeDeepgram(input, work, meta, cfg, onProgress) {
+  onProgress?.(0.05);
+  const audio = await extractAudio(input, work, 'mp3');
   const buf = await fs.readFile(audio);
+  onProgress?.(0.15);
+  const dur = Number(meta?.duration) || 60;
   // detect_language=true: descobre o idioma sozinho (pt, en, es...). Sem isso o
   // nova-2 assume inglês e transcreve fala em português errado. Um idioma fixo
   // pode ser forçado por env (DEEPGRAM_LANGUAGE, ex.: "pt").
   const params = new URLSearchParams({ model: 'nova-2', smart_format: 'true', punctuate: 'true' });
   if (cfg.deepgramLanguage) params.set('language', cfg.deepgramLanguage);
   else params.set('detect_language', 'true');
-  const res = await fetch(`https://api.deepgram.com/v1/listen?${params}`, {
-    method: 'POST',
-    headers: { Authorization: `Token ${cfg.deepgramKey}`, 'Content-Type': 'audio/wav' },
-    body: buf,
-  });
+  // Upload + processamento: ~0,3 s por minuto de áudio + margem para a rede.
+  const stop = waitProgress(onProgress, 0.15, 4000 + dur * 150);
+  let res;
+  try {
+    res = await fetchRetry(
+      `https://api.deepgram.com/v1/listen?${params}`,
+      { method: 'POST', headers: { Authorization: `Token ${cfg.deepgramKey}`, 'Content-Type': 'audio/mpeg' }, body: buf },
+      Math.max(120_000, dur * 2000),
+      'Deepgram',
+    );
+  } finally {
+    stop();
+  }
   if (!res.ok) throw new Error(`Deepgram ${res.status}: ${await res.text()}`);
   const data = await res.json();
   const channel = data.results?.channels?.[0];

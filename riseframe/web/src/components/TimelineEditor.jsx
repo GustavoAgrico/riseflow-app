@@ -34,6 +34,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     captionScale: cap0.captionScale || 1,
   });
   const setCapField = (patch) => setCap((c) => ({ ...c, ...patch }));
+  // Efeitos (zoom + sons) e cor, ajustáveis aqui na timeline antes do render.
+  const [fx, setFx] = useState({
+    videoMotion: cap0.videoMotion || 'none',
+    motionIntensity: cap0.motionIntensity || 'medio',
+    soundEffects: cap0.soundEffects === true,
+    sfxIntensity: cap0.sfxIntensity || 'medio',
+  });
+  const [colorLook, setColorLook] = useState(cap0.colorLook || 'auto');
+  const [colorAdj, setColorAdj] = useState({ brightness: 0, contrast: 0, saturation: 0, temperature: 0, ...(cap0.colorAdjust || {}) });
+  const colorCss = colorPreviewCss(colorAdj);
   const [tab, setTab] = useState('enquadramento');
   const [peaks, setPeaks] = useState([]);
   const rangeDragRef = useRef(null);
@@ -528,6 +538,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           : {}),
         // Ajustes de legenda escolhidos aqui na timeline (sobrepõem os das opções).
         ...cap,
+        // Zoom, efeitos sonoros e cor escolhidos nas abas Efeitos e Cor.
+        ...fx,
+        colorLook,
+        colorAdjust: colorAdj,
         // Trechos cortados à mão na faixa de vídeo (tempo original).
         videoCuts: cuts.map((c) => ({ start: +c.start.toFixed(2), end: +c.end.toFixed(2) })),
         // Volume da fala (tempo original — este estágio roda antes dos cortes).
@@ -573,7 +587,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         ref={previewVideoRef}
         src={sourceUrl(sourceId)}
         muted loop autoPlay playsInline
-        style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, transform: `scale(${zoom})`, transformOrigin: `${focus.x * 100}% ${focus.y * 100}%` }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, transform: `scale(${zoom})`, transformOrigin: `${focus.x * 100}% ${focus.y * 100}%`, filter: colorCss.filter }}
       />
       <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>você (arraste/role)</div>
     </div>
@@ -609,7 +623,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div style={{ display: 'grid', gridTemplateColumns: framingMode === 'manual' ? 'minmax(0,1fr) minmax(130px, 180px)' : '1fr', gap: 12, alignItems: 'start' }}>
             <div>
               <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
-                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ width: '100%', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#000' }} onClick={framingMode === 'manual' ? undefined : togglePlay} playsInline />
+                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ width: '100%', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#000', filter: colorCss.filter }} onClick={framingMode === 'manual' ? undefined : togglePlay} playsInline />
+                {colorCss.tint && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', ...colorCss.tint }} />}
                 {framingMode === 'manual' && (
                   <div
                     ref={framingBoxRef}
@@ -1057,6 +1072,64 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
         )}
 
+        {tab === 'efeitos' && (
+          <div style={{ display: 'grid', gap: 12, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+            <CapRow label="Movimento (zoom)">
+              <Sel value={fx.videoMotion} opts={catalog?.videoMotions} onChange={(v) => setFx((f) => ({ ...f, videoMotion: v }))} />
+            </CapRow>
+            {fx.videoMotion !== 'none' && (
+              <CapRow label="Intensidade do zoom">
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {INTENSITIES.map((o) => (
+                    <button key={o.id} onClick={() => setFx((f) => ({ ...f, motionIntensity: o.id }))} style={framingTab(fx.motionIntensity === o.id)}>{o.label}</button>
+                  ))}
+                </div>
+              </CapRow>
+            )}
+            <CapRow label="Efeitos sonoros (whoosh)">
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => setFx((f) => ({ ...f, soundEffects: false }))} style={framingTab(!fx.soundEffects)}>Desligados</button>
+                <button onClick={() => setFx((f) => ({ ...f, soundEffects: true }))} style={framingTab(fx.soundEffects)}>Ligados</button>
+              </div>
+            </CapRow>
+            {fx.soundEffects && (
+              <CapRow label="Volume dos efeitos">
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {INTENSITIES.map((o) => (
+                    <button key={o.id} onClick={() => setFx((f) => ({ ...f, sfxIntensity: o.id }))} style={framingTab(fx.sfxIntensity === o.id)}>{o.label}</button>
+                  ))}
+                </div>
+              </CapRow>
+            )}
+            <div style={{ fontSize: 11.5, color: C.faint }}>
+              O <b>zoom dinâmico</b> aproxima em frases alternadas, no ritmo da fala. Os efeitos sonoros tocam um whoosh suave nas entradas de B-roll e nesses zooms — sem bip nas legendas.
+            </div>
+          </div>
+        )}
+
+        {tab === 'cor' && (
+          <div style={{ display: 'grid', gap: 12, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+            <CapRow label="Look (estilo de cor)">
+              <Sel value={colorLook} opts={catalog?.colorLooks} onChange={setColorLook} />
+            </CapRow>
+            {COLOR_SLIDERS.map((sl) => (
+              <CapRow key={sl.id} label={sl.hint ? `${sl.label} (${sl.hint})` : sl.label}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <input type="range" min="-100" max="100" step="1" value={colorAdj[sl.id]}
+                    onChange={(e) => setColorAdj((a) => ({ ...a, [sl.id]: Number(e.target.value) }))} style={{ flex: 1 }} />
+                  <span style={{ width: 38, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12.5 }}>{colorAdj[sl.id] > 0 ? '+' : ''}{colorAdj[sl.id]}</span>
+                </div>
+              </CapRow>
+            ))}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 11.5, color: C.faint, flex: 1, minWidth: 200 }}>
+                A prévia acima mostra o ajuste manual na hora. O look é aplicado por cima no render final, e o ajuste manual vem depois dele.
+              </div>
+              <button onClick={() => setColorAdj({ brightness: 0, contrast: 0, saturation: 0, temperature: 0 })} style={miniBtn(false, false)}>Zerar ajustes</button>
+            </div>
+          </div>
+        )}
+
         {/* Ajustes de legenda (posição, fonte, estilo…) direto na edição */}
         {tab === 'legenda' && (
           <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
@@ -1222,7 +1295,25 @@ const TABS = [
   { id: 'audio', label: 'Áudio', icon: 'mic' },
   { id: 'legenda', label: 'Legenda', icon: 'captions' },
   { id: 'midias', label: 'Minhas mídias', icon: 'film' },
+  { id: 'efeitos', label: 'Efeitos', icon: 'wand' },
+  { id: 'cor', label: 'Cor', icon: 'palette' },
 ];
+
+const INTENSITIES = [{ id: 'suave', label: 'Suave' }, { id: 'medio', label: 'Médio' }, { id: 'forte', label: 'Forte' }];
+const COLOR_SLIDERS = [
+  { id: 'brightness', label: 'Brilho' },
+  { id: 'contrast', label: 'Contraste' },
+  { id: 'saturation', label: 'Saturação' },
+  { id: 'temperature', label: 'Temperatura', hint: 'frio ← → quente' },
+];
+
+/** Prévia aproximada do ajuste manual (mesmas proporções do filtro do servidor). */
+function colorPreviewCss(a) {
+  const b = Number(a.brightness) || 0, c = Number(a.contrast) || 0, s = Number(a.saturation) || 0, t = Number(a.temperature) || 0;
+  const filter = b || c || s ? `brightness(${1 + (b / 100) * 0.25}) contrast(${1 + (c / 100) * 0.35}) saturate(${1 + (s / 100) * 0.8})` : undefined;
+  const tint = t ? { background: t > 0 ? '#ff8a3d' : '#3d8bff', mixBlendMode: 'soft-light', opacity: (Math.abs(t) / 100) * 0.55 } : null;
+  return { filter, tint };
+}
 function sectionTab(active) {
   return { display: 'inline-flex', alignItems: 'center', gap: 7, border: `1px solid ${active ? C.orange : C.border}`, background: active ? 'rgba(255,107,53,0.16)' : 'rgba(255,255,255,0.05)', color: active ? C.orange : C.muted, borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' };
 }

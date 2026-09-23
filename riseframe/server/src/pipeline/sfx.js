@@ -6,25 +6,34 @@ const log = makeLogger('sfx');
 
 // Volume de cada tipo de efeito por intensidade (0..1). "medio" é o padrão.
 const LEVELS = {
-  suave: { pop: 0.18, whoosh: 0.28 },
-  medio: { pop: 0.32, whoosh: 0.45 },
-  forte: { pop: 0.5, whoosh: 0.7 },
+  suave: { pop: 0.18, whoosh: 0.4 },
+  medio: { pop: 0.32, whoosh: 0.6 },
+  forte: { pop: 0.5, whoosh: 0.85 },
 };
 
-/** Gera os SFX base (pop e whoosh) sinteticamente com o FFmpeg — sem assets externos. */
-async function synthSfx(work) {
+/** Gera os SFX base sinteticamente com o FFmpeg — sem assets externos. */
+async function synthSfx(work, types) {
   const pop = path.join(work, 'sfx_pop.wav');
   const whoosh = path.join(work, 'sfx_whoosh.wav');
-  // Pop: blip curto (clique suave) para a legenda entrar.
+  if (types.includes('pop')) {
+    // Pop: blip curto (clique suave).
+    await runFfmpeg(
+      ['-f', 'lavfi', '-i', 'sine=frequency=1000:duration=0.06:sample_rate=44100',
+        '-af', 'afade=t=out:st=0.008:d=0.05,volume=0.8', '-ac', '2', '-y', pop],
+      { label: 'sfx-pop' },
+    );
+  }
+  if (!types.includes('whoosh')) return { pop, whoosh };
+  // Whoosh: ruído marrom (grave, macio) com subida longa e queda rápida, passando de
+  // um lado para o outro no estéreo e com um pouco de ar — soa como "passagem", não chiado.
   await runFfmpeg(
-    ['-f', 'lavfi', '-i', 'sine=frequency=1000:duration=0.06:sample_rate=44100',
-      '-af', 'afade=t=out:st=0.008:d=0.05,volume=0.8', '-ac', '2', '-y', pop],
-    { label: 'sfx-pop' },
-  );
-  // Whoosh: ruído rosa filtrado com envelope de entrada/saída (transição/B-roll).
-  await runFfmpeg(
-    ['-f', 'lavfi', '-i', 'anoisesrc=d=0.4:c=pink:a=0.7:r=44100',
-      '-af', 'highpass=f=300,lowpass=f=5000,afade=t=in:st=0:d=0.2,afade=t=out:st=0.2:d=0.2,volume=0.9',
+    ['-f', 'lavfi', '-i', 'anoisesrc=d=0.65:c=brown:a=0.9:r=44100',
+      '-af', [
+        'highpass=f=120', 'lowpass=f=2600', 'equalizer=f=900:t=q:w=1:g=4',
+        'afade=t=in:st=0:d=0.42:curve=qsin', 'afade=t=out:st=0.42:d=0.23:curve=exp',
+        'aecho=0.8:0.6:35:0.25', 'volume=1.6',
+        'aformat=channel_layouts=stereo', 'apulsator=hz=1.3:amount=0.7',
+      ].join(','),
       '-ac', '2', '-y', whoosh],
     { label: 'sfx-whoosh' },
   );
@@ -72,7 +81,7 @@ export async function applySoundEffects(input, work, meta, events, options, onPr
   const mix = buildSfxMix(events, { intensity: options.sfxIntensity });
   if (!mix) return { output: input, applied: false, count: 0 };
 
-  const { pop, whoosh } = await synthSfx(work);
+  const { pop, whoosh } = await synthSfx(work, mix.order);
   const output = path.join(work, 'sfx.mp4');
   const args = ['-i', input];
   for (const type of mix.order) args.push('-i', type === 'pop' ? pop : whoosh);

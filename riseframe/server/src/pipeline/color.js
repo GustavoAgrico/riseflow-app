@@ -28,6 +28,31 @@ export const LOOKS = {
     'colorbalance=bs=0.06:rh=0.03',
 };
 
+/** Ajuste manual (-100..100 cada) → valores de filtro. Mesmo mapeamento da prévia no site. */
+export function sanitizeColorAdjust(raw) {
+  const pick = (v) => Math.max(-100, Math.min(100, Math.round(Number(v) || 0)));
+  const a = raw && typeof raw === 'object' ? raw : {};
+  return { brightness: pick(a.brightness), contrast: pick(a.contrast), saturation: pick(a.saturation), temperature: pick(a.temperature) };
+}
+
+export const hasColorAdjust = (a) => Boolean(a && (a.brightness || a.contrast || a.saturation || a.temperature));
+
+/** Cadeia FFmpeg do ajuste manual (depois do look), ou null se tudo em zero. Puro/testável. */
+export function manualAdjustVf(raw) {
+  const a = sanitizeColorAdjust(raw);
+  if (!hasColorAdjust(a)) return null;
+  const f = (n) => Number(n.toFixed(3));
+  const parts = [];
+  if (a.brightness || a.contrast || a.saturation) {
+    parts.push(`eq=brightness=${f(a.brightness / 100 * 0.12)}:contrast=${f(1 + a.contrast / 100 * 0.35)}:saturation=${f(1 + a.saturation / 100 * 0.8)}`);
+  }
+  if (a.temperature) {
+    const k = a.temperature / 100; // >0 quente (laranja), <0 frio (azul)
+    parts.push(`colorbalance=rs=${f(0.08 * k)}:bs=${f(-0.08 * k)}:rm=${f(0.1 * k)}:bm=${f(-0.1 * k)}:rh=${f(0.06 * k)}:bh=${f(-0.06 * k)}`);
+  }
+  return parts.join(',');
+}
+
 export function lookNames() {
   // 'auto' (grade por IA) é o destaque; depois os presets fixos.
   return ['auto', ...Object.keys(LOOKS)];
@@ -45,9 +70,10 @@ export async function applyColor(input, work, meta, options, onProgress) {
 
   // Grade por IA: decide a cadeia de filtros a partir da análise do próprio vídeo.
   let aiAdjustments = null;
-  let vf;
+  let vf = null;
+  const manual = manualAdjustVf(options.colorAdjust);
   if (look === 'none') {
-    return { output: input, look };
+    if (!manual) return { output: input, look };
   } else if (look === 'auto') {
     try {
       const grade = await analyzeAndGrade(input);
@@ -67,12 +93,13 @@ export async function applyColor(input, work, meta, options, onProgress) {
     vf = LOOKS['teal-orange'];
   }
 
+  vf = [vf, manual].filter(Boolean).join(',');
   const output = path.join(work, 'graded.mp4');
   const args = ['-i', input, '-vf', vf, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16'];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push('-movflags', '+faststart', '-y', output);
 
   await runFfmpeg(args, { label: 'color', totalDuration: meta.duration, onProgress });
-  log.ok(`color grade aplicado: ${look}`);
+  log.ok(`color grade aplicado: ${look}${manual ? ` + ajuste manual (${manual})` : ''}`);
   return { output, look, ai: aiAdjustments };
 }
