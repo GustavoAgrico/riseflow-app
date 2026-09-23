@@ -6,6 +6,8 @@ import { sourceUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan } from '
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
+import { CaptionOverlay } from './CaptionPreview.jsx';
+import { zoomWindows, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS } from '../livePreview.js';
 
 const PPS_MIN = 24;
 const PPS_MAX = 240;
@@ -44,6 +46,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [colorLook, setColorLook] = useState(cap0.colorLook || 'auto');
   const [colorAdj, setColorAdj] = useState({ brightness: 0, contrast: 0, saturation: 0, temperature: 0, ...(cap0.colorAdjust || {}) });
   const colorCss = colorPreviewCss(colorAdj);
+  // Prévia do look escolhido (aproximada) + ajuste manual por cima.
+  const lookCss = LOOK_CSS[colorLook] || LOOK_CSS.auto;
+  const videoFilter = [lookCss.filter, colorCss.filter].filter(Boolean).join(' ') || undefined;
   const [tab, setTab] = useState('enquadramento');
   const [peaks, setPeaks] = useState([]);
   const rangeDragRef = useRef(null);
@@ -159,6 +164,78 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     v.addEventListener('play', onPlay);
     v.addEventListener('pause', onPause);
     return () => { v.removeEventListener('timeupdate', onTime); v.removeEventListener('play', onPlay); v.removeEventListener('pause', onPause); };
+  }, []);
+
+  // Retângulo onde o vídeo aparece dentro do player (object-fit: contain) — base para
+  // desenhar legenda, véus de cor e B-roll exatamente sobre a imagem.
+  const [vbox, setVbox] = useState(null);
+  const demoRef = useRef({ start: 0, until: 0 });
+  function measureVideo() {
+    const v = videoRef.current;
+    if (!v || !v.videoWidth || !v.clientWidth) return;
+    const ew = v.clientWidth;
+    const eh = v.clientHeight;
+    const k = Math.min(ew / v.videoWidth, eh / v.videoHeight);
+    const w = v.videoWidth * k;
+    const h = v.videoHeight * k;
+    const next = { x: Math.round((ew - w) / 2), y: Math.round((eh - h) / 2), w: Math.round(w), h: Math.round(h) };
+    setVbox((b) => (b && b.x === next.x && b.y === next.y && b.w === next.w && b.h === next.h ? b : next));
+  }
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => measureVideo());
+    ro.observe(v);
+    return () => ro.disconnect();
+  }, []);
+
+  // Escolheu um movimento → demonstração curta no player (mesmo pausado).
+  const fxFirst = useRef(true);
+  useEffect(() => {
+    if (fxFirst.current) { fxFirst.current = false; return; }
+    if (fx.videoMotion && fx.videoMotion !== 'none') {
+      const now = performance.now();
+      demoRef.current = { start: now, until: now + 4200 };
+    }
+  }, [fx.videoMotion, fx.motionIntensity]);
+  // Ligou os efeitos sonoros / trocou o volume → toca um whoosh de exemplo.
+  const sfxFirst = useRef(true);
+  useEffect(() => {
+    if (sfxFirst.current) { sfxFirst.current = false; return; }
+    if (fx.soundEffects) playWhoosh(fx.sfxIntensity);
+  }, [fx.soundEffects, fx.sfxIntensity]);
+
+  // ── prévia AO VIVO dos efeitos no player: zoom (movimento), volume e whoosh.
+  // Um laço requestAnimationFrame mexe direto no <video> (sem re-renderizar o editor).
+  const liveRef = useRef({});
+  useEffect(() => {
+    let id;
+    let lastT = null;
+    const loop = () => {
+      const v = videoRef.current;
+      const L = liveRef.current;
+      if (v && L.fx) {
+        const now = performance.now();
+        const t = v.currentTime;
+        const m = v.paused && now < demoRef.current.until
+          ? demoMotion(L.fx.videoMotion, L.fx.motionIntensity, (now - demoRef.current.start) / 1000)
+          : motionAt(L.fx.videoMotion, L.fx.motionIntensity, t, L.dur, L.windows);
+        const tf = m.scale > 1.0005 ? `scale(${m.scale.toFixed(4)})` : '';
+        if (v.style.transform !== tf) v.style.transform = tf;
+        v.style.transformOrigin = `${m.ox}% ${m.oy}%`;
+        v.style.transition = L.fx.videoMotion === 'dynamic' ? 'transform .12s ease-out' : 'none';
+        const vol = Math.max(0, Math.min(1, volumeAt(t, L.audio)));
+        if (Math.abs(v.volume - vol) > 0.01) v.volume = vol;
+        // whoosh nos mesmos pontos do render (entradas do zoom dinâmico e do B-roll)
+        if (!v.paused && L.fx.soundEffects && lastT != null && t > lastT && t - lastT < 0.6) {
+          if (L.sfxTimes.some((e) => e > lastT && e <= t)) playWhoosh(L.fx.sfxIntensity);
+        }
+        lastT = v.paused ? null : t;
+      }
+      id = requestAnimationFrame(loop);
+    };
+    id = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(id);
   }, []);
 
   // ── arrastar bordas dos blocos (trim) — listeners globais durante o arrasto
@@ -587,7 +664,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         ref={previewVideoRef}
         src={sourceUrl(sourceId)}
         muted loop autoPlay playsInline
-        style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, transform: `scale(${zoom})`, transformOrigin: `${focus.x * 100}% ${focus.y * 100}%`, filter: colorCss.filter }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, transform: `scale(${zoom})`, transformOrigin: `${focus.x * 100}% ${focus.y * 100}%`, filter: videoFilter }}
       />
       <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>você (arraste/role)</div>
     </div>
@@ -606,6 +683,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     </div>
   );
 
+  // B-roll escolhido no instante atual (mostrado sobre o vídeo, como no render).
+  const brollMoment = (brollReview?.moments || []).find((m) => !m.removed && cur >= m.start && cur < m.end);
+  const brollNow = brollMoment ? (brollMoment.myThumb || brollMoment.candidates?.[brollMoment.pick]?.thumb || null) : null;
+
+  // Dados usados pela prévia ao vivo (lidos pelo laço do player).
+  const liveWindows = fx.videoMotion === 'dynamic' ? zoomWindows(segments, dur) : [];
+  liveRef.current = {
+    fx,
+    dur,
+    windows: liveWindows,
+    audio: { audioMute, audioVolume, gains },
+    sfxTimes: [
+      ...liveWindows.map(([a]) => Math.max(0, a - 0.3)),
+      ...((brollReview?.moments || []).filter((m) => !m.removed).map((m) => Math.max(0, Number(m.start) - 0.3))),
+    ],
+  };
+
   return (
     <div style={{ ...glass(), padding: 22 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 14 }}>
@@ -623,8 +717,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div style={{ display: 'grid', gridTemplateColumns: framingMode === 'manual' ? 'minmax(0,1fr) minmax(130px, 180px)' : '1fr', gap: 12, alignItems: 'start' }}>
             <div>
               <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
-                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ width: '100%', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#000', filter: colorCss.filter }} onClick={framingMode === 'manual' ? undefined : togglePlay} playsInline />
-                {colorCss.tint && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', ...colorCss.tint }} />}
+                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ width: '100%', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#000', filter: videoFilter }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={measureVideo} playsInline />
+                {vbox && lookCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...lookCss.tint }} />}
+                {vbox && colorCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...colorCss.tint }} />}
+                {vbox && brollNow && (
+                  <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', overflow: 'hidden' }}>
+                    <img src={brollNow} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: videoFilter }} />
+                    <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 10, fontWeight: 700, background: 'rgba(0,0,0,0.6)', color: '#fff', borderRadius: 6, padding: '2px 6px' }}>B-roll</span>
+                  </div>
+                )}
+                {cap.captions && <CaptionOverlay videoRef={videoRef} segments={segments} options={cap} box={vbox} sample={tab === 'legenda'} />}
                 {framingMode === 'manual' && (
                   <div
                     ref={framingBoxRef}
@@ -837,7 +939,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 </CapRow>
               )}
               <div style={{ fontSize: 11.5, color: C.faint }}>
-                O <b>zoom dinâmico</b> aproxima em frases alternadas, no ritmo da fala. Os efeitos sonoros tocam um whoosh suave nas entradas de B-roll e nesses zooms — sem bip nas legendas.
+                <b>Prévia:</b> ao escolher um movimento, o player ao lado mostra o efeito na hora; dê play para ver no ritmo da fala e ouvir os whooshes. O <b>zoom dinâmico</b> aproxima em frases alternadas; os efeitos sonoros tocam nas entradas de B-roll e nesses zooms — sem bip nas legendas.
               </div>
             </div>
           )}
@@ -858,7 +960,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               ))}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 11.5, color: C.faint, flex: 1, minWidth: 200 }}>
-                  A prévia acima mostra o ajuste manual na hora. O look é aplicado por cima no render final, e o ajuste manual vem depois dele.
+                  A prévia ao lado mostra o look (aproximado) e o ajuste manual na hora. No render final o look é aplicado primeiro e o ajuste manual por cima.
                 </div>
                 <button onClick={() => setColorAdj({ brightness: 0, contrast: 0, saturation: 0, temperature: 0 })} style={miniBtn(false, false)}>Zerar ajustes</button>
               </div>
