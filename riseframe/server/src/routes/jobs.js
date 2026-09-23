@@ -10,7 +10,7 @@ import { getSettings } from '../auth/settings.js';
 import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod } from '../auth/billing.js';
 import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../../shared/credits.js';
 import { registerMedia, resolveMedia } from '../mediaStore.js';
-import { probeSummary, runFfmpeg } from '../pipeline/ffmpeg.js';
+import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
 import { brollCandidates } from '../pipeline/broll.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
@@ -315,6 +315,46 @@ function parseOptions(raw) {
     brollMax: clampNum(o.brollMax, 1, 12, 6),
     brollPlan: sanitizeBrollPlan(o.brollPlan),
     zoomMoments: sanitizeZoomMoments(o.zoomMoments),
+    // ── Restaurados (tinham sumido numa atualização e o servidor descartava: cortes da
+    // timeline, volume, formato, força do corte de silêncio, clipes e minhas mídias).
+    // Volume da fala: geral, mudo e trechos com volume próprio (tempo original).
+    audioMute: o.audioMute === true,
+    audioVolume: clampNum(o.audioVolume, 0, 4, 1),
+    audioGains: Array.isArray(o.audioGains)
+      ? o.audioGains
+          .filter((g) => g && Number(g.end) > Number(g.start))
+          .slice(0, 40)
+          .map((g) => ({ start: Math.max(0, Number(g.start)), end: Number(g.end), volume: clampNum(g.volume, 0, 4, 1) }))
+      : [],
+    brollMoments: Array.isArray(o.brollMoments)
+      ? o.brollMoments
+          .filter((m) => m && Number.isFinite(Number(m.start)) && Number(m.end) > Number(m.start))
+          .slice(0, 24)
+          .map((m) => ({ start: Math.max(0, Number(m.start)), end: Number(m.end), query: typeof m.query === 'string' ? m.query.slice(0, 120) : '' }))
+      : null,
+    aspect: ['original', '9:16', '16:9', '1:1'].includes(o.aspect) ? o.aspect : 'original',
+    reframeTrack: o.reframeTrack !== false, // seguir o sujeito no reframe
+    silenceNoiseDb: clampNum(o.silenceNoiseDb, -60, -10, sp.noiseDb),
+    silenceMinDuration: clampNum(o.silenceMinDuration, 0.2, 3, sp.min),
+    silencePadding: clampNum(o.silencePadding, 0, 0.5, sp.pad),
+    // Piso de ruído adaptativo (mede o áudio). Padrão ligado; corta melhor em
+    // qualquer gravação. silenceHeadroomDb = distância abaixo do pico (por força).
+    silenceAdaptive: o.silenceAdaptive !== false,
+    silenceHeadroomDb: clampNum(o.silenceHeadroomDb, 16, 44, sp.headroom),
+    // Cortes de silêncio escolhidos manualmente na timeline (modo render). Quando
+    // manualSilence=true, o pipeline usa exatamente estes trechos em vez de detectar.
+    manualSilence: o.manualSilence === true,
+    silenceCuts: sanitizeSilenceCuts(o.silenceCuts),
+    // Trechos cortados à mão na faixa de vídeo (tempo original), independentes do silêncio.
+    videoCuts: sanitizeSilenceCuts(o.videoCuts),
+    // clipes curtos
+    clipsCount: clampNum(o.clipsCount, 1, 8, 3),
+    clipAspect: ['original', '9:16', '16:9', '1:1'].includes(o.clipAspect) ? o.clipAspect : '9:16',
+    clipMin: clampNum(o.clipMin, 5, 60, 15),
+    clipMax: clampNum(o.clipMax, 15, 120, 50),
+    // Mídias próprias do usuário na timeline (imagens/vídeos/músicas). Resolvidas
+    // para caminhos de arquivo no servidor (ver optionsForUser).
+    userMedia: sanitizeUserMedia(o.userMedia),
   };
 }
 
@@ -618,6 +658,7 @@ jobsRouter.get('/jobs/:id/peaks', async (req, res) => {
 // no navegador é aproximada; esta imagem é a referência fiel. (Público como /source: o id
 // do job não é adivinhável e a <img> não manda cabeçalho.)
 const autoGradeCache = new Map(); // id → vf do grade automático (a análise lê o vídeo todo)
+const sourceMetaCache = new Map(); // id → metadados do vídeo original (HDR?)
 jobsRouter.get('/jobs/:id/color-frame', async (req, res) => {
   try {
     const job = queue.get(req.params.id);
@@ -633,6 +674,11 @@ jobsRouter.get('/jobs/:id/color-frame', async (req, res) => {
     } else {
       vf = (await colorFilter(job.inputPath, { colorLook: look, colorAdjust: adj })).vf;
     }
+
+    // Vídeo HDR (iPhone): mesma conversão para cor normal que o render faz no início.
+    if (!sourceMetaCache.has(job.id)) sourceMetaCache.set(job.id, await probeSummary(job.inputPath));
+    const toSdr = sdrVf(sourceMetaCache.get(job.id));
+    if (toSdr) vf = [toSdr, vf].filter(Boolean).join(',');
 
     const dir = path.join(config.paths.cache, 'colorframes');
     fs.mkdirSync(dir, { recursive: true });

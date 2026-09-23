@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v58';
+export const APP_VERSION = 'v59';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -152,9 +152,11 @@ export const config = {
   // presets mais lentos (ex.: FFMPEG_FINAL_PRESET=medium) para arquivos menores.
   encode: {
     preset: process.env.FFMPEG_PRESET || 'ultrafast',
-    crf: num(process.env.FFMPEG_CRF, 17),
+    // Qualidade alta nas etapas intermediárias (o arquivo é temporário) e no final
+    // CRF 17 (visualmente igual ao original). Menor = melhor e maior.
+    crf: num(process.env.FFMPEG_CRF, 14),
     finalPreset: process.env.FFMPEG_FINAL_PRESET || 'veryfast',
-    finalCrf: num(process.env.FFMPEG_FINAL_CRF, 20),
+    finalCrf: num(process.env.FFMPEG_FINAL_CRF, 17),
   },
 
   debug: bool(process.env.DEBUG, false),

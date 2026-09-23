@@ -191,6 +191,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Prévia de cor EXATA (quadro gerado pelo servidor com o mesmo filtro do render),
   // mostrada na aba Cor com o vídeo pausado. Tocando, vale a prévia aproximada (CSS).
   const [colorFrame, setColorFrame] = useState(null); // { url, loaded }
+  const [previewCuts, setPreviewCuts] = useState(true); // prévia pula os cortes ao tocar
   const curTenth = Math.round(cur * 10);
   useEffect(() => {
     if (tab !== 'cor' || playing || !sourceId) { setColorFrame(null); return undefined; }
@@ -259,7 +260,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const L = liveRef.current;
       if (v && L.fx) {
         const now = performance.now();
-        const t = v.currentTime;
+        let t = v.currentTime;
+        // Tocando: pula os trechos cortados (prévia igual ao vídeo final).
+        if (!v.paused && L.skip?.length) {
+          const hit = L.skip.find(([a, b]) => t >= a && t < b - 0.03);
+          if (hit) { v.currentTime = Math.min(hit[1], v.duration || hit[1]); t = hit[1]; }
+        }
         const m = v.paused && now < demoRef.current.until
           ? demoMotion(L.fx.videoMotion, L.fx.motionIntensity, (now - demoRef.current.start) / 1000)
           : motionAt(L.fx.videoMotion, L.fx.motionIntensity, t, L.dur, L.windows);
@@ -824,15 +830,35 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     );
   })();
   const composedPreview = (
-    <div style={{ width: '100%', maxWidth: 200, margin: '0 auto', aspectRatio: '9 / 16', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
+    <div style={{ width: '100%', maxWidth: 250, margin: '0 auto', aspectRatio: '9 / 16', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
       {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
     </div>
   );
 
 
+  // Trechos que NÃO vão para o vídeo final (cortes, pausas cortadas, palavras cortadas):
+  // a prévia pula por cima deles ao tocar — igual ao resultado.
+  const skipRanges = (() => {
+    const r = [
+      ...cuts.map((c) => [c.start, c.end]),
+      ...pausesCut.map((p) => [p.start, p.end]),
+    ];
+    for (const seg of segments) for (const w of seg.words || []) if (w.removed) r.push([w.start, w.end]);
+    r.sort((a, b) => a[0] - b[0]);
+    const out = [];
+    for (const [a, b] of r) {
+      if (b - a < 0.05) continue;
+      const last = out[out.length - 1];
+      if (last && a <= last[1] + 0.02) last[1] = Math.max(last[1], b);
+      else out.push([a, b]);
+    }
+    return out;
+  })();
+
   // Dados usados pela prévia ao vivo (lidos pelo laço do player).
   const liveWindows = fx.videoMotion === 'dynamic' ? (zoomMoments || []).map((z) => [z.start, z.end, z.scale]) : [];
   liveRef.current = {
+    skip: previewCuts ? skipRanges : [],
     fx,
     dur,
     windows: liveWindows,
@@ -854,13 +880,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </GhostButton>
       </div>
 
-      <div className="rf-tl-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 440px) minmax(0, 1fr)', gap: 18, alignItems: 'start' }}>
+      <div className="rf-tl-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.35fr) minmax(340px, 1fr)', gap: 18, alignItems: 'start' }}>
         <div className="rf-tl-preview">
           {/* Vídeo principal + prévia 9:16 do ajuste, LADO A LADO (mesma linha) */}
-          <div style={{ display: 'grid', gridTemplateColumns: framingMode === 'manual' ? 'minmax(0,1fr) minmax(130px, 180px)' : '1fr', gap: 12, alignItems: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: framingMode === 'manual' ? 'minmax(0,1fr) minmax(150px, 250px)' : '1fr', gap: 12, alignItems: 'start' }}>
             <div>
               <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
-                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ width: '100%', display: 'block', maxHeight: 420, objectFit: 'contain', background: '#000', filter: videoFilter }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={measureVideo} playsInline />
+                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ width: '100%', display: 'block', maxHeight: 'min(72vh, 680px)', objectFit: 'contain', background: '#000', filter: videoFilter }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={measureVideo} playsInline />
                 {vbox && lookCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...lookCss.tint }} />}
                 {vbox && colorCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...colorCss.tint }} />}
                 {vbox && brollNow && (
@@ -898,6 +924,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
                 <button onClick={togglePlay} style={playBtn}><Icon name={playing ? 'pause' : 'play'} size={16} strokeWidth={2} /></button>
                 <div style={{ fontSize: 12.5, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(cur)} <span style={{ color: C.faint }}>/ {fmtDuration(dur)}</span></div>
+                <button onClick={() => setPreviewCuts((v) => !v)} title="Ao tocar, pular os trechos cortados (como no vídeo final)"
+                  style={{ ...miniBtn(previewCuts, false), marginLeft: 'auto' }}>
+                  <Icon name="scissors" size={12} strokeWidth={2.2} /> {previewCuts ? 'Prévia com cortes' : 'Prévia sem cortes'}
+                </button>
               </div>
             </div>
             {framingMode === 'manual' && (
