@@ -116,7 +116,7 @@ function chargeAndQueue(req, res, mode, jobInput) {
 const DISK_MARGIN = 2 * 1024 ** 3; // folga para os arquivos intermediários começarem
 function checkUploadSize(req, res, next) {
   const size = Number(req.headers['content-length']) || 0;
-  if (size > config.maxUploadBytes + 1024 ** 2) {
+  if (config.maxUploadBytes && size > config.maxUploadBytes + 1024 ** 2) {
     return res.status(413).json({ error: `arquivo maior que o limite (${formatBytes(config.maxUploadBytes)})` });
   }
   if (!size) return next();
@@ -142,7 +142,7 @@ const ALLOWED = new Set(['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v']);
 
 const upload = multer({
   storage,
-  limits: { fileSize: config.maxUploadBytes },
+  limits: config.maxUploadBytes ? { fileSize: config.maxUploadBytes } : {},
   fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (ALLOWED.has(ext)) cb(null, true);
@@ -163,7 +163,7 @@ function mediaKind(ext) {
 
 const uploadMedia = multer({
   storage,
-  limits: { fileSize: config.maxUploadBytes },
+  limits: config.maxUploadBytes ? { fileSize: config.maxUploadBytes } : {},
   fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (mediaKind(ext)) cb(null, true);
