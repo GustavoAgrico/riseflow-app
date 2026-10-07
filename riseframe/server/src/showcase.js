@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { config } from './config.js';
 import { runFfmpeg, probeSummary, sdrVf } from './pipeline/ffmpeg.js';
@@ -12,6 +13,9 @@ const log = makeLogger('showcase');
 // arquivos hospedados fora (SHOWCASE_BEFORE_URL / SHOWCASE_AFTER_URL), que sobrevivem
 // a reinícios do servidor no plano grátis do Render.
 const DIR = path.join(config.paths.data, 'showcase');
+// Demo que vem JUNTO com o site (web/public/demo → web/dist/demo): permanente, não some
+// quando o servidor reinicia. É o pacote baixado pelo admin e colocado no projeto.
+const BUNDLED_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'dist', 'demo');
 const META = path.join(DIR, 'showcase.json');
 const MAX_SECONDS = 60; // a demo mostra no máximo 1 minuto de cada lado
 
@@ -33,9 +37,22 @@ export function showcaseInfo() {
   if (before && after) return { before, after, stats: meta?.stats || null, external: true };
   if (meta?.ready && fs.existsSync(path.join(DIR, 'antes.mp4')) && fs.existsSync(path.join(DIR, 'depois.mp4'))) {
     const v = meta.updatedAt ? `?v=${Date.parse(meta.updatedAt)}` : '';
-    return { before: `/api/showcase/antes.mp4${v}`, after: `/api/showcase/depois.mp4${v}`, stats: meta.stats };
+    return { before: `/api/showcase/antes.mp4${v}`, after: `/api/showcase/depois.mp4${v}`, stats: meta.stats, sim: meta.sim || null };
   }
-  return null;
+  return bundledInfo();
+}
+
+/** Demo empacotada no site (arquivos estáticos em /demo/). */
+function bundledInfo() {
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(BUNDLED_DIR, 'showcase.json'), 'utf8'));
+    if (!meta?.ready || !fs.existsSync(path.join(BUNDLED_DIR, 'antes.mp4'))) return null;
+    const fix = (u) => (typeof u === 'string' ? u.replace('/api/showcase/', '/demo/') : u);
+    const sim = meta.sim ? { ...meta.sim, broll: (meta.sim.broll || []).map((b) => ({ ...b, src: fix(b.src) })) } : null;
+    return { before: '/demo/antes.mp4', after: '/demo/depois.mp4', stats: meta.stats, sim, bundled: true };
+  } catch {
+    return null;
+  }
 }
 
 export function showcaseStatus() {
@@ -43,7 +60,7 @@ export function showcaseStatus() {
 }
 
 export function showcaseFile(name) {
-  if (!['antes.mp4', 'depois.mp4'].includes(name)) return null;
+  if (!['antes.mp4', 'depois.mp4'].includes(name) && !/^broll_\d{1,2}\.(jpg|mp4)$/.test(name)) return null;
   const p = path.join(DIR, name);
   return fs.existsSync(p) ? p : null;
 }
@@ -65,6 +82,61 @@ function statsFrom(job, beforeMeta, afterMeta) {
     afterSeconds: Math.round(afterMeta.duration || 0),
     removedSeconds: Math.round(r.cut?.removedSeconds || 0),
     features,
+  };
+}
+
+/** Baixa uma mídia de B-roll (link público do banco de imagens) para a pasta da demo. */
+async function fetchTo(url, dest) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(30_000), headers: { 'User-Agent': 'Riseframe/1.0' } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  fs.writeFileSync(dest, Buffer.from(await r.arrayBuffer()));
+}
+
+/**
+ * Tudo que o SIMULADOR da página inicial precisa para refazer a edição ao vivo sobre o
+ * vídeo bruto (timeline original, até MAX_SECONDS): fala com tempos por palavra (e as
+ * palavras cortadas), trechos mantidos, B-roll, zooms, cor, legenda e formato.
+ */
+async function simFrom(job, beforeMeta) {
+  const r = job.report || {};
+  const o = job.options || {};
+  const limit = Math.min(MAX_SECONDS, beforeMeta.duration || MAX_SECONDS);
+  const source = job.mode === 'render' ? job.editedTranscript : r.editorTranscript || r.transcript;
+  const segments = (source?.segments || [])
+    .filter((sg) => Number(sg.start) < limit)
+    .map((sg) => ({
+      start: +Number(sg.start).toFixed(3),
+      end: +Math.min(limit, Number(sg.end) || 0).toFixed(3),
+      text: sg.text || '',
+      words: (sg.words || []).filter((w) => Number(w.start) < limit).map((w) => ({
+        start: +Number(w.start).toFixed(3), end: +Number(w.end).toFixed(3), word: String(w.word ?? ''), ...(w.removed ? { removed: true } : {}),
+      })),
+    }));
+  const keep = (r.cut?.keep || [{ start: 0, end: limit }])
+    .filter((k) => k.start < limit)
+    .map((k) => ({ start: +k.start.toFixed(3), end: +Math.min(limit, k.end).toFixed(3) }));
+  const broll = [];
+  for (const it of r.broll?.items || []) {
+    if (!it.link || it.start >= limit || broll.length >= 12) continue;
+    const name = `broll_${broll.length}.${it.kind === 'video' ? 'mp4' : 'jpg'}`;
+    try {
+      await fetchTo(it.link, path.join(DIR, name));
+      broll.push({ start: it.start, end: Math.min(limit, it.end), kind: it.kind, src: `/api/showcase/${name}`, query: it.query, zoom: it.zoom, fx: it.fx, fy: it.fy });
+    } catch (err) {
+      log.warn(`B-roll da demo não baixou (${it.query || it.link}): ${err.message}`);
+    }
+  }
+  const pick = (keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
+  return {
+    duration: +limit.toFixed(3),
+    width: beforeMeta.width, height: beforeMeta.height,
+    segments, keep, broll,
+    brollLayout: r.broll?.layout || o.brollLayout || 'fullscreen',
+    zoomMoments: Array.isArray(o.zoomMoments) ? o.zoomMoments.filter((z) => z.start < limit) : null,
+    options: pick(['captions', 'captionTemplate', 'captionColor', 'captionFont', 'captionAnimation', 'captionBackground', 'captionPosition', 'captionMode', 'captionScale', 'captionHighlight',
+      'videoMotion', 'motionIntensity', 'colorLook', 'colorAdjust', 'aspect', 'cutSilence', 'autoClean', 'broll', 'brollLayout']),
+    color: r.color ? { look: r.color.look, ai: r.color.ai || null } : null,
+    reframe: r.output?.reframe || null,
   };
 }
 
@@ -96,7 +168,9 @@ export function buildShowcase(job) {
       await webCopy(after, path.join(DIR, 'depois.tmp.mp4'), ma);
       fs.renameSync(path.join(DIR, 'antes.tmp.mp4'), path.join(DIR, 'antes.mp4'));
       fs.renameSync(path.join(DIR, 'depois.tmp.mp4'), path.join(DIR, 'depois.mp4'));
-      const meta = { ready: true, jobId: job.id, filename: job.filename, updatedAt: new Date().toISOString(), stats: statsFrom(job, mb, ma) };
+      for (const f of fs.readdirSync(DIR)) if (/^broll_/.test(f)) fs.rmSync(path.join(DIR, f), { force: true });
+      const sim = await simFrom(job, mb);
+      const meta = { ready: true, jobId: job.id, filename: job.filename, updatedAt: new Date().toISOString(), stats: statsFrom(job, mb, ma), sim };
       fs.writeFileSync(META, JSON.stringify(meta, null, 2));
       log.ok(`demonstração pronta (job ${job.id})`);
     } catch (err) {
@@ -109,6 +183,53 @@ export function buildShowcase(job) {
   return { building: true };
 }
 
+// ── Pacote .zip da demo (para guardar no projeto e ficar permanente) ──
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+/** Zip simples (sem compressão — vídeo/imagem já são comprimidos) com os arquivos da demo. */
+export function showcaseZip() {
+  if (!readMeta()?.ready) throw Object.assign(new Error('nenhuma demonstração pronta para baixar'), { status: 404 });
+  const files = fs.readdirSync(DIR).filter((f) => f === 'showcase.json' || /^(antes|depois)\.mp4$|^broll_\d+\.(jpg|mp4)$/.test(f));
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  for (const name of files) {
+    const data = fs.readFileSync(path.join(DIR, name));
+    const crc = crc32(data);
+    const nameBuf = Buffer.from(`demo/${name}`);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(0, 6); local.writeUInt16LE(0, 8);
+    local.writeUInt32LE(0, 10); local.writeUInt32LE(crc, 14); local.writeUInt32LE(data.length, 18); local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26); local.writeUInt16LE(0, 28);
+    parts.push(local, nameBuf, data);
+    const cen = Buffer.alloc(46);
+    cen.writeUInt32LE(0x02014b50, 0); cen.writeUInt16LE(20, 4); cen.writeUInt16LE(20, 6); cen.writeUInt16LE(0, 8); cen.writeUInt16LE(0, 10);
+    cen.writeUInt32LE(0, 12); cen.writeUInt32LE(crc, 16); cen.writeUInt32LE(data.length, 20); cen.writeUInt32LE(data.length, 24);
+    cen.writeUInt16LE(nameBuf.length, 28); cen.writeUInt32LE(offset, 42);
+    central.push(cen, nameBuf);
+    offset += 30 + nameBuf.length + data.length;
+  }
+  const cenSize = central.reduce((s, b) => s + b.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(cenSize, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...parts, ...central, end]);
+}
+
 export function removeShowcase() {
-  for (const f of ['antes.mp4', 'depois.mp4', 'showcase.json']) fs.rmSync(path.join(DIR, f), { force: true });
+  if (!fs.existsSync(DIR)) return;
+  for (const f of fs.readdirSync(DIR)) fs.rmSync(path.join(DIR, f), { force: true });
 }

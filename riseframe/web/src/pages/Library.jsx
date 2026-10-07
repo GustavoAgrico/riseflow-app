@@ -3,7 +3,7 @@ import { C, GRAD, glass, FONT_DISPLAY, fmtBytes, fmtDuration } from '../theme.js
 import Icon from '../components/Icon.jsx';
 import { listJobs, clearJobs } from '../history.js';
 import { useAuth } from '../AuthContext.jsx';
-import { adminRemoveShowcase, adminSetShowcase, adminShowcase } from '../api.js';
+import { adminDownloadShowcase, adminRemoveShowcase, adminSetShowcase, adminShowcase } from '../api.js';
 
 const MODE_LABEL = { auto: 'Automático', render: 'Timeline', clips: 'Clipes curtos', transcribe: 'Transcrição' };
 const fmtDate = (ms) => new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -149,11 +149,17 @@ export default function Library({ onNewVideo }) {
               {show?.building
                 ? 'preparando…'
                 : show?.info
-                  ? `ativa${show.meta?.filename ? ` (${show.meta.filename})` : ''}. Para trocar, clique na estrela de outro vídeo.`
+                  ? show.info.bundled
+                    ? 'ativa (permanente, guardada no site). Para trocar, clique na estrela de outro vídeo.'
+                    : `ativa${show.meta?.filename ? ` (${show.meta.filename})` : ''}. Ela some se o servidor reiniciar — baixe o pacote para deixá-la permanente.`
                   : 'nenhuma. Clique na estrela de um vídeo editado (Automático ou Timeline) para mostrar o antes e depois.'}
               {show?.meta?.error && !show?.building && <span style={{ color: '#FCA5B4' }}> Último erro: {show.meta.error}</span>}
               {showMsg && <span style={{ display: 'block', marginTop: 4, color: C.orangeSoft }}>{showMsg}</span>}
             </span>
+            {show?.info && !show.info.external && !show.info.bundled && (
+              <button onClick={() => adminDownloadShowcase().catch((e) => setShowMsg(e.message))} title="Para a demo ficar permanente: mande este arquivo para colocar no projeto"
+                style={{ border: `1px solid ${C.border}`, background: 'transparent', color: C.text, borderRadius: 9, padding: '7px 12px', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>Baixar pacote da demo</button>
+            )}
             {show?.info && !show.info.external && (
               <button onClick={removeDemo} style={{ border: `1px solid ${C.border}`, background: 'transparent', color: C.muted, borderRadius: 9, padding: '7px 12px', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>Remover</button>
             )}

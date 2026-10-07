@@ -69,6 +69,21 @@ export function remapTime(t, keep) {
   return acc; // depois do fim → duração total mantida
 }
 
+/** Inverso do remapTime: tempo na timeline CORTADA → tempo no vídeo ORIGINAL. */
+export function unmapTime(t, keep) {
+  let acc = 0;
+  const list = keep || [];
+  for (let i = 0; i < list.length; i++) {
+    const seg = list[i];
+    const len = seg.end - seg.start;
+    // Na emenda exata vale o COMEÇO do próximo trecho (exceto no último).
+    if (t < acc + len || (i === list.length - 1 && t <= acc + len)) return seg.start + Math.max(0, t - acc);
+    acc += len;
+  }
+  const last = (keep || [])[keep.length - 1];
+  return last ? last.end : t;
+}
+
 function overlaps(a0, a1, b0, b1) {
   return Math.min(a1, b1) - Math.max(a0, b0) > 0;
 }

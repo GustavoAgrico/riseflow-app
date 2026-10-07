@@ -107,6 +107,17 @@ export async function getPublicInfo() {
 export const adminShowcase = () => billingCall('/admin/showcase');
 export const adminSetShowcase = (jobId) => billingCall('/admin/showcase', 'POST', { jobId });
 export const adminRemoveShowcase = () => billingCall('/admin/showcase', 'DELETE');
+/** Baixa o pacote .zip da demo (para deixá-la permanente no site). */
+export async function adminDownloadShowcase() {
+  const r = await fetch(`${BASE}/admin/showcase/package`, { headers: authHeaders() });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `erro ${r.status}`);
+  const url = URL.createObjectURL(await r.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'riseframe-demo.zip';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
 
 export async function getHealth() {
   const r = await fetch(`${BASE}/health`);

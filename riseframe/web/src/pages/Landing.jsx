@@ -225,12 +225,14 @@ export default function Landing({ onEnter, onLogin }) {
         </header>
 
         {/* DEMO: antes e depois */}
-        <section id="demo" style={{ maxWidth: 1000, margin: '0 auto', padding: '40px 24px 50px' }}>
+        <section id="demo" style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 24px 50px' }}>
           <h2 style={{ textAlign: 'center', fontSize: 'clamp(26px,4vw,38px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 12px' }}>
             Veja o <span style={gradientText}>antes e depois</span>
           </h2>
           <p style={{ textAlign: 'center', color: C.muted, fontSize: 16, maxWidth: 560, margin: '0 auto 34px' }}>
-            O mesmo vídeo: como foi gravado e como saiu do Riseframe.
+            {info?.showcase?.sim
+              ? 'Uma edição real: ligue e desligue cortes, legendas, cor, zoom e B-roll e veja como o vídeo fica.'
+              : 'O mesmo vídeo: como foi gravado e como saiu do Riseframe.'}
           </p>
           <BeforeAfter showcase={info?.showcase} />
         </section>

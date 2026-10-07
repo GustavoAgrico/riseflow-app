@@ -4,7 +4,7 @@ import { probeSummary, runFfmpeg, sdrVf, x264Fast } from './ffmpeg.js';
 import { transcribe } from './transcribe/index.js';
 import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
-import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime } from './timeline.js';
+import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, unmapTime } from './timeline.js';
 import { insertBroll } from './broll.js';
 import { applyManualFrame } from './frame.js';
 import { applyUserMedia } from './overlay.js';
@@ -182,6 +182,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
   // 2. Transcrição (ASR no auto/transcribe; já vem do cliente no render)
   let transcript;
+  let cutKeep = null; // trechos mantidos (timeline original), se o vídeo foi cortado
   // Cópia da transcrição na TIMELINE ORIGINAL (com as remoções da limpeza marcadas),
   // para o editor/timeline abrir depois de qualquer modo e reprocessar via /render.
   let editorTranscript = null;
@@ -289,7 +290,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
       if (Array.isArray(options.brollPlan)) options.brollPlan = options.brollPlan.map(remapRange).filter(Boolean);
       if (Array.isArray(options.zoomMoments)) options.zoomMoments = options.zoomMoments.map(remapRange).filter(Boolean);
       meta = { ...meta, ...(await probeSummary(input)) };
-      report.cut = { removedSeconds: Math.round(removedSeconds * 10) / 10, kept: keep.length };
+      report.cut = { removedSeconds: Math.round(removedSeconds * 10) / 10, kept: keep.length, keep };
+      cutKeep = keep;
     } else {
       // Nada relevante para recortar. Ainda assim, se a limpeza automática marcou
       // palavras, tira-as das legendas (sem remapear tempos — o vídeo não foi cortado).
@@ -349,7 +351,13 @@ export async function runPipeline(job, onUpdate = () => {}) {
     const st = enter('broll');
     const r = await insertBroll(input, work, meta, analysis, { ...options, personInput: preFrameInput }, st.onProgress);
     input = r.output;
-    report.broll = { inserted: r.inserted };
+    // Tempos do B-roll de volta na timeline ORIGINAL (para o simulador da página inicial).
+    const toOrig = (t) => (cutKeep ? unmapTime(t, cutKeep) : t);
+    report.broll = {
+      inserted: r.inserted,
+      layout: r.layout,
+      items: (r.items || []).map((it) => ({ ...it, start: +toOrig(it.start).toFixed(3), end: +toOrig(it.end).toFixed(3) })),
+    };
     st.record(report.broll);
     st.onProgress(1);
   }
