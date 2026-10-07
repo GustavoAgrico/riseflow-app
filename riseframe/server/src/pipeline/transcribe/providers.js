@@ -87,6 +87,86 @@ async function fetchRetry(url, init, timeoutMs, label) {
   }
 }
 
+// ─── Groq (Whisper large-v3 na nuvem) ─────────────────────────────────
+/** Acima disto (s), o áudio vai para a Groq em pedaços (o envio tem limite de tamanho). */
+export const GROQ_CHUNK_SECONDS = 10 * 60;
+
+export async function transcribeGroq(input, work, meta, cfg, onProgress, { chunkSeconds = GROQ_CHUNK_SECONDS } = {}) {
+  onProgress?.(0.05);
+  const audio = await extractAudio(input, work, 'mp3');
+  onProgress?.(0.15);
+  const dur = Number(meta?.duration) || 60;
+  const chunks = dur > chunkSeconds ? await splitAudio(audio, work, chunkSeconds) : [{ file: audio, offset: 0, dur }];
+  let language = cfg.groqLanguage || '';
+  const words = [];
+  let text = '';
+  for (let i = 0; i < chunks.length; i += 1) {
+    const c = chunks[i];
+    const from = 0.15 + (0.8 * i) / chunks.length;
+    const to = 0.15 + (0.8 * (i + 1)) / chunks.length;
+    const stop = waitProgress((p) => onProgress?.(from + (to - from) * p), 0, Math.max(4000, c.dur * 40));
+    let data;
+    try {
+      const form = new FormData();
+      form.append('file', new Blob([await fs.readFile(c.file)], { type: 'audio/mpeg' }), 'audio.mp3');
+      form.append('model', cfg.groqModel || 'whisper-large-v3-turbo');
+      form.append('response_format', 'verbose_json');
+      form.append('timestamp_granularities[]', 'word');
+      form.append('timestamp_granularities[]', 'segment');
+      form.append('temperature', '0');
+      // Idioma do 1º pedaço vale para os seguintes (legenda num idioma só).
+      if (language) form.append('language', language);
+      const res = await fetchRetry('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${cfg.groqKey}` },
+        body: form,
+      }, Math.max(60_000, c.dur * 1000), 'Groq');
+      if (!res.ok) throw new Error(`Groq ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      data = await res.json();
+    } finally {
+      stop();
+    }
+    if (!language && data.language) language = groqLang(data.language);
+    for (const w of data.words || []) {
+      const word = String(w.word || '').trim();
+      if (word) words.push({ start: Number(w.start) + c.offset, end: Number(w.end) + c.offset, word });
+    }
+    if (data.text) text += (text ? ' ' : '') + String(data.text).trim();
+    onProgress?.(to);
+  }
+  if (chunks.length > 1) log.info(`Groq: ${chunks.length} pedaços transcritos (${Math.round(dur / 60)} min)`);
+  return {
+    provider: 'groq',
+    language: language || 'unknown',
+    text: text || words.map((w) => w.word).join(' '),
+    segments: wordsToSegments(punctuate(words, text)),
+  };
+}
+
+// A Groq devolve o idioma por extenso ("portuguese"); a API aceita o código ISO.
+const LANG_CODES = { portuguese: 'pt', english: 'en', spanish: 'es', french: 'fr', italian: 'it', german: 'de' };
+const groqLang = (l) => LANG_CODES[String(l).toLowerCase()] || String(l).toLowerCase();
+
+/**
+ * As palavras da Groq vêm sem pontuação; o texto completo vem com. Copia a pontuação do
+ * texto para as palavras (casando em ordem), para as frases da legenda quebrarem no ponto.
+ */
+export function punctuate(words, text) {
+  const tokens = String(text || '').split(/\s+/).filter(Boolean);
+  const bare = (s) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]/gu, '');
+  let j = 0;
+  return words.map((w) => {
+    const target = bare(w.word);
+    for (let k = j; k < Math.min(tokens.length, j + 4); k += 1) {
+      if (bare(tokens[k]) === target && target) {
+        j = k + 1;
+        return { ...w, word: tokens[k] };
+      }
+    }
+    return w;
+  });
+}
+
 // ─── Deepgram ─────────────────────────────────────────────────────────
 export async function transcribeDeepgram(input, work, meta, cfg, onProgress, { chunkSeconds = DEEPGRAM_CHUNK_SECONDS } = {}) {
   onProgress?.(0.05);

@@ -6,6 +6,7 @@ import {
   transcribeDeepgram,
   transcribeAssemblyAI,
   transcribeWhisperLocal,
+  transcribeGroq,
 } from './providers.js';
 
 const log = makeLogger('transcribe');
@@ -63,8 +64,9 @@ export async function transcribe(input, work, meta, onProgress) {
   }
 }
 
-const API_PROVIDERS = ['deepgram', 'assemblyai', 'openai'];
-const keyOf = (p, cfg) => ({ deepgram: cfg.deepgramKey, assemblyai: cfg.assemblyaiKey, openai: cfg.openaiKey })[p] || '';
+// Ordem das alternativas: a mais barata primeiro.
+const API_PROVIDERS = ['deepgram', 'groq', 'assemblyai', 'openai'];
+const keyOf = (p, cfg) => ({ deepgram: cfg.deepgramKey, groq: cfg.groqKey, assemblyai: cfg.assemblyaiKey, openai: cfg.openaiKey })[p] || '';
 
 async function runProvider(provider, input, work, meta, cfg, onProgress) {
   switch (provider) {
@@ -77,6 +79,9 @@ async function runProvider(provider, input, work, meta, cfg, onProgress) {
     case 'assemblyai':
       if (!cfg.assemblyaiKey) throw new Error('ASSEMBLYAI_API_KEY ausente');
       return transcribeAssemblyAI(input, work, meta, cfg);
+    case 'groq':
+      if (!cfg.groqKey) throw new Error('GROQ_API_KEY ausente');
+      return transcribeGroq(input, work, meta, cfg, onProgress);
     case 'whisper-local':
       return transcribeWhisperLocal(input, work, meta, cfg);
     case 'mock':
@@ -97,8 +102,8 @@ function alertAdmins(provider, err) {
   const now = Date.now();
   if (now - (lastAlert.get(provider) || 0) < 6 * 3600 * 1000) return;
   lastAlert.set(provider, now);
-  const name = { deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI' }[provider] || provider;
-  const envName = { deepgram: 'DEEPGRAM_API_KEY', openai: 'OPENAI_API_KEY', assemblyai: 'ASSEMBLYAI_API_KEY' }[provider];
+  const name = { deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI', groq: 'Groq' }[provider] || provider;
+  const envName = { deepgram: 'DEEPGRAM_API_KEY', openai: 'OPENAI_API_KEY', assemblyai: 'ASSEMBLYAI_API_KEY', groq: 'GROQ_API_KEY' }[provider];
   const why = transcribeErrorMessage(provider, err);
   import('../../auth/notify.js')
     .then(({ notifyAdmins, emailHtml }) => notifyAdmins({
@@ -119,28 +124,31 @@ function alertAdmins(provider, err) {
  */
 export async function checkTranscribeKey() {
   const cfg = config.transcribe;
-  if (cfg.provider !== 'deepgram' || !cfg.deepgramKey) return null;
+  const p = cfg.provider;
+  const probe = {
+    deepgram: cfg.deepgramKey && { url: 'https://api.deepgram.com/v1/projects', headers: { Authorization: `Token ${cfg.deepgramKey}` } },
+    groq: cfg.groqKey && { url: 'https://api.groq.com/openai/v1/models', headers: { Authorization: `Bearer ${cfg.groqKey}` } },
+  }[p];
+  if (!probe) return null;
+  const name = { deepgram: 'Deepgram', groq: 'Groq' }[p];
   try {
-    const r = await fetch('https://api.deepgram.com/v1/projects', {
-      headers: { Authorization: `Token ${cfg.deepgramKey}` },
-      signal: AbortSignal.timeout(15_000),
-    });
+    const r = await fetch(probe.url, { headers: probe.headers, signal: AbortSignal.timeout(15_000) });
     const ok = r.ok;
-    cfg.keyCheck = { provider: 'deepgram', ok, error: ok ? null : transcribeErrorMessage('deepgram', new Error(`HTTP ${r.status}`)), at: new Date().toISOString() };
-    if (ok) log.ok('chave da Deepgram aceita');
+    cfg.keyCheck = { provider: p, ok, error: ok ? null : transcribeErrorMessage(p, new Error(`HTTP ${r.status}`)), at: new Date().toISOString() };
+    if (ok) log.ok(`chave da ${name} aceita`);
     else {
-      log.error(`chave da Deepgram recusada (HTTP ${r.status})`);
-      if (r.status === 401 || r.status === 403 || r.status === 402) alertAdmins('deepgram', new Error(`HTTP ${r.status}`));
+      log.error(`chave da ${name} recusada (HTTP ${r.status})`);
+      if (r.status === 401 || r.status === 403 || r.status === 402) alertAdmins(p, new Error(`HTTP ${r.status}`));
     }
   } catch (err) {
-    log.warn(`não consegui testar a chave da Deepgram: ${err.message}`);
+    log.warn(`não consegui testar a chave da ${name}: ${err.message}`);
   }
   return cfg.keyCheck || null;
 }
 
 /** Mensagem clara para o usuário a partir do erro do provedor (chave, saldo, rede...). */
 export function transcribeErrorMessage(provider, err) {
-  const name = { deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI' }[provider] || provider;
+  const name = { deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI', groq: 'Groq' }[provider] || provider;
   const msg = String(err?.message || err || '');
   const status = Number((/\b(401|402|403|429)\b/.exec(msg) || [])[1]);
   if (/ausente/i.test(msg)) return `falta a chave da ${name}. Configure a chave e tente de novo.`;

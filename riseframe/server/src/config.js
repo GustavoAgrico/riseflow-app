@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v85';
+export const APP_VERSION = 'v86';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -63,6 +63,11 @@ export const config = {
     // Idioma fixo opcional para a Deepgram (ex.: 'pt'). Vazio = detecta sozinho.
     deepgramLanguage: process.env.DEEPGRAM_LANGUAGE || '',
     assemblyaiKey: process.env.ASSEMBLYAI_API_KEY || '',
+    // Groq (Whisper na nuvem, muito barato e rápido; tem plano grátis): console.groq.com → API Keys.
+    groqKey: process.env.GROQ_API_KEY || '',
+    groqModel: process.env.GROQ_WHISPER_MODEL || 'whisper-large-v3-turbo',
+    // Idioma fixo opcional (ex.: 'pt'); vazio = detecta sozinho.
+    groqLanguage: process.env.GROQ_LANGUAGE || '',
     whisperModel: process.env.WHISPER_MODEL || 'base',
     // Timeout do whisper-local (ms). 0/ausente = automático (escala com a duração).
     // Em máquinas pequenas, evita que um processo travado/OOM prenda o job.
@@ -215,7 +220,7 @@ export function capabilities() {
   else if (p === 'whisper-local') transcribeReady = config.transcribe.whisperReady !== false;
   else
     transcribeReady = Boolean(
-      config.transcribe.openaiKey || config.transcribe.deepgramKey || config.transcribe.assemblyaiKey,
+      config.transcribe.openaiKey || config.transcribe.deepgramKey || config.transcribe.assemblyaiKey || config.transcribe.groqKey,
     ) && config.transcribe.keyCheck?.ok !== false; // chave testada e recusada = indisponível
   return {
     transcribeProvider: p,

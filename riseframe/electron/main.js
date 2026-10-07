@@ -31,6 +31,9 @@ const KEYS_TEMPLATE = `# Chaves do Riseframe (este arquivo fica só no seu compu
 # Sem ela, o app tenta o Whisper local (precisa de Python + faster-whisper).
 DEEPGRAM_API_KEY=
 
+# Alternativa mais barata (tem plano grátis): chave da Groq em console.groq.com → API Keys.
+GROQ_API_KEY=
+
 # B-roll automático (vídeos do Pexels)
 PEXELS_API_KEY=
 
@@ -138,7 +141,7 @@ async function startServer() {
     DATA_DIR: dataDir,
     BILLING_MODE: 'off', // app local: sem limites de créditos/planos
     CLOUD_SYNC: 'off', // dados do app local NUNCA vão para a nuvem do site
-    TRANSCRIBE_PROVIDER: keys.TRANSCRIBE_PROVIDER || (keys.DEEPGRAM_API_KEY ? 'deepgram' : 'whisper-local'),
+    TRANSCRIBE_PROVIDER: keys.TRANSCRIBE_PROVIDER || (keys.DEEPGRAM_API_KEY ? 'deepgram' : keys.GROQ_API_KEY ? 'groq' : 'whisper-local'),
   };
 
   const log = createWriteStream(logFile, { flags: 'w' });

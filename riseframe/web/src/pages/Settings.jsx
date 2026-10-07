@@ -36,7 +36,7 @@ function Row({ label, value, hint }) {
   );
 }
 
-const PROVIDERS = { 'whisper-local': 'Whisper local', deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI', mock: 'Exemplo (mock)' };
+const PROVIDERS = { 'whisper-local': 'Whisper local', deepgram: 'Deepgram', openai: 'OpenAI', assemblyai: 'AssemblyAI', groq: 'Groq', mock: 'Exemplo (mock)' };
 const btn = { minHeight: 44, padding: '0 18px', background: 'transparent', border: `1px solid ${C.borderStrong}`, color: C.text, borderRadius: 11, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' };
 
 export default function Settings({ onNewVideo, onLogout }) {
