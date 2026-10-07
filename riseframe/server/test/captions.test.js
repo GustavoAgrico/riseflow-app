@@ -54,3 +54,24 @@ test('buildAss: palavra longa encolhe (auto-fit) e curta mantém tamanho', () =>
   assert.ok(!/\\fs\d+/.test(dialogs[0]), 'palavra curta não recebe override de fonte');
   assert.ok(/\\fs\d+/.test(dialogs[1]), 'palavra longa recebe \\fs menor (auto-fit)');
 });
+
+test('legenda padrão é normal: frase inteira, sem destacar a palavra falada', async () => {
+  const { buildAss } = await import('../src/pipeline/captions.js');
+  const seg = { start: 1, end: 3, text: '3 razões pelas quais', words: [
+    { start: 1, end: 1.4, word: '3' }, { start: 1.4, end: 2, word: 'razões' },
+    { start: 2, end: 2.4, word: 'pelas' }, { start: 2.4, end: 3, word: 'quais' },
+  ] };
+  const meta = { width: 1080, height: 1920 };
+  const plain = buildAss([seg], meta, { template: 'clean' }).split('\n').filter((l) => l.startsWith('Dialogue'));
+  assert.equal(plain.length, 1, 'uma linha por frase');
+  assert.match(plain[0], /3 razões pelas quais$/);
+  assert.doesNotMatch(plain[0], /alpha&H70/, 'nenhuma palavra apagada');
+
+  const colored = buildAss([seg], meta, { template: 'clean', color: 'yellow' }).split('\n').filter((l) => l.startsWith('Dialogue'));
+  assert.equal(colored.length, 1);
+  assert.match(colored[0], /\\c&H/, 'a frase toda na cor escolhida');
+
+  const hl = buildAss([seg], meta, { template: 'clean', highlight: true }).split('\n').filter((l) => l.startsWith('Dialogue'));
+  assert.equal(hl.length, 4, 'com destaque: uma linha por palavra falada');
+  assert.match(hl[2], /alpha&H70/, 'as outras palavras ficam apagadas');
+});

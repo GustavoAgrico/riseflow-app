@@ -190,7 +190,10 @@ export default function OptionsPanel({ catalog, options, onChange, disabled }) {
                 <Select value={options.captionPosition || 'auto'} options={catalog.captionPositions} onChange={(v) => set({ captionPosition: v })} />
               </Row>
             )}
-            <Row label="Cor de destaque" hint="Padrão branco">
+            <Row label="Destacar palavra falada" hint="Desligado: legenda normal, todas as palavras iguais. Ligado: realça a palavra que está sendo dita">
+              <Toggle on={options.captionHighlight === true} onChange={(v) => set({ captionHighlight: v })} />
+            </Row>
+            <Row label="Cor da legenda" hint="Padrão branco">
               <Swatches value={options.captionColor} options={catalog.captionColors} onChange={(v) => set({ captionColor: v })} />
             </Row>
             <Row label="Tamanho da legenda" hint={`${Math.round((options.captionScale ?? 1) * 100)}% — palavras longas encolhem sozinhas para caber`}>

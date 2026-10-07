@@ -503,8 +503,11 @@ function ClipsOptions({ catalog, options, onChange }) {
               <Select value={options.captionMode || 'auto'} options={cap.captionModes} onChange={(v) => set({ captionMode: v })} />
             </Row>
           )}
+          <Row label="Destacar palavra falada" hint="Desligado: legenda normal. Ligado: realça a palavra que está sendo dita">
+            <Toggle on={options.captionHighlight === true} onChange={(v) => set({ captionHighlight: v })} />
+          </Row>
           {cap.captionColors && (
-            <Row label="Cor de destaque" hint="Padrão branco">
+            <Row label="Cor da legenda" hint="Padrão branco">
               <Swatches value={options.captionColor || 'white'} options={cap.captionColors} onChange={(v) => set({ captionColor: v })} />
             </Row>
           )}

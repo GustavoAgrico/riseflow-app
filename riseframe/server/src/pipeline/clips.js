@@ -159,6 +159,7 @@ export async function generateClips(ctx, onProgress = () => {}) {
         animation: options.captionAnimation || 'auto',
         fontScale: options.captionScale || 1,
         mode: options.captionMode,
+        highlight: options.captionHighlight === true,
       };
       const r = await burnCaptions(input, cwork, cmeta, localTranscript, style, () => {});
       input = r.output;
