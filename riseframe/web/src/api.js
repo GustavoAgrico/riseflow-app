@@ -83,6 +83,8 @@ export const getBilling = () => billingCall('/billing');
 export const startCheckout = (info) => billingCall('/billing/checkout', 'POST', info);
 /** Confere se o pagamento já caiu; devolve o saldo atualizado + { added }. */
 export const syncBilling = () => billingCall('/billing/sync', 'POST');
+/** Desliga a renovação automática (o plano vale até o fim do período já pago). */
+export const cancelSubscription = () => billingCall('/billing/subscription/cancel', 'POST');
 
 export async function getHealth() {
   const r = await fetch(`${BASE}/health`);

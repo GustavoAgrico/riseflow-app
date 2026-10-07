@@ -12,6 +12,7 @@ import { optionsRouter } from './routes/options.js';
 import { authRouter } from './routes/auth.js';
 import { settingsRouter } from './routes/settings.js';
 import { billingRouter } from './routes/billing.js';
+import { startRenewTimer } from './auth/billing.js';
 import { ffmpegPath } from './pipeline/ffmpeg.js';
 import { whisperLocalAvailable } from './pipeline/transcribe/providers.js';
 import { log } from './logger.js';
@@ -21,6 +22,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 await ensureDirs();
 await queue.restore(); // reabre na timeline vídeos processados antes deste restart
 startCleanupTimer();
+startRenewTimer(); // renovação automática dos planos com assinatura
 ensureDemoSample().catch(() => {}); // gera o vídeo de exemplo em segundo plano
 
 // Autoteste do whisper-local: roda em SEGUNDO PLANO (não bloqueia o app.listen).

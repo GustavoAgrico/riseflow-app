@@ -3,7 +3,7 @@ import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
 import Icon from '../components/Icon.jsx';
 import { Spinner } from '../components/ui.jsx';
 import { useAuth } from '../AuthContext.jsx';
-import { startCheckout, syncBilling } from '../api.js';
+import { cancelSubscription, startCheckout, syncBilling } from '../api.js';
 
 const brl = (cents) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const num = (n) => Number(n).toLocaleString('pt-BR');
@@ -40,6 +40,9 @@ export default function Plans({ user, checkOnOpen }) {
   const [cpf, setCpf] = useState('');
   const [phone, setPhone] = useState('');
   const [paying, setPaying] = useState(false);
+  // Plano: 'card' = assinatura no cartão que renova sozinha; 'pix' = paga 30 dias.
+  const [payMode, setPayMode] = useState('card');
+  const [cancelling, setCancelling] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -75,11 +78,26 @@ export default function Plans({ user, checkOnOpen }) {
     setPaying(true);
     setError('');
     try {
-      const { url } = await startCheckout({ kind: pick.kind, itemId: pick.id, name, cpf, phone });
+      const recurring = pick.kind === 'plan' && billing.autoRenewAvailable && payMode === 'card';
+      const { url } = await startCheckout({ kind: pick.kind, itemId: pick.id, name, cpf, phone, recurring });
       window.location.href = url;
     } catch (e) {
       setError(e.message);
       setPaying(false);
+    }
+  }
+
+  async function stopRenewal() {
+    if (!window.confirm('Desligar a renovação automática? Seu plano continua valendo até o fim do período já pago.')) return;
+    setCancelling(true);
+    setError('');
+    try {
+      setBilling(await cancelSubscription());
+      setNotice('Renovação automática desligada. O plano vale até o fim do período já pago.');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -97,6 +115,8 @@ export default function Plans({ user, checkOnOpen }) {
   const canPay = selected && cpf.replace(/\D/g, '').length >= 11 && phone.replace(/\D/g, '').length >= 10 && !paying;
   // Botões sempre visíveis; só ficam ativos para clientes quando os pagamentos estão ligados.
   const canBuy = billing.enabled && !billing.admin;
+  const recurringChoice = pick?.kind === 'plan' && billing.autoRenewAvailable;
+  const recurring = recurringChoice && payMode === 'card';
 
   return (
     <div className="rf-page" style={{ maxWidth: 1040, margin: '0 auto', padding: '40px 24px 90px' }}>
@@ -122,7 +142,7 @@ export default function Plans({ user, checkOnOpen }) {
               {billing.unlimited
                 ? 'Todos os recursos, sem cobrança.'
                 : current
-                  ? `Válido até ${date(current.until)} · ${num(current.credits)} de ${num(current.monthlyCredits)} créditos do mês`
+                  ? `${billing.autoRenew ? `Renova sozinho em ${date(current.until)}` : `Válido até ${date(current.until)}`} · ${num(current.credits)} de ${num(current.monthlyCredits)} créditos do mês`
                   : 'Recursos básicos: corte de silêncio + legenda básica.'}
             </div>
           </div>
@@ -136,6 +156,16 @@ export default function Plans({ user, checkOnOpen }) {
             </div>
           )}
         </div>
+        {billing.autoRenew && (
+          <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', fontSize: 13, color: C.muted }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <Icon name="check" size={15} strokeWidth={2.4} color={C.green} /> Renovação automática ligada (cartão, todo mês)
+            </span>
+            <button onClick={stopRenewal} disabled={cancelling} style={{ background: 'transparent', border: `1px solid ${C.border}`, color: C.muted, borderRadius: 9, padding: '7px 12px', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+              {cancelling && <Spinner size={12} color={C.muted} />} Cancelar renovação
+            </button>
+          </div>
+        )}
         {billing.hasPending && (
           <button onClick={() => check(false)} disabled={checking} style={{ marginTop: 16, width: '100%', minHeight: 44, background: 'transparent', border: `1px solid ${C.borderStrong}`, color: C.text, borderRadius: 11, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             {checking && <Spinner size={14} color={C.text} />} Já paguei — verificar pagamento
@@ -231,7 +261,9 @@ export default function Plans({ user, checkOnOpen }) {
         <div ref={formRef} style={glass({ padding: 22, marginTop: 24 })}>
           <div style={{ fontSize: 15, fontWeight: 700 }}>
             {pick.kind === 'plan'
-              ? `Plano ${selected.name} · ${brl(selected.priceCents)} por ${billing.periodDays} dias`
+              ? recurring
+                ? `Plano ${selected.name} · ${brl(selected.priceCents)} por mês, renovando sozinho`
+                : `Plano ${selected.name} · ${brl(selected.priceCents)} por ${billing.periodDays} dias`
               : `Recarga de ${num(selected.credits)} créditos · ${brl(selected.priceCents)}`}
           </div>
           {switching && (
@@ -243,6 +275,19 @@ export default function Plans({ user, checkOnOpen }) {
             <p style={{ fontSize: 13, color: C.muted, margin: '8px 0 0' }}>
               Renovar soma mais {billing.periodDays} dias e volta os créditos do mês para {num(selected.credits)} (não acumula).
             </p>
+          )}
+          {recurringChoice && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginTop: 14 }}>
+              {[
+                { id: 'card', title: 'Cartão · renova sozinho', desc: 'Cobrado todo mês no cartão. Cancele quando quiser.' },
+                { id: 'pix', title: `Pagamento único · ${billing.periodDays} dias`, desc: 'Pix ou cartão, sem renovar. Para continuar, paga de novo no fim.' },
+              ].map((o) => (
+                <button key={o.id} onClick={() => setPayMode(o.id)} style={{ textAlign: 'left', background: payMode === o.id ? 'rgba(255,107,53,0.08)' : 'transparent', border: payMode === o.id ? `2px solid ${C.orange}` : `1px solid ${C.border}`, borderRadius: 11, padding: '11px 13px', color: C.text, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>{o.title}</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>{o.desc}</div>
+                </button>
+              ))}
+            </div>
           )}
           <label style={label}>Nome completo</label>
           <input style={input} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
@@ -256,14 +301,17 @@ export default function Plans({ user, checkOnOpen }) {
               <input style={input} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="(11) 99999-9999" />
             </div>
           </div>
-          <p style={{ color: C.faint, fontSize: 12, margin: '8px 0 0' }}>Exigidos pela AbacatePay para emitir a cobrança. Sem renovação automática.</p>
+          <p style={{ color: C.faint, fontSize: 12, margin: '8px 0 0' }}>
+            Exigidos pela AbacatePay para emitir a cobrança.{' '}
+            {recurring ? 'A renovação pode ser cancelada aqui a qualquer momento; o plano vale até o fim do mês pago.' : 'Sem renovação automática.'}
+          </p>
           <button
             onClick={pay}
             disabled={!canPay}
             style={{ marginTop: 16, width: '100%', minHeight: 50, background: GRAD, border: 'none', color: '#fff', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: canPay ? 'pointer' : 'not-allowed', opacity: canPay ? 1 : 0.5, fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
             {paying && <Spinner size={14} color="#fff" />}
-            Pagar {brl(selected.priceCents)} com Pix ou cartão
+            {recurring ? `Assinar por ${brl(selected.priceCents)}/mês no cartão` : `Pagar ${brl(selected.priceCents)} com Pix ou cartão`}
           </button>
         </div>
       )}

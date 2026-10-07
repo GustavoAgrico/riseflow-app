@@ -99,3 +99,99 @@ test('chave antiga (v1): troca sozinho para a API v1 depois do "version mismatch
   const applied = await billing.syncPayments({ userId: 'u3' });
   assert.deepEqual(applied.map((a) => a.credits), [100]);
 });
+
+/** AbacatePay v2 falsa com clientes e assinaturas. */
+function fakeSubscriptions() {
+  const base = fakeV2();
+  const state = { customers: 0, subs: [], cancelled: [], checkouts: new Map(), products: [] };
+  const h = (c) => {
+    if (c.version !== 'v2') return [401, { data: null, error: 'API key version mismatch', success: false }];
+    if (c.path === '/customers/create') return [200, { data: { id: `cust_${++state.customers}`, ...c.body }, error: null, success: true }];
+    if (c.path === '/products/create') state.products.push(c.body);
+    if (c.path === '/subscriptions/create') {
+      const id = `bill_sub_${state.checkouts.size + 1}`;
+      state.checkouts.set(id, { customerId: c.body.customerId });
+      return [200, { data: { id, url: `https://pay/${id}`, status: 'PENDING' }, error: null, success: true }];
+    }
+    if (c.path === '/checkouts/get' && state.checkouts.has(c.query.id)) {
+      // Pagou: a assinatura passa a existir na AbacatePay.
+      const ck = state.checkouts.get(c.query.id);
+      if (!ck.paid) {
+        ck.paid = true;
+        state.subs.push({ id: `subs_${state.subs.length + 1}`, customerId: ck.customerId, status: 'ACTIVE', createdAt: new Date(Date.now() + state.subs.length).toISOString() });
+      }
+      return [200, { data: { id: c.query.id, status: 'PAID' }, error: null, success: true }];
+    }
+    if (c.path === '/subscriptions/list') return [200, { data: state.subs, error: null, success: true, pagination: { hasNext: false, nextCursor: null } }];
+    if (c.path === '/subscriptions/cancel') {
+      state.cancelled.push(c.body.id);
+      const s = state.subs.find((x) => x.id === c.body.id);
+      if (s) s.status = 'CANCELLED';
+      return [200, { data: s, error: null, success: true }];
+    }
+    return base(c);
+  };
+  return { h, state };
+}
+
+test('renovação automática: assina no cartão, renova quando vence e cancela', async () => {
+  const { h, state } = fakeSubscriptions();
+  handler = h;
+  const u = { ...user, id: 'u_sub' };
+  const url = await billing.createCheckout(u, { ...checkoutInfo, recurring: true });
+  assert.match(url, /bill_sub_1/);
+  const create = calls.find((c) => c.path === '/subscriptions/create');
+  assert.deepEqual(create.body.methods, ['CARD']);
+  assert.equal(create.body.customerId, 'cust_1');
+  assert.equal(state.products.find((p) => p.cycle === 'MONTHLY').price, 8990, 'produto mensal com o preço do plano');
+
+  // Pagou → plano ativo + renovação automática ligada.
+  assert.equal((await billing.syncPayments({ userId: 'u_sub' })).length, 1);
+  let st = billing.billingStatus(u);
+  assert.equal(st.plan.id, 'pro');
+  assert.equal(st.autoRenew, true);
+
+  // Gasta créditos e o período vence: assinatura ATIVA → renova com créditos cheios.
+  billing.charge(u, 400);
+  const db = JSON.parse(fs.readFileSync(path.join(process.env.DATA_DIR, 'billing.json'), 'utf8'));
+  db.users.u_sub.plan.until = new Date(Date.now() - 1000).toISOString();
+  fs.writeFileSync(path.join(process.env.DATA_DIR, 'billing.json'), JSON.stringify(db));
+  // (o módulo guarda o estado em memória: aplica a mesma mudança nele)
+  const e = billing.__testEntry('u_sub');
+  e.plan.until = db.users.u_sub.plan.until;
+  const renewed = await billing.renewSubscriptions({ userId: 'u_sub' });
+  assert.equal(renewed.length, 1);
+  st = billing.billingStatus(u);
+  assert.equal(st.plan.credits, 1000, 'créditos do mês voltam ao valor do plano');
+  assert.ok(Date.parse(st.plan.until) > Date.now() + 29 * 24 * 3600 * 1000);
+
+  // Não renova de novo enquanto o período vale.
+  assert.equal((await billing.renewSubscriptions({ userId: 'u_sub' })).length, 0);
+
+  // Cancelar: chama a AbacatePay e desliga a renovação; o plano continua até o fim.
+  await billing.cancelSubscription(u);
+  assert.deepEqual(state.cancelled, ['subs_1']);
+  st = billing.billingStatus(u);
+  assert.equal(st.autoRenew, false);
+  assert.equal(st.plan.id, 'pro');
+});
+
+test('renovação automática: trocar de plano cancela a assinatura antiga', async () => {
+  const { h, state } = fakeSubscriptions();
+  handler = h;
+  const u = { ...user, id: 'u_troca' };
+  await billing.createCheckout(u, { ...checkoutInfo, itemId: 'basico', recurring: true });
+  await billing.syncPayments({ userId: 'u_troca' });
+  // (sem esperar descobrir o id da 1ª assinatura: mesmo assim ela é cancelada na troca)
+  await billing.createCheckout(u, { ...checkoutInfo, itemId: 'premium', recurring: true });
+  await billing.syncPayments({ userId: 'u_troca' });
+  assert.deepEqual(state.cancelled, ['subs_1']);
+  const st = billing.billingStatus(u);
+  assert.equal(st.plan.id, 'premium');
+  assert.equal(st.autoRenew, true);
+});
+
+test('renovação automática com chave antiga (v1) explica que precisa da chave nova', async () => {
+  handler = (c) => (c.version === 'v2' ? [401, { error: 'API key version mismatch', success: false }] : [404, { error: 'x' }]);
+  await assert.rejects(billing.createCheckout({ ...user, id: 'u_v1' }, { ...checkoutInfo, recurring: true }), /chave nova/);
+});
