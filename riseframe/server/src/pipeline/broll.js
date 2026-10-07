@@ -340,7 +340,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
           await download(p.url, file);
         }
         if (!file) continue;
-        clips.push({ start, end, query: p.query || 'mídia', term: p.query || null, file, isImage, zoom: p.zoom, fx: p.fx, fy: p.fy });
+        clips.push({ start, end, query: p.query || 'mídia', term: p.query || null, file, isImage, zoom: p.zoom, fx: p.fx, fy: p.fy, link: p.url || null });
       } catch (err) {
         log.warn(`B-roll (plano) falhou em ${start.toFixed(1)}s: ${err.message}`);
       }
@@ -379,7 +379,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
       const ext = isImage ? 'jpg' : 'mp4';
       const dest = path.join(work, `broll_${clips.length}.${ext}`);
       await download(hit.link, dest);
-      clips.push({ ...m, file: dest, isImage });
+      clips.push({ ...m, file: dest, isImage, link: hit.link });
     } catch (err) {
       log.warn(`B-roll "${m.query}" falhou: ${err.message}`);
     }
@@ -490,5 +490,10 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   const nImg = clips.filter((c) => c.isImage).length;
   const layoutLabel = layout === 'fullscreen' ? 'tela cheia' : `tela dividida (${layout === 'top' ? 'em cima' : 'embaixo'})`;
   log.ok(`${clips.length} inserções de B-roll (${clips.length - nImg} vídeos, ${nImg} fotos, ${layoutLabel})`);
-  return { output, inserted: clips.length };
+  // Itens inseridos (para o simulador da página inicial): tempos na timeline deste vídeo.
+  const items = clips.map((c) => ({
+    start: +c.start.toFixed(3), end: +c.end.toFixed(3), kind: c.isImage ? 'image' : 'video', link: c.link || null,
+    query: c.query || c.term || null, zoom: c.zoom, fx: c.fx, fy: c.fy,
+  }));
+  return { output, inserted: clips.length, items, layout };
 }

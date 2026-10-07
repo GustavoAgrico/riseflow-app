@@ -3,7 +3,7 @@ import { config } from '../config.js';
 import { queue } from '../queue.js';
 import { requireAuth } from './auth.js';
 import { billingStatus } from '../auth/billing.js';
-import { buildShowcase, removeShowcase, showcaseFile, showcaseInfo, showcaseStatus } from '../showcase.js';
+import { buildShowcase, removeShowcase, showcaseFile, showcaseInfo, showcaseStatus, showcaseZip } from '../showcase.js';
 
 // Informações PÚBLICAS para a página inicial (sem login): preços, teste grátis, limites,
 // demonstração antes/depois e contato. Nada aqui é segredo.
@@ -31,7 +31,7 @@ publicRouter.get('/showcase/:name', (req, res) => {
   const file = showcaseFile(req.params.name);
   if (!file) return res.status(404).json({ error: 'demonstração não encontrada' });
   res.set('Cache-Control', 'public, max-age=300');
-  res.type('video/mp4').sendFile(file);
+  res.type(file.endsWith('.jpg') ? 'image/jpeg' : 'video/mp4').sendFile(file);
 });
 
 function requireAdmin(req, res, next) {
@@ -45,6 +45,16 @@ publicRouter.get('/admin/showcase', requireAuth, requireAdmin, (_req, res) => re
 publicRouter.post('/admin/showcase', requireAuth, requireAdmin, (req, res) => {
   try {
     res.status(202).json(buildShowcase(queue.get(String(req.body?.jobId || ''))));
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// Pacote .zip da demo (para colocar no projeto em web/public/demo e ficar permanente).
+publicRouter.get('/admin/showcase/package', requireAuth, requireAdmin, (_req, res) => {
+  try {
+    const zip = showcaseZip();
+    res.set('Content-Disposition', 'attachment; filename="riseframe-demo.zip"').type('application/zip').send(zip);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }

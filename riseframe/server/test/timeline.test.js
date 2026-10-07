@@ -26,3 +26,10 @@ test('snapKeep: o MESMO keep serve para vídeo e para remap (mesma referência d
   assert.equal(remapTime(2.5, keep), 1.5); // 1s do 1º + 0.5s do 2º
   assert.equal(remapTime(1.5, keep), 1); // em trecho removido → cola no fim do mantido
 });
+
+test('unmapTime: tempo no vídeo cortado volta para o tempo do original', async () => {
+  const { remapTime, unmapTime } = await import('../src/pipeline/timeline.js');
+  const keep = [{ start: 0, end: 2 }, { start: 3, end: 5 }, { start: 6, end: 9 }];
+  for (const t of [0.5, 1.9, 3.2, 4.99, 6, 8.5]) assert.ok(Math.abs(unmapTime(remapTime(t, keep), keep) - t) < 1e-9, `ida e volta em ${t}`);
+  assert.equal(unmapTime(2.5, keep), 3.5); // 2,5 s do cortado = 3,5 s do original
+});

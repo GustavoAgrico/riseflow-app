@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { C, GRAD, FONT_DISPLAY } from '../theme.js';
 import Icon from './Icon.jsx';
 import { apiAsset } from '../api.js';
+import Simulator from './Simulator.jsx';
 
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
@@ -130,7 +131,9 @@ export default function BeforeAfter({ showcase }) {
   const [failed, setFailed] = useState(false);
   return (
     <>
-      {showcase && !failed ? <RealDemo showcase={showcase} onFail={() => setFailed(true)} /> : <Illustration />}
+      {showcase?.sim && !failed
+        ? <Simulator showcase={showcase} />
+        : showcase && !failed ? <RealDemo showcase={showcase} onFail={() => setFailed(true)} /> : <Illustration />}
       <style>{`@media (max-width: 640px){ .rf-ba{ gap: 10px !important; } .rf-ba .rf-ba-arrow{ display: none; } }`}</style>
     </>
   );

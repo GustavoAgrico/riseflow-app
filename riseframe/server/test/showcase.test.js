@@ -26,3 +26,19 @@ test('só aceita vídeo editado e concluído, com arquivos ainda no servidor', (
   assert.throws(() => buildShowcase({ id: 'x', status: 'done', mode: 'transcribe' }), /editado/);
   assert.throws(() => buildShowcase({ id: 'x', status: 'done', mode: 'auto', inputPath: '/nao/existe.mp4' }), /apagados/);
 });
+
+test('pacote .zip da demo: abre e traz os arquivos', async () => {
+  const fsP = await import('node:fs');
+  const dir = path.join(process.env.DATA_DIR, 'showcase');
+  fsP.mkdirSync(dir, { recursive: true });
+  fsP.writeFileSync(path.join(dir, 'antes.mp4'), 'a'.repeat(100));
+  fsP.writeFileSync(path.join(dir, 'depois.mp4'), 'b'.repeat(50));
+  fsP.writeFileSync(path.join(dir, 'showcase.json'), JSON.stringify({ ready: true, sim: { broll: [] } }));
+  const { showcaseZip, showcaseInfo: info } = await import('../src/showcase.js');
+  const zip = showcaseZip();
+  assert.equal(zip.readUInt32LE(0), 0x04034b50, 'assinatura zip');
+  assert.equal(zip.readUInt32LE(zip.length - 22), 0x06054b50, 'fim do zip');
+  assert.equal(zip.readUInt16LE(zip.length - 22 + 10), 3, '3 arquivos');
+  assert.match(zip.toString('latin1'), /demo\/antes\.mp4/);
+  assert.equal(info().before.startsWith('/api/showcase/antes.mp4'), true);
+});
