@@ -181,3 +181,30 @@ test('admin confirma o Pix pelo botão do e-mail (abrir o link sozinho não libe
     srv.close();
   }
 });
+
+test('"Já paguei" de novo reenvia o aviso que não tinha saído (ex.: e-mail ainda não configurado)', async () => {
+  config.auth.emailFrom = '';
+  const key = config.auth.resendKey;
+  config.auth.resendKey = ''; // sem envio de e-mail
+  const u = store.createUser({ email: 'reenvio@gmail.com', password: 'senha12345', name: 'Re' });
+  const dados = { kind: 'plan', itemId: 'basico', name: 'Rita Alves', email: 'reenvio@gmail.com', phone: '41998765432' };
+  mails.length = 0;
+  const c1 = await billing.createPixClaim(u, dados);
+  await new Promise((r) => setTimeout(r, 20));
+  const pend = () => billing.listClaims().pending.find((c) => c.id === c1.id);
+  assert.equal(pend().notice.email[0].ok, false);
+  assert.match(pend().notice.email[0].error, /não configurado/);
+  assert.equal(mails.length, 0);
+
+  config.auth.resendKey = key; // configurou o Resend
+  pend().notice.at = new Date(Date.now() - 120_000).toISOString();
+  const c2 = await billing.createPixClaim(u, dados);
+  assert.equal(c2.id, c1.id, 'mesmo aviso');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(pend().notice.email[0].ok, true);
+  assert.equal(mails.filter((m) => /Pix a confirmar/.test(m.subject)).length, 1);
+
+  await billing.createPixClaim(u, dados); // já entregue: não repete
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(mails.filter((m) => /Pix a confirmar/.test(m.subject)).length, 1);
+});

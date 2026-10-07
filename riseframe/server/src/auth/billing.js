@@ -678,7 +678,13 @@ export async function createPixClaim(user, { kind, itemId, phone, name, email })
   e.name = contact.name;
   const dup = Object.values(db.claims).find((c) => c.userId === user.id && c.status === 'pending' && c.kind === kind && c.itemId === itemId);
   if (dup) {
+    // Cliente clicou "Já paguei" de novo: se o aviso anterior não chegou por e-mail
+    // (ex.: o envio ainda não estava configurado), tenta mandar outra vez.
+    Object.assign(dup, { contactEmail: contact.email, name: contact.name, phone: tel });
     persist();
+    const delivered = dup.notice?.email?.some((m) => m.ok);
+    const recent = dup.notice?.at && Date.now() - Date.parse(dup.notice.at) < 60_000;
+    if (!delivered && !recent) notifyClaim(dup, item);
     return dup;
   }
   const id = `pix_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -689,15 +695,27 @@ export async function createPixClaim(user, { kind, itemId, phone, name, email })
   db.claims[id] = claim;
   persist();
   log.info(`aviso de Pix ${id}: ${itemLabel(kind, item)} (${brl(item.priceCents)}) de ${user.email}`);
+  notifyClaim(claim, item);
+  return claim;
+}
+
+/**
+ * Manda o "Pix a confirmar" para os admins (e-mail com o botão "Confirmar pagamento" e
+ * WhatsApp, se houver) e guarda o resultado no aviso para o painel mostrar.
+ */
+function notifyClaim(claim, item) {
+  const { id, kind } = claim;
+  const contactEmail = claim.contactEmail || claim.email;
   // Botão no e-mail: abre uma página de confirmação (não confirma só de abrir o link,
   // porque antivírus e o próprio Gmail visitam links de e-mail sozinhos).
   const confirmUrl = `${appUrl()}/api/billing/pix/email-action?t=${signLink({ c: id }, 14 * 86400)}`;
-  const text = `Riseframe: ${claim.name || user.email} avisou que pagou o Pix do ${itemLabel(kind, item)} (${brl(item.priceCents)}). Confira no banco e confirme: ${confirmUrl}`;
-  notifyAdmins({
+  const text = `Riseframe: ${claim.name || contactEmail} avisou que pagou o Pix do ${itemLabel(kind, item)} (${brl(item.priceCents)}). Confira no banco e confirme: ${confirmUrl}`;
+  claim.notice = { at: new Date().toISOString(), email: [], whatsapp: null, sending: true };
+  return notifyAdmins({
     subject: `Pix a confirmar: ${itemLabel(kind, item)} — ${brl(item.priceCents)}`,
     text,
     html: emailHtml('Pix a confirmar', [
-      `${claim.name || '(sem nome)'} · ${contact.email}${contact.email !== user.email ? ` (conta ${user.email})` : ''} · WhatsApp ${formatPhone(tel)}`,
+      `${claim.name || '(sem nome)'} · ${contactEmail}${contactEmail !== claim.email ? ` (conta ${claim.email})` : ''} · WhatsApp ${formatPhone(claim.phone)}`,
       `Avisou que pagou o ${itemLabel(kind, item)} (${brl(item.priceCents)}).`,
       'Confira no extrato do banco se o Pix caiu. Só depois clique em "Confirmar pagamento" — aí o plano e os créditos são liberados e o cliente é avisado.',
     ], { label: 'Confirmar pagamento', url: confirmUrl }),
@@ -705,11 +723,23 @@ export async function createPixClaim(user, { kind, itemId, phone, name, email })
     .then((r) => {
       claim.notice = { at: new Date().toISOString(), email: r.email, whatsapp: r.whatsapp };
       const failed = r.email.filter((m) => !m.ok);
-      if (failed.length) log.warn(`aviso do Pix ${id} não chegou por e-mail: ${failed.map((m) => m.error || 'sem envio configurado').join('; ')}`);
+      if (!r.email.length) log.warn(`aviso do Pix ${id}: nenhum e-mail de admin (defina ADMIN_EMAILS)`);
+      else if (failed.length) log.warn(`aviso do Pix ${id} não chegou por e-mail: ${failed.map((m) => `${m.to.split('@')[0].slice(0, 3)}…: ${m.error || 'sem envio configurado'}`).join('; ')}`);
+      else log.ok(`aviso do Pix ${id} enviado por e-mail`);
       persist();
     })
     .catch((err) => log.warn(`aviso aos admins falhou: ${err.message}`));
-  return claim;
+}
+
+/** Admin: manda de novo o e-mail "Pix a confirmar" de um aviso pendente (e diz se saiu). */
+export async function resendClaimNotice(claimId) {
+  load();
+  const c = db.claims[claimId];
+  if (!c) throw Object.assign(new Error('aviso não encontrado'), { status: 404 });
+  const item = itemOf(c.kind, c.itemId);
+  if (!item) throw Object.assign(new Error('plano ou recarga não existe mais'), { status: 400 });
+  await notifyClaim(c, item);
+  return c.notice;
 }
 
 /** Resumo de um aviso para a página de confirmação do e-mail. */

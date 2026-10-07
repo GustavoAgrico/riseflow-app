@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import express, { Router } from 'express';
 import { requireAuth } from './auth.js';
 import {
-  adminGrant, approveClaim, billingEnabled, billingStatus, cancelSubscription, createCheckout, createPixClaim, claimSummary, checkContact, sendContactCode, verifyContactCode,
+  adminGrant, approveClaim, billingEnabled, billingStatus, cancelSubscription, createCheckout, createPixClaim, claimSummary, resendClaimNotice, checkContact, sendContactCode, verifyContactCode,
   listClaims, rejectClaim, renewSubscriptions, sendReminders, syncPayments,
 } from '../auth/billing.js';
 import { config } from '../config.js';
@@ -176,6 +176,15 @@ billingRouter.post('/billing/admin/claims/:id/approve', requireAuth, requireAdmi
   try {
     const r = await approveClaim(req.params.id, req.user);
     res.json({ ...listClaims(), sent: r.sent });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+billingRouter.post('/billing/admin/claims/:id/notify', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const notice = await resendClaimNotice(req.params.id);
+    res.json({ notice, ...listClaims() });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }
