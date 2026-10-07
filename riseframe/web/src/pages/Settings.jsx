@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { C, gradientText, glass, FONT_DISPLAY } from '../theme.js';
 import { Spinner } from '../components/ui.jsx';
-import { adminDownloadBackup, getSettings } from '../api.js';
+import { adminCloudSync, adminDownloadBackup, getSettings } from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 import { openPlans } from '../components/CostLine.jsx';
 
@@ -44,6 +44,21 @@ export default function Settings({ onNewVideo, onLogout }) {
   const showServer = Boolean(billing?.admin);
   const [status, setStatus] = useState(null);
   const [error, setError] = useState('');
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [cloudResult, setCloudResult] = useState(null);
+
+  const syncCloud = () => {
+    setCloudBusy(true);
+    setCloudResult(null);
+    adminCloudSync()
+      .then((d) => {
+        setCloudResult(d.results);
+        setStatus((st) => (st ? { ...st, cloud: d.status } : st));
+      })
+      .catch((e) => setCloudResult({ erro: e.message }))
+      .finally(() => setCloudBusy(false));
+  };
+  const hhmm = (iso) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 
   useEffect(() => {
     if (!showServer) return;
@@ -102,6 +117,23 @@ export default function Settings({ onNewVideo, onLogout }) {
               <Row label="Dados salvos na nuvem · Supabase"
                 hint={status.cloud?.enabled ? (status.cloud.ok ? 'Contas, planos e Pix sobrevivem a reinícios e atualizações' : 'Falhou ao salvar — veja o log do servidor') : 'SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY — sem isso, no Render grátis tudo some a cada reinício'}
                 value={<StatusDot on={Boolean(status.cloud?.enabled && status.cloud.ok)} offLabel={status.cloud?.enabled ? 'Erro' : 'Desligado'} />} />
+              {status.cloud?.enabled && (
+                <div style={{ padding: '10px 0 4px', fontSize: 12.5, color: C.muted, lineHeight: 1.6 }}>
+                  {status.cloud.error && <div style={{ color: '#FCA5B4' }}>Último erro: {status.cloud.error}</div>}
+                  {status.cloud.restoredAt && <div>Dados trazidos da nuvem ao ligar: {hhmm(status.cloud.restoredAt)}</div>}
+                  {Object.entries(status.cloud.files || {}).map(([name, at]) => <div key={name}>{name}: salvo {hhmm(at)}</div>)}
+                  <button onClick={syncCloud} disabled={cloudBusy} style={{ ...btn, minHeight: 36, marginTop: 8, fontSize: 13 }}>
+                    {cloudBusy ? 'Salvando…' : 'Salvar tudo na nuvem agora'}
+                  </button>
+                  {cloudResult && (
+                    <div style={{ marginTop: 8 }}>
+                      {Object.entries(cloudResult).map(([name, r]) => (
+                        <div key={name} style={{ color: /erro/.test(String(r)) || name === 'erro' ? '#FCA5B4' : C.muted }}>{name}: {String(r)}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </Section>
