@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { config, capabilities, APP_VERSION } from './config.js';
-import { ensureDirs, startCleanupTimer } from './storage.js';
+import { ensureDirs, startCleanupTimer, formatBytes } from './storage.js';
 import { ensureDemoSample } from './demo.js';
 import { jobsRouter } from './routes/jobs.js';
 import { queue } from './queue.js';
@@ -100,15 +100,19 @@ if (fs.existsSync(distDir)) {
 // Erros (inclui limites do multer)
 app.use((err, _req, res, _next) => {
   if (err?.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({ error: `arquivo maior que o limite (${config.maxUploadBytes / 1e6} MB)` });
+    return res.status(413).json({ error: `arquivo maior que o limite (${formatBytes(config.maxUploadBytes)})` });
   }
   log.error(`erro: ${err?.message || err}`);
   res.status(400).json({ error: err?.message || 'erro interno' });
 });
 
-app.listen(config.port, () => {
+const server = app.listen(config.port, () => {
   log.ok(`==== Riseframe ${APP_VERSION} rodando em http://localhost:${config.port} ====`);
   log.info(`transcrição: ${config.transcribe.provider} · B-roll: ${config.broll.pexelsKey ? 'Pexels' : 'off'}`);
   log.info(`CORS: ${config.corsOrigin.join(', ')}`);
   probeWhisper(); // teste do Whisper em segundo plano, sem atrasar a abertura da porta
 });
+// Vídeos grandes (até dezenas de GB) levam bem mais que os 5 min padrão do Node para
+// subir: sem isto a conexão cai no meio do upload.
+server.requestTimeout = 0;
+server.timeout = 0;

@@ -168,7 +168,7 @@ Sem isso, usa análise heurística (grátis, local).
 Padrão: 512MB
 
 ```bash
-MAX_UPLOAD_MB=1024  # 1GB
+MAX_UPLOAD_MB=51200  # 50 GB (padrão)
 ```
 
 ---

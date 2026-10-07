@@ -86,7 +86,7 @@ o sistema degrada com elegância para provedores locais/mock quando faltam.
   não é exposto ao cliente, evitando injeção no filtergraph do FFmpeg); todas as chamadas
   a ffmpeg/ffprobe/python usam argumentos em array (sem shell); caminhos de arquivo vêm
   de ids gerados no servidor (sem path traversal).
-- **Limites.** Upload limitado por `MAX_UPLOAD_MB`; renders expiram por `OUTPUT_TTL_HOURS`;
+- **Limites.** Upload limitado por `MAX_UPLOAD_MB` (padrão 50 GB; o servidor recusa antes do upload se não couber no disco); renders expiram por `OUTPUT_TTL_HOURS`;
   a fila em memória evita crescimento sem fim (limite de registros).
 
 ## Licença de mídia

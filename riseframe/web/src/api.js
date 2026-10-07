@@ -96,8 +96,30 @@ export async function getOptions() {
   return r.json();
 }
 
+// Limite de tamanho do servidor (lido uma vez do /health).
+let uploadLimit = null;
+async function maxUploadBytes() {
+  if (uploadLimit === null) {
+    try {
+      uploadLimit = Number((await getHealth()).capabilities?.maxUploadBytes) || 0;
+    } catch {
+      uploadLimit = 0;
+    }
+  }
+  return uploadLimit;
+}
+
+function formatGB(bytes) {
+  const gb = bytes / 1024 ** 3;
+  return gb >= 1 ? `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`;
+}
+
 /** Envia o vídeo + opções. onProgress(0..1) reflete o upload. */
-function uploadTo(endpoint, file, options, onProgress) {
+async function uploadTo(endpoint, file, options, onProgress) {
+  const limit = await maxUploadBytes();
+  if (limit && file.size > limit) {
+    throw new Error(`o vídeo tem ${formatGB(file.size)} e o limite é ${formatGB(limit)}.`);
+  }
   return new Promise((resolve, reject) => {
     const form = new FormData();
     form.append('file', file);
