@@ -26,7 +26,7 @@ services:
       APP_URL: "https://${SITE_ADDRESS}"        # usado nos links de recuperação de senha
       AUTH_SECRET: ${AUTH_SECRET}               # OBRIGATÓRIO: mantém logins entre reinícios
       OUTPUT_TTL_HOURS: ${OUTPUT_TTL_HOURS:-24}
-      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-51200}
+      MAX_UPLOAD_GB: ${MAX_UPLOAD_GB:-0}
       # ── Transcrição (legendas) ──
       TRANSCRIBE_PROVIDER: ${TRANSCRIBE_PROVIDER:-whisper-local}
       WHISPER_MODEL: ${WHISPER_MODEL:-base}
