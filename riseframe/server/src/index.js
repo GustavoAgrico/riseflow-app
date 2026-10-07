@@ -76,7 +76,7 @@ app.get('/api/health', (_req, res) => {
 // notas de segurança no README — um deploy multiusuário real precisa de login/tenant.
 if (config.apiToken) {
   app.use('/api', (req, res, next) => {
-    if (req.path === '/health' || req.path === '/billing/webhook') return next();
+    if (req.path === '/health' || req.path === '/billing/webhook' || req.path === '/billing/pix/email-action') return next();
     const hdr = req.get('authorization') || '';
     const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : '';
     if (token && token === config.apiToken) return next();

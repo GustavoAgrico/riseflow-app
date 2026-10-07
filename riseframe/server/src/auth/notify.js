@@ -61,11 +61,22 @@ export async function notifyUser({ email, phone }, { subject, text, html }) {
   return { email: mail, whatsapp: wa };
 }
 
-/** Avisa os admins (e-mails de ADMIN_EMAILS e ADMIN_WHATSAPP). */
+/**
+ * Avisa os admins (e-mails de ADMIN_EMAILS e ADMIN_WHATSAPP). Devolve o resultado de cada
+ * envio — { email: [{ to, ok, error }], whatsapp } — para o admin ver se o aviso saiu.
+ */
 export async function notifyAdmins({ subject, text, html }) {
   const emails = config.billing.adminEmails;
-  await Promise.all([
-    ...emails.map((to) => sendMail({ to, subject, text, html })),
+  const [mail, whatsapp] = await Promise.all([
+    Promise.all(emails.map(async (to) => {
+      try {
+        const ok = await sendMail({ to, subject, text, html }, { throwOnError: true });
+        return { to, ok };
+      } catch (err) {
+        return { to, ok: false, error: err.message };
+      }
+    })),
     config.billing.adminWhatsapp ? sendWhatsApp(config.billing.adminWhatsapp, text) : null,
   ]);
+  return { email: mail, whatsapp };
 }
