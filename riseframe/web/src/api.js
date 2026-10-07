@@ -37,6 +37,19 @@ async function authPost(path, body) {
   return data;
 }
 export const register = (email, password, name) => authPost('/auth/register', { email, password, name });
+/** Confirma o e-mail da conta com o código de 6 dígitos / pede outro código. */
+export async function verifyAccount(code) {
+  const r = await fetch(`${BASE}/auth/verify`, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ code }) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data;
+}
+export async function resendVerify() {
+  const r = await fetch(`${BASE}/auth/verify/resend`, { method: 'POST', headers: authHeaders() });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data;
+}
 export const login = (email, password) => authPost('/auth/login', { email, password });
 /** Login com Google: envia o ID token (credential) do Google Identity Services. */
 export const loginWithGoogle = (credential) => authPost('/auth/google', { credential });

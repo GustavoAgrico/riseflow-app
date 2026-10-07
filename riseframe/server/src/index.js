@@ -16,6 +16,7 @@ import { publicRouter } from './routes/public.js';
 import { startRenewTimer } from './auth/billing.js';
 import { ffmpegPath } from './pipeline/ffmpeg.js';
 import { whisperLocalAvailable } from './pipeline/transcribe/providers.js';
+import { checkTranscribeKey } from './pipeline/transcribe/index.js';
 import { log } from './logger.js';
 import { cloudStatus, flushCloud, restoreFromCloud } from './cloudSync.js';
 
@@ -53,6 +54,8 @@ function probeWhisper() {
 }
 
 const app = express();
+// Atrás do proxy do Render/Caddy: req.ip = IP real do cliente (limite de cadastros por IP).
+app.set('trust proxy', 1);
 // CORS: '*' vira `origin: true` (reflete qualquer origem); senão, a lista explícita.
 const corsOrigin = config.corsOrigin.includes('*') ? true : config.corsOrigin;
 app.use(cors({ origin: corsOrigin }));
@@ -125,6 +128,7 @@ const server = app.listen(config.port, () => {
   log.info(`transcrição: ${config.transcribe.provider} · B-roll: ${config.broll.pexelsKey ? 'Pexels' : 'off'}`);
   log.info(`CORS: ${config.corsOrigin.join(', ')}`);
   probeWhisper(); // teste do Whisper em segundo plano, sem atrasar a abertura da porta
+  checkTranscribeKey().catch(() => {}); // a chave da Deepgram funciona? (avisa o admin se não)
 });
 // Vídeos grandes (até dezenas de GB) levam bem mais que os 5 min padrão do Node para
 // subir: sem isto a conexão cai no meio do upload.

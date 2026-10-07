@@ -8,6 +8,7 @@ import {
   loginWithGoogle as apiGoogle,
   resetPassword as apiReset,
   getBilling,
+  verifyAccount as apiVerify,
 } from './api.js';
 
 const AuthCtx = createContext(null);
@@ -76,13 +77,18 @@ export function AuthProvider({ children }) {
     setUser(u);
     return u;
   }
+  async function verifyAccount(code) {
+    const { user: u } = await apiVerify(code);
+    setUser(u);
+    return u;
+  }
   function logout() {
     setToken('');
     setUser(null);
   }
 
   return (
-    <AuthCtx.Provider value={{ user, ready, login, register, loginWithGoogle, resetPassword, logout, billing, refreshBilling, setBilling }}>
+    <AuthCtx.Provider value={{ user, ready, login, register, verifyAccount, loginWithGoogle, resetPassword, logout, billing, refreshBilling, setBilling }}>
       {children}
     </AuthCtx.Provider>
   );

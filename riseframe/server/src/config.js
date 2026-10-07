@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v84';
+export const APP_VERSION = 'v85';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -110,6 +110,11 @@ export const config = {
     resendKey: process.env.RESEND_API_KEY || '',
     // Remetente, ex.: Riseframe <nao-responda@riseframe.com.br> (domínio verificado no Resend).
     emailFrom: process.env.EMAIL_FROM || '',
+    // Confirmação do e-mail no cadastro (código de 6 dígitos): auto = liga sozinha quando o
+    // site consegue mandar e-mail para qualquer pessoa (domínio verificado); off desliga.
+    emailVerify: String(process.env.EMAIL_VERIFY || 'auto').toLowerCase(),
+    // Máximo de contas novas por conexão (IP) em 24 h — contra contas em massa.
+    signupsPerIpDay: num(process.env.SIGNUPS_PER_IP_DAY, 3),
     // URL pública do app (para montar o link de recuperação). Ex.: https://riseframe.onrender.com
     appUrl: process.env.APP_URL || '',
   },
@@ -211,7 +216,7 @@ export function capabilities() {
   else
     transcribeReady = Boolean(
       config.transcribe.openaiKey || config.transcribe.deepgramKey || config.transcribe.assemblyaiKey,
-    );
+    ) && config.transcribe.keyCheck?.ok !== false; // chave testada e recusada = indisponível
   return {
     transcribeProvider: p,
     transcribeReady,

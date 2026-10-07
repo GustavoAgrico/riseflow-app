@@ -11,6 +11,7 @@ import Library from './pages/Library.jsx';
 import Settings from './pages/Settings.jsx';
 import Plans from './pages/Plans.jsx';
 import Editor from './App.jsx';
+import VerifyEmail from './pages/VerifyEmail.jsx';
 
 const NAV = [
   { id: 'dashboard', label: 'Produtividade', icon: 'grid' },
@@ -230,6 +231,11 @@ export default function Root() {
       return <Landing onEnter={() => setPublicRoute('register')} onLogin={() => setPublicRoute('login')} />;
     }
     return <Auth initialMode={publicRoute === 'register' ? 'register' : 'login'} onDone={() => setView('dashboard')} onHome={() => setPublicRoute('landing')} />;
+  }
+
+  // Conta nova ainda sem o e-mail confirmado: só entra depois do código.
+  if (user.verified === false) {
+    return <VerifyEmail user={user} onLogout={logout} />;
   }
 
   return (
