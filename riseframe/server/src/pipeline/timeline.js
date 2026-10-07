@@ -89,6 +89,15 @@ export function unmapTime(t, keep) {
   return last ? last.end : t;
 }
 
+/** Posição manual da legenda (px/py, 0–1 no quadro final), se a palavra tiver. */
+export function posOf(w) {
+  const px = Number(w?.px);
+  const py = Number(w?.py);
+  return Number.isFinite(px) && Number.isFinite(py) && w?.px != null && w?.py != null
+    ? { px: Math.min(1, Math.max(0, px)), py: Math.min(1, Math.max(0, py)) }
+    : {};
+}
+
 function overlaps(a0, a1, b0, b1) {
   return Math.min(a1, b1) - Math.max(a0, b0) > 0;
 }
@@ -111,7 +120,7 @@ export function remapTranscript(transcript, keep, perSegment = 4) {
       if (!inKeep) continue;
       const ns = remapTime(w.start, keep);
       const ne = Math.max(ns + 0.05, remapTime(w.end, keep));
-      kept.push({ start: ns, end: ne, word: w.word });
+      kept.push({ start: ns, end: ne, word: w.word, ...posOf(w) });
     }
   }
 
