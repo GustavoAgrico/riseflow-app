@@ -12,6 +12,20 @@ Riseframe Desktop é uma versão do editor de vídeo com IA que roda **100% loca
 
 ---
 
+## Jeito mais fácil: baixar o instalador pronto
+
+Toda atualização do Riseframe no `master` gera os instaladores sozinha (GitHub Actions,
+`.github/workflows/riseframe-desktop.yml`) e publica em
+**https://github.com/GustavoAgrico/riseflow-app/releases** — não precisa rodar `build-desktop.bat`.
+
+- **Windows:** `Riseframe-Setup-X.Y.Z.exe` (instala por cima da versão antiga; chaves e vídeos continuam).
+- **Mac (M1/M2/M3/M4):** `Riseframe-X.Y.Z-arm64.dmg`. Se o Mac disser que está "danificado":
+  `xattr -cr /Applications/Riseframe.app` no Terminal.
+
+O app avisa sozinho quando sai versão nova (e em **Ajuda → Verificar atualizações**).
+
+---
+
 ## Requisitos
 
 ### Obrigatório
