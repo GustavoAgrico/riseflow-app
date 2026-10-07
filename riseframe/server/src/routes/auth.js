@@ -20,7 +20,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function validate({ email, password }) {
   if (!EMAIL_RE.test(String(email || ''))) return 'informe um email válido';
-  if (String(password || '').length < 6) return 'a senha precisa de pelo menos 6 caracteres';
+  if (String(password || '').length < 8) return 'a senha precisa de pelo menos 8 caracteres';
   return null;
 }
 
@@ -102,8 +102,8 @@ authRouter.post('/auth/forgot', async (req, res) => {
 // POST /api/auth/reset { token, password } → { token, user }
 authRouter.post('/auth/reset', (req, res) => {
   const { token, password } = req.body || {};
-  if (String(password || '').length < 6)
-    return res.status(400).json({ error: 'a senha precisa de pelo menos 6 caracteres' });
+  if (String(password || '').length < 8)
+    return res.status(400).json({ error: 'a senha precisa de pelo menos 8 caracteres' });
   const email = consumeResetToken(token);
   if (!email) return res.status(400).json({ error: 'link inválido ou expirado' });
   const user = setPassword(email, password);

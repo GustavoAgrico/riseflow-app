@@ -12,7 +12,7 @@ function loadGsi() {
   if (!gsiPromise) {
     gsiPromise = new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = 'https://accounts.google.com/gsi/client';
+      s.src = 'https://accounts.google.com/gsi/client?hl=pt-BR';
       s.async = true;
       s.defer = true;
       s.onload = () => resolve(window.google);
@@ -128,7 +128,7 @@ export default function Auth({ initialMode = 'login', resetToken, onDone, onHome
         });
         gbtnRef.current.innerHTML = '';
         google.accounts.id.renderButton(gbtnRef.current, {
-          theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with',
+          theme: 'filled_black', size: 'large', shape: 'pill', text: 'continue_with', locale: 'pt-BR',
           width: gbtnRef.current.offsetWidth || 340, logo_alignment: 'center',
         });
       })
@@ -171,9 +171,9 @@ export default function Auth({ initialMode = 'login', resetToken, onDone, onHome
   }[mode];
 
   const HIGHLIGHTS = [
-    { icon: 'captions', t: 'Legendas dinâmicas', d: 'Palavra-chave destacada, estilos animados' },
-    { icon: 'scissors', t: 'Cortes automáticos', d: 'Silêncios removidos e clipes prontos' },
-    { icon: 'image', t: 'B-roll inteligente', d: 'Tela dividida e imagens no ritmo da fala' },
+    { icon: 'sparkles', t: '3 edições grátis', d: 'Todos os recursos liberados, sem cartão' },
+    { icon: 'scissors', t: 'Corta pausas e coloca legendas', d: 'Você revisa cada corte e o texto antes de baixar' },
+    { icon: 'palette', t: 'Corrige luz e cor', d: 'Pele natural, sem filtro exagerado' },
   ];
 
   return (
@@ -199,10 +199,10 @@ export default function Auth({ initialMode = 'login', resetToken, onDone, onHome
             <Icon name="sparkles" size={14} color={C.orangeSoft} /> Feito para criadores
           </div>
           <h2 style={{ fontSize: 38, lineHeight: 1.1, fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1.2, margin: '0 0 16px' }}>
-            Do bruto ao <span style={gradientText}>viral</span><br />em minutos.
+            Do bruto ao <span style={gradientText}>pronto</span><br />em minutos.
           </h2>
           <p style={{ color: C.muted, fontSize: 15.5, lineHeight: 1.6, margin: '0 0 34px' }}>
-            Suba um vídeo e deixe a IA legendar, cortar e turbinar automaticamente — com um editor completo para o toque final.
+            Suba o vídeo gravado no celular: o Riseframe corta as pausas, coloca legendas e acerta a cor. Você revisa e ajusta antes de baixar.
           </p>
           <div style={{ display: 'grid', gap: 14 }}>
             {HIGHLIGHTS.map((f) => (
@@ -281,7 +281,7 @@ export default function Auth({ initialMode = 'login', resetToken, onDone, onHome
                   type="password"
                   value={password}
                   onChange={setPassword}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Mínimo 8 caracteres"
                   icon="lock"
                   autoComplete={isReset || isRegister ? 'new-password' : 'current-password'}
                   autoFocus={isReset}
@@ -338,8 +338,12 @@ export default function Auth({ initialMode = 'login', resetToken, onDone, onHome
           </div>
 
           {(isRegister || mode === 'login') && (
-            <p style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: C.faint, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <Icon name="shield" size={13} /> Seus vídeos e dados ficam protegidos
+            <p style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: C.faint, lineHeight: 1.6 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="shield" size={13} /> Seus vídeos são apagados do servidor em algumas horas e não treinam IA.</span>
+              <br />
+              {isRegister ? 'Ao criar a conta, você concorda com os ' : 'Veja os '}
+              <a href="/termos" target="_blank" rel="noreferrer" style={{ color: C.orangeSoft }}>Termos de uso</a> e a{' '}
+              <a href="/privacidade" target="_blank" rel="noreferrer" style={{ color: C.orangeSoft }}>Política de privacidade</a>.
             </p>
           )}
 

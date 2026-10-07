@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { C, GRAD, glass, FONT_DISPLAY, fmtBytes, fmtDuration } from '../theme.js';
 import Icon from '../components/Icon.jsx';
 import { listJobs, clearJobs } from '../history.js';
+import { useAuth } from '../AuthContext.jsx';
+import { adminRemoveShowcase, adminSetShowcase, adminShowcase } from '../api.js';
 
 const MODE_LABEL = { auto: 'Automático', render: 'Timeline', clips: 'Clipes curtos', transcribe: 'Transcrição' };
 const fmtDate = (ms) => new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -9,6 +11,35 @@ const fmtDate = (ms) => new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit
 export default function Library({ onNewVideo }) {
   const [jobs, setJobs] = useState(() => listJobs());
   const [filter, setFilter] = useState('all');
+  // Admin: escolher um vídeo editado como demonstração "antes e depois" da página inicial.
+  const { billing } = useAuth();
+  const admin = Boolean(billing?.admin);
+  const [show, setShow] = useState(null);
+  const [showMsg, setShowMsg] = useState('');
+  useEffect(() => {
+    if (!admin) return undefined;
+    let alive = true;
+    const load = () => adminShowcase().then((r) => { if (alive) setShow(r); }).catch(() => {});
+    load();
+    const id = setInterval(load, 5000);
+    return () => { alive = false; clearInterval(id); };
+  }, [admin]);
+  async function useAsDemo(j) {
+    if (!window.confirm(`Usar "${j.filename || 'este vídeo'}" como demonstração antes/depois na página inicial? O vídeo original e o editado ficam públicos no site.`)) return;
+    setShowMsg('');
+    try {
+      await adminSetShowcase(j.id);
+      setShowMsg('Preparando a demonstração… em 1 a 2 minutos ela aparece na página inicial.');
+      setShow((s) => ({ ...(s || {}), building: true }));
+    } catch (e) {
+      setShowMsg(e.message);
+    }
+  }
+  async function removeDemo() {
+    if (!window.confirm('Tirar a demonstração da página inicial?')) return;
+    setShow(await adminRemoveShowcase());
+    setShowMsg('Demonstração removida.');
+  }
   const shown = useMemo(() => (filter === 'all' ? jobs : jobs.filter((j) => j.mode === filter)), [jobs, filter]);
 
   const filters = [
@@ -90,7 +121,13 @@ export default function Library({ onNewVideo }) {
                 <span className="rf-lib-col" style={{ width: 110, fontSize: 13, color: C.muted }}>{MODE_LABEL[j.mode] || j.mode}</span>
                 <span className="rf-lib-col" style={{ width: 90, fontSize: 13, color: C.muted }}>{fmtDate(j.at)}</span>
                 <span className="rf-lib-col" style={{ width: 80, fontSize: 13, color: C.muted }}>{j.sizeBytes ? fmtBytes(j.sizeBytes) : '—'}</span>
-                <span style={{ width: 44, display: 'flex', justifyContent: 'flex-end' }}>
+                <span style={{ width: admin ? 88 : 44, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  {admin && j.downloadUrl && ['auto', 'render'].includes(j.mode) && (
+                    <button onClick={() => useAsDemo(j)} title="Usar como demonstração na página inicial" disabled={show?.building}
+                      style={{ width: 36, height: 36, borderRadius: 9, border: `1px solid ${C.border}`, background: 'transparent', display: 'grid', placeItems: 'center', color: C.orangeSoft, cursor: show?.building ? 'wait' : 'pointer' }}>
+                      <Icon name="sparkles" size={16} strokeWidth={2} />
+                    </button>
+                  )}
                   {j.downloadUrl && j.mode !== 'clips' ? (
                     <a href={j.downloadUrl} title="Baixar" style={{ width: 36, height: 36, borderRadius: 9, border: `1px solid ${C.border}`, display: 'grid', placeItems: 'center', color: C.muted, textDecoration: 'none' }}>
                       <Icon name="download" size={16} strokeWidth={2} />
@@ -101,6 +138,25 @@ export default function Library({ onNewVideo }) {
                 </span>
               </div>
             ))}
+          </div>
+        )}
+
+        {admin && (
+          <div style={{ ...glass({ padding: '14px 16px' }), marginTop: 16, fontSize: 13, color: C.muted, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Icon name="sparkles" size={16} color={C.orangeSoft} />
+            <span style={{ flex: 1, minWidth: 220 }}>
+              <b style={{ color: C.text }}>Demonstração da página inicial: </b>
+              {show?.building
+                ? 'preparando…'
+                : show?.info
+                  ? `ativa${show.meta?.filename ? ` (${show.meta.filename})` : ''}. Para trocar, clique na estrela de outro vídeo.`
+                  : 'nenhuma. Clique na estrela de um vídeo editado (Automático ou Timeline) para mostrar o antes e depois.'}
+              {show?.meta?.error && !show?.building && <span style={{ color: '#FCA5B4' }}> Último erro: {show.meta.error}</span>}
+              {showMsg && <span style={{ display: 'block', marginTop: 4, color: C.orangeSoft }}>{showMsg}</span>}
+            </span>
+            {show?.info && !show.info.external && (
+              <button onClick={removeDemo} style={{ border: `1px solid ${C.border}`, background: 'transparent', color: C.muted, borderRadius: 9, padding: '7px 12px', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>Remover</button>
+            )}
           </div>
         )}
 
