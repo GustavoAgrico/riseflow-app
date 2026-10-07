@@ -3,7 +3,8 @@ import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
 import Icon from '../components/Icon.jsx';
 import { Spinner } from '../components/ui.jsx';
 import { useAuth } from '../AuthContext.jsx';
-import { cancelSubscription, startCheckout, syncBilling } from '../api.js';
+import { cancelSubscription, claimPix, startCheckout, syncBilling } from '../api.js';
+import AdminPayments from '../components/AdminPayments.jsx';
 
 const brl = (cents) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const num = (n) => Number(n).toLocaleString('pt-BR');
@@ -39,6 +40,7 @@ export default function Plans({ user, checkOnOpen }) {
   const [name, setName] = useState(user?.name || '');
   const [cpf, setCpf] = useState('');
   const [phone, setPhone] = useState('');
+  const [pixOpened, setPixOpened] = useState(false);
   const [paying, setPaying] = useState(false);
   // Plano: 'card' = assinatura no cartão que renova sozinha; 'pix' = paga 30 dias.
   const [payMode, setPayMode] = useState('card');
@@ -64,6 +66,11 @@ export default function Plans({ user, checkOnOpen }) {
   }
 
   useEffect(() => {
+    if (billing?.phone && !phone) setPhone(billing.phone.replace(/^55/, ''));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [billing?.phone]);
+
+  useEffect(() => {
     if (checkOnOpen) check(true);
     else refreshBilling();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -83,6 +90,24 @@ export default function Plans({ user, checkOnOpen }) {
       window.location.href = url;
     } catch (e) {
       setError(e.message);
+      setPaying(false);
+    }
+  }
+
+  // Pix pelo link do banco: o cliente paga e avisa; o admin confirma.
+  async function claim() {
+    setPaying(true);
+    setError('');
+    try {
+      const s = await claimPix({ kind: pick.kind, itemId: pick.id, phone, name });
+      setBilling(s);
+      setPick(null);
+      setPixOpened(false);
+      setNotice('Recebemos seu aviso! Assim que confirmarmos o Pix, o plano é liberado por 30 dias e você recebe a confirmação por e-mail e WhatsApp.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      setError(e.message);
+    } finally {
       setPaying(false);
     }
   }
@@ -115,6 +140,9 @@ export default function Plans({ user, checkOnOpen }) {
   const canPay = selected && cpf.replace(/\D/g, '').length >= 11 && phone.replace(/\D/g, '').length >= 10 && !paying;
   // Botões sempre visíveis; só ficam ativos para clientes quando os pagamentos estão ligados.
   const canBuy = billing.enabled && !billing.admin;
+  const pix = billing.payment === 'pix-links';
+  const canClaim = selected && pixOpened && phone.replace(/\D/g, '').length >= 10 && !paying;
+  const itemName = (c) => (c.kind === 'plan' ? `plano ${plans.find((p) => p.id === c.itemId)?.name || c.itemId}` : 'recarga');
   const recurringChoice = pick?.kind === 'plan' && billing.autoRenewAvailable;
   const recurring = recurringChoice && payMode === 'card';
 
@@ -166,7 +194,17 @@ export default function Plans({ user, checkOnOpen }) {
             </button>
           </div>
         )}
-        {billing.hasPending && (
+        {pix && billing.claims?.length > 0 && (
+          <div style={{ marginTop: 14, fontSize: 13, color: C.orangeSoft, lineHeight: 1.5 }}>
+            {billing.claims.map((c) => (
+              <div key={c.id}>
+                Pagamento do {itemName(c)} em confirmação (avisado em {new Date(c.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}).
+                Assim que conferirmos o Pix, liberamos e avisamos por e-mail e WhatsApp.
+              </div>
+            ))}
+          </div>
+        )}
+        {!pix && billing.hasPending && (
           <button onClick={() => check(false)} disabled={checking} style={{ marginTop: 16, width: '100%', minHeight: 44, background: 'transparent', border: `1px solid ${C.borderStrong}`, color: C.text, borderRadius: 11, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             {checking && <Spinner size={14} color={C.text} />} Já paguei — verificar pagamento
           </button>
@@ -179,7 +217,9 @@ export default function Plans({ user, checkOnOpen }) {
             <>
               <b style={{ color: C.text }}>Você é admin (uso ilimitado).</b> É assim que seus clientes veem esta página.{' '}
               {billing.enabled
-                ? 'Para eles, os botões levam ao pagamento por Pix ou cartão.'
+                ? pix
+                  ? 'Para eles, os botões levam ao Pix do banco. Confirme os pagamentos no painel abaixo.'
+                  : 'Para eles, os botões levam ao pagamento por Pix ou cartão.'
                 : <>Os botões de assinatura ficam ativos quando a <code>ABACATE_PAY_API_KEY</code> estiver configurada no servidor (Render → Environment).</>}
             </>
           ) : (
@@ -187,6 +227,8 @@ export default function Plans({ user, checkOnOpen }) {
           )}
         </div>
       )}
+
+      {billing.admin && pix && billing.enabled && <AdminPayments plans={plans} />}
 
       {/* Planos mensais */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginBottom: 20 }}>
@@ -289,6 +331,41 @@ export default function Plans({ user, checkOnOpen }) {
               ))}
             </div>
           )}
+          {pix ? (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, margin: '16px 0 8px' }}>1. Pague o Pix</div>
+              <a
+                href={selected.pixLink}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => setPixOpened(true)}
+                style={{ width: '100%', boxSizing: 'border-box', minHeight: 50, background: GRAD, color: '#fff', borderRadius: 12, fontSize: 15, fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+              >
+                Pagar {brl(selected.priceCents)} no Pix
+              </a>
+              <p style={{ color: C.faint, fontSize: 12, margin: '8px 0 0' }}>
+                Abre a página do banco com o QR Code e o Pix copia e cola. Confira o valor de {brl(selected.priceCents)} antes de pagar.
+              </p>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, margin: '20px 0 0' }}>2. Avise que pagou</div>
+              <label style={label}>Nome completo</label>
+              <input style={input} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+              <label style={label}>WhatsApp com DDD</label>
+              <input style={input} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="(11) 99999-9999" />
+              <p style={{ color: C.faint, fontSize: 12, margin: '8px 0 0' }}>
+                Usamos para confirmar o pagamento e lembrar quando o plano estiver perto de vencer ({billing.periodDays} dias, sem renovação automática).
+              </p>
+              <button
+                onClick={claim}
+                disabled={!canClaim}
+                title={pixOpened ? undefined : 'Primeiro abra o Pix e pague'}
+                style={{ marginTop: 16, width: '100%', minHeight: 50, background: 'transparent', border: `2px solid ${canClaim ? C.green : C.border}`, color: canClaim ? C.green : C.faint, borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: canClaim ? 'pointer' : 'not-allowed', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+              >
+                {paying && <Spinner size={14} color={C.green} />}
+                Já paguei
+              </button>
+            </>
+          ) : (
+            <>
           <label style={label}>Nome completo</label>
           <input style={input} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0 12px' }}>
@@ -313,6 +390,8 @@ export default function Plans({ user, checkOnOpen }) {
             {paying && <Spinner size={14} color="#fff" />}
             {recurring ? `Assinar por ${brl(selected.priceCents)}/mês no cartão` : `Pagar ${brl(selected.priceCents)} com Pix ou cartão`}
           </button>
+            </>
+          )}
         </div>
       )}
       {error && <p style={{ color: '#FCA5B4', fontSize: 13.5, marginTop: 12 }}>{error}</p>}

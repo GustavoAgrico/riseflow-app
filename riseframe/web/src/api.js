@@ -85,6 +85,14 @@ export const startCheckout = (info) => billingCall('/billing/checkout', 'POST', 
 export const syncBilling = () => billingCall('/billing/sync', 'POST');
 /** Desliga a renovação automática (o plano vale até o fim do período já pago). */
 export const cancelSubscription = () => billingCall('/billing/subscription/cancel', 'POST');
+/** "Já paguei" do Pix pelo link do banco: { kind, itemId, phone, name } → status atualizado. */
+export const claimPix = (info) => billingCall('/billing/pix/claim', 'POST', info);
+// Admin: avisos de Pix para confirmar, liberação manual e lembretes.
+export const adminClaims = () => billingCall('/billing/admin/claims');
+export const adminApproveClaim = (id) => billingCall(`/billing/admin/claims/${encodeURIComponent(id)}/approve`, 'POST');
+export const adminRejectClaim = (id) => billingCall(`/billing/admin/claims/${encodeURIComponent(id)}/reject`, 'POST');
+export const adminGrant = (info) => billingCall('/billing/admin/grant', 'POST', info);
+export const adminSendReminders = () => billingCall('/billing/admin/reminders', 'POST');
 
 export async function getHealth() {
   const r = await fetch(`${BASE}/health`);

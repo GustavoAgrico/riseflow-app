@@ -33,6 +33,19 @@ async function getTransporter() {
   return transporterPromise;
 }
 
+/** Envia um e-mail qualquer (texto + HTML opcional). Retorna true se enviou. */
+export async function sendMail({ to, subject, text, html }) {
+  const transporter = await getTransporter();
+  if (!transporter || !to) return false;
+  try {
+    await transporter.sendMail({ from: config.auth.smtp.from || config.auth.smtp.user, to, subject, text, html });
+    return true;
+  } catch (err) {
+    log.error(`falha ao enviar e-mail: ${err.message}`);
+    return false;
+  }
+}
+
 /** Envia o e-mail de recuperação de senha com o link. Retorna true se enviou. */
 export async function sendResetEmail(to, link) {
   const transporter = await getTransporter();

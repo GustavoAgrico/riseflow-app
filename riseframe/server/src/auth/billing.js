@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
 import { makeLogger } from '../logger.js';
+import { findById, findByEmail } from './store.js';
+import { emailHtml, normalizePhone, notifyAdmins, notifyUser, waLink, whatsappReady } from './notify.js';
 
 const log = makeLogger('billing');
 
@@ -37,6 +39,7 @@ function load() {
   if (!db || typeof db !== 'object') db = {};
   db.users ||= {};
   db.pending ||= {};
+  db.claims ||= {};
   return db;
 }
 
@@ -54,7 +57,10 @@ function entry(userId) {
   return db.users[userId];
 }
 
-export const billingEnabled = () => Boolean(config.billing.abacateKey);
+const pixMode = () => config.billing.payment === 'pix-links';
+/** Link de Pix do banco para um plano/recarga (modo pix-links). */
+const pixLink = (id) => config.billing.pixLinks[id] || '';
+export const billingEnabled = () => (pixMode() ? Object.keys(config.billing.pixLinks).length > 0 : Boolean(config.billing.abacateKey));
 const isAdmin = (email) => config.billing.adminEmails.includes(String(email || '').toLowerCase());
 /** Ilimitado: admins (ADMIN_EMAILS), ou todos quando BILLING_MODE=off (desktop/local). */
 const unlimited = (user) => config.billing.mode === 'off' || isAdmin(user.email);
@@ -92,12 +98,19 @@ export function billingStatus(user) {
     features: allowedFeatures(user),
     costs: b.costs,
     periodDays: b.periodDays,
-    plans: b.plans.map(publicPlan),
-    packs: b.packs.map(publicPack),
+    payment: pixMode() ? 'pix-links' : 'abacatepay',
+    plans: b.plans.map((p) => ({ ...publicPlan(p), ...(pixMode() ? { pixLink: pixLink(p.id) } : {}) })),
+    // No modo Pix só aparecem as recargas que têm link do banco.
+    packs: b.packs.filter((p) => !pixMode() || pixLink(p.id)).map((p) => ({ ...publicPack(p), ...(pixMode() ? { pixLink: pixLink(p.id) } : {}) })),
+    // Avisos de "Já paguei" deste usuário ainda não confirmados pelo admin.
+    claims: Object.values(load().claims)
+      .filter((c) => c.userId === user.id && c.status === 'pending')
+      .map(({ id, kind, itemId, createdAt }) => ({ id, kind, itemId, createdAt })),
+    phone: e.phone || '',
     hasPending: Object.values(load().pending).some((p) => p.userId === user.id),
     // Renovação automática (assinatura no cartão) ligada para o plano atual?
     autoRenew: Boolean(plan && e.subscription?.active),
-    autoRenewAvailable: billingEnabled() && b.autoRenew,
+    autoRenewAvailable: billingEnabled() && b.autoRenew && !pixMode(),
   };
 }
 
@@ -516,10 +529,187 @@ export async function syncPayments({ userId, billingId } = {}) {
   return applied;
 }
 
+// ───────────────────────── Pix por link do banco (modo pix-links) ─────────────────────────
+// O banco não avisa o site quando o Pix cai: o cliente paga pelo link, clica em "Já paguei"
+// (vira um aviso pendente) e o admin confirma — aí o plano vale `periodDays` dias.
+
+const brl = (cents) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const dateBR = (iso) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+const appUrl = () => (config.auth.appUrl || '').replace(/\/+$/, '');
+const plansUrl = () => `${appUrl()}/?billing=return`;
+
+function itemOf(kind, itemId) {
+  return kind === 'plan' ? planConfig(itemId) : config.billing.packs.find((p) => p.id === itemId) || null;
+}
+const itemLabel = (kind, item) => (kind === 'plan' ? `plano ${item.name}` : `recarga de ${item.credits} créditos`);
+
+/** Cliente avisou que pagou o Pix: cria (ou reaproveita) o aviso pendente e avisa os admins. */
+export async function createPixClaim(user, { kind, itemId, phone, name }) {
+  const item = itemOf(kind, itemId);
+  if (!item || !pixLink(itemId)) throw Object.assign(new Error('plano ou recarga inválido'), { status: 400 });
+  const tel = normalizePhone(phone);
+  if (!tel) throw Object.assign(new Error('informe um WhatsApp com DDD'), { status: 400 });
+  load();
+  const e = entry(user.id);
+  e.phone = tel;
+  if (name) e.name = String(name).slice(0, 120);
+  const dup = Object.values(db.claims).find((c) => c.userId === user.id && c.status === 'pending' && c.kind === kind && c.itemId === itemId);
+  if (dup) {
+    persist();
+    return dup;
+  }
+  const id = `pix_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+  const claim = {
+    id, userId: user.id, email: user.email, name: e.name || user.name || '', phone: tel,
+    kind, itemId, priceCents: item.priceCents, createdAt: new Date().toISOString(), status: 'pending',
+  };
+  db.claims[id] = claim;
+  persist();
+  log.info(`aviso de Pix ${id}: ${itemLabel(kind, item)} (${brl(item.priceCents)}) de ${user.email}`);
+  const text = `Riseframe: ${claim.name || user.email} avisou que pagou o Pix do ${itemLabel(kind, item)} (${brl(item.priceCents)}). Confira no banco e confirme em ${plansUrl()}`;
+  notifyAdmins({
+    subject: `Pix a confirmar: ${itemLabel(kind, item)} — ${brl(item.priceCents)}`,
+    text,
+    html: emailHtml('Pix a confirmar', [
+      `${claim.name || '(sem nome)'} · ${user.email} · WhatsApp ${tel}`,
+      `Avisou que pagou o ${itemLabel(kind, item)} (${brl(item.priceCents)}).`,
+      'Confira no extrato do banco e confirme na página de Planos do Riseframe (logado como admin).',
+    ], { label: 'Abrir pagamentos', url: plansUrl() }),
+  }).catch((err) => log.warn(`aviso aos admins falhou: ${err.message}`));
+  return claim;
+}
+
+/** Lista para o admin: pendentes primeiro, depois os últimos decididos. */
+export function listClaims() {
+  load();
+  const all = Object.values(db.claims).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const withExtras = (c) => {
+    const item = itemOf(c.kind, c.itemId);
+    const msg = `Olá! Aqui é do Riseframe. Recebemos seu aviso de pagamento do ${item ? itemLabel(c.kind, item) : c.itemId}.`;
+    return { ...c, itemName: item ? itemLabel(c.kind, item) : c.itemId, waLink: waLink(c.phone, msg) };
+  };
+  return {
+    pending: all.filter((c) => c.status === 'pending').map(withExtras),
+    recent: all.filter((c) => c.status !== 'pending').slice(0, 30).map(withExtras),
+  };
+}
+
+/** Mensagem de plano/recarga liberado(a) para o cliente. */
+function grantedMessage(kind, item, e) {
+  const until = e.plan?.until;
+  const text =
+    kind === 'plan'
+      ? `Riseframe: pagamento confirmado! Seu plano ${item.name} está ativo até ${dateBR(until)} (${item.credits} créditos). Bons vídeos!`
+      : `Riseframe: pagamento confirmado! ${item.credits} créditos foram adicionados à sua conta.`;
+  return {
+    subject: kind === 'plan' ? `Plano ${item.name} ativo até ${dateBR(until)}` : 'Créditos adicionados',
+    text,
+    html: emailHtml('Pagamento confirmado', [text.replace(/^Riseframe: /, '')], { label: 'Abrir o Riseframe', url: appUrl() || plansUrl() }),
+  };
+}
+
+/** Admin confirmou o Pix: libera o plano/recarga e avisa o cliente. */
+export async function approveClaim(claimId, admin) {
+  load();
+  const c = db.claims[claimId];
+  if (!c) throw Object.assign(new Error('aviso não encontrado'), { status: 404 });
+  if (c.status !== 'pending') throw Object.assign(new Error('este aviso já foi decidido'), { status: 400 });
+  const item = itemOf(c.kind, c.itemId);
+  if (!item) throw Object.assign(new Error('plano ou recarga não existe mais'), { status: 400 });
+  grant(`pix:${c.id}`, { userId: c.userId, kind: c.kind, itemId: c.itemId, credits: item.credits });
+  c.status = 'approved';
+  c.decidedAt = new Date().toISOString();
+  c.decidedBy = admin?.email || '';
+  const e = entry(c.userId);
+  if (c.kind === 'plan') e.reminded = {}; // novo período: lembretes começam do zero
+  persist();
+  const sent = await notifyUser({ email: c.email, phone: c.phone }, grantedMessage(c.kind, item, e));
+  return { claim: c, sent };
+}
+
+export function rejectClaim(claimId, admin) {
+  load();
+  const c = db.claims[claimId];
+  if (!c) throw Object.assign(new Error('aviso não encontrado'), { status: 404 });
+  if (c.status !== 'pending') throw Object.assign(new Error('este aviso já foi decidido'), { status: 400 });
+  c.status = 'rejected';
+  c.decidedAt = new Date().toISOString();
+  c.decidedBy = admin?.email || '';
+  persist();
+  return c;
+}
+
+/** Admin libera um plano/recarga direto pelo e-mail do cliente (pagou fora do site). */
+export async function adminGrant({ email, kind = 'plan', itemId }, admin) {
+  const u = findByEmail(email);
+  if (!u) throw Object.assign(new Error('nenhuma conta com esse e-mail'), { status: 404 });
+  const item = itemOf(kind, itemId);
+  if (!item) throw Object.assign(new Error('plano ou recarga inválido'), { status: 400 });
+  grant(`manual:${Date.now().toString(36)}`, { userId: u.id, kind, itemId, credits: item.credits });
+  const e = entry(u.id);
+  if (kind === 'plan') e.reminded = {};
+  persist();
+  log.info(`${admin?.email || 'admin'} liberou ${itemLabel(kind, item)} para ${u.email}`);
+  const sent = await notifyUser({ email: u.email, phone: e.phone }, grantedMessage(kind, item, e));
+  return { user: u.email, sent, until: e.plan?.until || null };
+}
+
+/**
+ * Lembretes de vencimento do plano (e-mail + WhatsApp): `reminderDays` dias antes e no
+ * dia. Cada lembrete sai uma vez por período. Só manda entre 8h e 21h (horário de Brasília).
+ */
+export async function sendReminders({ now = Date.now(), force = false } = {}) {
+  if (!billingEnabled()) return [];
+  const hour = Number(new Date(now).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false }));
+  if (!force && (hour < 8 || hour >= 21)) return [];
+  load();
+  const sent = [];
+  const days = [...config.billing.reminderDays].map(Number).filter((d) => d >= 0).sort((a, b) => a - b);
+  for (const [userId, e] of Object.entries(db.users)) {
+    if (!e.plan) continue;
+    const until = Date.parse(e.plan.until);
+    const daysLeft = Math.ceil((until - now) / DAY_MS);
+    if (daysLeft < -2) continue; // venceu faz tempo: para de lembrar
+    // O menor marco já alcançado (ex.: faltam 2 dias → marco de 3 dias).
+    const mark = daysLeft <= 0 ? 0 : days.find((d) => d > 0 && daysLeft <= d);
+    if (mark === undefined || (mark === 0 && !days.includes(0))) continue;
+    e.reminded ||= {};
+    const key = `${e.plan.until}:${mark}`;
+    if (e.reminded[key]) continue;
+    const u = findById(userId);
+    const cfg = planConfig(e.plan.id);
+    if (!u || !cfg) continue;
+    const link = pixMode() ? pixLink(cfg.id) : '';
+    const when = mark === 0 ? (daysLeft <= 0 ? 'venceu' : 'vence hoje') : `vence em ${daysLeft} dia${daysLeft > 1 ? 's' : ''} (${dateBR(e.plan.until)})`;
+    const text =
+      `Riseframe: seu plano ${cfg.name} ${when}. Para renovar por mais ${config.billing.periodDays} dias (${brl(cfg.priceCents)}), ` +
+      (link ? `pague o Pix neste link: ${link} e depois clique em "Já paguei" em ${plansUrl()}` : `acesse ${plansUrl()}`);
+    const r = await notifyUser(
+      { email: u.email, phone: e.phone },
+      {
+        subject: `Seu plano ${cfg.name} ${when}`,
+        text,
+        html: emailHtml(`Seu plano ${cfg.name} ${when}`, [
+          `Para continuar com ${cfg.credits} créditos por mês, renove por mais ${config.billing.periodDays} dias (${brl(cfg.priceCents)}).`,
+          link ? 'Pague o Pix pelo botão abaixo e depois clique em "Já paguei" na página de Planos.' : 'Renove pela página de Planos.',
+        ], { label: link ? `Pagar ${brl(cfg.priceCents)} no Pix` : 'Renovar plano', url: link || plansUrl() }),
+      },
+    );
+    e.reminded[key] = new Date(now).toISOString();
+    sent.push({ userId, mark, ...r });
+    log.info(`lembrete de vencimento (${when}) para ${u.email}: e-mail ${r.email ? 'ok' : 'não'}, WhatsApp ${r.whatsapp ? 'ok' : 'não'}`);
+  }
+  persist();
+  return sent;
+}
+
 /** Confere renovações de hora em hora (além de quando o usuário abre os planos). */
 export function startRenewTimer() {
   if (!billingEnabled()) return;
-  const run = () => renewSubscriptions().catch((err) => log.warn(`renovação automática: ${err.message}`));
+  const run = () => {
+    renewSubscriptions().catch((err) => log.warn(`renovação automática: ${err.message}`));
+    sendReminders().catch((err) => log.warn(`lembretes: ${err.message}`));
+  };
   setTimeout(run, 60_000).unref();
   setInterval(run, 3600_000).unref();
 }

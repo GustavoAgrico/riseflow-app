@@ -10,6 +10,7 @@ const { config } = await import('../src/config.js');
 const billing = await import('../src/auth/billing.js');
 
 config.billing.abacateKey = 'chave_teste_12345678';
+config.billing.payment = 'abacatepay';
 config.billing.methods = ['PIX', 'CARD'];
 const user = { id: 'u1', email: 'cliente@example.com', name: 'Cliente' };
 const checkoutInfo = { kind: 'plan', itemId: 'pro', name: 'Cliente', taxId: '12345678901', cellphone: '11999999999', returnUrl: 'https://x/?billing=return' };
