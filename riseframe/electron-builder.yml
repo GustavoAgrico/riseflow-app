@@ -26,8 +26,12 @@ asar: false
 # Ícone oficial (logo Riseframe). Gerado de assets/icon.svg.
 icon: assets/icon.png
 
+# ffprobe-static traz o ffprobe de TODOS os sistemas (~230 MB): cada instalador leva só o seu.
 win:
   icon: assets/icon.ico
+  files:
+    - "!node_modules/ffprobe-static/bin/darwin/**"
+    - "!node_modules/ffprobe-static/bin/linux/**"
   target:
     - nsis
     - portable
@@ -48,6 +52,9 @@ portable:
   artifactName: ${productName}-Portatil-${version}.${ext}
 
 mac:
+  files:
+    - "!node_modules/ffprobe-static/bin/win32/**"
+    - "!node_modules/ffprobe-static/bin/linux/**"
   artifactName: ${productName}-${version}-${arch}.${ext}
   target:
     - dmg
@@ -66,6 +73,9 @@ dmg:
       path: /Applications
 
 linux:
+  files:
+    - "!node_modules/ffprobe-static/bin/win32/**"
+    - "!node_modules/ffprobe-static/bin/darwin/**"
   target:
     - AppImage
     - deb

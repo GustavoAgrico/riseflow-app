@@ -1,6 +1,6 @@
 {
   "name": "riseframe",
-  "version": "0.66.0",
+  "version": "0.67.0",
   "private": true,
   "description": "Editor de vídeo web com IA — MVP do pipeline (corte de silêncio, legendas, B-roll, color grade).",
   "type": "module",
@@ -25,6 +25,17 @@
     "concurrently": "^9.1.0",
     "electron": "^32.0.0",
     "electron-builder": "^25.1.1"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "ffmpeg-static": "^5.2.0",
+    "ffprobe-static": "^3.1.0",
+    "multer": "^2.0.1",
+    "nanoid": "^5.0.9",
+    "nodemailer": "^6.9.16"
   },
   "engines": {
     "node": ">=20"
