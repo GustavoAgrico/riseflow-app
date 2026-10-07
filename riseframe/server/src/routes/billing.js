@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { Router } from 'express';
 import { requireAuth } from './auth.js';
 import {
-  adminGrant, approveClaim, billingEnabled, billingStatus, cancelSubscription, createCheckout, createPixClaim,
+  adminGrant, approveClaim, billingEnabled, billingStatus, cancelSubscription, createCheckout, createPixClaim, checkContact, sendContactCode, verifyContactCode,
   listClaims, rejectClaim, renewSubscriptions, sendReminders, syncPayments,
 } from '../auth/billing.js';
 import { config } from '../config.js';
@@ -56,15 +56,41 @@ billingRouter.post('/billing/checkout', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/billing/pix/claim { kind, itemId, phone, name } → "Já paguei" (Pix pelo link do banco)
+// ── Dados de contato do pagamento (nome, e-mail e WhatsApp reais) ──
+// POST /api/billing/contact/check { name, email, phone } → validação campo a campo
+billingRouter.post('/billing/contact/check', requireAuth, async (req, res) => {
+  const { name, email, phone } = req.body || {};
+  res.json(await checkContact(req.user, { name, email, phone }));
+});
+
+// POST /api/billing/contact/code { email } → manda o código de confirmação por e-mail
+billingRouter.post('/billing/contact/code', requireAuth, async (req, res) => {
+  try {
+    res.json(await sendContactCode(req.user, (req.body || {}).email));
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// POST /api/billing/contact/verify { email, code } → confirma o e-mail
+billingRouter.post('/billing/contact/verify', requireAuth, (req, res) => {
+  try {
+    const { email, code } = req.body || {};
+    res.json(verifyContactCode(req.user, email, code));
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// POST /api/billing/pix/claim { kind, itemId, phone, name, email } → "Já paguei" (Pix pelo link do banco)
 billingRouter.post('/billing/pix/claim', requireAuth, async (req, res) => {
   if (!billingEnabled() || config.billing.payment !== 'pix-links') return res.status(400).json({ error: 'pagamento por Pix não está ativo' });
   try {
-    const { kind, itemId, phone, name } = req.body || {};
-    await createPixClaim(req.user, { kind: String(kind || ''), itemId: String(itemId || ''), phone, name: String(name || '').trim() });
+    const { kind, itemId, phone, name, email } = req.body || {};
+    await createPixClaim(req.user, { kind: String(kind || ''), itemId: String(itemId || ''), phone, name: String(name || '').trim(), email });
     res.json(billingStatus(req.user));
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message, errors: err.errors });
   }
 });
 

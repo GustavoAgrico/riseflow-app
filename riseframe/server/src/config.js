@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v76';
+export const APP_VERSION = 'v77';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -106,6 +106,10 @@ export const config = {
       pass: process.env.SMTP_PASS || '',
       from: process.env.SMTP_FROM || process.env.SMTP_USER || '',
     },
+    // E-mail pela API do Resend (HTTPS): o Render grátis bloqueia as portas de SMTP.
+    resendKey: process.env.RESEND_API_KEY || '',
+    // Remetente, ex.: Riseframe <nao-responda@riseframe.com.br> (domínio verificado no Resend).
+    emailFrom: process.env.EMAIL_FROM || '',
     // URL pública do app (para montar o link de recuperação). Ex.: https://riseframe.onrender.com
     appUrl: process.env.APP_URL || '',
   },
@@ -226,7 +230,7 @@ export function capabilities() {
     googleReady: Boolean(config.auth.googleClientId),
     googleClientId: config.auth.googleClientId,
     // Recuperação de senha só aparece se houver SMTP configurado.
-    emailReady: Boolean(config.auth.smtp.host && config.auth.smtp.user && config.auth.smtp.pass),
+    emailReady: Boolean(config.auth.resendKey || (config.auth.smtp.host && config.auth.smtp.user && config.auth.smtp.pass)),
     billingEnabled: config.billing.payment === 'pix-links' ? Object.keys(config.billing.pixLinks).length > 0 : Boolean(config.billing.abacateKey),
     whatsappReady: Boolean(config.billing.whatsapp.url && config.billing.whatsapp.key),
   };

@@ -9,7 +9,7 @@ import {
 } from '../auth/store.js';
 import { signToken, verifyToken } from '../auth/tokens.js';
 import { createResetToken, consumeResetToken } from '../auth/reset.js';
-import { sendResetEmail } from '../auth/email.js';
+import { emailReady, sendResetEmail } from '../auth/email.js';
 import { config } from '../config.js';
 import { makeLogger } from '../logger.js';
 
@@ -82,8 +82,7 @@ authRouter.post('/auth/forgot', async (req, res) => {
   // Resposta genérica sempre — evita enumeração de usuários.
   const neutral = { ok: true };
   if (!EMAIL_RE.test(e)) return res.json(neutral);
-  const emailReady = Boolean(config.auth.smtp.host && config.auth.smtp.user && config.auth.smtp.pass);
-  if (!emailReady) return res.status(503).json({ error: 'recuperação de senha não está configurada' });
+  if (!emailReady()) return res.status(503).json({ error: 'recuperação de senha não está configurada' });
   try {
     const user = findByEmail(e);
     if (user) {

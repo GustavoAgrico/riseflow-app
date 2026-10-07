@@ -8,6 +8,9 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-pix-'));
 const { config } = await import('../src/config.js');
 const store = await import('../src/auth/store.js');
 const billing = await import('../src/auth/billing.js');
+const contact = await import('../src/auth/contact.js');
+// DNS falso: todo domínio recebe e-mail (os testes não dependem de rede).
+contact.__setDnsResolver({ mx: async () => [{ exchange: 'mx.test', priority: 10 }], a: async () => ['1.2.3.4'] });
 
 config.billing.payment = 'pix-links';
 config.billing.pixLinks = { basico: 'https://banco/basico', pro: 'https://banco/pro', premium: 'https://banco/premium' };
@@ -38,9 +41,9 @@ test('status no modo Pix: links por plano, sem renovação automática, recargas
 });
 
 test('"Já paguei" cria aviso pendente (sem duplicar) e o plano só vale depois da confirmação', async () => {
-  await assert.rejects(billing.createPixClaim(u, { kind: 'plan', itemId: 'pro', phone: '123' }), /WhatsApp/);
-  const c1 = await billing.createPixClaim(u, { kind: 'plan', itemId: 'pro', phone: '(11) 98888-7777', name: 'Cliente' });
-  const c2 = await billing.createPixClaim(u, { kind: 'plan', itemId: 'pro', phone: '11988887777' });
+  await assert.rejects(billing.createPixClaim(u, { kind: 'plan', itemId: 'pro', phone: '123', name: 'Cliente Teste' }), /WhatsApp/);
+  const c1 = await billing.createPixClaim(u, { kind: 'plan', itemId: 'pro', phone: '(11) 98888-7777', name: 'Cliente Teste' });
+  const c2 = await billing.createPixClaim(u, { kind: 'plan', itemId: 'pro', phone: '11988887777', name: 'Cliente Teste' });
   assert.equal(c1.id, c2.id, 'mesmo aviso, não duplica');
   assert.equal(c1.phone, '5511988887777');
   let st = billing.billingStatus(u);
