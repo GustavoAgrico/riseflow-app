@@ -17,7 +17,7 @@ const log = makeLogger('billing');
  * pelo conteúdo do webhook, que qualquer um poderia forjar.
  */
 const FILE = path.join(config.paths.data, 'billing.json');
-const API = 'https://api.abacatepay.com/v1';
+const API_BASE = 'https://api.abacatepay.com/v';
 const DAY_MS = 24 * 3600 * 1000;
 const PENDING_TTL_MS = 7 * DAY_MS;
 const ALL_FEATURES = ['captionStyle', 'image', 'ai', 'clips'];
@@ -129,19 +129,85 @@ export function refund(userId, { monthly = 0, extra = 0, until = null } = {}) {
 /** Período do plano no momento da cobrança (para a devolução saber se ainda vale). */
 export const currentPeriod = (userId) => entry(userId).plan?.until || null;
 
-async function abacate(pathname, { method = 'GET', body } = {}) {
-  const r = await fetch(`${API}${pathname}`, {
+// A AbacatePay tem duas APIs: v1 (antiga) e v2. Cada chave só funciona na versão em
+// que foi criada — chave nova na v1 responde "API key version mismatch". Por padrão
+// tenta a v2 e, se a chave for da outra versão, troca sozinho (e lembra).
+// ABACATE_API_VERSION=1|2 fixa a versão.
+let apiVersion = null;
+
+async function abacate(pathname, { method = 'GET', body, version = 2 } = {}) {
+  const r = await fetch(`${API_BASE}${version}${pathname}`, {
     method,
     headers: { Authorization: `Bearer ${config.billing.abacateKey}`, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(20_000),
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok || data.error) {
+  if (!r.ok || data.error || data.success === false) {
     const msg = typeof data.error === 'string' ? data.error : data.error?.message || data.message;
-    throw new Error(msg || `AbacatePay respondeu ${r.status}`);
+    throw Object.assign(new Error(msg || `AbacatePay respondeu ${r.status}`), { httpStatus: r.status });
   }
   return data.data ?? data;
+}
+
+const versionMismatch = (err) => /version/i.test(String(err?.message || ''));
+
+/** Roda `fn(version)` na versão certa da API da chave configurada. */
+async function withApiVersion(fn) {
+  const forced = Number(config.billing.apiVersion) || 0;
+  const first = forced || apiVersion || 2;
+  try {
+    const out = await fn(first);
+    apiVersion = first;
+    return out;
+  } catch (err) {
+    if (forced || !versionMismatch(err)) throw err;
+    const other = first === 2 ? 1 : 2;
+    log.warn(`chave da AbacatePay é da API v${other} (${err.message}); usando a v${other}`);
+    const out = await fn(other);
+    apiVersion = other;
+    return out;
+  }
+}
+
+// v2: a cobrança aponta para produtos cadastrados na AbacatePay. O produto de cada
+// plano/recarga é criado na 1ª compra (o preço entra no externalId: mudou o preço,
+// nasce um produto novo) e o id fica em cache.
+const productIds = new Map();
+
+async function productIdV2({ externalId, name, description, price }) {
+  const cacheKey = `${config.billing.abacateKey.slice(-8)}:${externalId}`;
+  if (productIds.has(cacheKey)) return productIds.get(cacheKey);
+  let product = null;
+  try {
+    product = await abacate(`/products/get?${new URLSearchParams({ externalId })}`, { version: 2 });
+  } catch (err) {
+    if (versionMismatch(err)) throw err;
+    product = null; // não existe ainda
+  }
+  if (!product?.id) {
+    product = await abacate('/products/create', {
+      method: 'POST',
+      version: 2,
+      body: { externalId, name, description, price, currency: 'BRL' },
+    });
+  }
+  if (!product?.id) throw new Error('a AbacatePay não retornou o produto');
+  productIds.set(cacheKey, product.id);
+  return product.id;
+}
+
+/** Cria a cobrança com os métodos configurados; se a conta recusar, tenta só Pix. */
+async function withMethods(create) {
+  const methods = config.billing.methods;
+  try {
+    return await create(methods);
+  } catch (err) {
+    // Método não aceito pela conta (ex.: cartão não liberado): cobra só por Pix.
+    if (!/method/i.test(err.message) || methods.join() === 'PIX') throw err;
+    log.warn(`AbacatePay recusou os métodos ${methods.join(',')} (${err.message}); tentando só PIX`);
+    return create(['PIX']);
+  }
 }
 
 /**
@@ -164,28 +230,49 @@ export async function createCheckout(user, { kind, itemId, name, taxId, cellphon
           name: `Riseframe · ${item.credits} créditos`,
           description: `Recarga avulsa de ${item.credits} créditos (não expiram)`,
         };
-  const body = (methods) => ({
-    frequency: 'ONE_TIME',
-    methods,
-    products: [{ ...product, quantity: 1, price: item.priceCents }],
-    returnUrl,
-    completionUrl: returnUrl,
-    customer: { name: name || user.name || user.email, email: user.email, cellphone, taxId },
+  const customer = { name: name || user.name || user.email, email: user.email, cellphone, taxId };
+
+  const { billing, version } = await withApiVersion(async (version) => {
+    if (version === 1) {
+      const billing = await withMethods((methods) =>
+        abacate('/billing/create', {
+          method: 'POST',
+          version: 1,
+          body: {
+            frequency: 'ONE_TIME',
+            methods,
+            products: [{ ...product, quantity: 1, price: item.priceCents }],
+            returnUrl,
+            completionUrl: returnUrl,
+            customer,
+          },
+        }),
+      );
+      return { billing, version };
+    }
+    const productId = await productIdV2({ ...product, externalId: `${product.externalId}-${item.priceCents}`, price: item.priceCents });
+    const billing = await withMethods((methods) =>
+      abacate('/checkouts/create', {
+        method: 'POST',
+        version: 2,
+        body: {
+          frequency: 'ONE_TIME',
+          methods,
+          items: [{ id: productId, quantity: 1 }],
+          returnUrl,
+          completionUrl: returnUrl,
+          customer,
+          externalId: `riseframe-${kind}-${item.id}-${Date.now()}`,
+        },
+      }),
+    );
+    return { billing, version };
   });
-  let billing;
-  try {
-    billing = await abacate('/billing/create', { method: 'POST', body: body(b.methods) });
-  } catch (err) {
-    // Método não aceito pela conta (ex.: cartão não liberado): cobra só por Pix.
-    if (!/methods/i.test(err.message) || b.methods.join() === 'PIX') throw err;
-    log.warn(`AbacatePay recusou os métodos ${b.methods.join(',')} (${err.message}); tentando só PIX`);
-    billing = await abacate('/billing/create', { method: 'POST', body: body(['PIX']) });
-  }
   if (!billing?.id || !billing?.url) throw new Error('a AbacatePay não retornou o link de pagamento');
   load();
-  db.pending[billing.id] = { userId: user.id, kind, itemId: item.id, credits: item.credits, createdAt: new Date().toISOString() };
+  db.pending[billing.id] = { userId: user.id, kind, itemId: item.id, credits: item.credits, createdAt: new Date().toISOString(), v: version };
   persist();
-  log.info(`checkout ${billing.id} (${kind} ${item.id}) para ${user.email}`);
+  log.info(`checkout ${billing.id} (${kind} ${item.id}, API v${version}) para ${user.email}`);
   return billing.url;
 }
 
@@ -224,12 +311,24 @@ export async function syncPayments({ userId, billingId } = {}) {
   );
   if (!ids.length) return [];
 
-  const list = await abacate('/billing/list');
-  const byId = new Map((Array.isArray(list) ? list : []).map((b) => [b.id, b]));
+  // Status de cada cobrança pendente: v2 consulta uma a uma; v1 só tem a lista geral.
+  const statusOf = new Map();
+  if (ids.some((id) => (db.pending[id].v || 1) === 1)) {
+    const list = await abacate('/billing/list', { version: 1 });
+    for (const b of Array.isArray(list) ? list : []) statusOf.set(b.id, b.status);
+  }
+  for (const id of ids.filter((i) => db.pending[i].v === 2)) {
+    try {
+      const c = await abacate(`/checkouts/get?${new URLSearchParams({ id })}`, { version: 2 });
+      statusOf.set(id, c?.status);
+    } catch (err) {
+      log.warn(`não consegui consultar a cobrança ${id}: ${err.message}`);
+    }
+  }
   const applied = [];
   for (const id of ids) {
     const p = { kind: 'pack', ...db.pending[id] };
-    const status = String(byId.get(id)?.status || '').toUpperCase();
+    const status = String(statusOf.get(id) || '').toUpperCase();
     if (status === 'PAID') {
       if (grant(id, p)) applied.push({ kind: p.kind, itemId: p.itemId, credits: p.credits });
       delete db.pending[id];

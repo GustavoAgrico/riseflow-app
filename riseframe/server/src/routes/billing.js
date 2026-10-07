@@ -70,7 +70,7 @@ billingRouter.post('/billing/webhook', (req, res) => {
   res.json({ received: true });
 
   const data = req.body?.data || {};
-  const billingId = data.billing?.id || data.id || undefined;
+  const billingId = data.billing?.id || data.checkout?.id || data.id || undefined;
   syncPayments({ billingId: typeof billingId === 'string' ? billingId : undefined }).catch((err) =>
     log.error(`webhook: ${err.message}`),
   );

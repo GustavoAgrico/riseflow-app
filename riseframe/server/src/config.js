@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v63';
+export const APP_VERSION = 'v64';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -117,6 +117,8 @@ export const config = {
   billing: {
     mode: String(process.env.BILLING_MODE || 'on').toLowerCase() === 'off' ? 'off' : 'on',
     abacateKey: process.env.ABACATE_PAY_API_KEY || '',
+    // Versão da API da AbacatePay (1 ou 2). Vazio = descobre pela chave (tenta a v2).
+    apiVersion: process.env.ABACATE_API_VERSION || '',
     webhookSecret: process.env.ABACATE_WEBHOOK_SECRET || '',
     // Créditos de teste para cada conta nova (usam os recursos de quem não tem plano).
     signupCredits: num(process.env.BILLING_SIGNUP_CREDITS, 60),
