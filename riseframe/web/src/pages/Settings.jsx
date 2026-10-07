@@ -99,6 +99,9 @@ export default function Settings({ onNewVideo, onLogout }) {
               <Row label={billing.payment === 'pix-links' ? 'Pagamentos · Pix (links do banco)' : 'Pagamentos · AbacatePay'}
                 hint={billing.payment === 'pix-links' ? 'BILLING_PIX_LINKS — você confirma cada Pix na página de Planos' : 'ABACATE_PAY_API_KEY — sem ela, ninguém consegue assinar (os limites continuam valendo)'}
                 value={<StatusDot on={billing.enabled} offLabel="Desligado" />} />
+              <Row label="Dados salvos na nuvem · Supabase"
+                hint={status.cloud?.enabled ? (status.cloud.ok ? 'Contas, planos e Pix sobrevivem a reinícios e atualizações' : 'Falhou ao salvar — veja o log do servidor') : 'SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY — sem isso, no Render grátis tudo some a cada reinício'}
+                value={<StatusDot on={Boolean(status.cloud?.enabled && status.cloud.ok)} offLabel={status.cloud?.enabled ? 'Erro' : 'Desligado'} />} />
             </div>
           )}
         </Section>

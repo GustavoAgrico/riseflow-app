@@ -17,9 +17,18 @@ import { startRenewTimer } from './auth/billing.js';
 import { ffmpegPath } from './pipeline/ffmpeg.js';
 import { whisperLocalAvailable } from './pipeline/transcribe/providers.js';
 import { log } from './logger.js';
+import { cloudStatus, flushCloud, restoreFromCloud } from './cloudSync.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Antes de tudo: traz contas/planos/configurações do Supabase (servidor sem disco
+// permanente). Se o Supabase não responder, é melhor não subir do que subir vazio.
+try {
+  await restoreFromCloud();
+} catch (err) {
+  log.error(`${err.message} — encerrando para tentar de novo`);
+  process.exit(1);
+}
 await ensureDirs();
 await queue.restore(); // reabre na timeline vídeos processados antes deste restart
 startCleanupTimer();
@@ -56,6 +65,7 @@ app.get('/api/health', (_req, res) => {
     version: APP_VERSION,
     ffmpeg: Boolean(ffmpegPath),
     capabilities: capabilities(),
+    cloud: cloudStatus().enabled ? (cloudStatus().ok ? 'ok' : 'erro') : 'off',
     time: new Date().toISOString(),
   });
 });
@@ -120,3 +130,11 @@ const server = app.listen(config.port, () => {
 // subir: sem isto a conexão cai no meio do upload.
 server.requestTimeout = 0;
 server.timeout = 0;
+
+// Ao desligar (deploy/reinício), sobe para a nuvem o que ainda estiver pendente.
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.once(sig, async () => {
+    await flushCloud();
+    process.exit(0);
+  });
+}

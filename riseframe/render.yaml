@@ -34,6 +34,11 @@ services:
         value: 6                 # limpa renders antigos (disco efêmero pequeno no free)
       - key: AUTH_SECRET
         generateValue: true      # mantém os logins válidos entre reinícios (sem disco)
+      # ── Contas, planos, Pix e configurações salvos no Supabase (sobrevivem aos deploys) ──
+      - key: SUPABASE_URL
+        value: https://ksagizfkebrsvwptgysh.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY   # Supabase → Project Settings → API Keys → service_role
+        sync: false
       # ── Transcrição (legendas reais) ──
       # No free (512 MB) use o modelo 'tiny'. Se der OOM/crash, troque
       # TRANSCRIBE_PROVIDER para 'mock' (o app funciona, legendas de exemplo) ou
@@ -48,8 +53,7 @@ services:
       # - key: ANTHROPIC_API_KEY   # correção de fala + color grade por IA
       #   sync: false
       # ── Planos e créditos: os limites valem sempre (BILLING_MODE=off desliga). Sem a chave da AbacatePay, ninguém assina ainda ──
-      # ⚠️ Planos e saldos ficam em data/billing.json: ANTES de vender, ative o disco
-      #   (bloco abaixo). No free sem disco, planos e créditos pagos somem a cada deploy.
+      # Planos e saldos ficam em data/billing.json, copiado no Supabase (SUPABASE_* acima).
       # - key: ABACATE_PAY_API_KEY     # mesma chave do RiseFlow (app.abacatepay.com → API)
       #   sync: false
       # - key: ABACATE_WEBHOOK_SECRET  # invente um valor; use o mesmo no webhook da AbacatePay:

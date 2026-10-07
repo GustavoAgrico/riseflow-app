@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getSettings, saveSettings } from '../auth/settings.js';
 import { requireAuth } from './auth.js';
 import { config, capabilities } from '../config.js';
+import { cloudStatus } from '../cloudSync.js';
 
 export const settingsRouter = Router();
 
@@ -24,6 +25,8 @@ function payload(userId) {
       whisperReady: config.transcribe.whisperReady,
       // Openverse (Creative Commons) não exige chave: o B-roll sempre tem uma fonte.
       openverse: true,
+      // Cópia das contas/planos no Supabase (servidor sem disco permanente).
+      cloud: { enabled: cloudStatus().enabled, ok: cloudStatus().ok },
     },
   };
 }

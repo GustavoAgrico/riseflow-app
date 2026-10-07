@@ -5,6 +5,7 @@ import { config } from './config.js';
 import { runFfmpeg, probeSummary, sdrVf } from './pipeline/ffmpeg.js';
 import { makeLogger } from './logger.js';
 import { zipFiles } from './zip.js';
+import { cloudRemoveShowcase, cloudReplaceShowcase } from './cloudSync.js';
 
 const log = makeLogger('showcase');
 
@@ -174,6 +175,7 @@ export function buildShowcase(job) {
       const meta = { ready: true, jobId: job.id, filename: job.filename, updatedAt: new Date().toISOString(), stats: statsFrom(job, mb, ma), sim };
       fs.writeFileSync(META, JSON.stringify(meta, null, 2));
       log.ok(`demonstração pronta (job ${job.id})`);
+      await cloudReplaceShowcase(['antes.mp4', 'depois.mp4', 'showcase.json', ...sim.broll.map((b) => b.src.split('/').pop())]);
     } catch (err) {
       log.error(`demonstração falhou: ${err.message}`);
       fs.writeFileSync(META, JSON.stringify({ ...(readMeta() || {}), error: err.message, failedAt: new Date().toISOString() }, null, 2));
@@ -192,6 +194,7 @@ export function showcaseZip() {
 }
 
 export function removeShowcase() {
+  cloudRemoveShowcase();
   if (!fs.existsSync(DIR)) return;
   for (const f of fs.readdirSync(DIR)) fs.rmSync(path.join(DIR, f), { force: true });
 }
