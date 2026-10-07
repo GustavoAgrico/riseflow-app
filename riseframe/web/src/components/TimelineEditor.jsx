@@ -595,6 +595,38 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setSegments((prev) => prev.map((s, i) => (i !== si ? s : { ...s, words: s.words.map((w, j) => (j !== wi ? w : { ...w, word: next })) })));
   }
 
+  // Corrige o TEXTO de uma frase (legenda). Mesma quantidade de palavras → troca uma a
+  // uma (tempos iguais); senão redistribui as palavras novas no tempo da frase, pelo
+  // tamanho de cada uma. Palavras cortadas continuam cortadas (só mexe nas que ficam).
+  function setPhraseText(si, text) {
+    const parts = String(text || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return;
+    setSegments((prev) => prev.map((s, i) => {
+      if (i !== si) return s;
+      const kept = s.words.filter((w) => !w.removed);
+      if (!kept.length) return s;
+      if (kept.length === parts.length) {
+        let k = 0;
+        return { ...s, words: s.words.map((w) => (w.removed ? w : { ...w, word: parts[k++] })) };
+      }
+      const t0 = kept[0].start;
+      const t1 = kept[kept.length - 1].end;
+      const pos = kept[0].px != null ? { px: kept[0].px, py: kept[0].py } : {};
+      const total = parts.reduce((a, p) => a + p.length + 1, 0);
+      let acc = 0;
+      const fresh = parts.map((p) => {
+        const a = t0 + ((t1 - t0) * acc) / total;
+        acc += p.length + 1;
+        const b = t0 + ((t1 - t0) * acc) / total;
+        return { start: +a.toFixed(3), end: +b.toFixed(3), word: p, ...pos };
+      });
+      const words = [...s.words.filter((w) => w.removed), ...fresh].sort((x, y) => x.start - y.start);
+      return { ...s, words };
+    }));
+  }
+  const [fixText, setFixText] = useState(null); // texto em edição no trecho selecionado
+  useEffect(() => setFixText(null), [sel]);
+
   async function onPickMedia(e) {
     const files = Array.from(e.target.files || []);
     e.target.value = ''; // permite reenviar o mesmo arquivo
@@ -1371,6 +1403,21 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <input type="range" min="0.6" max="1.4" step="0.05" value={cap.captionScale ?? 1} onChange={(e) => setCapField({ captionScale: Number(e.target.value) })} style={{ width: '100%' }} />
                   </CapRow>
                   <div style={{ marginTop: 4, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>Corrigir o texto</div>
+                    {capSegNow ? (
+                      <>
+                        <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>Frase que está no vídeo agora ({fmtDuration(capSegNow.start)}). Corrija e aperte Enter ou clique fora.</div>
+                        <input key={`${capSegNow.start}-${capSegNow.words.map((w) => w.word).join(' ')}`}
+                          defaultValue={capSegNow.words.filter((w) => !w.removed).map((w) => w.word).join(' ')}
+                          onBlur={(e) => setPhraseText(segments.indexOf(capSegNow), e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                          style={{ width: '100%', boxSizing: 'border-box', minHeight: 38, padding: '0 11px', borderRadius: 9, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 14, fontFamily: 'inherit' }} />
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 11, color: C.faint }}>Leve o vídeo até um trecho com fala para corrigir a frase dele.</div>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 4, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
                     <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>Posição manual · arraste a legenda na prévia</div>
                     <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Pare o vídeo na frase, escolha o que mover e arraste o texto (contorno tracejado) para onde quiser.</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
@@ -1782,7 +1829,21 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 </span>
               ))}
             </div>
-            <div style={{ fontSize: 11.5, color: C.faint, marginTop: 8 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir · arraste as bordas do bloco na timeline</div>
+            {fixText != null ? (
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                <input autoFocus value={fixText} onChange={(e) => setFixText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { setPhraseText(sel, fixText); setFixText(null); } if (e.key === 'Escape') setFixText(null); }}
+                  style={{ flex: '1 1 240px', minHeight: 38, padding: '0 11px', borderRadius: 9, border: `1px solid ${C.orange}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 14, fontFamily: 'inherit' }} />
+                <button onClick={() => { setPhraseText(sel, fixText); setFixText(null); }} style={{ ...miniBtn(false, false), color: C.green, borderColor: C.green }}>Salvar</button>
+                <button onClick={() => setFixText(null)} style={miniBtn(false, false)}>Cancelar</button>
+              </div>
+            ) : (
+              <button onClick={() => setFixText(selSeg.words.filter((w) => !w.removed).map((w) => w.word).join(' '))} disabled={segRemoved(selSeg)}
+                style={{ ...miniBtn(false, segRemoved(selSeg)), marginTop: 8 }}>
+                <Icon name="edit" size={12} strokeWidth={2.2} /> Corrigir o texto da legenda
+              </button>
+            )}
+            <div style={{ fontSize: 11.5, color: C.faint, marginTop: 8 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir só ela · arraste as bordas do bloco na timeline</div>
           </div>
         )}
       </div>

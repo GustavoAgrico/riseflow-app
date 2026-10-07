@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
 import Icon, { Logo } from '../components/Icon.jsx';
 import BeforeAfter from '../components/BeforeAfter.jsx';
+import HeroDemo from '../components/HeroDemo.jsx';
 import { getPublicInfo } from '../api.js';
 
 function MeshBg() {
@@ -219,7 +220,9 @@ export default function Landing({ onEnter, onLogin }) {
               </div>
             </div>
             <div className="rf-hero-mock" style={{ display: 'flex', justifyContent: 'center' }}>
-              <PhoneMock />
+              {info?.showcase?.after
+                ? <HeroDemo showcase={info.showcase} onMore={() => document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' })} />
+                : <PhoneMock />}
             </div>
           </div>
         </header>
@@ -323,6 +326,7 @@ export default function Landing({ onEnter, onLogin }) {
           .rf-hero-grid p{ margin-left: auto; margin-right: auto; }
           .rf-hero-mock{ margin-top: 30px; }        /* mockup DEPOIS do texto */
           .rf-hero-mock > div{ width: 230px !important; } /* menor no mobile */
+          .rf-hero-mock > .rf-herodemo{ width: 100% !important; max-width: 360px !important; }
         }
         @media (max-width: 640px){
           .rf-mobile-cta{ display: block !important; }

@@ -4,6 +4,7 @@ import { Spinner } from '../components/ui.jsx';
 import { adminCloudSync, adminDownloadBackup, adminTestEmail, getSettings } from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 import { openPlans } from '../components/CostLine.jsx';
+import DemoMaker from '../components/DemoMaker.jsx';
 
 function StatusDot({ on, onLabel = 'Ativo', offLabel = 'Inativo' }) {
   return (
@@ -160,6 +161,12 @@ export default function Settings({ onNewVideo, onLogout }) {
               )}
             </div>
           )}
+        </Section>
+      )}
+
+      {showServer && (
+        <Section title="Demonstração da página inicial">
+          <DemoMaker />
         </Section>
       )}
 
