@@ -42,6 +42,10 @@ GOOGLE_CSE_KEY=
 GOOGLE_CSE_ID=
 `;
 
+// Versões novas são publicadas pelo GitHub Actions em Releases (tag riseframe-vX.Y.Z).
+const RELEASES_API = 'https://api.github.com/repos/GustavoAgrico/riseflow-app/releases?per_page=30';
+const RELEASES_PAGE = 'https://github.com/GustavoAgrico/riseflow-app/releases';
+
 let mainWindow = null;
 let serverProcess = null;
 let serverPort = 0;
@@ -188,6 +192,52 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+/** "0.63.0" > "0.62.1"? */
+function isNewer(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i += 1) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+  }
+  return false;
+}
+
+/** Procura uma versão mais nova em Releases e oferece o download. */
+async function checkForUpdate({ manual = false } = {}) {
+  try {
+    const res = await fetch(RELEASES_API, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Riseframe-Desktop' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`GitHub ${res.status}`);
+    const latest = (await res.json()).find((r) => !r.draft && !r.prerelease && /^riseframe-v\d/.test(r.tag_name));
+    const version = latest?.tag_name.replace(/^riseframe-v/, '');
+    if (!latest || !isNewer(version, app.getVersion())) {
+      if (manual) dialog.showMessageBox(mainWindow, { type: 'info', message: `Você já está na versão mais recente (${app.getVersion()}).` });
+      return;
+    }
+    const pattern = process.platform === 'win32' ? /Setup.*\.exe$/i : process.platform === 'darwin' ? /\.dmg$/i : /\.AppImage$/i;
+    const asset = (latest.assets || []).find((a) => pattern.test(a.name));
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      buttons: ['Baixar agora', 'Depois'],
+      defaultId: 0,
+      cancelId: 1,
+      message: `Nova versão do Riseframe: ${version}`,
+      detail: `Você está usando a ${app.getVersion()}. Baixe o instalador novo e instale por cima — suas chaves e vídeos continuam.`,
+    });
+    if (response === 0) shell.openExternal(asset?.browser_download_url || latest.html_url || RELEASES_PAGE);
+  } catch (error) {
+    if (manual) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        message: 'Não consegui verificar atualizações agora.',
+        detail: `${error.message}\n\nVocê pode baixar a versão mais nova em:\n${RELEASES_PAGE}`,
+      });
+    }
+  }
+}
+
 function stopServer() {
   if (serverProcess && serverProcess.exitCode === null) serverProcess.kill();
   serverProcess = null;
@@ -204,6 +254,7 @@ app.on('ready', async () => {
   try {
     await startServer();
     createWindow();
+    setTimeout(() => checkForUpdate(), 5000);
   } catch (error) {
     stopServer();
     const tail = lastLogLines();
@@ -261,6 +312,15 @@ function buildMenu() {
         { role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' },
         { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' },
         { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Ajuda',
+      submenu: [
+        { label: 'Verificar atualizações…', click: () => checkForUpdate({ manual: true }) },
+        { label: 'Baixar versões (página do GitHub)', click: () => shell.openExternal(RELEASES_PAGE) },
+        { type: 'separator' },
+        { label: `Versão ${app.getVersion()}`, enabled: false },
       ],
     },
   ];

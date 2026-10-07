@@ -32,7 +32,9 @@ win:
     - nsis
     - portable
 
+# Nomes sem espaço (o GitHub troca espaço por ponto nos links de download).
 nsis:
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
@@ -42,7 +44,11 @@ nsis:
   uninstallerIcon: assets/icon.ico
   installerHeaderIcon: assets/icon.ico
 
+portable:
+  artifactName: ${productName}-Portatil-${version}.${ext}
+
 mac:
+  artifactName: ${productName}-${version}-${arch}.${ext}
   target:
     - dmg
     - zip

@@ -40,7 +40,7 @@ echo ========================================
 echo.
 echo Arquivos em: dist/builds/
 echo.
-echo Instalador: "Riseframe Setup X.Y.Z.exe"  ^|  Sem instalar: "Riseframe X.Y.Z.exe"
+echo Instalador: "Riseframe-Setup-X.Y.Z.exe"  ^|  Sem instalar: "Riseframe-Portatil-X.Y.Z.exe"
 dir /b dist\builds\*.exe 2>nul
 
 pause
