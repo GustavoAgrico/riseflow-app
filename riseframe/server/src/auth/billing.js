@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
 import { makeLogger } from '../logger.js';
+import { cloudSave, onCloudReload } from '../cloudSync.js';
 import { findById, findByEmail } from './store.js';
 import { emailHtml, normalizePhone, notifyAdmins, notifyUser, waLink, whatsappReady } from './notify.js';
 
@@ -28,6 +29,7 @@ const PENDING_TTL_MS = 7 * DAY_MS;
 const ALL_FEATURES = ['captionStyle', 'image', 'ai', 'clips'];
 
 let db = null;
+onCloudReload('billing.json', () => { db = null; });
 
 function load() {
   if (db) return db;
@@ -46,6 +48,7 @@ function load() {
 function persist() {
   fs.mkdirSync(config.paths.data, { recursive: true });
   fs.writeFileSync(FILE, JSON.stringify(db, null, 2), { mode: 0o600 });
+  cloudSave('billing.json');
 }
 
 function entry(userId) {

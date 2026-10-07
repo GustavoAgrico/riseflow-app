@@ -137,6 +137,7 @@ async function startServer() {
     APP_URL: origin,
     DATA_DIR: dataDir,
     BILLING_MODE: 'off', // app local: sem limites de créditos/planos
+    CLOUD_SYNC: 'off', // dados do app local NUNCA vão para a nuvem do site
     TRANSCRIBE_PROVIDER: keys.TRANSCRIBE_PROVIDER || (keys.DEEPGRAM_API_KEY ? 'deepgram' : 'whisper-local'),
   };
 

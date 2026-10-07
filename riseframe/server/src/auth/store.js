@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
+import { cloudSave, onCloudReload } from '../cloudSync.js';
 
 /**
  * Armazenamento simples de usuários em arquivo JSON (data/users.json). Sem banco de
@@ -11,6 +12,7 @@ import { config } from '../config.js';
 const FILE = path.join(config.paths.data, 'users.json');
 
 let users = null; // cache em memória
+onCloudReload('users.json', () => { users = null; });
 
 function load() {
   if (users) return users;
@@ -26,6 +28,7 @@ function load() {
 function persist() {
   fs.mkdirSync(config.paths.data, { recursive: true });
   fs.writeFileSync(FILE, JSON.stringify(users, null, 2), { mode: 0o600 });
+  cloudSave('users.json');
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {

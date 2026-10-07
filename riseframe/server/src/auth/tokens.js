@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
+import { cloudSave } from '../cloudSync.js';
 
 /**
  * Token no estilo JWT (HS256) assinado com HMAC-SHA256 — sem dependências externas.
@@ -18,6 +19,7 @@ function loadSecret() {
     try {
       fs.mkdirSync(config.paths.data, { recursive: true });
       fs.writeFileSync(file, secret, { mode: 0o600 });
+      cloudSave('auth_secret');
     } catch {
       /* se não der pra persistir, usa o segredo em memória desta execução */
     }
@@ -25,7 +27,8 @@ function loadSecret() {
   }
 }
 
-const SECRET = loadSecret();
+// Lido só no 1º uso: no boot, a cópia da nuvem (auth_secret) é restaurada antes.
+let SECRET = null;
 const TTL_SECONDS = 30 * 24 * 3600; // 30 dias
 
 function b64url(buf) {
@@ -35,7 +38,7 @@ function b64urlJson(obj) {
   return b64url(JSON.stringify(obj));
 }
 function sign(data) {
-  return b64url(crypto.createHmac('sha256', SECRET).update(data).digest());
+  return b64url(crypto.createHmac('sha256', (SECRET ??= loadSecret())).update(data).digest());
 }
 
 /** Assina um token para o usuário (payload: sub=id, email, name). */

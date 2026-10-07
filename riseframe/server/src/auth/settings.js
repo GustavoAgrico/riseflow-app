@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
+import { cloudSave, onCloudReload } from '../cloudSync.js';
 
 /**
  * Configurações por usuário (chaves de integração etc.), salvas em
@@ -10,6 +11,7 @@ import { config } from '../config.js';
 const FILE = path.join(config.paths.data, 'settings.json');
 
 let all = null;
+onCloudReload('settings.json', () => { all = null; });
 
 function load() {
   if (all) return all;
@@ -25,6 +27,7 @@ function load() {
 function persist() {
   fs.mkdirSync(config.paths.data, { recursive: true });
   fs.writeFileSync(FILE, JSON.stringify(all, null, 2), { mode: 0o600 });
+  cloudSave('settings.json');
 }
 
 /** Sanitiza os campos aceitos. Só o que passa aqui é guardado. */
