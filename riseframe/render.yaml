@@ -35,6 +35,9 @@ services:
       - key: AUTH_SECRET
         generateValue: true      # mantém os logins válidos entre reinícios (sem disco)
       # ── Contas, planos, Pix e configurações salvos no Supabase (sobrevivem aos deploys) ──
+      # ── Transcrição reserva (mais barata, tem plano grátis): entra sozinha se a principal falhar ──
+      # - key: GROQ_API_KEY            # console.groq.com → API Keys (TRANSCRIBE_PROVIDER=groq para usar como principal)
+      #   sync: false
       - key: SUPABASE_URL
         value: https://ksagizfkebrsvwptgysh.supabase.co
       - key: SUPABASE_SERVICE_ROLE_KEY   # Supabase → Project Settings → API Keys → service_role
