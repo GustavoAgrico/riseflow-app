@@ -397,6 +397,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
       mode: options.captionMode, // compat legado
       fontScale: options.captionScale || 1,
       highlight: options.captionHighlight === true, // destacar a palavra falada (padrão: não)
+      posX: options.captionX, // posição livre arrastada na prévia (0–1), vale para todas as frases
+      posY: options.captionY,
     };
     const r = await burnCaptions(input, work, meta, transcript, style, st.onProgress);
     input = r.output;

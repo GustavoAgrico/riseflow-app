@@ -39,6 +39,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     captionHighlight: cap0.captionHighlight === true,
   });
   const setCapField = (patch) => setCap((c) => ({ ...c, ...patch }));
+  // Posição manual da legenda (arrastar na prévia): só esta frase, só esta palavra ou todas.
+  const [capScope, setCapScope] = useState('frase');
   // Efeitos (zoom + sons) e cor, ajustáveis aqui na timeline antes do render.
   const [fx, setFx] = useState({
     videoMotion: cap0.videoMotion || 'none',
@@ -636,7 +638,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return {
       provider: transcript.provider,
       language: transcript.language,
-      segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map((w) => ({ start: w.start, end: w.end, word: w.word, removed: !!w.removed })) })),
+      segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map((w) => ({ start: w.start, end: w.end, word: w.word, removed: !!w.removed, ...(w.px != null ? { px: w.px, py: w.py } : {}) })) })),
     };
   }
 
@@ -708,7 +710,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {
         provider: transcript.provider,
         language: transcript.language,
-        segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map((w) => ({ start: w.start, end: w.end, word: w.word, removed: !!w.removed })) })),
+        segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map((w) => ({ start: w.start, end: w.end, word: w.word, removed: !!w.removed, ...(w.px != null ? { px: w.px, py: w.py } : {}) })) })),
       },
       {
         manualSilence: true,
@@ -765,6 +767,29 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const showBrollLane = !!brollReview?.moments?.length;
 
   const selSeg = segments[sel];
+
+  // Arrastou a legenda na prévia: grava a posição (0–1 no quadro final) conforme o escopo.
+  function onCapDrag(x, y, seg, word) {
+    if (capScope === 'todas') {
+      setCapField({ captionX: x, captionY: y });
+      return;
+    }
+    setSegments((prev) => prev.map((s) => {
+      if (s.start !== seg?.start) return s;
+      return {
+        ...s,
+        words: s.words.map((w) => (capScope === 'palavra' && w.start !== word?.start) || w.removed ? w : { ...w, px: x, py: y }),
+      };
+    }));
+  }
+  const capSegNow = segments.find((s) => cur >= s.start && cur < s.end) || null;
+  const capMoved = segments.some((s) => s.words.some((w) => w.px != null)) || cap.captionX != null;
+  function resetCapPos(all) {
+    setSegments((prev) => prev.map((s) => (all || s === capSegNow
+      ? { ...s, words: s.words.map(({ px, py, ...w }) => w) }
+      : s)));
+    if (all) setCapField({ captionX: undefined, captionY: undefined });
+  }
 
   // Prévia da composição 9:16 (sua metade interativa + metade do B-roll). Fica ao
   // lado do vídeo (mesma linha) quando o enquadramento é manual.
@@ -869,7 +894,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     <div ref={composedRef} style={{ position: 'relative', width: '100%', maxWidth: aspectSel === '16:9' || (aspectSel === 'original' && vbox?.vw > vbox?.vh) ? '100%' : 250, margin: '0 auto', aspectRatio: previewRatio, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
       {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
-      {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={segments} options={cap} box={cbox} sample={tab === 'legenda'} />}
+      {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={segments} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} />}
     </div>
   );
   const showFormatPreview = framingMode === 'manual' || aspectSel !== 'original';
@@ -948,7 +973,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     </span>
                   </div>
                 )}
-                {cap.captions && <CaptionOverlay videoRef={videoRef} segments={segments} options={cap} box={vbox} sample={tab === 'legenda'} />}
+                {cap.captions && <CaptionOverlay videoRef={videoRef} segments={segments} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
                 {framingMode === 'manual' && (
                   <div
                     ref={framingBoxRef}
@@ -1333,7 +1358,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     </button>
                   </CapRow>
                   <CapRow label="Fundo do texto"><Sel value={cap.captionBackground} opts={catalog.captionBackgrounds} onChange={(v) => setCapField({ captionBackground: v })} /></CapRow>
-                  <CapRow label="Posição"><Sel value={cap.captionPosition} opts={catalog.captionPositions} onChange={(v) => setCapField({ captionPosition: v })} /></CapRow>
+                  <CapRow label="Posição"><Sel value={cap.captionPosition} opts={catalog.captionPositions} onChange={(v) => setCapField({ captionPosition: v, captionX: undefined, captionY: undefined })} /></CapRow>
                   <CapRow label="Cor">
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {(catalog.captionColors || []).map((o) => (
@@ -1345,6 +1370,22 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <CapRow label={`Tamanho (${Math.round((cap.captionScale ?? 1) * 100)}%)`}>
                     <input type="range" min="0.6" max="1.4" step="0.05" value={cap.captionScale ?? 1} onChange={(e) => setCapField({ captionScale: Number(e.target.value) })} style={{ width: '100%' }} />
                   </CapRow>
+                  <div style={{ marginTop: 4, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>Posição manual · arraste a legenda na prévia</div>
+                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Pare o vídeo na frase, escolha o que mover e arraste o texto (contorno tracejado) para onde quiser.</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+                      {[{ id: 'frase', label: 'Só esta frase' }, { id: 'palavra', label: 'Só esta palavra' }, { id: 'todas', label: 'Todas' }].map((o) => (
+                        <button key={o.id} onClick={() => setCapScope(o.id)} style={{ ...framingTab(capScope === o.id), padding: '7px 4px', fontSize: 11.5 }}>{o.label}</button>
+                      ))}
+                    </div>
+                    {capScope === 'palavra' && <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Mover palavra por palavra combina com o modo <b>Palavra</b> (uma palavra por vez na tela).</div>}
+                    {capMoved && (
+                      <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                        <button onClick={() => resetCapPos(false)} disabled={!capSegNow} style={miniBtn(false, !capSegNow)}>Voltar esta frase ao padrão</button>
+                        <button onClick={() => resetCapPos(true)} style={miniBtn(false, false)}>Voltar todas ao padrão</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 </>
               ) : (

@@ -69,6 +69,10 @@ jobs:
         shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # No CI o electron-builder copia por hard link (Mac/Linux) e falha com EEXIST
+          # quando o mesmo arquivo do web/dist entra duas vezes (workspaces). Cópia normal
+          # sobrescreve sem erro, como no Windows.
+          USE_HARD_LINKS: 'false'
         run: npm run build && npx electron-builder ${{ matrix.target }} --publish never
 
       - name: Publicar em Releases

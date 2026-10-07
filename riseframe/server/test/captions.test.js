@@ -75,3 +75,36 @@ test('legenda padrão é normal: frase inteira, sem destacar a palavra falada', 
   assert.equal(hl.length, 4, 'com destaque: uma linha por palavra falada');
   assert.match(hl[2], /alpha&H70/, 'as outras palavras ficam apagadas');
 });
+
+test('posição manual: frase arrastada vira \\an5\\pos no quadro; a geral vale para as outras', async () => {
+  const { buildAss } = await import('../src/pipeline/captions.js');
+  const meta = { width: 1080, height: 1920 };
+  const segs = [
+    { start: 0, end: 1, words: [{ start: 0, end: 0.5, word: 'olá', px: 0.5, py: 0.25 }, { start: 0.5, end: 1, word: 'gente', px: 0.5, py: 0.25 }] },
+    { start: 1, end: 2, words: [{ start: 1, end: 2, word: 'tudo' }] },
+  ];
+  const ass = buildAss(segs, meta, { template: 'clean', posX: 0.3, posY: 0.7 });
+  const lines = ass.split('\n').filter((l) => l.startsWith('Dialogue'));
+  assert.match(lines[0], /\\an5\\pos\(540,480\)/);
+  assert.match(lines[1], /\\an5\\pos\(324,1344\)/);
+  // modo palavra: cada palavra usa a sua posição
+  const word = buildAss([{ start: 0, end: 1, words: [{ start: 0, end: 0.5, word: 'um', px: 0.2, py: 0.2 }, { start: 0.5, end: 1, word: 'dois' }] }], meta, { template: 'pop' });
+  const wl = word.split('\n').filter((l) => l.startsWith('Dialogue'));
+  assert.match(wl[0], /\\an5\\pos\(216,384\)/);
+  assert.doesNotMatch(wl[1], /\\pos/);
+  // sem posição manual: nada de \pos
+  assert.doesNotMatch(buildAss([segs[1]], meta, { template: 'clean' }), /\\pos/);
+});
+
+test('posição manual sobrevive aos cortes e separa frases com posições diferentes', async () => {
+  const { remapTranscript } = await import('../src/pipeline/timeline.js');
+  const tr = { segments: [{ start: 0, end: 3, words: [
+    { start: 0, end: 0.4, word: 'a', px: 0.1, py: 0.1 },
+    { start: 0.4, end: 0.8, word: 'b', px: 0.1, py: 0.1 },
+    { start: 0.8, end: 1.2, word: 'c' },
+  ] }] };
+  const out = remapTranscript(tr, [{ start: 0, end: 3 }]);
+  assert.equal(out.segments.length, 2);
+  assert.deepEqual(out.segments[0].words.map((w) => [w.word, w.px, w.py]), [['a', 0.1, 0.1], ['b', 0.1, 0.1]]);
+  assert.equal(out.segments[1].words[0].px, undefined);
+});

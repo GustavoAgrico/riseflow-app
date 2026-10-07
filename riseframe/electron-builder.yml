@@ -17,8 +17,7 @@ files:
   - server/package.json
   - node_modules/**/*
   - server/node_modules/**/*
-  # Atalhos dos workspaces (node_modules/@riseframe/web → ../web): sem isto o web/dist
-  # entra duas vezes e o build do Mac falha com EEXIST (hard links).
+  # Atalhos dos workspaces (node_modules/@riseframe/*) não entram no pacote.
   - "!node_modules/@riseframe/**"
 
 extraMetadata:

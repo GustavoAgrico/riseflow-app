@@ -44,7 +44,10 @@ export function groupIntoPhrases(words, opts = {}) {
     const dur = w.end - bucket[0].start;
     const next = list[i + 1];
     const gap = next ? next.start - w.end : Infinity;
-    if (endsSentence || bucket.length >= maxWords || dur >= maxDur || gap >= pauseGap) flush();
+    // Palavras com posição manual diferente nunca dividem a mesma legenda.
+    const posKey = (x) => (x && x.px != null ? `${x.px},${x.py}` : '');
+    const movedApart = next && posKey(next) !== posKey(w);
+    if (endsSentence || bucket.length >= maxWords || dur >= maxDur || gap >= pauseGap || movedApart) flush();
   }
   flush();
   return segments;

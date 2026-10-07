@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
+import { posOf } from './timeline.js';
 
 const log = makeLogger('captions');
 
@@ -266,11 +267,21 @@ export function buildAss(segments, meta, style = {}) {
   const anim = animTag(animKind);
   const glow = glowOn ? '\\blur3' : '';
   const lines = [];
+  // Posição manual (arrastada na prévia): da palavra/frase, senão a geral (posX/posY).
+  // Vira \an5\pos(x,y) = centro do texto naquele ponto do quadro.
+  const globalPos = posOf({ px: style.posX, py: style.posY });
+  const posTag = (p) => {
+    const q = p && p.px != null ? p : globalPos;
+    if (q.px == null) return '';
+    const x = Math.round(Math.min(0.94, Math.max(0.06, q.px)) * w);
+    const y = Math.round(Math.min(0.96, Math.max(0.04, q.py)) * h);
+    return `\\an5\\pos(${x},${y})`;
+  };
 
   for (const seg of segments) {
     const raw = seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }];
     const words = raw
-      .map((wd) => ({ start: Number(wd.start) || 0, end: Number(wd.end) || 0, word: String(wd.word ?? '').trim() }))
+      .map((wd) => ({ start: Number(wd.start) || 0, end: Number(wd.end) || 0, word: String(wd.word ?? '').trim(), ...posOf(wd) }))
       .filter((wd) => wd.word.length > 0);
     if (!words.length) continue;
 
@@ -289,7 +300,7 @@ export function buildAss(segments, meta, style = {}) {
         const txt = escapeAss(disp);
         const fs = fitFontSize(disp, size);
         const fsTag = fs !== size ? `\\fs${fs}` : '';
-        const ov = `{\\an${align}${fsTag}${anim}${glow}${wordColor}}`;
+        const ov = `{${posTag(wd) || `\\an${align}`}${fsTag}${anim}${glow}${wordColor}}`;
         lines.push(`Dialogue: 0,${assTime(wd.start)},${assTime(end)},${styleName},,0,0,0,,${ov}${txt}`);
       }
     } else if (!style.highlight) {
@@ -308,7 +319,7 @@ export function buildAss(segments, meta, style = {}) {
         })
         .join(' ');
       const end = Math.max(words[words.length - 1].end, Number(seg.end) || 0);
-      lines.push(`Dialogue: 0,${assTime(words[0].start)},${assTime(end)},${phraseStyle},,0,0,0,,{${anim}${glow}${base}}${rendered}`);
+      lines.push(`Dialogue: 0,${assTime(words[0].start)},${assTime(end)},${phraseStyle},,0,0,0,,{${posTag(words[0])}${anim}${glow}${base}}${rendered}`);
     } else {
       // Destaque ligado: frase inteira e a palavra corrente realçada (por cor, ou —
       // no branco — pelo escurecimento das demais).
@@ -338,7 +349,7 @@ export function buildAss(segments, meta, style = {}) {
             return t;
           })
           .join(' ');
-        lines.push(`Dialogue: 0,${assTime(start)},${assTime(end)},${phraseStyle},,0,0,0,,{${anim}${glow}}${rendered}`);
+        lines.push(`Dialogue: 0,${assTime(start)},${assTime(end)},${phraseStyle},,0,0,0,,{${posTag(words[0])}${anim}${glow}}${rendered}`);
       }
     }
   }

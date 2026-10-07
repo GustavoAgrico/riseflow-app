@@ -380,6 +380,9 @@ function parseOptions(raw) {
     aspect: ['original', '9:16', '16:9', '1:1'].includes(o.aspect) ? o.aspect : 'original',
     // Como o vídeo entra no formato: segue o rosto (auto), ponto escolhido (manual) ou inteiro com fundo desfocado (fit).
     reframeMode: ['auto', 'manual', 'fit'].includes(o.reframeMode) ? o.reframeMode : 'auto',
+    // Posição livre da legenda (arrastada na prévia), 0–1 no quadro final; vazia = a do estilo.
+    captionX: Number.isFinite(Number(o.captionX)) && o.captionX !== null && o.captionX !== '' ? clampNum(o.captionX, 0, 1, undefined) : undefined,
+    captionY: Number.isFinite(Number(o.captionY)) && o.captionY !== null && o.captionY !== '' ? clampNum(o.captionY, 0, 1, undefined) : undefined,
     reframeTrack: o.reframeTrack !== false, // seguir o sujeito no reframe
     silenceNoiseDb: clampNum(o.silenceNoiseDb, -60, -10, sp.noiseDb),
     silenceMinDuration: clampNum(o.silenceMinDuration, 0.2, 3, sp.min),

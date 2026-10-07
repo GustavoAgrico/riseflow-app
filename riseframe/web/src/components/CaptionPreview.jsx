@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { C } from '../theme.js';
 
 // Espelha o servidor: cada estilo tem fonte e animação padrão.
@@ -165,8 +165,9 @@ function wordsOf(seg) {
  * (requestAnimationFrame) para acompanhar palavra a palavra sem re-renderizar o editor.
  * `box` = retângulo onde o vídeo aparece dentro do player (px).
  */
-export function CaptionOverlay({ videoRef, segments, options, box, sample }) {
+export function CaptionOverlay({ videoRef, segments, options, box, sample, editable = false, onDragPos }) {
   const [t, setT] = useState(0);
+  const boxRef = useRef(null);
   useEffect(() => {
     let id;
     let last = -1;
@@ -225,8 +226,49 @@ export function CaptionOverlay({ videoRef, segments, options, box, sample }) {
     );
   }
 
+  // Posição manual (arrastada): da palavra (modo palavra) ou da frase; senão a geral.
+  const wpos = (w) => (w && w.px != null && w.py != null ? { x: w.px, y: w.py } : null);
+  const pos = (look.mode === 'word' ? wpos(words[wi]) : wpos(words[0]))
+    || (options.captionX != null && options.captionY != null ? { x: options.captionX, y: options.captionY } : null);
+
+  // Arrastar a legenda na prévia (aba Legenda): devolve o ponto (0–1) do centro do texto.
+  const startDrag = (e) => {
+    if (!editable || !onDragPos) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = boxRef.current;
+    if (!el) return;
+    const move = (ev) => {
+      const r = el.getBoundingClientRect();
+      const x = Math.min(0.94, Math.max(0.06, (ev.clientX - r.left) / r.width));
+      const y = Math.min(0.96, Math.max(0.04, (ev.clientY - r.top) / r.height));
+      onDragPos(+x.toFixed(3), +y.toFixed(3), seg, words[wi]);
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    move(e);
+  };
+  const dragStyle = editable && onDragPos
+    ? { pointerEvents: 'auto', cursor: 'move', outline: '1.5px dashed rgba(255,255,255,0.75)', outlineOffset: 4, borderRadius: 4, touchAction: 'none' }
+    : null;
+  const handle = (
+    <span onPointerDown={startDrag} title={editable ? 'Arraste para mover a legenda' : undefined} style={{ display: 'inline-flex', justifyContent: 'center', maxWidth: '100%', ...dragStyle }}>
+      {content}
+    </span>
+  );
+
+  if (pos) {
+    return (
+      <div ref={boxRef} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, pointerEvents: 'none', overflow: 'hidden', zIndex: 1 }}>
+        <div style={{ position: 'absolute', left: pos.x * box.w, top: pos.y * box.h, transform: 'translate(-50%, -50%)', width: box.w * 0.9, display: 'flex', justifyContent: 'center', textAlign: 'center' }}>
+          {handle}
+        </div>
+      </div>
+    );
+  }
   return (
-    <div style={{
+    <div ref={boxRef} style={{
       position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, pointerEvents: 'none',
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: align === 'top' ? 'flex-start' : align === 'bottom' ? 'flex-end' : 'center',
@@ -234,7 +276,7 @@ export function CaptionOverlay({ videoRef, segments, options, box, sample }) {
       paddingBottom: align === 'bottom' ? box.h * marginV : 0,
       boxSizing: 'border-box', overflow: 'hidden', zIndex: 1,
     }}>
-      {content}
+      {handle}
     </div>
   );
 }
