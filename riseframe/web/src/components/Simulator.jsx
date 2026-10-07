@@ -97,6 +97,7 @@ export default function Simulator({ showcase }) {
   const [box, setBox] = useState(null);
 
   const videoRef = useRef(null);
+  const beforeRef = useRef(null); // vídeo real, sem ajustes, no mesmo instante
   const frameRef = useRef(null);
   const stageRef = useRef(null);
   const state = useRef({});
@@ -131,6 +132,9 @@ export default function Simulator({ showcase }) {
             v.currentTime = next ? next.start : s.keep[0].start;
           }
         }
+        // ANTES acompanha o mesmo instante do DEPOIS (comparação lado a lado).
+        const bv = beforeRef.current;
+        if (bv && Math.abs(bv.currentTime - v.currentTime) > 0.3) bv.currentTime = v.currentTime;
         const m = s.zoom ? motionAt('dynamic', s.intensity, t, sim.duration, s.zoomWindows) : { scale: 1, ox: 50, oy: 50 };
         if (frameRef.current) {
           frameRef.current.style.transform = `scale(${m.scale})`;
@@ -160,6 +164,11 @@ export default function Simulator({ showcase }) {
     v.muted = muted;
     if (playing) v.play().catch(() => {});
     else v.pause();
+    const bv = beforeRef.current;
+    if (bv) {
+      if (playing) bv.play().catch(() => {});
+      else bv.pause();
+    }
   }, [muted, playing, finalView]);
 
   const lookCss = look === 'natural' ? { filter: `url(#${filterId})` } : LOOK_CSS[look] || LOOK_CSS.none;
@@ -170,11 +179,25 @@ export default function Simulator({ showcase }) {
   const focus = sim.reframe?.centerX != null ? `${sim.reframe.centerX * 100}% 40%` : '50% 40%';
 
   return (
-    <div className="rf-sim" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(280px, 380px)', gap: 26, alignItems: 'start' }}>
+    <div className="rf-sim" style={{ display: 'grid', gap: 22 }}>
       {look === 'natural' && <NaturalFilter id={filterId} ai={sim.color?.ai} />}
-      {/* PALCO */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <div style={{ width: '100%', maxWidth: vertical ? 340 : 620, position: 'relative', borderRadius: 24, padding: 8, background: '#0b0c12', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 30px 70px -30px rgba(255,107,53,0.45)' }}>
+      <div className={`rf-sim-row${landscape ? ' rf-sim-wide' : ''}`} style={{ display: 'flex', gap: 18, justifyContent: 'center', alignItems: 'flex-end' }}>
+      {/* ANTES: o vídeo real como foi gravado, no mesmo instante */}
+      <div style={{ flex: '1 1 0', maxWidth: landscape ? 520 : 300, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <span style={paneLabel(false)}>ANTES · COMO FOI GRAVADO</span>
+        <div style={{ width: '100%', borderRadius: 24, padding: 8, background: '#0b0c12', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 30px 70px -30px rgba(0,0,0,0.8)' }}>
+          <div style={{ position: 'relative', aspectRatio: `${sim.width || 9} / ${sim.height || 16}`, borderRadius: 17, overflow: 'hidden', background: '#000' }}>
+            <video ref={beforeRef} src={apiAsset(showcase.before)} autoPlay loop playsInline muted
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+            <div style={{ position: 'absolute', left: 10, top: 10, fontSize: 10.5, fontWeight: 800, letterSpacing: 0.8, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '4px 9px', borderRadius: 999 }}>VÍDEO REAL</div>
+          </div>
+        </div>
+      </div>
+      <div className="rf-sim-arrow" style={{ alignSelf: 'center', color: C.orange, fontSize: 30, fontWeight: 800 }}>→</div>
+      {/* DEPOIS: o mesmo vídeo com os ajustes ligados abaixo */}
+      <div style={{ flex: '1 1 0', maxWidth: vertical ? 300 : 520, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <span style={paneLabel(true)}>DEPOIS · COM OS AJUSTES</span>
+        <div style={{ width: '100%', position: 'relative', borderRadius: 24, padding: 8, background: '#0b0c12', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 30px 70px -30px rgba(255,107,53,0.45)' }}>
           <div ref={stageRef} style={{ position: 'relative', aspectRatio: aspect, borderRadius: 17, overflow: 'hidden', background: '#000' }}>
             {finalView ? (
               <video key="final" ref={videoRef} src={apiAsset(showcase.after)} autoPlay loop playsInline muted={muted}
@@ -208,7 +231,12 @@ export default function Simulator({ showcase }) {
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap', justifyContent: 'center' }}>
+      </div>
+      </div>
+
+      {/* controles do player + duração */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
           <button onClick={() => setPlaying((p) => !p)} style={ctrlBtn}><Icon name={playing ? 'pause' : 'play'} size={15} /> {playing ? 'Pausar' : 'Tocar'}</button>
           <button onClick={() => setMuted((m) => !m)} style={ctrlBtn}><Icon name={muted ? 'mute' : 'volume'} size={15} /> {muted ? 'Ouvir' : 'Sem som'}</button>
           <button onClick={() => setFinalView((f) => !f)} style={{ ...ctrlBtn, borderColor: finalView ? C.orange : C.border, color: finalView ? C.orange : C.text }}>
@@ -221,8 +249,9 @@ export default function Simulator({ showcase }) {
       </div>
 
       {/* AJUSTES */}
-      <div style={{ display: 'grid', gap: 9 }}>
-        <div style={{ fontSize: 13, color: C.muted, marginBottom: 2 }}>Ligue e desligue cada ajuste e veja o vídeo mudar na hora:</div>
+      <div>
+        <div style={{ fontSize: 14, color: C.muted, marginBottom: 10, textAlign: 'center' }}>Ligue e desligue cada ajuste e veja o <b style={{ color: C.text }}>depois</b> mudar na hora:</div>
+        <div className="rf-sim-ctl" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10, alignItems: 'start' }}>
         <Toggle on={cuts} onClick={() => setCuts((v) => !v)} icon="scissors" title="Cortar pausas e muletas" desc={`Tira ${Math.max(0, Math.round(sim.duration - keptSeconds))}s de silêncios e "é…", "hã"`} />
         <div>
           <Toggle on={captions} onClick={() => setCaptions((v) => !v)} icon="captions" title="Legendas" desc="Escritas da fala, sincronizadas" />
@@ -240,14 +269,23 @@ export default function Simulator({ showcase }) {
           </div>
         )}
         {landscape && <Toggle on={vertical} onClick={() => setVertical((v) => !v)} icon="crop" title="Formato vertical 9:16" desc="Para Reels, Shorts e TikTok" />}
-        <p style={{ fontSize: 12, color: C.faint, margin: '4px 0 0', lineHeight: 1.5 }}>
-          Prévia no navegador de uma edição real. O botão “Ver o vídeo final real” mostra o arquivo exatamente como o Riseframe entregou.
+        </div>
+        <p style={{ fontSize: 12, color: C.faint, margin: '12px 0 0', lineHeight: 1.5, textAlign: 'center' }}>
+          Os dois lados tocam o mesmo vídeo real no mesmo instante. O botão “Ver o vídeo final real” mostra o arquivo exatamente como o Riseframe entregou.
         </p>
       </div>
-      <style>{`@media (max-width: 860px){ .rf-sim{ grid-template-columns: 1fr !important; } }`}</style>
+      {/* Celular: vídeo horizontal fica pequeno lado a lado → ANTES em cima, DEPOIS embaixo. */}
+      <style>{`@media (max-width: 640px){ .rf-sim-row{ gap: 8px !important; } .rf-sim-arrow{ display: none; }
+        .rf-sim-wide{ flex-direction: column !important; align-items: center !important; gap: 18px !important; }
+        .rf-sim-wide > div{ width: 100%; flex: none !important; } }`}</style>
     </div>
   );
 }
+
+const paneLabel = (after) => ({
+  fontSize: 11.5, fontWeight: 800, letterSpacing: 1, padding: '5px 12px', borderRadius: 999, marginBottom: 12, textAlign: 'center',
+  color: after ? '#fff' : C.muted, background: after ? GRAD : 'rgba(255,255,255,0.06)', border: after ? 'none' : `1px solid ${C.border}`,
+});
 
 const ctrlBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 13px', borderRadius: 999, border: `1px solid ${C.border}`,
