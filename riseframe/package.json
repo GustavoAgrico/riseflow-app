@@ -24,9 +24,7 @@
   "devDependencies": {
     "concurrently": "^9.1.0",
     "electron": "^32.0.0",
-    "electron-builder": "^25.1.1",
-    "electron-dev": "^1.0.1",
-    "electron-is-dev": "^3.0.1"
+    "electron-builder": "^25.1.1"
   },
   "engines": {
     "node": ">=20"
