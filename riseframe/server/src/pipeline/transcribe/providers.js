@@ -73,7 +73,8 @@ function waitProgress(onProgress, from, estimateMs) {
 async function fetchRetry(url, init, timeoutMs, label) {
   for (let attempt = 1; ; attempt += 1) {
     try {
-      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+      // AbortSignal.timeout só aceita inteiro (a duração do vídeo vem quebrada: 465,43 s).
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(Math.ceil(timeoutMs)) });
       if (res.status >= 500 && attempt < 2) {
         log.warn(`${label} respondeu ${res.status}; tentando de novo`);
         continue;

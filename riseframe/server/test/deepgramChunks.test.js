@@ -53,3 +53,24 @@ test('transcribeDeepgram: áudio longo vai em pedaços e os tempos das palavras 
   }
   assert.ok(mod.DEEPGRAM_CHUNK_SECONDS >= 60);
 });
+
+test('transcribeDeepgram: vídeo com duração quebrada (ex.: 465,43 s) não estoura o tempo máximo', async () => {
+  const work = await fs.mkdtemp(path.join(os.tmpdir(), 'dg-frac-'));
+  const input = path.join(work, 'in.m4a');
+  await makeAudioVideo(input, 3);
+  const realFetch = globalThis.fetch;
+  let signal = null;
+  globalThis.fetch = async (_url, init) => {
+    signal = init.signal;
+    return new Response(JSON.stringify({ results: { channels: [{ alternatives: [{ transcript: 'oi', words: [{ start: 0.1, end: 0.4, word: 'oi' }] }] }] } }), { status: 200 });
+  };
+  try {
+    // 465,4333 s × 2000 = 930866,6 ms → antes dava "The value of delay is out of range".
+    const t = await transcribeDeepgram(input, work, { duration: 465.4333 }, { deepgramKey: 'x' }, () => {});
+    assert.ok(signal, 'mandou com tempo máximo');
+    assert.equal(t.segments.length, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+    await fs.rm(work, { recursive: true, force: true });
+  }
+});
