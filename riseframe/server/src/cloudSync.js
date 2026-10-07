@@ -25,7 +25,7 @@ const RETRY_MS = 30_000;
 const WATCH_MS = 5 * 60_000; // logo após subir, confere se o servidor antigo gravou algo
 const WATCH_EVERY_MS = 20_000;
 
-const state = { enabled: false, ok: false, error: null, restoredAt: null, savedAt: null };
+const state = { enabled: false, ok: false, error: null, restoredAt: null, savedAt: null, files: {} };
 const known = new Map(); // nome → hash do conteúdo que a nuvem tem (pelo que sabemos)
 const dirty = new Set(); // arquivos gravados por ESTE servidor desde que subiu
 const timers = new Map();
@@ -46,7 +46,7 @@ export function cloudEnabled() {
 
 export function cloudStatus() {
   const { bucket } = settings();
-  return { enabled: state.enabled, ok: state.ok, error: state.error, bucket, restoredAt: state.restoredAt, savedAt: state.savedAt };
+  return { enabled: state.enabled, ok: state.ok, error: state.error, bucket, restoredAt: state.restoredAt, savedAt: state.savedAt, files: { ...state.files } };
 }
 
 /** Quem guarda o arquivo em memória avisa como recarregar se a nuvem trouxer versão nova. */
@@ -242,9 +242,7 @@ function flushOne(name) {
     try {
       await upload(name, buf);
       known.set(name, h);
-      state.ok = true;
-      state.error = null;
-      state.savedAt = new Date().toISOString();
+      markSaved(name);
     } catch (err) {
       state.ok = false;
       state.error = err.message;
@@ -254,6 +252,43 @@ function flushOne(name) {
   });
   chains.set(name, next);
   return next;
+}
+
+function markSaved(name) {
+  state.ok = true;
+  state.error = null;
+  state.savedAt = new Date().toISOString();
+  state.files[name] = state.savedAt;
+  log.ok(`${name} salvo no Supabase`);
+}
+
+/**
+ * Admin: sobe AGORA todos os dados deste servidor para a nuvem (mesmo sem mudança) e
+ * devolve o resultado de cada arquivo — serve também de teste da conexão.
+ */
+export async function cloudSyncNow() {
+  if (!state.enabled) throw Object.assign(new Error(state.error || 'cópia na nuvem desligada (faltam SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY)'), { status: 400 });
+  const results = {};
+  for (const name of SYNCED) {
+    let buf;
+    try {
+      buf = fs.readFileSync(local(name));
+    } catch {
+      results[name] = 'não existe neste servidor';
+      continue;
+    }
+    try {
+      await upload(name, buf);
+      known.set(name, hash(buf));
+      markSaved(name);
+      results[name] = 'salvo';
+    } catch (err) {
+      state.ok = false;
+      state.error = err.message;
+      results[name] = `erro: ${err.message}`;
+    }
+  }
+  return { results, status: cloudStatus() };
 }
 
 /** Troca os arquivos da demo na nuvem pelos atuais (antes apaga os antigos). */
@@ -296,5 +331,5 @@ export function __resetCloud() {
   chains.clear();
   known.clear();
   dirty.clear();
-  Object.assign(state, { enabled: false, ok: false, error: null, restoredAt: null, savedAt: null });
+  Object.assign(state, { enabled: false, ok: false, error: null, restoredAt: null, savedAt: null, files: {} });
 }

@@ -172,3 +172,20 @@ test('demonstração: troca os arquivos na nuvem e apaga os que sobraram', async
   assert.equal([...objects.keys()].filter((k) => k.startsWith('rf-teste/showcase/')).length, 0);
   cloud.__resetCloud();
 });
+
+test('admin "Salvar tudo agora": sobe o que existe e diz o resultado de cada arquivo', async () => {
+  cloud.__resetCloud();
+  await cloud.restoreFromCloud();
+  objects.delete('rf-teste/users.json');
+  const { results, status } = await cloud.cloudSyncNow();
+  assert.equal(results['users.json'], 'salvo');
+  assert.ok(remote('users.json'));
+  assert.ok(status.files['users.json']);
+  down = true;
+  const again = await cloud.cloudSyncNow();
+  assert.match(again.results['users.json'], /^erro: Supabase 503/);
+  assert.equal(again.status.ok, false);
+  down = false;
+  cloud.__resetCloud();
+  await assert.rejects(cloud.cloudSyncNow(), /desligada/);
+});

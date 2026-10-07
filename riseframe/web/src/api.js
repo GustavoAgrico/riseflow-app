@@ -93,6 +93,8 @@ export const adminApproveClaim = (id) => billingCall(`/billing/admin/claims/${en
 export const adminRejectClaim = (id) => billingCall(`/billing/admin/claims/${encodeURIComponent(id)}/reject`, 'POST');
 export const adminGrant = (info) => billingCall('/billing/admin/grant', 'POST', info);
 export const adminSendReminders = () => billingCall('/billing/admin/reminders', 'POST');
+/** Admin: sobe agora contas/planos/configurações para o Supabase e mostra o resultado. */
+export const adminCloudSync = () => billingCall('/settings/cloud/sync', 'POST');
 
 /** URL de arquivo servido pela API ("/api/...") respeitando a origem configurada. */
 export const apiAsset = (u) => (u && u.startsWith('/api/') ? `${BASE}${u.slice(4)}` : u);
