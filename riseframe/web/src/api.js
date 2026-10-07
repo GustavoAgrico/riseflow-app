@@ -94,6 +94,20 @@ export const adminRejectClaim = (id) => billingCall(`/billing/admin/claims/${enc
 export const adminGrant = (info) => billingCall('/billing/admin/grant', 'POST', info);
 export const adminSendReminders = () => billingCall('/billing/admin/reminders', 'POST');
 
+/** URL de arquivo servido pela API ("/api/...") respeitando a origem configurada. */
+export const apiAsset = (u) => (u && u.startsWith('/api/') ? `${BASE}${u.slice(4)}` : u);
+
+/** Informações públicas da página inicial: preços, teste grátis, limites e demonstração. */
+export async function getPublicInfo() {
+  const r = await fetch(`${BASE}/public/info`);
+  if (!r.ok) throw new Error('falha ao carregar informações');
+  return r.json();
+}
+// Admin: demonstração antes/depois da página inicial.
+export const adminShowcase = () => billingCall('/admin/showcase');
+export const adminSetShowcase = (jobId) => billingCall('/admin/showcase', 'POST', { jobId });
+export const adminRemoveShowcase = () => billingCall('/admin/showcase', 'DELETE');
+
 export async function getHealth() {
   const r = await fetch(`${BASE}/health`);
   if (!r.ok) throw new Error('API indisponível');

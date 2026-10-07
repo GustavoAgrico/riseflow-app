@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
 import Icon, { Logo } from '../components/Icon.jsx';
+import BeforeAfter from '../components/BeforeAfter.jsx';
+import { getPublicInfo } from '../api.js';
 
 function MeshBg() {
   return (
@@ -39,21 +41,95 @@ function GradBtn({ children, onClick, big, style }) {
 }
 
 const FEATURES = [
-  { icon: 'captions', title: 'Legendas dinâmicas', desc: 'Palavra a palavra, sincronizadas com a fala real — vários estilos, cores, fundos e destaque de palavra-chave.' },
-  { icon: 'scissors', title: 'Corte de silêncio', desc: 'Remove pausas e trechos mortos automaticamente e remonta a timeline sozinho.' },
-  { icon: 'mic', title: 'Correção da fala', desc: 'Corta muletas ("é...", "hã"), hesitações e repetições — o vídeo fica limpo e direto.' },
-  { icon: 'film', title: 'Movimento e zoom', desc: 'Efeito de câmera (punch-in, Ken Burns) que dá energia e retém a atenção.' },
-  { icon: 'palette', title: 'Color grade por IA', desc: 'Analisa a imagem e aplica correção + look cinematográfico automaticamente.' },
-  { icon: 'image', title: 'B-roll automático', desc: 'Insere vídeos/imagens de apoio no contexto certo — tela cheia ou dividida.' },
+  { icon: 'captions', title: 'Legendas automáticas', desc: 'Escritas a partir da sua fala e sincronizadas. Vários estilos, cores e posições — você revisa o texto antes de exportar.' },
+  { icon: 'scissors', title: 'Corta as pausas', desc: 'Tira silêncios e trechos parados e junta o vídeo sozinho. Você vê cada corte na timeline e pode desfazer.' },
+  { icon: 'mic', title: 'Limpa a fala', desc: 'Remove "é...", "hã", gaguejos e repetições, para o vídeo ficar direto ao ponto.' },
+  { icon: 'film', title: 'Zoom nos momentos-chave', desc: 'Aproxima a imagem nas frases mais fortes para prender a atenção — sem ficar mexendo o tempo todo.' },
+  { icon: 'palette', title: 'Corrige luz e cor', desc: 'Acerta a cor de lâmpada amarela ou luz fria e clareia vídeo escuro, mantendo a pele natural. Looks opcionais.' },
+  { icon: 'image', title: 'Imagens de apoio (B-roll)', desc: 'Insere imagens e vídeos que ilustram o que você fala — em tela cheia ou dividida. Você escolhe e troca cada uma.' },
 ];
 
 const STEPS = [
-  { n: '1', title: 'Suba o vídeo', desc: 'Arraste seu bruto — horizontal ou vertical, qualquer formato.' },
-  { n: '2', title: 'Escolha o que fazer', desc: 'Legendas, cortes, zoom, color grade, formato. Ou deixe tudo no automático.' },
-  { n: '3', title: 'Baixe pronto', desc: 'O Riseframe processa e entrega o vídeo finalizado, pronto pra postar.' },
+  { n: '1', title: 'Suba o vídeo', desc: 'Arraste o bruto do celular ou da câmera (MP4, MOV, MKV, WEBM…), horizontal ou vertical.' },
+  { n: '2', title: 'Revise e ajuste', desc: 'Deixe no automático ou ajuste legendas, cortes, zoom, cor e formato (9:16, 1:1, 16:9) vendo a prévia.' },
+  { n: '3', title: 'Baixe pronto', desc: 'Receba o MP4 final na mesma resolução do original, sem marca d’água, pronto para postar.' },
 ];
 
-const TRUST = ['Sem instalar nada', 'Processa na nuvem', 'Grátis para começar'];
+const TRUST = ['3 edições grátis com tudo liberado', 'Sem cartão de crédito', 'Sem marca d’água'];
+
+const brl = (cents) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const FEATURE_NAMES = { captionStyle: 'legendas estilizadas', image: 'imagens de apoio (B-roll)', ai: 'limpeza de fala por IA', clips: 'clipes curtos' };
+
+/** Seção do teste grátis + planos com preço, limites e forma de pagamento. */
+function Pricing({ info, onEnter }) {
+  const free = info?.freeEdits || 3;
+  return (
+    <section id="precos" style={{ maxWidth: 1100, margin: '0 auto', padding: '10px 24px 70px' }}>
+      <h2 style={{ textAlign: 'center', fontSize: 'clamp(26px,4vw,38px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 12px' }}>
+        Comece com <span style={gradientText}>{free} edições grátis</span>
+      </h2>
+      <p style={{ textAlign: 'center', color: C.muted, fontSize: 16, maxWidth: 640, margin: '0 auto 30px', lineHeight: 1.6 }}>
+        Crie a conta e edite {free} vídeos com <b style={{ color: C.text }}>todos os recursos liberados</b> — sem cartão e sem marca d’água.
+        Depois, escolha um plano se quiser continuar.
+      </p>
+      {info?.plans?.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+          {info.plans.map((p) => (
+            <div key={p.id} style={{ ...glass({ padding: 22 }), border: p.popular ? `1px solid ${C.purple}99` : undefined }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>{p.name}</div>
+                {p.popular && <span style={{ fontSize: 10.5, fontWeight: 800, color: '#fff', background: GRAD, borderRadius: 20, padding: '3px 9px' }}>MAIS POPULAR</span>}
+              </div>
+              <div style={{ margin: '10px 0 2px' }}>
+                <span style={{ fontSize: 30, fontWeight: 800, fontFamily: FONT_DISPLAY }}>{brl(p.priceCents)}</span>
+                <span style={{ color: C.muted, fontSize: 14 }}> / {info.periodDays} dias</span>
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{p.credits.toLocaleString('pt-BR')} créditos (≈ {Math.floor(p.credits / (info.costs?.video || 20))} vídeos)</div>
+              <div style={{ fontSize: 13, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>
+                Corte de pausas e legenda{p.features.length ? ` + ${p.features.map((f) => FEATURE_NAMES[f] || f).join(', ')}` : ''}.
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 10, marginTop: 18, color: C.muted, fontSize: 13.5 }}>
+        {[
+          info?.payment === 'pix-links' ? `Pagamento por Pix. O plano vale ${info.periodDays} dias e não renova sozinho — avisamos antes de vencer.` : 'Pagamento por Pix ou cartão.',
+          'Um vídeo custa em média 20 créditos; recursos extras somam créditos. Se o processamento falhar, os créditos voltam.',
+          `Formatos aceitos: ${(info?.formats || ['MP4', 'MOV', 'MKV', 'WEBM']).join(', ')}. Sem limite de tamanho de arquivo.`,
+          `Saída em MP4 na resolução do original, em 9:16, 1:1, 16:9 ou no formato original.`,
+        ].map((t) => (
+          <div key={t} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <Icon name="check" size={15} color={C.green} strokeWidth={2.4} /> <span>{t}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ textAlign: 'center', marginTop: 26 }}>
+        <GradBtn onClick={onEnter} big>Testar grátis</GradBtn>
+      </div>
+    </section>
+  );
+}
+
+/** Privacidade em linguagem simples (o detalhe completo fica em /privacidade). */
+function PrivacyNote({ info }) {
+  const hours = info?.retentionHours;
+  return (
+    <section style={{ maxWidth: 900, margin: '0 auto', padding: '0 24px 60px' }}>
+      <div style={glass({ padding: '24px 24px', display: 'flex', gap: 16, alignItems: 'flex-start' })}>
+        <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(46,212,122,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icon name="shield" size={22} color={C.green} />
+        </div>
+        <div style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.65 }}>
+          <b style={{ color: C.text, fontSize: 16 }}>Seus vídeos são seus.</b>{' '}
+          {hours ? `Os arquivos são apagados do servidor em até ${hours} horas. ` : 'Os arquivos são apagados do servidor periodicamente. '}
+          Não usamos seus vídeos para treinar IA. Para gerar legendas, o áudio passa por um serviço de transcrição; as imagens de apoio vêm de bancos como Pexels.{' '}
+          <a href="/privacidade" style={{ color: C.orangeSoft }}>Política de privacidade</a> · <a href="/termos" style={{ color: C.orangeSoft }}>Termos de uso</a>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 // Mockup do celular que mostra o PRODUTO real (legenda com palavra-chave + timeline).
 function PhoneMock() {
@@ -96,6 +172,10 @@ function PhoneMock() {
 }
 
 export default function Landing({ onEnter, onLogin }) {
+  const [info, setInfo] = useState(null);
+  useEffect(() => {
+    getPublicInfo().then(setInfo).catch(() => {});
+  }, []);
   return (
     <div style={{ position: 'relative', minHeight: '100%', color: C.text }}>
       <MeshBg />
@@ -107,7 +187,7 @@ export default function Landing({ onEnter, onLogin }) {
             <span style={{ fontWeight: 800, fontSize: 18, fontFamily: FONT_DISPLAY, letterSpacing: -0.4 }}>Riseframe</span>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 9, alignItems: 'center' }}>
               <GhostBtn onClick={onLogin} style={{ padding: '9px 16px' }}>Entrar</GhostBtn>
-              <GradBtn onClick={onEnter} style={{ padding: '9px 18px' }}>Começar grátis</GradBtn>
+              <GradBtn onClick={onEnter} style={{ padding: '9px 18px', whiteSpace: 'nowrap' }}>Começar grátis</GradBtn>
             </div>
           </div>
         </nav>
@@ -123,12 +203,12 @@ export default function Landing({ onEnter, onLogin }) {
                 Do bruto ao pronto,<br /><span style={gradientText}>em minutos.</span>
               </h1>
               <p style={{ color: C.muted, fontSize: 'clamp(15px, 2.2vw, 18px)', lineHeight: 1.6, maxWidth: 520, margin: '0 0 26px' }}>
-                Suba um vídeo e o Riseframe corta as pausas, corrige a fala, cria legendas dinâmicas,
-                adiciona movimento e aplica color grade — tudo automático.
+                Suba o vídeo gravado no celular e o Riseframe corta as pausas, limpa a fala, coloca legendas,
+                acerta a cor e aproxima nos momentos-chave. Você revisa tudo antes de baixar.
               </p>
               <div className="rf-hero-cta" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <GradBtn onClick={onEnter} big>Criar minha conta grátis</GradBtn>
-                <GhostBtn onClick={onLogin} style={{ padding: '15px 26px', fontSize: 16 }}>Já tenho conta</GhostBtn>
+                <GradBtn onClick={onEnter} big>Testar grátis</GradBtn>
+                <GhostBtn onClick={() => document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' })} style={{ padding: '15px 26px', fontSize: 16 }}>Ver antes e depois</GhostBtn>
               </div>
               <div className="rf-trust" style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 22 }}>
                 {TRUST.map((t) => (
@@ -144,13 +224,24 @@ export default function Landing({ onEnter, onLogin }) {
           </div>
         </header>
 
+        {/* DEMO: antes e depois */}
+        <section id="demo" style={{ maxWidth: 1000, margin: '0 auto', padding: '40px 24px 50px' }}>
+          <h2 style={{ textAlign: 'center', fontSize: 'clamp(26px,4vw,38px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 12px' }}>
+            Veja o <span style={gradientText}>antes e depois</span>
+          </h2>
+          <p style={{ textAlign: 'center', color: C.muted, fontSize: 16, maxWidth: 560, margin: '0 auto 34px' }}>
+            O mesmo vídeo: como foi gravado e como saiu do Riseframe.
+          </p>
+          <BeforeAfter showcase={info?.showcase} />
+        </section>
+
         {/* FEATURES */}
         <section style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 24px 60px' }}>
           <h2 style={{ textAlign: 'center', fontSize: 'clamp(26px,4vw,38px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 12px' }}>
-            Tudo que um editor faria, <span style={gradientText}>automático</span>
+            O que o Riseframe <span style={gradientText}>faz por você</span>
           </h2>
           <p style={{ textAlign: 'center', color: C.muted, fontSize: 16, maxWidth: 560, margin: '0 auto 40px' }}>
-            Recursos pensados para conteúdo vertical, cortes e social — sem abrir um editor complexo.
+            Feito para quem grava falando para a câmera — Reels, Shorts, TikTok, aulas e cortes de podcast.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
             {FEATURES.map((f) => (
@@ -189,26 +280,35 @@ export default function Landing({ onEnter, onLogin }) {
           </div>
         </section>
 
+        <Pricing info={info} onEnter={onEnter} />
+        <PrivacyNote info={info} />
+
         {/* CTA */}
         <section style={{ maxWidth: 800, margin: '0 auto 40px', padding: '0 24px' }}>
           <div style={glass({ padding: '48px 32px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(255,107,53,0.12), rgba(124,58,237,0.12))' })}>
             <h2 style={{ fontSize: 'clamp(24px,4vw,34px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 14px' }}>
               Pronto para acelerar sua edição?
             </h2>
-            <p style={{ color: C.muted, fontSize: 16, margin: '0 0 26px' }}>Crie sua conta e edite seu primeiro vídeo agora.</p>
-            <GradBtn onClick={onEnter} big>Começar grátis</GradBtn>
+            <p style={{ color: C.muted, fontSize: 16, margin: '0 0 26px' }}>Crie sua conta e edite seus primeiros {info?.freeEdits || 3} vídeos de graça.</p>
+            <GradBtn onClick={onEnter} big>Testar grátis</GradBtn>
           </div>
         </section>
 
         <footer style={{ borderTop: `1px solid ${C.border}`, padding: '24px 24px 90px', textAlign: 'center', color: C.faint, fontSize: 13 }}>
           <Logo size={22} /> <span style={{ verticalAlign: 'middle', marginLeft: 6 }}>Riseframe · Editor de vídeo com IA</span>
+          <div style={{ marginTop: 10, display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a href="/termos" style={{ color: C.muted }}>Termos de uso</a>
+            <a href="/privacidade" style={{ color: C.muted }}>Privacidade</a>
+            <a href="#precos" style={{ color: C.muted }}>Preços</a>
+            {info?.supportEmail && <a href={`mailto:${info.supportEmail}`} style={{ color: C.muted }}>Contato</a>}
+          </div>
         </footer>
       </div>
 
       {/* Barra fixa de CTA no mobile (cara de app nativo) */}
       <div className="rf-mobile-cta" style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, padding: '12px 16px calc(12px + env(safe-area-inset-bottom))', background: 'linear-gradient(180deg, rgba(8,8,12,0), rgba(8,8,12,0.9) 40%)', display: 'none' }}>
         <button onClick={onEnter} style={{ width: '100%', background: GRAD, border: 'none', color: '#fff', borderRadius: 14, padding: '15px', fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 10px 30px -8px rgba(255,107,53,0.6)' }}>
-          Começar grátis
+          Testar grátis ({info?.freeEdits || 3} edições)
         </button>
       </div>
 

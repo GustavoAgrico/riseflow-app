@@ -4,6 +4,7 @@ import Icon, { Logo } from './components/Icon.jsx';
 import { Spinner } from './components/ui.jsx';
 import { useAuth } from './AuthContext.jsx';
 import Landing from './pages/Landing.jsx';
+import Legal from './pages/Legal.jsx';
 import Auth from './pages/Auth.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Library from './pages/Library.jsx';
@@ -197,6 +198,14 @@ export default function Root() {
     window.addEventListener('rf:open-plans', open);
     return () => window.removeEventListener('rf:open-plans', open);
   }, []);
+
+  // Páginas públicas de Termos e Privacidade (abrem mesmo logado).
+  const legalPage = typeof window !== 'undefined' && ['/termos', '/privacidade'].includes(window.location.pathname)
+    ? window.location.pathname.slice(1)
+    : null;
+  if (legalPage) {
+    return <Legal page={legalPage} onHome={() => { window.location.href = '/'; }} />;
+  }
 
   if (!ready) {
     return (

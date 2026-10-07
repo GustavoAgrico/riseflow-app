@@ -5,6 +5,18 @@ import React from 'react';
  * arredondado, herda a cor via `currentColor`. Uso: <Icon name="scissors" size={18} />
  */
 const PATHS = {
+  volume: (
+    <>
+      <path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4Z" />
+      <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" />
+    </>
+  ),
+  mute: (
+    <>
+      <path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4Z" />
+      <path d="m16 9.5 5 5M21 9.5l-5 5" />
+    </>
+  ),
   upload: (
     <>
       <path d="M12 15V4M12 4l-4 4M12 4l4 4" />

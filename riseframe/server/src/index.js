@@ -12,6 +12,7 @@ import { optionsRouter } from './routes/options.js';
 import { authRouter } from './routes/auth.js';
 import { settingsRouter } from './routes/settings.js';
 import { billingRouter } from './routes/billing.js';
+import { publicRouter } from './routes/public.js';
 import { startRenewTimer } from './auth/billing.js';
 import { ffmpegPath } from './pipeline/ffmpeg.js';
 import { whisperLocalAvailable } from './pipeline/transcribe/providers.js';
@@ -86,6 +87,7 @@ app.use('/api/fonts', express.static(path.join(__dirname, '..', 'assets', 'fonts
 app.use('/api', authRouter);
 app.use('/api', settingsRouter);
 app.use('/api', billingRouter);
+app.use('/api', publicRouter);
 app.use('/api', optionsRouter);
 app.use('/api', jobsRouter);
 
