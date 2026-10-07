@@ -164,14 +164,16 @@ export default function Plans({ user, checkOnOpen }) {
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, color: C.faint, marginBottom: 4 }}>Seu plano</div>
             <div style={{ fontSize: 22, fontWeight: 800, fontFamily: FONT_DISPLAY }}>
-              {billing.unlimited ? 'Ilimitado' : current ? current.name : 'Sem plano'}
+              {billing.unlimited ? 'Ilimitado' : current ? current.name : billing.freeEdits > 0 ? 'Teste grátis' : 'Sem plano'}
             </div>
             <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
               {billing.unlimited
                 ? 'Todos os recursos, sem cobrança.'
                 : current
                   ? `${billing.autoRenew ? `Renova sozinho em ${date(current.until)}` : `Válido até ${date(current.until)}`} · ${num(current.credits)} de ${num(current.monthlyCredits)} créditos do mês`
-                  : 'Recursos básicos: corte de silêncio + legenda básica.'}
+                  : billing.freeEdits > 0
+                    ? `Restam ${billing.freeEdits} de ${billing.freeEditsTotal} edições grátis, com todos os recursos. Depois, escolha um plano abaixo.`
+                    : 'Suas edições grátis acabaram. Escolha um plano para continuar editando.'}
             </div>
           </div>
           {!billing.unlimited && (

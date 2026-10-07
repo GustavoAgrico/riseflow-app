@@ -51,10 +51,17 @@ function persist() {
 function entry(userId) {
   load();
   if (!db.users[userId]) {
-    db.users[userId] = { credits: config.billing.signupCredits, purchases: [], plan: null };
+    db.users[userId] = { credits: config.billing.signupCredits, purchases: [], plan: null, freeEdits: config.billing.freeEdits, trialSources: [] };
     persist();
   }
-  return db.users[userId];
+  const e = db.users[userId];
+  // Contas criadas antes das edições grátis também ganham as suas.
+  if (e.freeEdits === undefined) {
+    e.freeEdits = config.billing.freeEdits;
+    e.trialSources = [];
+    persist();
+  }
+  return e;
 }
 
 const pixMode = () => config.billing.payment === 'pix-links';
@@ -76,7 +83,44 @@ function activePlan(e) {
 /** Recursos liberados para o usuário (ids de shared/credits.js). */
 export function allowedFeatures(user) {
   if (unlimited(user)) return ALL_FEATURES;
-  return activePlan(entry(user.id))?.features || config.billing.freeFeatures;
+  const e = entry(user.id);
+  const plan = activePlan(e);
+  if (plan) return plan.features;
+  // Em teste (sem plano e com edição grátis sobrando): tudo liberado.
+  return e.freeEdits > 0 ? ALL_FEATURES : config.billing.freeFeatures;
+}
+
+// ── Edições grátis (teste) ──
+// Quem não tem plano e ainda tem edições grátis não paga créditos: cada vídeo enviado
+// (auto, timeline ou clipes) usa 1 edição; os renders da timeline desse mesmo vídeo são
+// grátis. Se o processamento falhar, a edição volta.
+const TRIAL_MODES = ['auto', 'transcribe', 'clips'];
+
+/** Este job pode sair como edição grátis? (mode render: se o vídeo de origem foi grátis). */
+export function trialCovers(user, mode, sourceId) {
+  if (unlimited(user)) return false;
+  const e = entry(user.id);
+  if (mode === 'render') return Boolean(sourceId && e.trialSources?.includes(sourceId));
+  return TRIAL_MODES.includes(mode) && !activePlan(e) && e.freeEdits > 0;
+}
+
+/** Gasta uma edição grátis com este job (vira "vídeo de teste": renders grátis). */
+export function useFreeEdit(userId, jobId) {
+  const e = entry(userId);
+  e.freeEdits = Math.max(0, e.freeEdits - 1);
+  e.trialSources = [...(e.trialSources || []), jobId].slice(-30);
+  persist();
+  log.info(`edição grátis usada (restam ${e.freeEdits}) — job ${jobId} (user ${userId})`);
+  return e.freeEdits;
+}
+
+/** O job grátis falhou: devolve a edição. */
+export function refundFreeEdit(userId, jobId) {
+  const e = entry(userId);
+  e.freeEdits += 1;
+  e.trialSources = (e.trialSources || []).filter((id) => id !== jobId);
+  persist();
+  log.info(`edição grátis devolvida (job ${jobId} falhou; user ${userId})`);
 }
 
 const publicPlan = ({ id, name, priceCents, credits, features, popular }) => ({ id, name, priceCents, credits, features, popular: Boolean(popular) });
@@ -93,6 +137,10 @@ export function billingStatus(user) {
     admin: isAdmin(user.email),
     unlimited: unlimited(user),
     credits: monthly + e.credits,
+    // Edições grátis de teste que ainda restam (todos os recursos) e os vídeos cobertos.
+    freeEdits: unlimited(user) ? 0 : e.freeEdits || 0,
+    freeEditsTotal: b.freeEdits,
+    trialSources: e.trialSources || [],
     extraCredits: e.credits,
     plan: plan ? { id: plan.id, name: plan.name, until: plan.until, credits: plan.left, monthlyCredits: plan.credits } : null,
     features: allowedFeatures(user),

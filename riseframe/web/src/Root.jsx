@@ -45,10 +45,14 @@ function CreditsCard({ billing, onOpen }) {
     <button onClick={onOpen} style={{ width: '100%', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer', background: 'rgba(124,58,237,0.09)', border: '1px solid rgba(124,58,237,0.25)', borderRadius: 12, padding: 12, color: C.text }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, color: C.muted }}>
         <Icon name="zap" size={14} strokeWidth={2} color={C.purpleSoft} />
-        {billing.unlimited ? 'Uso ilimitado' : billing.plan ? `Plano ${billing.plan.name}` : 'Sem plano'}
+        {billing.unlimited ? 'Uso ilimitado' : billing.plan ? `Plano ${billing.plan.name}` : billing.freeEdits > 0 ? 'Teste grátis' : 'Sem plano'}
       </div>
       <div style={{ fontSize: 24, fontWeight: 800, fontFamily: FONT_DISPLAY, margin: '4px 0 6px' }}>
-        {billing.unlimited ? 'Ilimitado' : <>{billing.credits.toLocaleString('pt-BR')} <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>créditos</span></>}
+        {billing.unlimited
+          ? 'Ilimitado'
+          : !billing.plan && billing.freeEdits > 0
+            ? <>{billing.freeEdits} <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>{billing.freeEdits === 1 ? 'edição grátis' : 'edições grátis'}</span></>
+            : <>{billing.credits.toLocaleString('pt-BR')} <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>créditos</span></>}
       </div>
       {!billing.unlimited && <div style={{ fontSize: 12, fontWeight: 700, color: C.purpleSoft }}>{billing.plan ? 'Ver planos' : 'Assinar um plano →'}</div>}
     </button>
@@ -103,7 +107,7 @@ function MobileTopBar({ billing, onView }) {
       {billing && (
         <button onClick={() => onView('plans')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 12px', borderRadius: 999, background: 'rgba(124,58,237,0.14)', border: '1px solid rgba(124,58,237,0.35)', color: C.text, fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
           <Icon name="zap" size={14} strokeWidth={2.2} color={C.purpleSoft} />
-          {billing.unlimited ? 'Ilimitado' : billing.credits.toLocaleString('pt-BR')}
+          {billing.unlimited ? 'Ilimitado' : !billing.plan && billing.freeEdits > 0 ? `${billing.freeEdits} grátis` : billing.credits.toLocaleString('pt-BR')}
         </button>
       )}
     </header>

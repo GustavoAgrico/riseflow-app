@@ -13,9 +13,26 @@ const linkBtn = { background: 'none', border: 'none', color: C.orangeSoft, fontW
  * "Custa N créditos · você tem M" antes de enviar/renderizar, e aviso quando algum
  * recurso ligado não está no plano. Some quando não há cobrança.
  */
-export default function CostLine({ mode, options, style }) {
+export default function CostLine({ mode, options, style, sourceId }) {
   const { billing } = useAuth();
   if (!billing || billing.unlimited) return null;
+  // Edição grátis de teste: todos os recursos, sem gastar créditos.
+  const trial = mode === 'render'
+    ? Boolean(sourceId && billing.trialSources?.includes(sourceId))
+    : !billing.plan && billing.freeEdits > 0;
+  if (trial) {
+    return (
+      <div style={{ marginTop: 12, fontSize: 13, color: C.muted, display: 'flex', alignItems: 'center', gap: 7, ...style }}>
+        <Icon name="zap" size={14} strokeWidth={2} color={C.green} />
+        <span>
+          <b style={{ color: C.green }}>Grátis</b>
+          {mode === 'render'
+            ? ' — este vídeo é uma das suas edições de teste (todos os recursos).'
+            : ` — edição de teste com todos os recursos (restam ${billing.freeEdits} de ${billing.freeEditsTotal}).`}
+        </span>
+      </div>
+    );
+  }
   const items = creditItems(mode, options, billing.costs);
   const total = creditTotal(items);
   if (!total) return null;

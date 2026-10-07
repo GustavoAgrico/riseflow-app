@@ -7,7 +7,7 @@ import { config } from '../config.js';
 import { queue } from '../queue.js';
 import { requireAuth } from './auth.js';
 import { getSettings } from '../auth/settings.js';
-import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod } from '../auth/billing.js';
+import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod, trialCovers, useFreeEdit, refundFreeEdit } from '../auth/billing.js';
 import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../../shared/credits.js';
 import { registerMedia, resolveMedia } from '../mediaStore.js';
 import { formatBytes, freeDiskBytes } from '../storage.js';
@@ -64,12 +64,14 @@ function planBlocks(req, res, items) {
 }
 
 function noCredits(req, res, cost) {
-  const { credits } = billingStatus(req.user);
+  const { credits, plan, freeEditsTotal } = billingStatus(req.user);
   res.status(402).json({
     code: 'PAYMENT_REQUIRED',
     cost,
     credits,
-    error: `Este vídeo custa ${cost} créditos e você tem ${credits}. Assine um plano ou faça uma recarga em Planos, no menu.`,
+    error: !plan && !credits && freeEditsTotal
+      ? `Suas ${freeEditsTotal} edições grátis acabaram. Para continuar, assine um plano em Planos, no menu.`
+      : `Este vídeo custa ${cost} créditos e você tem ${credits}. Assine um plano ou faça uma recarga em Planos, no menu.`,
   });
 }
 
@@ -77,6 +79,7 @@ function noCredits(req, res, cost) {
 // mínimo → recusa sem receber o upload.
 function requireCredits(mode) {
   return (req, res, next) => {
+    if (trialCovers(req.user, mode)) return next(); // edição grátis de teste
     const items = creditItems(mode, {}, config.billing.costs);
     if (planBlocks(req, res, items)) return;
     const min = creditTotal(items);
@@ -87,6 +90,16 @@ function requireCredits(mode) {
 
 // Créditos cobrados por job ainda em andamento: devolvidos se o processamento falhar.
 const heldCredits = new Map();
+// Jobs que usaram uma edição grátis: devolvida se o processamento falhar.
+const heldTrial = new Map();
+queue.on('update', (j) => {
+  const t = heldTrial.get(j.id);
+  if (t && (j.status === 'error' || j.status === 'done')) {
+    heldTrial.delete(j.id);
+    if (j.status === 'error') refundFreeEdit(t, j.id);
+  }
+});
+
 queue.on('update', (j) => {
   const held = heldCredits.get(j.id);
   if (!held || (j.status !== 'error' && j.status !== 'done')) return;
@@ -95,9 +108,19 @@ queue.on('update', (j) => {
 });
 
 /** Cobra o job e cria na fila; responde 402 (e apaga o upload) se faltar saldo. */
-function chargeAndQueue(req, res, mode, jobInput) {
+function chargeAndQueue(req, res, mode, jobInput, { sourceId } = {}) {
   const items = creditItems(mode, jobInput.options, config.billing.costs);
   const dropUpload = () => req.file && fs.unlink(req.file.path, () => {});
+  // Edição grátis de teste: todos os recursos, sem gastar créditos.
+  if (trialCovers(req.user, mode, sourceId)) {
+    const job = queue.create({ mode, ...jobInput });
+    let freeEditsLeft = billingStatus(req.user).freeEdits;
+    if (mode !== 'render') {
+      freeEditsLeft = useFreeEdit(req.user.id, job.id);
+      heldTrial.set(job.id, req.user.id);
+    }
+    return res.status(201).json({ ...queue.public(job), creditsCharged: 0, freeEdit: true, freeEditsLeft });
+  }
   if (planBlocks(req, res, items)) return dropUpload();
   const cost = creditTotal(items);
   const until = currentPeriod(req.user.id);
@@ -429,7 +452,7 @@ jobsRouter.post('/render', requireAuth, (req, res) => {
     inputPath: source.inputPath,
     options: optionsForUser(req),
     editedTranscript,
-  });
+  }, { sourceId });
 });
 
 // POST /api/broll/plan  (JSON: sourceId + editedTranscript + options) → devolve os

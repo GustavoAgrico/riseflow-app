@@ -67,7 +67,8 @@ export function volumeAt(t, { audioMute, audioVolume, gains }) {
 /** Prévia aproximada dos looks de cor do servidor (CSS filter + véu de cor). */
 export const LOOK_CSS = {
   none: { filter: '' },
-  auto: { filter: 'contrast(1.06) saturate(1.1)', tint: { background: '#1fb5b0', mixBlendMode: 'soft-light', opacity: 0.08 } },
+  // Automático natural: corrige a luz/cor do próprio vídeo (a prévia exata vem do servidor).
+  auto: { filter: 'contrast(1.02) saturate(1.05)' },
   clean: { filter: 'contrast(1.04) saturate(1.06)' },
   'teal-orange': { filter: 'contrast(1.09) saturate(1.16) sepia(0.06)', tint: { background: 'linear-gradient(180deg, rgba(255,150,70,.9), rgba(20,170,170,.9))', mixBlendMode: 'soft-light', opacity: 0.22 } },
   warm: { filter: 'contrast(1.06) saturate(1.12) sepia(0.12)', tint: { background: '#ff8a3d', mixBlendMode: 'soft-light', opacity: 0.18 } },

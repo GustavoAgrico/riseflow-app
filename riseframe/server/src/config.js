@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v69';
+export const APP_VERSION = 'v70';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -121,7 +121,11 @@ export const config = {
     apiVersion: process.env.ABACATE_API_VERSION || '',
     webhookSecret: process.env.ABACATE_WEBHOOK_SECRET || '',
     // Créditos de teste para cada conta nova (usam os recursos de quem não tem plano).
-    signupCredits: num(process.env.BILLING_SIGNUP_CREDITS, 60),
+    // Edições grátis de teste por conta, com TODOS os recursos liberados (1 vídeo = 1
+    // edição; transcrever + renderizar o mesmo vídeo na timeline conta uma vez só).
+    freeEdits: num(process.env.BILLING_FREE_EDITS, 3),
+    // Créditos avulsos de cortesia no cadastro (além das edições grátis).
+    signupCredits: num(process.env.BILLING_SIGNUP_CREDITS, 0),
     // Custo de cada recurso. Sobrescreva com CREDIT_COSTS='{"video":20,"image":5}'.
     costs: { ...DEFAULT_COSTS, ...json(process.env.CREDIT_COSTS, {}) },
     periodDays: num(process.env.BILLING_PERIOD_DAYS, 30),
