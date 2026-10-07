@@ -378,6 +378,8 @@ function parseOptions(raw) {
           .map((m) => ({ start: Math.max(0, Number(m.start)), end: Number(m.end), query: typeof m.query === 'string' ? m.query.slice(0, 120) : '' }))
       : null,
     aspect: ['original', '9:16', '16:9', '1:1'].includes(o.aspect) ? o.aspect : 'original',
+    // Como o vídeo entra no formato: segue o rosto (auto), ponto escolhido (manual) ou inteiro com fundo desfocado (fit).
+    reframeMode: ['auto', 'manual', 'fit'].includes(o.reframeMode) ? o.reframeMode : 'auto',
     reframeTrack: o.reframeTrack !== false, // seguir o sujeito no reframe
     silenceNoiseDb: clampNum(o.silenceNoiseDb, -60, -10, sp.noiseDb),
     silenceMinDuration: clampNum(o.silenceMinDuration, 0.2, 3, sp.min),
