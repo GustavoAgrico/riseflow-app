@@ -20,6 +20,12 @@ const log = makeLogger('transcribe');
 export async function transcribe(input, work, meta, onProgress) {
   const provider = config.transcribe.provider;
   const cfg = config.transcribe;
+  // Vídeo sem faixa de áudio (gravação de tela muda, por exemplo): não há fala para
+  // transcrever — segue sem legendas em vez de falhar o job inteiro.
+  if (meta && meta.hasAudio === false) {
+    log.warn('vídeo sem áudio: pulando a transcrição');
+    return { provider: 'none', language: 'unknown', text: '', segments: [], noAudio: true };
+  }
   try {
     switch (provider) {
       case 'openai':
@@ -65,5 +71,16 @@ export function transcribeErrorMessage(provider, err) {
   if (/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|fetch failed|network/i.test(msg)) {
     return `sem conexão com a ${name}. Verifique a internet e tente de novo.`;
   }
-  return `não foi possível transcrever a fala agora (${name}). Tente de novo em instantes.`;
+  if (/ffmpeg \(extract-audio\)/.test(msg)) {
+    return 'não consegui ler o áudio deste vídeo. Tente exportar o vídeo de novo (MP4) e enviar outra vez.';
+  }
+  if (/\b400\b/.test(msg) && /corrupt|unsupported|failed to process audio/i.test(msg)) {
+    return `a ${name} não conseguiu ler o áudio deste vídeo. Tente exportar o vídeo de novo (MP4) e enviar outra vez.`;
+  }
+  if (/sem resposta em/i.test(msg)) {
+    return `a ${name} demorou demais para responder (internet lenta ou vídeo muito longo). Tente de novo.`;
+  }
+  // Caso desconhecido: mostra um resumo do erro real para dar para diagnosticar.
+  const detail = msg.replace(/\s+/g, ' ').replace(/Token\s+\S+/gi, 'Token ***').trim().slice(0, 180);
+  return `não foi possível transcrever a fala agora (${name}). Tente de novo em instantes.${detail ? ` Detalhe: ${detail}` : ''}`;
 }
