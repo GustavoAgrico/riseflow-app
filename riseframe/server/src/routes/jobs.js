@@ -10,6 +10,7 @@ import { getSettings } from '../auth/settings.js';
 import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod } from '../auth/billing.js';
 import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../../shared/credits.js';
 import { registerMedia, resolveMedia } from '../mediaStore.js';
+import { formatBytes, freeDiskBytes } from '../storage.js';
 import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
 import { brollCandidates } from '../pipeline/broll.js';
@@ -108,6 +109,25 @@ function chargeAndQueue(req, res, mode, jobInput) {
   const job = queue.create({ mode, ...jobInput });
   if (charged.total) heldCredits.set(job.id, { userId: req.user.id, monthly: charged.monthly, extra: charged.extra, until });
   res.status(201).json({ ...queue.public(job), creditsCharged: charged.total });
+}
+
+// Antes de receber o vídeo: recusa na hora o que passa do limite ou não cabe no disco
+// (em vez de o usuário esperar horas de upload para descobrir no fim).
+const DISK_MARGIN = 2 * 1024 ** 3; // folga para os arquivos intermediários começarem
+function checkUploadSize(req, res, next) {
+  const size = Number(req.headers['content-length']) || 0;
+  if (size > config.maxUploadBytes + 1024 ** 2) {
+    return res.status(413).json({ error: `arquivo maior que o limite (${formatBytes(config.maxUploadBytes)})` });
+  }
+  if (!size) return next();
+  freeDiskBytes(config.paths.uploads).then((free) => {
+    if (free !== null && size + DISK_MARGIN > free) {
+      return res.status(507).json({
+        error: `sem espaço em disco para este vídeo (${formatBytes(size)}; livre: ${formatBytes(free)}). Libere espaço e tente de novo.`,
+      });
+    }
+    next();
+  }, () => next());
 }
 
 const storage = multer.diskStorage({
@@ -359,7 +379,7 @@ function parseOptions(raw) {
 }
 
 // POST /api/jobs  (multipart: file + options) → pipeline automático completo
-jobsRouter.post('/jobs', requireAuth, requireCredits('auto'), upload.single('file'), (req, res) => {
+jobsRouter.post('/jobs', requireAuth, requireCredits('auto'), checkUploadSize, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'auto', {
     filename: req.file.originalname,
@@ -370,7 +390,7 @@ jobsRouter.post('/jobs', requireAuth, requireCredits('auto'), upload.single('fil
 
 // POST /api/transcribe  (multipart: file) → transcreve e para; o upload fica salvo
 // para depois ser reusado por /api/render com a transcrição editada.
-jobsRouter.post('/transcribe', requireAuth, requireCredits('transcribe'), upload.single('file'), (req, res) => {
+jobsRouter.post('/transcribe', requireAuth, requireCredits('transcribe'), checkUploadSize, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'transcribe', {
     filename: req.file.originalname,
@@ -380,7 +400,7 @@ jobsRouter.post('/transcribe', requireAuth, requireCredits('transcribe'), upload
 });
 
 // POST /api/clips  (multipart: file) → gera vários clipes curtos do vídeo longo
-jobsRouter.post('/clips', requireAuth, requireCredits('clips'), upload.single('file'), (req, res) => {
+jobsRouter.post('/clips', requireAuth, requireCredits('clips'), checkUploadSize, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'clips', {
     filename: req.file.originalname,

@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v60';
+export const APP_VERSION = 'v61';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -49,7 +49,8 @@ export const config = {
     cache: path.join(DATA, 'cache'),
   },
 
-  maxUploadBytes: num(process.env.MAX_UPLOAD_MB, 512) * 1024 * 1024,
+  // Tamanho máximo do vídeo enviado. Padrão 50 GB (MAX_UPLOAD_MB=51200).
+  maxUploadBytes: num(process.env.MAX_UPLOAD_MB, 51200) * 1024 * 1024,
   outputTtlHours: num(process.env.OUTPUT_TTL_HOURS, 24),
   apiToken: process.env.API_TOKEN || '',
 
@@ -179,6 +180,8 @@ export function capabilities() {
     transcribeFallbackToMock: p === 'whisper-local' && config.transcribe.whisperReady === false,
     analyzeProvider: config.analyze.provider,
     version: APP_VERSION,
+    // Tamanho máximo do vídeo (o site confere antes de começar o upload).
+    maxUploadBytes: config.maxUploadBytes,
     brollReady: Boolean(config.broll.pexelsKey),
     // Openverse (Creative Commons) não exige chave — sempre disponível.
     openverseReady: true,

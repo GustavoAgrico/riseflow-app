@@ -47,3 +47,20 @@ export function startCleanupTimer() {
   cleanupOldOutputs().catch(() => {});
   setInterval(() => cleanupOldOutputs().catch(() => {}), 3600 * 1000).unref();
 }
+
+/** "50 GB", "512 MB"... para mensagens ao usuário. */
+export function formatBytes(bytes) {
+  const gb = bytes / 1024 ** 3;
+  if (gb >= 1) return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
+  return `${Math.round(bytes / 1024 ** 2)} MB`;
+}
+
+/** Espaço livre (bytes) no disco da pasta; null se não der para saber. */
+export async function freeDiskBytes(dir) {
+  try {
+    const s = await fs.statfs(dir);
+    return Number(s.bavail) * Number(s.bsize);
+  } catch {
+    return null;
+  }
+}

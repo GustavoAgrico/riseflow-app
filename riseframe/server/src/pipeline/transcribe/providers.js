@@ -87,46 +87,83 @@ async function fetchRetry(url, init, timeoutMs, label) {
 }
 
 // ─── Deepgram ─────────────────────────────────────────────────────────
-export async function transcribeDeepgram(input, work, meta, cfg, onProgress) {
+export async function transcribeDeepgram(input, work, meta, cfg, onProgress, { chunkSeconds = DEEPGRAM_CHUNK_SECONDS } = {}) {
   onProgress?.(0.05);
   const audio = await extractAudio(input, work, 'mp3');
-  const buf = await fs.readFile(audio);
   onProgress?.(0.15);
   const dur = Number(meta?.duration) || 60;
+  // Áudio longo (vídeos grandes, de horas) vai em pedaços: cada envio fica pequeno e
+  // rápido, e uma falha de rede refaz só aquele pedaço em vez da transcrição inteira.
+  const chunks = dur > DEEPGRAM_CHUNK_AFTER ? await splitAudio(audio, work, chunkSeconds) : [{ file: audio, offset: 0, dur }];
+  let language = cfg.deepgramLanguage || '';
+  const words = [];
+  let text = '';
+  for (let i = 0; i < chunks.length; i += 1) {
+    const c = chunks[i];
+    const from = 0.15 + (0.8 * i) / chunks.length;
+    const to = 0.15 + (0.8 * (i + 1)) / chunks.length;
+    const data = await deepgramRequest(await fs.readFile(c.file), cfg, language, c.dur, (p) => onProgress?.(from + (to - from) * p));
+    const channel = data.results?.channels?.[0];
+    const alt = channel?.alternatives?.[0];
+    // Idioma detectado no 1º pedaço vale para os seguintes (legenda num idioma só).
+    if (!language && channel?.detected_language) language = channel.detected_language;
+    for (const w of alt?.words || []) {
+      words.push({ start: w.start + c.offset, end: w.end + c.offset, word: (w.punctuated_word || w.word || '').trim() });
+    }
+    if (alt?.transcript) text += (text ? ' ' : '') + alt.transcript;
+  }
+  if (chunks.length > 1) log.info(`Deepgram: ${chunks.length} pedaços transcritos (${Math.round(dur / 60)} min)`);
+  return {
+    provider: 'deepgram',
+    language: language || 'unknown',
+    text: text || words.map((w) => w.word).join(' '),
+    segments: wordsToSegments(words),
+  };
+}
+
+/** Acima disto (s), o áudio vai para a Deepgram em pedaços de DEEPGRAM_CHUNK_SECONDS. */
+export const DEEPGRAM_CHUNK_AFTER = 20 * 60;
+export const DEEPGRAM_CHUNK_SECONDS = 10 * 60;
+
+/** Divide o mp3 em pedaços (sem recodificar) e devolve [{ file, offset, dur }]. */
+export async function splitAudio(audio, work, seconds) {
+  const dir = path.join(work, 'audio-chunks');
+  await fs.mkdir(dir, { recursive: true });
+  const list = path.join(dir, 'list.csv');
+  await runFfmpeg(
+    ['-i', audio, '-f', 'segment', '-segment_time', String(seconds), '-segment_list', list, '-segment_list_type', 'csv', '-c', 'copy', '-y', path.join(dir, 'part_%04d.mp3')],
+    { label: 'split-audio' },
+  );
+  const rows = (await fs.readFile(list, 'utf-8')).split(/\r?\n/).filter(Boolean);
+  return rows.map((row) => {
+    const [name, a, b] = row.split(',');
+    return { file: path.join(dir, name), offset: Number(a) || 0, dur: Math.max(1, (Number(b) || 0) - (Number(a) || 0)) };
+  });
+}
+
+/** Um envio para a Deepgram (com tempo máximo e nova tentativa). */
+async function deepgramRequest(buf, cfg, language, dur, onProgress) {
   // detect_language=true: descobre o idioma sozinho (pt, en, es...). Sem isso o
   // nova-2 assume inglês e transcreve fala em português errado. Um idioma fixo
   // pode ser forçado por env (DEEPGRAM_LANGUAGE, ex.: "pt").
   const params = new URLSearchParams({ model: 'nova-2', smart_format: 'true', punctuate: 'true' });
-  if (cfg.deepgramLanguage) params.set('language', cfg.deepgramLanguage);
+  if (language) params.set('language', language);
   else params.set('detect_language', 'true');
   // Upload + processamento: ~0,3 s por minuto de áudio + margem para a rede.
-  const stop = waitProgress(onProgress, 0.15, 4000 + dur * 150);
+  const stop = waitProgress(onProgress, 0, 4000 + dur * 150);
   let res;
   try {
     res = await fetchRetry(
       `https://api.deepgram.com/v1/listen?${params}`,
       { method: 'POST', headers: { Authorization: `Token ${cfg.deepgramKey}`, 'Content-Type': 'audio/mpeg' }, body: buf },
-      Math.max(120_000, dur * 2000),
+      Math.max(180_000, dur * 2000),
       'Deepgram',
     );
   } finally {
     stop();
   }
-  if (!res.ok) throw new Error(`Deepgram ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  const channel = data.results?.channels?.[0];
-  const alt = channel?.alternatives?.[0];
-  const words = (alt?.words || []).map((w) => ({
-    start: w.start,
-    end: w.end,
-    word: (w.punctuated_word || w.word || '').trim(),
-  }));
-  return {
-    provider: 'deepgram',
-    language: channel?.detected_language || cfg.deepgramLanguage || 'unknown',
-    text: alt?.transcript || words.map((w) => w.word).join(' '),
-    segments: wordsToSegments(words),
-  };
+  if (!res.ok) throw new Error(`Deepgram ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  return res.json();
 }
 
 // ─── AssemblyAI (upload → transcript → poll) ──────────────────────────
