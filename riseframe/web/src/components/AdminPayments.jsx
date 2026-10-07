@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { C, glass, FONT_DISPLAY } from '../theme.js';
 import { Spinner } from './ui.jsx';
-import { adminApproveClaim, adminClaims, adminGrant, adminRejectClaim, adminSendReminders } from '../api.js';
+import { adminApproveClaim, adminClaims, adminGrant, adminRejectClaim, adminResendNotice, adminSendReminders } from '../api.js';
 
 const cap = (t) => String(t).charAt(0).toUpperCase() + String(t).slice(1);
 const brl = (cents) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -80,6 +80,9 @@ export default function AdminPayments({ plans }) {
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button style={btn(C.green, '#062814')} disabled={!!busy} onClick={() => run(c.id, () => adminApproveClaim(c.id), (r) => `Confirmado: ${c.itemName} de ${c.email}.${sentText(r.sent)}`)}>
                   {busy === c.id ? <Spinner size={12} color="#062814" /> : 'Confirmar Pix'}
+                </button>
+                <button style={btn('transparent', C.muted, `1px solid ${C.border}`)} disabled={!!busy} onClick={() => run(`n${c.id}`, () => adminResendNotice(c.id), (r) => (r.notice?.email?.length ? r.notice.email.map((m) => (m.ok ? `E-mail enviado para ${m.to}.` : `E-mail para ${m.to} não saiu: ${m.error}`)).join(' ') : 'Nenhum e-mail de admin configurado (ADMIN_EMAILS).'))}>
+                  {busy === `n${c.id}` ? <Spinner size={12} color={C.muted} /> : 'Reenviar aviso por e-mail'}
                 </button>
                 <button style={btn('transparent', C.muted, `1px solid ${C.border}`)} disabled={!!busy} onClick={() => window.confirm('Recusar este aviso? O cliente não recebe o plano.') && run(`r${c.id}`, () => adminRejectClaim(c.id), 'Aviso recusado.')}>
                   Recusar
