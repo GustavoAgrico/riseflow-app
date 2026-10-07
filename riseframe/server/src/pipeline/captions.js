@@ -292,9 +292,26 @@ export function buildAss(segments, meta, style = {}) {
         const ov = `{\\an${align}${fsTag}${anim}${glow}${wordColor}}`;
         lines.push(`Dialogue: 0,${assTime(wd.start)},${assTime(end)},${styleName},,0,0,0,,${ov}${txt}`);
       }
+    } else if (!style.highlight) {
+      // PADRÃO: legenda normal — a frase inteira, todas as palavras iguais (na cor
+      // escolhida), sem destacar a palavra falada. No estilo "palavra-chave" a
+      // palavra-chave continua realçada (é a proposta do estilo).
+      const kw = T.highlightKeyword ? pickKeyword(words) : -1;
+      const phraseStyle = useBox ? 'RiseBox' : 'Rise';
+      const base = useBox || glowOn || color === 'white' ? '' : `\\c${accent}`;
+      const rendered = words
+        .map((wd, j) => {
+          const t = escapeAss(T.upper ? wd.word.toUpperCase() : wd.word);
+          if (j !== kw) return t;
+          if (glowOn) return `{\\fscx118\\fscy118}${t}{\\fscx100\\fscy100}`;
+          return `{\\fscx118\\fscy118\\c${accent}}${t}{\\fscx100\\fscy100\\c${base ? accent : WHITE}}`;
+        })
+        .join(' ');
+      const end = Math.max(words[words.length - 1].end, Number(seg.end) || 0);
+      lines.push(`Dialogue: 0,${assTime(words[0].start)},${assTime(end)},${phraseStyle},,0,0,0,,{${anim}${glow}${base}}${rendered}`);
     } else {
-      // Frase inteira; a palavra corrente é destacada (por cor, ou — no branco —
-      // pelo escurecimento das demais).
+      // Destaque ligado: frase inteira e a palavra corrente realçada (por cor, ou —
+      // no branco — pelo escurecimento das demais).
       // No estilo "palavra-chave", a palavra de conteúdo mais forte da frase é
       // sempre destacada (cor + maior), independente de qual está sendo falada.
       const kw = T.highlightKeyword ? pickKeyword(words) : -1;

@@ -36,6 +36,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     captionPosition: cap0.captionPosition || 'auto',
     captionMode: cap0.captionMode || 'auto',
     captionScale: cap0.captionScale || 1,
+    captionHighlight: cap0.captionHighlight === true,
   });
   const setCapField = (patch) => setCap((c) => ({ ...c, ...patch }));
   // Efeitos (zoom + sons) e cor, ajustáveis aqui na timeline antes do render.
@@ -1253,6 +1254,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <CapRow label="Estilo"><Sel value={cap.captionTemplate} opts={catalog.captionTemplates} onChange={(v) => setCapField({ captionTemplate: v })} /></CapRow>
                   <CapRow label="Fonte"><Sel value={cap.captionFont} opts={catalog.captionFonts} onChange={(v) => setCapField({ captionFont: v })} /></CapRow>
                   <CapRow label="Modo (palavra / frase)"><Sel value={cap.captionMode} opts={catalog.captionModes} onChange={(v) => setCapField({ captionMode: v })} /></CapRow>
+                  <CapRow label="Destacar palavra falada">
+                    <button onClick={() => setCapField({ captionHighlight: !cap.captionHighlight })} style={miniBtn(cap.captionHighlight, false)}>
+                      {cap.captionHighlight ? 'Ligado' : 'Desligado (legenda normal)'}
+                    </button>
+                  </CapRow>
                   <CapRow label="Fundo do texto"><Sel value={cap.captionBackground} opts={catalog.captionBackgrounds} onChange={(v) => setCapField({ captionBackground: v })} /></CapRow>
                   <CapRow label="Posição"><Sel value={cap.captionPosition} opts={catalog.captionPositions} onChange={(v) => setCapField({ captionPosition: v })} /></CapRow>
                   <CapRow label="Cor">

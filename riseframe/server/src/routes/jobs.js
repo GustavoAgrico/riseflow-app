@@ -308,6 +308,8 @@ function parseOptions(raw) {
     captionPosition: ['auto', 'top', 'center', 'bottom'].includes(o.captionPosition) ? o.captionPosition : 'auto',
     // Modo de exibição: auto (do estilo) | word (palavra por vez) | phrase (frase inteira).
     captionMode: ['auto', 'word', 'phrase'].includes(o.captionMode) ? o.captionMode : 'auto',
+    // Destacar a palavra falada na frase (padrão: legenda normal, sem destaque).
+    captionHighlight: o.captionHighlight === true,
     captionScale: clampNum(o.captionScale, 0.6, 1.6, 1),
     colorLook: ALLOWED_LOOKS.has(o.colorLook) ? o.colorLook : 'auto',
     // Ajuste manual de cor (brilho, contraste, saturação, temperatura: -100..100).

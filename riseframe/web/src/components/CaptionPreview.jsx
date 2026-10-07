@@ -204,6 +204,13 @@ export function CaptionOverlay({ videoRef, segments, options, box, sample }) {
   let content;
   if (look.mode === 'word') {
     content = <span key={`${seg.start}-${wi}-${look.animKind}`} style={{ ...style, maxWidth: '92%', textAlign: 'center' }}>{up(words[wi].word)}</span>;
+  } else if (!options.captionHighlight) {
+    // Padrão: legenda normal — frase inteira, todas as palavras iguais (como no render).
+    content = (
+      <span key={`${seg.start}-${look.animKind}`} style={{ ...style, maxWidth: '90%', textAlign: 'center' }}>
+        {words.map((w) => up(w.word)).join(' ')}
+      </span>
+    );
   } else {
     const white = (options.captionColor || 'white') === 'white';
     content = (
