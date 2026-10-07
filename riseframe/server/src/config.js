@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v64';
+export const APP_VERSION = 'v65';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -140,6 +140,13 @@ export const config = {
       { id: 'recarga-300', name: 'Recarga 300', credits: 300, priceCents: 3990 },
       { id: 'recarga-1000', name: 'Recarga 1000', credits: 1000, priceCents: 11990 },
     ]),
+    // Renovação automática mensal (assinatura na AbacatePay, API v2). BILLING_AUTO_RENEW=off
+    // esconde a opção. Métodos da assinatura: BILLING_SUBSCRIPTION_METHODS (padrão cartão).
+    autoRenew: String(process.env.BILLING_AUTO_RENEW || 'on').toLowerCase() !== 'off',
+    subscriptionMethods: (process.env.BILLING_SUBSCRIPTION_METHODS || 'CARD')
+      .split(',')
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean),
     // Métodos da AbacatePay (PIX, CARD). Se ela recusar a lista, o checkout tenta só PIX.
     methods: (process.env.BILLING_METHODS || 'PIX,CARD')
       .split(',')

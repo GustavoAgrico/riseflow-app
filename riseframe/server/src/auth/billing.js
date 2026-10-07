@@ -15,6 +15,9 @@ const log = makeLogger('billing');
  *     pending: { [billingId]: { userId, kind: 'plan'|'pack', itemId, credits, createdAt } } }
  * Um pagamento só vale depois de confirmado na API da AbacatePay (status PAID) — nunca
  * pelo conteúdo do webhook, que qualquer um poderia forjar.
+ * Renovação automática (cartão, API v2): o plano vira uma assinatura mensal na AbacatePay
+ * (users[id].subscription = { customerId, id, planId, active }). Quando o período acaba e
+ * a assinatura continua ATIVA na API, o plano é renovado sozinho por mais um período.
  */
 const FILE = path.join(config.paths.data, 'billing.json');
 const API_BASE = 'https://api.abacatepay.com/v';
@@ -92,6 +95,9 @@ export function billingStatus(user) {
     plans: b.plans.map(publicPlan),
     packs: b.packs.map(publicPack),
     hasPending: Object.values(load().pending).some((p) => p.userId === user.id),
+    // Renovação automática (assinatura no cartão) ligada para o plano atual?
+    autoRenew: Boolean(plan && e.subscription?.active),
+    autoRenewAvailable: billingEnabled() && b.autoRenew,
   };
 }
 
@@ -126,6 +132,9 @@ export function refund(userId, { monthly = 0, extra = 0, until = null } = {}) {
   log.info(`${monthly + extra} crédito(s) devolvidos (user ${userId})`);
 }
 
+/** Só para testes: o registro do usuário em memória. */
+export const __testEntry = (userId) => entry(userId);
+
 /** Período do plano no momento da cobrança (para a devolução saber se ainda vale). */
 export const currentPeriod = (userId) => entry(userId).plan?.until || null;
 
@@ -135,7 +144,7 @@ export const currentPeriod = (userId) => entry(userId).plan?.until || null;
 // ABACATE_API_VERSION=1|2 fixa a versão.
 let apiVersion = null;
 
-async function abacate(pathname, { method = 'GET', body, version = 2 } = {}) {
+async function abacate(pathname, { method = 'GET', body, version = 2, raw = false } = {}) {
   const r = await fetch(`${API_BASE}${version}${pathname}`, {
     method,
     headers: { Authorization: `Bearer ${config.billing.abacateKey}`, 'Content-Type': 'application/json' },
@@ -147,7 +156,7 @@ async function abacate(pathname, { method = 'GET', body, version = 2 } = {}) {
     const msg = typeof data.error === 'string' ? data.error : data.error?.message || data.message;
     throw Object.assign(new Error(msg || `AbacatePay respondeu ${r.status}`), { httpStatus: r.status });
   }
-  return data.data ?? data;
+  return raw ? data : data.data ?? data;
 }
 
 const versionMismatch = (err) => /version/i.test(String(err?.message || ''));
@@ -175,7 +184,7 @@ async function withApiVersion(fn) {
 // nasce um produto novo) e o id fica em cache.
 const productIds = new Map();
 
-async function productIdV2({ externalId, name, description, price }) {
+async function productIdV2({ externalId, name, description, price, cycle }) {
   const cacheKey = `${config.billing.abacateKey.slice(-8)}:${externalId}`;
   if (productIds.has(cacheKey)) return productIds.get(cacheKey);
   let product = null;
@@ -189,7 +198,7 @@ async function productIdV2({ externalId, name, description, price }) {
     product = await abacate('/products/create', {
       method: 'POST',
       version: 2,
-      body: { externalId, name, description, price, currency: 'BRL' },
+      body: { externalId, name, description, price, currency: 'BRL', ...(cycle ? { cycle } : {}) },
     });
   }
   if (!product?.id) throw new Error('a AbacatePay não retornou o produto');
@@ -198,8 +207,7 @@ async function productIdV2({ externalId, name, description, price }) {
 }
 
 /** Cria a cobrança com os métodos configurados; se a conta recusar, tenta só Pix. */
-async function withMethods(create) {
-  const methods = config.billing.methods;
+async function withMethods(create, methods = config.billing.methods) {
   try {
     return await create(methods);
   } catch (err) {
@@ -214,7 +222,7 @@ async function withMethods(create) {
  * Cria a cobrança de um plano (kind 'plan') ou recarga (kind 'pack') na AbacatePay e
  * devolve a URL do checkout.
  */
-export async function createCheckout(user, { kind, itemId, name, taxId, cellphone, returnUrl }) {
+export async function createCheckout(user, { kind, itemId, name, taxId, cellphone, returnUrl, recurring = false }) {
   const b = config.billing;
   const item = kind === 'plan' ? planConfig(itemId) : b.packs.find((p) => p.id === itemId);
   if (!item || (kind !== 'plan' && kind !== 'pack')) throw Object.assign(new Error('plano ou recarga inválido'), { status: 400 });
@@ -231,6 +239,7 @@ export async function createCheckout(user, { kind, itemId, name, taxId, cellphon
           description: `Recarga avulsa de ${item.credits} créditos (não expiram)`,
         };
   const customer = { name: name || user.name || user.email, email: user.email, cellphone, taxId };
+  if (kind === 'plan' && recurring) return createSubscriptionCheckout(user, item, product, customer, returnUrl);
 
   const { billing, version } = await withApiVersion(async (version) => {
     if (version === 1) {
@@ -276,6 +285,163 @@ export async function createCheckout(user, { kind, itemId, name, taxId, cellphon
   return billing.url;
 }
 
+/** Cliente da AbacatePay (v2) deste usuário; criado na 1ª assinatura e guardado. */
+async function customerIdV2(user, customer) {
+  const e = entry(user.id);
+  const keyTag = config.billing.abacateKey.slice(-8);
+  if (e.abacateCustomer?.id && e.abacateCustomer.key === keyTag) return e.abacateCustomer.id;
+  const c = await abacate('/customers/create', { method: 'POST', version: 2, body: customer });
+  if (!c?.id) throw new Error('a AbacatePay não retornou o cliente');
+  e.abacateCustomer = { id: c.id, key: keyTag };
+  persist();
+  return c.id;
+}
+
+/** Checkout de ASSINATURA mensal (renova sozinho no cartão). Só existe na API v2. */
+async function createSubscriptionCheckout(user, item, product, customer, returnUrl) {
+  const b = config.billing;
+  // Assinatura só existe na API v2: vai direto nela (sem a troca automática de versão).
+  const { billing } = await (async () => {
+    const customerId = await customerIdV2(user, customer);
+    const productId = await productIdV2({
+      externalId: `riseframe-assinatura-${item.id}-${item.priceCents}`,
+      name: `Riseframe ${item.name} — mensal`,
+      description: `Assinatura mensal do plano ${item.name}: ${item.credits} créditos por mês`,
+      price: item.priceCents,
+      cycle: 'MONTHLY',
+    });
+    const billing = await withMethods(
+      (methods) =>
+        abacate('/subscriptions/create', {
+          method: 'POST',
+          version: 2,
+          body: {
+            items: [{ id: productId, quantity: 1 }],
+            customerId,
+            methods,
+            returnUrl,
+            completionUrl: returnUrl,
+            externalId: `riseframe-assinatura-${item.id}-${Date.now()}`,
+          },
+        }),
+      b.subscriptionMethods,
+    );
+    return { billing };
+  })().catch((err) => {
+    if (!versionMismatch(err)) throw err;
+    throw Object.assign(new Error('a renovação automática precisa da chave nova (API v2) da AbacatePay. Escolha pagar 30 dias por Pix.'), { status: 400 });
+  });
+  if (!billing?.id || !billing?.url) throw new Error('a AbacatePay não retornou o link da assinatura');
+  load();
+  db.pending[billing.id] = {
+    userId: user.id, kind: 'plan', itemId: item.id, credits: item.credits, createdAt: new Date().toISOString(), v: 2, recurring: true,
+  };
+  persist();
+  log.info(`assinatura ${billing.id} (plano ${item.id}) para ${user.email}`);
+  return billing.url;
+}
+
+/** Assinaturas da loja na AbacatePay (todas as páginas, até um limite). */
+async function listSubscriptionsV2() {
+  const out = [];
+  let cursor = null;
+  for (let page = 0; page < 20; page += 1) {
+    const q = new URLSearchParams({ limit: '100' });
+    if (cursor) q.set('cursor', cursor);
+    const r = await abacate(`/subscriptions/list?${q}`, { version: 2, raw: true });
+    out.push(...(Array.isArray(r.data) ? r.data : []));
+    cursor = r.pagination?.hasNext ? r.pagination.nextCursor : null;
+    if (!cursor) break;
+  }
+  return out;
+}
+
+const newest = (list) => [...list].sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0))[0] || null;
+
+/**
+ * Renova sozinho os planos com assinatura: período vencido + assinatura ATIVA na API
+ * = mais um período com os créditos do mês. Assinatura cancelada/falhou = para de
+ * renovar (o plano acaba no fim do período já pago). Idempotente.
+ */
+export async function renewSubscriptions({ userId } = {}) {
+  if (!billingEnabled()) return [];
+  load();
+  const now = Date.now();
+  const due = Object.entries(db.users).filter(
+    ([id, e]) => (!userId || id === userId) && e.subscription?.active && (!e.plan || Date.parse(e.plan.until) <= now || !e.subscription.id),
+  );
+  if (!due.length) return [];
+  const subs = await listSubscriptionsV2();
+  const renewed = [];
+  for (const [id, e] of due) {
+    const mine = subs.filter((s) => s.customerId === e.subscription.customerId);
+    const sub = (e.subscription.id && mine.find((s) => s.id === e.subscription.id)) || newest(mine.filter((s) => s.status === 'ACTIVE')) || newest(mine);
+    if (!sub) continue; // a assinatura ainda não apareceu na API (acabou de ser paga)
+    e.subscription.id = sub.id;
+    const status = String(sub.status || '').toUpperCase();
+    if (['CANCELLED', 'EXPIRED', 'FAILED'].includes(status)) {
+      e.subscription.active = false;
+      log.info(`assinatura ${sub.id} ${status}: plano não renova mais (user ${id})`);
+      continue;
+    }
+    if (status !== 'ACTIVE' || !e.plan || Date.parse(e.plan.until) > now) continue;
+    const cfg = planConfig(e.subscription.planId || e.plan.id);
+    if (!cfg) continue;
+    const period = config.billing.periodDays * DAY_MS;
+    let until = Date.parse(e.plan.until) + period;
+    if (until <= now) until = now + period; // ficou muito tempo sem conferir
+    e.plan = { id: cfg.id, until: new Date(until).toISOString(), credits: cfg.credits };
+    e.subscription.renewals = (e.subscription.renewals || 0) + 1;
+    renewed.push({ userId: id, planId: cfg.id, until: e.plan.until });
+    log.ok(`assinatura ${sub.id}: plano ${cfg.id} renovado até ${e.plan.until} (user ${id})`);
+  }
+  persist();
+  return renewed;
+}
+
+/** Depois de pagamentos: cancela assinaturas que ficaram para trás (troca de plano). */
+async function settleSubscriptionChanges() {
+  load();
+  for (const [id, e] of Object.entries(db.users)) {
+    const sub = e.subscription;
+    if (!sub) continue;
+    try {
+      if (sub.cancelOthers && sub.customerId) {
+        // Fica só a assinatura mais nova (a que acabou de ser paga); as outras ativas saem.
+        const active = (await listSubscriptionsV2()).filter((x) => x.customerId === sub.customerId && x.status === 'ACTIVE');
+        const keep = newest(active);
+        for (const old of active.filter((x) => x !== keep)) {
+          await abacate('/subscriptions/cancel', { method: 'POST', version: 2, body: { id: old.id } });
+          log.info(`assinatura antiga ${old.id} cancelada (troca de plano, user ${id})`);
+        }
+        if (keep) sub.id = keep.id;
+        sub.cancelOthers = false;
+      }
+      if (sub.cancelPending && sub.active) {
+        await cancelSubscription({ id });
+        sub.cancelPending = false;
+      }
+    } catch (err) {
+      log.warn(`não consegui cancelar a assinatura antiga (user ${id}): ${err.message}`);
+    }
+  }
+  persist();
+}
+
+/** Cancela a renovação automática. O plano continua até o fim do período já pago. */
+export async function cancelSubscription(user) {
+  const e = entry(user.id);
+  if (!e.subscription?.active) throw Object.assign(new Error('você não tem renovação automática ativa'), { status: 400 });
+  if (!e.subscription.id) {
+    const mine = (await listSubscriptionsV2()).filter((s) => s.customerId === e.subscription.customerId && s.status === 'ACTIVE');
+    e.subscription.id = newest(mine)?.id || null;
+  }
+  if (e.subscription.id) await abacate('/subscriptions/cancel', { method: 'POST', version: 2, body: { id: e.subscription.id } });
+  e.subscription.active = false;
+  persist();
+  log.info(`renovação automática cancelada (user ${user.id})`);
+}
+
 /** Aplica um pagamento confirmado. Retorna true se aplicou agora (idempotente). */
 function grant(billingId, p) {
   const e = entry(p.userId);
@@ -289,6 +455,15 @@ function grant(billingId, p) {
     // Renovar o mesmo plano soma o período; trocar de plano (ou voltar) começa agora.
     const until = new Date((sameActive ? Date.parse(e.plan.until) : now) + period).toISOString();
     e.plan = { id: p.itemId, until, credits: cfg ? cfg.credits : p.credits };
+    if (p.recurring) {
+      // Assinatura nova (ou troca de plano): a anterior deixa de valer.
+      // Se já havia uma, cancela todas as outras do cliente (evita cobrar duas vezes).
+      const hadOther = Boolean(e.subscription?.active);
+      e.subscription = { active: true, planId: p.itemId, customerId: e.abacateCustomer?.id || null, id: null, since: new Date().toISOString(), cancelOthers: hadOther };
+    } else if (e.subscription?.active && e.subscription.planId !== p.itemId) {
+      // Pagou outro plano avulso (Pix): a assinatura antiga renovaria o plano errado.
+      e.subscription.cancelPending = true;
+    }
     log.ok(`pagamento ${billingId}: plano ${p.itemId} até ${until} (user ${p.userId})`);
   } else {
     e.credits += p.credits;
@@ -337,5 +512,14 @@ export async function syncPayments({ userId, billingId } = {}) {
     }
   }
   persist();
+  if (applied.length) await settleSubscriptionChanges();
   return applied;
+}
+
+/** Confere renovações de hora em hora (além de quando o usuário abre os planos). */
+export function startRenewTimer() {
+  if (!billingEnabled()) return;
+  const run = () => renewSubscriptions().catch((err) => log.warn(`renovação automática: ${err.message}`));
+  setTimeout(run, 60_000).unref();
+  setInterval(run, 3600_000).unref();
 }

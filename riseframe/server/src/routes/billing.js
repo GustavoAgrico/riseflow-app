@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import { requireAuth } from './auth.js';
-import { billingEnabled, billingStatus, createCheckout, syncPayments } from '../auth/billing.js';
+import { billingEnabled, billingStatus, cancelSubscription, createCheckout, renewSubscriptions, syncPayments } from '../auth/billing.js';
 import { config } from '../config.js';
 import { makeLogger } from '../logger.js';
 
@@ -17,7 +17,9 @@ function safeEqual(a, b) {
 }
 
 // GET /api/billing → plano, saldo, recursos liberados, custos, planos e recargas
-billingRouter.get('/billing', requireAuth, (req, res) => {
+billingRouter.get('/billing', requireAuth, async (req, res) => {
+  // Plano com renovação automática que venceu: confere a assinatura antes de responder.
+  await renewSubscriptions({ userId: req.user.id }).catch((err) => log.warn(`renovação: ${err.message}`));
   res.json(billingStatus(req.user));
 });
 
@@ -26,7 +28,7 @@ billingRouter.post('/billing/checkout', requireAuth, async (req, res) => {
   if (!billingEnabled()) return res.status(400).json({ error: 'pagamentos não estão configurados' });
   if (billingStatus(req.user).admin) return res.status(400).json({ error: 'conta de administrador já tem uso ilimitado' });
 
-  const { kind, itemId, name, cpf, phone } = req.body || {};
+  const { kind, itemId, name, cpf, phone, recurring } = req.body || {};
   const taxId = digits(cpf);
   const cellphone = digits(phone);
   if (taxId.length !== 11 && taxId.length !== 14) return res.status(400).json({ error: 'informe um CPF ou CNPJ válido' });
@@ -41,6 +43,7 @@ billingRouter.post('/billing/checkout', requireAuth, async (req, res) => {
       taxId,
       cellphone,
       returnUrl: `${base}/?billing=return`,
+      recurring: recurring === true && config.billing.autoRenew,
     });
     res.json({ url });
   } catch (err) {
@@ -50,10 +53,23 @@ billingRouter.post('/billing/checkout', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/billing/subscription/cancel → desliga a renovação automática (o plano vale até o fim do período)
+billingRouter.post('/billing/subscription/cancel', requireAuth, async (req, res) => {
+  try {
+    await cancelSubscription(req.user);
+    res.json(billingStatus(req.user));
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ error: err.message });
+    log.error(`cancelar assinatura: ${err.message}`);
+    res.status(502).json({ error: `não foi possível cancelar agora: ${err.message}` });
+  }
+});
+
 // POST /api/billing/sync → confere na AbacatePay se o pagamento caiu; { applied: [...], ...status }
 billingRouter.post('/billing/sync', requireAuth, async (req, res) => {
   try {
     const applied = await syncPayments({ userId: req.user.id });
+    await renewSubscriptions({ userId: req.user.id }).catch((err) => log.warn(`renovação: ${err.message}`));
     res.json({ applied, ...billingStatus(req.user) });
   } catch (err) {
     log.error(`sync: ${err.message}`);
@@ -71,7 +87,7 @@ billingRouter.post('/billing/webhook', (req, res) => {
 
   const data = req.body?.data || {};
   const billingId = data.billing?.id || data.checkout?.id || data.id || undefined;
-  syncPayments({ billingId: typeof billingId === 'string' ? billingId : undefined }).catch((err) =>
-    log.error(`webhook: ${err.message}`),
-  );
+  syncPayments({ billingId: typeof billingId === 'string' ? billingId : undefined })
+    .then(() => (/^subscription\./.test(String(req.body?.event || '')) ? renewSubscriptions() : null))
+    .catch((err) => log.error(`webhook: ${err.message}`));
 });
