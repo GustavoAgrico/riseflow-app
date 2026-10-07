@@ -18,23 +18,38 @@ test('computeStats: médias de canal a partir de rgb24', () => {
   assert.equal(s.warmBias, 0);
 });
 
-test('computeGrade: cast azul → esquenta (rGain>1, bGain<1) e reforça saturação', () => {
-  const stats = { meanR: 100, meanG: 110, meanB: 140, luma: 110, contrast: 30, saturation: 0.2, shadowFrac: 0.1, highlightFrac: 0.05, warmBias: -40 };
-  const g = computeGrade(stats);
+const baseStats = { meanR: 120, meanG: 120, meanB: 120, luma: 120, contrast: 50, saturation: 0.3, shadowFrac: 0.1, highlightFrac: 0.05, warmBias: 0 };
+
+test('computeGrade: branco azulado (luz fria) → esquenta, com look natural', () => {
+  const g = computeGrade({ ...baseStats, white: { r: 200, g: 220, b: 245, sat: 0.18 } });
   assert.ok(g.adjustments.whiteBalance.rGain > 1, 'ganha no vermelho (esquenta)');
   assert.ok(g.adjustments.whiteBalance.bGain < 1, 'reduz azul');
-  assert.ok(g.adjustments.saturation > 1, 'reforça saturação (estava baixa)');
-  assert.ok(g.adjustments.contrast > 1, 'reforça contraste (estava baixo)');
-  assert.equal(g.look, 'balanced-cool');
+  assert.equal(g.look, 'natural');
   assert.ok(g.vf.includes('colorchannelmixer'), 'cadeia tem balanço de branco');
+  assert.doesNotMatch(g.vf, /colorbalance|unsharp/, 'sem teal & orange nem nitidez artificial');
 });
 
-test('computeGrade: cast quente → esfria (rGain<1, bGain>1) e escolhe teal-orange', () => {
-  const stats = { meanR: 150, meanG: 120, meanB: 90, luma: 120, contrast: 50, saturation: 0.35, shadowFrac: 0.1, highlightFrac: 0.1, warmBias: 60 };
-  const g = computeGrade(stats);
+test('computeGrade: branco amarelado (lâmpada) → esfria', () => {
+  const g = computeGrade({ ...baseStats, white: { r: 245, g: 225, b: 180, sat: 0.27 } });
   assert.ok(g.adjustments.whiteBalance.rGain < 1, 'reduz vermelho');
   assert.ok(g.adjustments.whiteBalance.bGain > 1, 'ganha no azul (esfria)');
-  assert.equal(g.look, 'teal-orange');
+});
+
+test('computeGrade: luz já neutra → não mexe na cor (mesmo com fundo colorido dominando)', () => {
+  const g = computeGrade({ ...baseStats, meanR: 170, meanG: 150, meanB: 115, warmBias: 55, white: { r: 240, g: 240, b: 238, sat: 0.01 } });
+  assert.deepEqual(g.adjustments.whiteBalance, { rGain: 1, gGain: 1, bGain: 1 });
+  assert.doesNotMatch(g.vf, /colorchannelmixer/);
+});
+
+test('computeGrade: "branco" muito colorido não é branco → não corrige', () => {
+  const g = computeGrade({ ...baseStats, white: { r: 230, g: 150, b: 60, sat: 0.74 } });
+  assert.deepEqual(g.adjustments.whiteBalance, { rGain: 1, gGain: 1, bGain: 1 });
+});
+
+test('computeGrade: vídeo escuro → clareia pelos tons médios (gamma), sem levantar o preto', () => {
+  const g = computeGrade({ ...baseStats, luma: 70 });
+  assert.ok(g.adjustments.gamma > 1.1, 'gamma clareia');
+  assert.doesNotMatch(g.vf, /brightness/, 'sem brightness (que deixa o preto acinzentado)');
 });
 
 test('analyzeAndGrade: analisa um clipe real com cast azul e corrige', async () => {

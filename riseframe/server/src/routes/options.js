@@ -119,7 +119,7 @@ optionsRouter.get('/options', (_req, res) => {
 
 const LABELS = {
   color: {
-    auto: 'Automático (IA) ✨',
+    auto: 'Automático natural (corrige luz e cor) ✨',
     none: 'Sem ajuste',
     clean: 'Limpo (correção técnica)',
     'teal-orange': 'Teal & Orange (cinematográfico)',

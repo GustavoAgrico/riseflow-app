@@ -1675,6 +1675,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
       <CostLine
         mode="render"
+        sourceId={sourceId}
         options={{ ...options, ...cap, ...(brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}) }}
         style={{ marginTop: 18 }}
       />
