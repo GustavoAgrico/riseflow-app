@@ -1,14 +1,20 @@
-# Proxy reverso do Riseframe com HTTPS automático (Let's Encrypt).
-# SITE_ADDRESS vem do .env (ex.: 123.45.67.89.sslip.io ou app.seudominio.com).
+# Proxy do Riseframe com HTTPS automático (Let's Encrypt).
+# SITE_ADDRESS (do .env) = endereço principal, ex.: www.riseframe.com.br
+# SITE_ALIASES (opcional) = outros endereços que redirecionam para o principal,
+#   ex.: riseframe.com.br   (vários: separados por vírgula)
 {$SITE_ADDRESS} {
-	# Encaminha tudo para o contêiner do app (frontend + API na mesma origem).
-	reverse_proxy app:4000
-
-	# Compacta respostas de texto (HTML/CSS/JS); vídeos já vêm comprimidos.
-	encode zstd gzip
-
-	# Uploads de vídeo podem ser grandes — libera o corpo da requisição.
-	request_body {
-		max_size 600MB
+	reverse_proxy app:4000 {
+		# vídeos grandes: sem tempo-limite para subir/baixar
+		transport http {
+			read_timeout 0
+			write_timeout 0
+		}
 	}
+	# Compacta HTML/CSS/JS; vídeo já vem comprimido.
+	encode zstd gzip
+	# Sem limite de tamanho no envio (o app confere o espaço em disco).
+}
+
+{$SITE_ALIASES:http://alias.localhost} {
+	redir https://{$SITE_ADDRESS}{uri} permanent
 }

@@ -1,8 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { Router } from 'express';
 import { config } from '../config.js';
 import { queue } from '../queue.js';
 import { requireAuth } from './auth.js';
 import { billingStatus } from '../auth/billing.js';
+import { zipFiles } from '../zip.js';
 import { buildShowcase, removeShowcase, showcaseFile, showcaseInfo, showcaseStatus, showcaseZip } from '../showcase.js';
 
 // Informações PÚBLICAS para a página inicial (sem login): preços, teste grátis, limites,
@@ -58,6 +61,19 @@ publicRouter.get('/admin/showcase/package', requireAuth, requireAdmin, (_req, re
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }
+});
+
+// Backup das contas, planos/créditos e configurações (para mudar de servidor).
+// Contém dados pessoais e chaves dos usuários: só admin, e guarde o arquivo com cuidado.
+publicRouter.get('/admin/backup', requireAuth, requireAdmin, (_req, res) => {
+  const names = ['users.json', 'billing.json', 'settings.json'];
+  const files = names
+    .map((n) => path.join(config.paths.data, n))
+    .filter((f) => fs.existsSync(f))
+    .map((f) => ({ name: `riseframe-data/${path.basename(f)}`, data: fs.readFileSync(f) }));
+  if (!files.length) return res.status(404).json({ error: 'nada para salvar ainda' });
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.set('Content-Disposition', `attachment; filename="riseframe-backup-${stamp}.zip"`).type('application/zip').send(zipFiles(files));
 });
 
 publicRouter.delete('/admin/showcase', requireAuth, requireAdmin, (_req, res) => {

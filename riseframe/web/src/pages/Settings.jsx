@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { C, gradientText, glass, FONT_DISPLAY } from '../theme.js';
 import { Spinner } from '../components/ui.jsx';
-import { getSettings } from '../api.js';
+import { adminDownloadBackup, getSettings } from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 import { openPlans } from '../components/CostLine.jsx';
 
@@ -96,9 +96,21 @@ export default function Settings({ onNewVideo, onLogout }) {
               <Row label="B-roll · Openverse" hint="Imagens Creative Commons, sem chave" value={<StatusDot on={status.openverse} />} />
               <Row label="B-roll · Pexels" hint="PEXELS_API_KEY — vídeos e fotos livres" value={<StatusDot on={status.brollFromServer} offLabel="Sem chave" />} />
               <Row label="IA · Anthropic (Claude)" hint="ANTHROPIC_API_KEY — B-roll mais relevante e limpeza de fala" value={<StatusDot on={status.aiFromServer} offLabel="Sem chave" />} />
-              <Row label="Pagamentos · AbacatePay" hint="ABACATE_PAY_API_KEY — sem ela, ninguém consegue assinar (os limites continuam valendo)" value={<StatusDot on={billing.enabled} offLabel="Desligado" />} />
+              <Row label={billing.payment === 'pix-links' ? 'Pagamentos · Pix (links do banco)' : 'Pagamentos · AbacatePay'}
+                hint={billing.payment === 'pix-links' ? 'BILLING_PIX_LINKS — você confirma cada Pix na página de Planos' : 'ABACATE_PAY_API_KEY — sem ela, ninguém consegue assinar (os limites continuam valendo)'}
+                value={<StatusDot on={billing.enabled} offLabel="Desligado" />} />
             </div>
           )}
+        </Section>
+      )}
+
+      {showServer && (
+        <Section title="Backup e mudança de servidor">
+          <p style={{ color: C.muted, fontSize: 13.5, lineHeight: 1.55, margin: '6px 0 12px' }}>
+            Baixa as contas, os planos/créditos e as configurações dos usuários. Use para levar tudo para outro servidor
+            (ex.: Hostinger) ou guardar uma cópia. O arquivo tem dados pessoais — guarde com cuidado.
+          </p>
+          <button onClick={() => adminDownloadBackup().catch((e) => window.alert(e.message))} style={btn}>Baixar backup</button>
         </Section>
       )}
 
