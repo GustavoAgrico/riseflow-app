@@ -4,6 +4,7 @@ import { probeSummary, runFfmpeg, sdrVf, x264Fast } from './ffmpeg.js';
 import { transcribe } from './transcribe/index.js';
 import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
+import { preciseRemovals } from './cutRefine.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, unmapTime } from './timeline.js';
 import { insertBroll } from './broll.js';
 import { applyManualFrame } from './frame.js';
@@ -17,7 +18,7 @@ import { cleanupWithClaude } from './cleanupLLM.js';
 import { burnCaptions } from './captions.js';
 import { applySoundEffects } from './sfx.js';
 import { colorFilter, hasColorAdjust } from './color.js';
-import { finalRender } from './render.js';
+import { convertAspect, finalRender } from './render.js';
 import { generateClips } from './clips.js';
 import { makeLogger } from '../logger.js';
 
@@ -55,6 +56,7 @@ function buildPlan(mode, options) {
       { key: 'frame', label: 'Reenquadrando o vídeo', weight: 8, enabled: (Number(options.personZoom) || 1) > 1.001 },
       { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
       { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: Array.isArray(options.userMedia) && options.userMedia.length > 0 },
+      { key: 'aspect', label: 'Ajustando ao formato', weight: 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true },
       { key: 'color', label: 'Analisando as cores', weight: 3, enabled: (options.colorLook || 'teal-orange') !== 'none' || hasColorAdjust(options.colorAdjust) },
@@ -69,18 +71,6 @@ function buildPlan(mode, options) {
     s.to = acc / total;
   }
   return all;
-}
-
-/** Faixas a remover derivadas das palavras marcadas como removidas na transcrição. */
-function transcriptRemovalRanges(transcript, pad = 0.04) {
-  const ranges = [];
-  for (const seg of transcript?.segments || []) {
-    const words = seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text, removed: seg.removed }];
-    for (const w of words) {
-      if (w.removed) ranges.push({ start: Math.max(0, w.start - pad), end: w.end + pad });
-    }
-  }
-  return ranges;
 }
 
 /** Remove palavras marcadas (removed) da transcrição sem remapear tempos. */
@@ -254,21 +244,25 @@ export async function runPipeline(job, onUpdate = () => {}) {
       if (total) log.info(`limpeza automática (${method}): ${total} palavras marcadas`);
     }
 
-    const removals = [];
+    const pauses = [];
     if (options.manualSilence) {
       // Cortes de silêncio escolhidos na timeline (mesma linha do tempo original das palavras).
       for (const c of options.silenceCuts || []) {
-        if (c && c.end > c.start) removals.push({ start: Math.max(0, c.start), end: Math.min(meta.duration, c.end) });
+        if (c && c.end > c.start) pauses.push({ start: Math.max(0, c.start), end: Math.min(meta.duration, c.end) });
       }
     } else if (options.cutSilence !== false) {
-      removals.push(...(await silenceRemovalRanges(input, meta, options)));
+      pauses.push(...(await silenceRemovalRanges(input, meta, options)));
     }
+    // Precisão: pausas nunca invadem palavras (transcrição + volume real do áudio) e as
+    // palavras removidas são cortadas no vale de volume entre as vizinhas.
+    const precise = await preciseRemovals(input, { pauses, transcript, hasAudio: meta.hasAudio });
+    const removals = [...precise.pauses];
     // Trechos cortados à mão na faixa de vídeo: valem sempre, com ou sem corte de silêncio.
     for (const c of options.videoCuts || []) {
       if (c && c.end > c.start) removals.push({ start: Math.max(0, c.start), end: Math.min(meta.duration, c.end) });
     }
     // Palavras marcadas como removidas: edição manual do cliente (render) e/ou limpeza automática.
-    removals.push(...transcriptRemovalRanges(transcript));
+    removals.push(...precise.removed);
 
     // Ajusta ao grid de frames e usa o MESMO keep no corte do vídeo e no remap das
     // legendas — evita o drift progressivo (legenda adiantando/atrasando após cortes).
@@ -375,6 +369,21 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
+  // 6+. Formato de saída (9:16, 1:1, 16:9) ANTES das legendas: a legenda é desenhada no
+  // quadro final e não sai cortada; o enquadramento segue o que o usuário escolheu.
+  let aspectReframe = null;
+  if (has('aspect')) {
+    const st = enter('aspect');
+    const r = await convertAspect(input, work, meta, options, trackInput, st.onProgress);
+    if (r.applied) {
+      input = r.output;
+      meta = { ...meta, ...(await probeSummary(input)) };
+      aspectReframe = r.reframe;
+    }
+    st.record({ applied: r.applied, mode: options.reframeMode || 'auto' });
+    st.onProgress(1);
+  }
+
   // 6. Legendas (transcrição sincronizada)
   if (has('captions')) {
     const st = enter('captions');
@@ -432,7 +441,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
   // 8. Render final
   {
     const st = enter('render');
-    const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf }, st.onProgress);
+    const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf, reframe: aspectReframe }, st.onProgress);
     report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe };
     st.record({ aspect: r.aspect });
     st.onProgress(1);

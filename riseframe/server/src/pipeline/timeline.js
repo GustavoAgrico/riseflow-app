@@ -48,9 +48,14 @@ export function snapKeep(keep, fps, minKeep = 0.05) {
   const f = Math.max(1, Math.round(fps || 30));
   const out = [];
   for (const s of keep || []) {
-    const start = Math.round(s.start * f) / f;
-    const end = Math.round(s.end * f) / f;
-    if (end - start >= minKeep) out.push({ start, end });
+    // Arredonda PARA FORA (início para trás, fim para frente): o ajuste ao frame nunca
+    // tira um pedacinho da fala que ficou; trechos que passam a se tocar são unidos.
+    const start = Math.floor(s.start * f + 1e-6) / f;
+    const end = Math.ceil(s.end * f - 1e-6) / f;
+    if (end - start < minKeep) continue;
+    const last = out[out.length - 1];
+    if (last && start <= last.end) last.end = Math.max(last.end, end);
+    else out.push({ start, end });
   }
   return out;
 }
@@ -135,7 +140,10 @@ export async function remuxByKeepSegments(input, work, meta, keep, onProgress, t
     parts.push(`[0:v]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS,fps=${fps}[v${i}]`);
     concatInputs.push(`[v${i}]`);
     if (wantAudio) {
-      parts.push(`[0:a]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
+      // Micro-fade de 6 ms nas emendas: tira o "clique" do corte sem engolir som.
+      const len = seg.end - seg.start;
+      const fades = len > 0.05 ? `,afade=t=in:d=0.006,afade=t=out:st=${(len - 0.006).toFixed(3)}:d=0.006` : '';
+      parts.push(`[0:a]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS${fades}[a${i}]`);
       concatInputs.push(`[a${i}]`);
     }
   });

@@ -95,6 +95,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [framingMode, setFramingMode] = useState('manual');
   const [focus, setFocus] = useState({ x: 0.5, y: 0.4 });
   const [zoom, setZoom] = useState(1);
+  // Formato do vídeo final e como ele entra no formato (igual ao servidor):
+  // auto = segue o rosto · manual = ponto escolhido · fit = inteiro com fundo desfocado.
+  const [aspectSel, setAspectSel] = useState(['original', '9:16', '1:1', '16:9'].includes(options?.aspect) ? options.aspect : 'original');
+  const [reframeMode, setReframeMode] = useState(['auto', 'manual', 'fit'].includes(options?.reframeMode) ? options.reframeMode : 'auto');
+  const bgVideoRef = useRef(null); // fundo desfocado da prévia no modo "vídeo inteiro"
+  const composedRef = useRef(null);
+  const [cbox, setCbox] = useState(null); // tamanho da prévia do formato (para a legenda)
   // Lado da pessoa na tela dividida: segue o layout do B-roll (apoio em cima → você embaixo).
   // Layout do B-roll (igual à escolha do início, editável aqui): tela cheia ou tela
   // dividida com o B-roll em cima (você embaixo) ou embaixo (você em cima).
@@ -215,6 +222,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     ro.observe(el);
     return () => ro.disconnect();
   });
+  useEffect(() => {
+    const el = composedRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      setCbox((b) => (b && Math.abs(b.w - r.width) < 0.5 && Math.abs(b.h - r.height) < 0.5 ? b : { x: 0, y: 0, w: r.width, h: r.height }));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
   function measureVideo() {
     const v = videoRef.current;
     if (!v || !v.videoWidth || !v.clientWidth) return;
@@ -280,6 +297,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           if (Math.abs(pv.currentTime - t) > (v.paused ? 0.04 : 0.3)) { try { pv.currentTime = t; } catch { /* ainda carregando */ } }
           if (v.paused && !pv.paused) pv.pause();
           else if (!v.paused && pv.paused) pv.play().catch(() => {});
+        }
+        const bv = bgVideoRef.current;
+        if (bv) {
+          if (Math.abs(bv.currentTime - t) > (v.paused ? 0.04 : 0.3)) { try { bv.currentTime = t; } catch { /* ainda carregando */ } }
+          if (v.paused && !bv.paused) bv.pause();
+          else if (!v.paused && bv.paused) bv.play().catch(() => {});
         }
         const mw = motionWrapRef.current;
         if (mw) {
@@ -693,6 +716,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // Enquadramento (tela dividida): manual envia foco; auto deixa o servidor
         // detectar o rosto. Zoom vale para os dois.
         personZoom: +Number(zoom).toFixed(2),
+        // Formato do vídeo final + enquadramento no formato (escolhidos na aba Enquadramento).
+        aspect: aspectSel,
+        reframeMode,
         ...(framingMode === 'manual'
           ? { personFocusX: +focus.x.toFixed(3), personFocusY: +focus.y.toFixed(3) }
           : {}),
@@ -762,7 +788,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const previewMode = brollMoment && thumbOf(brollMoment) ? (brollLayout === 'split' ? 'split' : 'broll') : 'video';
   // Recorte da pessoa = a MESMA conta do servidor (faceCropGeometry): cobre o quadro,
   // amplia pelo zoom e CENTRALIZA no ponto do rosto. Assim a prévia bate com o render.
+  const fitMode = reframeMode === 'fit' && aspectSel !== 'original' && previewMode === 'video';
   const personCropStyle = (() => {
+    if (fitMode) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilter };
     if (!vbox?.vw || !pbox?.w || !pbox?.h) {
       return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, filter: videoFilter };
     }
@@ -780,7 +808,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       }}
       style={{ position: 'relative', height: previewMode === 'split' ? '50%' : previewMode === 'video' ? '100%' : '0%', display: previewMode === 'broll' ? 'none' : 'block', overflow: 'hidden', cursor: 'grab', touchAction: 'none', boxShadow: `inset 0 0 0 2px ${C.orange}` }}
     >
-      <div ref={motionWrapRef} style={{ width: '100%', height: '100%' }}>
+      {fitMode && (
+        <video ref={bgVideoRef} src={sourceUrl(sourceId)} muted playsInline preload="auto" aria-hidden="true"
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.12)', filter: `${videoFilter && videoFilter !== 'none' ? `${videoFilter} ` : ''}blur(9px) brightness(0.88)` }} />
+      )}
+      <div ref={motionWrapRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
         <video
           ref={previewVideoRef}
           src={sourceUrl(sourceId)}
@@ -789,7 +821,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         />
       </div>
       <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>
-        {previewMode === 'video' ? 'vídeo sem B-roll · arraste/role' : 'você (arraste/role)'}
+        {previewMode === 'video' ? (fitMode ? 'vídeo inteiro · fundo desfocado' : aspectSel !== 'original' && reframeMode === 'auto' && framingMode !== 'manual' ? 'segue o rosto (automático)' : 'vídeo · arraste/role') : 'você (arraste/role)'}
       </div>
     </div>
   );
@@ -830,11 +862,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       </div>
     );
   })();
+  // Proporção da prévia = proporção do vídeo final escolhido.
+  const previewRatio = aspectSel === '1:1' ? '1 / 1' : aspectSel === '16:9' ? '16 / 9' : aspectSel === '9:16' ? '9 / 16' : vbox?.vw ? `${vbox.vw} / ${vbox.vh}` : '9 / 16';
+  const previewLabel = aspectSel === 'original' ? 'formato original' : aspectSel;
   const composedPreview = (
-    <div style={{ width: '100%', maxWidth: 250, margin: '0 auto', aspectRatio: '9 / 16', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
+    <div ref={composedRef} style={{ position: 'relative', width: '100%', maxWidth: aspectSel === '16:9' || (aspectSel === 'original' && vbox?.vw > vbox?.vh) ? '100%' : 250, margin: '0 auto', aspectRatio: previewRatio, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
       {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
+      {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
+      {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={segments} options={cap} box={cbox} sample={tab === 'legenda'} />}
     </div>
   );
+  const showFormatPreview = framingMode === 'manual' || aspectSel !== 'original';
 
 
   // Trechos que NÃO vão para o vídeo final (cortes, pausas cortadas, palavras cortadas):
@@ -884,7 +922,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       <div className="rf-tl-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.35fr) minmax(340px, 1fr)', gap: 18, alignItems: 'start' }}>
         <div className="rf-tl-preview">
           {/* Vídeo principal + prévia 9:16 do ajuste, LADO A LADO (mesma linha) */}
-          <div style={{ display: 'grid', gridTemplateColumns: framingMode === 'manual' ? 'minmax(0,1fr) minmax(150px, 250px)' : '1fr', gap: 12, alignItems: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: showFormatPreview ? 'minmax(0,1fr) minmax(150px, 250px)' : '1fr', gap: 12, alignItems: 'start' }}>
             <div>
               <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
                 <video ref={videoRef} src={sourceUrl(sourceId)} style={{ width: '100%', display: 'block', maxHeight: 'min(72vh, 680px)', objectFit: 'contain', background: '#000', filter: videoFilter }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={measureVideo} playsInline />
@@ -931,9 +969,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 </button>
               </div>
             </div>
-            {framingMode === 'manual' && (
+            {showFormatPreview && (
               <div>
-                <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', textAlign: 'center', marginBottom: 6 }}>Prévia 9:16 · {previewMode === 'split' ? 'tela dividida' : previewMode === 'broll' ? 'B-roll' : 'vídeo'}</div>
+                <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', textAlign: 'center', marginBottom: 6 }}>Prévia {previewLabel} · {previewMode === 'split' ? 'tela dividida' : previewMode === 'broll' ? 'B-roll' : 'vídeo'}</div>
                 {composedPreview}
                 {previewMode === 'split' && <button onClick={() => setPersonSide((s) => (s === 'top' ? 'bottom' : 'top'))} style={{ ...zoomBtn, width: '100%', padding: '6px 0', marginTop: 8, fontSize: 11, fontWeight: 600 }}>Você: {personSide === 'top' ? 'em cima' : 'embaixo'}</button>}
               </div>
@@ -953,6 +991,41 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
 
           {/* Enquadramento na tela dividida */}
+          {tab === 'enquadramento' && (
+            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="crop" size={15} strokeWidth={2} /></span>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Formato do vídeo</div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6, marginBottom: 10 }}>
+                {FORMATS.map((o) => {
+                  const on = aspectSel === o.id;
+                  return (
+                    <button key={o.id} onClick={() => setAspectSel(o.id)} title={o.hint}
+                      style={{ ...framingTab(on), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '8px 4px' }}>
+                      <span style={{ width: o.w, height: o.h, borderRadius: 3, border: `1.5px solid ${on ? C.orange : C.muted}` }} />
+                      <span style={{ fontSize: 11.5 }}>{o.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {aspectSel !== 'original' && (
+                <>
+                  <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.3, marginBottom: 6 }}>COMO O VÍDEO ENTRA NO FORMATO</div>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {REFRAME_MODES.map((o) => (
+                      <button key={o.id} onClick={() => { setReframeMode(o.id); if (o.id === 'manual') setFramingMode('manual'); }}
+                        style={{ ...framingTab(reframeMode === o.id), textAlign: 'left', padding: '8px 10px' }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700 }}>{o.label}</div>
+                        <div style={{ fontSize: 11, color: C.muted, fontWeight: 500, marginTop: 2 }}>{o.hint}</div>
+                      </button>
+                    ))}
+                  </div>
+                  {reframeMode === 'manual' && <div style={{ fontSize: 11, color: C.faint, marginTop: 8 }}>Arraste o vídeo na <b>prévia</b> (ou o ponto laranja no player) para escolher o que fica no quadro.</div>}
+                </>
+              )}
+            </div>
+          )}
           {tab === 'enquadramento' && (
             <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -976,7 +1049,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <button onClick={() => setZoom((z) => clampZoom(z + 0.1))} style={zoomBtn} title="Aumentar">+</button>
                     <span style={{ width: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoom.toFixed(2)}×</span>
                   </label>
-                  <div style={{ fontSize: 11, color: C.faint }}>Arraste no ponto do rosto (vídeo) ou direto na <b>Prévia 9:16</b>. A prévia mostra o que sai em cada ponto: <b>tela dividida</b> quando há B-roll naquele momento e o <b>vídeo inteiro</b> (com este zoom e enquadramento) quando não há.</div>
+                  <div style={{ fontSize: 11, color: C.faint }}>Arraste no ponto do rosto (vídeo) ou direto na <b>prévia</b>. A prévia mostra o que sai em cada ponto: <b>tela dividida</b> quando há B-roll naquele momento e o <b>vídeo inteiro</b> (com este zoom e enquadramento) quando não há.</div>
                 </div>
               )}
             </div>
@@ -1733,6 +1806,19 @@ const TABS = [
   { id: 'midias', label: 'Minhas mídias', icon: 'film' },
   { id: 'efeitos', label: 'Efeitos', icon: 'wand' },
   { id: 'cor', label: 'Cor', icon: 'palette' },
+];
+
+// Formatos do vídeo final (ids iguais aos do servidor) e o desenho do ícone.
+const FORMATS = [
+  { id: 'original', label: 'Original', w: 22, h: 16, hint: 'Mantém o formato em que foi gravado' },
+  { id: '9:16', label: '9:16', w: 13, h: 22, hint: 'Vertical — Reels, Shorts, TikTok' },
+  { id: '1:1', label: '1:1', w: 18, h: 18, hint: 'Quadrado — feed' },
+  { id: '16:9', label: '16:9', w: 24, h: 14, hint: 'Horizontal — YouTube' },
+];
+const REFRAME_MODES = [
+  { id: 'auto', label: 'Automático · segue o rosto', hint: 'A IA acompanha você no quadro ao longo do vídeo.' },
+  { id: 'manual', label: 'Posição que eu escolher', hint: 'O quadro fica fixo no ponto que você arrastar na prévia.' },
+  { id: 'fit', label: 'Vídeo inteiro · fundo desfocado', hint: 'Não corta nada: o vídeo aparece inteiro com o fundo desfocado.' },
 ];
 
 // Layouts do B-roll: ids iguais aos do servidor (top = B-roll em cima → você embaixo).
