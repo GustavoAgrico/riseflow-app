@@ -41,6 +41,29 @@ function sign(data) {
   return b64url(crypto.createHmac('sha256', (SECRET ??= loadSecret())).update(data).digest());
 }
 
+/**
+ * Link assinado (ex.: botão "Confirmar pagamento" no e-mail do admin): payload JSON +
+ * validade. Quem tem o link pode usá-lo — por isso só vai para os e-mails de admin.
+ */
+export function signLink(data, ttlSeconds) {
+  const body = b64urlJson({ ...data, exp: Math.floor(Date.now() / 1000) + ttlSeconds });
+  return `${body}.${sign(`link.${body}`)}`;
+}
+
+export function verifyLink(token) {
+  const [body, sig] = String(token || '').split('.');
+  if (!body || !sig) return null;
+  const a = Buffer.from(sig);
+  const b = Buffer.from(sign(`link.${body}`));
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const data = JSON.parse(Buffer.from(body.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+    return data.exp && data.exp >= Math.floor(Date.now() / 1000) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Assina um token para o usuário (payload: sub=id, email, name). */
 export function signToken(user) {
   const header = b64urlJson({ alg: 'HS256', typ: 'JWT' });

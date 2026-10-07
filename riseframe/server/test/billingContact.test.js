@@ -119,3 +119,65 @@ test('sem domínio próprio no Resend: só avisa o dono e não exige código do 
   assert.equal(mails[0].from, 'Riseframe <onboarding@resend.dev>');
   assert.deepEqual(mails[0].to, ['dono@riseframe.test']);
 });
+
+test('admin confirma o Pix pelo botão do e-mail (abrir o link sozinho não libera nada)', async () => {
+  config.auth.appUrl = 'https://riseframe.test';
+  const express = (await import('express')).default;
+  const { billingRouter } = await import('../src/routes/billing.js');
+  const app = express();
+  app.use(express.json());
+  app.use('/api', billingRouter);
+  const srv = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
+  const base = `http://127.0.0.1:${srv.address().port}`;
+  const fakeFetch = globalThis.fetch; // Resend falso
+  try {
+    const u = store.createUser({ email: 'pix@gmail.com', password: 'senha12345', name: 'Pix' });
+    mails.length = 0;
+    const claim = await billing.createPixClaim(u, { kind: 'plan', itemId: 'premium', name: 'Ana Lima', email: 'pix@gmail.com', phone: '31998765432' });
+    await new Promise((r) => setTimeout(r, 30));
+    const aviso = mails.find((m) => m.to[0] === 'dono@riseframe.test');
+    const link = aviso.html.match(/href="(https:\/\/riseframe\.test\/api\/billing\/pix\/email-action\?t=[^"]+)"/)[1].replace(/&amp;/g, '&');
+    assert.match(aviso.html, /Confirmar pagamento/);
+    // O admin vê no painel que o aviso saiu.
+    assert.equal(billing.listClaims().pending.find((c) => c.id === claim.id).notice.email[0].ok, true);
+
+    // GET pelo http do Node para falar com o servidor local do teste (o fetch está falso).
+    const { request } = await import('node:http');
+    const fetch = (url) =>
+      new Promise((resolve, reject) => {
+        const req = request(url, (res) => {
+          let body = '';
+          res.on('data', (d) => (body += d));
+          res.on('end', () => resolve({ status: res.statusCode, text: async () => body }));
+        });
+        req.on('error', reject);
+        req.end();
+      });
+    const local = link.replace('https://riseframe.test', base);
+    const page = await fetch(local);
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /Pix a confirmar[\s\S]*Ana Lima[\s\S]*R\$\s?247,90[\s\S]*Confirmar pagamento/);
+    assert.equal(billing.billingStatus(u).plan, null, 'só abrir o link não libera');
+
+    const bad = await fetch(`${base}/api/billing/pix/email-action?t=abc.def`);
+    assert.equal(bad.status, 400);
+
+    const t = new URL(local).searchParams.get('t');
+    const done = await new Promise((resolve) => {
+      const body = `t=${encodeURIComponent(t)}&action=approve`;
+      const req = request(`${base}/api/billing/pix/email-action`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) } }, (res) => {
+        let out = '';
+        res.on('data', (d) => (out += d));
+        res.on('end', () => resolve({ status: res.statusCode, body: out }));
+      });
+      req.end(body);
+    });
+    assert.equal(done.status, 200);
+    assert.match(done.body, /Pagamento confirmado!/);
+    assert.equal(billing.billingStatus(u).plan.id, 'premium');
+    assert.ok(mails.some((m) => m.to[0] === 'pix@gmail.com' && /Plano Premium ativo/.test(m.subject)), 'cliente avisado');
+  } finally {
+    globalThis.fetch = fakeFetch;
+    srv.close();
+  }
+});

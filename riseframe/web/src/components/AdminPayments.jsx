@@ -66,9 +66,16 @@ export default function AdminPayments({ plans }) {
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 15, fontWeight: 700 }}>{cap(c.itemName)} · {brl(c.priceCents)}</div>
                 <div style={{ fontSize: 13, color: C.muted, marginTop: 3, overflowWrap: 'anywhere' }}>
-                  {c.name || 'Sem nome'} · {c.email} · WhatsApp {c.phone}
+                  {c.name || 'Sem nome'} · {c.contactEmail || c.email} · WhatsApp {c.phone}
                 </div>
                 <div style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>Avisou em {when(c.createdAt)}</div>
+                {c.notice?.email?.length > 0 && (
+                  <div style={{ fontSize: 12, marginTop: 2, color: c.notice.email.every((m) => m.ok) ? C.green : '#FCA5B4', overflowWrap: 'anywhere' }}>
+                    {c.notice.email.every((m) => m.ok)
+                      ? '✓ aviso enviado para o seu e-mail'
+                      : `✕ aviso por e-mail não saiu: ${c.notice.email.filter((m) => !m.ok).map((m) => m.error || 'envio de e-mail não configurado').join(' · ')}`}
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button style={btn(C.green, '#062814')} disabled={!!busy} onClick={() => run(c.id, () => adminApproveClaim(c.id), (r) => `Confirmado: ${c.itemName} de ${c.email}.${sentText(r.sent)}`)}>

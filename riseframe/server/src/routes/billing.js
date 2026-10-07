@@ -1,11 +1,12 @@
 import crypto from 'node:crypto';
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { requireAuth } from './auth.js';
 import {
-  adminGrant, approveClaim, billingEnabled, billingStatus, cancelSubscription, createCheckout, createPixClaim, checkContact, sendContactCode, verifyContactCode,
+  adminGrant, approveClaim, billingEnabled, billingStatus, cancelSubscription, createCheckout, createPixClaim, claimSummary, checkContact, sendContactCode, verifyContactCode,
   listClaims, rejectClaim, renewSubscriptions, sendReminders, syncPayments,
 } from '../auth/billing.js';
 import { config } from '../config.js';
+import { verifyLink } from '../auth/tokens.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('billing');
@@ -91,6 +92,73 @@ billingRouter.post('/billing/pix/claim', requireAuth, async (req, res) => {
     res.json(billingStatus(req.user));
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message, errors: err.errors });
+  }
+});
+
+// ── Confirmar o Pix direto pelo botão do e-mail do admin ──
+// GET mostra a página com os dados e os botões; só o POST (clique) confirma ou recusa.
+// Assim, robôs que abrem links de e-mail (antivírus, Gmail) não confirmam nada sozinhos.
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+
+function actionPage(title, body, color = '#FF6B35') {
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>${esc(title)} · Riseframe</title>
+<style>body{margin:0;background:#0b0b0f;color:#f4f4f6;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
+.card{max-width:460px;width:100%;background:#15151c;border:1px solid #2a2a35;border-radius:16px;padding:26px}
+h1{font-size:21px;margin:0 0 14px;color:${color}}p{color:#b8b8c4;line-height:1.55;margin:0 0 10px;font-size:15px}b{color:#f4f4f6}
+.row{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}button,a.btn{flex:1;min-height:48px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;border:none;font-family:inherit;text-decoration:none;display:flex;align-items:center;justify-content:center}
+.ok{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff}.no{background:transparent;border:1px solid #3a3a48;color:#f4f4f6}.btn{background:linear-gradient(135deg,#FF6B35,#7C3AED);color:#fff}</style></head>
+<body><div class="card"><h1>${esc(title)}</h1>${body}</div></body></html>`;
+}
+
+function claimFromLink(req) {
+  const data = verifyLink(req.query.t || req.body?.t);
+  return data?.c ? claimSummary(data.c) : null;
+}
+
+const details = (c) => `<p><b>${esc(c.name || 'Sem nome')}</b><br>${esc(c.email)}${c.account !== c.email ? ` (conta ${esc(c.account)})` : ''}<br>WhatsApp ${esc(c.phone)}</p>
+<p>Pagamento do <b>${esc(c.item)}</b> — <b>${esc(c.price)}</b></p>`;
+
+const decided = (c) => actionPage(
+  c.status === 'approved' ? 'Pagamento já confirmado' : 'Aviso já recusado',
+  `${details(c)}<p>Decidido em ${esc(new Date(c.decidedAt || c.createdAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }))}.</p>`,
+  c.status === 'approved' ? '#22c55e' : '#FCA5B4',
+);
+
+billingRouter.get('/billing/pix/email-action', (req, res) => {
+  res.set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex');
+  const c = claimFromLink(req);
+  if (!c) return res.status(400).send(actionPage('Link inválido ou vencido', '<p>Abra a página de Planos do Riseframe logado como admin para confirmar.</p>', '#FCA5B4'));
+  if (c.status !== 'pending') return res.send(decided(c));
+  const t = esc(req.query.t);
+  res.send(actionPage('Pix a confirmar', `${details(c)}
+<p>Confira no extrato do banco se o Pix de <b>${esc(c.price)}</b> caiu. Ao confirmar, o plano e os créditos são liberados na hora e o cliente é avisado.</p>
+<form method="post" class="row"><input type="hidden" name="t" value="${t}">
+<button class="ok" name="action" value="approve">Confirmar pagamento</button>
+<button class="no" name="action" value="reject">Recusar</button></form>`));
+});
+
+billingRouter.post('/billing/pix/email-action', express.urlencoded({ extended: false }), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const c = claimFromLink(req);
+  if (!c) return res.status(400).send(actionPage('Link inválido ou vencido', '<p>Abra a página de Planos do Riseframe logado como admin para confirmar.</p>', '#FCA5B4'));
+  if (c.status !== 'pending') return res.send(decided(c));
+  const by = { email: 'link do e-mail' };
+  try {
+    if (req.body?.action === 'approve') {
+      const r = await approveClaim(c.id, by);
+      const sent = [r.sent?.email && 'e-mail', r.sent?.whatsapp && 'WhatsApp'].filter(Boolean);
+      log.info(`Pix ${c.id} confirmado pelo link do e-mail`);
+      return res.send(actionPage('Pagamento confirmado!', `${details(c)}<p>O ${esc(c.item)} foi liberado.${sent.length ? ` O cliente foi avisado por ${sent.join(' e ')}.` : ' Avise o cliente pelo WhatsApp.'}</p>`, '#22c55e'));
+    }
+    if (req.body?.action === 'reject') {
+      rejectClaim(c.id, by);
+      log.info(`Pix ${c.id} recusado pelo link do e-mail`);
+      return res.send(actionPage('Aviso recusado', `${details(c)}<p>Nada foi liberado.</p>`, '#FCA5B4'));
+    }
+    res.status(400).send(actionPage('Escolha uma opção', '<p>Volte e clique em Confirmar ou Recusar.</p>', '#FCA5B4'));
+  } catch (err) {
+    res.status(err.status || 500).send(actionPage('Não deu certo', `<p>${esc(err.message)}</p>`, '#FCA5B4'));
   }
 });
 

@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { makeLogger } from '../logger.js';
 import { cloudSave, onCloudReload } from '../cloudSync.js';
 import { findById, findByEmail } from './store.js';
+import { signLink } from './tokens.js';
 import { emailHtml, notifyAdmins, notifyUser, waLink, whatsappReady } from './notify.js';
 import { checkEmail, checkEmailCode, checkPhone, formatPhone, newEmailCode } from './contact.js';
 import { canEmailCustomers, sendMail } from './email.js';
@@ -592,7 +593,9 @@ export async function syncPayments({ userId, billingId } = {}) {
 
 const brl = (cents) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const dateBR = (iso) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-const appUrl = () => (config.auth.appUrl || '').replace(/\/+$/, '');
+// Endereço público do site: APP_URL; senão o 1º domínio de CORS_ORIGIN; senão o do Render.
+const appUrl = () =>
+  (config.auth.appUrl || config.corsOrigin.find((o) => /^https:\/\//.test(o)) || process.env.RENDER_EXTERNAL_URL || '').replace(/\/+$/, '');
 const plansUrl = () => `${appUrl()}/?billing=return`;
 
 function itemOf(kind, itemId) {
@@ -686,17 +689,39 @@ export async function createPixClaim(user, { kind, itemId, phone, name, email })
   db.claims[id] = claim;
   persist();
   log.info(`aviso de Pix ${id}: ${itemLabel(kind, item)} (${brl(item.priceCents)}) de ${user.email}`);
-  const text = `Riseframe: ${claim.name || user.email} avisou que pagou o Pix do ${itemLabel(kind, item)} (${brl(item.priceCents)}). Confira no banco e confirme em ${plansUrl()}`;
+  // Botão no e-mail: abre uma página de confirmação (não confirma só de abrir o link,
+  // porque antivírus e o próprio Gmail visitam links de e-mail sozinhos).
+  const confirmUrl = `${appUrl()}/api/billing/pix/email-action?t=${signLink({ c: id }, 14 * 86400)}`;
+  const text = `Riseframe: ${claim.name || user.email} avisou que pagou o Pix do ${itemLabel(kind, item)} (${brl(item.priceCents)}). Confira no banco e confirme: ${confirmUrl}`;
   notifyAdmins({
     subject: `Pix a confirmar: ${itemLabel(kind, item)} — ${brl(item.priceCents)}`,
     text,
     html: emailHtml('Pix a confirmar', [
       `${claim.name || '(sem nome)'} · ${contact.email}${contact.email !== user.email ? ` (conta ${user.email})` : ''} · WhatsApp ${formatPhone(tel)}`,
       `Avisou que pagou o ${itemLabel(kind, item)} (${brl(item.priceCents)}).`,
-      'Confira no extrato do banco e confirme na página de Planos do Riseframe (logado como admin).',
-    ], { label: 'Abrir pagamentos', url: plansUrl() }),
-  }).catch((err) => log.warn(`aviso aos admins falhou: ${err.message}`));
+      'Confira no extrato do banco se o Pix caiu. Só depois clique em "Confirmar pagamento" — aí o plano e os créditos são liberados e o cliente é avisado.',
+    ], { label: 'Confirmar pagamento', url: confirmUrl }),
+  })
+    .then((r) => {
+      claim.notice = { at: new Date().toISOString(), email: r.email, whatsapp: r.whatsapp };
+      const failed = r.email.filter((m) => !m.ok);
+      if (failed.length) log.warn(`aviso do Pix ${id} não chegou por e-mail: ${failed.map((m) => m.error || 'sem envio configurado').join('; ')}`);
+      persist();
+    })
+    .catch((err) => log.warn(`aviso aos admins falhou: ${err.message}`));
   return claim;
+}
+
+/** Resumo de um aviso para a página de confirmação do e-mail. */
+export function claimSummary(claimId) {
+  load();
+  const c = db.claims[claimId];
+  if (!c) return null;
+  const item = itemOf(c.kind, c.itemId);
+  return {
+    id: c.id, status: c.status, name: c.name, email: c.contactEmail || c.email, account: c.email, phone: formatPhone(c.phone),
+    item: item ? itemLabel(c.kind, item) : c.itemId, price: brl(c.priceCents), createdAt: c.createdAt, decidedAt: c.decidedAt || null,
+  };
 }
 
 /** Lista para o admin: pendentes primeiro, depois os últimos decididos. */
