@@ -1,0 +1,192 @@
+{
+ "ready": true,
+ "filename": "demo-riseframe.mp4",
+ "updatedAt": "2026-10-07T19:18:33.933Z",
+ "stats": {
+  "beforeSeconds": 12,
+  "afterSeconds": 12,
+  "removedSeconds": 0,
+  "features": [
+   "legendas",
+   "cor corrigida",
+   "movimento de câmera",
+   "formato 9:16"
+  ]
+ },
+ "sim": {
+  "duration": 11.64,
+  "width": 1280,
+  "height": 720,
+  "segments": [
+   {
+    "start": 0.4,
+    "end": 2.5,
+    "text": "",
+    "words": [
+     {
+      "start": 0.4,
+      "end": 0.925,
+      "word": "Seu"
+     },
+     {
+      "start": 0.925,
+      "end": 1.712,
+      "word": "vídeo"
+     },
+     {
+      "start": 1.712,
+      "end": 2.5,
+      "word": "bruto"
+     }
+    ]
+   },
+   {
+    "start": 2.7,
+    "end": 4.9,
+    "text": "",
+    "words": [
+     {
+      "start": 2.7,
+      "end": 3.224,
+      "word": "vira"
+     },
+     {
+      "start": 3.224,
+      "end": 4.167,
+      "word": "conteúdo"
+     },
+     {
+      "start": 4.167,
+      "end": 4.9,
+      "word": "pronto"
+     }
+    ]
+   },
+   {
+    "start": 5.1,
+    "end": 7.5,
+    "text": "",
+    "words": [
+     {
+      "start": 5.1,
+      "end": 5.443,
+      "word": "com"
+     },
+     {
+      "start": 5.443,
+      "end": 5.786,
+      "word": "cor"
+     },
+     {
+      "start": 5.786,
+      "end": 6.643,
+      "word": "corrigida"
+     },
+     {
+      "start": 6.643,
+      "end": 6.814,
+      "word": "e"
+     },
+     {
+      "start": 6.814,
+      "end": 7.5,
+      "word": "legenda"
+     }
+    ]
+   },
+   {
+    "start": 7.7,
+    "end": 9.9,
+    "text": "",
+    "words": [
+     {
+      "start": 7.7,
+      "end": 8.088,
+      "word": "no"
+     },
+     {
+      "start": 8.088,
+      "end": 9.124,
+      "word": "formato"
+     },
+     {
+      "start": 9.124,
+      "end": 9.9,
+      "word": "certo"
+     }
+    ]
+   },
+   {
+    "start": 10.1,
+    "end": 11.4,
+    "text": "",
+    "words": [
+     {
+      "start": 10.1,
+      "end": 10.425,
+      "word": "em"
+     },
+     {
+      "start": 10.425,
+      "end": 11.4,
+      "word": "minutos."
+     }
+    ]
+   }
+  ],
+  "keep": [
+   {
+    "start": 0,
+    "end": 11.64
+   }
+  ],
+  "broll": [],
+  "brollLayout": "fullscreen",
+  "zoomMoments": null,
+  "options": {
+   "captions": true,
+   "captionTemplate": "clean",
+   "captionColor": "white",
+   "captionFont": "auto",
+   "captionAnimation": "auto",
+   "captionBackground": "shadow",
+   "captionPosition": "auto",
+   "captionMode": "auto",
+   "captionScale": 1.35,
+   "captionHighlight": false,
+   "videoMotion": "ken-burns",
+   "motionIntensity": "medio",
+   "colorLook": "auto",
+   "colorAdjust": {
+    "brightness": 0,
+    "contrast": 0,
+    "saturation": 0,
+    "temperature": 0
+   },
+   "aspect": "9:16",
+   "cutSilence": false,
+   "autoClean": false,
+   "broll": false,
+   "brollLayout": "fullscreen"
+  },
+  "color": {
+   "look": "auto",
+   "ai": {
+    "whiteBalance": {
+     "rGain": 1,
+     "gGain": 1,
+     "bGain": 1
+    },
+    "contrast": 1.02,
+    "saturation": 1.12,
+    "gamma": 1,
+    "look": "natural"
+   }
+  },
+  "reframe": {
+   "tracked": false,
+   "axis": null,
+   "source": "center"
+  }
+ }
+}

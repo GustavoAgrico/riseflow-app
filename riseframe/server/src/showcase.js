@@ -76,7 +76,7 @@ function statsFrom(job, beforeMeta, afterMeta) {
   if (r.autoClean?.removed) features.push(`${r.autoClean.removed} muletas removidas`);
   if (r.captions?.segments) features.push('legendas');
   if (o.colorLook && o.colorLook !== 'none') features.push('cor corrigida');
-  if (o.videoMotion && o.videoMotion !== 'none') features.push('zoom nos momentos-chave');
+  if (o.videoMotion && o.videoMotion !== 'none') features.push(o.videoMotion === 'dynamic' ? 'zoom nos momentos-chave' : 'movimento de câmera');
   if (o.broll) features.push('imagens de apoio (B-roll)');
   if (r.output?.aspect && r.output.aspect !== 'original') features.push(`formato ${r.output.aspect}`);
   return {

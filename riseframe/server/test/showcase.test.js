@@ -3,12 +3,20 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-show-'));
 const { buildShowcase, showcaseInfo } = await import('../src/showcase.js');
 
-test('sem demonstração: a página inicial mostra a ilustração (info = null)', () => {
-  assert.equal(showcaseInfo(), null);
+test('sem demonstração própria: usa a que vem com o site (web/dist/demo) ou a ilustração', () => {
+  const bundled = fs.existsSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'dist', 'demo', 'showcase.json'));
+  const info = showcaseInfo();
+  if (bundled) {
+    assert.equal(info.before, '/demo/antes.mp4');
+    assert.equal(info.bundled, true);
+  } else {
+    assert.equal(info, null);
+  }
 });
 
 test('demonstração hospedada fora (SHOWCASE_*_URL) tem prioridade', () => {
