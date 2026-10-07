@@ -44,12 +44,42 @@ let resolver = {
 /** Só para testes: troca as consultas de DNS. */
 export function __setDnsResolver(r) {
   resolver = r;
+  dnsHealth = { ok: null, at: 0 };
 }
 
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'ETIMEOUT' })), ms))]);
 
-/** O domínio recebe e-mail? true/false; null quando o DNS não respondeu (não bloqueia). */
+// Provedores conhecidos: recebem e-mail com certeza (não depende de consultar o DNS).
+const KNOWN_PROVIDERS = new Set([
+  'gmail.com', 'googlemail.com', 'hotmail.com', 'hotmail.com.br', 'outlook.com', 'outlook.com.br', 'live.com', 'msn.com',
+  'yahoo.com', 'yahoo.com.br', 'icloud.com', 'me.com', 'mac.com', 'uol.com.br', 'bol.com.br', 'terra.com.br', 'ig.com.br',
+  'globo.com', 'globomail.com', 'r7.com', 'proton.me', 'protonmail.com', 'aol.com', 'zoho.com', 'gmx.com', 'yandex.com',
+]);
+
+// O DNS deste servidor funciona? (testa num domínio que certamente tem MX; guarda 10 min)
+let dnsHealth = { ok: null, at: 0 };
+async function dnsWorks() {
+  if (dnsHealth.ok !== null && Date.now() - dnsHealth.at < 10 * 60_000) return dnsHealth.ok;
+  let ok = false;
+  try {
+    ok = (await withTimeout(resolver.mx('gmail.com'), 4000)).length > 0;
+  } catch {
+    ok = false;
+  }
+  dnsHealth = { ok, at: Date.now() };
+  return ok;
+}
+
+/** O domínio recebe e-mail? true/false; null quando não dá para saber (não bloqueia). */
 async function domainReceivesMail(domain) {
+  if (KNOWN_PROVIDERS.has(domain)) return true;
+  const verdict = await lookupMail(domain);
+  // Só recusa se o DNS do servidor estiver funcionando (senão bloquearia todo mundo).
+  if (verdict === false && !(await dnsWorks())) return null;
+  return verdict;
+}
+
+async function lookupMail(domain) {
   try {
     const mx = await withTimeout(resolver.mx(domain), 4000);
     // "MX nulo" (RFC 7505): o domínio declara que NÃO recebe e-mail.

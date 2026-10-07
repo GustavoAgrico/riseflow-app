@@ -46,6 +46,12 @@ jobs:
             target: --mac dmg --arm64
             files: |
               riseframe/dist/builds/*.dmg
+          # Mac com processador Intel: compila numa máquina Intel (o ffmpeg embutido é baixado
+          # para a arquitetura da máquina do build).
+          - os: macos-15-intel
+            target: --mac dmg --x64
+            files: |
+              riseframe/dist/builds/*.dmg
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -87,7 +93,8 @@ jobs:
             Se o Windows avisar, clique em **Mais informações → Executar assim mesmo**.
             Sem instalar: `Riseframe-Portatil-${{ steps.ver.outputs.version }}.exe`.
 
-            **Mac (Apple Silicon M1/M2/M3/M4):** baixe o `.dmg`, arraste o Riseframe para Aplicativos.
+            **Mac:** chip M1/M2/M3/M4 → `Riseframe-${{ steps.ver.outputs.version }}-arm64.dmg` · processador Intel → `Riseframe-${{ steps.ver.outputs.version }}-x64.dmg`
+            (Menu  → Sobre Este Mac mostra "Chip Apple" ou "Processador Intel"). Abra o `.dmg` e arraste o Riseframe para Aplicativos.
             Na 1ª vez, se o Mac disser que o app "está danificado" ou "não pode ser aberto", abra o Terminal e rode:
             `xattr -cr /Applications/Riseframe.app`
           files: ${{ matrix.files }}

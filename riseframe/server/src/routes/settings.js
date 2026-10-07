@@ -26,6 +26,8 @@ function payload(userId, email) {
       aiFromServer: serverAnthropic,
       transcribeProvider: config.transcribe.provider,
       transcribeReady: capabilities().transcribeReady,
+      // Teste da chave do provedor (ao ligar o servidor ou na última falha).
+      transcribeKey: config.transcribe.keyCheck || null,
       whisperReady: config.transcribe.whisperReady,
       // Openverse (Creative Commons) não exige chave: o B-roll sempre tem uma fonte.
       openverse: true,

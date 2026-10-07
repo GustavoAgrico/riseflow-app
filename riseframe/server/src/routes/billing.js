@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import express, { Router } from 'express';
-import { requireAuth } from './auth.js';
+import { requireAuth, requireVerified } from './auth.js';
 import {
   adminGrant, approveClaim, billingEnabled, billingStatus, cancelSubscription, createCheckout, createPixClaim, claimSummary, resendClaimNotice, checkContact, sendContactCode, verifyContactCode,
   listClaims, rejectClaim, renewSubscriptions, sendReminders, syncPayments,
@@ -28,7 +28,7 @@ billingRouter.get('/billing', requireAuth, async (req, res) => {
 });
 
 // POST /api/billing/checkout { kind: 'plan'|'pack', itemId, name, cpf, phone } → { url } do pagamento
-billingRouter.post('/billing/checkout', requireAuth, async (req, res) => {
+billingRouter.post('/billing/checkout', requireAuth, requireVerified, async (req, res) => {
   if (!billingEnabled()) return res.status(400).json({ error: 'pagamentos não estão configurados' });
   if (billingStatus(req.user).admin) return res.status(400).json({ error: 'conta de administrador já tem uso ilimitado' });
 
@@ -84,7 +84,7 @@ billingRouter.post('/billing/contact/verify', requireAuth, (req, res) => {
 });
 
 // POST /api/billing/pix/claim { kind, itemId, phone, name, email } → "Já paguei" (Pix pelo link do banco)
-billingRouter.post('/billing/pix/claim', requireAuth, async (req, res) => {
+billingRouter.post('/billing/pix/claim', requireAuth, requireVerified, async (req, res) => {
   if (!billingEnabled() || config.billing.payment !== 'pix-links') return res.status(400).json({ error: 'pagamento por Pix não está ativo' });
   try {
     const { kind, itemId, phone, name, email } = req.body || {};

@@ -47,7 +47,7 @@ export function findByEmail(email) {
 }
 
 /** Cria um usuário. Lança se o email já existe. Retorna o usuário público. */
-export function createUser({ email, password, name }) {
+export function createUser({ email, password, name, signupIp }) {
   load();
   const e = norm(email);
   if (users.some((u) => u.email === e)) {
@@ -63,11 +63,32 @@ export function createUser({ email, password, name }) {
     salt,
     hash,
     plan: 'basic',
+    // Conta nova por e-mail/senha começa NÃO confirmada (código enviado por e-mail).
+    verified: false,
+    signupIp: signupIp || null,
     createdAt: new Date().toISOString(),
   };
   users.push(user);
   persist();
   return publicUser(user);
+}
+
+/** Marca o e-mail da conta como confirmado. */
+export function markVerified(id) {
+  const u = load().find((x) => x.id === id);
+  if (!u) return null;
+  if (u.verified !== true) {
+    u.verified = true;
+    u.verifiedAt = new Date().toISOString();
+    persist();
+  }
+  return publicUser(u);
+}
+
+/** Quantas contas foram criadas deste IP desde `sinceMs` (anti-contas em massa). */
+export function signupsFromIp(ip, sinceMs) {
+  if (!ip) return 0;
+  return load().filter((u) => u.signupIp === ip && Date.parse(u.createdAt) >= sinceMs).length;
 }
 
 /**
@@ -79,8 +100,10 @@ export function findOrCreateGoogleUser({ email, name, sub }) {
   const e = norm(email);
   let user = users.find((u) => u.email === e);
   if (user) {
-    if (sub && !user.google) {
-      user.google = sub;
+    // O Google já confirmou que o e-mail é dessa pessoa.
+    if ((sub && !user.google) || user.verified === false) {
+      if (sub && !user.google) user.google = sub;
+      user.verified = true;
       persist();
     }
     return publicUser(user);
@@ -90,6 +113,7 @@ export function findOrCreateGoogleUser({ email, name, sub }) {
     email: e,
     name: String(name || '').trim() || e.split('@')[0],
     google: sub || null,
+    verified: true, // e-mail confirmado pelo Google
     // Sem senha local: só pode entrar via Google até definir uma senha.
     salt: null,
     hash: null,
@@ -126,5 +150,6 @@ export function verifyCredentials(email, password) {
 
 /** Só os campos seguros para enviar ao cliente. */
 export function publicUser(u) {
-  return { id: u.id, email: u.email, name: u.name, plan: u.plan || 'basic', createdAt: u.createdAt };
+  // Contas antigas (sem o campo) contam como confirmadas.
+  return { id: u.id, email: u.email, name: u.name, plan: u.plan || 'basic', createdAt: u.createdAt, verified: u.verified !== false };
 }

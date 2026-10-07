@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { nanoid } from 'nanoid';
 import { config } from '../config.js';
 import { queue } from '../queue.js';
-import { requireAuth } from './auth.js';
+import { requireAuth, requireVerified } from './auth.js';
 import { getSettings } from '../auth/settings.js';
 import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod, trialCovers, useFreeEdit, refundFreeEdit } from '../auth/billing.js';
 import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../../shared/credits.js';
@@ -409,7 +409,7 @@ function parseOptions(raw) {
 }
 
 // POST /api/jobs  (multipart: file + options) → pipeline automático completo
-jobsRouter.post('/jobs', requireAuth, requireCredits('auto'), checkUploadSize, upload.single('file'), (req, res) => {
+jobsRouter.post('/jobs', requireAuth, requireVerified, requireCredits('auto'), checkUploadSize, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'auto', {
     filename: req.file.originalname,
@@ -420,7 +420,7 @@ jobsRouter.post('/jobs', requireAuth, requireCredits('auto'), checkUploadSize, u
 
 // POST /api/transcribe  (multipart: file) → transcreve e para; o upload fica salvo
 // para depois ser reusado por /api/render com a transcrição editada.
-jobsRouter.post('/transcribe', requireAuth, requireCredits('transcribe'), checkUploadSize, upload.single('file'), (req, res) => {
+jobsRouter.post('/transcribe', requireAuth, requireVerified, requireCredits('transcribe'), checkUploadSize, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'transcribe', {
     filename: req.file.originalname,
@@ -430,7 +430,7 @@ jobsRouter.post('/transcribe', requireAuth, requireCredits('transcribe'), checkU
 });
 
 // POST /api/clips  (multipart: file) → gera vários clipes curtos do vídeo longo
-jobsRouter.post('/clips', requireAuth, requireCredits('clips'), checkUploadSize, upload.single('file'), (req, res) => {
+jobsRouter.post('/clips', requireAuth, requireVerified, requireCredits('clips'), checkUploadSize, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'clips', {
     filename: req.file.originalname,
@@ -441,7 +441,7 @@ jobsRouter.post('/clips', requireAuth, requireCredits('clips'), checkUploadSize,
 
 // POST /api/render  (JSON: sourceId + editedTranscript + options) → aplica a edição
 // por transcrição ao vídeo já enviado e roda o restante do pipeline.
-jobsRouter.post('/render', requireAuth, (req, res) => {
+jobsRouter.post('/render', requireAuth, requireVerified, (req, res) => {
   const { sourceId, editedTranscript } = req.body || {};
   if (!sourceId) return res.status(400).json({ error: 'sourceId ausente' });
   const source = queue.get(sourceId);
@@ -463,7 +463,7 @@ jobsRouter.post('/render', requireAuth, (req, res) => {
 // POST /api/broll/plan  (JSON: sourceId + editedTranscript + options) → devolve os
 // momentos de B-roll planejados COM candidatos (miniaturas) para o usuário revisar
 // e trocar antes de renderizar. Não baixa nem renderiza nada.
-jobsRouter.post('/broll/plan', requireAuth, async (req, res) => {
+jobsRouter.post('/broll/plan', requireAuth, requireVerified, async (req, res) => {
   try {
     const { sourceId, editedTranscript } = req.body || {};
     const source = sourceId && queue.get(sourceId);
@@ -502,7 +502,7 @@ jobsRouter.post('/broll/plan', requireAuth, async (req, res) => {
 
 // POST /api/media  (multipart: file) → sobe uma mídia própria (imagem/vídeo/música)
 // para usar na timeline. Devolve { id, kind, filename, durationSec }.
-jobsRouter.post('/media', requireAuth, uploadMedia.single('file'), async (req, res) => {
+jobsRouter.post('/media', requireAuth, requireVerified, uploadMedia.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   const ext = path.extname(req.file.filename).toLowerCase();
   const kind = mediaKind(ext);

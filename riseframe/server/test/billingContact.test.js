@@ -208,3 +208,13 @@ test('"Já paguei" de novo reenvia o aviso que não tinha saído (ex.: e-mail ai
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(mails.filter((m) => /Pix a confirmar/.test(m.subject)).length, 1);
 });
+
+test('DNS do servidor fora do ar: não recusa e-mails (só os conhecidos passam direto)', async () => {
+  contact.__setDnsResolver({
+    mx: async () => { throw Object.assign(new Error('x'), { code: 'ENOTFOUND' }); },
+    a: async () => { throw Object.assign(new Error('x'), { code: 'ENOTFOUND' }); },
+  });
+  assert.equal((await contact.checkEmail('ana@gmail.com')).ok, true);
+  assert.equal((await contact.checkEmail('ana@empresa-qualquer.com.br')).ok, true, 'sem DNS, não dá para afirmar que é falso');
+  assert.equal((await contact.checkEmail('x@mailinator.com')).ok, false, 'descartável continua bloqueado');
+});
