@@ -1,13 +1,14 @@
-# Riseframe — deploy num servidor (ex.: Oracle Cloud Always Free).
+# Riseframe — deploy num servidor próprio (VPS da Hostinger, Oracle, etc.).
 # Sobe DOIS contêineres:
-#   • app   → o Riseframe (frontend + API + FFmpeg + Whisper) na porta interna 4000
-#   • caddy → proxy reverso com HTTPS AUTOMÁTICO e grátis (Let's Encrypt)
+#   • app   → o Riseframe (site + API + FFmpeg) na porta interna 4000
+#   • caddy → proxy com HTTPS AUTOMÁTICO e grátis (Let's Encrypt)
 #
 # Uso (dentro de riseframe/deploy):
-#   cp .env.example .env    # e preencha SITE_ADDRESS + AUTH_SECRET
+#   cp .env.example .env    # e preencha (ou rode ./install.sh, que faz tudo)
 #   docker compose up -d --build
 #
-# Os dados (usuários, uploads, renders) ficam num volume Docker persistente.
+# TODAS as variáveis do .env vão para o app (env_file) — chave nova no .env não precisa
+# mexer aqui. Os dados (contas, planos, vídeos) ficam no volume persistente riseframe_data.
 
 services:
   app:
@@ -15,57 +16,18 @@ services:
       context: ..              # a pasta riseframe/ (onde está o Dockerfile)
       dockerfile: Dockerfile
       args:
-        WHISPER_MODEL: ${WHISPER_MODEL:-base}   # tiny|base|small|medium (mais = melhor/mais pesado)
+        WHISPER_MODEL: ${WHISPER_MODEL:-base}
     restart: unless-stopped
-    expose:
-      - "4000"                 # só interno; quem publica na internet é o Caddy
+    env_file: .env
     environment:
       PORT: 4000
-      # frontend e API na MESMA origem (o Caddy serve tudo) → CORS liberado p/ o próprio site
+      # site e API na MESMA origem (o Caddy serve tudo)
       CORS_ORIGIN: "https://${SITE_ADDRESS}"
-      APP_URL: "https://${SITE_ADDRESS}"        # usado nos links de recuperação de senha
-      AUTH_SECRET: ${AUTH_SECRET}               # OBRIGATÓRIO: mantém logins entre reinícios
-      OUTPUT_TTL_HOURS: ${OUTPUT_TTL_HOURS:-24}
-      MAX_UPLOAD_GB: ${MAX_UPLOAD_GB:-0}
-      # ── Transcrição (legendas) ──
-      TRANSCRIBE_PROVIDER: ${TRANSCRIBE_PROVIDER:-whisper-local}
-      WHISPER_MODEL: ${WHISPER_MODEL:-base}
-      DEEPGRAM_LANGUAGE: ${DEEPGRAM_LANGUAGE:-}
-      # ── IA (análise, B-roll, correção de fala) ──
-      ANALYZE_PROVIDER: ${ANALYZE_PROVIDER:-heuristic}
-      ANALYZE_MODEL: ${ANALYZE_MODEL:-}
-      ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
-      # ── Velocidade do FFmpeg (vazio = padrão rápido) ──
-      FFMPEG_PRESET: ${FFMPEG_PRESET:-}
-      FFMPEG_FINAL_PRESET: ${FFMPEG_FINAL_PRESET:-}
-      # ── Chaves opcionais (deixe em branco se não usar) ──
-      PEXELS_API_KEY: ${PEXELS_API_KEY:-}
-      GOOGLE_CSE_KEY: ${GOOGLE_CSE_KEY:-}
-      GOOGLE_CSE_ID: ${GOOGLE_CSE_ID:-}
-      GOOGLE_IMAGES_UNRESTRICTED: ${GOOGLE_IMAGES_UNRESTRICTED:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ASSEMBLYAI_API_KEY: ${ASSEMBLYAI_API_KEY:-}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      # ── Planos e créditos (AbacatePay). Sem a chave, não há cobrança. ──
-      BILLING_MODE: ${BILLING_MODE:-on}
-      ABACATE_PAY_API_KEY: ${ABACATE_PAY_API_KEY:-}
-      ABACATE_WEBHOOK_SECRET: ${ABACATE_WEBHOOK_SECRET:-}
-      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
-      BILLING_METHODS: ${BILLING_METHODS:-PIX,CARD}
-      BILLING_SIGNUP_CREDITS: ${BILLING_SIGNUP_CREDITS:-60}
-      BILLING_PERIOD_DAYS: ${BILLING_PERIOD_DAYS:-30}
-      BILLING_PLANS: ${BILLING_PLANS:-}       # JSON; vazio = Básico/Pro/Premium padrão
-      CREDIT_PACKS: ${CREDIT_PACKS:-}         # JSON; vazio = recargas padrão
-      CREDIT_COSTS: ${CREDIT_COSTS:-}         # JSON; vazio = custos padrão
+      APP_URL: "https://${SITE_ADDRESS}"
+    expose:
+      - "4000"                 # só interno; quem publica na internet é o Caddy
     volumes:
-      - riseframe_data:/app/data   # usuários, uploads e renders persistentes
+      - riseframe_data:/app/data   # contas, planos, uploads, renders e demo — persistentes
 
   caddy:
     image: caddy:2
@@ -77,9 +39,10 @@ services:
       - "443:443"
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS}
+      SITE_ALIASES: ${SITE_ALIASES:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data           # guarda os certificados TLS (não apagar!)
+      - caddy_data:/data           # certificados HTTPS (não apagar!)
       - caddy_config:/config
 
 volumes:

@@ -107,6 +107,20 @@ export async function getPublicInfo() {
 export const adminShowcase = () => billingCall('/admin/showcase');
 export const adminSetShowcase = (jobId) => billingCall('/admin/showcase', 'POST', { jobId });
 export const adminRemoveShowcase = () => billingCall('/admin/showcase', 'DELETE');
+/** Baixa um arquivo protegido (admin) e salva com o nome dado. */
+async function adminDownload(path, filename) {
+  const r = await fetch(`${BASE}${path}`, { headers: authHeaders() });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `erro ${r.status}`);
+  const url = URL.createObjectURL(await r.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+/** Backup das contas, planos e configurações (para mudar de servidor). */
+export const adminDownloadBackup = () => adminDownload('/admin/backup', `riseframe-backup-${new Date().toISOString().slice(0, 10)}.zip`);
+
 /** Baixa o pacote .zip da demo (para deixá-la permanente no site). */
 export async function adminDownloadShowcase() {
   const r = await fetch(`${BASE}/admin/showcase/package`, { headers: authHeaders() });
