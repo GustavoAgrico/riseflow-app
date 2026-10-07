@@ -35,6 +35,10 @@ function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
 
 const norm = (email) => String(email || '').trim().toLowerCase();
 
+export function findById(id) {
+  return load().find((u) => u.id === id) || null;
+}
+
 export function findByEmail(email) {
   return load().find((u) => u.email === norm(email)) || null;
 }

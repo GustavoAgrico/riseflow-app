@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v65';
+export const APP_VERSION = 'v66';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -140,6 +140,19 @@ export const config = {
       { id: 'recarga-300', name: 'Recarga 300', credits: 300, priceCents: 3990 },
       { id: 'recarga-1000', name: 'Recarga 1000', credits: 1000, priceCents: 11990 },
     ]),
+    // Forma de cobrança: 'pix-links' (padrão) = links de Pix do banco, um por plano; o
+    // cliente paga, avisa no site ("Já paguei") e o admin confirma. 'abacatepay' = API.
+    payment: String(process.env.BILLING_PAYMENT || 'pix-links').toLowerCase(),
+    // Links de Pix do banco por id de plano/recarga. Sobrescreva com BILLING_PIX_LINKS='{"pro":"https://..."}'.
+    pixLinks: json(process.env.BILLING_PIX_LINKS, {
+      basico: 'https://pagamentospix.apps.bb.com.br/m/#/cm49eyJvcHIiOiJQSVhRUkMiLCJpZCI6IjdlZWIzMTJiLWMwZGMtNDE5Yi04NzE4LWQ5NDIzYjE0Mzc3YiJ9',
+      pro: 'https://pagamentospix.apps.bb.com.br/m/#/cm49eyJvcHIiOiJQSVhRUkMiLCJpZCI6ImVmMWUxYmQzLThiNDYtNGRkMy04OTMwLTRkNGQ0OGM4ZjdlYSJ9',
+      premium: 'https://pagamentospix.apps.bb.com.br/m/#/cm49eyJvcHIiOiJQSVhRUkMiLCJpZCI6ImRjZDNlZjQzLTkzYmQtNDE3My05MmE0LTc2YTNjNmE4OTdlNiJ9',
+    }),
+    // Lembretes de vencimento: quantos dias antes (0 = no dia em que vence).
+    reminderDays: json(process.env.BILLING_REMINDER_DAYS, [3, 1, 0]),
+    // WhatsApp do admin para avisos de pagamento (opcional, com DDD).
+    adminWhatsapp: process.env.ADMIN_WHATSAPP || '',
     // Renovação automática mensal (assinatura na AbacatePay, API v2). BILLING_AUTO_RENEW=off
     // esconde a opção. Métodos da assinatura: BILLING_SUBSCRIPTION_METHODS (padrão cartão).
     autoRenew: String(process.env.BILLING_AUTO_RENEW || 'on').toLowerCase() !== 'off',
@@ -152,6 +165,13 @@ export const config = {
       .split(',')
       .map((s) => s.trim().toUpperCase())
       .filter(Boolean),
+    // Envio de WhatsApp pelo servidor do RiseFlow (Baileys): POST {url}/send/text.
+    whatsapp: {
+      url: (process.env.WHATSAPP_API_URL || '').replace(/\/+$/, ''),
+      key: process.env.WHATSAPP_API_KEY || '',
+      // Conta (user id do RiseFlow) cujo WhatsApp conectado envia as mensagens.
+      sessionUserId: process.env.WHATSAPP_SESSION_USER_ID || '',
+    },
     adminEmails: (process.env.ADMIN_EMAILS || '')
       .split(',')
       .map((s) => s.trim().toLowerCase())
@@ -203,6 +223,7 @@ export function capabilities() {
     googleClientId: config.auth.googleClientId,
     // Recuperação de senha só aparece se houver SMTP configurado.
     emailReady: Boolean(config.auth.smtp.host && config.auth.smtp.user && config.auth.smtp.pass),
-    billingEnabled: Boolean(config.billing.abacateKey),
+    billingEnabled: config.billing.payment === 'pix-links' ? Object.keys(config.billing.pixLinks).length > 0 : Boolean(config.billing.abacateKey),
+    whatsappReady: Boolean(config.billing.whatsapp.url && config.billing.whatsapp.key),
   };
 }

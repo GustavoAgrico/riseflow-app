@@ -1,7 +1,10 @@
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import { requireAuth } from './auth.js';
-import { billingEnabled, billingStatus, cancelSubscription, createCheckout, renewSubscriptions, syncPayments } from '../auth/billing.js';
+import {
+  adminGrant, approveClaim, billingEnabled, billingStatus, cancelSubscription, createCheckout, createPixClaim,
+  listClaims, rejectClaim, renewSubscriptions, sendReminders, syncPayments,
+} from '../auth/billing.js';
 import { config } from '../config.js';
 import { makeLogger } from '../logger.js';
 
@@ -50,6 +53,65 @@ billingRouter.post('/billing/checkout', requireAuth, async (req, res) => {
     if (err.status === 400) return res.status(400).json({ error: err.message });
     log.error(`checkout: ${err.message}`);
     res.status(502).json({ error: `não foi possível gerar o pagamento: ${err.message}` });
+  }
+});
+
+// POST /api/billing/pix/claim { kind, itemId, phone, name } → "Já paguei" (Pix pelo link do banco)
+billingRouter.post('/billing/pix/claim', requireAuth, async (req, res) => {
+  if (!billingEnabled() || config.billing.payment !== 'pix-links') return res.status(400).json({ error: 'pagamento por Pix não está ativo' });
+  try {
+    const { kind, itemId, phone, name } = req.body || {};
+    await createPixClaim(req.user, { kind: String(kind || ''), itemId: String(itemId || ''), phone, name: String(name || '').trim() });
+    res.json(billingStatus(req.user));
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// ── Admin: confirmar os Pix avisados, liberar planos na mão, disparar lembretes ──
+function requireAdmin(req, res, next) {
+  if (!billingStatus(req.user).admin) return res.status(403).json({ error: 'só para administradores' });
+  next();
+}
+
+billingRouter.get('/billing/admin/claims', requireAuth, requireAdmin, (_req, res) => {
+  res.json(listClaims());
+});
+
+billingRouter.post('/billing/admin/claims/:id/approve', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const r = await approveClaim(req.params.id, req.user);
+    res.json({ ...listClaims(), sent: r.sent });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+billingRouter.post('/billing/admin/claims/:id/reject', requireAuth, requireAdmin, (req, res) => {
+  try {
+    rejectClaim(req.params.id, req.user);
+    res.json(listClaims());
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// { email, kind: 'plan'|'pack', itemId } → libera direto (pagamento recebido fora do site)
+billingRouter.post('/billing/admin/grant', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { email, kind, itemId } = req.body || {};
+    res.json(await adminGrant({ email: String(email || ''), kind: kind === 'pack' ? 'pack' : 'plan', itemId: String(itemId || '') }, req.user));
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// Dispara agora os lembretes de vencimento pendentes (normalmente rodam de hora em hora).
+billingRouter.post('/billing/admin/reminders', requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    res.json({ sent: await sendReminders({ force: true }) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
