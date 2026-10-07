@@ -113,6 +113,10 @@ class JobQueue extends EventEmitter {
       filename: job.filename,
       inputPath: job.inputPath,
       report: job.report,
+      // Opções da edição (sem chaves de API) e a transcrição editada: a demo/simulador
+      // e a reabertura na timeline precisam delas depois de um reinício do servidor.
+      options: Object.fromEntries(Object.entries(job.options || {}).filter(([k]) => !/key|token|secret/i.test(k))),
+      editedTranscript: job.editedTranscript || null,
       createdAt: job.createdAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
@@ -145,8 +149,8 @@ class JobQueue extends EventEmitter {
           ...snap,
           workDir: workDirFor(snap.id),
           outputsDir: config.paths.outputs,
-          options: null,
-          editedTranscript: null,
+          options: snap.options || null,
+          editedTranscript: snap.editedTranscript || null,
           error: null,
         });
         restored++;
