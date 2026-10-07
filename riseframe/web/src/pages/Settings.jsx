@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { C, gradientText, glass, FONT_DISPLAY } from '../theme.js';
 import { Spinner } from '../components/ui.jsx';
-import { adminCloudSync, adminDownloadBackup, getSettings } from '../api.js';
+import { adminCloudSync, adminDownloadBackup, adminTestEmail, getSettings } from '../api.js';
 import { useAuth } from '../AuthContext.jsx';
 import { openPlans } from '../components/CostLine.jsx';
 
@@ -46,6 +46,17 @@ export default function Settings({ onNewVideo, onLogout }) {
   const [error, setError] = useState('');
   const [cloudBusy, setCloudBusy] = useState(false);
   const [cloudResult, setCloudResult] = useState(null);
+  const [mailBusy, setMailBusy] = useState(false);
+  const [mailResult, setMailResult] = useState(null);
+
+  const testEmail = () => {
+    setMailBusy(true);
+    setMailResult(null);
+    adminTestEmail()
+      .then((d) => setMailResult(d.results))
+      .catch((e) => setMailResult({ erro: e.message }))
+      .finally(() => setMailBusy(false));
+  };
 
   const syncCloud = () => {
     setCloudBusy(true);
@@ -114,6 +125,19 @@ export default function Settings({ onNewVideo, onLogout }) {
               <Row label={billing.payment === 'pix-links' ? 'Pagamentos · Pix (links do banco)' : 'Pagamentos · AbacatePay'}
                 hint={billing.payment === 'pix-links' ? 'BILLING_PIX_LINKS — você confirma cada Pix na página de Planos' : 'ABACATE_PAY_API_KEY — sem ela, ninguém consegue assinar (os limites continuam valendo)'}
                 value={<StatusDot on={billing.enabled} offLabel="Desligado" />} />
+              <Row label="E-mail · avisos de Pix e lembretes"
+                hint={!status.email?.ready ? 'RESEND_API_KEY — sem isso você não recebe o aviso de Pix por e-mail' : status.email.customers ? 'Avisa você e os clientes (código de confirmação, plano liberado, vencimento)' : 'Só avisa você — para mandar aos clientes, verifique o domínio no Resend e defina EMAIL_FROM'}
+                value={<StatusDot on={Boolean(status.email?.ready)} offLabel="Desligado" />} />
+              {status.email?.ready && (
+                <div style={{ padding: '10px 0 4px', fontSize: 12.5, color: C.muted, lineHeight: 1.6 }}>
+                  <button onClick={testEmail} disabled={mailBusy} style={{ ...btn, minHeight: 36, fontSize: 13 }}>
+                    {mailBusy ? 'Enviando…' : 'Enviar e-mail de teste para mim'}
+                  </button>
+                  {mailResult && Object.entries(mailResult).map(([to, r]) => (
+                    <div key={to} style={{ marginTop: 6, color: /erro/.test(String(r)) || to === 'erro' ? '#FCA5B4' : C.muted }}>{to}: {String(r)}</div>
+                  ))}
+                </div>
+              )}
               <Row label="Dados salvos na nuvem · Supabase"
                 hint={status.cloud?.enabled ? (status.cloud.ok ? 'Contas, planos e Pix sobrevivem a reinícios e atualizações' : 'Falhou ao salvar — veja o log do servidor') : 'SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY — sem isso, no Render grátis tudo some a cada reinício'}
                 value={<StatusDot on={Boolean(status.cloud?.enabled && status.cloud.ok)} offLabel={status.cloud?.enabled ? 'Erro' : 'Desligado'} />} />

@@ -85,8 +85,15 @@ export const startCheckout = (info) => billingCall('/billing/checkout', 'POST', 
 export const syncBilling = () => billingCall('/billing/sync', 'POST');
 /** Desliga a renovação automática (o plano vale até o fim do período já pago). */
 export const cancelSubscription = () => billingCall('/billing/subscription/cancel', 'POST');
-/** "Já paguei" do Pix pelo link do banco: { kind, itemId, phone, name } → status atualizado. */
+/** "Já paguei" do Pix pelo link do banco: { kind, itemId, phone, name, email } → status atualizado. */
 export const claimPix = (info) => billingCall('/billing/pix/claim', 'POST', info);
+/** Confere nome, e-mail e WhatsApp do pagamento (campo a campo). */
+export const checkContact = (info) => billingCall('/billing/contact/check', 'POST', info);
+/** Manda / confere o código de confirmação do e-mail. */
+export const sendContactCode = (email) => billingCall('/billing/contact/code', 'POST', { email });
+export const verifyContactCode = (email, code) => billingCall('/billing/contact/verify', 'POST', { email, code });
+/** Admin: manda um e-mail de teste para os e-mails de admin. */
+export const adminTestEmail = () => billingCall('/settings/email/test', 'POST');
 // Admin: avisos de Pix para confirmar, liberação manual e lembretes.
 export const adminClaims = () => billingCall('/billing/admin/claims');
 export const adminApproveClaim = (id) => billingCall(`/billing/admin/claims/${encodeURIComponent(id)}/approve`, 'POST');

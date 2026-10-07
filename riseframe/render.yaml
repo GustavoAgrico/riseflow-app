@@ -39,6 +39,12 @@ services:
         value: https://ksagizfkebrsvwptgysh.supabase.co
       - key: SUPABASE_SERVICE_ROLE_KEY   # Supabase → Project Settings → API Keys → service_role
         sync: false
+      # ── E-mail (aviso de Pix p/ você, código de confirmação e lembretes p/ clientes) ──
+      # O Render grátis BLOQUEIA SMTP (Gmail etc.): use a API do Resend (resend.com).
+      - key: RESEND_API_KEY
+        sync: false
+      # - key: EMAIL_FROM            # depois de verificar riseframe.com.br no Resend
+      #   value: Riseframe <nao-responda@riseframe.com.br>
       # ── Transcrição (legendas reais) ──
       # No free (512 MB) use o modelo 'tiny'. Se der OOM/crash, troque
       # TRANSCRIBE_PROVIDER para 'mock' (o app funciona, legendas de exemplo) ou

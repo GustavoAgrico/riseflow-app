@@ -4,7 +4,9 @@ import { config } from '../config.js';
 import { makeLogger } from '../logger.js';
 import { cloudSave, onCloudReload } from '../cloudSync.js';
 import { findById, findByEmail } from './store.js';
-import { emailHtml, normalizePhone, notifyAdmins, notifyUser, waLink, whatsappReady } from './notify.js';
+import { emailHtml, notifyAdmins, notifyUser, waLink, whatsappReady } from './notify.js';
+import { checkEmail, checkEmailCode, checkPhone, formatPhone, newEmailCode } from './contact.js';
+import { canEmailCustomers, sendMail } from './email.js';
 
 const log = makeLogger('billing');
 
@@ -158,6 +160,10 @@ export function billingStatus(user) {
       .filter((c) => c.userId === user.id && c.status === 'pending')
       .map(({ id, kind, itemId, createdAt }) => ({ id, kind, itemId, createdAt })),
     phone: e.phone || '',
+    // Contato informado no pagamento (e-mail confirmado por código quando há envio de e-mail).
+    contactEmail: e.contactEmail || user.email || '',
+    emailVerified: Boolean(e.emailVerified && e.emailVerified === (e.contactEmail || user.email)),
+    emailCodeRequired: pixMode() && canEmailCustomers(),
     hasPending: Object.values(load().pending).some((p) => p.userId === user.id),
     // Renovação automática (assinatura no cartão) ligada para o plano atual?
     autoRenew: Boolean(plan && e.subscription?.active),
@@ -595,15 +601,78 @@ function itemOf(kind, itemId) {
 const itemLabel = (kind, item) => (kind === 'plan' ? `plano ${item.name}` : `recarga de ${item.credits} créditos`);
 
 /** Cliente avisou que pagou o Pix: cria (ou reaproveita) o aviso pendente e avisa os admins. */
-export async function createPixClaim(user, { kind, itemId, phone, name }) {
+/** Nome completo: pelo menos nome e sobrenome, só letras. '' se não parecer real. */
+function cleanFullName(name) {
+  const n = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 120);
+  const parts = n.split(' ').filter((p) => /^[\p{L}'’.-]{2,}$/u.test(p));
+  return parts.length >= 2 && parts.length === n.split(' ').length ? n : '';
+}
+
+/** Confere nome, e-mail e WhatsApp do pagamento: { ok, name, email, phone, errors }. */
+export async function checkContact(user, { name, email, phone } = {}) {
+  const errors = {};
+  const fullName = cleanFullName(name);
+  if (!fullName) errors.name = 'informe seu nome e sobrenome';
+  const em = await checkEmail(email);
+  if (!em.ok) errors.email = em.error;
+  const ph = checkPhone(phone);
+  if (!ph.ok) errors.phone = ph.error;
+  const e = entry(user.id);
+  const verified = Boolean(em.ok && e.emailVerified === em.email);
+  return {
+    ok: !Object.keys(errors).length,
+    name: fullName, email: em.email, phone: ph.phone, phoneLabel: ph.ok ? formatPhone(ph.phone) : '',
+    suggestion: em.suggestion || null,
+    emailVerified: verified,
+    emailCodeRequired: pixMode() && canEmailCustomers() && !verified,
+    errors,
+  };
+}
+
+/** Manda o código de 6 dígitos para confirmar o e-mail do pagamento. */
+export async function sendContactCode(user, email) {
+  const em = await checkEmail(email);
+  if (!em.ok) throw Object.assign(new Error(em.error), { status: 400 });
+  const code = newEmailCode(user.id, em.email);
+  const text = `Seu código do Riseframe: ${code}\n\nUse-o para confirmar seu e-mail no pagamento. Vale por 15 minutos.\nSe não foi você, ignore este e-mail.`;
+  try {
+    await sendMail({
+      to: em.email,
+      subject: `${code} é seu código do Riseframe`,
+      text,
+      html: emailHtml(`Seu código: ${code}`, ['Use este código para confirmar seu e-mail no pagamento do Riseframe. Ele vale por 15 minutos.', 'Se não foi você, ignore este e-mail.']),
+    }, { throwOnError: true });
+  } catch (err) {
+    log.error(`código de e-mail não foi enviado: ${err.message}`);
+    throw Object.assign(new Error('não consegui enviar o código agora — confira o e-mail ou tente de novo em instantes'), { status: 502 });
+  }
+  log.info(`código de confirmação enviado (user ${user.id})`);
+  return { sent: true };
+}
+
+/** Confere o código e marca o e-mail como confirmado. */
+export function verifyContactCode(user, email, code) {
+  const em = String(email || '').trim().toLowerCase();
+  checkEmailCode(user.id, em, code);
+  const e = entry(user.id);
+  e.contactEmail = em;
+  e.emailVerified = em;
+  persist();
+  return billingStatus(user);
+}
+
+export async function createPixClaim(user, { kind, itemId, phone, name, email }) {
   const item = itemOf(kind, itemId);
   if (!item || !pixLink(itemId)) throw Object.assign(new Error('plano ou recarga inválido'), { status: 400 });
-  const tel = normalizePhone(phone);
-  if (!tel) throw Object.assign(new Error('informe um WhatsApp com DDD'), { status: 400 });
+  const contact = await checkContact(user, { name, email: email ?? entry(user.id).contactEmail ?? user.email, phone });
+  if (!contact.ok) throw Object.assign(new Error(Object.values(contact.errors)[0]), { status: 400, errors: contact.errors });
+  if (contact.emailCodeRequired) throw Object.assign(new Error('confirme seu e-mail com o código antes de avisar o pagamento'), { status: 400 });
+  const tel = contact.phone;
   load();
   const e = entry(user.id);
   e.phone = tel;
-  if (name) e.name = String(name).slice(0, 120);
+  e.contactEmail = contact.email;
+  e.name = contact.name;
   const dup = Object.values(db.claims).find((c) => c.userId === user.id && c.status === 'pending' && c.kind === kind && c.itemId === itemId);
   if (dup) {
     persist();
@@ -611,7 +680,7 @@ export async function createPixClaim(user, { kind, itemId, phone, name }) {
   }
   const id = `pix_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
   const claim = {
-    id, userId: user.id, email: user.email, name: e.name || user.name || '', phone: tel,
+    id, userId: user.id, email: user.email, contactEmail: contact.email, name: e.name || user.name || '', phone: tel,
     kind, itemId, priceCents: item.priceCents, createdAt: new Date().toISOString(), status: 'pending',
   };
   db.claims[id] = claim;
@@ -622,7 +691,7 @@ export async function createPixClaim(user, { kind, itemId, phone, name }) {
     subject: `Pix a confirmar: ${itemLabel(kind, item)} — ${brl(item.priceCents)}`,
     text,
     html: emailHtml('Pix a confirmar', [
-      `${claim.name || '(sem nome)'} · ${user.email} · WhatsApp ${tel}`,
+      `${claim.name || '(sem nome)'} · ${contact.email}${contact.email !== user.email ? ` (conta ${user.email})` : ''} · WhatsApp ${formatPhone(tel)}`,
       `Avisou que pagou o ${itemLabel(kind, item)} (${brl(item.priceCents)}).`,
       'Confira no extrato do banco e confirme na página de Planos do Riseframe (logado como admin).',
     ], { label: 'Abrir pagamentos', url: plansUrl() }),
@@ -674,7 +743,7 @@ export async function approveClaim(claimId, admin) {
   const e = entry(c.userId);
   if (c.kind === 'plan') e.reminded = {}; // novo período: lembretes começam do zero
   persist();
-  const sent = await notifyUser({ email: c.email, phone: c.phone }, grantedMessage(c.kind, item, e));
+  const sent = await notifyUser({ email: c.contactEmail || c.email, phone: c.phone }, grantedMessage(c.kind, item, e));
   return { claim: c, sent };
 }
 
@@ -701,7 +770,7 @@ export async function adminGrant({ email, kind = 'plan', itemId }, admin) {
   if (kind === 'plan') e.reminded = {};
   persist();
   log.info(`${admin?.email || 'admin'} liberou ${itemLabel(kind, item)} para ${u.email}`);
-  const sent = await notifyUser({ email: u.email, phone: e.phone }, grantedMessage(kind, item, e));
+  const sent = await notifyUser({ email: e.contactEmail || u.email, phone: e.phone }, grantedMessage(kind, item, e));
   return { user: u.email, sent, until: e.plan?.until || null };
 }
 
@@ -736,7 +805,7 @@ export async function sendReminders({ now = Date.now(), force = false } = {}) {
       `Riseframe: seu plano ${cfg.name} ${when}. Para renovar por mais ${config.billing.periodDays} dias (${brl(cfg.priceCents)}), ` +
       (link ? `pague o Pix neste link: ${link} e depois clique em "Já paguei" em ${plansUrl()}` : `acesse ${plansUrl()}`);
     const r = await notifyUser(
-      { email: u.email, phone: e.phone },
+      { email: e.contactEmail || u.email, phone: e.phone },
       {
         subject: `Seu plano ${cfg.name} ${when}`,
         text,

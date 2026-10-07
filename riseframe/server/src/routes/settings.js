@@ -3,6 +3,8 @@ import { getSettings, saveSettings } from '../auth/settings.js';
 import { requireAuth } from './auth.js';
 import { config, capabilities } from '../config.js';
 import { cloudStatus, cloudSyncNow } from '../cloudSync.js';
+import { canEmailCustomers, emailReady, sendMail } from '../auth/email.js';
+import { emailHtml } from '../auth/notify.js';
 
 export const settingsRouter = Router();
 
@@ -28,6 +30,8 @@ function payload(userId, email) {
       // Openverse (Creative Commons) não exige chave: o B-roll sempre tem uma fonte.
       openverse: true,
       // Cópia das contas/planos no Supabase (servidor sem disco permanente).
+      // Envio de e-mail (Resend/SMTP): avisos de Pix para o admin e códigos/lembretes aos clientes.
+      email: { ready: emailReady(), customers: canEmailCustomers(), provider: config.auth.resendKey ? 'resend' : config.auth.smtp.host ? 'smtp' : '' },
       cloud: isAdmin(email) ? cloudStatus() : { enabled: cloudStatus().enabled, ok: cloudStatus().ok },
     },
   };
@@ -56,4 +60,26 @@ settingsRouter.post('/settings/cloud/sync', requireAuth, async (req, res) => {
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }
+});
+
+// POST /api/settings/email/test (admin) → manda um e-mail de teste para os e-mails de ADMIN_EMAILS
+settingsRouter.post('/settings/email/test', requireAuth, async (req, res) => {
+  if (!isAdmin(req.user.email)) return res.status(403).json({ error: 'só o administrador' });
+  const to = config.billing.adminEmails;
+  if (!to.length) return res.status(400).json({ error: 'defina ADMIN_EMAILS no servidor' });
+  const results = {};
+  for (const addr of to) {
+    try {
+      await sendMail({
+        to: addr,
+        subject: 'Teste de e-mail do Riseframe',
+        text: 'Se você recebeu isto, os avisos de Pix por e-mail estão funcionando.',
+        html: emailHtml('E-mail funcionando', ['Se você recebeu isto, os avisos de Pix por e-mail estão funcionando.']),
+      }, { throwOnError: true });
+      results[addr] = 'enviado';
+    } catch (err) {
+      results[addr] = `erro: ${err.message}`;
+    }
+  }
+  res.json({ results });
 });

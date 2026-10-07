@@ -3,7 +3,7 @@ import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
 import Icon from '../components/Icon.jsx';
 import { Spinner } from '../components/ui.jsx';
 import { useAuth } from '../AuthContext.jsx';
-import { cancelSubscription, claimPix, startCheckout, syncBilling } from '../api.js';
+import { cancelSubscription, checkContact, claimPix, sendContactCode, startCheckout, syncBilling, verifyContactCode } from '../api.js';
 import AdminPayments from '../components/AdminPayments.jsx';
 
 const brl = (cents) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -34,6 +34,13 @@ function appliedMessage(applied, billing) {
   return `Pagamento confirmado: ${parts.join(' e ')}.`;
 }
 
+function FieldError({ children }) {
+  return <div style={{ color: '#FCA5B4', fontSize: 12.5, marginTop: 6 }}>{children}</div>;
+}
+function FieldOk({ children }) {
+  return <div style={{ color: C.green, fontSize: 12.5, marginTop: 6, fontWeight: 600 }}>✓ {children}</div>;
+}
+
 export default function Plans({ user, checkOnOpen }) {
   const { billing, setBilling, refreshBilling } = useAuth();
   const [pick, setPick] = useState(null); // { kind: 'plan'|'pack', id }
@@ -49,6 +56,15 @@ export default function Plans({ user, checkOnOpen }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const formRef = useRef(null);
+  // Dados de contato do Pix: conferidos no servidor enquanto o cliente digita.
+  const [email, setEmail] = useState('');
+  const [contact, setContact] = useState(null); // resposta de /billing/contact/check
+  const [checkingContact, setCheckingContact] = useState(false);
+  const [code, setCode] = useState('');
+  const [codeSent, setCodeSent] = useState(false);
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [codeMsg, setCodeMsg] = useState('');
+  const contactKey = `${name.trim()}|${email.trim().toLowerCase()}|${phone.replace(/\D/g, '')}`;
 
   async function check(quiet = false) {
     setChecking(true);
@@ -69,6 +85,55 @@ export default function Plans({ user, checkOnOpen }) {
     if (billing?.phone && !phone) setPhone(billing.phone.replace(/^55/, ''));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [billing?.phone]);
+
+  useEffect(() => {
+    if (billing && !email) setEmail(billing.contactEmail || user?.email || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [billing?.contactEmail]);
+
+  // Confere os dados ~0,6 s depois que o cliente para de digitar (só no Pix).
+  useEffect(() => {
+    if (!pick || billing?.payment !== 'pix-links') return undefined;
+    if (!name.trim() && !email.trim() && !phone.trim()) return undefined;
+    setCheckingContact(true);
+    const key = contactKey;
+    const t = setTimeout(() => {
+      checkContact({ name, email, phone })
+        .then((r) => setContact({ ...r, key }))
+        .catch(() => setContact(null))
+        .finally(() => setCheckingContact(false));
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactKey, pick?.id, billing?.emailVerified]);
+
+  async function sendCode() {
+    setCodeBusy(true);
+    setCodeMsg('');
+    try {
+      await sendContactCode(email);
+      setCodeSent(true);
+      setCodeMsg(`Enviamos um código de 6 dígitos para ${email.trim().toLowerCase()}. Veja também a caixa de spam.`);
+    } catch (e) {
+      setCodeMsg(e.message);
+    } finally {
+      setCodeBusy(false);
+    }
+  }
+
+  async function confirmCode() {
+    setCodeBusy(true);
+    setCodeMsg('');
+    try {
+      setBilling(await verifyContactCode(email, code));
+      setCode('');
+      setCodeSent(false);
+    } catch (e) {
+      setCodeMsg(e.message);
+    } finally {
+      setCodeBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (checkOnOpen) check(true);
@@ -99,7 +164,7 @@ export default function Plans({ user, checkOnOpen }) {
     setPaying(true);
     setError('');
     try {
-      const s = await claimPix({ kind: pick.kind, itemId: pick.id, phone, name });
+      const s = await claimPix({ kind: pick.kind, itemId: pick.id, phone, name, email });
       setBilling(s);
       setPick(null);
       setPixOpened(false);
@@ -141,7 +206,11 @@ export default function Plans({ user, checkOnOpen }) {
   // Botões sempre visíveis; só ficam ativos para clientes quando os pagamentos estão ligados.
   const canBuy = billing.enabled && !billing.admin;
   const pix = billing.payment === 'pix-links';
-  const canClaim = selected && pixOpened && phone.replace(/\D/g, '').length >= 10 && !paying;
+  // Pix: só libera pagar/avisar com nome, e-mail e WhatsApp válidos (e e-mail confirmado, quando exigido).
+  const contactFresh = contact && contact.key === contactKey && !checkingContact;
+  const contactOk = Boolean(contactFresh && contact.ok && !contact.emailCodeRequired);
+  const showErr = (field) => contactFresh && contact.errors?.[field];
+  const canClaim = selected && pixOpened && contactOk && !paying;
   const itemName = (c) => (c.kind === 'plan' ? `plano ${plans.find((p) => p.id === c.itemId)?.name || c.itemId}` : 'recarga');
   const recurringChoice = pick?.kind === 'plan' && billing.autoRenewAvailable;
   const recurring = recurringChoice && payMode === 'card';
@@ -335,31 +404,76 @@ export default function Plans({ user, checkOnOpen }) {
           )}
           {pix ? (
             <>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, margin: '16px 0 8px' }}>1. Pague o Pix</div>
-              <a
-                href={selected.pixLink}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => setPixOpened(true)}
-                style={{ width: '100%', boxSizing: 'border-box', minHeight: 50, background: GRAD, color: '#fff', borderRadius: 12, fontSize: 15, fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-              >
-                Pagar {brl(selected.priceCents)} no Pix
-              </a>
-              <p style={{ color: C.faint, fontSize: 12, margin: '8px 0 0' }}>
-                Abre a página do banco com o QR Code e o Pix copia e cola. Confira o valor de {brl(selected.priceCents)} antes de pagar.
-              </p>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, margin: '20px 0 0' }}>2. Avise que pagou</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, margin: '16px 0 0' }}>1. Seus dados</div>
               <label style={label}>Nome completo</label>
-              <input style={input} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+              <input style={input} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" placeholder="Nome e sobrenome" />
+              {showErr('name') && <FieldError>{contact.errors.name}</FieldError>}
+              <label style={label}>E-mail</label>
+              <input style={input} value={email} onChange={(e) => { setEmail(e.target.value); setCodeSent(false); setCodeMsg(''); }} type="email" inputMode="email" autoComplete="email" placeholder="voce@email.com" />
+              {showErr('email') && (
+                <FieldError>
+                  {contact.errors.email}
+                  {contact.suggestion && (
+                    <button onClick={() => setEmail(contact.suggestion)} style={{ marginLeft: 8, background: 'none', border: 'none', color: C.orange, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit', fontSize: 12.5 }}>
+                      Corrigir
+                    </button>
+                  )}
+                </FieldError>
+              )}
+              {contactFresh && !contact.errors?.email && contact.emailVerified && <FieldOk>E-mail confirmado</FieldOk>}
+              {contactFresh && !contact.errors?.email && contact.emailCodeRequired && (
+                <div style={{ marginTop: 8, padding: 12, borderRadius: 11, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
+                  <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 8 }}>Confirme que este e-mail é seu: enviamos um código para ele.</div>
+                  {!codeSent ? (
+                    <button onClick={sendCode} disabled={codeBusy} style={{ minHeight: 40, padding: '0 14px', background: 'transparent', border: `1px solid ${C.borderStrong}`, color: C.text, borderRadius: 10, fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      {codeBusy && <Spinner size={12} color={C.text} />} Enviar código
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <input style={{ ...input, width: 150, letterSpacing: 4, textAlign: 'center' }} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="000000" />
+                      <button onClick={confirmCode} disabled={codeBusy || code.length !== 6} style={{ minHeight: 44, padding: '0 16px', background: code.length === 6 ? GRAD : 'transparent', border: code.length === 6 ? 'none' : `1px solid ${C.border}`, color: code.length === 6 ? '#fff' : C.faint, borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: code.length === 6 ? 'pointer' : 'not-allowed', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        {codeBusy && <Spinner size={12} color="#fff" />} Confirmar
+                      </button>
+                      <button onClick={sendCode} disabled={codeBusy} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>Reenviar</button>
+                    </div>
+                  )}
+                  {codeMsg && <div style={{ fontSize: 12.5, color: /enviamos/i.test(codeMsg) ? C.muted : '#FCA5B4', marginTop: 8 }}>{codeMsg}</div>}
+                </div>
+              )}
               <label style={label}>WhatsApp com DDD</label>
-              <input style={input} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="(11) 99999-9999" />
+              <input style={input} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="tel" placeholder="(11) 98765-4321" />
+              {showErr('phone') && <FieldError>{contact.errors.phone}</FieldError>}
+              {contactFresh && !contact.errors?.phone && contact.phoneLabel && <FieldOk>WhatsApp {contact.phoneLabel}</FieldOk>}
               <p style={{ color: C.faint, fontSize: 12, margin: '8px 0 0' }}>
                 Usamos para confirmar o pagamento e lembrar quando o plano estiver perto de vencer ({billing.periodDays} dias, sem renovação automática).
               </p>
+
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, margin: '20px 0 8px' }}>2. Pague o Pix</div>
+              {contactOk ? (
+                <a
+                  href={selected.pixLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => setPixOpened(true)}
+                  style={{ width: '100%', boxSizing: 'border-box', minHeight: 50, background: GRAD, color: '#fff', borderRadius: 12, fontSize: 15, fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                >
+                  Pagar {brl(selected.priceCents)} no Pix
+                </a>
+              ) : (
+                <button disabled style={{ width: '100%', minHeight: 50, background: GRAD, opacity: 0.4, border: 'none', color: '#fff', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: 'not-allowed', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  {checkingContact && <Spinner size={14} color="#fff" />} Pagar {brl(selected.priceCents)} no Pix
+                </button>
+              )}
+              <p style={{ color: C.faint, fontSize: 12, margin: '8px 0 0' }}>
+                {contactOk
+                  ? `Abre a página do banco com o QR Code e o Pix copia e cola. Confira o valor de ${brl(selected.priceCents)} antes de pagar.`
+                  : 'Preencha seus dados corretamente acima para liberar o pagamento.'}
+              </p>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, margin: '20px 0 0' }}>3. Avise que pagou</div>
               <button
                 onClick={claim}
                 disabled={!canClaim}
-                title={pixOpened ? undefined : 'Primeiro abra o Pix e pague'}
+                title={!contactOk ? 'Preencha seus dados acima' : pixOpened ? undefined : 'Primeiro abra o Pix e pague'}
                 style={{ marginTop: 16, width: '100%', minHeight: 50, background: 'transparent', border: `2px solid ${canClaim ? C.green : C.border}`, color: canClaim ? C.green : C.faint, borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: canClaim ? 'pointer' : 'not-allowed', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
               >
                 {paying && <Spinner size={14} color={C.green} />}
