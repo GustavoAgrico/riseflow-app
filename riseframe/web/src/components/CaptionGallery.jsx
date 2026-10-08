@@ -49,11 +49,15 @@ const SAMPLE = [{ word: 'Seu' }, { word: 'vídeo' }, { word: 'pronto' }];
  * Galeria de modelos de legenda (miniaturas com o visual de cada um). `onApply(patch)`
  * recebe as opções a aplicar. `compact` = miniaturas menores (painel da timeline).
  */
-export default function CaptionGallery({ options, onApply, compact = false }) {
+export default function CaptionGallery({ options, onApply, compact = false, row = false }) {
   const sel = currentPreset(options);
-  const tileH = compact ? 50 : 60;
+  const tileH = row ? 72 : compact ? 50 : 60;
+  // row = carrossel numa linha só (celular), como os modelos do CapCut
+  const wrap = row
+    ? { display: 'grid', gridAutoFlow: 'column', gridAutoColumns: 96, gap: 10, overflowX: 'auto', paddingBottom: 4, scrollSnapType: 'x mandatory', scrollbarWidth: 'none' }
+    : { display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${compact ? 80 : 86}px, 1fr))`, gap: compact ? 7 : 9 };
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${compact ? 80 : 86}px, 1fr))`, gap: compact ? 7 : 9 }}>
+    <div style={wrap}>
       {CAPTION_PRESETS.map((p) => {
         const on = sel === p.id;
         const opts = p.patch ? { ...options, ...RESET, ...p.patch, captionScale: 1, captions: true } : null;
@@ -65,7 +69,7 @@ export default function CaptionGallery({ options, onApply, compact = false }) {
             onClick={() => onApply(presetPatch(p.id))}
             title={p.label}
             aria-pressed={on}
-            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center', minWidth: 0 }}
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center', minWidth: 0, scrollSnapAlign: 'start' }}
           >
             <div style={{
               height: tileH, borderRadius: 10, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -75,7 +79,7 @@ export default function CaptionGallery({ options, onApply, compact = false }) {
               boxSizing: 'border-box', padding: '0 4px',
             }}>
               {look ? (
-                <CaptionWords words={SAMPLE} wi={1} look={look} options={opts} fontPx={compact ? 10 : 11.5} still />
+                <CaptionWords words={SAMPLE} wi={1} look={look} options={opts} fontPx={row ? 12 : compact ? 10 : 11.5} still />
               ) : (
                 <svg width={compact ? 24 : 28} height={compact ? 24 : 28} viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" /></svg>
               )}
