@@ -28,11 +28,16 @@ say()  { printf '\n\033[1;36m%s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m%s\033[0m\n' "$*"; }
 die()  { printf '\n\033[1;31m*** ERRO: %s ***\033[0m\n' "$*"; exit 1; }
 
-command -v oci >/dev/null 2>&1 || die "Rode isto no ORACLE CLOUD SHELL (lá o 'oci' já vem instalado)."
+# Fora do Cloud Shell (ex.: na sua VM Micro, ligada 24h), o instalador do OCI CLI põe o
+# comando em ~/bin — que nem sempre está no PATH de um "nohup bash".
+export PATH="$HOME/bin:$HOME/.local/bin:$PATH"
+command -v oci >/dev/null 2>&1 || die "OCI CLI não encontrado. No Cloud Shell ele já vem pronto; numa VM, instale (veja DEPLOY-ORACLE.md → 'Robô 24h')."
 
 say "1/4 · Descobrindo a sua conta e a região…"
 # No Cloud Shell o OCID da conta (tenancy) vem numa variável de ambiente.
-TENANCY="${OCI_TENANCY:-$(oci iam compartment list --query 'data[0]."compartment-id"' --raw-output 2>/dev/null)}"
+# Numa VM, vem do ~/.oci/config (linha tenancy=...).
+CFG_TENANCY="$(awk -F= '/^[[:space:]]*tenancy[[:space:]]*=/{gsub(/[[:space:]]/,"",$2); print $2; exit}' "$HOME/.oci/config" 2>/dev/null)"
+TENANCY="${OCI_TENANCY:-${CFG_TENANCY:-$(oci iam compartment list --query 'data[0]."compartment-id"' --raw-output 2>/dev/null)}}"
 [ -n "${TENANCY:-}" ] || die "não consegui identificar sua conta (tenancy). Confirme que está no Cloud Shell."
 COMPARTMENT="${COMPARTMENT:-$TENANCY}"   # conta nova → recursos no compartimento raiz
 
@@ -73,14 +78,21 @@ echo "     Domínio: $AD · a cada ${INTERVAL}s · Ctrl+C para parar."
 echo "     Dica: se demorar muito, pare e rode com  OCPUS=1 MEM=6  (vaga mais fácil)."
 
 ATTEMPT=0
+# Alterna entre o tamanho pedido e o mínimo (1 núcleo / 6 GB), que abre vaga com muito
+# mais frequência — dá para aumentar depois (Edit → Shape), sem reinstalar nada.
+# SEM_ALTERNAR=1 desliga.
+SIZES=("${OCPUS}:${MEM}")
+if [ "${SEM_ALTERNAR:-0}" != "1" ] && [ "${OCPUS}:${MEM}" != "1:6" ]; then SIZES+=("1:6"); fi
 while true; do
   ATTEMPT=$((ATTEMPT + 1))
-  printf '\n\033[2m[%s] tentativa %d…\033[0m\n' "$(date +%H:%M:%S)" "$ATTEMPT"
+  SIZE="${SIZES[$(( (ATTEMPT - 1) % ${#SIZES[@]} ))]}"
+  TRY_OCPUS="${SIZE%%:*}"; TRY_MEM="${SIZE##*:}"
+  printf '\n\033[2m[%s] tentativa %d (%s núcleo(s) / %s GB)…\033[0m\n' "$(date +%H:%M:%S)" "$ATTEMPT" "$TRY_OCPUS" "$TRY_MEM"
   OUT="$(oci compute instance launch \
     --compartment-id "$COMPARTMENT" \
     --availability-domain "$AD" \
     --shape "VM.Standard.A1.Flex" \
-    --shape-config "{\"ocpus\":${OCPUS},\"memoryInGBs\":${MEM}}" \
+    --shape-config "{\"ocpus\":${TRY_OCPUS},\"memoryInGBs\":${TRY_MEM}}" \
     --image-id "$IMAGE" \
     --subnet-id "$SUBNET" \
     --assign-public-ip true \
