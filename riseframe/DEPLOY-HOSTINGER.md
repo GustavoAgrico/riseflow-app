@@ -50,8 +50,15 @@ nano /opt/riseflow-app/riseframe/deploy/.env
 ```
 
 Preencha com os **mesmos valores** do Render → Environment (o que não usa, deixe vazio):
-`PEXELS_API_KEY`, `GOOGLE_CSE_KEY`, `GOOGLE_CSE_ID`, `ANTHROPIC_API_KEY`, `GOOGLE_CLIENT_ID`,
-`SMTP_*` (e-mails), `WHATSAPP_*`, `ADMIN_WHATSAPP`, `SUPPORT_EMAIL`, `SUPPORT_WHATSAPP`.
+- **Essenciais:** `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` (contas e planos), `RESEND_API_KEY`
+  e `EMAIL_FROM` (e-mails), `DEEPGRAM_API_KEY`/`GROQ_API_KEY` (legendas).
+- **Imagens e IA:** `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `GOOGLE_CSE_KEY`, `GOOGLE_CSE_ID`, `ANTHROPIC_API_KEY`.
+- **Cobrança:** `ABACATE_PAY_API_KEY`, `ABACATE_WEBHOOK_SECRET`, `BILLING_PLANS`, `CREDIT_PACKS`,
+  `CREDIT_COSTS`, `BILLING_METHODS`, `BILLING_SIGNUP_CREDITS`.
+- **Outros:** `GOOGLE_CLIENT_ID`, `SMTP_*`, `WHATSAPP_*`, `ADMIN_WHATSAPP`, `SUPPORT_EMAIL`, `SUPPORT_WHATSAPP`.
+
+> Toda variável do `.env` vai para o app — se o Render tiver alguma chave que não está
+> nesta lista, é só acrescentar a linha `NOME=valor` no `.env`.
 
 Salvar no nano: **Ctrl+O**, Enter, **Ctrl+X**. Depois aplique:
 
@@ -90,6 +97,13 @@ Salvar no nano: **Ctrl+O**, Enter, **Ctrl+X**. Depois aplique:
    abre pela VPS, com HTTPS automático, e `riseframe.com.br` redireciona para o `www`.
 4. **Login com Google:** no Google Cloud → Credenciais → seu Client ID → *Authorized
    JavaScript origins*: confira que `https://www.riseframe.com.br` está lá.
+
+## 6b. O site estático da Hostinger (public_html)
+
+Com a VPS, **site e API ficam juntos** no mesmo endereço — o zip `riseframe-site-hostinger.zip`
+em `public_html` deixa de ser usado. Se o domínio apontava para a hospedagem de sites, a troca
+de DNS do passo 6 já leva os visitantes para a VPS (pode apagar os arquivos do `public_html`
+depois que tudo estiver funcionando).
 
 ## 7. Desligar o Render
 
