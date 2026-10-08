@@ -50,6 +50,40 @@ Tempo total: ~30 min (a maior parte é esperar o 1º build).
 > de um Micro — suficiente para rodar o Riseframe.
 > Persistindo, crie a conta numa **Home Region** diferente (a capacidade varia por região).
 
+### Robô 24h (grátis, sem cartão): rodar na sua VM Micro
+
+O Cloud Shell fecha depois de ~20 min sem uso e o robô para junto. Se você já tem uma
+VM **Micro** sempre ligada (ex.: a do WhatsApp do CRM), rode o robô **nela** — ele fica
+tentando dia e noite (pesa quase nada) e alterna sozinho entre o tamanho pedido e
+1 núcleo / 6 GB, que abre vaga bem mais fácil.
+
+1. **Chave de API (uma vez):** console → ícone do perfil (canto superior direito) →
+   **My profile** → **API keys** → **Add API key** → *Generate API key pair* →
+   **Download private key** → **Add**. Copie o texto do *Configuration file preview*.
+2. **Entre na VM Micro** por SSH e instale o OCI CLI:
+   ```bash
+   bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults
+   ```
+3. **Configure:**
+   ```bash
+   mkdir -p ~/.oci
+   nano ~/.oci/config            # cole o "Configuration file preview"
+   ```
+   Troque a linha `key_file=...` por `key_file=~/.oci/oci_api_key.pem` e salve.
+   ```bash
+   nano ~/.oci/oci_api_key.pem   # cole o conteúdo da chave privada baixada (.pem)
+   chmod 600 ~/.oci/config ~/.oci/oci_api_key.pem
+   ~/bin/oci iam region list --output table   # deu uma tabela? então está certo
+   ```
+4. **Solte o robô em segundo plano** (continua mesmo se você fechar o terminal):
+   ```bash
+   nohup bash -c "curl -fsSL https://raw.githubusercontent.com/GustavoAgrico/riseflow-app/master/riseframe/deploy/oracle-retry.sh | OCPUS=2 MEM=12 bash" > ~/robo.log 2>&1 &
+   tail -f ~/robo.log            # acompanhar (Ctrl+C só sai da visualização)
+   ```
+   Quando conseguir, o `~/robo.log` mostra **✅ MÁQUINA CRIADA** e o **IP público**. A chave
+   SSH da máquina nova fica na Micro em `~/.ssh/riseframe` — entre nela de lá mesmo:
+   `ssh -i ~/.ssh/riseframe ubuntu@IP_NOVO`. Para parar o robô: `pkill -f oracle-retry`.
+
 ---
 
 ## 2. Liberar as portas 80 e 443 (DUAS camadas — o erro nº1 da Oracle)
