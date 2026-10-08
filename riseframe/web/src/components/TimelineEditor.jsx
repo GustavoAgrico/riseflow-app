@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan, previewVoice } from '../api.js';
+import { sourceUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan, previewVoice, searchBroll } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -137,7 +137,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Layout do B-roll (igual à escolha do início, editável aqui): tela cheia ou tela
   // dividida com o B-roll em cima (você embaixo) ou embaixo (você em cima).
   // Fonte das imagens/vídeos do B-roll (igual à escolha do início, editável aqui).
-  const [imageSource, setImageSource] = useState(['mix', 'openverse', 'pexels', 'google'].includes(options?.imageSource) ? options.imageSource : 'mix');
+  const [imageSource, setImageSource] = useState(BROLL_SOURCES.some((b) => b.id === options?.imageSource) ? options.imageSource : 'mix');
   const [brollLayoutSel, setBrollLayoutSel] = useState(['fullscreen', 'top', 'bottom'].includes(options?.brollLayout) ? options.brollLayout : 'fullscreen');
   const personSide = brollLayoutSel === 'top' ? 'bottom' : 'top';
   const setPersonSide = (fn) => {
@@ -703,6 +703,27 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     };
   }
 
+  // Busca outro termo para um momento do B-roll (troca as opções daquele momento).
+  const [searching, setSearching] = useState(null);
+  async function searchMoment(i, q) {
+    const query = String(q || '').trim();
+    if (query.length < 2) return;
+    setSearching(i);
+    setBrollErr('');
+    try {
+      // Orientação do vídeo final: o formato escolhido ou, no original, o do próprio vídeo.
+      const v = videoRef.current;
+      const portrait = aspectSel === '9:16' || (aspectSel !== '16:9' && aspectSel !== '1:1' && (!v || v.videoHeight >= v.videoWidth));
+      const r = await searchBroll(query, imageSource, portrait ? 'portrait' : 'landscape');
+      if (!r.candidates?.length) setBrollErr(`Nada encontrado para “${query}”. Tente outro termo ou outra fonte.`);
+      else setMoment(i, { candidates: r.candidates, pick: 0, removed: false, query, term: query, myMediaId: null, myThumb: null });
+    } catch (e) {
+      setBrollErr(e.message);
+    } finally {
+      setSearching(null);
+    }
+  }
+
   async function reviewBroll(srcOverride) {
     setBrollErr('');
     setBrollBusy(true);
@@ -757,7 +778,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if (m.myMediaId) return { start: m.start, end: m.end, mediaId: m.myMediaId, kind: m.myKind, query: m.term, ...frame };
       const c = m.candidates[m.pick];
       if (!c) return { start: m.start, end: m.end, remove: true };
-      return { start: m.start, end: m.end, url: c.link, kind: c.kind, query: m.term, ...frame };
+      return { start: m.start, end: m.end, url: c.link, kind: c.kind, query: m.term, credit: c.credit || null, ...frame };
     });
   }
 
@@ -1185,7 +1206,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               </div>
               <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.3, marginBottom: 6 }}>DE ONDE VÊM AS IMAGENS</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-                {BROLL_SOURCES.filter((o) => (o.id !== 'pexels' || caps.brollReady) && (o.id !== 'google' || caps.googleImagesReady)).map((o) => (
+                {BROLL_SOURCES.filter((o) => (o.id !== 'pexels' || caps.brollReady) && (o.id !== 'pixabay' || caps.pixabayReady) && (o.id !== 'google' || caps.googleImagesReady)).map((o) => (
                   <button key={o.id} title={o.hint} disabled={brollBusy}
                     onClick={() => { setImageSource(o.id); if (brollReview) reviewBroll(o.id); }}
                     style={{ ...framingTab(imageSource === o.id), flex: '1 1 auto' }}>{o.label}</button>
@@ -1250,8 +1271,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                             </div>
                           </div>
                         </div>
-                        {isSel && !m.removed && (
+                        {isSel && (
                           <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+                            <form onSubmit={(e) => { e.preventDefault(); searchMoment(i, new FormData(e.currentTarget).get('q')); }} style={{ display: 'flex', gap: 5 }}>
+                              <input name="q" key={`${m.key || i}-${m.query}`} defaultValue={m.query || m.term} placeholder="Buscar outra imagem (ex.: reunião, café, academia)"
+                                style={{ flex: 1, minWidth: 0, minHeight: 30, padding: '0 9px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 12, fontFamily: 'inherit' }} />
+                              <button type="submit" disabled={searching === i} style={{ ...zoomBtn, width: 'auto', padding: '0 10px', fontSize: 11, fontWeight: 700 }}>{searching === i ? '…' : 'Buscar'}</button>
+                            </form>
+                            {!m.removed && m.candidates[m.pick]?.credit && !m.myMediaId && (
+                              <div style={{ fontSize: 10.5, color: C.faint }}>Crédito: {m.candidates[m.pick].credit}</div>
+                            )}
+                            {!m.removed && (<>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
                               <span style={{ width: 40 }}>Zoom</span>
                               <input type="range" min="1" max="2.5" step="0.05" value={m.zoom || 1} onChange={(e) => setMoment(i, { zoom: Number(e.target.value) })} style={{ flex: 1 }} />
@@ -1266,6 +1296,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                               <input type="range" min="0" max="1" step="0.01" value={m.fy ?? 0.5} onChange={(e) => setMoment(i, { fy: Number(e.target.value) })} style={{ flex: 1 }} />
                             </label>
                             <div style={{ fontSize: 10.5, color: C.faint }}>Ajuste aparece na prévia (e na 9:16). Dica: arraste a imagem na prévia 9:16 para posicionar.</div>
+                            </>)}
                           </div>
                         )}
                       </div>
@@ -2031,12 +2062,15 @@ const BROLL_LAYOUTS = [
 ];
 
 const BROLL_SOURCES = [
-  { id: 'mix', label: 'Tudo (vídeos + Google + CC)', hint: 'Mistura vídeos do Pexels, Google Imagens e Creative Commons — escolha entre todos' },
-  { id: 'pexels', label: '▶ Vídeos (Pexels)', hint: 'Vídeos e fotos livres de direitos' },
-  { id: 'google', label: 'Google Imagens', hint: 'Imagens contextuais — atenção a direitos autorais' },
+  { id: 'mix', label: 'Tudo ✨', hint: 'Mistura vídeos e fotos de todos os bancos gratuitos — escolha entre todos' },
+  { id: 'pexels', label: '▶ Pexels', hint: 'Vídeos e fotos livres de direitos' },
+  { id: 'pixabay', label: '▶ Pixabay', hint: 'Vídeos e fotos livres de direitos' },
+  { id: 'wikimedia', label: 'Wikimedia', hint: 'Acervo livre (fotos e vídeos com licença livre)' },
   { id: 'openverse', label: 'Creative Commons', hint: 'Openverse: imagens de uso livre' },
+  { id: 'nasa', label: 'NASA', hint: 'Ciência, tecnologia e espaço — domínio público' },
+  { id: 'google', label: 'Google Imagens', hint: 'Imagens contextuais — atenção a direitos autorais' },
 ];
-const SOURCE_LABEL = { google: 'Google', openverse: 'CC', pexels: 'Pexels' };
+const SOURCE_LABEL = { google: 'Google', openverse: 'CC', pexels: 'Pexels', pixabay: 'Pixabay', wikimedia: 'Wikimedia', nasa: 'NASA' };
 
 const INTENSITIES = [{ id: 'suave', label: 'Suave' }, { id: 'medio', label: 'Médio' }, { id: 'forte', label: 'Forte' }];
 const COLOR_SLIDERS = [

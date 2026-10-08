@@ -23,6 +23,7 @@ mesma porta — não precisa de Netlify nem de CORS.
    | `TRANSCRIBE_PROVIDER` | `whisper-local` | legendas reais (ver nota do free) |
    | `WHISPER_MODEL` | `tiny` | modelo leve p/ caber no free |
    | `PEXELS_API_KEY` | *(opcional)* | B-roll automático |
+   | `PIXABAY_API_KEY` | *(opcional)* | Mais vídeos e fotos livres no B-roll (chave grátis em pixabay.com/api/docs) |
    | `ANTHROPIC_API_KEY` | *(opcional)* | correção de fala + color grade por IA |
 
 4. **Create Web Service.** No 1º deploy o Docker builda o frontend e baixa o modelo

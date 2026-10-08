@@ -349,3 +349,15 @@ export async function previewVoice(sourceId, start, options) {
   }
   return URL.createObjectURL(await r.blob());
 }
+
+/** Busca B-roll para um termo escolhido (troca a imagem de um momento por outra busca). */
+export async function searchBroll(query, source, orientation) {
+  const r = await fetch(`${BASE}/broll/search`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ query, source, orientation }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data; // { source, query, candidates }
+}

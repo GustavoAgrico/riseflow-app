@@ -232,14 +232,15 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
           const googleReady = !!caps.googleImagesReady;
           const pexelsReady = !!caps.brollReady || keyValid;
           // Só aparecem as fontes que o servidor tem configuradas (o cliente nunca precisa de chave).
-          const srcOpts = catalog.imageSources.filter((o) => (o.id !== 'google' || googleReady) && (o.id !== 'pexels' || pexelsReady));
-          // Se a fonte escolhida não está disponível, mostra Openverse (sempre funciona).
-          let value = options.imageSource || 'openverse';
-          if ((value === 'google' && !googleReady) || (value === 'pexels' && !pexelsReady)) value = 'openverse';
+          const pixabayReady = !!caps.pixabayReady;
+          const srcOpts = catalog.imageSources.filter((o) => (o.id !== 'google' || googleReady) && (o.id !== 'pexels' || pexelsReady) && (o.id !== 'pixabay' || pixabayReady));
+          // Se a fonte escolhida não está disponível, mostra "Tudo" (os acervos livres sempre funcionam).
+          let value = options.imageSource || 'mix';
+          if (!srcOpts.some((o) => o.id === value)) value = 'mix';
           return (
             <Row
               label="Fonte das imagens"
-              hint="Tudo (padrão): mistura vídeos do Pexels, Google Imagens e Creative Commons para você escolher. Pexels: vídeos e fotos livres de direitos. Google: mais opções, porém a maioria tem copyright. Openverse: Creative Commons."
+              hint="Tudo (padrão): mistura vídeos e fotos de todos os bancos gratuitos, sempre ligados ao que você fala. Pexels e Pixabay: vídeos e fotos livres. Wikimedia e Openverse: acervos de licença livre. NASA: ciência e espaço. Google: mais opções, porém muitas têm copyright."
             >
               <Select value={value} options={srcOpts} onChange={(v) => set({ imageSource: v })} />
             </Row>

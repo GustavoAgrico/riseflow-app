@@ -71,9 +71,12 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'bottom', label: 'Base' },
     ],
     imageSources: [
-      { id: 'mix', label: 'Tudo: vídeos + Google + Creative Commons ✨' },
+      { id: 'mix', label: 'Tudo: vídeos + fotos de todos os bancos ✨' },
+      { id: 'pexels', label: 'Pexels (vídeos + fotos livres)' },
+      { id: 'pixabay', label: 'Pixabay (vídeos + fotos livres)' },
+      { id: 'wikimedia', label: 'Wikimedia Commons (acervo livre, sem chave)' },
       { id: 'openverse', label: 'Openverse (Creative Commons, sem chave)' },
-      { id: 'pexels', label: 'Pexels (vídeos + fotos, livre de direitos)' },
+      { id: 'nasa', label: 'NASA (ciência e espaço, domínio público)' },
       { id: 'google', label: 'Google Imagens (contextual) ⚠️ copyright' },
     ],
     aspects: [
@@ -112,7 +115,7 @@ optionsRouter.get('/options', (_req, res) => {
       niche: 'auto',
       brollLayout: 'fullscreen',
       personCrop: 'center',
-      imageSource: 'mix', // vídeos + Google + Creative Commons (o que estiver disponível; CC sempre funciona)
+      imageSource: 'mix', // todos os bancos disponíveis (os acervos livres sempre funcionam)
       aspect: 'original',
       reframeTrack: true,
     },

@@ -14,7 +14,7 @@ import { registerMedia, resolveMedia } from '../mediaStore.js';
 import { formatBytes, freeDiskBytes } from '../storage.js';
 import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
-import { brollCandidates } from '../pipeline/broll.js';
+import { brollCandidates, resolveSource } from '../pipeline/broll.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
 import { analyzeAndGrade } from '../pipeline/autoColor.js';
 import { CAPTION_TEMPLATES } from '../pipeline/captions.js';
@@ -294,6 +294,8 @@ function sanitizeBrollPlan(raw) {
       kind: p.kind === 'video' ? 'video' : 'image',
       remove: p.remove === true,
       query: typeof p.query === 'string' ? p.query.slice(0, 80) : '',
+      // Crédito (autor/licença) da imagem do banco — vai para o relatório do vídeo.
+      credit: typeof p.credit === 'string' ? p.credit.replace(/[<>]/g, '').slice(0, 140) : null,
     };
     // URL do banco: só http(s) de imagem/vídeo (o download roda no pipeline).
     if (typeof p.url === 'string' && /^https:\/\/[^\s]+$/i.test(p.url)) item.url = p.url;
@@ -369,7 +371,7 @@ function parseOptions(raw) {
     personFocusY: Number.isFinite(Number(o.personFocusY)) ? clampNum(o.personFocusY, 0, 1, undefined) : undefined,
     personZoom: clampNum(o.personZoom, 1, 2.5, 1),
     // Fonte das imagens de B-roll: openverse (CC, sem chave) | pexels (livre) | google (contextual, ver copyright).
-    imageSource: ['openverse', 'pexels', 'google', 'mix'].includes(o.imageSource) ? o.imageSource : 'openverse',
+    imageSource: ['openverse', 'pexels', 'pixabay', 'wikimedia', 'nasa', 'google', 'mix'].includes(o.imageSource) ? o.imageSource : 'mix',
     niche: ['auto', 'leadership', 'mentor', 'medical', 'fitness', 'finance', 'business', 'marketing', 'education', 'tech', 'mindset', 'law', 'realestate'].includes(o.niche) ? o.niche : 'auto',
     // Chave do Pexels vinda da interface (opcional). Sanitiza: só o formato esperado
     // (alfanumérico, 20–80 chars) é aceito; qualquer outra coisa é descartada.
@@ -528,22 +530,40 @@ jobsRouter.post('/broll/plan', requireAuth, requireVerified, async (req, res) =>
     const orientation = (meta.height || 1920) >= (meta.width || 1080) ? 'portrait' : 'landscape';
     const apiKey = options.pexelsKey || config.broll.pexelsKey;
     const google = { key: config.broll.googleImagesKey, cx: config.broll.googleImagesCx, unrestricted: config.broll.googleImagesUnrestricted };
-    const src = options.imageSource === 'mix' ? 'mix'
-      : options.imageSource === 'google' && google.key && google.cx ? 'google'
-        : options.imageSource === 'openverse' || !apiKey ? 'openverse' : 'pexels';
+    const pixabayKey = config.broll.pixabayKey;
+    const src = resolveSource(options.imageSource, { apiKey, pixabayKey, googleReady: Boolean(google.key && google.cx) });
 
     const out = [];
     for (const m of moments) {
       const candidates = await brollCandidates(m.query, {
-        source: src, apiKey, google, orientation,
-        targetH: Math.round((meta.height || 1920) / (src === 'pexels' || src === 'mix' ? 1 : 2)),
-        limit: 6, unrestricted: google.unrestricted,
+        source: src, apiKey, google, pixabayKey, orientation,
+        targetH: meta.height || 1920,
+        limit: src === 'mix' ? 9 : 8, unrestricted: google.unrestricted,
       });
       out.push({ start: m.start, end: m.end, term: m.term || m.query, query: m.query, candidates });
     }
     res.json({ source: src, moments: out });
   } catch (err) {
     res.status(500).json({ error: err.message || 'falha ao planejar o B-roll' });
+  }
+});
+
+// POST /api/broll/search  (JSON: query + source + orientation) → candidatos de B-roll para
+// um termo escolhido pelo usuário (ex.: trocar a imagem de um momento por outra busca).
+jobsRouter.post('/broll/search', requireAuth, requireVerified, async (req, res) => {
+  const query = String(req.body?.query || '').trim().slice(0, 80);
+  if (query.length < 2) return res.status(400).json({ error: 'digite o que buscar' });
+  const s = getSettings(req.user.id);
+  const apiKey = s.pexelsKey || config.broll.pexelsKey;
+  const google = { key: config.broll.googleImagesKey, cx: config.broll.googleImagesCx, unrestricted: config.broll.googleImagesUnrestricted };
+  const pixabayKey = config.broll.pixabayKey;
+  const source = resolveSource(req.body?.source, { apiKey, pixabayKey, googleReady: Boolean(google.key && google.cx) });
+  const orientation = req.body?.orientation === 'landscape' ? 'landscape' : 'portrait';
+  try {
+    const candidates = await brollCandidates(query, { source, apiKey, google, pixabayKey, orientation, targetH: 1280, limit: source === 'mix' ? 9 : 8, unrestricted: google.unrestricted, lang: 'pt' });
+    res.json({ source, query, candidates });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'falha na busca' });
   }
 });
 

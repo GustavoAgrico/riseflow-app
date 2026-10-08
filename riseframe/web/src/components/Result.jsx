@@ -141,6 +141,14 @@ export default function Result({ job, onReset, onEditTimeline }) {
         </div>
       )}
 
+      {r.broll?.items?.some((it) => it.credit) && (
+        <div style={{ marginBottom: 18, fontSize: 12, color: C.muted, lineHeight: 1.6 }}>
+          <div style={{ color: C.faint, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Créditos das imagens de apoio</div>
+          {[...new Set(r.broll.items.map((it) => it.credit).filter(Boolean))].map((c) => <div key={c}>{c}</div>)}
+          <div style={{ color: C.faint, marginTop: 4 }}>Licenças CC BY / CC BY-SA pedem esse crédito — cole na legenda do post.</div>
+        </div>
+      )}
+
       {r.themes?.length > 0 && (
         <div style={{ marginBottom: 18 }}>
           <div style={{ color: C.faint, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8, fontWeight: 600 }}>
