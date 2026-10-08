@@ -138,6 +138,14 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
             <Segmented value={options.cutStrength || 'forte'} options={catalog.cutStrengths || [{ id: 'suave', label: 'Suave' }, { id: 'equilibrado', label: 'Equilibrado' }, { id: 'forte', label: 'Forte' }]} onChange={(v) => set({ cutStrength: v })} />
           </Row>
         )}
+        {options.cutSilence && (
+          <Row label="Cortar respirações" hint="A inspiração entre as frases sai junto com as pausas — o vídeo fica mais corrido, sem 'ar' entre as falas">
+            <Toggle on={options.cutBreaths !== false} onChange={(v) => set({ cutBreaths: v })} />
+          </Row>
+        )}
+        <Row label="Velocidade do vídeo" hint="Acelera (ou desacelera) o vídeo final inteiro. A voz não muda de tom; legendas e sons acompanham.">
+          <Segmented value={String(options.speed || 1)} options={[{ id: '1', label: '1×' }, { id: '1.1', label: '1,1×' }, { id: '1.2', label: '1,2×' }, { id: '1.25', label: '1,25×' }, { id: '1.5', label: '1,5×' }]} onChange={(v) => set({ speed: Number(v) })} />
+        </Row>
         <Row label="Corrigir a fala automaticamente" hint="Remove muletas (é..., hã, hmm), gagueiras e palavras repetidas. Em corte Forte fica mais agressiva. A IA também corta falsos começos e autocorreções.">
           <Toggle on={options.autoClean !== false} onChange={(v) => set({ autoClean: v })} />
         </Row>

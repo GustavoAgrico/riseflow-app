@@ -88,6 +88,8 @@ optionsRouter.get('/options', (_req, res) => {
     defaults: {
       cutSilence: true,
       cutStrength: 'forte', // enxuga mais por padrão (pausas curtas + muletas)
+      cutBreaths: true, // respirações entre as frases saem junto com as pausas
+      speed: 1, // velocidade do vídeo final
       voiceEnhance: false,
       voiceIntensity: 'medio',
       voiceNoise: 'medio',

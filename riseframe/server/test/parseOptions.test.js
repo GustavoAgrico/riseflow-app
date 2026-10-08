@@ -8,7 +8,7 @@ test('parseOptions mantém cortes, volume, formato, silêncio, clipes e mídias'
   const src = fs.readFileSync(new URL('../src/routes/jobs.js', import.meta.url), 'utf8');
   const body = src.slice(src.indexOf('function parseOptions'), src.indexOf('// POST /api/jobs '));
   for (const key of ['videoCuts', 'silenceCuts', 'manualSilence', 'audioMute', 'audioVolume', 'audioGains', 'aspect', 'reframeTrack',
-    'silenceNoiseDb', 'silenceMinDuration', 'silencePadding', 'clipsCount', 'userMedia', 'brollPlan', 'zoomMoments', 'colorAdjust', 'imageSource', 'captionHighlight']) {
+    'silenceNoiseDb', 'silenceMinDuration', 'silencePadding', 'clipsCount', 'userMedia', 'brollPlan', 'zoomMoments', 'colorAdjust', 'imageSource', 'captionHighlight', 'cutBreaths', 'speed']) {
     assert.ok(new RegExp(`\\n\\s+${key}:`).test(body), `parseOptions precisa manter "${key}"`);
   }
 });

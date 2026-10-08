@@ -82,6 +82,18 @@ export async function convertAspect(input, work, meta, options, trackInput, onPr
  * o vídeo inteiro só para a cor.
  * @returns {Promise<{output:string, aspect:string, sizeBytes:number, reframe:object|null}>}
  */
+/**
+ * Filtros de velocidade (k× mais rápido/lento): vídeo com `setpts` (mantendo o fps) e
+ * áudio com `atempo` (sem mudar o tom). Null quando a velocidade é normal. Puro.
+ */
+export function speedFilters(speed, fps) {
+  const k = Number(speed);
+  if (!Number.isFinite(k) || k <= 0 || Math.abs(k - 1) < 0.01) return null;
+  const f = Math.max(0.5, Math.min(2, k));
+  const rate = Number(fps) > 0 ? Math.round(Number(fps) * 1000) / 1000 : 30;
+  return { k: f, vf: `setpts=PTS/${f},fps=${rate}`, af: `atempo=${f}` };
+}
+
 export async function finalRender(input, outputsDir, jobId, meta, options, onProgress) {
   const aspect = options.aspect || 'original';
   const target = RESIZE[aspect];
@@ -100,11 +112,18 @@ export async function finalRender(input, outputsDir, jobId, meta, options, onPro
   }
 
   if (options.colorVf) vf = `${options.colorVf},${vf}`;
+  // Velocidade: no mesmo passe do render final (legendas, sons e cortes já estão no
+  // vídeo, então tudo acelera junto e continua sincronizado). A voz mantém o tom.
+  const speed = speedFilters(options.speed, meta.fps);
+  if (speed) vf = `${vf},${speed.vf}`;
   const args = ['-i', input, '-vf', vf, ...x264Final()];
-  if (meta.hasAudio) args.push('-c:a', 'aac', '-b:a', '192k');
+  if (meta.hasAudio) {
+    if (speed) args.push('-af', speed.af);
+    args.push('-c:a', 'aac', '-b:a', '192k');
+  }
   args.push('-movflags', '+faststart', '-y', output);
 
-  await runFfmpeg(args, { label: 'render', totalDuration: meta.duration, onProgress });
+  await runFfmpeg(args, { label: 'render', totalDuration: meta.duration / (speed ? speed.k : 1), onProgress });
 
   const stat = await fs.stat(output);
   log.ok(`render final: ${path.basename(output)} (${(stat.size / 1e6).toFixed(1)} MB, ${aspect}${reframe?.tracked ? ', tracking' : ''})`);
