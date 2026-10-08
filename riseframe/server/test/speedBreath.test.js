@@ -61,7 +61,7 @@ test('áudio real: a inspiração antes da frase é cortada só com "remover res
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-breath-'));
   const wav = path.join(dir, 'fala.wav');
   // "fala" (tom alto) 0–1 s · silêncio · "respiração" (ruído baixo, ~30 dB abaixo) 1.4–1.85 s · "fala" 1.85–3 s
-  await runFfmpeg(['-f', 'lavfi', '-i', 'sine=frequency=220:duration=3:sample_rate=16000', '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.03:duration=3:sample_rate=16000',
+  await runFfmpeg(['-f', 'lavfi', '-i', 'sine=frequency=220:duration=3:sample_rate=16000', '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.03:duration=3:sample_rate=16000:seed=42',
     '-filter_complex', "[0:a]volume='if(lt(t,1)+gte(t,1.85),0.9,0)':eval=frame[s];[1:a]volume='if(between(t,1.4,1.85),1,0)':eval=frame[n];[s][n]amix=inputs=2:normalize=0[a]",
     '-map', '[a]', '-y', wav], { label: 'teste' });
   const transcript = { segments: [{ words: [{ start: 0.05, end: 1.0, word: 'oi' }, { start: 1.87, end: 2.9, word: 'tudo' }] }] };
