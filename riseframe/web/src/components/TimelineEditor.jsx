@@ -13,6 +13,10 @@ import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS } from '
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
 
 // Tempo no formato do player: 00:12
+// Timecode como no Premiere (mm:ss:quadros, 30 fps): 00:56:23
+const tc = (t) => { const f = Math.max(0, t || 0); return `${mmss(f)}:${String(Math.floor((f % 1) * 30)).padStart(2, '0')}`; };
+// Busca sem acento e sem caixa
+const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const mmss = (t) => `${String(Math.floor((t || 0) / 60)).padStart(2, '0')}:${String(Math.floor((t || 0) % 60)).padStart(2, '0')}`;
 
 const PPS_MIN = 24;
@@ -231,6 +235,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Retângulo onde o vídeo aparece dentro do player (object-fit: contain) — base para
   // desenhar legenda, véus de cor e B-roll exatamente sobre a imagem.
   const [vbox, setVbox] = useState(null);
+  const [vdim, setVdim] = useState(null); // tamanho real do vídeo (mesmo com o player escondido no celular)
+  // Tamanho do palco (player): P deixa mais espaço para a timeline, G para ver o vídeo.
+  const [stage, setStage] = useState(() => { try { return localStorage.getItem('rf_stage') || 'm'; } catch { return 'm'; } });
+  useEffect(() => { try { localStorage.setItem('rf_stage', stage); } catch { /* sem storage */ } }, [stage]);
   const demoRef = useRef({ start: 0, until: 0 });
   // Prévia de cor EXATA (quadro gerado pelo servidor com o mesmo filtro do render),
   // mostrada na aba Cor com o vídeo pausado. Tocando, vale a prévia aproximada (CSS).
@@ -893,6 +901,56 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }));
   }
   const capSegNow = segments.find((s) => cur >= s.start && cur < s.end) || null;
+  // ── Painel de legendas (lista estilo Premiere + propriedades da selecionada)
+  const [capPane, setCapPane] = useState('lista');
+  const [capQuery, setCapQuery] = useState('');
+  const [capEdit, setCapEdit] = useState(null); // índice da legenda em edição na lista
+  const capListRef = useRef(null);
+  const capRows = useMemo(() => {
+    const q = norm(capQuery.trim());
+    const rows = segments.map((s, si) => ({ s, si }));
+    return q ? rows.filter(({ s }) => norm(s.words.map((w) => w.word).join(' ')).includes(q)) : rows;
+  }, [segments, capQuery]);
+  const capSel = segments[sel] || null;
+  const capSelRange = capSel ? (keptRange(capSel) || [capSel.start, capSel.end]) : [0, 0];
+  const capSelText = capSel ? (segRemoved(capSel) ? capSel.words : capSel.words.filter((w) => !w.removed)).map((w) => w.word).join(' ') : '';
+  function goCaption(dir) {
+    const i = Math.max(0, Math.min(segments.length - 1, sel + dir));
+    const s = segments[i];
+    if (!s) return;
+    setSel(i);
+    seek((keptRange(s) || [s.start])[0] + 0.01);
+  }
+  // A lista acompanha: tocando → a legenda falada; parado → a selecionada.
+  const capFollow = playing ? activeIndex : sel;
+  useEffect(() => {
+    const box = capListRef.current;
+    if (!box || capFollow < 0) return;
+    const row = box.querySelector(`[data-si="${capFollow}"]`);
+    if (!row) return;
+    if (row.offsetTop < box.scrollTop || row.offsetTop + row.offsetHeight > box.scrollTop + box.clientHeight) {
+      box.scrollTop = Math.max(0, row.offsetTop - box.clientHeight / 3);
+    }
+  }, [capFollow, capPane, tab]);
+  // Atalhos de teclado (fora de campos de texto): espaço, setas, S para dividir.
+  const keysRef = useRef({});
+  keysRef.current = { togglePlay, seek, cur, goCaption, splitAtPlayhead };
+  useEffect(() => {
+    function onKey(e) {
+      const t = e.target;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      const k = keysRef.current;
+      if (e.code === 'Space') { e.preventDefault(); k.togglePlay(); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); k.seek(k.cur - (e.shiftKey ? 5 : 1)); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); k.seek(k.cur + (e.shiftKey ? 5 : 1)); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); k.goCaption(-1); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); k.goCaption(1); }
+      else if (e.key === 's' || e.key === 'S') { k.splitAtPlayhead(); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const capMoved = segments.some((s) => s.words.some((w) => w.px != null)) || cap.captionX != null;
   // Ênfase manual de uma palavra (cor própria / maior) — identificada pelo início dela.
   const [emWord, setEmWord] = useState(null);
@@ -940,10 +998,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const fitMode = reframeMode === 'fit' && aspectSel !== 'original' && previewMode === 'video';
   const personCropStyle = (() => {
     if (fitMode) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilter };
-    if (!vbox?.vw || !pbox?.w || !pbox?.h) {
+    const sd = vdim || (vbox?.vw ? { w: vbox.vw, h: vbox.vh } : null);
+    if (!sd || !pbox?.w || !pbox?.h) {
       return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, filter: videoFilter };
     }
-    const g = coverCrop(vbox.vw, vbox.vh, pbox.w, pbox.h, focus, zoom);
+    const g = coverCrop(sd.w, sd.h, pbox.w, pbox.h, focus, zoom);
     return { position: 'absolute', left: -g.cropX, top: -g.cropY, width: g.scaledW, height: g.scaledH, maxWidth: 'none', objectFit: 'fill', filter: videoFilter };
   })();
   const personHalf = (
@@ -1012,10 +1071,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     );
   })();
   // Proporção da prévia = proporção do vídeo final escolhido.
-  const previewRatio = aspectSel === '1:1' ? '1 / 1' : aspectSel === '16:9' ? '16 / 9' : aspectSel === '9:16' ? '9 / 16' : vbox?.vw ? `${vbox.vw} / ${vbox.vh}` : '9 / 16';
+  const srcDim = vdim || (vbox?.vw ? { w: vbox.vw, h: vbox.vh } : null);
+  const previewRatio = aspectSel === '1:1' ? '1 / 1' : aspectSel === '16:9' ? '16 / 9' : aspectSel === '9:16' ? '9 / 16' : srcDim ? `${srcDim.w} / ${srcDim.h}` : '9 / 16';
+  const landscapePreview = aspectSel === '16:9' || (aspectSel === 'original' && srcDim && srcDim.w > srcDim.h);
   const previewLabel = aspectSel === 'original' ? 'formato original' : aspectSel;
   const composedPreview = (
-    <div ref={composedRef} style={{ position: 'relative', width: '100%', maxWidth: aspectSel === '16:9' || (aspectSel === 'original' && vbox?.vw > vbox?.vh) ? '100%' : 250, margin: '0 auto', aspectRatio: previewRatio, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
+    <div ref={composedRef} style={{ position: 'relative', ...(landscapePreview ? { width: '100%', maxHeight: 'var(--rf-stage-h)' } : { height: 'var(--rf-stage-h)', width: 'auto' }), maxWidth: '100%', margin: '0 auto', aspectRatio: previewRatio, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
       {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
       {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={segments} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} />}
@@ -1058,12 +1119,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   };
 
   return (
-    <div style={{ ...glass(), padding: 22 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+    <div className="rf-tl-card" style={{ ...glass(), padding: 22 }}>
+      <div className="rf-tl-head" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'rgba(255,107,53,0.14)', color: C.orangeSoft }}><Icon name="film" size={18} strokeWidth={1.9} /></span>
         <div>
           <div style={{ fontWeight: 800, fontSize: 16.5, letterSpacing: -0.2 }}>Editor de vídeo</div>
-          <div style={{ fontSize: 11.5, color: C.faint }}>Corte, legende e ajuste antes de exportar · {APP_VERSION}</div>
+          <div className="rf-tl-hide-sm" style={{ fontSize: 11.5, color: C.faint }}>Corte, legende e ajuste antes de exportar · {APP_VERSION}</div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <GhostButton onClick={onBack} disabled={busy} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -1075,34 +1136,34 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
       </div>
 
-      <div className="rf-tl-grid" style={{ display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start' }}>
+      <div className={`rf-tl-grid rf-stage-${stage}`} style={{ display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start' }}>
         {/* Ferramentas (como num editor): cada uma abre o painel de ajustes à direita */}
         <nav className="rf-tl-nav" style={{ display: 'grid', gap: 4, padding: 8, borderRadius: 16, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.025)', alignSelf: 'start' }}>
           {TABS.map((t) => {
             const on = tab === t.id;
             return (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{
+              <button key={t.id} onClick={() => setTab(t.id)} title={t.label} style={{
                 position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', borderRadius: 11, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                 fontSize: 13, fontWeight: on ? 700 : 600, textAlign: 'left', whiteSpace: 'nowrap',
                 background: on ? 'linear-gradient(90deg, rgba(255,107,53,0.18), rgba(255,107,53,0.04))' : 'transparent', color: on ? C.text : C.muted,
               }}>
                 {on && <span style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 3, borderRadius: 3, background: C.orange }} />}
-                <Icon name={t.icon} size={17} strokeWidth={1.9} color={on ? C.orangeSoft : 'currentColor'} /> {t.label}
+                <Icon name={t.icon} size={17} strokeWidth={1.9} color={on ? C.orangeSoft : 'currentColor'} /> <span className="rf-tl-navlbl">{t.label}</span>
               </button>
             );
           })}
           <div style={{ height: 1, background: C.border, margin: '6px 4px' }} />
           <button onClick={generate} disabled={busy || allGone} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', borderRadius: 11, border: 'none', cursor: busy || allGone ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, background: 'transparent', color: C.orangeSoft, textAlign: 'left' }}>
-            <Icon name="upload" size={17} strokeWidth={2} /> Exportar
+            <Icon name="upload" size={17} strokeWidth={2} /> <span className="rf-tl-navlbl">Exportar</span>
           </button>
         </nav>
 
         <div className="rf-tl-preview">
           {/* Vídeo principal + prévia 9:16 do ajuste, LADO A LADO (mesma linha) */}
-          <div className="rf-tl-pv" style={{ display: 'grid', gridTemplateColumns: showFormatPreview ? 'minmax(0,1fr) minmax(150px, 250px)' : '1fr', gap: 12, alignItems: 'start' }}>
-            <div>
-              <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
-                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ width: '100%', display: 'block', maxHeight: 'min(72vh, 680px)', objectFit: 'contain', background: '#000', filter: videoFilter }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={measureVideo} playsInline />
+          <div className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}`} style={{ display: 'grid', gridTemplateColumns: showFormatPreview ? (landscapePreview ? 'minmax(0,1.3fr) minmax(0,1fr)' : 'minmax(0,1fr) auto') : '1fr', gap: 12, alignItems: 'center', padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(124,58,237,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
+            <div className="rf-tl-main" style={{ minWidth: 0, containerType: 'inline-size' }}>
+              <div style={{ position: 'relative', width: 'fit-content', maxWidth: '100%', margin: '0 auto', borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
+                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ display: 'block', width: 'auto', maxWidth: '100%', height: vdim ? `min(var(--rf-stage-h), ${((vdim.h / vdim.w) * 100).toFixed(3)}cqw)` : 'var(--rf-stage-h)', objectFit: 'contain', background: '#000', filter: videoFilter }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim({ w: v.videoWidth, h: v.videoHeight }); measureVideo(); }} playsInline />
                 {vbox && lookCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...lookCss.tint }} />}
                 {vbox && colorCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...colorCss.tint }} />}
                 {vbox && brollNow && (
@@ -1137,33 +1198,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </div>
                 )}
               </div>
-              {/* Barra do player: play, tempo, barra de progresso, prévia com cortes e tela cheia */}
-              <div className="rf-tl-bar" style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, padding: '8px 12px', borderRadius: 12, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)' }}>
-                <button onClick={togglePlay} style={{ ...playBtn, width: 34, height: 34 }}><Icon name={playing ? 'pause' : 'play'} size={15} strokeWidth={2} /></button>
-                <div style={{ fontSize: 12.5, color: C.text, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{mmss(cur)} <span style={{ color: C.faint }}>/ {mmss(dur)}</span></div>
-                <div
-                  onPointerDown={(e) => {
-                    const el = e.currentTarget;
-                    const at = (ev) => { const r = el.getBoundingClientRect(); seek(((ev.clientX - r.left) / r.width) * dur); };
-                    at(e);
-                    const move = (ev) => at(ev);
-                    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
-                    window.addEventListener('pointermove', move);
-                    window.addEventListener('pointerup', up);
-                  }}
-                  style={{ position: 'relative', flex: 1, height: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', minWidth: 40 }}
-                >
-                  <div style={{ position: 'absolute', left: 0, right: 0, height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.12)' }} />
-                  <div style={{ position: 'absolute', left: 0, width: `${dur ? (cur / dur) * 100 : 0}%`, height: 4, borderRadius: 4, background: GRAD }} />
-                  <div style={{ position: 'absolute', left: `calc(${dur ? (cur / dur) * 100 : 0}% - 6px)`, width: 12, height: 12, borderRadius: '50%', background: '#fff', boxShadow: `0 0 0 3px ${C.orange}55` }} />
-                </div>
-                <button onClick={() => setPreviewCuts((v) => !v)} title="Ao tocar, pular os trechos cortados (como no vídeo final)" style={{ ...miniBtn(previewCuts, false), whiteSpace: 'nowrap', flexShrink: 0 }}>
-                  <Icon name="scissors" size={12} strokeWidth={2.2} /> <span className="rf-tl-hide-sm">{previewCuts ? 'Com cortes' : 'Sem cortes'}</span>
-                </button>
-                <button onClick={() => { const el = videoRef.current?.parentElement; if (el?.requestFullscreen) el.requestFullscreen().catch(() => {}); }} title="Tela cheia" style={{ ...zoomBtn, width: 30, height: 30 }}>
-                  <Icon name="crop" size={14} strokeWidth={2} />
-                </button>
-              </div>
             </div>
             {showFormatPreview && (
               <div className="rf-tl-pv-fmt">
@@ -1173,7 +1207,36 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               </div>
             )}
           </div>
-
+          {/* Barra do player: play, tempo, barra de progresso, prévia com cortes e tela cheia */}
+          <div className="rf-tl-bar" style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, padding: '8px 12px', borderRadius: 12, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)' }}>
+            <button onClick={togglePlay} style={{ ...playBtn, width: 34, height: 34 }}><Icon name={playing ? 'pause' : 'play'} size={15} strokeWidth={2} /></button>
+            <div style={{ fontSize: 12.5, color: C.text, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{mmss(cur)} <span style={{ color: C.faint }}>/ {mmss(dur)}</span></div>
+            <div
+              onPointerDown={(e) => {
+                const el = e.currentTarget;
+                const at = (ev) => { const r = el.getBoundingClientRect(); seek(((ev.clientX - r.left) / r.width) * dur); };
+                at(e);
+                const move = (ev) => at(ev);
+                const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+                window.addEventListener('pointermove', move);
+                window.addEventListener('pointerup', up);
+              }}
+              style={{ position: 'relative', flex: 1, height: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', minWidth: 40 }}
+            >
+              <div style={{ position: 'absolute', left: 0, right: 0, height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.12)' }} />
+              <div style={{ position: 'absolute', left: 0, width: `${dur ? (cur / dur) * 100 : 0}%`, height: 4, borderRadius: 4, background: GRAD }} />
+              <div style={{ position: 'absolute', left: `calc(${dur ? (cur / dur) * 100 : 0}% - 6px)`, width: 12, height: 12, borderRadius: '50%', background: '#fff', boxShadow: `0 0 0 3px ${C.orange}55` }} />
+            </div>
+            <button onClick={() => setPreviewCuts((v) => !v)} title="Ao tocar, pular os trechos cortados (como no vídeo final)" style={{ ...miniBtn(previewCuts, false), whiteSpace: 'nowrap', flexShrink: 0 }}>
+              <Icon name="scissors" size={12} strokeWidth={2.2} /> <span className="rf-tl-hide-sm">{previewCuts ? 'Com cortes' : 'Sem cortes'}</span>
+            </button>
+            <button onClick={() => setStage((v) => (v === 'm' ? 'l' : v === 'l' ? 's' : 'm'))} title="Tamanho do player: menor deixa mais espaço para a timeline" style={{ ...miniBtn(false, false), whiteSpace: 'nowrap', flexShrink: 0 }}>
+              <Icon name="layout" size={13} strokeWidth={2} /> <span className="rf-tl-hide-sm">Player {stage === 's' ? 'P' : stage === 'l' ? 'G' : 'M'}</span>
+            </button>
+            <button onClick={() => { const el = videoRef.current?.parentElement; if (el?.requestFullscreen) el.requestFullscreen().catch(() => {}); }} title="Tela cheia" style={{ ...zoomBtn, width: 30, height: 30 }}>
+              <Icon name="maximize" size={14} strokeWidth={2} />
+            </button>
+          </div>
         </div>
 
         {/* Ajustes em abas, AO LADO da prévia: dá para ver o efeito enquanto ajusta. */}
@@ -1517,16 +1580,144 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {/* Ajustes de legenda (posição, fonte, estilo…) direto na edição */}
           {tab === 'legenda' && (
             <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="captions" size={15} strokeWidth={2} /></span>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>Legenda</div>
-              </div>
-              <CapRow label="Legendas no vídeo">
-                <button onClick={() => setCapField({ captions: !cap.captions })} style={miniBtn(!cap.captions, false)}>
-                  {cap.captions ? 'Ligadas' : 'Desligadas'}
+                <button onClick={() => setCapField({ captions: !cap.captions })} title="Mostrar ou não a legenda no vídeo final"
+                  style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, border: `1px solid ${cap.captions ? 'rgba(46,212,122,0.45)' : C.border}`, background: cap.captions ? 'rgba(46,212,122,0.12)' : 'rgba(255,255,255,0.04)', color: cap.captions ? C.green : C.muted, borderRadius: 999, padding: '4px 10px 4px 6px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <span style={{ width: 26, height: 15, borderRadius: 999, background: cap.captions ? C.green : 'rgba(255,255,255,0.18)', position: 'relative', transition: 'background .15s' }}>
+                    <span style={{ position: 'absolute', top: 2, left: cap.captions ? 13 : 2, width: 11, height: 11, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
+                  </span>
+                  {cap.captions ? 'No vídeo' : 'Desligada'}
                 </button>
-              </CapRow>
-              {cap.captions && catalog ? (
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, padding: 3, borderRadius: 11, background: 'rgba(255,255,255,0.05)', marginBottom: 10 }}>
+                {[{ id: 'lista', label: 'Legendas', icon: 'list' }, { id: 'estilo', label: 'Estilo', icon: 'type' }].map((o) => (
+                  <button key={o.id} onClick={() => setCapPane(o.id)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: 'none', borderRadius: 8, padding: '7px 0', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: capPane === o.id ? 'rgba(255,255,255,0.13)' : 'transparent', color: capPane === o.id ? C.text : C.muted }}>
+                    <Icon name={o.icon} size={14} strokeWidth={2} /> {o.label}
+                  </button>
+                ))}
+              </div>
+              {capPane === 'lista' ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {/* Lista de legendas (como o painel Captions do Premiere): nº, entrada/saída e texto */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                      <span style={{ position: 'absolute', left: 9, top: 9, color: C.faint, display: 'flex' }}><Icon name="search" size={14} strokeWidth={2} /></span>
+                      <input value={capQuery} onChange={(e) => setCapQuery(e.target.value)} placeholder="Buscar na legenda"
+                        style={{ width: '100%', boxSizing: 'border-box', height: 32, padding: '0 10px 0 30px', borderRadius: 9, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 12.5, fontFamily: 'inherit' }} />
+                    </div>
+                    <button onClick={splitAtPlayhead} disabled={!canSplit} title="Dividir a legenda no ponto atual (S)" style={{ ...zoomBtn, width: 32, height: 32, opacity: canSplit ? 1 : 0.4 }}><Icon name="scissors" size={14} strokeWidth={2} /></button>
+                    <button onClick={() => mergeNext(sel)} disabled={sel >= segments.length - 1} title="Juntar com a próxima" style={{ ...zoomBtn, width: 32, height: 32, opacity: sel < segments.length - 1 ? 1 : 0.4 }}><Icon name="merge" size={14} strokeWidth={2} /></button>
+                  </div>
+                  <div ref={capListRef} style={{ position: 'relative', maxHeight: 'min(40vh, 360px)', minHeight: 120, overflowY: 'auto', borderRadius: 11, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.3)', padding: 4 }}>
+                    {capRows.length === 0 && <div style={{ fontSize: 12, color: C.faint, padding: 14, textAlign: 'center' }}>{capQuery ? 'Nada encontrado.' : 'Sem falas para legendar.'}</div>}
+                    {capRows.map(({ s: seg, si }) => {
+                      const gone = segRemoved(seg);
+                      const kr = keptRange(seg) || [seg.start, seg.end];
+                      const on = si === sel;
+                      const live = si === activeIndex;
+                      const text = (gone ? seg.words : seg.words.filter((w) => !w.removed)).map((w) => w.word).join(' ');
+                      return (
+                        <div key={si} data-si={si} onClick={() => { setSel(si); seek(kr[0] + 0.01); }} onDoubleClick={() => setCapEdit(si)}
+                          style={{ position: 'relative', display: 'grid', gridTemplateColumns: '26px 70px minmax(0, 1fr)', gap: 8, alignItems: 'start', padding: '9px 8px 9px 10px', borderRadius: 9, cursor: 'pointer', background: on ? 'rgba(255,255,255,0.09)' : 'transparent', marginBottom: 2 }}>
+                          {live && <span style={{ position: 'absolute', left: 2, top: 8, bottom: 8, width: 3, borderRadius: 3, background: C.orange }} />}
+                          <span style={{ fontSize: 11.5, color: C.faint, fontVariantNumeric: 'tabular-nums', paddingTop: 1 }}>{si + 1}.</span>
+                          <span style={{ fontSize: 11, color: on ? C.text : C.muted, fontVariantNumeric: 'tabular-nums', lineHeight: 1.45 }}>{tc(kr[0])}<br />{tc(kr[1])}</span>
+                          {capEdit === si ? (
+                            <input autoFocus defaultValue={text} onClick={(e) => e.stopPropagation()}
+                              onBlur={(e) => { setPhraseText(si, e.target.value); setCapEdit(null); }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setCapEdit(null); }}
+                              style={{ width: '100%', boxSizing: 'border-box', height: 30, padding: '0 8px', borderRadius: 7, border: `1px solid ${C.orange}`, background: 'rgba(0,0,0,0.5)', color: C.text, fontSize: 13, fontFamily: 'inherit' }} />
+                          ) : (
+                            <span style={{ fontSize: 13, lineHeight: 1.4, color: gone ? C.red : C.text, textDecoration: gone ? 'line-through' : 'none', wordBreak: 'break-word' }}>{text}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="rf-tl-hide-touch" style={{ fontSize: 10.5, color: C.faint, lineHeight: 1.5 }}>Clique para ir · duplo-clique para editar · <b>Espaço</b> toca/pausa · <b>↑ ↓</b> legenda anterior/próxima · <b>← →</b> 1s</div>
+
+                  {/* Propriedades da legenda selecionada */}
+                  {capSel && (
+                    <div style={{ padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, background: 'linear-gradient(180deg, rgba(255,107,53,0.06), rgba(255,255,255,0.02))' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700 }}>Legenda {sel + 1}<span style={{ color: C.faint, fontWeight: 600 }}> de {segments.length}</span></div>
+                        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                          <button onClick={() => goCaption(-1)} disabled={sel <= 0} title="Anterior (↑)" style={{ ...zoomBtn, opacity: sel > 0 ? 1 : 0.4 }}><Icon name="prev" size={12} strokeWidth={2} /></button>
+                          <button onClick={() => goCaption(1)} disabled={sel >= segments.length - 1} title="Próxima (↓)" style={{ ...zoomBtn, opacity: sel < segments.length - 1 ? 1 : 0.4 }}><Icon name="next" size={12} strokeWidth={2} /></button>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                        {[['Entrada', capSelRange[0]], ['Saída', capSelRange[1]], ['Duração', capSelRange[1] - capSelRange[0]]].map(([k, v]) => (
+                          <div key={k} style={{ flex: 1, minWidth: 70, padding: '5px 8px', borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: `1px solid ${C.border}` }}>
+                            <div style={{ fontSize: 9.5, color: C.faint, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase' }}>{k}</div>
+                            <div style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{k === 'Duração' ? `${v.toFixed(1)}s` : tc(v)}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <textarea key={`${capSel.start}-${capSelText}`} defaultValue={capSelText} rows={2}
+                        onBlur={(e) => setPhraseText(sel, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }}
+                        style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '8px 10px', borderRadius: 9, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.4)', color: C.text, fontSize: 14, lineHeight: 1.4, fontFamily: 'inherit' }} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 10.5, color: C.faint }}>{capSelText.length} caracteres · Enter salva</span>
+                        <button onClick={() => toggleSeg(sel)} style={{ ...miniBtn(false, false), marginLeft: 'auto', color: segRemoved(capSel) ? C.green : C.red }}>
+                          <Icon name={segRemoved(capSel) ? 'undo' : 'trash'} size={12} strokeWidth={2} /> {segRemoved(capSel) ? 'Restaurar' : 'Cortar do vídeo'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {cap.captions && catalog && capSel && (
+                    <div style={{ padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>Ênfase nas palavras</div>
+                    {capSel ? (() => {
+                      const kept = capSel.words.filter((w) => !w.removed);
+                      const pick = kept.find((w) => w.start === emWord) || null;
+                      return (
+                        <>
+                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Toque numa palavra da frase e escolha uma cor ou deixe maior. Vale só para ela.</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                            {kept.map((w) => {
+                              const on = w.start === emWord;
+                              const hex = (catalog.captionColors || []).find((c) => c.id === w.emColor)?.hex;
+                              return (
+                                <button key={w.start} onClick={() => setEmWord(on ? null : w.start)}
+                                  style={{ padding: '5px 9px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: w.emBig ? 13.5 : 12, fontWeight: 700,
+                                    color: hex || C.text, background: on ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.3)', border: on ? '1.5px solid #fff' : `1px solid ${C.border}` }}>
+                                  {w.word}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {pick ? (
+                            <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                <span style={{ fontSize: 11, color: C.muted, marginRight: 2 }}>Cor de "{pick.word}":</span>
+                                {(catalog.captionColors || []).map((o) => (
+                                  <button key={o.id} onClick={() => setWordEm(capSel, pick.start, { emColor: pick.emColor === o.id ? undefined : o.id })} title={o.label}
+                                    style={{ width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', background: o.hex, border: pick.emColor === o.id ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)' }} />
+                                ))}
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <button onClick={() => setWordEm(capSel, pick.start, { emBig: !pick.emBig })} style={miniBtn(!!pick.emBig, false)}>{pick.emBig ? 'Maior ✓' : 'Deixar maior'}</button>
+                                {(pick.emColor || pick.emBig) && (
+                                  <button onClick={() => setWordEm(capSel, pick.start, { emColor: undefined, emBig: undefined })} style={miniBtn(false, false)}>Tirar ênfase</button>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 11, color: C.faint, marginTop: 8 }}>Nenhuma palavra escolhida.</div>
+                          )}
+                        </>
+                      );
+                    })() : (
+                      <div style={{ fontSize: 11, color: C.faint }}>Leve o vídeo até um trecho com fala para escolher as palavras.</div>
+                    )}
+                  </div>
+                  )}
+                </div>
+              ) : cap.captions && catalog ? (
                 <>
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div>
@@ -1561,67 +1752,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <CapRow label={`Caracteres por linha (${cap.captionMaxChars > 0 ? cap.captionMaxChars : 'automático'})`}>
                     <input type="range" min="7" max="42" step="1" value={cap.captionMaxChars > 0 ? cap.captionMaxChars : 7} onChange={(e) => { const v = Number(e.target.value); setCapField({ captionMaxChars: v <= 7 ? 0 : v }); }} style={{ width: '100%' }} />
                   </CapRow>
-                  <div style={{ marginTop: 4, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>Ênfase nas palavras</div>
-                    {capSegNow ? (() => {
-                      const kept = capSegNow.words.filter((w) => !w.removed);
-                      const pick = kept.find((w) => w.start === emWord) || null;
-                      return (
-                        <>
-                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Toque numa palavra da frase e escolha uma cor ou deixe maior. Vale só para ela.</div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                            {kept.map((w) => {
-                              const on = w.start === emWord;
-                              const hex = (catalog.captionColors || []).find((c) => c.id === w.emColor)?.hex;
-                              return (
-                                <button key={w.start} onClick={() => setEmWord(on ? null : w.start)}
-                                  style={{ padding: '5px 9px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: w.emBig ? 13.5 : 12, fontWeight: 700,
-                                    color: hex || C.text, background: on ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.3)', border: on ? '1.5px solid #fff' : `1px solid ${C.border}` }}>
-                                  {w.word}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {pick ? (
-                            <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                                <span style={{ fontSize: 11, color: C.muted, marginRight: 2 }}>Cor de "{pick.word}":</span>
-                                {(catalog.captionColors || []).map((o) => (
-                                  <button key={o.id} onClick={() => setWordEm(capSegNow, pick.start, { emColor: pick.emColor === o.id ? undefined : o.id })} title={o.label}
-                                    style={{ width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', background: o.hex, border: pick.emColor === o.id ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)' }} />
-                                ))}
-                              </div>
-                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                <button onClick={() => setWordEm(capSegNow, pick.start, { emBig: !pick.emBig })} style={miniBtn(!!pick.emBig, false)}>{pick.emBig ? 'Maior ✓' : 'Deixar maior'}</button>
-                                {(pick.emColor || pick.emBig) && (
-                                  <button onClick={() => setWordEm(capSegNow, pick.start, { emColor: undefined, emBig: undefined })} style={miniBtn(false, false)}>Tirar ênfase</button>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <div style={{ fontSize: 11, color: C.faint, marginTop: 8 }}>Nenhuma palavra escolhida.</div>
-                          )}
-                        </>
-                      );
-                    })() : (
-                      <div style={{ fontSize: 11, color: C.faint }}>Leve o vídeo até um trecho com fala para escolher as palavras.</div>
-                    )}
-                  </div>
-                  <div style={{ marginTop: 4, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>Corrigir o texto</div>
-                    {capSegNow ? (
-                      <>
-                        <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>Frase que está no vídeo agora ({fmtDuration(capSegNow.start)}). Corrija e aperte Enter ou clique fora.</div>
-                        <input key={`${capSegNow.start}-${capSegNow.words.map((w) => w.word).join(' ')}`}
-                          defaultValue={capSegNow.words.filter((w) => !w.removed).map((w) => w.word).join(' ')}
-                          onBlur={(e) => setPhraseText(segments.indexOf(capSegNow), e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                          style={{ width: '100%', boxSizing: 'border-box', minHeight: 38, padding: '0 11px', borderRadius: 9, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 14, fontFamily: 'inherit' }} />
-                      </>
-                    ) : (
-                      <div style={{ fontSize: 11, color: C.faint }}>Leve o vídeo até um trecho com fala para corrigir a frase dele.</div>
-                    )}
-                  </div>
                   <div style={{ marginTop: 4, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
                     <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>Posição manual · arraste a legenda na prévia</div>
                     <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Pare o vídeo na frase, escolha o que mover e arraste o texto (contorno tracejado) para onde quiser.</div>
@@ -1718,9 +1848,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         {/* Timeline logo abaixo do vídeo (como num editor), ao lado do painel de ajustes */}
         <div className="rf-tl-bottom" style={{ minWidth: 0 }}>
         {/* Barra de ferramentas da timeline */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, marginBottom: 8, flexWrap: 'wrap' }}>
-          <button onClick={splitAtPlayhead} disabled={!canSplit} style={toolBtn(!canSplit)}>
-            <Icon name="scissors" size={14} strokeWidth={2} /> Dividir no playhead
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 8, flexWrap: 'wrap' }}>
+          <button onClick={splitAtPlayhead} disabled={!canSplit} title="Dividir no playhead (S)" style={toolBtn(!canSplit)}>
+            <Icon name="scissors" size={14} strokeWidth={2} /> <span className="rf-tl-hide-sm">Dividir no playhead</span>
           </button>
           <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />
           <button
@@ -1735,7 +1865,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             title="Posicione o playhead, marque o início, mova e feche o corte"
           >
             <Icon name="scissors" size={14} strokeWidth={2} />
-            {cutStart == null ? 'Cortar deste ponto' : `Fechar corte em ${fmtDuration(cur)}`}
+            {cutStart == null ? <span className="rf-tl-hide-sm">Cortar deste ponto</span> : `Fechar corte em ${fmtDuration(cur)}`}
           </button>
           {cutStart != null && (
             <button onClick={() => setCutStart(null)} style={toolBtn(false)}>Cancelar</button>
@@ -1743,18 +1873,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {pauses.length > 0 && (
             <>
               <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />
-              <span style={{ fontSize: 11.5, color: C.faint }}>Pausas:</span>
+              <span className="rf-tl-hide-sm" style={{ fontSize: 11.5, color: C.faint }}>Pausas:</span>
               <button onClick={cutAllPauses} disabled={pausesCut.length === pauses.length} style={toolBtn(pausesCut.length === pauses.length)}>
-                <Icon name="scissors" size={13} strokeWidth={2} /> Cortar todas
+                <Icon name="scissors" size={13} strokeWidth={2} /> <span className="rf-tl-hide-sm">Cortar pausas</span>
               </button>
               <button onClick={keepAllPauses} disabled={pausesCut.length === 0} style={toolBtn(pausesCut.length === 0)}>
-                <Icon name="undo" size={13} strokeWidth={2} /> Manter todas
+                <Icon name="undo" size={13} strokeWidth={2} /> <span className="rf-tl-hide-sm">Manter pausas</span>
               </button>
             </>
           )}
           {/* Zoom da timeline (aproxima/afasta os blocos) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
-            <span style={{ fontSize: 11.5, color: C.faint }}>Zoom</span>
+            <span className="rf-tl-hide-sm" style={{ fontSize: 11.5, color: C.faint }}>Zoom</span>
             <button onClick={() => zoomTl(-1)} disabled={pps <= PPS_MIN} style={toolBtn(pps <= PPS_MIN)} title="Afastar">−</button>
             <button onClick={() => zoomTl(1)} disabled={pps >= PPS_MAX} style={toolBtn(pps >= PPS_MAX)} title="Aproximar">+</button>
             <button onClick={() => setPps(64)} style={toolBtn(false)} title="Zoom padrão">Ajustar</button>
@@ -2080,29 +2210,49 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
 
       <style>{`
-        .rf-tl-nav{ grid-column: 1; grid-row: 1; }
+        /* Palco (player) cabe na tela junto com a timeline: a altura acompanha a janela. */
+        .rf-tl-grid{ --rf-stage-h: clamp(200px, calc(100dvh - 560px), 620px); }
+        .rf-tl-grid.rf-stage-s{ --rf-stage-h: clamp(160px, calc(100dvh - 680px), 420px); }
+        .rf-tl-grid.rf-stage-l{ --rf-stage-h: clamp(320px, calc(100dvh - 240px), 900px); }
+        .rf-tl-pv-fmt{ display: flex; flex-direction: column; align-items: center; min-width: 0; }
+        .rf-tl-nav{ grid-column: 1; grid-row: 1 / span 2; position: sticky; top: 12px; }
         .rf-tl-preview{ grid-column: 2; grid-row: 1; min-width: 0; }
         .rf-tl-adjust{ grid-column: 3; grid-row: 1 / span 2; }
-        .rf-tl-bottom{ grid-column: 1 / 3; grid-row: 2; }
-        @media (max-width: 1280px){
-          .rf-tl-grid{ grid-template-columns: minmax(0, 1fr) minmax(300px, 340px) !important; }
-          .rf-tl-nav{ grid-column: 1 / -1; grid-row: 1; display: flex !important; flex-wrap: wrap; }
-          .rf-tl-nav > div{ display: none; }
-          .rf-tl-preview{ grid-column: 1; grid-row: 2; }
-          .rf-tl-adjust{ grid-column: 2; grid-row: 2 / span 2; }
-          .rf-tl-bottom{ grid-column: 1; grid-row: 3; }
+        .rf-tl-bottom{ grid-column: 2; grid-row: 2; }
+        @media (max-width: 1440px){
+          /* notebook: menu vira uma barra só de ícones, sobra largura para vídeo e timeline */
+          .rf-tl-grid{ grid-template-columns: 58px minmax(0, 1fr) minmax(290px, 330px) !important; gap: 12px !important; }
+          .rf-tl-navlbl{ display: none; }
+          .rf-tl-nav{ padding: 5px !important; }
+          .rf-tl-nav > button{ justify-content: center; padding: 11px 0 !important; }
+        }
+        @media (max-width: 1100px){
+          /* tela estreita: mostra só a prévia do formato final (o player continua tocando o som) */
+          .rf-tl-pv{ grid-template-columns: minmax(0, 1fr) !important; }
+          .rf-tl-pv--fmt .rf-tl-main{ display: none; }
         }
         @media (max-width: 860px){
           .rf-tl-grid{ grid-template-columns: minmax(0, 1fr) !important; }
           .rf-tl-nav, .rf-tl-preview, .rf-tl-adjust, .rf-tl-bottom{ grid-column: 1 !important; grid-row: auto !important; }
-          .rf-tl-nav{ overflow-x: auto; flex-wrap: nowrap !important; }
+          .rf-tl-nav{ display: flex !important; overflow-x: auto; flex-wrap: nowrap !important; padding: 4px !important; scrollbar-width: none; position: static; }
+          .rf-tl-nav > div{ display: none; }
+          .rf-tl-navlbl{ display: inline; }
+          .rf-tl-nav > button{ padding: 8px 10px !important; justify-content: flex-start; }
           .rf-tl-adjust{ position: static !important; max-height: none !important; overflow: visible !important; }
-          .rf-tl-pv{ grid-template-columns: minmax(0, 1fr) !important; }
-          .rf-tl-pv-fmt{ width: 100%; max-width: 260px; margin: 0 auto; }
+          .rf-tl-pv{ grid-template-columns: minmax(0, 1fr) !important; padding: 8px !important; }
+          .rf-tl-nav{ order: 1; } .rf-tl-preview{ order: 2; } .rf-tl-bottom{ order: 3; } .rf-tl-adjust{ order: 4; }
+          .rf-tl-grid{ --rf-stage-h: clamp(200px, calc(100dvh - 640px), 520px); }
+          .rf-tl-grid.rf-stage-s{ --rf-stage-h: clamp(170px, calc(100dvh - 680px), 400px); }
+          .rf-tl-grid.rf-stage-l{ --rf-stage-h: min(74dvh, 720px); }
         }
+        @media (hover: none){ .rf-tl-hide-touch{ display: none; } }
         @media (max-width: 480px){
+          .rf-tl-grid{ --rf-stage-h: clamp(200px, calc(100dvh - 600px), 520px); }
           .rf-tl-bar{ gap: 8px !important; padding: 6px 8px !important; }
           .rf-tl-hide-sm{ display: none; }
+          .rf-tl-card{ padding: 12px !important; }
+          .rf-tl-head{ flex-wrap: nowrap !important; margin-bottom: 10px !important; }
+          .rf-tl-head > span{ display: none !important; }
         }
       `}</style>
     </div>
