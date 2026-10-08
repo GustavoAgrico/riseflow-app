@@ -264,6 +264,50 @@ const PATHS = {
       <path d="M2 6h14a2 2 0 0 1 2 2v14" />
     </>
   ),
+  maximize: (
+    <>
+      <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+    </>
+  ),
+  layout: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <path d="M3 14h18M14 4v10" />
+    </>
+  ),
+  list: (
+    <>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" strokeWidth="2.6" />
+    </>
+  ),
+  type: (
+    <>
+      <path d="M5 7V5h14v2M12 5v14M9 19h6" />
+    </>
+  ),
+  prev: (
+    <>
+      <path d="M18 18 10 12l8-6v12ZM6 6v12" />
+    </>
+  ),
+  next: (
+    <>
+      <path d="m6 6 8 6-8 6V6ZM18 6v12" />
+    </>
+  ),
+  merge: (
+    <>
+      <path d="M5 6v4a4 4 0 0 0 4 4h10" />
+      <path d="m15 10 4 4-4 4" />
+      <path d="M5 18v.01" strokeWidth="2.6" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
+    </>
+  ),
 };
 
 export default function Icon({ name, size = 18, strokeWidth = 1.8, color = 'currentColor', style }) {
