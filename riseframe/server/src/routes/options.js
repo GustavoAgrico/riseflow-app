@@ -108,6 +108,8 @@ optionsRouter.get('/options', (_req, res) => {
       captionPosition: 'auto',
       captionMode: 'auto',
       captionScale: 1,
+      captionLines: 2,
+      captionMaxChars: 0,
       colorLook: 'auto',
       videoMotion: 'none',
       motionIntensity: 'medio',

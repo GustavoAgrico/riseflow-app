@@ -64,7 +64,7 @@ test('legenda padrão é normal: frase inteira, sem destacar a palavra falada', 
   const meta = { width: 1080, height: 1920 };
   const plain = buildAss([seg], meta, { template: 'clean' }).split('\n').filter((l) => l.startsWith('Dialogue'));
   assert.equal(plain.length, 1, 'uma linha por frase');
-  assert.match(plain[0], /3 razões pelas quais$/);
+  assert.match(plain[0], /3 razões\\Npelas quais$/, 'quebra em 2 linhas pelo tamanho da fonte');
   assert.doesNotMatch(plain[0], /alpha&H70/, 'nenhuma palavra apagada');
 
   const colored = buildAss([seg], meta, { template: 'clean', color: 'yellow' }).split('\n').filter((l) => l.startsWith('Dialogue'));
@@ -173,4 +173,28 @@ test('som de tecla no ritmo de digitação: frases alternadas (ou todas as palav
   const ritmo = captionSfxEvents(segs, { template: 'premium' }).map((e) => e.t);
   assert.deepEqual(ritmo, [0, 0.5, 4, 4.5], 'uma frase digitada, a seguinte em silêncio');
   assert.equal(captionSfxEvents(segs, { template: 'premium', keys: 'todas' }).length, 6);
+});
+
+test('linhas e caracteres: no máximo 1 ou 2 linhas, cada uma até o limite; o resto vira outro cartão', async () => {
+  const { layoutCaption } = await import('../../shared/captionKeyword.js');
+  const w = (t0, list) => list.split(' ').map((word, i) => ({ start: t0 + i * 0.3, end: t0 + i * 0.3 + 0.25, word }));
+  const words = w(0, 'isso vai mudar a forma como você grava seus vídeos');
+  const two = layoutCaption(words, { lines: 2, maxChars: 14, segEnd: 4 });
+  for (const c of two) {
+    const lines = [];
+    c.words.forEach((x) => (x.br || !lines.length ? lines.push([x.word]) : lines[lines.length - 1].push(x.word)));
+    assert.ok(lines.length <= 2, 'até 2 linhas');
+    assert.ok(lines.every((l) => l.join(' ').length <= 14), lines.map((l) => l.join(' ')).join(' | '));
+  }
+  assert.equal(two[0].end, two[1].words[0].start, 'o cartão fica até o próximo começar');
+  const one = layoutCaption(words, { lines: 1, maxChars: 14 });
+  assert.ok(one.every((c) => c.words.every((x) => !x.br)), '1 linha: nunca quebra');
+  assert.ok(one.length > two.length);
+
+  const seg = { start: 0, end: 4, words };
+  const ass1 = buildAss([seg], meta, { template: 'clean', lines: 1, maxChars: 14 }).split('\n').filter((l) => l.startsWith('Dialogue'));
+  assert.ok(ass1.length >= 4 && ass1.every((l) => !l.includes('\\N')), 'uma linha por cartão, sem quebra');
+  const ass2 = buildAss([seg], meta, { template: 'clean', lines: 2, maxChars: 14 }).split('\n').filter((l) => l.startsWith('Dialogue'));
+  assert.ok(ass2.some((l) => l.includes('\\N')) && ass2.length < ass1.length);
+  assert.match(buildAss([seg], meta, { template: 'clean' }), /WrapStyle: 2/, 'sem quebra automática do libass');
 });

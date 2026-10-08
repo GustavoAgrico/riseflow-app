@@ -354,6 +354,9 @@ function parseOptions(raw) {
     // Destacar a palavra falada na frase (padrão: legenda normal, sem destaque).
     captionHighlight: o.captionHighlight === true,
     captionScale: clampNum(o.captionScale, 0.6, 1.6, 1),
+    // Linhas por legenda (1 ou 2) e caracteres por linha (0 = automático pelo tamanho da fonte).
+    captionLines: Number(o.captionLines) === 1 ? 1 : 2,
+    captionMaxChars: Number(o.captionMaxChars) > 0 ? Math.round(clampNum(o.captionMaxChars, 8, 42, 0)) : 0,
     colorLook: ALLOWED_LOOKS.has(o.colorLook) ? o.colorLook : 'auto',
     // Ajuste manual de cor (brilho, contraste, saturação, temperatura: -100..100).
     colorAdjust: sanitizeColorAdjust(o.colorAdjust),

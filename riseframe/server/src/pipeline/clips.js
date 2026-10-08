@@ -160,6 +160,8 @@ export async function generateClips(ctx, onProgress = () => {}) {
         fontScale: options.captionScale || 1,
         mode: options.captionMode,
         highlight: options.captionHighlight === true,
+        lines: options.captionLines,
+        maxChars: options.captionMaxChars,
       };
       const r = await burnCaptions(input, cwork, cmeta, localTranscript, style, () => {});
       input = r.output;

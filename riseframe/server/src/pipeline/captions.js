@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 import { posOf } from './timeline.js';
-import { pickKeyword, emphasisOf, premiumChunks } from '../../../shared/captionKeyword.js';
+import { pickKeyword, emphasisOf, premiumChunks, layoutCaption, autoMaxChars } from '../../../shared/captionKeyword.js';
 
 export { premiumChunks };
 
@@ -218,7 +218,8 @@ export function buildAss(segments, meta, style = {}) {
   const header = [
     '[Script Info]',
     'ScriptType: v4.00+',
-    'WrapStyle: 0',
+    // 2 = sem quebra automática: as linhas são as dos cartões (limite de linhas/caracteres).
+    'WrapStyle: 2',
     'ScaledBorderAndShadow: yes',
     `PlayResX: ${w}`,
     `PlayResY: ${h}`,
@@ -280,19 +281,33 @@ export function buildAss(segments, meta, style = {}) {
   const hasEm = (wd) => !!(wd.emColor || wd.emBig);
   const emWrap = (wd, t, fill) => `{${emOpen(wd)}}${t}{\\fs${size}\\c${fill}}`;
   // Junta as palavras da frase. No estilo "duas linhas" a palavra-chave vai para baixo.
-  const joinWords = (parts, kw) => parts
-    .map((p, j) => (j === 0 ? p : `${T.keywordBreak && (j === kw || (kw === 0 && j === 1)) ? '\\N' : ' '}${p}`))
-    .join('');
+  // Junta as palavras com as quebras de linha do cartão (br). No estilo "duas linhas" a
+  // palavra-chave é quem desce (se a legenda puder ter 2 linhas).
+  const joinWords = (parts, kw, ws) => {
+    const duoBreak = (j) => T.keywordBreak && maxLines > 1 && (j === kw || (kw === 0 && j === 1));
+    const hasDuo = T.keywordBreak && maxLines > 1 && kw >= 0 && parts.length > 1;
+    return parts.map((p, j) => (j === 0 ? p : `${(hasDuo ? duoBreak(j) : ws?.[j]?.br) ? '\\N' : ' '}${p}`)).join('');
+  };
   const kwBig = `\\fscx${T.kwScale || 118}\\fscy${T.kwScale || 118}`; // realce da palavra-chave (maior)
   const highlight = style.highlight === true || !!T.forceHighlight;
   const up = (word) => escapeAss(T.upper ? word.toUpperCase() : word);
 
+  // Linhas e caracteres por linha: cada frase vira "cartões" de no máximo 1 ou 2 linhas
+  // (quebra só entre palavras). Sem limite escolhido, calcula pelo tamanho da fonte.
+  const maxLines = style.lines === 1 ? 1 : 2;
+  const maxChars = Number(style.maxChars) > 0 ? Number(style.maxChars) : autoMaxChars(w, size, T.upper);
+  const groups = [];
   for (const seg of segments) {
     const raw = seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }];
-    const words = raw
+    const ws = raw
       .map((wd) => ({ start: Number(wd.start) || 0, end: Number(wd.end) || 0, word: String(wd.word ?? '').trim(), ...posOf(wd), ...emphasisOf(wd) }))
       .filter((wd) => wd.word.length > 0);
-    if (!words.length) continue;
+    if (!ws.length) continue;
+    if (mode === 'word') groups.push({ seg, words: ws });
+    else for (const card of layoutCaption(ws, { lines: maxLines, maxChars, segEnd: seg.end })) groups.push({ seg: { ...seg, end: card.end }, words: card.words });
+  }
+
+  for (const { seg, words } of groups) {
     const phraseStyle = useBox ? 'RiseBox' : 'Rise';
 
     if (mode === 'word') {
@@ -366,7 +381,7 @@ export function buildAss(segments, meta, style = {}) {
       const markPadX = Math.max(4, Math.round(size * 0.1));
       const markPadY = Math.max(1, Math.round(size * 0.02));
       const p0 = posTag(words[0]);
-      lines.push(`Dialogue: 0,${assTime(words[0].start)},${assTime(endAll)},${phraseStyle},,0,0,0,,{${p0}${anim}${glow}}${joinWords(parts, -1)}`);
+      lines.push(`Dialogue: 0,${assTime(words[0].start)},${assTime(endAll)},${phraseStyle},,0,0,0,,{${p0}${anim}${glow}}${joinWords(parts, -1, words)}`);
       for (let i = 0; i < words.length; i++) {
         const start = words[i].start;
         const end = i + 1 < words.length ? words[i + 1].start : endAll;
@@ -378,7 +393,7 @@ export function buildAss(segments, meta, style = {}) {
         });
         // A 1ª palavra entra junto com a frase (mesma animação, para a caixa acompanhar).
         const a1 = i === 0 ? anim : i === words.length - 1 ? '\\fad(0,60)' : '';
-        lines.push(`Dialogue: 1,${assTime(start)},${assTime(end)},RiseMark,,0,0,0,,{${p0}\\1a&HFF&\\xbord${markPadX}\\ybord${markPadY}${a1}}${joinWords(marked, -1)}`);
+        lines.push(`Dialogue: 1,${assTime(start)},${assTime(end)},RiseMark,,0,0,0,,{${p0}\\1a&HFF&\\xbord${markPadX}\\ybord${markPadY}${a1}}${joinWords(marked, -1, words)}`);
       }
     } else if (!highlight) {
       // PADRÃO: legenda normal — a frase inteira, todas as palavras iguais (na cor
@@ -396,7 +411,7 @@ export function buildAss(segments, meta, style = {}) {
         return `{${kwBig}\\c${accent}}${t}{\\fscx100\\fscy100\\c${fill}}`;
       });
       const end = Math.max(words[words.length - 1].end, Number(seg.end) || 0);
-      lines.push(`Dialogue: 0,${assTime(words[0].start)},${assTime(end)},${phraseStyle},,0,0,0,,{${posTag(words[0])}${anim}${glow}${base}}${joinWords(parts, kw)}`);
+      lines.push(`Dialogue: 0,${assTime(words[0].start)},${assTime(end)},${phraseStyle},,0,0,0,,{${posTag(words[0])}${anim}${glow}${base}}${joinWords(parts, kw, words)}`);
     } else {
       // Destaque ligado: frase inteira e a palavra corrente realçada (por cor, ou —
       // no branco — pelo escurecimento das demais).
@@ -425,7 +440,7 @@ export function buildAss(segments, meta, style = {}) {
           if (color === 'white' || T.dimOthers) return `{${dim}}${t}{\\alpha&H00&}`;
           return t;
         });
-        lines.push(`Dialogue: 0,${assTime(start)},${assTime(end)},${phraseStyle},,0,0,0,,{${posTag(words[0])}${anim}${glow}}${joinWords(parts, kw)}`);
+        lines.push(`Dialogue: 0,${assTime(start)},${assTime(end)},${phraseStyle},,0,0,0,,{${posTag(words[0])}${anim}${glow}}${joinWords(parts, kw, words)}`);
       }
     }
   }
