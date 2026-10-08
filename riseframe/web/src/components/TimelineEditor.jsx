@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { C, glass, fmtDuration } from '../theme.js';
+import { C, GRAD, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import { sourceUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan, previewVoice, searchBroll } from '../api.js';
@@ -11,6 +11,9 @@ import CaptionGallery from './CaptionGallery.jsx';
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
+
+// Tempo no formato do player: 00:12
+const mmss = (t) => `${String(Math.floor((t || 0) / 60)).padStart(2, '0')}:${String(Math.floor((t || 0) % 60)).padStart(2, '0')}`;
 
 const PPS_MIN = 24;
 const PPS_MAX = 240;
@@ -48,6 +51,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     captionPosition: cap0.captionPosition || 'auto',
     captionMode: cap0.captionMode || 'auto',
     captionScale: cap0.captionScale || 1,
+    captionLines: cap0.captionLines === 1 ? 1 : 2,
+    captionMaxChars: Number(cap0.captionMaxChars) || 0,
     captionHighlight: cap0.captionHighlight === true,
     captionAnimation: cap0.captionAnimation || 'auto',
     captionPreset: cap0.captionPreset,
@@ -846,6 +851,27 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     );
   }
 
+  // Capítulos automáticos (faixa colorida da timeline): Intro, Conteúdo principal e
+  // Conclusão — ou "Chamada (CTA)" quando a frase final pede uma ação.
+  const chapters = useMemo(() => {
+    const segs = segments.filter((x) => !segRemoved(x));
+    if (dur < 12 || segs.length < 3) return [];
+    const CTA = /\b(segue|siga|comenta|comente|link|bio|salva|salve|compartilha|compartilhe|inscreva|inscreve|curte|curta|chama|chame|manda|whatsapp|direct|clica|clique)\b/i;
+    const introTarget = Math.min(9, Math.max(3, dur * 0.12));
+    const introEnd = (segs.find((x) => x.end >= introTarget) || segs[0]).end;
+    const cta = segs.find((x) => x.start >= dur * 0.6 && CTA.test(x.words.map((w) => w.word).join(' ')));
+    const concStart = cta ? cta.start : (segs.find((x) => x.start >= dur * 0.85) || segs[segs.length - 1]).start;
+    const last = segs[segs.length - 1].end;
+    const list = [{ label: 'Intro', start: segs[0].start, end: introEnd, color: C.orange }];
+    if (concStart - introEnd >= 3) {
+      list.push({ label: 'Conteúdo principal', start: introEnd, end: concStart, color: C.purple });
+      list.push({ label: cta ? 'Chamada (CTA)' : 'Conclusão', start: concStart, end: last, color: '#3B82F6' });
+    } else {
+      list.push({ label: 'Conteúdo principal', start: introEnd, end: last, color: C.purple });
+    }
+    return list.filter((c) => c.end - c.start > 0.5);
+  }, [segments, dur]);
+
   const allGone = stats.removed >= stats.total;
   const showZoomLane = fx.videoMotion === 'dynamic';
   const showBrollLane = !!brollReview?.moments?.length;
@@ -1033,19 +1059,47 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   return (
     <div style={{ ...glass(), padding: 22 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 14 }}>
-        <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="film" size={20} strokeWidth={1.9} /></span>
-        <div style={{ fontWeight: 700, fontSize: 17 }}>Timeline · editar antes de renderizar</div>
-        <span style={{ fontSize: 11, fontWeight: 700, color: C.orange, background: 'rgba(255,107,53,0.14)', border: `1px solid ${C.orange}`, borderRadius: 999, padding: '2px 9px', letterSpacing: 0.4 }}>{APP_VERSION}</span>
-        <GhostButton onClick={onBack} disabled={busy} style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Icon name="arrowLeft" size={14} strokeWidth={2} /> Voltar
-        </GhostButton>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'rgba(255,107,53,0.14)', color: C.orangeSoft }}><Icon name="film" size={18} strokeWidth={1.9} /></span>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 16.5, letterSpacing: -0.2 }}>Editor de vídeo</div>
+          <div style={{ fontSize: 11.5, color: C.faint }}>Corte, legende e ajuste antes de exportar · {APP_VERSION}</div>
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <GhostButton onClick={onBack} disabled={busy} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Icon name="arrowLeft" size={14} strokeWidth={2} /> Voltar
+          </GhostButton>
+          <button onClick={generate} disabled={busy || allGone} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none', borderRadius: 11, padding: '0 18px', minHeight: 40, background: busy || allGone ? 'rgba(255,255,255,0.08)' : GRAD, color: '#fff', fontWeight: 700, fontSize: 14, cursor: busy || allGone ? 'not-allowed' : 'pointer', fontFamily: 'inherit', boxShadow: busy || allGone ? 'none' : '0 10px 24px -10px rgba(255,107,53,0.7)' }}>
+            <Icon name="upload" size={15} strokeWidth={2.2} /> Exportar
+          </button>
+        </div>
       </div>
 
-      <div className="rf-tl-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.35fr) minmax(340px, 1fr)', gap: 18, alignItems: 'start' }}>
+      <div className="rf-tl-grid" style={{ display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start' }}>
+        {/* Ferramentas (como num editor): cada uma abre o painel de ajustes à direita */}
+        <nav className="rf-tl-nav" style={{ display: 'grid', gap: 4, padding: 8, borderRadius: 16, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.025)', alignSelf: 'start' }}>
+          {TABS.map((t) => {
+            const on = tab === t.id;
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{
+                position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', borderRadius: 11, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                fontSize: 13, fontWeight: on ? 700 : 600, textAlign: 'left', whiteSpace: 'nowrap',
+                background: on ? 'linear-gradient(90deg, rgba(255,107,53,0.18), rgba(255,107,53,0.04))' : 'transparent', color: on ? C.text : C.muted,
+              }}>
+                {on && <span style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 3, borderRadius: 3, background: C.orange }} />}
+                <Icon name={t.icon} size={17} strokeWidth={1.9} color={on ? C.orangeSoft : 'currentColor'} /> {t.label}
+              </button>
+            );
+          })}
+          <div style={{ height: 1, background: C.border, margin: '6px 4px' }} />
+          <button onClick={generate} disabled={busy || allGone} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', borderRadius: 11, border: 'none', cursor: busy || allGone ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, background: 'transparent', color: C.orangeSoft, textAlign: 'left' }}>
+            <Icon name="upload" size={17} strokeWidth={2} /> Exportar
+          </button>
+        </nav>
+
         <div className="rf-tl-preview">
           {/* Vídeo principal + prévia 9:16 do ajuste, LADO A LADO (mesma linha) */}
-          <div style={{ display: 'grid', gridTemplateColumns: showFormatPreview ? 'minmax(0,1fr) minmax(150px, 250px)' : '1fr', gap: 12, alignItems: 'start' }}>
+          <div className="rf-tl-pv" style={{ display: 'grid', gridTemplateColumns: showFormatPreview ? 'minmax(0,1fr) minmax(150px, 250px)' : '1fr', gap: 12, alignItems: 'start' }}>
             <div>
               <div style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
                 <video ref={videoRef} src={sourceUrl(sourceId)} style={{ width: '100%', display: 'block', maxHeight: 'min(72vh, 680px)', objectFit: 'contain', background: '#000', filter: videoFilter }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={measureVideo} playsInline />
@@ -1083,17 +1137,36 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </div>
                 )}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
-                <button onClick={togglePlay} style={playBtn}><Icon name={playing ? 'pause' : 'play'} size={16} strokeWidth={2} /></button>
-                <div style={{ fontSize: 12.5, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(cur)} <span style={{ color: C.faint }}>/ {fmtDuration(dur)}</span></div>
-                <button onClick={() => setPreviewCuts((v) => !v)} title="Ao tocar, pular os trechos cortados (como no vídeo final)"
-                  style={{ ...miniBtn(previewCuts, false), marginLeft: 'auto' }}>
-                  <Icon name="scissors" size={12} strokeWidth={2.2} /> {previewCuts ? 'Prévia com cortes' : 'Prévia sem cortes'}
+              {/* Barra do player: play, tempo, barra de progresso, prévia com cortes e tela cheia */}
+              <div className="rf-tl-bar" style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, padding: '8px 12px', borderRadius: 12, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)' }}>
+                <button onClick={togglePlay} style={{ ...playBtn, width: 34, height: 34 }}><Icon name={playing ? 'pause' : 'play'} size={15} strokeWidth={2} /></button>
+                <div style={{ fontSize: 12.5, color: C.text, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{mmss(cur)} <span style={{ color: C.faint }}>/ {mmss(dur)}</span></div>
+                <div
+                  onPointerDown={(e) => {
+                    const el = e.currentTarget;
+                    const at = (ev) => { const r = el.getBoundingClientRect(); seek(((ev.clientX - r.left) / r.width) * dur); };
+                    at(e);
+                    const move = (ev) => at(ev);
+                    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+                    window.addEventListener('pointermove', move);
+                    window.addEventListener('pointerup', up);
+                  }}
+                  style={{ position: 'relative', flex: 1, height: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', minWidth: 40 }}
+                >
+                  <div style={{ position: 'absolute', left: 0, right: 0, height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.12)' }} />
+                  <div style={{ position: 'absolute', left: 0, width: `${dur ? (cur / dur) * 100 : 0}%`, height: 4, borderRadius: 4, background: GRAD }} />
+                  <div style={{ position: 'absolute', left: `calc(${dur ? (cur / dur) * 100 : 0}% - 6px)`, width: 12, height: 12, borderRadius: '50%', background: '#fff', boxShadow: `0 0 0 3px ${C.orange}55` }} />
+                </div>
+                <button onClick={() => setPreviewCuts((v) => !v)} title="Ao tocar, pular os trechos cortados (como no vídeo final)" style={{ ...miniBtn(previewCuts, false), whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  <Icon name="scissors" size={12} strokeWidth={2.2} /> <span className="rf-tl-hide-sm">{previewCuts ? 'Com cortes' : 'Sem cortes'}</span>
+                </button>
+                <button onClick={() => { const el = videoRef.current?.parentElement; if (el?.requestFullscreen) el.requestFullscreen().catch(() => {}); }} title="Tela cheia" style={{ ...zoomBtn, width: 30, height: 30 }}>
+                  <Icon name="crop" size={14} strokeWidth={2} />
                 </button>
               </div>
             </div>
             {showFormatPreview && (
-              <div>
+              <div className="rf-tl-pv-fmt">
                 <div style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', textAlign: 'center', marginBottom: 6 }}>Prévia {previewLabel} · {previewMode === 'split' ? 'tela dividida' : previewMode === 'broll' ? 'B-roll' : 'vídeo'}</div>
                 {composedPreview}
                 {previewMode === 'split' && <button onClick={() => setPersonSide((s) => (s === 'top' ? 'bottom' : 'top'))} style={{ ...zoomBtn, width: '100%', padding: '6px 0', marginTop: 8, fontSize: 11, fontWeight: 600 }}>Você: {personSide === 'top' ? 'em cima' : 'embaixo'}</button>}
@@ -1104,14 +1177,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
 
         {/* Ajustes em abas, AO LADO da prévia: dá para ver o efeito enquanto ajusta. */}
-          <div className="rf-tl-adjust" style={{ minWidth: 0 }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-            {TABS.map((t) => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={sectionTab(tab === t.id)}>
-                <Icon name={t.icon} size={14} strokeWidth={2} /> {t.label}
-              </button>
-            ))}
-          </div>
+          <div className="rf-tl-adjust" style={{ minWidth: 0, alignSelf: 'start', position: 'sticky', top: 12, maxHeight: 'calc(100vh - 24px)', overflowY: 'auto', paddingRight: 4 }}>
 
           {/* Enquadramento na tela dividida */}
           {tab === 'enquadramento' && (
@@ -1487,6 +1553,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <CapRow label={`Tamanho (${Math.round((cap.captionScale ?? 1) * 100)}%)`}>
                     <input type="range" min="0.6" max="1.4" step="0.05" value={cap.captionScale ?? 1} onChange={(e) => setCapField({ captionScale: Number(e.target.value) })} style={{ width: '100%' }} />
                   </CapRow>
+                  <CapRow label="Linhas por legenda">
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {[1, 2].map((n) => <button key={n} onClick={() => setCapField({ captionLines: n })} style={{ ...miniBtn(cap.captionLines === n, false), flex: 1 }}>{n === 1 ? '1 linha' : '2 linhas'}</button>)}
+                    </div>
+                  </CapRow>
+                  <CapRow label={`Caracteres por linha (${cap.captionMaxChars > 0 ? cap.captionMaxChars : 'automático'})`}>
+                    <input type="range" min="7" max="42" step="1" value={cap.captionMaxChars > 0 ? cap.captionMaxChars : 7} onChange={(e) => { const v = Number(e.target.value); setCapField({ captionMaxChars: v <= 7 ? 0 : v }); }} style={{ width: '100%' }} />
+                  </CapRow>
                   <div style={{ marginTop: 4, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
                     <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>Ênfase nas palavras</div>
                     {capSegNow ? (() => {
@@ -1640,363 +1714,404 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </div>
           )}
         </div>
-      </div>
 
-      {/* Barra de ferramentas da timeline */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, marginBottom: 8, flexWrap: 'wrap' }}>
-        <button onClick={splitAtPlayhead} disabled={!canSplit} style={toolBtn(!canSplit)}>
-          <Icon name="scissors" size={14} strokeWidth={2} /> Dividir no playhead
-        </button>
-        <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />
-        <button
-          onClick={() => {
-            if (cutStart == null) { setCutStart(cur); return; }
-            const a = Math.min(cutStart, cur);
-            const b = Math.max(cutStart, cur);
-            if (b - a > 0.15) setCuts((l) => [...l, { key: `c${Date.now()}`, start: +a.toFixed(2), end: +b.toFixed(2) }]);
-            setCutStart(null);
-          }}
-          style={cutStart == null ? toolBtn(false) : miniBtn(true, false)}
-          title="Posicione o playhead, marque o início, mova e feche o corte"
-        >
-          <Icon name="scissors" size={14} strokeWidth={2} />
-          {cutStart == null ? 'Cortar deste ponto' : `Fechar corte em ${fmtDuration(cur)}`}
-        </button>
-        {cutStart != null && (
-          <button onClick={() => setCutStart(null)} style={toolBtn(false)}>Cancelar</button>
-        )}
-        {pauses.length > 0 && (
-          <>
-            <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />
-            <span style={{ fontSize: 11.5, color: C.faint }}>Pausas:</span>
-            <button onClick={cutAllPauses} disabled={pausesCut.length === pauses.length} style={toolBtn(pausesCut.length === pauses.length)}>
-              <Icon name="scissors" size={13} strokeWidth={2} /> Cortar todas
-            </button>
-            <button onClick={keepAllPauses} disabled={pausesCut.length === 0} style={toolBtn(pausesCut.length === 0)}>
-              <Icon name="undo" size={13} strokeWidth={2} /> Manter todas
-            </button>
-          </>
-        )}
-        {/* Zoom da timeline (aproxima/afasta os blocos) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
-          <span style={{ fontSize: 11.5, color: C.faint }}>Zoom</span>
-          <button onClick={() => zoomTl(-1)} disabled={pps <= PPS_MIN} style={toolBtn(pps <= PPS_MIN)} title="Afastar">−</button>
-          <button onClick={() => zoomTl(1)} disabled={pps >= PPS_MAX} style={toolBtn(pps >= PPS_MAX)} title="Aproximar">+</button>
-          <button onClick={() => setPps(64)} style={toolBtn(false)} title="Zoom padrão">Ajustar</button>
-        </div>
-      </div>
-
-      {/* Timeline: coluna fixa com o nome das faixas + área que rola */}
-      <div style={{ display: 'flex', border: `1px solid ${C.border}`, borderRadius: 12, background: 'rgba(0,0,0,0.3)', overflow: 'hidden' }}>
-        <div style={{ width: 104, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.25)', paddingBottom: 6 }}>
-          <div style={{ height: LANE.ruler }} />
-          <Rotulo h={LANE.legenda} gap={6} nome="LEGENDA" dica="clique na palavra" />
-          <Rotulo h={LANE.video} gap={4} nome="VÍDEO" dica={cuts.length ? null : 'arraste ou use o botão'} />
-          {showZoomLane && <Rotulo h={LANE.zoom} gap={4} nome="ZOOM" dica="momentos-chave" />}
-          {showBrollLane && <Rotulo h={LANE.broll} gap={4} nome="B-ROLL" dica="clique p/ ajustar" />}
-          <Rotulo h={LANE.audio} gap={4} nome="ÁUDIO" dica={gains.length ? null : 'use a aba Áudio'} />
-          <Rotulo h={LANE.pausas} gap={4} nome="PAUSAS" dica={pauses.length ? 'clique p/ manter' : null} />
-          {media.length > 0 && <Rotulo h={LANE.midias} gap={4} nome="MÍDIAS" />}
-        </div>
-        <div ref={trackRef} onClick={onTrackClick} style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6 }}>
-          <div style={{ position: 'relative', width, height: LANE.ruler + 6 + LANE.legenda + 4 + LANE.video + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + 4 + LANE.audio + 4 + LANE.pausas + (media.length ? 4 + LANE.midias : 0) }}>
-          <div style={{ position: 'relative', height: LANE.ruler, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
-            {Array.from({ length: Math.ceil(dur) + 1 }).map((_, s) => (
-              <div key={s} style={{ position: 'absolute', left: s * pps, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
-                {s % 5 === 0 && <span style={{ position: 'absolute', left: 3, top: 3, fontSize: 9.5, color: C.faint }}>{s}s</span>}
-              </div>
-            ))}
-          </div>
-          <div style={{ position: 'relative', height: LANE.legenda, marginTop: 6 }}>
-            {segments.map((s, si) => {
-              const left = s.start * pps;
-              const fullW = Math.max(10, (Math.max(s.end, s.start + 0.2) - s.start) * pps - 2);
-              const gone = segRemoved(s);
-              const isSel = si === sel;
-              const isActive = si === activeIndex;
-              const kr = keptRange(s);
-              return (
-                <div key={si} onClick={(e) => { e.stopPropagation(); setSel(si); seek(s.start); }} title={s.words.map((x) => x.word).join(' ')}
-                  style={{ position: 'absolute', left, width: fullW, top: 6, height: 52, borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
-                    border: isSel ? `1.5px solid ${C.orange}` : `1px solid ${gone ? 'rgba(240,82,107,0.5)' : C.border}`,
-                    background: gone ? 'rgba(240,82,107,0.16)' : isActive ? 'linear-gradient(180deg, rgba(255,107,53,0.32), rgba(124,58,237,0.22))' : 'rgba(255,255,255,0.06)',
-                    color: gone ? C.red : C.text, boxShadow: isSel ? `0 0 0 2px ${C.orange}33` : 'none' }}>
-                  {/* máscaras das pontas cortadas (trim) */}
-                  {kr && !gone && kr[0] > s.start + 0.01 && (
-                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: (kr[0] - s.start) * pps, background: 'rgba(240,82,107,0.22)', borderRight: `1px dashed ${C.red}` }} />
-                  )}
-                  {kr && !gone && kr[1] < s.end - 0.01 && (
-                    <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: (s.end - kr[1]) * pps, background: 'rgba(240,82,107,0.22)', borderLeft: `1px dashed ${C.red}` }} />
-                  )}
-                  <span style={{ position: 'relative', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', padding: '5px 9px', fontSize: 10.5, lineHeight: 1.25, textDecoration: gone ? 'line-through' : 'none' }}>
-                    {s.words.map((x) => x.word).join(' ')}
-                  </span>
-                  {/* alças de trim (só no bloco selecionado) */}
-                  {isSel && !gone && (
-                    <>
-                      <div onMouseDown={(e) => startDrag(si, 'left', e)} onClick={(e) => e.stopPropagation()} style={handleStyle('left')} />
-                      <div onMouseDown={(e) => startDrag(si, 'right', e)} onClick={(e) => e.stopPropagation()} style={handleStyle('right')} />
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          {/* Faixa de vídeo: miniaturas + cortes desenhados arrastando */}
-          <div
-            onMouseDown={startCutDraw}
-            title="Arraste para cortar um trecho"
-            style={{ position: 'relative', height: LANE.video, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.45)', cursor: 'crosshair' }}
+        {/* Timeline logo abaixo do vídeo (como num editor), ao lado do painel de ajustes */}
+        <div className="rf-tl-bottom" style={{ minWidth: 0 }}>
+        {/* Barra de ferramentas da timeline */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, marginBottom: 8, flexWrap: 'wrap' }}>
+          <button onClick={splitAtPlayhead} disabled={!canSplit} style={toolBtn(!canSplit)}>
+            <Icon name="scissors" size={14} strokeWidth={2} /> Dividir no playhead
+          </button>
+          <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />
+          <button
+            onClick={() => {
+              if (cutStart == null) { setCutStart(cur); return; }
+              const a = Math.min(cutStart, cur);
+              const b = Math.max(cutStart, cur);
+              if (b - a > 0.15) setCuts((l) => [...l, { key: `c${Date.now()}`, start: +a.toFixed(2), end: +b.toFixed(2) }]);
+              setCutStart(null);
+            }}
+            style={cutStart == null ? toolBtn(false) : miniBtn(true, false)}
+            title="Posicione o playhead, marque o início, mova e feche o corte"
           >
-            <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat' }} />
-            {cuts.map((c) => (
-              <div
-                key={c.key}
-                title={`Corte ${fmtDuration(c.start)} → ${fmtDuration(c.end)}`}
-                onMouseDown={(e) => startRangeDrag(setCuts, c, 'move', e)}
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  position: 'absolute', left: c.start * pps, width: Math.max(10, (c.end - c.start) * pps), top: 0, bottom: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab',
-                  border: `1px solid ${C.red}`,
-                  background: 'repeating-linear-gradient(45deg, rgba(240,82,107,0.55), rgba(240,82,107,0.55) 5px, rgba(240,82,107,0.3) 5px, rgba(240,82,107,0.3) 10px)',
-                }}
-              >
-                <button
-                  onClick={(e) => { e.stopPropagation(); setCuts((l) => l.filter((x) => x.key !== c.key)); }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  title="Desfazer este corte"
-                  style={{ width: 18, height: 18, borderRadius: 5, border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', fontSize: 12, lineHeight: 1, fontFamily: 'inherit' }}
-                >
-                  ×
-                </button>
-                <div onMouseDown={(e) => startRangeDrag(setCuts, c, 'left', e)} style={handleStyle('left')} />
-                <div onMouseDown={(e) => startRangeDrag(setCuts, c, 'right', e)} style={handleStyle('right')} />
-              </div>
-            ))}
-            {cutStart != null && Math.abs(cur - cutStart) > 0.02 && (
-              <div style={{ position: 'absolute', left: Math.min(cutStart, cur) * pps, width: Math.abs(cur - cutStart) * pps, top: 0, bottom: 0, background: 'rgba(240,82,107,0.22)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
-            )}
-            {drawing && drawing.end > drawing.start && (
-              <div style={{ position: 'absolute', left: drawing.start * pps, width: (drawing.end - drawing.start) * pps, top: 0, bottom: 0, background: 'rgba(240,82,107,0.3)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
-            )}
-          </div>
-
-          {/* Faixa ZOOM: momentos-chave do punch-in (editáveis) */}
-          {showZoomLane && (
-            <div style={{ position: 'relative', height: LANE.zoom, marginTop: 4 }}>
-              {(zoomMoments || []).map((z) => {
-                const isSel = z.key === selZoom;
-                return (
-                  <div
-                    key={z.key}
-                    title={`Zoom ${Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}× — clique para ajustar, arraste para mover`}
-                    onMouseDown={(e) => { setSelZoom(z.key); startRangeDrag(setZoomMoments, z, 'move', e); }}
-                    onClick={(e) => { e.stopPropagation(); setSelZoom(z.key); setTab('efeitos'); seek(z.start); }}
-                    style={{
-                      position: 'absolute', left: z.start * pps, width: Math.max(14, (z.end - z.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
-                      border: `1px solid ${isSel ? '#fff' : C.orange}`, background: isSel ? 'rgba(255,107,53,0.5)' : 'rgba(255,107,53,0.25)',
-                      fontSize: 10, fontWeight: 700, color: C.text,
-                    }}
-                  >
-                    <Icon name="search" size={10} strokeWidth={2.4} /> {Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}×
-                    <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'left', e)} style={handleStyle('left')} />
-                    <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'right', e)} style={handleStyle('right')} />
-                  </div>
-                );
-              })}
-            </div>
+            <Icon name="scissors" size={14} strokeWidth={2} />
+            {cutStart == null ? 'Cortar deste ponto' : `Fechar corte em ${fmtDuration(cur)}`}
+          </button>
+          {cutStart != null && (
+            <button onClick={() => setCutStart(null)} style={toolBtn(false)}>Cancelar</button>
           )}
-
-          {/* Faixa B-ROLL: momentos revisados (clique abre o ajuste; arraste move) */}
-          {showBrollLane && (
-            <div style={{ position: 'relative', height: LANE.broll, marginTop: 4 }}>
-              {brollReview.moments.map((m, i) => {
-                const isSel = i === selBroll;
-                const th = thumbOf(m);
-                return (
-                  <div
-                    key={m.key || i}
-                    title={`${m.term} — clique para ajustar`}
-                    onMouseDown={(e) => { setSelBroll(i); startRangeDrag(setBrollMoments, m, 'move', e); }}
-                    onClick={(e) => { e.stopPropagation(); setSelBroll(i); setTab('broll'); seek(m.start + 0.05); }}
-                    style={{
-                      position: 'absolute', left: m.start * pps, width: Math.max(16, (m.end - m.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
-                      display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
-                      border: `1px solid ${isSel ? '#fff' : C.purpleSoft}`, background: m.removed ? 'rgba(255,255,255,0.05)' : isSel ? 'rgba(124,58,237,0.55)' : 'rgba(124,58,237,0.3)',
-                      opacity: m.removed ? 0.5 : 1, fontSize: 10, fontWeight: 700, color: C.text,
-                    }}
-                  >
-                    {th && !badThumbs.has(th) && <img src={th} alt="" style={{ height: 20, width: 20, objectFit: 'cover', borderRadius: 3, flexShrink: 0 }} />}
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.term}</span>
-                    <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'left', e)} style={handleStyle('left')} />
-                    <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'right', e)} style={handleStyle('right')} />
-                  </div>
-                );
-              })}
-            </div>
+          {pauses.length > 0 && (
+            <>
+              <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />
+              <span style={{ fontSize: 11.5, color: C.faint }}>Pausas:</span>
+              <button onClick={cutAllPauses} disabled={pausesCut.length === pauses.length} style={toolBtn(pausesCut.length === pauses.length)}>
+                <Icon name="scissors" size={13} strokeWidth={2} /> Cortar todas
+              </button>
+              <button onClick={keepAllPauses} disabled={pausesCut.length === 0} style={toolBtn(pausesCut.length === 0)}>
+                <Icon name="undo" size={13} strokeWidth={2} /> Manter todas
+              </button>
+            </>
           )}
-
-          {/* Faixa de áudio: forma de onda da fala original */}
-          <div style={{ position: 'relative', height: LANE.audio, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(124,58,237,0.10)' }}>
-            {wave && (
-              <svg width={width} height={34} viewBox={`0 0 ${peaks.length} 100`} preserveAspectRatio="none" style={{ display: 'block' }}>
-                <path d={wave} fill={C.purpleSoft} opacity={0.6} />
-              </svg>
-            )}
-            {gains.map((g) => {
-              const left = g.start * pps;
-              const w = Math.max(16, (g.end - g.start) * pps - 1);
-              const mudo = Number(g.volume) < 0.005;
-              return (
-                <div
-                  key={g.key}
-                  title={`Volume ${mudo ? 'mudo' : `${Number(g.volume).toFixed(2)}×`}`}
-                  onMouseDown={(e) => startRangeDrag(setGains, g, 'move', e)}
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    position: 'absolute', left, width: w, top: 0, bottom: 0, borderRadius: 5,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab',
-                    border: `1px solid ${mudo ? C.red : C.orange}`,
-                    background: mudo ? 'rgba(240,82,107,0.28)' : 'rgba(255,107,53,0.22)',
-                    fontSize: 10.5, fontWeight: 700, color: C.text, overflow: 'hidden', whiteSpace: 'nowrap',
-                  }}
-                >
-                  {mudo ? 'mudo' : `${Number(g.volume).toFixed(2)}×`}
-                  <div onMouseDown={(e) => startRangeDrag(setGains, g, 'left', e)} style={handleStyle('left')} />
-                  <div onMouseDown={(e) => startRangeDrag(setGains, g, 'right', e)} style={handleStyle('right')} />
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Lane de pausas (silêncio entre palavras) — clique alterna cortar/manter */}
-          <div style={{ position: 'relative', height: LANE.pausas, marginTop: 4 }}>
-            {pauses.map((p, pi) => {
-              const cut = isPauseCut(p);
-              const w = Math.max(6, p.dur * pps - 1);
-              return (
-                <div
-                  key={pi}
-                  onClick={(e) => { e.stopPropagation(); togglePause(p); }}
-                  title={`Pausa de ${p.dur.toFixed(1)}s — ${cut ? 'será cortada (clique p/ manter)' : 'mantida (clique p/ cortar)'}`}
-                  style={{
-                    position: 'absolute', left: p.start * pps, top: 0, width: w, height: 22, borderRadius: 6,
-                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-                    background: cut ? 'repeating-linear-gradient(45deg, rgba(240,82,107,0.28), rgba(240,82,107,0.28) 5px, rgba(240,82,107,0.14) 5px, rgba(240,82,107,0.14) 10px)' : 'rgba(255,255,255,0.05)',
-                    border: `1px ${cut ? 'solid' : 'dashed'} ${cut ? 'rgba(240,82,107,0.55)' : C.border}`,
-                    color: cut ? C.red : C.faint,
-                  }}
-                >
-                  {w > 26 && (cut ? <Icon name="scissors" size={11} strokeWidth={2.2} /> : <span style={{ fontSize: 9.5, fontWeight: 600 }}>{p.dur.toFixed(1)}s</span>)}
-                </div>
-              );
-            })}
-          </div>
-          {/* Lane das minhas mídias — arraste para mover, pontas para redimensionar */}
-          {media.length > 0 && (
-            <div style={{ position: 'relative', height: LANE.midias, marginTop: 4 }}>
-              {media.map((m) => {
-                const left = m.start * pps;
-                const w = Math.max(16, m.duration * pps - 1);
-                const col = m.kind === 'audio' ? C.purple : m.kind === 'video' ? C.orange : '#22D3EE';
-                return (
-                  <div
-                    key={m.key}
-                    onMouseDown={(e) => startMediaDrag(m, 'move', e)}
-                    onClick={(e) => { e.stopPropagation(); seek(m.start); }}
-                    title={`${m.filename} — arraste para mover, pontas para ajustar a duração`}
-                    style={{
-                      position: 'absolute', left, top: 0, width: w, height: 28, borderRadius: 7, overflow: 'hidden',
-                      cursor: 'grab', display: 'flex', alignItems: 'center', gap: 5, padding: '0 9px',
-                      background: `${col}2b`, border: `1px solid ${col}`, color: C.text, userSelect: 'none',
-                    }}
-                  >
-                    <span style={{ display: 'flex', flexShrink: 0, color: col }}><Icon name={m.kind === 'audio' ? 'play' : m.kind === 'video' ? 'film' : 'image'} size={11} strokeWidth={2.2} /></span>
-                    {w > 44 && <span style={{ fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.filename}</span>}
-                    <div onMouseDown={(e) => startMediaDrag(m, 'left', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
-                    <div onMouseDown={(e) => startMediaDrag(m, 'right', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          <div style={{ position: 'absolute', left: cur * pps, top: 0, bottom: 0, width: 2, background: C.orange, boxShadow: `0 0 8px ${C.orange}`, pointerEvents: 'none' }}>
-            <div style={{ position: 'absolute', top: -1, left: -4, width: 10, height: 10, borderRadius: '50%', background: C.orange }} />
-          </div>
+          {/* Zoom da timeline (aproxima/afasta os blocos) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+            <span style={{ fontSize: 11.5, color: C.faint }}>Zoom</span>
+            <button onClick={() => zoomTl(-1)} disabled={pps <= PPS_MIN} style={toolBtn(pps <= PPS_MIN)} title="Afastar">−</button>
+            <button onClick={() => zoomTl(1)} disabled={pps >= PPS_MAX} style={toolBtn(pps >= PPS_MAX)} title="Aproximar">+</button>
+            <button onClick={() => setPps(64)} style={toolBtn(false)} title="Zoom padrão">Ajustar</button>
           </div>
         </div>
-      </div>
-      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> (arraste sobre ele para cortar um trecho)· <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
 
-      {/* Resumo + trecho selecionado na timeline (editar palavras) */}
-      <div style={{ marginTop: 14 }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-          <Chip label="Palavras" value={stats.total} color={C.text} />
-          <Chip label="Cortadas" value={stats.removed} color={C.red} />
-          <Chip label="Pausas cortadas" value={pausesCut.length} sub={pauseCutSec > 0.1 ? `−${fmtDuration(pauseCutSec)}` : null} color={C.orangeSoft} />
-          <Chip label="Duração final" value={fmtDuration(stats.keptSec)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
-        </div>
-
-        {selSeg && (
-          <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.4 }}>TRECHO {sel + 1}/{segments.length} · {fmtDuration(selSeg.start)}</div>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <button onClick={() => mergeNext(sel)} disabled={sel >= segments.length - 1} style={miniBtn(false, sel >= segments.length - 1)}>
-                  <Icon name="arrowLeft" size={12} strokeWidth={2.2} style={{ transform: 'rotate(180deg)' }} /> Juntar
-                </button>
-                <button onClick={() => toggleSeg(sel)} style={miniBtn(segRemoved(selSeg))}>
-                  <Icon name={segRemoved(selSeg) ? 'undo' : 'close'} size={12} strokeWidth={2.2} /> {segRemoved(selSeg) ? 'Reincluir' : 'Cortar trecho'}
-                </button>
-              </div>
-            </div>
-            <div style={{ lineHeight: 2 }}>
-              {selSeg.words.map((w, wi) => (
-                <span key={wi} onClick={() => toggleWord(sel, wi)} onDoubleClick={() => editWord(sel, wi)} title={`${w.start.toFixed(1)}s — clique corta, 2 cliques edita`}
-                  style={{ display: 'inline-block', margin: '0 3px', padding: '2px 6px', borderRadius: 7, cursor: 'pointer', userSelect: 'none', textDecoration: w.removed ? 'line-through' : 'none', opacity: w.removed ? 0.42 : 1, background: w.removed ? 'rgba(240,82,107,0.14)' : 'transparent', color: w.removed ? C.red : C.text }}>
-                  {w.word}
-                </span>
+        {/* Timeline: coluna fixa com o nome das faixas + área que rola */}
+        <div style={{ display: 'flex', border: `1px solid ${C.border}`, borderRadius: 16, background: 'linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.35))', overflow: 'hidden', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
+          <div style={{ width: 104, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.25)', paddingBottom: 6 }}>
+            <div style={{ height: LANE.ruler }} />
+            {chapters.length > 0 && <Rotulo h={LANE.capitulos} gap={4} nome="CAPÍTULOS" dica="clique p/ ir" />}
+            <Rotulo h={LANE.legenda} gap={6} nome="LEGENDA" dica="clique na palavra" />
+            <Rotulo h={LANE.video} gap={4} nome="VÍDEO" dica={cuts.length ? null : 'arraste ou use o botão'} />
+            {showZoomLane && <Rotulo h={LANE.zoom} gap={4} nome="ZOOM" dica="momentos-chave" />}
+            {showBrollLane && <Rotulo h={LANE.broll} gap={4} nome="B-ROLL" dica="clique p/ ajustar" />}
+            <Rotulo h={LANE.audio} gap={4} nome="ÁUDIO" dica={gains.length ? null : 'use a aba Áudio'} />
+            <Rotulo h={LANE.pausas} gap={4} nome="PAUSAS" dica={pauses.length ? 'clique p/ manter' : null} />
+            {media.length > 0 && <Rotulo h={LANE.midias} gap={4} nome="MÍDIAS" />}
+          </div>
+          <div ref={trackRef} onClick={onTrackClick} style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6 }}>
+            <div style={{ position: 'relative', width, height: LANE.ruler + (chapters.length ? 4 + LANE.capitulos : 0) + 6 + LANE.legenda + 4 + LANE.video + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + 4 + LANE.audio + 4 + LANE.pausas + (media.length ? 4 + LANE.midias : 0) }}>
+            <div style={{ position: 'relative', height: LANE.ruler, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
+              {Array.from({ length: Math.ceil(dur) + 1 }).map((_, s) => (
+                <div key={s} style={{ position: 'absolute', left: s * pps, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
+                  {s % (pps < 40 ? 10 : 5) === 0 && <span style={{ position: 'absolute', left: 4, top: 4, fontSize: 9.5, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{mmss(s)}</span>}
+                </div>
               ))}
             </div>
-            {fixText != null ? (
-              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                <input autoFocus value={fixText} onChange={(e) => setFixText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { setPhraseText(sel, fixText); setFixText(null); } if (e.key === 'Escape') setFixText(null); }}
-                  style={{ flex: '1 1 240px', minHeight: 38, padding: '0 11px', borderRadius: 9, border: `1px solid ${C.orange}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 14, fontFamily: 'inherit' }} />
-                <button onClick={() => { setPhraseText(sel, fixText); setFixText(null); }} style={{ ...miniBtn(false, false), color: C.green, borderColor: C.green }}>Salvar</button>
-                <button onClick={() => setFixText(null)} style={miniBtn(false, false)}>Cancelar</button>
+            {chapters.length > 0 && (
+              <div style={{ position: 'relative', height: LANE.capitulos, marginTop: 4 }}>
+                {chapters.map((c) => (
+                  <button key={c.label} onClick={(e) => { e.stopPropagation(); seek(c.start + 0.01); }} title={`${c.label} · ${mmss(c.start)}–${mmss(c.end)}`}
+                    style={{ position: 'absolute', left: c.start * pps + 1, width: Math.max(20, (c.end - c.start) * pps - 2), top: 2, bottom: 2, borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                      background: `linear-gradient(180deg, ${c.color}, ${c.color}cc)`, color: '#fff', fontSize: 11, fontWeight: 700, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', padding: '0 10px', textAlign: 'left', boxShadow: `0 4px 12px -6px ${c.color}` }}>
+                    {c.label}
+                  </button>
+                ))}
               </div>
-            ) : (
-              <button onClick={() => setFixText(selSeg.words.filter((w) => !w.removed).map((w) => w.word).join(' '))} disabled={segRemoved(selSeg)}
-                style={{ ...miniBtn(false, segRemoved(selSeg)), marginTop: 8 }}>
-                <Icon name="edit" size={12} strokeWidth={2.2} /> Corrigir o texto da legenda
-              </button>
             )}
-            <div style={{ fontSize: 11.5, color: C.faint, marginTop: 8 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir só ela · arraste as bordas do bloco na timeline</div>
+            <div style={{ position: 'relative', height: LANE.legenda, marginTop: 6 }}>
+              {segments.map((s, si) => {
+                const left = s.start * pps;
+                const fullW = Math.max(10, (Math.max(s.end, s.start + 0.2) - s.start) * pps - 2);
+                const gone = segRemoved(s);
+                const isSel = si === sel;
+                const isActive = si === activeIndex;
+                const kr = keptRange(s);
+                return (
+                  <div key={si} onClick={(e) => { e.stopPropagation(); setSel(si); seek(s.start); }} title={s.words.map((x) => x.word).join(' ')}
+                    style={{ position: 'absolute', left, width: fullW, top: 6, height: 52, borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
+                      border: isSel ? `1.5px solid ${C.orange}` : `1px solid ${gone ? 'rgba(240,82,107,0.5)' : C.border}`,
+                      background: gone ? 'rgba(240,82,107,0.16)' : isActive ? 'linear-gradient(180deg, rgba(255,107,53,0.32), rgba(124,58,237,0.22))' : 'rgba(255,255,255,0.06)',
+                      color: gone ? C.red : C.text, boxShadow: isSel ? `0 0 0 2px ${C.orange}33` : 'none' }}>
+                    {/* máscaras das pontas cortadas (trim) */}
+                    {kr && !gone && kr[0] > s.start + 0.01 && (
+                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: (kr[0] - s.start) * pps, background: 'rgba(240,82,107,0.22)', borderRight: `1px dashed ${C.red}` }} />
+                    )}
+                    {kr && !gone && kr[1] < s.end - 0.01 && (
+                      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: (s.end - kr[1]) * pps, background: 'rgba(240,82,107,0.22)', borderLeft: `1px dashed ${C.red}` }} />
+                    )}
+                    <span style={{ position: 'relative', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', padding: '5px 9px', fontSize: 10.5, lineHeight: 1.25, textDecoration: gone ? 'line-through' : 'none' }}>
+                      {s.words.map((x) => x.word).join(' ')}
+                    </span>
+                    {/* alças de trim (só no bloco selecionado) */}
+                    {isSel && !gone && (
+                      <>
+                        <div onMouseDown={(e) => startDrag(si, 'left', e)} onClick={(e) => e.stopPropagation()} style={handleStyle('left')} />
+                        <div onMouseDown={(e) => startDrag(si, 'right', e)} onClick={(e) => e.stopPropagation()} style={handleStyle('right')} />
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Faixa de vídeo: miniaturas + cortes desenhados arrastando */}
+            <div
+              onMouseDown={startCutDraw}
+              title="Arraste para cortar um trecho"
+              style={{ position: 'relative', height: LANE.video, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.45)', cursor: 'crosshair' }}
+            >
+              <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat' }} />
+              {cuts.map((c) => (
+                <div
+                  key={c.key}
+                  title={`Corte ${fmtDuration(c.start)} → ${fmtDuration(c.end)}`}
+                  onMouseDown={(e) => startRangeDrag(setCuts, c, 'move', e)}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: 'absolute', left: c.start * pps, width: Math.max(10, (c.end - c.start) * pps), top: 0, bottom: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab',
+                    border: `1px solid ${C.red}`,
+                    background: 'repeating-linear-gradient(45deg, rgba(240,82,107,0.55), rgba(240,82,107,0.55) 5px, rgba(240,82,107,0.3) 5px, rgba(240,82,107,0.3) 10px)',
+                  }}
+                >
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setCuts((l) => l.filter((x) => x.key !== c.key)); }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    title="Desfazer este corte"
+                    style={{ width: 18, height: 18, borderRadius: 5, border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', fontSize: 12, lineHeight: 1, fontFamily: 'inherit' }}
+                  >
+                    ×
+                  </button>
+                  <div onMouseDown={(e) => startRangeDrag(setCuts, c, 'left', e)} style={handleStyle('left')} />
+                  <div onMouseDown={(e) => startRangeDrag(setCuts, c, 'right', e)} style={handleStyle('right')} />
+                </div>
+              ))}
+              {cutStart != null && Math.abs(cur - cutStart) > 0.02 && (
+                <div style={{ position: 'absolute', left: Math.min(cutStart, cur) * pps, width: Math.abs(cur - cutStart) * pps, top: 0, bottom: 0, background: 'rgba(240,82,107,0.22)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
+              )}
+              {drawing && drawing.end > drawing.start && (
+                <div style={{ position: 'absolute', left: drawing.start * pps, width: (drawing.end - drawing.start) * pps, top: 0, bottom: 0, background: 'rgba(240,82,107,0.3)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
+              )}
+            </div>
+
+            {/* Faixa ZOOM: momentos-chave do punch-in (editáveis) */}
+            {showZoomLane && (
+              <div style={{ position: 'relative', height: LANE.zoom, marginTop: 4 }}>
+                {(zoomMoments || []).map((z) => {
+                  const isSel = z.key === selZoom;
+                  return (
+                    <div
+                      key={z.key}
+                      title={`Zoom ${Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}× — clique para ajustar, arraste para mover`}
+                      onMouseDown={(e) => { setSelZoom(z.key); startRangeDrag(setZoomMoments, z, 'move', e); }}
+                      onClick={(e) => { e.stopPropagation(); setSelZoom(z.key); setTab('efeitos'); seek(z.start); }}
+                      style={{
+                        position: 'absolute', left: z.start * pps, width: Math.max(14, (z.end - z.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                        border: `1px solid ${isSel ? '#fff' : C.orange}`, background: isSel ? 'rgba(255,107,53,0.5)' : 'rgba(255,107,53,0.25)',
+                        fontSize: 10, fontWeight: 700, color: C.text,
+                      }}
+                    >
+                      <Icon name="search" size={10} strokeWidth={2.4} /> {Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}×
+                      <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'left', e)} style={handleStyle('left')} />
+                      <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'right', e)} style={handleStyle('right')} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Faixa B-ROLL: momentos revisados (clique abre o ajuste; arraste move) */}
+            {showBrollLane && (
+              <div style={{ position: 'relative', height: LANE.broll, marginTop: 4 }}>
+                {brollReview.moments.map((m, i) => {
+                  const isSel = i === selBroll;
+                  const th = thumbOf(m);
+                  return (
+                    <div
+                      key={m.key || i}
+                      title={`${m.term} — clique para ajustar`}
+                      onMouseDown={(e) => { setSelBroll(i); startRangeDrag(setBrollMoments, m, 'move', e); }}
+                      onClick={(e) => { e.stopPropagation(); setSelBroll(i); setTab('broll'); seek(m.start + 0.05); }}
+                      style={{
+                        position: 'absolute', left: m.start * pps, width: Math.max(16, (m.end - m.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
+                        display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                        border: `1px solid ${isSel ? '#fff' : C.purpleSoft}`, background: m.removed ? 'rgba(255,255,255,0.05)' : isSel ? 'rgba(124,58,237,0.55)' : 'rgba(124,58,237,0.3)',
+                        opacity: m.removed ? 0.5 : 1, fontSize: 10, fontWeight: 700, color: C.text,
+                      }}
+                    >
+                      {th && !badThumbs.has(th) && <img src={th} alt="" style={{ height: 20, width: 20, objectFit: 'cover', borderRadius: 3, flexShrink: 0 }} />}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.term}</span>
+                      <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'left', e)} style={handleStyle('left')} />
+                      <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'right', e)} style={handleStyle('right')} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Faixa de áudio: forma de onda da fala original */}
+            <div style={{ position: 'relative', height: LANE.audio, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(59,130,246,0.08)' }}>
+              {wave && (
+                <svg width={width} height={34} viewBox={`0 0 ${peaks.length} 100`} preserveAspectRatio="none" style={{ display: 'block' }}>
+                  <path d={wave} fill="#4F7BFF" opacity={0.85} />
+                </svg>
+              )}
+              {gains.map((g) => {
+                const left = g.start * pps;
+                const w = Math.max(16, (g.end - g.start) * pps - 1);
+                const mudo = Number(g.volume) < 0.005;
+                return (
+                  <div
+                    key={g.key}
+                    title={`Volume ${mudo ? 'mudo' : `${Number(g.volume).toFixed(2)}×`}`}
+                    onMouseDown={(e) => startRangeDrag(setGains, g, 'move', e)}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      position: 'absolute', left, width: w, top: 0, bottom: 0, borderRadius: 5,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab',
+                      border: `1px solid ${mudo ? C.red : C.orange}`,
+                      background: mudo ? 'rgba(240,82,107,0.28)' : 'rgba(255,107,53,0.22)',
+                      fontSize: 10.5, fontWeight: 700, color: C.text, overflow: 'hidden', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {mudo ? 'mudo' : `${Number(g.volume).toFixed(2)}×`}
+                    <div onMouseDown={(e) => startRangeDrag(setGains, g, 'left', e)} style={handleStyle('left')} />
+                    <div onMouseDown={(e) => startRangeDrag(setGains, g, 'right', e)} style={handleStyle('right')} />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Lane de pausas (silêncio entre palavras) — clique alterna cortar/manter */}
+            <div style={{ position: 'relative', height: LANE.pausas, marginTop: 4 }}>
+              {pauses.map((p, pi) => {
+                const cut = isPauseCut(p);
+                const w = Math.max(6, p.dur * pps - 1);
+                return (
+                  <div
+                    key={pi}
+                    onClick={(e) => { e.stopPropagation(); togglePause(p); }}
+                    title={`Pausa de ${p.dur.toFixed(1)}s — ${cut ? 'será cortada (clique p/ manter)' : 'mantida (clique p/ cortar)'}`}
+                    style={{
+                      position: 'absolute', left: p.start * pps, top: 0, width: w, height: 22, borderRadius: 6,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                      background: cut ? 'repeating-linear-gradient(45deg, rgba(240,82,107,0.28), rgba(240,82,107,0.28) 5px, rgba(240,82,107,0.14) 5px, rgba(240,82,107,0.14) 10px)' : 'rgba(255,255,255,0.05)',
+                      border: `1px ${cut ? 'solid' : 'dashed'} ${cut ? 'rgba(240,82,107,0.55)' : C.border}`,
+                      color: cut ? C.red : C.faint,
+                    }}
+                  >
+                    {w > 26 && (cut ? <Icon name="scissors" size={11} strokeWidth={2.2} /> : <span style={{ fontSize: 9.5, fontWeight: 600 }}>{p.dur.toFixed(1)}s</span>)}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Lane das minhas mídias — arraste para mover, pontas para redimensionar */}
+            {media.length > 0 && (
+              <div style={{ position: 'relative', height: LANE.midias, marginTop: 4 }}>
+                {media.map((m) => {
+                  const left = m.start * pps;
+                  const w = Math.max(16, m.duration * pps - 1);
+                  const col = m.kind === 'audio' ? C.purple : m.kind === 'video' ? C.orange : '#22D3EE';
+                  return (
+                    <div
+                      key={m.key}
+                      onMouseDown={(e) => startMediaDrag(m, 'move', e)}
+                      onClick={(e) => { e.stopPropagation(); seek(m.start); }}
+                      title={`${m.filename} — arraste para mover, pontas para ajustar a duração`}
+                      style={{
+                        position: 'absolute', left, top: 0, width: w, height: 28, borderRadius: 7, overflow: 'hidden',
+                        cursor: 'grab', display: 'flex', alignItems: 'center', gap: 5, padding: '0 9px',
+                        background: `${col}2b`, border: `1px solid ${col}`, color: C.text, userSelect: 'none',
+                      }}
+                    >
+                      <span style={{ display: 'flex', flexShrink: 0, color: col }}><Icon name={m.kind === 'audio' ? 'play' : m.kind === 'video' ? 'film' : 'image'} size={11} strokeWidth={2.2} /></span>
+                      {w > 44 && <span style={{ fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.filename}</span>}
+                      <div onMouseDown={(e) => startMediaDrag(m, 'left', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
+                      <div onMouseDown={(e) => startMediaDrag(m, 'right', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div style={{ position: 'absolute', left: cur * pps, top: 0, bottom: 0, width: 2, background: C.orange, boxShadow: `0 0 8px ${C.orange}`, pointerEvents: 'none' }}>
+              <div style={{ position: 'absolute', top: 0, left: -6, width: 14, height: 16, borderRadius: '4px 4px 7px 7px', background: C.orange, boxShadow: `0 2px 8px ${C.orange}88` }} />
+            </div>
+            </div>
           </div>
-        )}
+        </div>
+        <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> (arraste sobre ele para cortar um trecho)· <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
+
+        {/* Resumo + trecho selecionado na timeline (editar palavras) */}
+        <div style={{ marginTop: 14 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            <Chip label="Palavras" value={stats.total} color={C.text} />
+            <Chip label="Cortadas" value={stats.removed} color={C.red} />
+            <Chip label="Pausas cortadas" value={pausesCut.length} sub={pauseCutSec > 0.1 ? `−${fmtDuration(pauseCutSec)}` : null} color={C.orangeSoft} />
+            <Chip label="Duração final" value={fmtDuration(stats.keptSec)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
+          </div>
+
+          {selSeg && (
+            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.4 }}>TRECHO {sel + 1}/{segments.length} · {fmtDuration(selSeg.start)}</div>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button onClick={() => mergeNext(sel)} disabled={sel >= segments.length - 1} style={miniBtn(false, sel >= segments.length - 1)}>
+                    <Icon name="arrowLeft" size={12} strokeWidth={2.2} style={{ transform: 'rotate(180deg)' }} /> Juntar
+                  </button>
+                  <button onClick={() => toggleSeg(sel)} style={miniBtn(segRemoved(selSeg))}>
+                    <Icon name={segRemoved(selSeg) ? 'undo' : 'close'} size={12} strokeWidth={2.2} /> {segRemoved(selSeg) ? 'Reincluir' : 'Cortar trecho'}
+                  </button>
+                </div>
+              </div>
+              <div style={{ lineHeight: 2 }}>
+                {selSeg.words.map((w, wi) => (
+                  <span key={wi} onClick={() => toggleWord(sel, wi)} onDoubleClick={() => editWord(sel, wi)} title={`${w.start.toFixed(1)}s — clique corta, 2 cliques edita`}
+                    style={{ display: 'inline-block', margin: '0 3px', padding: '2px 6px', borderRadius: 7, cursor: 'pointer', userSelect: 'none', textDecoration: w.removed ? 'line-through' : 'none', opacity: w.removed ? 0.42 : 1, background: w.removed ? 'rgba(240,82,107,0.14)' : 'transparent', color: w.removed ? C.red : C.text }}>
+                    {w.word}
+                  </span>
+                ))}
+              </div>
+              {fixText != null ? (
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  <input autoFocus value={fixText} onChange={(e) => setFixText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { setPhraseText(sel, fixText); setFixText(null); } if (e.key === 'Escape') setFixText(null); }}
+                    style={{ flex: '1 1 240px', minHeight: 38, padding: '0 11px', borderRadius: 9, border: `1px solid ${C.orange}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 14, fontFamily: 'inherit' }} />
+                  <button onClick={() => { setPhraseText(sel, fixText); setFixText(null); }} style={{ ...miniBtn(false, false), color: C.green, borderColor: C.green }}>Salvar</button>
+                  <button onClick={() => setFixText(null)} style={miniBtn(false, false)}>Cancelar</button>
+                </div>
+              ) : (
+                <button onClick={() => setFixText(selSeg.words.filter((w) => !w.removed).map((w) => w.word).join(' '))} disabled={segRemoved(selSeg)}
+                  style={{ ...miniBtn(false, segRemoved(selSeg)), marginTop: 8 }}>
+                  <Icon name="edit" size={12} strokeWidth={2.2} /> Corrigir o texto da legenda
+                </button>
+              )}
+              <div style={{ fontSize: 11.5, color: C.faint, marginTop: 8 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir só ela · arraste as bordas do bloco na timeline</div>
+            </div>
+          )}
+        </div>
+
+        <CostLine
+          mode="render"
+          sourceId={sourceId}
+          options={{ ...options, ...cap, ...(brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}) }}
+          style={{ marginTop: 18 }}
+        />
+        <PrimaryButton onClick={generate} disabled={busy || allGone} style={{ width: '100%', marginTop: 12 }}>
+          {allGone ? 'Você cortou tudo — reinclua algo' : busy ? 'Gerando…' : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Icon name="clapper" size={18} strokeWidth={1.9} /> Renderizar vídeo final</span>)}
+        </PrimaryButton>
+        </div>
       </div>
 
-      <CostLine
-        mode="render"
-        sourceId={sourceId}
-        options={{ ...options, ...cap, ...(brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}) }}
-        style={{ marginTop: 18 }}
-      />
-      <PrimaryButton onClick={generate} disabled={busy || allGone} style={{ width: '100%', marginTop: 12 }}>
-        {allGone ? 'Você cortou tudo — reinclua algo' : busy ? 'Gerando…' : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Icon name="clapper" size={18} strokeWidth={1.9} /> Renderizar vídeo final</span>)}
-      </PrimaryButton>
 
-      <style>{`.rf-tl-preview{ position: sticky; top: 12px; z-index: 2; } @media (max-width: 860px){ .rf-tl-grid{ grid-template-columns: 1fr !important; } .rf-tl-preview{ position: static; } }`}</style>
+      <style>{`
+        .rf-tl-nav{ grid-column: 1; grid-row: 1; }
+        .rf-tl-preview{ grid-column: 2; grid-row: 1; min-width: 0; }
+        .rf-tl-adjust{ grid-column: 3; grid-row: 1 / span 2; }
+        .rf-tl-bottom{ grid-column: 1 / 3; grid-row: 2; }
+        @media (max-width: 1280px){
+          .rf-tl-grid{ grid-template-columns: minmax(0, 1fr) minmax(300px, 340px) !important; }
+          .rf-tl-nav{ grid-column: 1 / -1; grid-row: 1; display: flex !important; flex-wrap: wrap; }
+          .rf-tl-nav > div{ display: none; }
+          .rf-tl-preview{ grid-column: 1; grid-row: 2; }
+          .rf-tl-adjust{ grid-column: 2; grid-row: 2 / span 2; }
+          .rf-tl-bottom{ grid-column: 1; grid-row: 3; }
+        }
+        @media (max-width: 860px){
+          .rf-tl-grid{ grid-template-columns: minmax(0, 1fr) !important; }
+          .rf-tl-nav, .rf-tl-preview, .rf-tl-adjust, .rf-tl-bottom{ grid-column: 1 !important; grid-row: auto !important; }
+          .rf-tl-nav{ overflow-x: auto; flex-wrap: nowrap !important; }
+          .rf-tl-adjust{ position: static !important; max-height: none !important; overflow: visible !important; }
+          .rf-tl-pv{ grid-template-columns: minmax(0, 1fr) !important; }
+          .rf-tl-pv-fmt{ width: 100%; max-width: 260px; margin: 0 auto; }
+        }
+        @media (max-width: 480px){
+          .rf-tl-bar{ gap: 8px !important; padding: 6px 8px !important; }
+          .rf-tl-hide-sm{ display: none; }
+        }
+      `}</style>
     </div>
   );
 }
 
 // Altura de cada faixa. A coluna de nomes e as faixas leem daqui, para não
 // desalinharem quando uma mudar.
-const LANE = { ruler: 20, legenda: 64, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };
+const LANE = { ruler: 22, capitulos: 28, legenda: 64, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };
 
 /** Nome de uma faixa, na coluna fixa à esquerda da timeline. */
 function Rotulo({ h, gap, nome, dica }) {

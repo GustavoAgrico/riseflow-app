@@ -201,6 +201,15 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
             <Row label="Tamanho da legenda" hint={`${Math.round((options.captionScale ?? 1) * 100)}% — palavras longas encolhem sozinhas para caber`}>
               <input type="range" min={0.6} max={1.4} step={0.05} value={options.captionScale ?? 1} onChange={(e) => set({ captionScale: Number(e.target.value) })} style={{ minWidth: 190 }} />
             </Row>
+            <Row label="Linhas da legenda" hint="No máximo quantas linhas aparecem de uma vez. O resto da frase entra na sequência.">
+              <Segmented value={options.captionLines === 1 ? 1 : 2} options={[{ id: 1, label: '1 linha' }, { id: 2, label: '2 linhas' }]} onChange={(v) => set({ captionLines: v })} />
+            </Row>
+            <Row label="Caracteres por linha" hint={options.captionMaxChars > 0 ? `Até ${options.captionMaxChars} letras por linha — a quebra é sempre entre palavras` : 'Automático: o que cabe na largura do vídeo com o tamanho da fonte'}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 190 }}>
+                <input type="range" min={7} max={42} step={1} value={options.captionMaxChars > 0 ? options.captionMaxChars : 7} onChange={(e) => { const v = Number(e.target.value); set({ captionMaxChars: v <= 7 ? 0 : v }); }} style={{ flex: 1 }} />
+                <span style={{ width: 40, textAlign: 'right', fontSize: 12.5, color: C.muted }}>{options.captionMaxChars > 0 ? options.captionMaxChars : 'Auto'}</span>
+              </div>
+            </Row>
           </>
         )}
       </Section>

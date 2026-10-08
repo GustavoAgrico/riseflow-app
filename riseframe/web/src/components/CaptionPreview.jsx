@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { C } from '../theme.js';
-import { pickKeyword, premiumChunks } from '../../../shared/captionKeyword.js';
+import { pickKeyword, premiumChunks, layoutCaption, autoMaxChars } from '../../../shared/captionKeyword.js';
 
 // Espelha o servidor: cada estilo tem fonte e animação padrão.
 const TPL = {
@@ -222,13 +222,19 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
     at = seg ? wordsOf(seg)[0].start : 0;
   }
   if (!seg) return null;
-  const words = wordsOf(seg);
+  let words = wordsOf(seg);
+  // Mesmos "cartões" do render: no máximo 1 ou 2 linhas, até N caracteres por linha.
+  if (look.mode !== 'word') {
+    const maxChars = Number(options.captionMaxChars) > 0 ? Number(options.captionMaxChars) : autoMaxChars(box.w, fontPx, look.T.upper);
+    const cards = layoutCaption(words, { lines: options.captionLines === 1 ? 1 : 2, maxChars, segEnd: seg.end });
+    words = (cards.find((c, i) => at < c.end || i === cards.length - 1) || cards[0]).words;
+  }
   let wi = words.findIndex((w, i) => at >= w.start && (i + 1 >= words.length || at < words[i + 1].start));
   if (wi < 0) wi = 0;
 
   const align = look.pos === 'top' ? 'top' : look.pos === 'center' ? 'center' : look.pos === 'bottom' ? 'bottom' : S.align;
   const marginV = look.pos === 'auto' ? S.marginV : 0.12;
-  const content = <CaptionWords words={words} wi={wi} look={look} options={options} fontPx={fontPx} keyId={seg.start} />;
+  const content = <CaptionWords words={words} wi={wi} look={look} options={options} fontPx={fontPx} keyId={words[0]?.start ?? seg.start} />;
 
   // Posição manual (arrastada): da palavra (modo palavra) ou da frase; senão a geral.
   const wpos = (w) => (w && w.px != null && w.py != null ? { x: w.px, y: w.py } : null);
@@ -312,7 +318,10 @@ export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, 
 
   const kw = T.highlightKeyword ? pickKeyword(words) : -1;
   const kwStyle = { color: look.glowOn ? undefined : look.color, fontSize: `${T.kwScale || 1.18}em`, display: 'inline-block' };
-  const breakAt = (k) => T.keywordBreak && (k === kw || (kw === 0 && k === 1));
+  // Quebra de linha: a do estilo "duas linhas" (palavra-chave desce) ou a do cartão (br).
+  const twoLines = options.captionLines !== 1;
+  const duo = T.keywordBreak && twoLines && kw >= 0 && words.length > 1;
+  const breakAt = (k) => (duo ? k === kw || (kw === 0 && k === 1) : !!words[k].br);
   const highlight = options.captionHighlight === true || !!T.forceHighlight;
   // Nos estilos de palavra-chave e no marca-texto a frase fica branca.
   const base = T.highlightKeyword || T.marker ? { color: '#fff' } : null;
@@ -334,7 +343,7 @@ export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, 
   };
 
   return (
-    <span key={`${keyId}-${look.animKind}`} style={{ ...style, ...(highlight ? { color: '#fff' } : null), ...base, maxWidth: '90%', textAlign: 'center' }}>
+    <span key={`${keyId}-${look.animKind}`} style={{ ...style, ...(highlight ? { color: '#fff' } : null), ...base, maxWidth: still ? '90%' : 'none', whiteSpace: still ? 'normal' : 'nowrap', textAlign: 'center' }}>
       {words.map((w, k) => (
         <React.Fragment key={k}>
           {k > 0 ? (breakAt(k) ? <br /> : ' ') : ''}

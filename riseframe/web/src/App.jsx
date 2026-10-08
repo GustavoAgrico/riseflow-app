@@ -267,7 +267,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   }
 
   return (
-    <Shell health={health} embedded={embedded} compact={phase !== 'setup'}>
+    <Shell health={health} embedded={embedded} compact={phase !== 'setup'} wide={phase === 'editing'}>
       {phase === 'setup' && reopen && reopening && (
         <div style={{ textAlign: 'center', padding: 60, color: C.muted }}>
           <Spinner size={22} color={C.orange} />
@@ -491,7 +491,7 @@ function IconBadge({ name, tone = C.orange }) {
   );
 }
 
-function Shell({ children, health, embedded, compact = false }) {
+function Shell({ children, health, embedded, compact = false, wide = false }) {
   return (
     <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
       {!embedded && (
@@ -532,7 +532,7 @@ function Shell({ children, health, embedded, compact = false }) {
         </header>
       )}
 
-      <main className="rf-page" style={{ maxWidth: 1000, width: '100%', minWidth: 0, margin: 0, padding: '40px 32px 80px', flex: 1 }}>
+      <main className="rf-page" style={{ maxWidth: wide ? 1560 : 1000, width: '100%', minWidth: 0, margin: 0, padding: wide ? '28px 24px 80px' : '40px 32px 80px', flex: 1 }}>
         {!embedded && <div className={`rf-anim rf-hero${compact ? ' rf-hero-compact' : ''}`} style={{ position: 'relative', marginBottom: 30 }}>
           {/* halo suave atrás do título */}
           <div style={{ position: 'absolute', top: -60, left: -20, width: 280, height: 200, background: 'radial-gradient(circle, rgba(255,107,53,0.14), transparent 65%)', pointerEvents: 'none', filter: 'blur(4px)' }} />

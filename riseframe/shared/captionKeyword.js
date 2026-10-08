@@ -70,3 +70,54 @@ export function premiumChunks(words, segEnd, max = 4) {
   });
   return out;
 }
+
+/**
+ * Quebra as palavras de uma frase em "cartões" de legenda: cada cartão tem no máximo
+ * `lines` linhas (1 ou 2) com até `maxChars` caracteres cada — a quebra é sempre entre
+ * palavras. A palavra que começa uma linha nova ganha `br: true`. Uma palavra maior que
+ * o limite fica sozinha na linha. Usado no render e na prévia (mesmo resultado).
+ * @returns {Array<{words:Array, end:number}>} `end` = quando o próximo cartão começa
+ */
+export function layoutCaption(words, { lines = 2, maxChars = 24, segEnd } = {}) {
+  const L = lines === 1 ? 1 : 2;
+  const M = Math.max(6, Math.round(maxChars) || 24);
+  const cards = [];
+  let card = [];
+  let line = 1;
+  let len = 0;
+  for (const w of words) {
+    const n = String(w.word ?? '').length;
+    if (!card.length) {
+      card.push({ ...w, br: false });
+      len = n;
+      continue;
+    }
+    if (len + 1 + n <= M) {
+      card.push({ ...w, br: false });
+      len += 1 + n;
+    } else if (line < L) {
+      card.push({ ...w, br: true });
+      line += 1;
+      len = n;
+    } else {
+      cards.push(card);
+      card = [{ ...w, br: false }];
+      line = 1;
+      len = n;
+    }
+  }
+  if (card.length) cards.push(card);
+  return cards.map((ws, i) => ({
+    words: ws,
+    end: i + 1 < cards.length ? cards[i + 1][0].start : Math.max(ws[ws.length - 1].end ?? 0, Number(segEnd) || 0),
+  }));
+}
+
+/**
+ * Quantos caracteres cabem numa linha quando o limite é automático: largura útil do
+ * quadro ÷ largura média de uma letra (fonte em maiúsculas é mais larga).
+ */
+export function autoMaxChars(frameW, fontPx, upper) {
+  const avail = frameW * 0.86;
+  return Math.max(8, Math.floor(avail / (fontPx * (upper ? 0.66 : 0.56))));
+}
