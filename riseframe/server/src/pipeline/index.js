@@ -17,6 +17,7 @@ import { classifyNarrative } from './narrative.js';
 import { cleanupWithClaude } from './cleanupLLM.js';
 import { burnCaptions, captionSfxEvents } from './captions.js';
 import { applySoundEffects } from './sfx.js';
+import { applyWatermark } from './watermark.js';
 import { colorFilter, hasColorAdjust } from './color.js';
 import { convertAspect, finalRender } from './render.js';
 import { generateClips } from './clips.js';
@@ -59,6 +60,7 @@ function buildPlan(mode, options) {
       { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: Array.isArray(options.userMedia) && options.userMedia.length > 0 },
       { key: 'aspect', label: 'Ajustando ao formato', weight: 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
+      { key: 'watermark', label: 'Aplicando o seu logo', weight: 6, enabled: Boolean(options.watermark?.file) },
       { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true },
       { key: 'color', label: 'Analisando as cores', weight: 3, enabled: (options.colorLook || 'teal-orange') !== 'none' || hasColorAdjust(options.colorAdjust) },
       { key: 'render', label: 'Renderização final', weight: 18, enabled: true },
@@ -422,6 +424,15 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.record(report.captions);
   }
 
+  // 6a. Logo do Brand Kit num canto (depois do formato final e das legendas).
+  if (has('watermark')) {
+    const st = enter('watermark');
+    const r = await applyWatermark(input, work, meta, options, st.onProgress);
+    if (r.applied) input = r.output;
+    report.watermark = { applied: r.applied, position: options.watermark?.position };
+    st.onProgress(1);
+  }
+
   // 6b. Efeitos sonoros: whoosh nas entradas de B-roll e nos punch-ins do zoom
   // dinâmico. (Sem "bip" nas legendas: a cada frase ficava repetitivo e cansativo.)
   if (has('sfx')) {
@@ -470,7 +481,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
   {
     const st = enter('render');
     const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf, reframe: aspectReframe }, st.onProgress);
-    report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe };
+    const outMeta = await probeSummary(r.output).catch(() => ({}));
+    report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe, width: outMeta.width || null, height: outMeta.height || null };
     st.record({ aspect: r.aspect });
     st.onProgress(1);
   }

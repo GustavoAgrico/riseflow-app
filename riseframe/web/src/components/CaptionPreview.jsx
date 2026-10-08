@@ -90,7 +90,7 @@ export function captionLook(options) {
 
 // Frases de exemplo da prévia (tempos em segundos, repetem em loop).
 const SAMPLE_LINES = ['Esse é o seu vídeo', 'com a legenda pronta', 'do jeito que vai sair'];
-const SAMPLE_SEGS = (() => {
+export const SAMPLE_SEGS = (() => {
   const segs = [];
   let t = 0.2;
   for (const line of SAMPLE_LINES) {
@@ -104,7 +104,7 @@ const SAMPLE_SEGS = (() => {
   }
   return segs;
 })();
-const SAMPLE_DUR = SAMPLE_SEGS[SAMPLE_SEGS.length - 1].end + 0.3;
+export const SAMPLE_DUR = SAMPLE_SEGS[SAMPLE_SEGS.length - 1].end + 0.3;
 const RATIOS = { '9:16': 9 / 16, '1:1': 1, '16:9': 16 / 9, '4:5': 4 / 5 };
 
 /**
@@ -124,7 +124,8 @@ export default function CaptionPreview({ options, videoUrl }) {
     return () => ro.disconnect();
   }, []);
   const ratio = RATIOS[options.aspect] || natural || 9 / 16;
-  const h = Math.round(Math.min(ratio >= 1 ? 240 : 380, availW / ratio));
+  // Tela estreita (celular): prévia mais baixa, para as opções não ficarem longe.
+  const h = Math.round(Math.min(ratio >= 1 ? 240 : availW < 420 ? 270 : 380, availW / ratio));
   const w = Math.round(h * ratio);
   const startedAt = useRef(typeof performance !== 'undefined' ? performance.now() : 0);
   const clock = () => ((performance.now() - startedAt.current) / 1000) % SAMPLE_DUR;

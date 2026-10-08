@@ -10,7 +10,7 @@ const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart
  * o vídeo bruto (ANTES) atrás e o resultado do Riseframe (DEPOIS) na frente, com o que
  * foi aplicado. Toque no DEPOIS para ouvir.
  */
-export default function HeroDemo({ showcase, onMore }) {
+export default function HeroDemo({ showcase, onMore, onFail }) {
   const before = useRef(null);
   const after = useRef(null);
   const [sound, setSound] = useState(false);
@@ -55,7 +55,7 @@ export default function HeroDemo({ showcase, onMore }) {
           <div style={{ position: 'absolute', inset: '-12%', background: 'radial-gradient(closest-side, rgba(255,107,53,0.35), rgba(124,58,237,0.22) 55%, transparent 75%)', filter: 'blur(18px)', zIndex: -1 }} />
           <div onClick={toggleSound} style={{ borderRadius: 26, padding: 7, background: '#0b0c12', border: '1px solid rgba(255,255,255,0.16)', boxShadow: '0 40px 90px -30px rgba(255,107,53,0.55)', cursor: 'pointer' }}>
             <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', aspectRatio: '9/16', background: '#000' }}>
-              <video ref={after} src={apiAsset(showcase.after)} muted={!sound} loop autoPlay playsInline preload="auto" onError={() => setFailed(true)}
+              <video ref={after} src={apiAsset(showcase.after)} muted={!sound} loop autoPlay playsInline preload="auto" onError={() => { setFailed(true); onFail?.(); }}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               <span style={pill(true)}>DEPOIS</span>
               <span style={{ position: 'absolute', top: 10, right: 10, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10.5, fontWeight: 800, color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 999, padding: '4px 9px', backdropFilter: 'blur(6px)' }}>

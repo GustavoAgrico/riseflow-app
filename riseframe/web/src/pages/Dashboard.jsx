@@ -1,159 +1,127 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY, fmtDuration } from '../theme.js';
 import Icon from '../components/Icon.jsx';
+import ProjectCard from '../components/ProjectCard.jsx';
 import { listJobs } from '../history.js';
-import { useAuth } from '../AuthContext.jsx';
-import { openPlans } from '../components/CostLine.jsx';
+import { FORMATS } from '../formats.js';
 
-const MODE_LABEL = { auto: 'Edição automática', render: 'Editado na timeline', clips: 'Clipes curtos', transcribe: 'Transcrição' };
-const fmtDate = (ms) => new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
-
-const railBtn = {
-  width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-  background: 'rgba(255,255,255,0.04)', color: C.text, border: `1px solid ${C.border}`,
-  borderRadius: 12, padding: '12px 14px', fontSize: 14, fontWeight: 600,
-  cursor: 'pointer', fontFamily: 'inherit',
-};
-
-function StatCard({ icon, label, value, tint }) {
+function Stat({ icon, label, value, tint }) {
   return (
-    <div style={{ ...glass({ padding: 18 }), position: 'relative', overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', top: -30, right: -20, width: 90, height: 90, background: `radial-gradient(circle, ${tint}22, transparent 70%)`, pointerEvents: 'none' }} />
-      <div style={{ width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', background: `${tint}1e`, border: `1px solid ${tint}44`, color: tint, marginBottom: 12 }}>
+    <div style={{ ...glass({ padding: '14px 16px' }), display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span style={{ width: 38, height: 38, borderRadius: 11, display: 'grid', placeItems: 'center', background: `${tint}1c`, border: `1px solid ${tint}40`, color: tint, flexShrink: 0 }}>
         <Icon name={icon} size={18} strokeWidth={1.9} />
+      </span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 20, fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -0.5, lineHeight: 1.1 }}>{value}</div>
+        <div style={{ fontSize: 11.5, color: C.faint, marginTop: 2 }}>{label}</div>
       </div>
-      <div style={{ fontSize: 11, color: C.faint, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -0.6, marginTop: 3 }}>{value}</div>
     </div>
   );
 }
 
-export default function Dashboard({ user, onNewVideo, onEditVideo, onBroll, onLibrary }) {
-  const { billing } = useAuth();
-  const first = (user?.name || '').split(' ')[0] || 'você';
+const QUICK = ['reels', 'tiktok', 'shorts', 'youtube', 'cortes'];
+
+export default function Dashboard({ user, onNewVideo, onLibrary, onTemplates, onOpen, onFormat }) {
+  const first = (user?.name || '').split(' ')[0];
   const jobs = useMemo(() => listJobs(), []);
-  const stats = useMemo(() => {
-    const now = Date.now();
-    const monthAgo = now - 30 * 864e5;
-    const thisMonth = jobs.filter((j) => j.at >= monthAgo).length;
-    const savedSec = jobs.reduce((s, j) => s + (j.savedSec || 0), 0);
-    const captions = jobs.reduce((s, j) => s + (j.captions || 0), 0);
-    return { total: jobs.length, thisMonth, savedSec, captions };
-  }, [jobs]);
-  const recent = jobs.slice(0, 6);
+  const [tab, setTab] = useState('todos');
+  const stats = useMemo(() => ({
+    total: jobs.length,
+    month: jobs.filter((j) => j.at >= Date.now() - 30 * 864e5).length,
+    saved: jobs.reduce((s, j) => s + (j.savedSec || 0), 0),
+    captions: jobs.reduce((s, j) => s + (j.captions || 0), 0),
+  }), [jobs]);
+  const shown = (tab === 'recentes' ? jobs.filter((j) => j.at >= Date.now() - 7 * 864e5) : tab === 'cortes' ? jobs.filter((j) => j.mode === 'clips') : jobs).slice(0, 8);
 
   return (
-    <div className="rf-page" style={{ maxWidth: 1180, margin: 0, padding: '40px 32px 90px', position: 'relative' }}>
+    <div className="rf-page" style={{ maxWidth: 1180, margin: 0, padding: '36px 32px 90px', position: 'relative' }}>
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
         <div style={{ position: 'absolute', top: '-12%', right: '2%', width: 460, height: 460, borderRadius: '50%', background: C.purple, filter: 'blur(190px)', opacity: 0.12 }} />
-        <div style={{ position: 'absolute', top: '20%', left: '-6%', width: 340, height: 340, borderRadius: '50%', background: C.orange, filter: 'blur(180px)', opacity: 0.09 }} />
+        <div style={{ position: 'absolute', top: '20%', left: '-6%', width: 340, height: 340, borderRadius: '50%', background: C.orange, filter: 'blur(180px)', opacity: 0.08 }} />
       </div>
 
       <div style={{ position: 'relative', zIndex: 1 }}>
-        <p style={{ color: C.orangeSoft, fontWeight: 600, fontSize: 14, margin: '0 0 6px' }}>Olá, {first} 👋</p>
-        <h1 style={{ fontSize: 'clamp(26px,4.5vw,38px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1.1, margin: '0 0 26px' }}>
-          Sua <span style={gradientText}>produtividade</span>
-        </h1>
-
-        {/* Stat cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 26 }}>
-          <StatCard icon="film" label="Vídeos editados" value={stats.total} tint={C.orange} />
-          <StatCard icon="sparkles" label="Nos últimos 30 dias" value={stats.thisMonth} tint={C.purple} />
-          <StatCard icon="scissors" label="Tempo economizado" value={fmtDuration(stats.savedSec)} tint={C.green} />
-          <StatCard icon="captions" label="Legendas geradas" value={stats.captions} tint={C.cyan || '#22D3EE'} />
+        {/* Boas-vindas + criar */}
+        <div style={{ ...glass({ padding: 'clamp(20px, 3vw, 30px)' }), position: 'relative', overflow: 'hidden', marginBottom: 22 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 100% 0%, rgba(255,107,53,0.18), transparent 45%), radial-gradient(circle at 0% 120%, rgba(124,58,237,0.2), transparent 50%)', pointerEvents: 'none' }} />
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 260 }}>
+              <h1 style={{ fontSize: 'clamp(24px, 3.6vw, 34px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 6px' }}>
+                Olá{first ? `, ${first}` : ''}! Vamos criar algo <span style={gradientText}>incrível</span> hoje?
+              </h1>
+              <p style={{ color: C.muted, fontSize: 15, margin: 0 }}>Transforme seus vídeos em conteúdos prontos para publicar.</p>
+            </div>
+            <button onClick={onNewVideo} style={{ display: 'inline-flex', alignItems: 'center', gap: 9, border: 'none', borderRadius: 14, background: GRAD, color: '#fff', padding: '15px 24px', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 14px 30px -12px rgba(255,107,53,0.7)' }}>
+              <Icon name="plus" size={18} strokeWidth={2.4} /> Criar vídeo
+            </button>
+          </div>
+          {/* atalhos de formato */}
+          <div style={{ position: 'relative', display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 20 }}>
+            {FORMATS.filter((f) => QUICK.includes(f.id)).map((f) => (
+              <button key={f.id} onClick={() => onFormat(f.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 999, padding: '8px 14px 8px 9px', border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.text, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <span style={{ width: 24, height: 24, borderRadius: 8, display: 'grid', placeItems: 'center', background: `${f.tint}22`, color: f.tint }}><Icon name={f.icon} size={14} strokeWidth={2} /></span>
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Conteúdo + rail */}
-        <div className="rf-dash-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 300px', gap: 22, alignItems: 'start' }}>
-          {/* Vídeos recentes */}
-          <div style={{ ...glass({ padding: 0 }) }}>
-            <div style={{ display: 'flex', alignItems: 'center', padding: '18px 20px 14px', borderBottom: `1px solid ${C.border}` }}>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>Vídeos recentes</div>
-              {jobs.length > 0 && (
-                <button onClick={onLibrary} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.orangeSoft, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}>
-                  Ver todos <Icon name="chevron" size={14} strokeWidth={2.4} />
-                </button>
-              )}
-            </div>
+        {/* números */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 26 }}>
+          <Stat icon="film" label="Vídeos editados" value={stats.total} tint={C.orange} />
+          <Stat icon="sparkles" label="Nos últimos 30 dias" value={stats.month} tint={C.purpleSoft} />
+          <Stat icon="clock" label="Tempo cortado" value={fmtDuration(stats.saved)} tint={C.green} />
+          <Stat icon="captions" label="Legendas geradas" value={stats.captions} tint="#22D3EE" />
+        </div>
 
-            {recent.length === 0 ? (
-              <div style={{ padding: '46px 24px', textAlign: 'center' }}>
-                <div style={{ width: 50, height: 50, margin: '0 auto 14px', borderRadius: 14, background: C.panel2, display: 'grid', placeItems: 'center', color: C.muted }}>
-                  <Icon name="film" size={23} strokeWidth={1.7} />
-                </div>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>Nenhum vídeo ainda</div>
-                <div style={{ color: C.faint, fontSize: 13, marginTop: 5, maxWidth: 340, marginInline: 'auto', lineHeight: 1.5 }}>Edite seu primeiro vídeo e ele aparece aqui para baixar ou reabrir.</div>
-                <button onClick={onNewVideo} style={{ marginTop: 16, display: 'inline-flex', alignItems: 'center', gap: 8, background: GRAD, color: '#fff', border: 'none', borderRadius: 12, padding: '11px 20px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 8px 22px -8px rgba(255,107,53,0.5)' }}>
-                  <Icon name="sparkles" size={16} strokeWidth={2} /> Criar o primeiro vídeo
-                </button>
-              </div>
-            ) : (
-              <div>
-                {recent.map((j, i) => (
-                  <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 13, padding: '13px 20px', borderBottom: i < recent.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-                    <div style={{ width: 38, height: 38, borderRadius: 10, background: C.panel2, display: 'grid', placeItems: 'center', color: C.orangeSoft, flexShrink: 0 }}>
-                      <Icon name={j.mode === 'clips' ? 'film' : 'clapper'} size={18} strokeWidth={1.8} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.title}</div>
-                      <div style={{ fontSize: 12, color: C.faint, marginTop: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: C.green }}><Icon name="check" size={12} strokeWidth={2.6} /> Finalizado</span>
-                        · {MODE_LABEL[j.mode] || j.mode}
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 12, color: C.faint, flexShrink: 0, whiteSpace: 'nowrap' }}>{fmtDate(j.at)}</div>
-                    {j.downloadUrl && j.mode !== 'clips' && (
-                      <a href={j.downloadUrl} title="Baixar" style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 9, border: `1px solid ${C.border}`, display: 'grid', placeItems: 'center', color: C.muted, textDecoration: 'none' }}>
-                        <Icon name="download" size={15} strokeWidth={2} />
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* projetos */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+          <h2 style={{ fontSize: 19, fontWeight: 800, fontFamily: FONT_DISPLAY, margin: 0 }}>Seus projetos</h2>
+          <div style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 11, background: 'rgba(255,255,255,0.05)' }}>
+            {[{ id: 'todos', label: 'Todos' }, { id: 'recentes', label: 'Recentes' }, { id: 'cortes', label: 'Cortes' }].map((t) => (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{ border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: tab === t.id ? 'rgba(255,255,255,0.12)' : 'transparent', color: tab === t.id ? C.text : C.muted }}>{t.label}</button>
+            ))}
           </div>
+          {jobs.length > 8 && (
+            <button onClick={onLibrary} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.orangeSoft, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}>
+              Ver todos <Icon name="chevron" size={14} strokeWidth={2.4} />
+            </button>
+          )}
+        </div>
 
-          {/* Rail: Ações rápidas + turbine */}
-          <div style={{ display: 'grid', gap: 16 }}>
-            <div style={{ ...glass({ padding: 18 }) }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 12 }}>Ações rápidas</div>
-              <button onClick={onNewVideo} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, background: GRAD, color: '#fff', border: 'none', borderRadius: 12, padding: '13px 14px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10, boxShadow: '0 8px 20px -8px rgba(255,107,53,0.5)' }}>
-                <Icon name="upload" size={17} strokeWidth={2} /> Novo vídeo
+        {shown.length === 0 ? (
+          <div style={{ ...glass({ padding: '44px 24px' }), textAlign: 'center', border: `1px dashed ${C.border}` }}>
+            <div style={{ width: 52, height: 52, margin: '0 auto 14px', borderRadius: 15, background: C.panel2, display: 'grid', placeItems: 'center', color: C.muted }}>
+              <Icon name="film" size={24} strokeWidth={1.7} />
+            </div>
+            <div style={{ fontWeight: 700, fontSize: 15.5 }}>{jobs.length ? 'Nada por aqui neste filtro' : 'Seu primeiro vídeo começa aqui'}</div>
+            <div style={{ color: C.faint, fontSize: 13.5, marginTop: 6, maxWidth: 360, marginInline: 'auto', lineHeight: 1.5 }}>
+              Envie um vídeo bruto: a IA corta, legenda e entrega pronto para postar.
+            </div>
+            {!jobs.length && (
+              <button onClick={onNewVideo} style={{ marginTop: 16, display: 'inline-flex', alignItems: 'center', gap: 8, background: GRAD, color: '#fff', border: 'none', borderRadius: 12, padding: '11px 20px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <Icon name="plus" size={16} strokeWidth={2.4} /> Criar vídeo
               </button>
-              <div style={{ display: 'grid', gap: 10 }}>
-                <button onClick={onEditVideo} style={railBtn}>
-                  <Icon name="edit" size={17} strokeWidth={1.9} /> Editar vídeo
-                </button>
-                <button onClick={onBroll} style={railBtn}>
-                  <Icon name="image" size={17} strokeWidth={1.9} /> Ajustar B-Roll
-                </button>
-                <button onClick={onLibrary} style={railBtn}>
-                  <Icon name="folder" size={17} strokeWidth={1.9} /> Ver biblioteca
-                </button>
-              </div>
-            </div>
-
-            {billing && !billing.unlimited && !billing.features.includes('image') && (
-              <div style={{ ...glass({ padding: 18 }), background: 'linear-gradient(180deg, rgba(124,58,237,0.1), rgba(255,255,255,0.015))' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
-                  <span style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(124,58,237,0.18)', border: '1px solid rgba(124,58,237,0.35)', display: 'grid', placeItems: 'center', color: C.purpleSoft }}>
-                    <Icon name="wand" size={17} strokeWidth={1.9} />
-                  </span>
-                  <div style={{ fontSize: 13.5, fontWeight: 700 }}>Turbine com IA</div>
-                </div>
-                <div style={{ color: C.muted, fontSize: 12.5, lineHeight: 1.55, marginBottom: 14 }}>
-                  <b style={{ color: C.text }}>Legendas estilizadas</b>, <b style={{ color: C.text }}>B-roll automático</b> e <b style={{ color: C.text }}>limpeza de fala por IA</b> estão nos planos Pro e Premium.
-                </div>
-                <button onClick={openPlans} style={{ width: '100%', background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 11, padding: '10px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  Ver planos →
-                </button>
-              </div>
             )}
           </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+            {shown.map((j) => <ProjectCard key={j.id} job={j} onOpen={onOpen} />)}
+          </div>
+        )}
+
+        {/* atalhos */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14, marginTop: 26 }}>
+          <button onClick={onTemplates} style={{ ...glass({ padding: 18 }), textAlign: 'left', color: C.text, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', gap: 14, alignItems: 'center' }}>
+            <span style={{ width: 44, height: 44, borderRadius: 13, display: 'grid', placeItems: 'center', background: GRAD, flexShrink: 0 }}><Icon name="layers" size={21} strokeWidth={1.9} color="#fff" /></span>
+            <span><b style={{ fontSize: 15 }}>Templates por nicho</b><span style={{ display: 'block', fontSize: 12.5, color: C.muted, marginTop: 3 }}>Estilos prontos para empresário, médico, advogado, podcast…</span></span>
+          </button>
+          <button onClick={onLibrary} style={{ ...glass({ padding: 18 }), textAlign: 'left', color: C.text, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', gap: 14, alignItems: 'center' }}>
+            <span style={{ width: 44, height: 44, borderRadius: 13, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,0.07)', flexShrink: 0 }}><Icon name="folder" size={21} strokeWidth={1.9} color={C.orangeSoft} /></span>
+            <span><b style={{ fontSize: 15 }}>Meus projetos</b><span style={{ display: 'block', fontSize: 12.5, color: C.muted, marginTop: 3 }}>Baixe de novo ou continue editando na timeline.</span></span>
+          </button>
         </div>
       </div>
-
-      <style>{`@media (max-width: 860px){ .rf-dash-grid{ grid-template-columns: 1fr !important; } }`}</style>
     </div>
   );
 }

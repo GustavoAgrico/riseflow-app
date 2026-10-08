@@ -39,7 +39,12 @@ function optionsForUser(req) {
       })
       .filter(Boolean);
   }
-  // Plano de B-roll: itens com mídia própria (mediaId) viram caminho de arquivo.
+  // Logo do Brand Kit: só vale se a mídia existe e é imagem.
+  if (o.watermark) {
+    const found = resolveMedia(o.watermark.mediaId);
+    o.watermark = found && found.kind === 'image' ? { ...o.watermark, file: found.path } : null;
+  }
+    // Plano de B-roll: itens com mídia própria (mediaId) viram caminho de arquivo.
   if (o.brollPlan?.length) {
     o.brollPlan = o.brollPlan.map((p) => {
       if (p.mediaId) {
@@ -418,6 +423,15 @@ function parseOptions(raw) {
     // Mídias próprias do usuário na timeline (imagens/vídeos/músicas). Resolvidas
     // para caminhos de arquivo no servidor (ver optionsForUser).
     userMedia: sanitizeUserMedia(o.userMedia),
+    // Marca d'água do Brand Kit: o logo (mídia enviada) num canto do vídeo.
+    watermark: o.watermark && typeof o.watermark.mediaId === 'string' && o.watermark.mediaId
+      ? {
+        mediaId: o.watermark.mediaId,
+        position: ['tr', 'tl', 'br', 'bl'].includes(o.watermark.position) ? o.watermark.position : 'tr',
+        scale: clampNum(o.watermark.scale, 0.06, 0.35, 0.14),
+        opacity: clampNum(o.watermark.opacity, 0.15, 1, 0.85),
+      }
+      : null,
   };
 }
 

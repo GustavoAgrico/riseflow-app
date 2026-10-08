@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { C, GRAD, glass, FONT_DISPLAY, fmtBytes, fmtDuration } from '../theme.js';
 import Icon from '../components/Icon.jsx';
+import ProjectCard from '../components/ProjectCard.jsx';
 import { listJobs, clearJobs } from '../history.js';
 import { useAuth } from '../AuthContext.jsx';
 import { adminDownloadShowcase, adminRemoveShowcase, adminSetShowcase, adminShowcase } from '../api.js';
@@ -8,7 +9,7 @@ import { adminDownloadShowcase, adminRemoveShowcase, adminSetShowcase, adminShow
 const MODE_LABEL = { auto: 'Automático', render: 'Timeline', clips: 'Clipes curtos', transcribe: 'Transcrição' };
 const fmtDate = (ms) => new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 
-export default function Library({ onNewVideo }) {
+export default function Library({ onNewVideo, onOpen }) {
   const [jobs, setJobs] = useState(() => listJobs());
   const [filter, setFilter] = useState('all');
   // Admin: escolher um vídeo editado como demonstração "antes e depois" da página inicial.
@@ -58,11 +59,11 @@ export default function Library({ onNewVideo }) {
       <div style={{ position: 'relative', zIndex: 1 }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginBottom: 22, flexWrap: 'wrap' }}>
           <div>
-            <h1 style={{ fontSize: 'clamp(24px,4vw,34px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 4px' }}>Biblioteca</h1>
-            <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>Seus vídeos editados neste dispositivo</p>
+            <h1 style={{ fontSize: 'clamp(24px,4vw,34px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 4px' }}>Meus projetos</h1>
+            <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>Seus vídeos editados neste navegador — baixe de novo ou continue editando</p>
           </div>
           <button onClick={onNewVideo} style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8, background: GRAD, color: '#fff', border: 'none', borderRadius: 12, padding: '11px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 8px 22px -8px rgba(255,107,53,0.5)' }}>
-            <Icon name="upload" size={16} strokeWidth={2} /> Novo vídeo
+            <Icon name="plus" size={16} strokeWidth={2.4} /> Criar vídeo
           </button>
         </div>
 
@@ -94,49 +95,19 @@ export default function Library({ onNewVideo }) {
             )}
           </div>
         ) : (
-          <div style={{ ...glass({ padding: 0 }), overflow: 'hidden' }}>
-            {/* cabeçalho da tabela (desktop) */}
-            <div className="rf-lib-head" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 20px', borderBottom: `1px solid ${C.border}`, color: C.faint, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 700 }}>
-              <span style={{ flex: 1 }}>Vídeo</span>
-              <span style={{ width: 110 }}>Modo</span>
-              <span style={{ width: 90 }}>Data</span>
-              <span style={{ width: 80 }}>Tamanho</span>
-              <span style={{ width: 44 }} />
-            </div>
-            {shown.map((j, i) => (
-              <div key={j.id} className="rf-lib-row" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderBottom: i < shown.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-                  <div style={{ width: 42, height: 42, borderRadius: 10, background: C.panel2, display: 'grid', placeItems: 'center', color: C.orangeSoft, flexShrink: 0 }}>
-                    <Icon name={j.mode === 'clips' ? 'film' : 'clapper'} size={19} strokeWidth={1.8} />
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.title}</div>
-                    <div style={{ fontSize: 12, color: C.green, marginTop: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <Icon name="check" size={12} strokeWidth={2.6} /> Finalizado
-                      {j.mode === 'clips' && j.clips > 0 && <span style={{ color: C.faint }}>· {j.clips} clipes</span>}
-                      {j.aspect && <span style={{ color: C.faint }}>· {j.aspect}</span>}
-                    </div>
-                  </div>
-                </div>
-                <span className="rf-lib-col" style={{ width: 110, fontSize: 13, color: C.muted }}>{MODE_LABEL[j.mode] || j.mode}</span>
-                <span className="rf-lib-col" style={{ width: 90, fontSize: 13, color: C.muted }}>{fmtDate(j.at)}</span>
-                <span className="rf-lib-col" style={{ width: 80, fontSize: 13, color: C.muted }}>{j.sizeBytes ? fmtBytes(j.sizeBytes) : '—'}</span>
-                <span style={{ width: admin ? 88 : 44, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                  {admin && j.downloadUrl && ['auto', 'render'].includes(j.mode) && (
-                    <button onClick={() => useAsDemo(j)} title="Usar como demonstração na página inicial" disabled={show?.building}
-                      style={{ width: 36, height: 36, borderRadius: 9, border: `1px solid ${C.border}`, background: 'transparent', display: 'grid', placeItems: 'center', color: C.orangeSoft, cursor: show?.building ? 'wait' : 'pointer' }}>
-                      <Icon name="sparkles" size={16} strokeWidth={2} />
-                    </button>
-                  )}
-                  {j.downloadUrl && j.mode !== 'clips' ? (
-                    <a href={j.downloadUrl} title="Baixar" style={{ width: 36, height: 36, borderRadius: 9, border: `1px solid ${C.border}`, display: 'grid', placeItems: 'center', color: C.muted, textDecoration: 'none' }}>
-                      <Icon name="download" size={16} strokeWidth={2} />
-                    </a>
-                  ) : (
-                    <span style={{ width: 36 }} />
-                  )}
-                </span>
-              </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+            {shown.map((j) => (
+              <ProjectCard
+                key={j.id}
+                job={j}
+                onOpen={onOpen}
+                extra={admin && j.downloadUrl && ['auto', 'render'].includes(j.mode) ? (
+                  <button onClick={() => useAsDemo(j)} title="Usar como demonstração na página inicial" disabled={show?.building}
+                    style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${C.border}`, background: 'transparent', display: 'grid', placeItems: 'center', color: C.orangeSoft, cursor: show?.building ? 'wait' : 'pointer', flexShrink: 0 }}>
+                    <Icon name="star" size={15} strokeWidth={2} />
+                  </button>
+                ) : null}
+              />
             ))}
           </div>
         )}
