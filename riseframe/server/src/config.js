@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v93';
+export const APP_VERSION = 'v94';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -91,6 +91,8 @@ export const config = {
 
   broll: {
     pexelsKey: process.env.PEXELS_API_KEY || '',
+    // Pixabay (vídeos + fotos de uso livre). Chave grátis em pixabay.com/api/docs.
+    pixabayKey: process.env.PIXABAY_API_KEY || '',
     // Imagens do Google via Programmable Search (Custom Search JSON API). Precisa de
     // chave de API + ID do mecanismo de busca (CSE). Grátis: 100 buscas/dia.
     // ⚠️ imagens da web costumam ter direitos autorais — por padrão filtramos só
@@ -234,6 +236,10 @@ export function capabilities() {
     brollReady: Boolean(config.broll.pexelsKey),
     // Openverse (Creative Commons) não exige chave — sempre disponível.
     openverseReady: true,
+    // Pixabay (vídeos + fotos livres) precisa de chave; Wikimedia e NASA não.
+    pixabayReady: Boolean(config.broll.pixabayKey),
+    wikimediaReady: true,
+    nasaReady: true,
     // Imagens do Google (Custom Search) disponíveis?
     googleImagesReady: Boolean(config.broll.googleImagesKey && config.broll.googleImagesCx),
     // Login com Google só aparece se o Client ID estiver configurado.

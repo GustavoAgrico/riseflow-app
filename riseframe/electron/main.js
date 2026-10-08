@@ -37,6 +37,9 @@ GROQ_API_KEY=
 # B-roll automático (vídeos do Pexels)
 PEXELS_API_KEY=
 
+# Mais vídeos e fotos livres no B-roll (Pixabay, chave grátis em pixabay.com/api/docs)
+PIXABAY_API_KEY=
+
 # IA: análise do vídeo, escolha de B-roll e correção de fala (Claude)
 ANTHROPIC_API_KEY=
 

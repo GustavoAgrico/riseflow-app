@@ -58,6 +58,7 @@ services:
         value: tiny
       # ── Chaves opcionais (configure no dashboard, não no repo) ──
       # - key: PEXELS_API_KEY      # B-roll automático
+      # - key: PIXABAY_API_KEY     # B-roll: mais vídeos e fotos livres (chave grátis)
       #   sync: false
       # - key: ANTHROPIC_API_KEY   # correção de fala + color grade por IA
       #   sync: false

@@ -46,79 +46,6 @@ export function pickBestPhotoFile(src) {
 }
 
 /**
- * Busca no Pexels (licença livre) e devolve o 1º vídeo ainda não usado.
- * @returns {Promise<{id:number, link:string}|null>}
- */
-async function searchPexels(query, targetH, orientation, usedIds, apiKey) {
-  const url =
-    `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}` +
-    `&per_page=8&orientation=${orientation}`;
-  const res = await fetch(url, { headers: { Authorization: apiKey } });
-  if (!res.ok) {
-    log.warn(`Pexels ${res.status} para "${query}"`);
-    return null;
-  }
-  const data = await res.json();
-  const cands = (data.videos || [])
-    .filter((v) => !usedIds.has(v.id)) // dedupe entre momentos
-    .map((v) => ({ id: v.id, file: pickBestVideoFile(v.video_files, targetH) }))
-    .filter((x) => x.file);
-  const pick = pickVaried(cands);
-  return pick ? { id: pick.id, link: pick.file.link } : null;
-}
-
-/**
- * Fallback em FOTO: quando não há vídeo para o momento, busca uma imagem do
- * Pexels que combine com o contexto/nicho e a usa como B-roll estático.
- * @returns {Promise<{id:number, link:string}|null>}
- */
-async function searchPexelsPhoto(query, orientation, usedIds, apiKey) {
-  const url =
-    `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}` +
-    `&per_page=8&orientation=${orientation}`;
-  const res = await fetch(url, { headers: { Authorization: apiKey } });
-  if (!res.ok) {
-    log.warn(`Pexels fotos ${res.status} para "${query}"`);
-    return null;
-  }
-  const data = await res.json();
-  const cands = (data.photos || [])
-    .filter((p) => !usedIds.has(`p${p.id}`)) // dedupe (namespace separado de vídeos)
-    .map((p) => ({ id: `p${p.id}`, link: pickBestPhotoFile(p.src) }))
-    .filter((x) => x.link);
-  const pick = pickVaried(cands);
-  return pick ? { id: pick.id, link: pick.link } : null;
-}
-
-/**
- * Busca imagens no GOOGLE via Programmable Search (Custom Search JSON API).
- * A query já vem contextual (escolhida pela IA a partir da fala). Por segurança,
- * filtra por licenças Creative Commons, salvo se `unrestricted` (risco do usuário).
- * @returns {Promise<{id:string, link:string}|null>}
- */
-async function searchGoogleImages(query, usedIds, cfg) {
-  const params = new URLSearchParams({
-    key: cfg.key, cx: cfg.cx, q: query, searchType: 'image',
-    num: '8', safe: 'active', imgType: 'photo', imgSize: 'xlarge',
-  });
-  if (!cfg.unrestricted) {
-    // Só resultados com direitos de reuso (reduz — não elimina — risco de copyright).
-    params.set('rights', 'cc_publicdomain,cc_attribute,cc_sharealike');
-  }
-  const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`);
-  if (!res.ok) {
-    log.warn(`Google Images ${res.status} para "${query}"`);
-    return null;
-  }
-  const data = await res.json();
-  const cands = (data.items || [])
-    .map((item) => ({ link: item.link, id: `g${item.image?.thumbnailLink || item.link}` }))
-    .filter((x) => x.link && /^https?:\/\//i.test(x.link) && /\.(jpe?g|png|webp)(\?|$)/i.test(x.link) && !usedIds.has(x.id));
-  const pick = pickVaried(cands);
-  return pick ? { id: pick.id, link: pick.link } : null;
-}
-
-/**
  * Escolhe a 1ª imagem ainda não usada de um resultado do Openverse.
  * Puro/exportado para teste.
  * @returns {{id:string, link:string}|null}
@@ -132,30 +59,6 @@ export function pickOpenverseHit(items, usedIds) {
     return { id, link };
   }
   return null;
-}
-
-/**
- * Busca imagens no OPENVERSE (agregador de Creative Commons: Wikimedia, Flickr CC,
- * museus, etc.). Grátis, SEM chave e seguro para publicar (por padrão só licenças
- * de uso comercial). A query já vem contextual (em inglês, como o Pexels).
- * @returns {Promise<{id:string, link:string}|null>}
- */
-async function searchOpenverse(query, usedIds, cfg = {}) {
-  const params = new URLSearchParams({ q: query, page_size: '8', mature: 'false' });
-  // Segurança para conteúdo publicado: só licenças que permitem uso comercial.
-  if (!cfg.unrestricted) params.set('license_type', 'commercial');
-  const res = await fetch(`https://api.openverse.org/v1/images/?${params}`, {
-    headers: { Accept: 'application/json', 'User-Agent': 'Riseframe/1.0 (video editor)' },
-  });
-  if (!res.ok) {
-    log.warn(`Openverse ${res.status} para "${query}"`);
-    return null;
-  }
-  const data = await res.json();
-  const cands = (data.results || [])
-    .map((it) => ({ link: it.url, id: `o${it.id || it.url}` }))
-    .filter((x) => x.link && /^https?:\/\//i.test(x.link) && !usedIds.has(x.id));
-  return pickVaried(cands);
 }
 
 /**
@@ -190,17 +93,142 @@ export function faceCropGeometry(inW, inH, regionW, regionH, focus = {}, zoom = 
   return { scaledW, scaledH, cropX, cropY };
 }
 
+
+// ─── Mais bancos gratuitos ────────────────────────────────────────────────
+const UA = { 'User-Agent': 'Riseframe/1.0 (editor de video; contato no site)', Accept: 'application/json' };
+
+/**
+ * PIXABAY (vídeos + fotos, licença Pixabay: uso comercial livre, sem atribuição).
+ * Precisa de chave grátis (PIXABAY_API_KEY). Puro em relação ao formato da resposta.
+ */
+export async function pixabayCandidates(query, { key, orientation = 'portrait', limit = 6, targetH = 1280, lang = '' } = {}) {
+  if (!key) return [];
+  const out = [];
+  // Busca digitada pela pessoa vem em português (lang=pt); a automática já vem em inglês.
+  const q = encodeURIComponent(query) + (lang ? `&lang=${lang}` : '');
+  const rv = await fetch(`https://pixabay.com/api/videos/?key=${encodeURIComponent(key)}&q=${q}&per_page=${Math.max(3, limit)}&safesearch=true`);
+  if (rv.ok) {
+    const d = await rv.json();
+    for (const h of d.hits || []) {
+      const v = h.videos || {};
+      // tamanho mais próximo do alvo sem baixar 4K à toa
+      const sizes = ['tiny', 'small', 'medium', 'large'].map((k) => v[k]).filter((f) => f?.url);
+      const pick = sizes.find((f) => (f.height || 0) >= targetH * 0.7) || sizes[sizes.length - 1];
+      if (!pick) continue;
+      const thumb = v.medium?.thumbnail || v.small?.thumbnail || v.tiny?.thumbnail || (h.picture_id ? `https://i.vimeocdn.com/video/${h.picture_id}_640x360.jpg` : null);
+      out.push({ id: `px${h.id}`, link: pick.url, thumb: thumb || pick.url, kind: 'video', source: 'pixabay', credit: h.user ? `Pixabay · ${h.user}` : 'Pixabay' });
+    }
+  }
+  const orient = orientation === 'portrait' ? 'vertical' : 'horizontal';
+  const rp = await fetch(`https://pixabay.com/api/?key=${encodeURIComponent(key)}&q=${q}&image_type=photo&orientation=${orient}&per_page=${Math.max(3, limit)}&safesearch=true`);
+  if (rp.ok) {
+    const d = await rp.json();
+    for (const h of d.hits || []) {
+      const link = h.largeImageURL || h.webformatURL;
+      if (link) out.push({ id: `pi${h.id}`, link, thumb: h.webformatURL || h.previewURL || link, kind: 'image', source: 'pixabay', credit: h.user ? `Pixabay · ${h.user}` : 'Pixabay' });
+    }
+  }
+  return out;
+}
+
+// Licenças que NÃO servem para vídeo publicado/comercial.
+const BAD_LICENSE = /\b(NC|ND)\b|non-?commercial|no ?deriv|fair use/i;
+
+/**
+ * WIKIMEDIA COMMONS (fotos e vídeos de licença livre; grátis e sem chave). Só entram
+ * arquivos com licença livre para uso comercial (CC0, domínio público, CC BY, CC BY-SA).
+ * `kind`: 'image' | 'video'.
+ */
+export async function wikimediaCandidates(query, { kind = 'image', limit = 6 } = {}) {
+  const filter = kind === 'video' ? 'filetype:video' : 'filetype:bitmap';
+  const params = new URLSearchParams({
+    action: 'query', format: 'json', formatversion: '2', origin: '*',
+    generator: 'search', gsrsearch: `${query} ${filter}`, gsrnamespace: '6', gsrlimit: String(Math.max(4, limit * 2)),
+    prop: 'imageinfo', iiprop: 'url|mime|size|extmetadata', iiurlwidth: '640',
+  });
+  const r = await fetch(`https://commons.wikimedia.org/w/api.php?${params}`, { headers: UA });
+  if (!r.ok) return [];
+  const d = await r.json();
+  const pages = Array.isArray(d.query?.pages) ? d.query.pages : Object.values(d.query?.pages || {});
+  const out = [];
+  for (const pg of pages.sort((a, b) => (a.index || 0) - (b.index || 0))) {
+    const ii = pg.imageinfo?.[0];
+    if (!ii?.url) continue;
+    const lic = ii.extmetadata?.LicenseShortName?.value || '';
+    if (!lic || BAD_LICENSE.test(lic)) continue;
+    const isVideo = /^video\//.test(ii.mime || '') || /\.(webm|ogv|mp4)$/i.test(ii.url);
+    if ((kind === 'video') !== isVideo) continue;
+    if (!isVideo && !/^image\/(jpeg|png|webp)/.test(ii.mime || '')) continue; // sem SVG/TIFF/GIF
+    if (!isVideo && (ii.width || 0) < 640) continue; // pequena demais para o quadro
+    const artist = String(ii.extmetadata?.Artist?.value || '').replace(/<[^>]+>/g, '').trim().slice(0, 60);
+    out.push({ id: `w${pg.pageid}`, link: ii.url, thumb: ii.thumburl || ii.url, kind: isVideo ? 'video' : 'image', source: 'wikimedia', credit: `${lic}${artist ? ` · ${artist}` : ''} · Wikimedia Commons` });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
+ * NASA Image and Video Library (domínio público, sem chave). Ótimo para ciência,
+ * tecnologia, espaço, natureza vista de cima. Vídeos: busca o arquivo mp4 no manifesto.
+ */
+export async function nasaCandidates(query, { limit = 4 } = {}) {
+  const r = await fetch(`https://images-api.nasa.gov/search?q=${encodeURIComponent(query)}&media_type=image,video`, { headers: UA });
+  if (!r.ok) return [];
+  const d = await r.json();
+  const out = [];
+  for (const it of (d.collection?.items || []).slice(0, limit * 2)) {
+    const meta = it.data?.[0] || {};
+    const thumb = it.links?.find((l) => l.render === 'image' || /\.(jpe?g|png)$/i.test(l.href || ''))?.href;
+    if (!meta.nasa_id || !thumb) continue;
+    if (meta.media_type === 'video') {
+      try {
+        const m = await fetch(it.href, { headers: UA });
+        const files = m.ok ? await m.json() : [];
+        const mp4 = (files || []).find((u) => /~mobile\.mp4$/i.test(u)) || (files || []).find((u) => /~(small|medium|orig)\.mp4$/i.test(u));
+        if (mp4) out.push({ id: `n${meta.nasa_id}`, link: mp4.replace(/^http:/, 'https:'), thumb, kind: 'video', source: 'nasa', credit: 'NASA (domínio público)' });
+      } catch {
+        /* pula este */
+      }
+    } else {
+      out.push({ id: `n${meta.nasa_id}`, link: thumb.replace('~thumb.', '~large.'), thumb, kind: 'image', source: 'nasa', credit: 'NASA (domínio público)' });
+    }
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
+ * Fonte efetiva do B-roll: a escolhida, se disponível; senão a mistura de todas.
+ * Puro/exportado para teste.
+ */
+export function resolveSource(wanted, { apiKey, pixabayKey, googleReady } = {}) {
+  if (wanted === 'pexels') return apiKey ? 'pexels' : 'mix';
+  if (wanted === 'pixabay') return pixabayKey ? 'pixabay' : 'mix';
+  if (wanted === 'google') return googleReady ? 'google' : 'mix';
+  if (['openverse', 'wikimedia', 'nasa', 'mix'].includes(wanted)) return wanted;
+  return 'mix';
+}
+
+/** Extensão do arquivo a partir da URL (para o FFmpeg reconhecer webm/ogv/png…). */
+export function extOf(url, isImage) {
+  const m = String(url || '').split('?')[0].match(/\.([a-z0-9]{2,4})$/i);
+  const e = m ? m[1].toLowerCase() : '';
+  if (isImage) return ['jpg', 'jpeg', 'png', 'webp'].includes(e) ? e : 'jpg';
+  return ['mp4', 'webm', 'ogv', 'mov', 'm4v'].includes(e) ? e : 'mp4';
+}
+
 /**
  * Lista VÁRIOS candidatos de B-roll para uma busca (para a tela de revisão do
  * usuário escolher/trocar). Não baixa nada — só devolve links + miniaturas.
  * @returns {Promise<Array<{id:string, link:string, thumb:string, kind:'image'|'video'}>>}
  */
 export async function brollCandidates(query, opts = {}) {
-  const { source, apiKey, google, orientation = 'portrait', targetH = 1280, limit = 6, unrestricted = false } = opts;
-  // 'mix': junta VÍDEOS (Pexels), Google Imagens e Creative Commons (Openverse) numa lista
-  // só, intercalada (vídeo primeiro), para o usuário escolher entre todos.
+  const { source, apiKey, google, pixabayKey, orientation = 'portrait', targetH = 1280, limit = 6, unrestricted = false, lang = '' } = opts;
+  // 'mix': junta VÍDEOS (Pexels, Pixabay), Google Imagens e os acervos livres (Creative
+  // Commons/Openverse, Wikimedia Commons) numa lista só, intercalada (vídeo primeiro),
+  // para o usuário escolher entre todos.
   if (source === 'mix') {
-    const srcs = [apiKey ? 'pexels' : null, google?.key && google?.cx ? 'google' : null, 'openverse'].filter(Boolean);
+    const srcs = [apiKey ? 'pexels' : null, pixabayKey ? 'pixabay' : null, google?.key && google?.cx ? 'google' : null, 'openverse', 'wikimedia'].filter(Boolean);
     const per = Math.max(3, Math.ceil((limit + 3) / srcs.length));
     const lists = await Promise.all(srcs.map((src) => brollCandidates(query, { ...opts, source: src, limit: per })));
     const mixed = [];
@@ -211,7 +239,19 @@ export async function brollCandidates(query, opts = {}) {
   }
   const out = [];
   try {
-    if (source === 'openverse') {
+    if (source === 'pixabay') {
+      out.push(...await pixabayCandidates(query, { key: pixabayKey, orientation, limit, targetH, lang }));
+      // vídeos e fotos intercalados (vídeo primeiro)
+      const vids = out.filter((c) => c.kind === 'video');
+      const imgs = out.filter((c) => c.kind !== 'video');
+      out.length = 0;
+      for (let i = 0; i < Math.max(vids.length, imgs.length); i++) { if (vids[i]) out.push(vids[i]); if (imgs[i]) out.push(imgs[i]); }
+    } else if (source === 'wikimedia') {
+      const [vids, imgs] = await Promise.all([wikimediaCandidates(query, { kind: 'video', limit: 2 }), wikimediaCandidates(query, { kind: 'image', limit })]);
+      out.push(...vids, ...imgs);
+    } else if (source === 'nasa') {
+      out.push(...await nasaCandidates(query, { limit }));
+    } else if (source === 'openverse') {
       const params = new URLSearchParams({ q: query, page_size: String(limit * 2), mature: 'false' });
       if (!unrestricted) params.set('license_type', 'commercial');
       const res = await fetch(`https://api.openverse.org/v1/images/?${params}`, {
@@ -235,7 +275,8 @@ export async function brollCandidates(query, opts = {}) {
         }
       }
     } else if (apiKey) {
-      const rv = await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}`, { headers: { Authorization: apiKey } });
+      const loc = lang === 'pt' ? '&locale=pt-BR' : '';
+      const rv = await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}${loc}`, { headers: { Authorization: apiKey } });
       if (rv.ok) {
         const d = await rv.json();
         for (const v of d.videos || []) {
@@ -243,7 +284,7 @@ export async function brollCandidates(query, opts = {}) {
           if (f) out.push({ id: String(v.id), link: f.link, thumb: v.image, kind: 'video', source: 'pexels' });
         }
       }
-      const rp = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}`, { headers: { Authorization: apiKey } });
+      const rp = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}${loc}`, { headers: { Authorization: apiKey } });
       if (rp.ok) {
         const d = await rp.json();
         for (const p of d.photos || []) {
@@ -285,15 +326,10 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   // Fonte escolhida: pexels (padrão histórico) | google (Custom Search, exige chave) |
   // openverse (Creative Commons, grátis e SEM chave). Google sem credenciais cai para
   // Pexels; Openverse funciona sempre.
-  // 'mix' (vídeos + Google + CC) no modo automático: usa a melhor fonte disponível.
-  const source = options.imageSource === 'mix' ? (apiKey ? 'pexels' : googleReady ? 'google' : 'openverse') : options.imageSource;
-  const useGoogle = source === 'google' && googleReady;
-  const useOpenverse = source === 'openverse';
-  const planned = Array.isArray(options.brollPlan) && options.brollPlan.length > 0;
-  if (!planned && !apiKey && !useGoogle && !useOpenverse) {
-    log.info('sem fonte de imagens (Pexels/Google/Openverse); pulando B-roll');
-    return { output: input, inserted: 0 };
-  }
+  const pixabayKey = options.pixabayKey || config.broll.pixabayKey;
+  // Fonte pedida, se estiver disponível (Pexels/Pixabay/Google precisam de chave); senão
+  // a mistura de tudo o que há — que sempre inclui os acervos livres (CC e Wikimedia).
+  const source = resolveSource(options.imageSource, { apiKey, pixabayKey, googleReady });
   const moments = (analysis.brollMoments || []).slice(0, options.brollMax ?? 6);
   const hasPlan = Array.isArray(options.brollPlan) && options.brollPlan.length > 0;
   if (!moments.length && !hasPlan) return { output: input, inserted: 0 };
@@ -335,12 +371,12 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
       try {
         let file = p.file || null; // mídia própria já resolvida pelo servidor
         if (!file && p.url) {
-          const ext = isImage ? 'jpg' : 'mp4';
+          const ext = extOf(p.url, isImage);
           file = path.join(work, `broll_${clips.length}.${ext}`);
           await download(p.url, file);
         }
         if (!file) continue;
-        clips.push({ start, end, query: p.query || 'mídia', term: p.query || null, file, isImage, zoom: p.zoom, fx: p.fx, fy: p.fy, link: p.url || null });
+        clips.push({ start, end, query: p.query || 'mídia', term: p.query || null, file, isImage, zoom: p.zoom, fx: p.fx, fy: p.fy, link: p.url || null, credit: p.credit || null });
       } catch (err) {
         log.warn(`B-roll (plano) falhou em ${start.toFixed(1)}s: ${err.message}`);
       }
@@ -348,38 +384,21 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     }
   } else for (const m of moments) {
     try {
-      let hit = null;
-      let isImage = false;
-      if (useOpenverse) {
-        // Openverse (Creative Commons, sem chave). Se falhar e houver Pexels, cai para ele.
-        hit = await searchOpenverse(m.query, usedIds, { unrestricted: google.unrestricted });
-        isImage = true;
-        if (!hit && apiKey) {
-          hit = await searchPexelsPhoto(m.query, orientation, usedIds, apiKey);
-        }
-      } else if (useGoogle) {
-        // Imagens do Google (contextuais). Se falhar e houver Pexels, cai para ele.
-        hit = await searchGoogleImages(m.query, usedIds, google);
-        isImage = true;
-        if (!hit && apiKey) {
-          hit = await searchPexelsPhoto(m.query, orientation, usedIds, apiKey);
-        }
-      } else {
-        hit = await searchPexels(m.query, regionH, orientation, usedIds, apiKey);
-        if (!hit) {
-          hit = await searchPexelsPhoto(m.query, orientation, usedIds, apiKey);
-          isImage = true;
-        }
-      }
+      const cands = (await brollCandidates(m.query, {
+        source, apiKey, google, pixabayKey, orientation, targetH: regionH, limit: 6, unrestricted: google.unrestricted,
+      })).filter((c) => !usedIds.has(c.id));
+      // Vídeo (movimento) quando houver entre os primeiros resultados; senão uma foto,
+      // variando entre as mais relevantes.
+      const hit = cands.slice(0, 4).find((c) => c.kind === 'video') || pickVaried(cands);
       if (!hit) {
         log.info(`sem B-roll para "${m.query}"`);
         continue;
       }
       usedIds.add(hit.id);
-      const ext = isImage ? 'jpg' : 'mp4';
-      const dest = path.join(work, `broll_${clips.length}.${ext}`);
+      const isImage = hit.kind !== 'video';
+      const dest = path.join(work, `broll_${clips.length}.${extOf(hit.link, isImage)}`);
       await download(hit.link, dest);
-      clips.push({ ...m, file: dest, isImage, link: hit.link });
+      clips.push({ ...m, file: dest, isImage, link: hit.link, credit: hit.credit || null, source: hit.source });
     } catch (err) {
       log.warn(`B-roll "${m.query}" falhou: ${err.message}`);
     }
@@ -493,7 +512,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   // Itens inseridos (para o simulador da página inicial): tempos na timeline deste vídeo.
   const items = clips.map((c) => ({
     start: +c.start.toFixed(3), end: +c.end.toFixed(3), kind: c.isImage ? 'image' : 'video', link: c.link || null,
-    query: c.query || c.term || null, zoom: c.zoom, fx: c.fx, fy: c.fy,
+    query: c.query || c.term || null, zoom: c.zoom, fx: c.fx, fy: c.fy, credit: c.credit || null,
   }));
   return { output, inserted: clips.length, items, layout };
 }
