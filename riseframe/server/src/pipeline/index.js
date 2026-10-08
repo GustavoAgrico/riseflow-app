@@ -420,10 +420,10 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (report.motion?.effect === 'dynamic') {
       for (const [a] of dynamicZoomWindows(transcript.segments, meta, options.zoomMoments)) events.push({ t: Math.max(0, a - 0.3), type: 'whoosh' });
     }
-    // Sons da legenda: cliques palavra a palavra (estilo Premium) e whoosh nas ênfases.
+    // Sons da legenda: tecla a cada palavra (estilo Premium) e nas palavras com ênfase.
     if (captionStyle) events.push(...captionSfxEvents(transcript.segments, captionStyle));
-    // Dois whooshes quase juntos viram ruído: mantém um a cada 0,8 s no mínimo (os
-    // cliques ficam todos — eles são curtinhos e marcam cada palavra).
+    // Dois whooshes quase juntos viram ruído: mantém um a cada 0,8 s no mínimo (as
+    // teclas ficam todas — são curtinhas e marcam cada palavra).
     events.sort((x, y) => x.t - y.t);
     const kept = [];
     for (const e of events) {

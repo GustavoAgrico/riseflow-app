@@ -32,13 +32,18 @@ test('buildSfxMix: volume varia com a intensidade e respeita o teto de eventos',
   assert.ok(capped.order.length === 80, 'limita a quantidade de eventos');
 });
 
-test('cliques da legenda: uma faixa só (WAV) entra como mais uma entrada do mix', async () => {
+test('teclas da legenda: uma faixa só (WAV) entra como mais uma entrada do mix', async () => {
   const { tickTrackWav } = await import('../src/pipeline/sfx.js');
   const wav = tickTrackWav([0.1, 0.12, 0.5], 1);
   assert.equal(wav.toString('ascii', 0, 4), 'RIFF');
-  const at = (t) => Math.abs(wav.readInt16LE(44 + Math.round((t + 0.002) * 44100) * 2));
-  assert.ok(at(0.1) > 500 && at(0.5) > 500, 'tem clique nos tempos');
-  assert.ok(at(0.3) === 0, 'silêncio entre os cliques');
+  // pico em 10 ms a partir de t
+  const at = (t) => {
+    let m = 0;
+    for (let i = 0; i < 441; i++) m = Math.max(m, Math.abs(wav.readInt16LE(44 + (Math.round(t * 44100) + i) * 2)));
+    return m;
+  };
+  assert.ok(at(0.1) > 2000 && at(0.5) > 2000, 'tem tecla nos tempos');
+  assert.equal(at(0.3), 0, 'silêncio entre as teclas');
   const mix = buildSfxMix([{ t: 1, type: 'whoosh' }], { tickTrack: true });
   assert.deepEqual(mix.order, ['whoosh', 'ticks']);
   assert.match(mix.filter, /\[2:a\]aformat=channel_layouts=stereo,volume=[\d.]+\[ticks\]/);

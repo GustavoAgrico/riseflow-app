@@ -79,7 +79,7 @@ export const CAPTION_TEMPLATES = {
   // Minimalista: minúsculas, sem contorno; as outras palavras apagadas e a falada colorida.
   minimal: { mode: 'phrase', size: 0.056, align: 2, marginV: 0.14, outline: 0.05, bold: true, upper: false, anim: 'fade', forceHighlight: true, dimOthers: true, defaultFont: 'poppins' },
   // Premium: palavras entram uma a uma; as comuns pequenas em cima e a palavra-chave
-  // embaixo, grande, com brilho e desfoque de entrada (+ clique/whoosh no som).
+  // embaixo, grande, com brilho e desfoque de entrada (+ som de tecla a cada palavra).
   premium: { mode: 'phrase', size: 0.08, smallSize: 0.04, align: 2, marginV: 0.2, outline: 0.05, bold: true, upper: false, anim: 'fade', premium: true, defaultFont: 'archivo', smallFont: 'inter' },
 };
 
@@ -476,29 +476,19 @@ export async function burnCaptions(input, work, meta, transcript, style, onProgr
 }
 
 /**
- * Efeitos sonoros que acompanham a legenda (tempos na timeline final):
- * - estilo Premium: um clique curto a cada palavra que aparece e um whoosh chegando na
- *   palavra grande (com brilho);
- * - qualquer estilo: whoosh nas palavras com ênfase manual.
- * @returns {Array<{t:number,type:'tick'|'whoosh'}>}
+ * Sons da legenda (tempos na timeline final) — só som de tecla, como digitação:
+ * - estilo Premium: uma tecla a cada palavra que aparece;
+ * - qualquer estilo: uma tecla nas palavras com ênfase manual.
+ * @returns {Array<{t:number,type:'tick'}>}
  */
 export function captionSfxEvents(segments, style = {}) {
   const T = CAPTION_TEMPLATES[style.template] || {};
   const events = [];
   for (const seg of segments || []) {
-    const words = (seg.words?.length ? seg.words : [])
-      .map((wd) => ({ start: Number(wd.start) || 0, end: Number(wd.end) || 0, word: String(wd.word ?? '').trim(), ...emphasisOf(wd) }))
-      .filter((wd) => wd.word);
-    if (!words.length) continue;
-    if (T.premium) {
-      for (const ch of premiumChunks(words, seg.end)) {
-        ch.words.forEach((wd, j) => {
-          if (ch.glow && j === ch.big) events.push({ t: Math.max(0, wd.start - 0.4), type: 'whoosh' });
-          else events.push({ t: wd.start, type: 'tick' });
-        });
-      }
-    } else {
-      for (const wd of words) if (wd.emColor || wd.emBig) events.push({ t: Math.max(0, wd.start - 0.4), type: 'whoosh' });
+    for (const wd of seg.words || []) {
+      if (!String(wd.word ?? '').trim()) continue;
+      const em = emphasisOf(wd);
+      if (T.premium || em.emColor || em.emBig) events.push({ t: Math.max(0, Number(wd.start) || 0), type: 'tick' });
     }
   }
   return events.sort((a, b) => a.t - b.t);
