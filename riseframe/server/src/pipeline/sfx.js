@@ -7,33 +7,45 @@ const log = makeLogger('sfx');
 
 // Volume de cada tipo de efeito por intensidade (0..1). "medio" é o padrão.
 const LEVELS = {
-  suave: { pop: 0.18, whoosh: 0.4, tick: 0.45 },
-  medio: { pop: 0.32, whoosh: 0.6, tick: 0.7 },
+  suave: { pop: 0.18, whoosh: 0.4, tick: 0.5 },
+  medio: { pop: 0.32, whoosh: 0.6, tick: 0.75 },
   forte: { pop: 0.5, whoosh: 0.85, tick: 1 },
 };
 
 /**
- * Faixa com os cliques das palavras (legenda Premium): um "tic" curto e seco (~1,9 kHz,
- * some em ~40 ms) em cada tempo. Gerada aqui mesmo como WAV — muitos cliques viram UMA
- * entrada no mix, em vez de uma por clique. Exportada para teste.
+ * Faixa com os sons de tecla das palavras da legenda: um "tec" curtinho (~15 ms) como o
+ * de um teclado — estalo inicial + ruído filtrado em ~2,6 kHz + um corpo grave bem leve.
+ * Cada tecla varia um pouco de tom e força (soa como digitação, não como metrônomo).
+ * Gerada aqui mesmo como WAV: muitas teclas viram UMA entrada no mix. Exportada para teste.
  * @returns {Buffer} WAV mono 16 bits
  */
-export function tickTrackWav(times, durationSec, { rate = 44100, gain = 0.28 } = {}) {
+export function tickTrackWav(times, durationSec, { rate = 44100, gain = 0.5 } = {}) {
   const total = Math.max(1, Math.ceil((durationSec + 0.1) * rate));
   const pcm = new Float32Array(total);
-  const len = Math.round(0.045 * rate);
+  const len = Math.round(0.03 * rate);
   let seed = 7;
-  const noise = () => { seed = (seed * 16807) % 2147483647; return seed / 1073741823.5 - 1; };
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   let last = -Infinity;
   for (const t of [...times].sort((a, b) => a - b)) {
-    if (!Number.isFinite(t) || t < 0 || t - last < 0.09) continue; // cliques colados viram um só
+    if (!Number.isFinite(t) || t < 0 || t - last < 0.09) continue; // teclas coladas viram uma só
     last = t;
     const i0 = Math.round(t * rate);
+    const f0 = 2400 * (0.95 + 0.1 * rnd()); // centro do "tec"
+    const amp = gain * (0.85 + 0.3 * rnd());
+    // passa-faixa (biquad, Q≈4) para o ruído do clique
+    const w = (2 * Math.PI * f0) / rate;
+    const al = Math.sin(w) / (2 * 4);
+    const b0 = al / (1 + al); const a1 = (-2 * Math.cos(w)) / (1 + al); const a2 = (1 - al) / (1 + al);
+    let x1 = 0; let x2 = 0; let y1 = 0; let y2 = 0;
     for (let n = 0; n < len && i0 + n < total; n++) {
       const x = n / rate;
-      const env = Math.exp(-x / 0.007) * (1 - Math.exp(-x / 0.0004));
-      const v = 0.6 * Math.sin(2 * Math.PI * 1850 * x) + 0.22 * Math.sin(2 * Math.PI * 3700 * x) + 0.25 * noise() * Math.exp(-x / 0.0025);
-      pcm[i0 + n] += gain * env * v;
+      const nz = rnd() * 2 - 1;
+      const y = b0 * nz - b0 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1; x1 = nz; y2 = y1; y1 = y;
+      const click = y * 4.5 * Math.exp(-x / 0.004) * (1 - Math.exp(-x / 0.0003));
+      const snap = n < 4 ? (rnd() * 2 - 1) * 0.18 * (1 - n / 4) : 0; // estalo do começo
+      const body = 0.07 * Math.sin(2 * Math.PI * 190 * x) * Math.exp(-x / 0.005);
+      pcm[i0 + n] += amp * (click + snap + body);
     }
   }
   const buf = Buffer.alloc(44 + total * 2);
@@ -139,6 +151,6 @@ export async function applySoundEffects(input, work, meta, events, options, onPr
 
   await runFfmpeg(args, { label: 'sfx', totalDuration: meta.duration, onProgress });
   const count = mix.order.filter((t) => t !== 'ticks').length + ticks.length;
-  log.ok(`efeitos sonoros mixados (${count}: ${mix.order.filter((t) => t === 'pop').length} pops, ${mix.order.filter((t) => t === 'whoosh').length} whooshes, ${ticks.length} cliques)`);
+  log.ok(`efeitos sonoros mixados (${count}: ${mix.order.filter((t) => t === 'pop').length} pops, ${mix.order.filter((t) => t === 'whoosh').length} whooshes, ${ticks.length} teclas)`);
   return { output, applied: true, count };
 }
