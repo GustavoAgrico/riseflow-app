@@ -1270,7 +1270,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   ) : null;
 
   const editorCard = (
-    <div className={`rf-tl-card${isMobile ? ' rf-m' : ''}`} style={{ ...glass(), padding: 22 }}>
+    <div className={`rf-tl-card${isMobile ? ' rf-m' : ''}${isMobile && sheet ? ' rf-m-sheet' : ''}`} style={{ ...glass(), padding: 22 }}>
       {isMobile && (
         <div className="rf-m-top">
           <button onClick={onBack} disabled={busy} aria-label="Fechar o editor" style={mIconBtn}><Icon name="close" size={22} strokeWidth={2} /></button>
@@ -1298,7 +1298,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
       </div>
 
-      <div className={`rf-tl-grid rf-stage-${stage}`} style={{ display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start', ...(isMobile ? { '--rf-stage-h': `max(200px, calc(100dvh - ${(stage === 's' ? 470 : stage === 'l' ? 330 : 400) + (showZoomLane ? 28 : 0) + (showBrollLane ? 30 : 0) + (media.length ? 34 : 0)}px - env(safe-area-inset-bottom)))` } : {}) }}>
+      <div className={`rf-tl-grid rf-stage-${stage}`} style={{ display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start', ...(isMobile && sheet ? { '--rf-stage-h': 'max(140px, calc(100dvh - var(--rf-sheet-h) - 118px - env(safe-area-inset-top)))' } : isMobile ? { '--rf-stage-h': `max(200px, calc(100dvh - ${(stage === 's' ? 470 : stage === 'l' ? 330 : 400) + (showZoomLane ? 28 : 0) + (showBrollLane ? 30 : 0) + (media.length ? 34 : 0)}px - env(safe-area-inset-bottom)))` } : {}) }}>
         {/* Ferramentas (como num editor): cada uma abre o painel de ajustes à direita */}
         <nav className="rf-tl-nav" style={{ display: 'grid', gap: 4, padding: 8, borderRadius: 16, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.025)', alignSelf: 'start' }}>
           {TABS.map((t) => {
@@ -2459,7 +2459,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       <style>{`
         /* ── Celular: editor em tela cheia (estilo CapCut) ── */
         .rf-tl-card.rf-m{ position: fixed !important; inset: 0; z-index: 1000; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; box-shadow: none !important; margin: 0 !important; padding: 0 0 calc(80px + env(safe-area-inset-bottom)) !important; border: none !important; border-radius: 0 !important; display: flex; flex-direction: column; background: #0d0d12 !important; overflow: hidden; }
+        .rf-m{ --rf-sheet-h: 56dvh; }
         .rf-m > .rf-tl-head{ display: none !important; }
+        /* painel aberto: o vídeo encolhe e fica inteiro acima dele (timeline e ferramentas somem) */
+        .rf-tl-card.rf-m.rf-m-sheet{ padding-bottom: var(--rf-sheet-h) !important; }
+        .rf-m-sheet .rf-tl-bottom, .rf-m-sheet .rf-m-tools{ display: none !important; }
+        .rf-m-sheet .rf-tl-preview{ justify-content: flex-start; }
         .rf-m-top{ display: flex; align-items: center; gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 12px 6px; flex: 0 0 auto; }
         .rf-m .rf-tl-grid{ display: flex !important; flex-direction: column; align-items: stretch !important; gap: 0 !important; flex: 1 1 auto; min-height: 0; }
         .rf-m .rf-tl-nav{ display: none !important; }
@@ -2472,7 +2477,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         .rf-m .rf-tl-track{ border: none !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
         .rf-m .rf-tl-labels{ display: none !important; }
         .rf-m .rf-tl-track > div::-webkit-scrollbar{ display: none; }
-        .rf-m .rf-tl-adjust{ position: fixed !important; left: 0; right: 0; bottom: 0; top: auto !important; z-index: 1010; max-height: 66dvh !important; overflow-y: auto !important; overflow-x: hidden !important; padding: 0 14px calc(18px + env(safe-area-inset-bottom)) !important; background: #1c1c22; border-radius: 20px 20px 0 0; box-shadow: 0 -24px 60px rgba(0,0,0,0.65); animation: rf-sheet-in .22s ease-out; }
+        .rf-m .rf-tl-adjust{ position: fixed !important; left: 0; right: 0; bottom: 0; top: auto !important; z-index: 1010; height: var(--rf-sheet-h); max-height: var(--rf-sheet-h) !important; overflow-y: auto !important; overflow-x: hidden !important; padding: 0 14px calc(18px + env(safe-area-inset-bottom)) !important; background: #1c1c22; border-radius: 20px 20px 0 0; box-shadow: 0 -24px 60px rgba(0,0,0,0.65); animation: rf-sheet-in .22s ease-out; }
         .rf-m .rf-tl-adjust > div:not(.rf-m-sheethead){ background: transparent !important; border: none !important; padding-left: 0 !important; padding-right: 0 !important; }
         .rf-m-sheethead{ position: sticky; top: 0; z-index: 2; display: flex; align-items: center; padding: 14px 0 12px; margin-bottom: 6px; background: #1c1c22; border-bottom: 1px solid rgba(255,255,255,0.07); }
         @keyframes rf-sheet-in{ from{ transform: translateY(40px); opacity: 0; } to{ transform: none; opacity: 1; } }
