@@ -334,3 +334,18 @@ export async function getPeaks(id) {
   const d = await r.json().catch(() => ({}));
   return Array.isArray(d.peaks) ? d.peaks : [];
 }
+
+/** Prévia da voz (8 s a partir de `start`) com o tratamento/modificador escolhido.
+ *  Resolve com uma URL local (blob) do áudio. */
+export async function previewVoice(sourceId, start, options) {
+  const r = await fetch(`${BASE}/voice/preview`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ sourceId, start, options }),
+  });
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    throw new Error(data.error || `erro ${r.status}`);
+  }
+  return URL.createObjectURL(await r.blob());
+}

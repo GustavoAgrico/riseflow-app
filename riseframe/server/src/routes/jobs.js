@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { nanoid } from 'nanoid';
 import { config } from '../config.js';
 import { queue } from '../queue.js';
@@ -17,6 +18,7 @@ import { brollCandidates } from '../pipeline/broll.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
 import { analyzeAndGrade } from '../pipeline/autoColor.js';
 import { CAPTION_TEMPLATES } from '../pipeline/captions.js';
+import { VOICE_NOISE, VOICE_PRESETS, VOICE_EFFECTS, previewVoice } from '../pipeline/voice.js';
 
 const CAPTION_TEMPLATE_IDS = Object.keys(CAPTION_TEMPLATES);
 
@@ -322,6 +324,14 @@ function parseOptions(raw) {
     cutStrength, // suave | equilibrado | forte (define agressividade do corte automático)
     voiceEnhance: o.voiceEnhance === true, // denoise + normalização de volume
     voiceIntensity: ['suave', 'medio', 'forte'].includes(o.voiceIntensity) ? o.voiceIntensity : 'medio',
+    // Tratamento da voz: remoção de ruído, equalização (preset), chiado do S; e modificadores.
+    voiceNoise: Object.keys(VOICE_NOISE).includes(o.voiceNoise) ? o.voiceNoise : (['suave', 'medio', 'forte'].includes(o.voiceIntensity) ? o.voiceIntensity : 'medio'),
+    voicePreset: Object.keys(VOICE_PRESETS).includes(o.voicePreset) ? o.voicePreset : 'natural',
+    voiceDeEss: o.voiceDeEss !== false,
+    voiceEffect: Object.keys(VOICE_EFFECTS).includes(o.voiceEffect) ? o.voiceEffect : 'none',
+    voicePitch: Math.round(clampNum(o.voicePitch, -8, 8, 0)),
+    // Som de tecla da legenda: 'ritmo' (frases alternadas, como digitação) ou 'todas' as palavras.
+    captionKeys: o.captionKeys === 'todas' ? 'todas' : 'ritmo',
     autoClean: o.autoClean === true, // corta muletas/hesitações e gagueiras da fala
     soundEffects: o.soundEffects === true, // pop na legenda + whoosh no B-roll
     sfxIntensity: ['suave', 'medio', 'forte'].includes(o.sfxIntensity) ? o.sfxIntensity : 'medio',
@@ -461,6 +471,26 @@ jobsRouter.post('/render', requireAuth, requireVerified, (req, res) => {
     options: optionsForUser(req),
     editedTranscript,
   }, { sourceId });
+});
+
+// POST /api/voice/preview  (JSON: sourceId + start + options) → alguns segundos do áudio
+// do vídeo já enviado com o tratamento/modificador de voz escolhido (m4a), para ouvir antes
+// de renderizar. Não cobra créditos.
+jobsRouter.post('/voice/preview', requireAuth, requireVerified, async (req, res) => {
+  const { sourceId, start } = req.body || {};
+  const source = sourceId && queue.get(sourceId);
+  if (!source || !fs.existsSync(source.inputPath)) return res.status(410).json({ error: 'o vídeo de origem expirou; reenvie' });
+  let dir;
+  try {
+    dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'rf-voz-'));
+    const out = path.join(dir, 'previa.m4a');
+    await previewVoice(source.inputPath, dir, out, parseOptions(req.body?.options), Number(start) || 0, 8);
+    res.type('audio/mp4');
+    res.sendFile(out, () => fs.rm(dir, { recursive: true, force: true }, () => {}));
+  } catch (err) {
+    if (dir) fs.rm(dir, { recursive: true, force: true }, () => {});
+    res.status(500).json({ error: err.message || 'falha ao gerar a prévia da voz' });
+  }
 });
 
 // POST /api/broll/plan  (JSON: sourceId + editedTranscript + options) → devolve os

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { capabilities } from '../config.js';
 import { lookNames } from '../pipeline/color.js';
 import { NICHES } from '../pipeline/niche.js';
+import { VOICE_NOISE, VOICE_PRESETS, VOICE_EFFECTS } from '../pipeline/voice.js';
 import { CAPTION_FONTS, CAPTION_TEMPLATE_LABELS, CAPTION_ANIMATIONS, CAPTION_BACKGROUNDS, CAPTION_POSITIONS } from '../pipeline/captions.js';
 
 export const optionsRouter = Router();
@@ -12,6 +13,9 @@ optionsRouter.get('/options', (_req, res) => {
     capabilities: capabilities(),
     colorLooks: lookNames().map((id) => ({ id, label: LABELS.color[id] || id })),
     captionTemplates: Object.entries(CAPTION_TEMPLATE_LABELS).map(([id, label]) => ({ id, label })),
+    voiceNoises: Object.entries(VOICE_NOISE).map(([id, label]) => ({ id, label })),
+    voicePresets: Object.entries(VOICE_PRESETS).map(([id, label]) => ({ id, label })),
+    voiceEffects: Object.entries(VOICE_EFFECTS).map(([id, label]) => ({ id, label })),
     captionFonts: [
       { id: 'auto', label: 'Automática (por estilo)' },
       ...Object.entries(CAPTION_FONTS).map(([id, f]) => ({ id, label: f.label })),
@@ -83,6 +87,12 @@ optionsRouter.get('/options', (_req, res) => {
       cutStrength: 'forte', // enxuga mais por padrão (pausas curtas + muletas)
       voiceEnhance: false,
       voiceIntensity: 'medio',
+      voiceNoise: 'medio',
+      voicePreset: 'natural',
+      voiceDeEss: true,
+      voiceEffect: 'none',
+      voicePitch: 0,
+      captionKeys: 'ritmo',
       autoClean: true,
       soundEffects: false,
       sfxIntensity: 'medio',

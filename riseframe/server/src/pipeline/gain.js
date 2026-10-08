@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { runFfmpeg } from './ffmpeg.js';
+import { runFfmpeg, audioStageOutput } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('gain');
@@ -39,8 +39,8 @@ export async function applyAudioGain(input, work, meta, options, onProgress) {
   }
   const af = gainAf(options);
   if (!af) return { output: input, applied: false };
-  const output = path.join(work, 'gain.mp4');
-  const args = ['-i', input, '-c:v', 'copy', '-af', af, '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', '-y', output];
+  const { output, muxArgs } = audioStageOutput(work, 'gain', meta);
+  const args = ['-i', input, '-c:v', 'copy', '-af', af, '-c:a', 'aac', '-b:a', '160k', ...muxArgs, '-y', output];
 
   await runFfmpeg(args, { label: 'gain', totalDuration: meta.duration, onProgress });
   log.ok(`volume da fala ajustado (${af})`);

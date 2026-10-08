@@ -10,7 +10,7 @@ import { insertBroll } from './broll.js';
 import { applyManualFrame } from './frame.js';
 import { applyUserMedia } from './overlay.js';
 import { applyMotion, dynamicZoomWindows } from './motion.js';
-import { enhanceVoice } from './voice.js';
+import { enhanceVoice, voiceActive, voiceSettings } from './voice.js';
 import { applyAudioGain, gainAf } from './gain.js';
 import { markFillers } from './cleanup.js';
 import { classifyNarrative } from './narrative.js';
@@ -47,9 +47,10 @@ function buildPlan(mode, options) {
     const hasRemoval = options.cutSilence !== false || options.autoClean === true || mode === 'render';
     all = [
       { key: 'probe', label: 'Sondando o vídeo', weight: 2, enabled: true },
-      { key: 'voice', label: 'Corrigindo a voz (áudio)', weight: 10, enabled: options.voiceEnhance === true },
+      { key: 'voice', label: 'Tratando a voz (ruído e equalização)', weight: 10, enabled: voiceActive(options, 'clean') },
       { key: 'gain', label: 'Ajustando o volume', weight: 6, enabled: Boolean(gainAf(options)) },
       { key: 'transcribe', label: 'Transcrevendo a fala', weight: 15, enabled: mode !== 'render' },
+      { key: 'voicefx', label: 'Aplicando o modificador de voz', weight: 6, enabled: voiceActive(options, 'fx') },
       { key: 'cut', label: 'Aplicando cortes na timeline', weight: 20, enabled: hasRemoval },
       { key: 'analyze', label: 'Analisando temas', weight: 3, enabled: true },
       { key: 'motion', label: 'Aplicando movimento (zoom)', weight: 12, enabled: Boolean(options.videoMotion) && options.videoMotion !== 'none' },
@@ -152,7 +153,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (r.applied) {
       input = r.output;
       trackInput = r.output;
-      report.voice = { applied: true, intensity: options.voiceIntensity || 'medio' };
+      report.voice = { applied: true, ...voiceSettings(options) };
     }
     st.onProgress(1);
   }
@@ -210,6 +211,18 @@ export async function runPipeline(job, onUpdate = () => {}) {
     emit({ progress: 100, stage: 'done', stageLabel: 'Transcrição pronta' });
     log.ok(`transcrição pronta para job ${job.id} (${transcript.segments.length} segmentos)`);
     return report;
+  }
+
+  // 2b. Modificadores de voz (tom/efeito): DEPOIS da transcrição, para a IA ouvir a voz
+  // original. Não mexem no tempo da fala, então os tempos das palavras continuam valendo.
+  if (has('voicefx')) {
+    const st = enter('voicefx');
+    const r = await enhanceVoice(input, work, meta, options, st.onProgress, 'fx');
+    if (r.applied) {
+      input = r.output;
+      report.voiceFx = { effect: voiceSettings(options).effect, pitch: voiceSettings(options).pitch };
+    }
+    st.onProgress(1);
   }
 
   // 3. Cortes na timeline: silêncio (auto/render, se ligado) + palavras removidas (render)
@@ -398,6 +411,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       mode: options.captionMode, // compat legado
       fontScale: options.captionScale || 1,
       highlight: options.captionHighlight === true, // destacar a palavra falada (padrão: não)
+      keys: options.captionKeys === 'todas' ? 'todas' : 'ritmo', // som de tecla: ritmo de digitação ou toda palavra
       posX: options.captionX, // posição livre arrastada na prévia (0–1), vale para todas as frases
       posY: options.captionY,
     };
