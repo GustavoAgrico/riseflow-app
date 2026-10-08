@@ -1410,7 +1410,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div>
                     <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>Modelo</div>
-                    <CaptionGallery options={cap} onApply={setCapField} compact />
+                    <CaptionGallery options={cap} onApply={(p) => { setCapField(p); if (p.soundEffects) setFx((f) => ({ ...f, soundEffects: true })); }} compact />
                   </div>
                   <CapRow label="Fonte"><Sel value={cap.captionFont} opts={catalog.captionFonts} onChange={(v) => setCapField({ captionFont: v })} /></CapRow>
                   <CapRow label="Modo (palavra / frase)"><Sel value={cap.captionMode} opts={catalog.captionModes} onChange={(v) => setCapField({ captionMode: v })} /></CapRow>

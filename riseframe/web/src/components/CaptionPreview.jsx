@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { C } from '../theme.js';
-import { pickKeyword } from '../../../shared/captionKeyword.js';
+import { pickKeyword, premiumChunks } from '../../../shared/captionKeyword.js';
 
 // Espelha o servidor: cada estilo tem fonte e animação padrão.
 const TPL = {
@@ -15,6 +15,7 @@ const TPL = {
   marker: { mode: 'phrase', font: 'Poppins', anim: 'fade', upper: true, size: 31, marker: true },
   duo: { mode: 'phrase', font: 'Archivo Black', anim: 'pop', upper: true, size: 31, highlightKeyword: true, keywordBreak: true, kwScale: 1.35 },
   minimal: { mode: 'phrase', font: 'Poppins', anim: 'fade', upper: false, size: 27, forceHighlight: true, dimOthers: true },
+  premium: { mode: 'phrase', font: 'Archivo Black', anim: 'fade', upper: false, size: 34, premium: true },
 };
 const FONT_FAMILY = {
   montserrat: 'Montserrat', gotham: 'Poppins', helvetica: 'Arimo',
@@ -175,6 +176,7 @@ const SERVER_TPL = {
   marker: { size: 0.064, align: 'bottom', marginV: 0.15 },
   duo: { size: 0.064, align: 'bottom', marginV: 0.15 },
   minimal: { size: 0.056, align: 'bottom', marginV: 0.14 },
+  premium: { size: 0.08, align: 'bottom', marginV: 0.2 },
 };
 
 function wordsOf(seg) {
@@ -305,6 +307,8 @@ export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, 
     return <span key={`${keyId}-${wi}-${look.animKind}`} style={{ ...style, maxWidth: '92%', textAlign: 'center', ...emStyle(w) }}>{up(w.word)}</span>;
   }
 
+  if (T.premium) return <PremiumWords words={words} wi={still ? words.length - 1 : wi} look={look} options={options} fontPx={fontPx} still={still} />;
+
   const kw = T.highlightKeyword ? pickKeyword(words) : -1;
   const kwStyle = { color: look.glowOn ? undefined : look.color, fontSize: `${T.kwScale || 1.18}em`, display: 'inline-block' };
   const breakAt = (k) => T.keywordBreak && (k === kw || (kw === 0 && k === 1));
@@ -336,6 +340,53 @@ export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, 
           <span style={wordStyle(w, k)}>{up(w.word)}</span>
         </React.Fragment>
       ))}
+    </span>
+  );
+}
+
+/** Mistura uma cor (#RRGGBB) com o branco — igual ao render. */
+function tintHex(hex, t) {
+  const h = hex.replace('#', '');
+  return `#${[0, 2, 4].map((i) => Math.round(parseInt(h.slice(i, i + 2), 16) * (1 - t) + 255 * t).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/**
+ * Premium (prévia): mesmo bloco de até 4 palavras do render; as já faladas aparecem, a
+ * da vez entra (desfoque + esticada nas grandes) e as próximas ficam reservadas.
+ */
+function PremiumWords({ words, wi, look, options, fontPx, still }) {
+  const chunks = premiumChunks(words, 0);
+  let off = 0;
+  let ch = chunks[0];
+  for (const c of chunks) {
+    if (wi < off + c.words.length) { ch = c; break; }
+    off += c.words.length;
+  }
+  const local = wi - off;
+  const colorId = options.captionColor || 'white';
+  const glowHex = colorId === 'white' ? '#C6F25A' : look.color;
+  const fill = tintHex(glowHex, colorId === 'white' ? 0.72 : 0.55);
+  const small = Math.max(6, Math.round(fontPx * 0.5));
+  const span = (wd, j) => {
+    const big = j >= ch.big;
+    const glow = big && ch.glow;
+    const em = wd.emColor ? COLOR_HEX[wd.emColor] : null;
+    const base = !big
+      ? { fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 600, fontSize: small, color: em || '#fff', textShadow: '0 1px 3px rgba(0,0,0,.6)', letterSpacing: 0 }
+      : glow
+        ? { fontFamily: `'${look.fontFamily}', system-ui, sans-serif`, fontSize: wd.emBig ? '1.3em' : '1em', color: em || fill, textShadow: `0 0 ${fontPx * 0.12}px ${em || glowHex}, 0 0 ${fontPx * 0.3}px ${em || glowHex}` }
+        : { fontFamily: `'${look.fontFamily}', system-ui, sans-serif`, fontSize: '0.78em', color: em || '#fff', textShadow: '0 2px 4px rgba(0,0,0,.55)' };
+    const vis = j < local || still ? null
+      : j === local ? { animation: big ? 'rf-blurin .22s ease-out both' : 'rf-fade .15s ease both' }
+        : { visibility: 'hidden' };
+    return <span key={j} style={{ display: 'inline-block', ...base, ...vis }}>{wd.word}</span>;
+  };
+  const top = ch.words.slice(0, ch.big);
+  const bottom = ch.words.slice(ch.big);
+  return (
+    <span key={ch.words[0].start} style={{ display: 'inline-block', textAlign: 'center', maxWidth: '92%', lineHeight: 1.02, fontSize: fontPx, fontWeight: 800, letterSpacing: -0.3 }}>
+      {top.length > 0 && <span style={{ display: 'block' }}>{top.map((wd, j) => <React.Fragment key={j}>{j > 0 ? ' ' : ''}{span(wd, j)}</React.Fragment>)}</span>}
+      <span style={{ display: 'block' }}>{bottom.map((wd, j) => <React.Fragment key={j}>{j > 0 ? ' ' : ''}{span(wd, ch.big + j)}</React.Fragment>)}</span>
     </span>
   );
 }
