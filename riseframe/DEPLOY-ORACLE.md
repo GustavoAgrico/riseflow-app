@@ -50,6 +50,32 @@ Tempo total: ~30 min (a maior parte é esperar o 1º build).
 > de um Micro — suficiente para rodar o Riseframe.
 > Persistindo, crie a conta numa **Home Region** diferente (a capacidade varia por região).
 
+### Robô 24h no GitHub (grátis, sem SSH) — o mais simples
+
+O workflow **"Oracle: robô da VM grátis"** (`.github/workflows/oracle-robo.yml`) roda o
+mesmo robô no GitHub Actions, de hora em hora, até conseguir a vaga — e abre uma issue
+com o IP quando consegue. Não precisa de nenhuma máquina ligada.
+
+1. Crie a **chave de API** (console → perfil → My profile → API keys → Add API key →
+   *Generate API key pair* → **Download private key** → **Add**) e copie o
+   *Configuration file preview*.
+2. No Cloud Shell, mostre a chave pública SSH da máquina nova: `cat ~/.ssh/riseframe.pub`
+   (se não existir, crie com `ssh-keygen -t rsa -b 2048 -f ~/.ssh/riseframe -N ""`).
+3. GitHub → repositório → **Settings → Secrets and variables → Actions → New repository
+   secret**, um para cada:
+   | Secret | Valor |
+   |---|---|
+   | `OCI_USER` | a linha `user=` do preview (só o `ocid1.user…`) |
+   | `OCI_TENANCY` | a linha `tenancy=` |
+   | `OCI_FINGERPRINT` | a linha `fingerprint=` |
+   | `OCI_REGION` | `sa-saopaulo-1` |
+   | `OCI_KEY` | o conteúdo inteiro do `.pem` baixado (com as linhas BEGIN/END) |
+   | `OCI_SSH_PUBKEY` | a saída do `cat ~/.ssh/riseframe.pub` |
+4. **Actions → "Oracle: robô da VM grátis" → Run workflow.** Ele segue sozinho; quando
+   conseguir, aparece uma issue "✅ Oracle: máquina riseframe criada (IP …)". Entre pelo
+   Cloud Shell: `ssh -i ~/.ssh/riseframe ubuntu@IP`. Depois, desligue o workflow
+   (Actions → ⋯ → Disable workflow).
+
 ### Robô 24h (grátis, sem cartão): rodar na sua VM Micro
 
 O Cloud Shell fecha depois de ~20 min sem uso e o robô para junto. Se você já tem uma

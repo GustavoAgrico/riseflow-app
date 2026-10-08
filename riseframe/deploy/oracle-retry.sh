@@ -44,6 +44,17 @@ COMPARTMENT="${COMPARTMENT:-$TENANCY}"   # conta nova → recursos no compartime
 AD="$(oci iam availability-domain list --query 'data[0].name' --raw-output 2>/dev/null)"
 [ -n "${AD:-}" ] || die "não consegui listar o domínio de disponibilidade."
 
+# Já existe uma máquina com este nome ligada (ou ligando)? Então não cria outra — o robô
+# pode rodar várias vezes (ex.: GitHub Actions de hora em hora) sem duplicar.
+EXISTING="$(oci compute instance list -c "$COMPARTMENT" --display-name "$NAME" --all \
+  --query 'data[?contains(`["RUNNING","PROVISIONING","STARTING","STOPPED"]`, "lifecycle-state")].id | [0]' --raw-output 2>/dev/null)"
+if [ -n "${EXISTING:-}" ] && [ "$EXISTING" != "null" ]; then
+  IP="$(oci compute instance list-vnics --instance-id "$EXISTING" --query 'data[0]."public-ip"' --raw-output 2>/dev/null)"
+  say "✅ A máquina \"$NAME\" já existe (IP: ${IP:-veja no console}). Nada a fazer."
+  [ -n "${ROBO_RESULT:-}" ] && printf 'exists %s\n' "${IP:-}" > "$ROBO_RESULT"
+  exit 0
+fi
+
 say "2/4 · Achando a imagem do Ubuntu 22.04 (ARM) e a sua sub-rede…"
 IMAGE="$(oci compute image list -c "$COMPARTMENT" \
   --operating-system "Canonical Ubuntu" --operating-system-version "22.04" \
@@ -78,12 +89,18 @@ echo "     Domínio: $AD · a cada ${INTERVAL}s · Ctrl+C para parar."
 echo "     Dica: se demorar muito, pare e rode com  OCPUS=1 MEM=6  (vaga mais fácil)."
 
 ATTEMPT=0
+STARTED=$(date +%s)
+MAX_SECONDS="${MAX_SECONDS:-0}" # 0 = sem limite; no GitHub Actions, para antes do teto de 6h do job
 # Alterna entre o tamanho pedido e o mínimo (1 núcleo / 6 GB), que abre vaga com muito
 # mais frequência — dá para aumentar depois (Edit → Shape), sem reinstalar nada.
 # SEM_ALTERNAR=1 desliga.
 SIZES=("${OCPUS}:${MEM}")
 if [ "${SEM_ALTERNAR:-0}" != "1" ] && [ "${OCPUS}:${MEM}" != "1:6" ]; then SIZES+=("1:6"); fi
 while true; do
+  if [ "$MAX_SECONDS" -gt 0 ] && [ $(( $(date +%s) - STARTED )) -ge "$MAX_SECONDS" ]; then
+    say "⏱  Tempo desta rodada acabou sem vaga — a próxima rodada continua tentando."
+    exit 0
+  fi
   ATTEMPT=$((ATTEMPT + 1))
   SIZE="${SIZES[$(( (ATTEMPT - 1) % ${#SIZES[@]} ))]}"
   TRY_OCPUS="${SIZE%%:*}"; TRY_MEM="${SIZE##*:}"
@@ -110,6 +127,7 @@ while true; do
     echo "   IP PÚBLICO: ${IP:-veja no console → Compute → Instances}"
     echo "   Usuário SSH: ubuntu   ·   chave: ${KEY}"
     echo ""
+    [ -n "${ROBO_RESULT:-}" ] && printf 'created %s\n' "${IP:-}" > "$ROBO_RESULT"
     say "Pronto! Me manda o IP público que a gente segue pro próximo passo (abrir as portas + subir o Riseframe)."
     break
   fi

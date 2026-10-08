@@ -1,0 +1,122 @@
+# Robô que tenta criar a VM ARM grátis (Ampere A1) da Oracle até abrir vaga — roda aqui
+# no GitHub (grátis em repositório público), sem depender do Cloud Shell nem de SSH.
+#
+# Como ligar (uma vez): crie os secrets em Settings → Secrets and variables → Actions:
+#   OCI_USER, OCI_TENANCY, OCI_FINGERPRINT, OCI_REGION  (do "Configuration file preview"
+#   da chave de API da Oracle), OCI_KEY (o conteúdo do .pem da chave de API) e
+#   OCI_SSH_PUBKEY (a chave pública SSH da máquina nova, ex.: `cat ~/.ssh/riseframe.pub`
+#   no Cloud Shell). Depois: Actions → "Oracle: robô da VM grátis" → Run workflow.
+#
+# Cada rodada tenta por até ~5h40 (o teto de um job é 6h) e o agendamento puxa a próxima
+# a cada hora; se a máquina "riseframe" já existir, a rodada termina na hora, sem criar
+# outra. Quando conseguir, abre uma issue com o IP (você recebe por e-mail). Para
+# desligar de vez: Actions → este workflow → "…" → Disable workflow.
+name: 'Oracle: robô da VM grátis'
+
+on:
+  workflow_dispatch:
+    inputs:
+      ocpus:
+        description: 'Núcleos (alterna com 1 núcleo / 6 GB, que abre vaga mais fácil)'
+        default: '2'
+      mem:
+        description: 'Memória em GB'
+        default: '12'
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+# Uma rodada por vez; a seguinte espera a atual terminar.
+concurrency:
+  group: oracle-robo
+  cancel-in-progress: false
+
+jobs:
+  robo:
+    # Interruptor extra: a variável de repositório ORACLE_ROBO=off pausa o robô.
+    if: ${{ vars.ORACLE_ROBO != 'off' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: riseframe/deploy
+
+      - name: Conferir os secrets
+        id: check
+        env:
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_KEY: ${{ secrets.OCI_KEY }}
+          OCI_SSH_PUBKEY: ${{ secrets.OCI_SSH_PUBKEY }}
+        run: |
+          if [ -z "$OCI_USER" ] || [ -z "$OCI_KEY" ] || [ -z "$OCI_SSH_PUBKEY" ]; then
+            echo "Secrets da Oracle ainda não configurados — nada a fazer."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.ok == 'true'
+        with:
+          python-version: '3.12'
+
+      - name: Instalar o OCI CLI
+        if: steps.check.outputs.ok == 'true'
+        run: pip install --quiet oci-cli
+
+      - name: Configurar a conta (chave de API) e a chave SSH da máquina nova
+        if: steps.check.outputs.ok == 'true'
+        env:
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_KEY: ${{ secrets.OCI_KEY }}
+          OCI_SSH_PUBKEY: ${{ secrets.OCI_SSH_PUBKEY }}
+        run: |
+          mkdir -p ~/.oci ~/.ssh
+          printf '%s\n' "$OCI_KEY" > ~/.oci/oci_api_key.pem
+          cat > ~/.oci/config <<EOF
+          [DEFAULT]
+          user=${OCI_USER}
+          fingerprint=${OCI_FINGERPRINT}
+          tenancy=${OCI_TENANCY}
+          region=${OCI_REGION:-sa-saopaulo-1}
+          key_file=~/.oci/oci_api_key.pem
+          EOF
+          sed -i 's/^[[:space:]]*//' ~/.oci/config
+          chmod 600 ~/.oci/config ~/.oci/oci_api_key.pem
+          # Só a chave PÚBLICA vai para a máquina nova (a privada fica no seu Cloud Shell);
+          # com a .pub presente, o script não gera outra.
+          printf '%s\n' "$OCI_SSH_PUBKEY" > ~/.ssh/riseframe.pub
+
+      - name: Tentar criar a máquina até abrir vaga
+        if: steps.check.outputs.ok == 'true'
+        env:
+          OCPUS: ${{ github.event.inputs.ocpus || '2' }}
+          MEM: ${{ github.event.inputs.mem || '12' }}
+          INTERVAL: '60'
+          MAX_SECONDS: '20400' # 5h40
+          ROBO_RESULT: ${{ runner.temp }}/robo.txt
+        run: bash riseframe/deploy/oracle-retry.sh
+
+      - name: Avisar (issue com o IP) quando a máquina for criada
+        if: steps.check.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT_FILE: ${{ runner.temp }}/robo.txt
+        run: |
+          [ -f "$RESULT_FILE" ] || exit 0
+          read -r STATUS IP < "$RESULT_FILE"
+          [ "$STATUS" = "created" ] || exit 0
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "✅ Oracle: máquina riseframe criada (IP ${IP})" \
+            --body "O robô conseguiu a vaga. IP público: **${IP}**
+
+          Próximos passos: no Cloud Shell, \`ssh -i ~/.ssh/riseframe ubuntu@${IP}\` e siga o DEPLOY-ORACLE.md (liberar as portas 80/443 e rodar o install.sh).
+
+          Para desligar o robô: Actions → \"Oracle: robô da VM grátis\" → ⋯ → Disable workflow."
