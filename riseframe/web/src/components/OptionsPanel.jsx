@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { C, GRAD } from '../theme.js';
 import Icon from './Icon.jsx';
 import CaptionPreview from './CaptionPreview.jsx';
+import CaptionGallery, { CAPTION_PRESETS, currentPreset } from './CaptionGallery.jsx';
 import LayoutPreview from './LayoutPreview.jsx';
 
 export function Row({ label, hint, children }) {
@@ -106,7 +107,7 @@ export function Swatches({ value, options, onChange }) {
   );
 }
 
-export default function OptionsPanel({ catalog, options, onChange, disabled }) {
+export default function OptionsPanel({ catalog, options, onChange, disabled, videoUrl }) {
   const set = (patch) => onChange({ ...options, ...patch });
   const caps = catalog?.capabilities || {};
   const keyValid = /^[A-Za-z0-9]{20,80}$/.test((options.pexelsKey || '').trim());
@@ -115,7 +116,7 @@ export default function OptionsPanel({ catalog, options, onChange, disabled }) {
 
   // resumo curto para o subtítulo de cada seção (fechada)
   const on = (b) => (b ? 'ligado' : 'desligado');
-  const tplLabel = (catalog.captionTemplates?.find((t) => t.id === options.captionTemplate) || {}).label;
+  const tplLabel = (CAPTION_PRESETS.find((p) => p.id === currentPreset(options)) || catalog.captionTemplates?.find((t) => t.id === options.captionTemplate) || {}).label;
   const cutStrengthLabel = (catalog.cutStrengths?.find((s) => s.id === (options.cutStrength || 'forte')) || {}).label;
 
   return (
@@ -159,14 +160,16 @@ export default function OptionsPanel({ catalog, options, onChange, disabled }) {
 
       {/* ── Legendas ── */}
       <Section icon="captions" title="Legendas dinâmicas" defaultOpen badge="Popular" subtitle={options.captions ? `${tplLabel || 'estilo'} · ${options.captionColor || 'branco'}` : 'desligadas'}>
-        <Row label="Legendas dinâmicas" hint="Transcrição queimada no vídeo, palavra-a-palavra">
-          <Toggle on={options.captions} onChange={(v) => set({ captions: v })} />
-        </Row>
+        <div style={{ padding: '6px 0 12px' }}>
+          <CaptionPreview options={options} videoUrl={videoUrl} />
+        </div>
+        <div style={{ padding: '4px 0 12px' }}>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Modelos de legenda</div>
+          <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 10 }}>Um clique aplica o visual. Dá para ajustar fonte, cor e tamanho logo abaixo.</div>
+          <CaptionGallery options={options} onApply={set} />
+        </div>
         {options.captions && (
           <>
-            <Row label="Estilo da legenda" hint="Look + movimento das legendas">
-              <Select value={options.captionTemplate} options={catalog.captionTemplates} onChange={(v) => set({ captionTemplate: v })} />
-            </Row>
             <Row label="Tipografia (fonte)" hint="Fonte premium embutida — renderiza igual em qualquer máquina">
               <Select value={options.captionFont || 'auto'} options={catalog.captionFonts} onChange={(v) => set({ captionFont: v })} />
             </Row>
@@ -199,7 +202,6 @@ export default function OptionsPanel({ catalog, options, onChange, disabled }) {
             <Row label="Tamanho da legenda" hint={`${Math.round((options.captionScale ?? 1) * 100)}% — palavras longas encolhem sozinhas para caber`}>
               <input type="range" min={0.6} max={1.4} step={0.05} value={options.captionScale ?? 1} onChange={(e) => set({ captionScale: Number(e.target.value) })} style={{ minWidth: 190 }} />
             </Row>
-            <div style={{ padding: '4px 0 12px' }}><CaptionPreview options={options} /></div>
           </>
         )}
       </Section>

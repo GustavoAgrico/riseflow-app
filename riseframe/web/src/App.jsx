@@ -9,6 +9,7 @@ import Pipeline from './components/Pipeline.jsx';
 import Result from './components/Result.jsx';
 import ClipsResult from './components/ClipsResult.jsx';
 import TimelineEditor from './components/TimelineEditor.jsx';
+import CaptionGallery from './components/CaptionGallery.jsx';
 import { recordJob, listJobs } from './history.js';
 import CostLine from './components/CostLine.jsx';
 import { useAuth } from './AuthContext.jsx';
@@ -20,6 +21,9 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   const [loadError, setLoadError] = useState(null);
 
   const [file, setFile] = useState(null);
+  // Endereço local do vídeo escolhido: a prévia da legenda roda nele antes de editar.
+  const videoUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
+  useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
   const [options, setOptions] = useState(null);
   const [editMode, setEditMode] = useState(intent === 'editor' ? 'editor' : 'auto');
 
@@ -302,7 +306,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
           {editMode === 'auto' && (
             <Card delay={0.1} style={{ padding: '6px 24px 20px' }}>
               <h3 style={sectionLabel}>O que fazer com o vídeo</h3>
-              <OptionsPanel catalog={catalog} options={options} onChange={setOptions} />
+              <OptionsPanel catalog={catalog} options={options} onChange={setOptions} videoUrl={videoUrl} />
             </Card>
           )}
 
@@ -490,9 +494,10 @@ function ClipsOptions({ catalog, options, onChange }) {
       </Row>
       {captionsOn && cap.captionTemplates && (
         <>
-          <Row label="Estilo da legenda" hint="Look + movimento das legendas">
-            <Select value={options.captionTemplate || 'pop'} options={cap.captionTemplates} onChange={(v) => set({ captionTemplate: v })} />
-          </Row>
+          <div style={{ padding: '12px 0', borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>Modelo da legenda</div>
+            <CaptionGallery options={{ ...options, captionTemplate: options.captionTemplate || 'pop' }} onApply={set} />
+          </div>
           {cap.captionFonts && (
             <Row label="Tipografia (fonte)" hint="Fonte premium embutida — igual em qualquer máquina">
               <Select value={options.captionFont || 'auto'} options={cap.captionFonts} onChange={(v) => set({ captionFont: v })} />
