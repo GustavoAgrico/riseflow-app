@@ -165,3 +165,12 @@ test('premium: palavra a palavra, parte grande com brilho na linha de baixo e so
   const em = [{ ...seg[0], words: seg[0].words.map((w, i) => (i === 1 ? { ...w, emBig: true } : w)) }];
   assert.deepEqual(captionSfxEvents(em, { template: 'clean' }), [{ t: 0.4, type: 'tick' }]);
 });
+
+test('som de tecla no ritmo de digitação: frases alternadas (ou todas as palavras)', async () => {
+  const { captionSfxEvents } = await import('../src/pipeline/captions.js');
+  const mk = (t0) => ({ start: t0, end: t0 + 1, words: [{ start: t0, end: t0 + 0.4, word: 'oi' }, { start: t0 + 0.5, end: t0 + 0.9, word: 'gente' }] });
+  const segs = [mk(0), mk(2), mk(4)];
+  const ritmo = captionSfxEvents(segs, { template: 'premium' }).map((e) => e.t);
+  assert.deepEqual(ritmo, [0, 0.5, 4, 4.5], 'uma frase digitada, a seguinte em silêncio');
+  assert.equal(captionSfxEvents(segs, { template: 'premium', keys: 'todas' }).length, 6);
+});

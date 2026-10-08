@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { C, GRAD } from '../theme.js';
 import Icon from './Icon.jsx';
 import CaptionPreview from './CaptionPreview.jsx';
+import VoicePanel from './VoicePanel.jsx';
 import CaptionGallery, { CAPTION_PRESETS, currentPreset } from './CaptionGallery.jsx';
 import LayoutPreview from './LayoutPreview.jsx';
 
@@ -122,7 +123,7 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
   return (
     <div style={{ opacity: disabled ? 0.6 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
       {/* ── Fala e áudio ── */}
-      <Section icon="mic" title="Fala e áudio" defaultOpen subtitle={`Corte ${options.cutSilence ? (cutStrengthLabel || 'ligado') : 'desligado'} · fala ${on(options.autoClean !== false)} · voz ${on(options.voiceEnhance === true)}`}>
+      <Section icon="mic" title="Fala e áudio" defaultOpen subtitle={`Corte ${options.cutSilence ? (cutStrengthLabel || 'ligado') : 'desligado'} · fala ${on(options.autoClean !== false)} · voz ${on(options.voiceEnhance === true)}${options.voiceEffect && options.voiceEffect !== 'none' ? ' · efeito na voz' : ''}`}>
         <Row label="Cortar pausas e silêncios" hint="Remove trechos sem fala e remonta a timeline">
           <Toggle on={options.cutSilence} onChange={(v) => set({ cutSilence: v })} />
         </Row>
@@ -140,17 +141,15 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
         <Row label="Corrigir a fala automaticamente" hint="Remove muletas (é..., hã, hmm), gagueiras e palavras repetidas. Em corte Forte fica mais agressiva. A IA também corta falsos começos e autocorreções.">
           <Toggle on={options.autoClean !== false} onChange={(v) => set({ autoClean: v })} />
         </Row>
-        <Row label="Correção automática de voz" hint="Limpa o áudio: reduz ruído de fundo, normaliza o volume e dá mais clareza à voz">
-          <Toggle on={options.voiceEnhance === true} onChange={(v) => set({ voiceEnhance: v })} />
-        </Row>
-        {options.voiceEnhance === true && (
-          <Row label="Intensidade da limpeza" hint="Quanto ruído remover (forte pode soar artificial)">
-            <Segmented value={options.voiceIntensity || 'medio'} options={catalog.motionIntensities} onChange={(v) => set({ voiceIntensity: v })} />
-          </Row>
-        )}
+        <VoicePanel catalog={catalog} value={options} onChange={(v) => set(v)} />
         <Row label="Efeitos sonoros" hint="Whoosh nas entradas de B-roll e nos punch-ins do zoom; na legenda, som de tecla a cada palavra (estilo Premium) e nas palavras com ênfase">
           <Toggle on={options.soundEffects === true} onChange={(v) => set({ soundEffects: v })} />
         </Row>
+        {options.soundEffects === true && options.captions !== false && options.captionTemplate === 'premium' && (
+          <Row label="Som de tecla na legenda" hint="Como no modelo: uma frase digitada e a seguinte em silêncio (ritmo de digitação). Ou em todas as palavras.">
+            <Segmented value={options.captionKeys || 'ritmo'} options={[{ id: 'ritmo', label: 'Ritmo (como no modelo)' }, { id: 'todas', label: 'Toda palavra' }]} onChange={(v) => set({ captionKeys: v })} />
+          </Row>
+        )}
         {options.soundEffects === true && (
           <Row label="Volume dos efeitos" hint="O quanto os efeitos aparecem (forte = mais presentes)">
             <Segmented value={options.sfxIntensity || 'medio'} options={catalog.motionIntensities} onChange={(v) => set({ sfxIntensity: v })} />

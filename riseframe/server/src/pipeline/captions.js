@@ -477,18 +477,25 @@ export async function burnCaptions(input, work, meta, transcript, style, onProgr
 
 /**
  * Sons da legenda (tempos na timeline final) — só som de tecla, como digitação:
- * - estilo Premium: uma tecla a cada palavra que aparece;
+ * - estilo Premium: uma tecla no instante em que cada palavra aparece. No ritmo padrão
+ *   ('ritmo', como no áudio de referência) as teclas vêm em rajadas: uma frase digitada,
+ *   a seguinte em silêncio, e assim por diante. Com `keys: 'todas'`, em toda palavra;
  * - qualquer estilo: uma tecla nas palavras com ênfase manual.
  * @returns {Array<{t:number,type:'tick'}>}
  */
 export function captionSfxEvents(segments, style = {}) {
   const T = CAPTION_TEMPLATES[style.template] || {};
+  const everyWord = style.keys === 'todas';
   const events = [];
+  let phrase = 0;
   for (const seg of segments || []) {
-    for (const wd of seg.words || []) {
-      if (!String(wd.word ?? '').trim()) continue;
+    const words = (seg.words || []).filter((wd) => String(wd.word ?? '').trim());
+    if (!words.length) continue;
+    const typed = T.premium && (everyWord || phrase % 2 === 0);
+    phrase += 1;
+    for (const wd of words) {
       const em = emphasisOf(wd);
-      if (T.premium || em.emColor || em.emBig) events.push({ t: Math.max(0, Number(wd.start) || 0), type: 'tick' });
+      if (typed || em.emColor || em.emBig) events.push({ t: Math.max(0, Number(wd.start) || 0), type: 'tick' });
     }
   }
   return events.sort((a, b) => a.t - b.t);

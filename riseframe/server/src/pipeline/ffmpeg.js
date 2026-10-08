@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
@@ -155,4 +156,16 @@ export async function probeSummary(inputPath) {
     sizeBytes: Number(info.format?.size) || 0,
     bitrate: Number(info.format?.bit_rate) || 0,
   };
+}
+
+/**
+ * Saída para estágios que só mexem no áudio e COPIAM o vídeo: MP4 quando o codec de vídeo
+ * cabe em MP4; senão MKV (ex.: VP8 de .webm, que o MP4 não aceita).
+ * @returns {{ output: string, muxArgs: string[] }}
+ */
+export function audioStageOutput(dir, base, meta = {}) {
+  const mp4ok = !meta.videoCodec || ['h264', 'hevc', 'mpeg4', 'av1', 'vp9'].includes(meta.videoCodec);
+  return mp4ok
+    ? { output: path.join(dir, `${base}.mp4`), muxArgs: ['-movflags', '+faststart'] }
+    : { output: path.join(dir, `${base}.mkv`), muxArgs: [] };
 }

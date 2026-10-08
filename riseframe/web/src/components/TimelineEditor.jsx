@@ -2,12 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan } from '../api.js';
+import { sourceUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan, previewVoice } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
 import { CaptionOverlay } from './CaptionPreview.jsx';
 import CaptionGallery from './CaptionGallery.jsx';
+import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
 
@@ -61,6 +62,21 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     soundEffects: cap0.soundEffects === true,
     sfxIntensity: cap0.sfxIntensity || 'medio',
   });
+  // Tratamento e modificadores da voz (aba Áudio) + prévia ouvível.
+  const [voice, setVoice] = useState(() => voiceOf(cap0));
+  const [voicePrev, setVoicePrev] = useState({ busy: false, url: null, err: '' });
+  const voiceAudioRef = useRef(null);
+  async function playVoicePreview() {
+    setVoicePrev((p) => ({ ...p, busy: true, err: '' }));
+    try {
+      const url = await previewVoice(sourceId, Math.max(0, cur - 0.5), voice);
+      setVoicePrev((p) => { if (p.url) URL.revokeObjectURL(p.url); return { busy: false, url, err: '' }; });
+      videoRef.current?.pause();
+      setTimeout(() => voiceAudioRef.current?.play().catch(() => {}), 50);
+    } catch (e) {
+      setVoicePrev((p) => ({ ...p, busy: false, err: e.message }));
+    }
+  }
   // Zoom nos MOMENTOS-CHAVE (faixa ZOOM da timeline). null = ainda não calculado.
   const [zoomMoments, setZoomMoments] = useState(null);
   const [selZoom, setSelZoom] = useState(null);
@@ -773,6 +789,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         ...cap,
         // Zoom, efeitos sonoros e cor escolhidos nas abas Efeitos e Cor.
         ...fx,
+        // Tratamento e modificadores da voz (aba Áudio).
+        ...voice,
         // Zooms nos momentos-chave (tempo original; o servidor remapeia após os cortes).
         ...(fx.videoMotion === 'dynamic' && zoomMoments
           ? { zoomMoments: zoomMoments.map((z) => ({ start: +z.start.toFixed(2), end: +z.end.toFixed(2), ...(z.scale ? { scale: +Number(z.scale).toFixed(2) } : {}) })) }
@@ -1262,6 +1280,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {/* Volume da fala: geral, mudo e trechos com volume próprio */}
           {tab === 'audio' && (
             <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+              <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Voz</div>
+                <VoicePanel stacked catalog={catalog} value={voice} onChange={setVoice} onPreview={playVoicePreview} previewBusy={voicePrev.busy}
+                  previewNote={voicePrev.err || 'a partir do ponto atual do vídeo'} />
+                {voicePrev.url && <audio ref={voiceAudioRef} src={voicePrev.url} controls style={{ width: '100%', marginTop: 6, height: 34 }} />}
+              </div>
               <CapRow label="Mudo">
                 <button onClick={() => setAudioMute((m) => !m)} style={miniBtn(audioMute, false)}>
                   {audioMute ? 'Fala silenciada' : 'Fala com som'}
