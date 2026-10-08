@@ -22,3 +22,7 @@ data/billing.json
 # logs
 *.log
 npm-debug.log*
+
+# pacote do site para hospedagem comum (gerado por npm run build:hostinger)
+web/dist-hostinger/
+web/riseframe-site-hostinger.zip
