@@ -174,8 +174,22 @@ function PhoneMock() {
 
 export default function Landing({ onEnter, onLogin }) {
   const [info, setInfo] = useState(null);
+  const [bundled, setBundled] = useState(null);
+  // Demo do servidor (criada pelo admin) tem prioridade; senão a que vem com o site.
+  const showcase = info?.showcase || bundled;
   useEffect(() => {
     getPublicInfo().then(setInfo).catch(() => {});
+    // Demonstração que vem junto com o site: aparece na hora, sem esperar a API (que
+    // pode estar "acordando" num servidor separado).
+    fetch('/demo/showcase.json')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m) => {
+        if (!m?.ready) return;
+        const fix = (u) => (typeof u === 'string' ? u.replace('/api/showcase/', '/demo/') : u);
+        const sim = m.sim ? { ...m.sim, broll: (m.sim.broll || []).map((b) => ({ ...b, src: fix(b.src) })) } : null;
+        setBundled({ before: '/demo/antes.mp4', after: '/demo/depois.mp4', stats: m.stats, sim, bundled: true });
+      })
+      .catch(() => {});
   }, []);
   return (
     <div style={{ position: 'relative', minHeight: '100%', color: C.text }}>
@@ -220,8 +234,8 @@ export default function Landing({ onEnter, onLogin }) {
               </div>
             </div>
             <div className="rf-hero-mock" style={{ display: 'flex', justifyContent: 'center' }}>
-              {info?.showcase?.after
-                ? <HeroDemo showcase={info.showcase} onMore={() => document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' })} />
+              {showcase?.after
+                ? <HeroDemo showcase={showcase} onMore={() => document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' })} />
                 : <PhoneMock />}
             </div>
           </div>
@@ -233,11 +247,11 @@ export default function Landing({ onEnter, onLogin }) {
             Veja o <span style={gradientText}>antes e depois</span>
           </h2>
           <p style={{ textAlign: 'center', color: C.muted, fontSize: 16, maxWidth: 560, margin: '0 auto 34px' }}>
-            {info?.showcase?.sim
+            {showcase?.sim
               ? 'Uma edição real: ligue e desligue cortes, legendas, cor, zoom e B-roll e veja como o vídeo fica.'
               : 'O mesmo vídeo: como foi gravado e como saiu do Riseframe.'}
           </p>
-          <BeforeAfter showcase={info?.showcase} />
+          <BeforeAfter showcase={showcase} />
         </section>
 
         {/* FEATURES */}

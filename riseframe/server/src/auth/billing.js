@@ -597,6 +597,9 @@ const dateBR = (iso) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'A
 const appUrl = () =>
   (config.auth.appUrl || config.corsOrigin.find((o) => /^https:\/\//.test(o)) || process.env.RENDER_EXTERNAL_URL || '').replace(/\/+$/, '');
 const plansUrl = () => `${appUrl()}/?billing=return`;
+// Endereço da API (para links de e-mail que chamam o servidor). Com o site numa hospedagem
+// comum e a API em outro lugar (Render), não é o mesmo endereço do site.
+const apiUrl = () => (process.env.PUBLIC_API_URL || process.env.RENDER_EXTERNAL_URL || appUrl()).replace(/\/+$/, '');
 
 function itemOf(kind, itemId) {
   return kind === 'plan' ? planConfig(itemId) : config.billing.packs.find((p) => p.id === itemId) || null;
@@ -708,7 +711,7 @@ function notifyClaim(claim, item) {
   const contactEmail = claim.contactEmail || claim.email;
   // Botão no e-mail: abre uma página de confirmação (não confirma só de abrir o link,
   // porque antivírus e o próprio Gmail visitam links de e-mail sozinhos).
-  const confirmUrl = `${appUrl()}/api/billing/pix/email-action?t=${signLink({ c: id }, 14 * 86400)}`;
+  const confirmUrl = `${apiUrl()}/api/billing/pix/email-action?t=${signLink({ c: id }, 14 * 86400)}`;
   const text = `Riseframe: ${claim.name || contactEmail} avisou que pagou o Pix do ${itemLabel(kind, item)} (${brl(item.priceCents)}). Confira no banco e confirme: ${confirmUrl}`;
   claim.notice = { at: new Date().toISOString(), email: [], whatsapp: null, sending: true };
   return notifyAdmins({
