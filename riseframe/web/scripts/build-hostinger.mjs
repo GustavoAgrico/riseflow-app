@@ -28,6 +28,8 @@ fs.cpSync(fontsSrc, path.join(OUT, 'api', 'fonts'), { recursive: true });
 // index.html, cache longo dos arquivos com hash e tipos certos dos vídeos e fontes.
 fs.writeFileSync(path.join(OUT, '.htaccess'), `# Riseframe — site estático (a API fica em ${API_URL})
 Options -MultiViews
+# Abre o site (e não a página padrão da Hostinger, default.php)
+DirectoryIndex index.html
 RewriteEngine On
 
 # Sempre HTTPS
