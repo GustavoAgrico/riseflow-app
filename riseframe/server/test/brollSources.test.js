@@ -45,7 +45,8 @@ test('Wikimedia Commons: só licenças livres para uso comercial, sem imagens pe
     ] } });
   }, async () => {
     const c = await wikimediaCandidates('market', { kind: 'image', limit: 6 });
-    assert.deepEqual(c.map((x) => x.link), ['https://up/a.jpg', 'https://up/e.png']);
+    // foto: a versão de 1600 px (a original pode ter dezenas de MB)
+    assert.deepEqual(c.map((x) => x.link), ['https://up/a.jpg.thumb.jpg', 'https://up/e.png.thumb.jpg']);
     assert.match(c[0].credit, /CC BY-SA 4\.0 · Fulano · Wikimedia Commons/);
   });
 });
@@ -91,4 +92,29 @@ test("'mix' junta Pixabay e Wikimedia aos demais; fonte indisponível cai para a
   assert.equal(extOf('https://x/a.webm', false), 'webm');
   assert.equal(extOf('https://x/a.png?x=1', true), 'png');
   assert.equal(extOf('https://x/video', false), 'mp4');
+});
+
+test('Wikimedia Commons: vídeo original enorme (4K) fica de fora', async () => {
+  await withFetch(async () => json({ query: { pages: [
+    { pageid: 1, index: 1, imageinfo: [{ url: 'https://up/big.webm', mime: 'video/webm', size: 400e6, extmetadata: { LicenseShortName: { value: 'CC BY 4.0' } } }] },
+    { pageid: 2, index: 2, imageinfo: [{ url: 'https://up/ok.webm', mime: 'video/webm', size: 20e6, extmetadata: { LicenseShortName: { value: 'CC BY 4.0' } } }] },
+  ] } }), async () => {
+    const c = await wikimediaCandidates('city', { kind: 'video', limit: 3 });
+    assert.deepEqual(c.map((x) => x.link), ['https://up/ok.webm']);
+  });
+});
+
+test('download de B-roll: recusa arquivo acima do teto e não deixa lixo', async () => {
+  const { download } = await import('../src/pipeline/broll.js');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const fs = await import('node:fs');
+  const dest = path.join(os.tmpdir(), `rf-dl-${Date.now()}.mp4`);
+  await withFetch(async () => new Response(new Uint8Array(5000), { headers: { 'content-length': '5000' } }), async () => {
+    await assert.rejects(download('https://x/v.mp4', dest, { maxBytes: 1000 }), /grande demais/);
+    assert.equal(fs.existsSync(dest), false);
+    await download('https://x/v.mp4', dest, { maxBytes: 10000 });
+    assert.equal(fs.statSync(dest).size, 5000);
+  });
+  fs.rmSync(dest, { force: true });
 });

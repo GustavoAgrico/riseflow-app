@@ -10,6 +10,11 @@ import { makeLogger } from '../logger.js';
 
 const log = makeLogger('broll');
 
+// Toda chamada externa tem prazo: um banco de imagens lento ou fora do ar não pode
+// deixar o vídeo parado em "Inserindo B-roll" (acontecia — fetch sem timeout).
+const API_TIMEOUT_MS = 12000;
+const http = (url, opts = {}, ms = API_TIMEOUT_MS) => fetch(url, { ...opts, signal: AbortSignal.timeout(ms) });
+
 /**
  * Escolhe um item entre os `top` primeiros candidatos (relevância) de forma
  * aleatória — dá VARIEDADE (não pega sempre o mesmo 1º resultado) sem perder o
@@ -106,7 +111,7 @@ export async function pixabayCandidates(query, { key, orientation = 'portrait', 
   const out = [];
   // Busca digitada pela pessoa vem em português (lang=pt); a automática já vem em inglês.
   const q = encodeURIComponent(query) + (lang ? `&lang=${lang}` : '');
-  const rv = await fetch(`https://pixabay.com/api/videos/?key=${encodeURIComponent(key)}&q=${q}&per_page=${Math.max(3, limit)}&safesearch=true`);
+  const rv = await http(`https://pixabay.com/api/videos/?key=${encodeURIComponent(key)}&q=${q}&per_page=${Math.max(3, limit)}&safesearch=true`);
   if (rv.ok) {
     const d = await rv.json();
     for (const h of d.hits || []) {
@@ -120,7 +125,7 @@ export async function pixabayCandidates(query, { key, orientation = 'portrait', 
     }
   }
   const orient = orientation === 'portrait' ? 'vertical' : 'horizontal';
-  const rp = await fetch(`https://pixabay.com/api/?key=${encodeURIComponent(key)}&q=${q}&image_type=photo&orientation=${orient}&per_page=${Math.max(3, limit)}&safesearch=true`);
+  const rp = await http(`https://pixabay.com/api/?key=${encodeURIComponent(key)}&q=${q}&image_type=photo&orientation=${orient}&per_page=${Math.max(3, limit)}&safesearch=true`);
   if (rp.ok) {
     const d = await rp.json();
     for (const h of d.hits || []) {
@@ -144,9 +149,9 @@ export async function wikimediaCandidates(query, { kind = 'image', limit = 6 } =
   const params = new URLSearchParams({
     action: 'query', format: 'json', formatversion: '2', origin: '*',
     generator: 'search', gsrsearch: `${query} ${filter}`, gsrnamespace: '6', gsrlimit: String(Math.max(4, limit * 2)),
-    prop: 'imageinfo', iiprop: 'url|mime|size|extmetadata', iiurlwidth: '640',
+    prop: 'imageinfo', iiprop: 'url|mime|size|extmetadata', iiurlwidth: kind === 'video' ? '640' : '1600',
   });
-  const r = await fetch(`https://commons.wikimedia.org/w/api.php?${params}`, { headers: UA });
+  const r = await http(`https://commons.wikimedia.org/w/api.php?${params}`, { headers: UA });
   if (!r.ok) return [];
   const d = await r.json();
   const pages = Array.isArray(d.query?.pages) ? d.query.pages : Object.values(d.query?.pages || {});
@@ -160,8 +165,10 @@ export async function wikimediaCandidates(query, { kind = 'image', limit = 6 } =
     if ((kind === 'video') !== isVideo) continue;
     if (!isVideo && !/^image\/(jpeg|png|webp)/.test(ii.mime || '')) continue; // sem SVG/TIFF/GIF
     if (!isVideo && (ii.width || 0) < 640) continue; // pequena demais para o quadro
+    if (isVideo && (ii.size || 0) > 60e6) continue; // original enorme (4K): demoraria a baixar e processar
     const artist = String(ii.extmetadata?.Artist?.value || '').replace(/<[^>]+>/g, '').trim().slice(0, 60);
-    out.push({ id: `w${pg.pageid}`, link: ii.url, thumb: ii.thumburl || ii.url, kind: isVideo ? 'video' : 'image', source: 'wikimedia', credit: `${lic}${artist ? ` · ${artist}` : ''} · Wikimedia Commons` });
+    // Foto: a versão de 1600 px (a original pode ter 8000 px e dezenas de MB).
+    out.push({ id: `w${pg.pageid}`, link: isVideo ? ii.url : (ii.thumburl || ii.url), thumb: ii.thumburl || ii.url, kind: isVideo ? 'video' : 'image', source: 'wikimedia', credit: `${lic}${artist ? ` · ${artist}` : ''} · Wikimedia Commons` });
     if (out.length >= limit) break;
   }
   return out;
@@ -172,7 +179,7 @@ export async function wikimediaCandidates(query, { kind = 'image', limit = 6 } =
  * tecnologia, espaço, natureza vista de cima. Vídeos: busca o arquivo mp4 no manifesto.
  */
 export async function nasaCandidates(query, { limit = 4 } = {}) {
-  const r = await fetch(`https://images-api.nasa.gov/search?q=${encodeURIComponent(query)}&media_type=image,video`, { headers: UA });
+  const r = await http(`https://images-api.nasa.gov/search?q=${encodeURIComponent(query)}&media_type=image,video`, { headers: UA });
   if (!r.ok) return [];
   const d = await r.json();
   const out = [];
@@ -182,7 +189,7 @@ export async function nasaCandidates(query, { limit = 4 } = {}) {
     if (!meta.nasa_id || !thumb) continue;
     if (meta.media_type === 'video') {
       try {
-        const m = await fetch(it.href, { headers: UA });
+        const m = await http(it.href, { headers: UA });
         const files = m.ok ? await m.json() : [];
         const mp4 = (files || []).find((u) => /~mobile\.mp4$/i.test(u)) || (files || []).find((u) => /~(small|medium|orig)\.mp4$/i.test(u));
         if (mp4) out.push({ id: `n${meta.nasa_id}`, link: mp4.replace(/^http:/, 'https:'), thumb, kind: 'video', source: 'nasa', credit: 'NASA (domínio público)' });
@@ -254,7 +261,7 @@ export async function brollCandidates(query, opts = {}) {
     } else if (source === 'openverse') {
       const params = new URLSearchParams({ q: query, page_size: String(limit * 2), mature: 'false' });
       if (!unrestricted) params.set('license_type', 'commercial');
-      const res = await fetch(`https://api.openverse.org/v1/images/?${params}`, {
+      const res = await http(`https://api.openverse.org/v1/images/?${params}`, {
         headers: { Accept: 'application/json', 'User-Agent': 'Riseframe/1.0 (video editor)' },
       });
       if (res.ok) {
@@ -266,7 +273,7 @@ export async function brollCandidates(query, opts = {}) {
     } else if (source === 'google' && google?.key && google?.cx) {
       const params = new URLSearchParams({ key: google.key, cx: google.cx, q: query, searchType: 'image', num: String(limit * 2), safe: 'active', imgType: 'photo', imgSize: 'xlarge' });
       if (!google.unrestricted) params.set('rights', 'cc_publicdomain,cc_attribute,cc_sharealike');
-      const res = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`);
+      const res = await http(`https://www.googleapis.com/customsearch/v1?${params}`);
       if (res.ok) {
         const d = await res.json();
         for (const it of d.items || []) {
@@ -276,7 +283,7 @@ export async function brollCandidates(query, opts = {}) {
       }
     } else if (apiKey) {
       const loc = lang === 'pt' ? '&locale=pt-BR' : '';
-      const rv = await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}${loc}`, { headers: { Authorization: apiKey } });
+      const rv = await http(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}${loc}`, { headers: { Authorization: apiKey } });
       if (rv.ok) {
         const d = await rv.json();
         for (const v of d.videos || []) {
@@ -284,7 +291,7 @@ export async function brollCandidates(query, opts = {}) {
           if (f) out.push({ id: String(v.id), link: f.link, thumb: v.image, kind: 'video', source: 'pexels' });
         }
       }
-      const rp = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}${loc}`, { headers: { Authorization: apiKey } });
+      const rp = await http(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}${loc}`, { headers: { Authorization: apiKey } });
       if (rp.ok) {
         const d = await rp.json();
         for (const p of d.photos || []) {
@@ -299,11 +306,60 @@ export async function brollCandidates(query, opts = {}) {
   return out.slice(0, limit);
 }
 
-async function download(url, dest) {
-  const res = await fetch(url);
-  if (!res.ok || !res.body) throw new Error(`download falhou ${res.status}`);
-  await streamPipeline(Readable.fromWeb(res.body), createWriteStream(dest));
-  return dest;
+/**
+ * Baixa a mídia com prazo e teto de tamanho (vídeo original em 4K da Wikimedia/NASA
+ * podia ter centenas de MB e travar a etapa). Exportado para teste.
+ */
+export async function download(url, dest, { timeoutMs = 45000, maxBytes = 80e6 } = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': UA['User-Agent'] } });
+    if (!res.ok || !res.body) throw new Error(`download falhou ${res.status}`);
+    const len = Number(res.headers.get('content-length')) || 0;
+    if (len > maxBytes) throw new Error(`arquivo grande demais (${(len / 1e6).toFixed(0)} MB)`);
+    let got = 0;
+    const src = Readable.fromWeb(res.body);
+    src.on('data', (chunk) => {
+      got += chunk.length;
+      if (got > maxBytes) src.destroy(new Error(`arquivo grande demais (> ${(maxBytes / 1e6).toFixed(0)} MB)`));
+    });
+    await streamPipeline(src, createWriteStream(dest));
+    return dest;
+  } catch (err) {
+    await fs.rm(dest, { force: true }).catch(() => {});
+    throw ctrl.signal.aborted ? new Error('download demorou demais') : err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Baixa a mídia; se a original falhar (grande/lenta), tenta a versão menor (miniatura). */
+async function downloadMedia(link, thumb, dest, isImage) {
+  const caps = isImage ? { maxBytes: 25e6, timeoutMs: 30000 } : { maxBytes: 80e6, timeoutMs: 60000 };
+  try {
+    return await download(link, dest, caps);
+  } catch (err) {
+    if (isImage && thumb && thumb !== link) {
+      log.info(`B-roll: original falhou (${err.message}); usando a versão menor`);
+      return download(thumb, dest, caps);
+    }
+    throw err;
+  }
+}
+
+/** Roda `fn` em cada item com no máximo `n` ao mesmo tempo (resultado na ordem dos itens). */
+async function pool(items, n, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
+  return out;
 }
 
 /**
@@ -361,48 +417,56 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   //    o que entra em cada momento. Usa exatamente essas mídias (arquivo próprio ou
   //    URL do banco), sem buscar de novo; itens marcados como removidos são pulados.
   const plan = Array.isArray(options.brollPlan) && options.brollPlan.length ? options.brollPlan : null;
-  if (plan) {
-    for (const p of plan) {
-      if (!p || p.remove) continue;
-      const start = Math.max(0, Number(p.start) || 0);
-      const end = Math.min(meta.duration, Number(p.end) || start + 3.2);
-      if (end - start < 0.6) continue;
-      const isImage = p.kind !== 'video';
-      try {
+  // Busca e download em paralelo (3 por vez), com prazo total: passou do prazo, os
+  // momentos que faltam ficam sem B-roll — o vídeo segue em vez de travar.
+  const deadline = Date.now() + (options.brollBudgetMs ?? 150000);
+  const late = () => Date.now() > deadline;
+  const maxClips = options.brollMax ?? 12;
+  const todo = plan ? plan.filter((p) => p && !p.remove).slice(0, maxClips) : moments;
+  let done = 0;
+  const tick = () => { done++; onProgress?.(0.4 * (done / Math.max(1, todo.length))); };
+  onProgress?.(0.01);
+  const got = await pool(todo, 3, async (item, idx) => {
+    try {
+      if (late()) { log.warn(`B-roll: prazo esgotado, pulando o momento ${idx + 1}`); return null; }
+      if (plan) {
+        const p = item;
+        const start = Math.max(0, Number(p.start) || 0);
+        const end = Math.min(meta.duration, Number(p.end) || start + 3.2);
+        if (end - start < 0.6) return null;
+        const isImage = p.kind !== 'video';
         let file = p.file || null; // mídia própria já resolvida pelo servidor
         if (!file && p.url) {
-          const ext = extOf(p.url, isImage);
-          file = path.join(work, `broll_${clips.length}.${ext}`);
-          await download(p.url, file);
+          file = path.join(work, `broll_${idx}.${extOf(p.url, isImage)}`);
+          await downloadMedia(p.url, p.thumb, file, isImage);
         }
-        if (!file) continue;
-        clips.push({ start, end, query: p.query || 'mídia', term: p.query || null, file, isImage, zoom: p.zoom, fx: p.fx, fy: p.fy, link: p.url || null, credit: p.credit || null });
-      } catch (err) {
-        log.warn(`B-roll (plano) falhou em ${start.toFixed(1)}s: ${err.message}`);
+        if (!file) return null;
+        return { start, end, query: p.query || 'mídia', term: p.query || null, file, isImage, zoom: p.zoom, fx: p.fx, fy: p.fy, link: p.url || null, credit: p.credit || null };
       }
-      if (clips.length >= (options.brollMax ?? 12)) break;
-    }
-  } else for (const m of moments) {
-    try {
+      const m = item;
       const cands = (await brollCandidates(m.query, {
         source, apiKey, google, pixabayKey, orientation, targetH: regionH, limit: 6, unrestricted: google.unrestricted,
       })).filter((c) => !usedIds.has(c.id));
       // Vídeo (movimento) quando houver entre os primeiros resultados; senão uma foto,
       // variando entre as mais relevantes.
       const hit = cands.slice(0, 4).find((c) => c.kind === 'video') || pickVaried(cands);
-      if (!hit) {
-        log.info(`sem B-roll para "${m.query}"`);
-        continue;
+      if (!hit || late()) {
+        if (!hit) log.info(`sem B-roll para "${m.query}"`);
+        return null;
       }
       usedIds.add(hit.id);
       const isImage = hit.kind !== 'video';
-      const dest = path.join(work, `broll_${clips.length}.${extOf(hit.link, isImage)}`);
-      await download(hit.link, dest);
-      clips.push({ ...m, file: dest, isImage, link: hit.link, credit: hit.credit || null, source: hit.source });
+      const dest = path.join(work, `broll_${idx}.${extOf(hit.link, isImage)}`);
+      await downloadMedia(hit.link, hit.thumb, dest, isImage);
+      return { ...m, file: dest, isImage, link: hit.link, credit: hit.credit || null, source: hit.source };
     } catch (err) {
-      log.warn(`B-roll "${m.query}" falhou: ${err.message}`);
+      log.warn(`B-roll ${plan ? `(plano) em ${Number(item.start).toFixed(1)}s` : `"${item.query}"`} falhou: ${err.message}`);
+      return null;
+    } finally {
+      tick();
     }
-  }
+  });
+  clips.push(...got.filter(Boolean).sort((x, y) => x.start - y.start));
   if (!clips.length) return { output: input, inserted: 0 };
 
   // Enquadramento da pessoa na tela dividida: foco no ROSTO. Manual (options) tem
@@ -498,6 +562,8 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   for (const c of clips) {
     // Foto entra como input em loop, limitado à duração do momento.
     if (c.isImage) args.push('-loop', '1', '-t', Math.max(0.6, c.end - c.start).toFixed(2));
+    // Vídeo: lê só o trecho usado (antes decodificava o clipe inteiro, mesmo usando 3 s).
+    else args.push('-t', (Math.max(0.6, c.end - c.start) + 0.5).toFixed(2));
     args.push('-i', c.file);
   }
   if (isSplit && options.personInput) args.push('-i', options.personInput);
@@ -505,7 +571,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   if (meta.hasAudio) args.push('-map', '0:a', '-c:a', 'copy');
   args.push(...x264Fast(), '-movflags', '+faststart', '-y', output);
 
-  await runFfmpeg(args, { label: 'broll', totalDuration: meta.duration, onProgress });
+  await runFfmpeg(args, { label: 'broll', totalDuration: meta.duration, onProgress: (x) => onProgress?.(0.4 + 0.6 * x) });
   const nImg = clips.filter((c) => c.isImage).length;
   const layoutLabel = layout === 'fullscreen' ? 'tela cheia' : `tela dividida (${layout === 'top' ? 'em cima' : 'embaixo'})`;
   log.ok(`${clips.length} inserções de B-roll (${clips.length - nImg} vídeos, ${nImg} fotos, ${layoutLabel})`);

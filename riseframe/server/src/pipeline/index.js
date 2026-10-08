@@ -4,7 +4,7 @@ import { probeSummary, runFfmpeg, sdrVf, x264Fast } from './ffmpeg.js';
 import { transcribe } from './transcribe/index.js';
 import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
-import { preciseRemovals } from './cutRefine.js';
+import { preciseRemovals, wordGapRanges } from './cutRefine.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, unmapTime } from './timeline.js';
 import { insertBroll } from './broll.js';
 import { applyManualFrame } from './frame.js';
@@ -267,10 +267,13 @@ export async function runPipeline(job, onUpdate = () => {}) {
       }
     } else if (options.cutSilence !== false) {
       pauses.push(...(await silenceRemovalRanges(input, meta, options)));
+      // Respirações ficam acima do limiar do detector de volume: os vãos entre as
+      // palavras da transcrição também entram (as bordas são ajustadas pelo áudio).
+      if (options.cutBreaths !== false) pauses.push(...wordGapRanges(transcript, { minGap: options.silenceMinDuration ?? 0.45, duration: meta.duration }));
     }
     // Precisão: pausas nunca invadem palavras (transcrição + volume real do áudio) e as
     // palavras removidas são cortadas no vale de volume entre as vizinhas.
-    const precise = await preciseRemovals(input, { pauses, transcript, hasAudio: meta.hasAudio });
+    const precise = await preciseRemovals(input, { pauses, transcript, hasAudio: meta.hasAudio, breaths: options.cutBreaths !== false });
     const removals = [...precise.pauses];
     // Trechos cortados à mão na faixa de vídeo: valem sempre, com ou sem corte de silêncio.
     for (const c of options.videoCuts || []) {
@@ -484,7 +487,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     const st = enter('render');
     const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf, reframe: aspectReframe }, st.onProgress);
     const outMeta = await probeSummary(r.output).catch(() => ({}));
-    report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe, width: outMeta.width || null, height: outMeta.height || null };
+    report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe, width: outMeta.width || null, height: outMeta.height || null, speed: options.speed && options.speed !== 1 ? options.speed : undefined, duration: outMeta.duration || null };
     st.record({ aspect: r.aspect });
     st.onProgress(1);
   }

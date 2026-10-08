@@ -220,6 +220,13 @@ function silenceParamsFor(strength) {
   return { noiseDb: -30, headroom: 30, min: 0.45, pad: 0.08 }; // equilibrado
 }
 
+/** Velocidade do vídeo: 0,5× a 2×, em passos de 0,05 (1 = normal). Exportado para teste. */
+export function speedOf(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.round(Math.max(0.5, Math.min(2, n)) * 20) / 20;
+}
+
 // Sanitiza a lista de cortes de silêncio escolhidos manualmente na timeline.
 function sanitizeSilenceCuts(raw) {
   if (!Array.isArray(raw)) return [];
@@ -387,6 +394,10 @@ function parseOptions(raw) {
     // timeline, volume, formato, força do corte de silêncio, clipes e minhas mídias).
     // Volume da fala: geral, mudo e trechos com volume próprio (tempo original).
     audioMute: o.audioMute === true,
+    // Respirações entre as frases saem junto com as pausas (padrão: ligado).
+    cutBreaths: o.cutBreaths !== false,
+    // Velocidade do vídeo final (0,5× a 2×), aplicada no render final — fala sem mudar o tom.
+    speed: speedOf(o.speed),
     audioVolume: clampNum(o.audioVolume, 0, 4, 1),
     audioGains: Array.isArray(o.audioGains)
       ? o.audioGains

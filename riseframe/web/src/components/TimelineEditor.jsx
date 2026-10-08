@@ -123,6 +123,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const rangeDragRef = useRef(null);
   // Volume da fala: geral, mudo e trechos com volume próprio (tempo original).
   const [audioMute, setAudioMute] = useState(options?.audioMute === true);
+  // Velocidade do vídeo final (a prévia toca na mesma velocidade) e corte de respirações.
+  const [speed, setSpeed] = useState(() => (SPEEDS.includes(Number(options?.speed)) ? Number(options.speed) : 1));
+  const [cutBreaths, setCutBreaths] = useState(options?.cutBreaths !== false);
+  useEffect(() => { const v = videoRef.current; if (v) v.playbackRate = speed; }, [speed, isMobile]);
   const [audioVolume, setAudioVolume] = useState(Number(options?.audioVolume ?? 1));
   const [gains, setGains] = useState([]);
   // Trechos cortados à mão na faixa de vídeo (tempo original).
@@ -237,7 +241,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // ── Pausas de silêncio (gaps entre palavras mantidas). O usuário decide, na
   // timeline, quais cortar. Por padrão TODA pausa visível é cortada (o cliente
   // reclamou que sobrava silêncio); clicar numa pausa a preserva.
-  const MIN_PAUSE = 0.28; // só mostra/oferece corte a partir daqui (mais sensível = corta mais silêncio)
+  const MIN_PAUSE = 0.22; // só mostra/oferece corte a partir daqui (mais sensível = corta mais silêncio e respiração)
   const [keptPauses, setKeptPauses] = useState(() => new Set());
   const pauseKey = (p) => p.start.toFixed(2);
 
@@ -395,12 +399,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // Prévia 9:16 no mesmo instante do player (mesmo quadro, mesmo zoom).
         const pv = previewVideoRef.current;
         if (pv) {
+          if (pv.playbackRate !== v.playbackRate) pv.playbackRate = v.playbackRate;
           if (Math.abs(pv.currentTime - t) > (v.paused ? 0.04 : 0.3)) { try { pv.currentTime = t; } catch { /* ainda carregando */ } }
           if (v.paused && !pv.paused) pv.pause();
           else if (!v.paused && pv.paused) pv.play().catch(() => {});
         }
         const bv = bgVideoRef.current;
         if (bv) {
+          if (bv.playbackRate !== v.playbackRate) bv.playbackRate = v.playbackRate;
           if (Math.abs(bv.currentTime - t) > (v.paused ? 0.04 : 0.3)) { try { bv.currentTime = t; } catch { /* ainda carregando */ } }
           if (v.paused && !bv.paused) bv.pause();
           else if (!v.paused && bv.paused) bv.play().catch(() => {});
@@ -924,6 +930,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         videoCuts: cuts.map((c) => ({ start: +c.start.toFixed(2), end: +c.end.toFixed(2) })),
         // Volume da fala (tempo original — este estágio roda antes dos cortes).
         audioMute,
+        cutBreaths,
+        speed,
         audioVolume: +Number(audioVolume).toFixed(2),
         audioGains: gains.map((g) => ({ start: +g.start.toFixed(2), end: +g.end.toFixed(2), volume: +Number(g.volume).toFixed(2) })),
         // Minhas mídias colocadas na timeline (imagens/vídeos/músicas próprias).
@@ -1017,7 +1025,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (kind === 'capList') setCapPane('lista');
     if (kind === 'capStyle') setCapPane('estilo');
     if (kind === 'capEm') setCapPane('enfase');
-    if (kind !== 'tab') setTab('legenda');
+    if (kind !== 'tab' && kind !== 'speed') setTab('legenda');
     setSheet(kind);
   }
   // A lista acompanha: tocando → a legenda falada; parado → a selecionada.
@@ -1325,7 +1333,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}`} style={{ display: 'grid', gridTemplateColumns: showFormatPreview ? (landscapePreview ? 'minmax(0,1.3fr) minmax(0,1fr)' : 'minmax(0,1fr) auto') : '1fr', gap: 12, alignItems: 'center', padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(124,58,237,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
             <div className="rf-tl-main" style={{ minWidth: 0, containerType: 'inline-size' }}>
               <div style={{ position: 'relative', width: 'fit-content', maxWidth: '100%', margin: '0 auto', borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
-                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ display: 'block', width: 'auto', maxWidth: '100%', height: vdim ? `min(var(--rf-stage-h), ${((vdim.h / vdim.w) * 100).toFixed(3)}cqw)` : 'var(--rf-stage-h)', objectFit: 'contain', background: '#000', filter: videoFilter }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim({ w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; measureVideo(); }} playsInline />
+                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ display: 'block', width: 'auto', maxWidth: '100%', height: vdim ? `min(var(--rf-stage-h), ${((vdim.h / vdim.w) * 100).toFixed(3)}cqw)` : 'var(--rf-stage-h)', objectFit: 'contain', background: '#000', filter: videoFilter }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim({ w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
                 {vbox && lookCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...lookCss.tint }} />}
                 {vbox && colorCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...colorCss.tint }} />}
                 {vbox && brollNow && (
@@ -1377,9 +1385,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               </div>
               <button onClick={togglePlay} aria-label={playing ? 'Pausar' : 'Tocar'} style={{ ...mIconBtn, width: 44, height: 44, justifySelf: 'center' }}><Icon name={playing ? 'pause' : 'play'} size={24} strokeWidth={2} /></button>
               <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'flex-end' }}>
-                <button onClick={() => setPreviewCuts((v) => !v)} aria-label="Prévia com cortes" title={previewCuts ? 'Tocando com os cortes' : 'Tocando sem cortes'} style={{ ...mIconBtn, color: previewCuts ? C.orangeSoft : C.muted }}><Icon name="scissors" size={18} strokeWidth={2} /></button>
-                <button onClick={undo} disabled={!canUndo} aria-label="Desfazer" style={{ ...mIconBtn, opacity: canUndo ? 1 : 0.35 }}><Icon name="undo" size={19} strokeWidth={2} /></button>
-                <button onClick={redo} disabled={!canRedo} aria-label="Refazer" style={{ ...mIconBtn, opacity: canRedo ? 1 : 0.35 }}><Icon name="undo" size={19} strokeWidth={2} style={{ transform: 'scaleX(-1)' }} /></button>
+                {speed !== 1 && <button onClick={() => openSheet('speed')} aria-label="Velocidade" style={{ border: 'none', borderRadius: 6, background: 'rgba(255,107,53,0.18)', color: C.orangeSoft, fontSize: 11, fontWeight: 800, padding: '4px 6px', fontFamily: 'inherit', cursor: 'pointer', flexShrink: 0 }}>{fmtSpeed(speed)}</button>}
+                <button onClick={() => setPreviewCuts((v) => !v)} aria-label="Prévia com cortes" title={previewCuts ? 'Tocando com os cortes' : 'Tocando sem cortes'} style={{ ...mIconBtn, width: 34, color: previewCuts ? C.orangeSoft : C.muted }}><Icon name="scissors" size={18} strokeWidth={2} /></button>
+                <button onClick={undo} disabled={!canUndo} aria-label="Desfazer" style={{ ...mIconBtn, width: 34, opacity: canUndo ? 1 : 0.35 }}><Icon name="undo" size={19} strokeWidth={2} /></button>
+                <button onClick={redo} disabled={!canRedo} aria-label="Refazer" style={{ ...mIconBtn, width: 34, opacity: canRedo ? 1 : 0.35 }}><Icon name="undo" size={19} strokeWidth={2} style={{ transform: 'scaleX(-1)' }} /></button>
               </div>
             </div>
           )}
@@ -1403,6 +1412,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ position: 'absolute', left: 0, width: `${dur ? (cur / dur) * 100 : 0}%`, height: 4, borderRadius: 4, background: GRAD }} />
               <div style={{ position: 'absolute', left: `calc(${dur ? (cur / dur) * 100 : 0}% - 6px)`, width: 12, height: 12, borderRadius: '50%', background: '#fff', boxShadow: `0 0 0 3px ${C.orange}55` }} />
             </div>
+            <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} title="Velocidade do vídeo final (a prévia toca nela)" aria-label="Velocidade"
+              style={{ height: 30, flexShrink: 0, borderRadius: 8, border: `1px solid ${speed !== 1 ? C.orange : C.border}`, background: 'rgba(0,0,0,0.35)', color: speed !== 1 ? C.orangeSoft : C.text, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', padding: '0 6px', cursor: 'pointer' }}>
+              {SPEEDS.map((k) => <option key={k} value={k}>{fmtSpeed(k)}</option>)}
+            </select>
             <button onClick={() => setPreviewCuts((v) => !v)} title="Ao tocar, pular os trechos cortados (como no vídeo final)" style={{ ...miniBtn(previewCuts, false), whiteSpace: 'nowrap', flexShrink: 0 }}>
               <Icon name="scissors" size={12} strokeWidth={2.2} /> <span className="rf-tl-hide-sm">{previewCuts ? 'Com cortes' : 'Sem cortes'}</span>
             </button>
@@ -1425,7 +1438,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <button onClick={() => setSheet(null)} aria-label="Concluir" style={mIconBtn}><Icon name={sheet === 'capAuto' ? 'close' : 'check'} size={22} strokeWidth={2.2} /></button>
             </div>
           )}
-          {sheet === 'capAuto' && isMobile ? (
+          {sheet === 'speed' && isMobile ? (
+            <div style={{ display: 'grid', gap: 14, paddingTop: 4 }}>
+              <SpeedPicker value={speed} onChange={setSpeed} big />
+              <div style={{ ...mRow, justifyContent: 'space-between' }}>
+                <span>Duração final</span>
+                <span style={{ color: C.green, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(stats.keptSec / speed)}</span>
+              </div>
+              <div style={{ ...mRow, display: 'block' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><Icon name="mic" size={19} strokeWidth={1.9} /> <span style={{ flex: 1 }}>Respirações</span></div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <button onClick={() => setCutBreaths(true)} style={{ ...miniBtn(cutBreaths, false), minHeight: 40, justifyContent: 'center' }}>Remover</button>
+                  <button onClick={() => setCutBreaths(false)} style={{ ...miniBtn(!cutBreaths, false), minHeight: 40, justifyContent: 'center' }}>Manter</button>
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: C.faint, lineHeight: 1.5 }}>A prévia já toca nessa velocidade. A voz acelera sem mudar o tom; legendas e sons acompanham.</div>
+            </div>
+          ) : sheet === 'capAuto' && isMobile ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
               <div style={mRow}>
                 <Icon name="sparkles" size={19} strokeWidth={1.9} /> <span style={{ flex: 1 }}>Gerar a partir de</span>
@@ -1668,6 +1697,26 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {/* Volume da fala: geral, mudo e trechos com volume próprio */}
           {tab === 'audio' && (
             <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+              <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}`, display: 'grid', gap: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Silêncios e respirações</div>
+                <CapRow label="Respirações entre as frases">
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => setCutBreaths(true)} style={{ ...miniBtn(cutBreaths, false), flex: 1 }}>Remover</button>
+                    <button onClick={() => setCutBreaths(false)} style={{ ...miniBtn(!cutBreaths, false), flex: 1 }}>Manter</button>
+                  </div>
+                </CapRow>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11.5, color: C.muted, flex: 1, minWidth: 140 }}>{pauses.length ? `${pausesCut.length} de ${pauses.length} pausas cortadas (−${fmtDuration(pauseCutSec)})` : 'Sem pausas para cortar'}</span>
+                  <button onClick={cutAllPauses} disabled={!pauses.length || pausesCut.length === pauses.length} style={miniBtn(false, !pauses.length || pausesCut.length === pauses.length)}>Cortar todas</button>
+                  <button onClick={keepAllPauses} disabled={!pausesCut.length} style={miniBtn(false, !pausesCut.length)}>Manter todas</button>
+                </div>
+                <div style={{ fontSize: 11, color: C.faint, lineHeight: 1.45 }}>Com <b>Remover</b>, a inspiração antes de cada frase sai junto com a pausa (o corte vai até a próxima palavra).</div>
+              </div>
+              <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Velocidade do vídeo</div>
+                <SpeedPicker value={speed} onChange={setSpeed} />
+                <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Duração final: <b style={{ color: C.text }}>{fmtDuration(stats.keptSec / speed)}</b> · a voz acelera sem mudar o tom.</div>
+              </div>
               <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Voz</div>
                 <VoicePanel stacked catalog={catalog} value={voice} onChange={setVoice} onPreview={playVoicePreview} previewBusy={voicePrev.busy}
@@ -2370,7 +2419,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <Chip label="Palavras" value={stats.total} color={C.text} />
             <Chip label="Cortadas" value={stats.removed} color={C.red} />
             <Chip label="Pausas cortadas" value={pausesCut.length} sub={pauseCutSec > 0.1 ? `−${fmtDuration(pauseCutSec)}` : null} color={C.orangeSoft} />
-            <Chip label="Duração final" value={fmtDuration(stats.keptSec)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
+            <Chip label={speed !== 1 ? `Duração final · ${fmtSpeed(speed)}` : 'Duração final'} value={fmtDuration(stats.keptSec / speed)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
           </div>
 
           {selSeg && (
@@ -2445,6 +2494,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           ] : [
             { k: 'cap', icon: 'captions', label: 'Legendas', act: () => setMTool('legenda') },
             { k: 'split', icon: 'scissors', label: 'Dividir', act: splitAtPlayhead, off: !canSplit },
+            { k: 'speed', icon: 'clock', label: speed !== 1 ? `Velocidade ${fmtSpeed(speed)}` : 'Velocidade', act: () => openSheet('speed') },
             ...TABS.filter((t) => t.id !== 'legenda').map((t) => ({ k: t.id, icon: t.icon, label: t.id === 'enquadramento' ? 'Formato' : t.id === 'midias' ? 'Mídias' : t.label, act: () => openSheet('tab', t.id) })),
             { k: 'pauses', icon: 'scissors', label: pausesCut.length === pauses.length && pauses.length ? 'Manter pausas' : 'Remover pausas', act: () => (pausesCut.length === pauses.length ? keepAllPauses() : cutAllPauses()), off: !pauses.length },
           ]).map((t) => (
@@ -2471,7 +2521,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         .rf-m .rf-tl-preview{ order: 1 !important; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: center; padding: 0 12px; }
         .rf-m .rf-tl-pv{ background: none !important; border: none !important; padding: 4px 0 !important; border-radius: 0 !important; }
         .rf-m .rf-tl-pvlabel{ display: none; }
-        .rf-m-ctrl{ display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 2px 8px; }
+        .rf-m-ctrl{ display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; padding: 2px 8px; }
         .rf-m .rf-tl-bottom{ order: 2 !important; padding: 0 0 6px; }
         .rf-m .rf-tl-bottom > :not(.rf-tl-track){ display: none !important; }
         .rf-m .rf-tl-track{ border: none !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
@@ -2574,10 +2624,30 @@ function toolBtn(disabled) {
 function miniBtn(active, disabled) {
   return { display: 'inline-flex', alignItems: 'center', gap: 5, border: `1px solid ${active ? C.red : C.border}`, background: active ? 'rgba(240,82,107,0.18)' : 'rgba(255,255,255,0.05)', color: active ? C.red : C.muted, borderRadius: 8, padding: '5px 10px', fontSize: 11.5, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, fontFamily: 'inherit' };
 }
+// Velocidades oferecidas (o servidor aceita de 0,5× a 2×)
+const SPEEDS = [0.75, 1, 1.1, 1.2, 1.25, 1.5, 2];
+const fmtSpeed = (k) => `${String(k).replace('.', ',')}×`;
+function SpeedPicker({ value, onChange, big = false }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${SPEEDS.length}, minmax(0, 1fr))`, gap: 5 }}>
+      {SPEEDS.map((k) => {
+        const on = value === k;
+        return (
+          <button key={k} onClick={() => onChange(k)} aria-pressed={on}
+            style={{ minHeight: big ? 46 : 32, borderRadius: big ? 12 : 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: big ? 14 : 12, fontWeight: 700, padding: 0,
+              border: on ? `1.5px solid ${C.orange}` : `1px solid ${C.border}`, background: on ? 'rgba(255,107,53,0.16)' : 'rgba(255,255,255,0.04)', color: on ? C.orangeSoft : C.text }}>
+            {fmtSpeed(k)}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // Celular (estilo CapCut)
 const mIconBtn = { width: 40, height: 40, borderRadius: 12, border: 'none', background: 'none', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 };
 const mRow = { display: 'flex', alignItems: 'center', gap: 12, padding: '16px 16px', borderRadius: 16, background: 'rgba(255,255,255,0.06)', fontSize: 15.5, fontWeight: 600, color: '#fff' };
-const SHEET_TITLE = { capList: 'Editar legendas', capStyle: 'Estilo da legenda', capEm: 'Destacar palavras', capAuto: 'Legendas automáticas' };
+const SHEET_TITLE = { speed: 'Velocidade', capList: 'Editar legendas', capStyle: 'Estilo da legenda', capEm: 'Destacar palavras', capAuto: 'Legendas automáticas' };
 
 const TABS = [
   { id: 'enquadramento', label: 'Enquadramento', icon: 'crop' },

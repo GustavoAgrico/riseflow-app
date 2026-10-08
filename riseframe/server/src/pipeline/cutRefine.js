@@ -70,6 +70,17 @@ function speechThreshold(env) {
   return Math.max(env.floor + 9, env.peak - 50);
 }
 
+/**
+ * Limiar com corte de RESPIRAÇÕES: respiração e chiado de fundo ficam bem abaixo da
+ * voz (tipicamente 20–40 dB abaixo do pico), mas acima do ruído — com o limiar comum
+ * eram tratados como "ainda é fala" e ficavam no vídeo. Aqui só conta como som o que
+ * está a menos de 22 dB do pico (as pontas das palavras seguem protegidas pela
+ * transcrição em `protectWords`).
+ */
+function breathThreshold(env) {
+  return Math.max(env.floor + 9, env.peak - 22);
+}
+
 const frameAt = (env, t) => Math.max(0, Math.min(env.db.length - 1, Math.floor(t / env.hop + 1e-6)));
 
 /** Palavras mantidas (não removidas) em ordem: [{ start, end }]. */
@@ -116,9 +127,9 @@ export function protectWords(ranges, words, { pre = 0.08, post = 0.12, minRemove
  * palavra ainda soa (até `maxShift`), e o fim do corte recua enquanto o ataque da
  * próxima palavra já começou; depois deixa uma pequena margem (`tail`/`preroll`). Puro.
  */
-export function fitPausesToAudio(ranges, env, { maxShift = 0.3, tail = 0.04, preroll = 0.06, minRemove = 0.06 } = {}) {
+export function fitPausesToAudio(ranges, env, { maxShift = 0.3, tail = 0.04, preroll = 0.06, minRemove = 0.06, breaths = false } = {}) {
   if (!env) return ranges;
-  const thr = speechThreshold(env);
+  const thr = breaths ? breathThreshold(env) : speechThreshold(env);
   const loud = (t) => env.db[frameAt(env, t)] > thr;
   const out = [];
   for (const r of ranges) {
@@ -170,6 +181,25 @@ export function removedWordRanges(transcript, env, { pad = 0.04, window = 0.06, 
   return out;
 }
 
+/**
+ * Vãos entre palavras mantidas (onde a transcrição não ouviu fala): respirações,
+ * estalos de boca e silêncios que o detector de volume deixa passar. Puro.
+ */
+export function wordGapRanges(transcript, { minGap = 0.28, duration = Infinity } = {}) {
+  const words = keptWords(transcript);
+  const out = [];
+  if (!words.length) return out;
+  if (words[0].start >= minGap) out.push({ start: 0, end: words[0].start });
+  for (let i = 0; i < words.length - 1; i++) {
+    const a = words[i].end;
+    const b = words[i + 1].start;
+    if (b - a >= minGap) out.push({ start: a, end: b });
+  }
+  const last = words[words.length - 1].end;
+  if (Number.isFinite(duration) && duration - last >= minGap) out.push({ start: last, end: duration });
+  return out;
+}
+
 /** Instante de menor volume em [a, b] (ou `fallback` se a janela for vazia). */
 function valley(env, a, b, fallback) {
   if (!(b > a)) return fallback;
@@ -189,10 +219,14 @@ function valley(env, a, b, fallback) {
  * Junta tudo: pausas protegidas (palavras + volume) e palavras removidas cortadas no
  * vale. Sem envelope (falha do ffmpeg) ou sem transcrição, cai no que der.
  */
-export async function preciseRemovals(input, { pauses = [], transcript, hasAudio = true } = {}) {
+export async function preciseRemovals(input, { pauses = [], transcript, hasAudio = true, breaths = false } = {}) {
   const env = hasAudio ? await audioEnvelope(input).catch(() => null) : null;
   const words = keptWords(transcript);
-  const safePauses = fitPausesToAudio(protectWords(pauses, words), env);
+  // Com corte de respirações: folgas menores em volta das palavras e borda guiada pelo
+  // limiar de respiração (a inspiração antes da frase sai junto com a pausa).
+  const safePauses = breaths
+    ? fitPausesToAudio(protectWords(pauses, words, { pre: 0.05, post: 0.07 }), env, { breaths: true, maxShift: 0.2, tail: 0.03, preroll: 0.04 })
+    : fitPausesToAudio(protectWords(pauses, words), env);
   const removed = removedWordRanges(transcript, env);
   const before = pauses.reduce((a, r) => a + (r.end - r.start), 0);
   const after = safePauses.reduce((a, r) => a + (r.end - r.start), 0);
