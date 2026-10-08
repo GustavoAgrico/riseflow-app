@@ -176,9 +176,11 @@ Depois de virar o DNS, atualize o que aponta para o endereço do site:
 - **Render:** com tudo funcionando na VM, suspenda o serviço antigo (Settings →
   Suspend) para não ter dois sites cobrando/atendendo ao mesmo tempo.
 
-> As contas de usuário **não migram** entre os dois hosts — o banco é um arquivo no
-> disco de cada máquina. Se já houver gente cadastrada no site antigo, elas precisam
-> se cadastrar de novo, ou você copia o `data/` do host antigo antes de virar o DNS.
+> **Contas, planos e Pix vêm junto** se você colocar no `.env` da VM os mesmos
+> `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` do Render: o app guarda `users.json`,
+> `billing.json`, `settings.json` e o `auth_secret` no Supabase e baixa tudo ao ligar
+> (os logins continuam valendo). Sem o Supabase, use o backup: no site antigo,
+> Configurações → **Baixar backup**, e na VM `deploy/restore.sh arquivo.zip`.
 
 ---
 
@@ -221,7 +223,9 @@ Com disco sobrando, subir para `72` dá uma janela mais confortável.
   nas *Authorized JavaScript origins* no Google Cloud.
 - **Recuperação de senha:** preencha `SMTP_HOST/PORT/USER/PASS/FROM` (ex.: Gmail com
   senha de app).
-- **B-roll / IA:** `PEXELS_API_KEY`, `ANTHROPIC_API_KEY`.
+- **Contas no Supabase (recomendado):** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — os mesmos do Render.
+- **E-mails:** `RESEND_API_KEY`, `EMAIL_FROM`.
+- **B-roll / IA:** `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `ANTHROPIC_API_KEY`.
 - **Legendas melhores:** suba `WHISPER_MODEL` para `small` (a A1 aguenta).
 
 ## Problemas comuns
