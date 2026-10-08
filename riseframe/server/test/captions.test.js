@@ -147,3 +147,22 @@ test('estilos novos: karaokê destaca sempre, marca-texto põe caixa só na pala
   assert.match(d, /\\N\{\\fscx135\\fscy135\\c&H007AD42E\}PREMIUM/, 'palavra-chave desce, maior e colorida');
   assert.match(d, /\}ESSE É\\N/, 'o resto da frase fica branco, na linha de cima');
 });
+
+test('premium: palavra a palavra, parte grande com brilho na linha de baixo e sons da legenda', async () => {
+  const { captionSfxEvents } = await import('../src/pipeline/captions.js');
+  const seg = [{ start: 0, end: 1.6, words: [
+    { start: 0, end: 0.3, word: 'eles' }, { start: 0.4, end: 0.7, word: 'vivem' }, { start: 0.8, end: 1.4, word: 'perguntando' },
+  ] }];
+  const ev = buildAss(seg, meta, { template: 'premium' }).split('\n').filter((l) => l.startsWith('Dialogue'));
+  assert.equal(ev.length, 3, 'um evento por palavra falada');
+  assert.match(ev[0], /\\1a&HFF&\\3a&HFF&\\4a&HFF&\}vivem/, 'a próxima palavra já ocupa o lugar, invisível');
+  assert.match(ev[2], /\\Nperguntando|\\N\{[^}]*\}perguntando/, 'a palavra-chave desce para a linha de baixo');
+  assert.match(ev[2], /\\blur\d+[^}]*\}perguntando/, 'com brilho');
+  const sfx = captionSfxEvents(seg, { template: 'premium' });
+  assert.deepEqual(sfx.map((e) => e.type).sort(), ['tick', 'tick', 'whoosh'], 'clique nas pequenas, whoosh na grande');
+  assert.ok(Math.abs(sfx.find((e) => e.type === 'whoosh').t - 0.4) < 1e-9, 'o whoosh termina de subir quando a palavra grande entra');
+  // outros estilos: só as palavras com ênfase manual ganham som
+  assert.deepEqual(captionSfxEvents(seg, { template: 'clean' }), []);
+  const em = [{ ...seg[0], words: seg[0].words.map((w, i) => (i === 1 ? { ...w, emBig: true } : w)) }];
+  assert.deepEqual(captionSfxEvents(em, { template: 'clean' }).map((e) => e.type), ['whoosh']);
+});

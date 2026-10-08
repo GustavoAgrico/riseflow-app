@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 import { posOf } from './timeline.js';
-import { pickKeyword, emphasisOf } from '../../../shared/captionKeyword.js';
+import { pickKeyword, emphasisOf, premiumChunks } from '../../../shared/captionKeyword.js';
+
+export { premiumChunks };
 
 const log = makeLogger('captions');
 
@@ -76,6 +78,9 @@ export const CAPTION_TEMPLATES = {
   duo: { mode: 'phrase', size: 0.064, align: 2, marginV: 0.15, outline: 0.1, bold: true, upper: true, anim: 'pop', highlightKeyword: true, keywordBreak: true, kwScale: 135, defaultFont: 'archivo' },
   // Minimalista: minúsculas, sem contorno; as outras palavras apagadas e a falada colorida.
   minimal: { mode: 'phrase', size: 0.056, align: 2, marginV: 0.14, outline: 0.05, bold: true, upper: false, anim: 'fade', forceHighlight: true, dimOthers: true, defaultFont: 'poppins' },
+  // Premium: palavras entram uma a uma; as comuns pequenas em cima e a palavra-chave
+  // embaixo, grande, com brilho e desfoque de entrada (+ clique/whoosh no som).
+  premium: { mode: 'phrase', size: 0.08, smallSize: 0.04, align: 2, marginV: 0.2, outline: 0.05, bold: true, upper: false, anim: 'fade', premium: true, defaultFont: 'archivo', smallFont: 'inter' },
 };
 
 export const CAPTION_TEMPLATE_LABELS = {
@@ -90,6 +95,7 @@ export const CAPTION_TEMPLATE_LABELS = {
   marker: 'Marca-texto',
   duo: 'Duas linhas',
   minimal: 'Minimalista',
+  premium: 'Premium (palavra a palavra + brilho)',
 };
 
 /** Posição vertical da legenda no quadro. */
@@ -143,6 +149,13 @@ function animTag(anim) {
     default:
       return '\\fad(60,60)';
   }
+}
+
+/** Mistura uma cor com o branco (t = 0 → cor, 1 → branco). */
+function tint(hex, t) {
+  const h = String(hex).replace('#', '');
+  const c = [0, 2, 4].map((i) => Math.round(parseInt(h.slice(i, i + 2), 16) * (1 - t) + 255 * t));
+  return c.map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase();
 }
 
 /**
@@ -300,6 +313,49 @@ export function buildAss(segments, meta, style = {}) {
         const ov = `{${posTag(wd) || `\\an${align}`}${fsTag}${anim}${glow}${colorTag}}`;
         lines.push(`Dialogue: 0,${assTime(wd.start)},${assTime(end)},${phraseStyle},,0,0,0,,${ov}${txt}`);
       }
+    } else if (T.premium) {
+      // Cada palavra aparece quando é falada (as próximas já ocupam o lugar, invisíveis,
+      // para nada pular). Pequenas: fonte leve e sombra. Grandes: fonte pesada, cor clara
+      // com brilho (contorno colorido borrado) e entrada com desfoque + escala.
+      const premCol = color === 'white' ? 'C6F25A' : CAPTION_COLORS[color];
+      const fillC = assColor(tint(premCol, color === 'white' ? 0.72 : 0.55));
+      const glowC = assColor(premCol);
+      const smallSize = Math.round(h * T.smallSize * scale);
+      const smallFont = CAPTION_FONTS[T.smallFont]?.family || 'Inter';
+      const plainBig = Math.round(size * 0.78);
+      const glowBord = Math.max(2, Math.round(size * 0.06));
+      const glowBlur = Math.max(4, Math.round(size * 0.09));
+      for (const ch of premiumChunks(words, seg.end)) {
+        const cw = ch.words;
+        for (let i = 0; i < cw.length; i++) {
+          const start = cw[i].start;
+          const end = i + 1 < cw.length ? cw[i + 1].start : ch.end;
+          const parts = cw.map((wd, j) => {
+            const big = j >= ch.big;
+            const glow = big && ch.glow;
+            const emC = wd.emColor ? assColor(CAPTION_COLORS[wd.emColor]) : null;
+            let look;
+            if (!big) {
+              look = `\\fn${smallFont}\\fs${smallSize}\\b1\\c${emC || WHITE}\\bord0\\shad${Math.max(1, Math.round(smallSize * 0.06))}\\blur0`;
+            } else if (glow) {
+              look = `\\fn${fontName}\\fs${wd.emBig ? bigSize : size}\\b0\\c${emC || fillC}\\3c${emC || glowC}\\bord${glowBord}\\blur${glowBlur}\\shad0`;
+            } else {
+              look = `\\fn${fontName}\\fs${plainBig}\\b0\\c${emC || WHITE}\\3c&H000000&\\bord${Math.max(1, Math.round(plainBig * 0.04))}\\blur1\\shad0`;
+            }
+            const shown = glow ? '\\1a&H00&\\3a&H60&\\4a&HFF&' : '\\1a&H00&\\3a&H40&\\4a&H80&';
+            if (j > i) return `{${look}\\1a&HFF&\\3a&HFF&\\4a&HFF&}${escapeAss(wd.word)}`;
+            if (j < i) return `{${look}${shown}}${escapeAss(wd.word)}`;
+            // Entrando agora: aparece em ~0,15 s; as grandes chegam esticadas e desfocadas
+            // (só na largura: mudar a altura faria a linha de cima pular).
+            const enter = big
+              ? `\\fscx118\\be10\\t(0,180,\\fscx100\\be0)`
+              : `\\fscx92\\t(0,120,\\fscx100)`;
+            return `{${look}\\1a&HFF&\\3a&HFF&\\4a&HFF&${enter}\\t(0,150,${shown})}${escapeAss(wd.word)}`;
+          });
+          const text = parts.map((p, j) => (j === 0 ? p : `${j === ch.big ? '\\N' : ' '}${p}`)).join('');
+          lines.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Rise,,0,0,0,,{${posTag(cw[0])}}${text}`);
+        }
+      }
     } else if (markerOn) {
       // Camada 0: a frase inteira (contorno normal). Camada 1, palavra a palavra: o mesmo
       // texto invisível com a caixa ligada só na palavra falada — fica exatamente atrás dela.
@@ -417,4 +473,33 @@ export async function burnCaptions(input, work, meta, transcript, style, onProgr
   const tpl = CAPTION_TEMPLATES[style.template] ? style.template : style.mode === 'word' ? 'pop' : 'clean';
   log.ok(`legendas queimadas (${transcript.segments.length} seg, estilo ${tpl}, cor ${style.color || 'white'})`);
   return { output, count: transcript.segments.length };
+}
+
+/**
+ * Efeitos sonoros que acompanham a legenda (tempos na timeline final):
+ * - estilo Premium: um clique curto a cada palavra que aparece e um whoosh chegando na
+ *   palavra grande (com brilho);
+ * - qualquer estilo: whoosh nas palavras com ênfase manual.
+ * @returns {Array<{t:number,type:'tick'|'whoosh'}>}
+ */
+export function captionSfxEvents(segments, style = {}) {
+  const T = CAPTION_TEMPLATES[style.template] || {};
+  const events = [];
+  for (const seg of segments || []) {
+    const words = (seg.words?.length ? seg.words : [])
+      .map((wd) => ({ start: Number(wd.start) || 0, end: Number(wd.end) || 0, word: String(wd.word ?? '').trim(), ...emphasisOf(wd) }))
+      .filter((wd) => wd.word);
+    if (!words.length) continue;
+    if (T.premium) {
+      for (const ch of premiumChunks(words, seg.end)) {
+        ch.words.forEach((wd, j) => {
+          if (ch.glow && j === ch.big) events.push({ t: Math.max(0, wd.start - 0.4), type: 'whoosh' });
+          else events.push({ t: wd.start, type: 'tick' });
+        });
+      }
+    } else {
+      for (const wd of words) if (wd.emColor || wd.emBig) events.push({ t: Math.max(0, wd.start - 0.4), type: 'whoosh' });
+    }
+  }
+  return events.sort((a, b) => a.t - b.t);
 }

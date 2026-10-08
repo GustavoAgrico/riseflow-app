@@ -15,7 +15,7 @@ import { applyAudioGain, gainAf } from './gain.js';
 import { markFillers } from './cleanup.js';
 import { classifyNarrative } from './narrative.js';
 import { cleanupWithClaude } from './cleanupLLM.js';
-import { burnCaptions } from './captions.js';
+import { burnCaptions, captionSfxEvents } from './captions.js';
 import { applySoundEffects } from './sfx.js';
 import { colorFilter, hasColorAdjust } from './color.js';
 import { convertAspect, finalRender } from './render.js';
@@ -385,6 +385,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
   }
 
   // 6. Legendas (transcrição sincronizada)
+  let captionStyle = null; // o estilo usado também decide os sons da legenda (6b)
   if (has('captions')) {
     const st = enter('captions');
     const style = {
@@ -400,6 +401,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       posX: options.captionX, // posição livre arrastada na prévia (0–1), vale para todas as frases
       posY: options.captionY,
     };
+    captionStyle = style;
     const r = await burnCaptions(input, work, meta, transcript, style, st.onProgress);
     input = r.output;
     report.captions = { segments: r.count, template: style.template, color: style.color };
@@ -418,9 +420,19 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (report.motion?.effect === 'dynamic') {
       for (const [a] of dynamicZoomWindows(transcript.segments, meta, options.zoomMoments)) events.push({ t: Math.max(0, a - 0.3), type: 'whoosh' });
     }
-    // Dois whooshes quase juntos viram ruído: mantém um a cada 0,8 s no mínimo.
+    // Sons da legenda: cliques palavra a palavra (estilo Premium) e whoosh nas ênfases.
+    if (captionStyle) events.push(...captionSfxEvents(transcript.segments, captionStyle));
+    // Dois whooshes quase juntos viram ruído: mantém um a cada 0,8 s no mínimo (os
+    // cliques ficam todos — eles são curtinhos e marcam cada palavra).
     events.sort((x, y) => x.t - y.t);
-    for (let i = events.length - 1; i > 0; i -= 1) if (events[i].t - events[i - 1].t < 0.8) events.splice(i, 1);
+    const kept = [];
+    for (const e of events) {
+      const prev = e.type === 'tick' ? null : [...kept].reverse().find((k) => k.type !== 'tick');
+      if (prev && e.t - prev.t < 0.8) continue;
+      kept.push(e);
+    }
+    events.length = 0;
+    events.push(...kept);
     const r = await applySoundEffects(input, work, meta, events, options, st.onProgress);
     if (r.applied) input = r.output;
     report.sfx = { count: r.count };

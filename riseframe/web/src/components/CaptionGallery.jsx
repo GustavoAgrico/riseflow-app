@@ -6,6 +6,8 @@ import { captionLook, CaptionWords } from './CaptionPreview.jsx';
 // os ajustes finos (fonte, animação, tamanho…) continuam valendo depois.
 export const CAPTION_PRESETS = [
   { id: 'none', label: 'Sem legenda' },
+  // Premium: palavra a palavra, palavra-chave grande com brilho + cliques e whoosh no som.
+  { id: 'premium', label: 'Premium ✨', patch: { captionTemplate: 'premium', captionColor: 'white', soundEffects: true } },
   { id: 'classico', label: 'Clássico', patch: { captionTemplate: 'clean', captionColor: 'white' } },
   { id: 'karaoke', label: 'Karaokê', patch: { captionTemplate: 'karaoke', captionColor: 'yellow' } },
   { id: 'marcatexto', label: 'Marca-texto', patch: { captionTemplate: 'marker', captionColor: 'purple' } },
