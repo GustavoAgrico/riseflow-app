@@ -3,18 +3,21 @@ import { C, GRAD, gradientText, glass, FONT_DISPLAY } from './theme.js';
 import { getOptions, getHealth, getSettings, createJob, transcribe, generateClips, renderEdited, subscribeJob, sampleFile, getJob } from './api.js';
 import { PrimaryButton, Card, Spinner } from './components/ui.jsx';
 import Icon, { Logo } from './components/Icon.jsx';
-import Uploader from './components/Uploader.jsx';
 import OptionsPanel, { Row, Toggle, Select, Swatches } from './components/OptionsPanel.jsx';
-import Pipeline from './components/Pipeline.jsx';
 import Result from './components/Result.jsx';
 import ClipsResult from './components/ClipsResult.jsx';
 import TimelineEditor from './components/TimelineEditor.jsx';
+import CreateWizard from './components/CreateWizard.jsx';
+import Processing from './components/Processing.jsx';
+import { presetPatch } from './components/CaptionGallery.jsx';
+import { brandOptions, brandWatermark } from './brandKit.js';
+import { formatById } from './formats.js';
 import CaptionGallery from './components/CaptionGallery.jsx';
 import { recordJob, listJobs } from './history.js';
 import CostLine from './components/CostLine.jsx';
 import { useAuth } from './AuthContext.jsx';
 
-export default function App({ embedded = false, onHome, onSettings, intent = null } = {}) {
+export default function App({ embedded = false, onHome, onSettings, intent = null, template = null, reopen = null } = {}) {
   const { refreshBilling } = useAuth();
   const [catalog, setCatalog] = useState(null);
   const [health, setHealth] = useState(null);
@@ -25,7 +28,9 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   const videoUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
   const [options, setOptions] = useState(null);
-  const [editMode, setEditMode] = useState(intent === 'editor' ? 'editor' : 'auto');
+  const [editMode, setEditMode] = useState(intent === 'editor' ? 'editor' : template?.format === 'cortes' ? 'clips' : 'auto');
+  // Formato escolhido no passo 1 do Criar vídeo (Reels, TikTok, YouTube…).
+  const [formatId, setFormatId] = useState(template?.format || null);
 
   const [phase, setPhase] = useState('setup');
   const [uploadPct, setUploadPct] = useState(0);
@@ -74,7 +79,12 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
             savedKey = '';
           }
           if (cancelled) return;
-          setOptions({ ...c.defaults, pexelsKey: savedKey, ...(intent === 'broll' ? { broll: true } : null) });
+          // Padrões do app + Brand Kit (estilo da legenda da marca) + template escolhido.
+          const tpl = template ? { ...template.options, ...presetPatch(template.preset) } : null;
+          // Formato já escolhido (atalho do Início ou do template): Reels → 9:16 etc.
+          const fmt = formatById(template?.format);
+          const fmtOpts = fmt ? (fmt.clips ? { clipAspect: fmt.aspect } : { aspect: fmt.aspect }) : null;
+          setOptions({ ...c.defaults, ...brandOptions(), ...tpl, ...fmtOpts, pexelsKey: savedKey, ...(intent === 'broll' ? { broll: true } : null) });
           setLoadError(null);
           return;
         } catch (e) {
@@ -89,7 +99,15 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     };
   }, []);
 
-  function fail(msg) {
+  // Aberto a partir de "Continuar editando" (Início / Meus projetos): vai direto para a timeline.
+  const reopened = React.useRef(false);
+  useEffect(() => {
+    if (!reopen?.sourceId || !catalog || !options || reopened.current) return;
+    reopened.current = true;
+    reopenFromHistory(reopen);
+  }, [reopen, catalog, options]);
+
+    function fail(msg) {
     setError(msg);
     setPhase('error');
     refreshBilling();
@@ -124,14 +142,25 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     });
   }
 
+  // Logo do Brand Kit (marca d'água): sobe a imagem e junta às opções do vídeo.
+  async function withBrand(opts) {
+    try {
+      const watermark = await brandWatermark();
+      return watermark ? { ...opts, watermark } : opts;
+    } catch {
+      return opts; // sem o logo, o vídeo sai do mesmo jeito
+    }
+  }
+
   async function start() {
     if (!file || !options) return;
     setError(null);
     setUploadPct(0);
     setPhase('uploading');
     try {
+      const opts = editMode === 'editor' ? options : await withBrand(options);
       if (editMode === 'clips') {
-        const created = await generateClips(file, options, setUploadPct);
+        const created = await generateClips(file, opts, setUploadPct);
         watchRender(created);
       } else if (editMode === 'editor') {
         const t = await transcribe(file, options, setUploadPct);
@@ -151,7 +180,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
           if (u.status === 'error') fail(u.error);
         });
       } else {
-        const created = await createJob(file, options, setUploadPct);
+        const created = await createJob(file, opts, setUploadPct);
         watchRender(created);
       }
     } catch (e) {
@@ -193,7 +222,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     setPhase('processing');
     try {
       // extra traz os cortes de silêncio escolhidos na timeline (manualSilence + silenceCuts).
-      const created = await renderEdited(sourceId, editedTranscript, { ...options, ...extra });
+      const created = await renderEdited(sourceId, editedTranscript, await withBrand({ ...options, ...extra }));
       watchRender(created);
     } catch (e) {
       fail(e.message);
@@ -209,7 +238,8 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     setTranscriptData(null);
     setDurationSec(0);
     setPhase('setup');
-    if (catalog) setOptions(catalog.defaults);
+    setFormatId(null);
+    if (catalog) setOptions({ ...catalog.defaults, ...brandOptions() });
   }
 
   if (loadError) {
@@ -238,118 +268,50 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
 
   return (
     <Shell health={health} embedded={embedded} compact={phase !== 'setup'}>
-      {phase === 'setup' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 18 }}>
-          {intent === 'editor' && reeditable.length > 0 && (
-            <Card style={{ padding: '6px 24px 20px' }}>
-              <h3 style={sectionLabel}>Continuar um vídeo recente</h3>
-              <div style={{ display: 'grid', gap: 8 }}>
-                {reeditable.map((j) => {
-                  const loading = reopening === j.sourceId;
-                  return (
-                    <button
-                      key={j.sourceId}
-                      onClick={() => reopenFromHistory(j)}
-                      disabled={!!reopening}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
-                        background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 12,
-                        padding: '11px 14px', color: C.text, fontFamily: 'inherit', fontSize: 14,
-                        cursor: reopening ? 'wait' : 'pointer',
-                      }}
-                    >
-                      <span style={{ width: 34, height: 34, borderRadius: 9, background: C.panel2, display: 'grid', placeItems: 'center', color: C.orangeSoft, flexShrink: 0 }}>
-                        {loading ? <Spinner size={15} color={C.orange} /> : <Icon name="clapper" size={17} strokeWidth={1.8} />}
-                      </span>
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ display: 'block', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.title}</span>
-                        <span style={{ display: 'block', fontSize: 12, color: C.faint, marginTop: 2 }}>
-                          {new Date(j.at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                        </span>
-                      </span>
-                      <Icon name="edit" size={16} strokeWidth={1.9} color={C.muted} />
-                    </button>
-                  );
-                })}
-              </div>
-              {reopenError && <div style={{ color: C.red, fontSize: 12.5, marginTop: 10, lineHeight: 1.5 }}>{reopenError}</div>}
-              <div style={{ color: C.faint, fontSize: 12.5, marginTop: 10 }}>Ou envie um vídeo novo abaixo.</div>
-            </Card>
-          )}
-
-          <div className="rf-anim">
-            <Uploader file={file} onFile={setFile} />
-            {!file && (
-              <div style={{ textAlign: 'center', marginTop: 12 }}>
-                <button
-                  onClick={useExample}
-                  disabled={loadingSample}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 8, cursor: loadingSample ? 'wait' : 'pointer',
-                    background: 'transparent', border: `1px solid ${C.border}`, color: C.muted,
-                    borderRadius: 20, padding: '8px 16px', fontSize: 13, transition: 'all .15s',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.orange; e.currentTarget.style.color = C.text; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.muted; }}
-                >
-                  {loadingSample ? <Spinner size={13} color={C.orange} /> : <Icon name="sparkles" size={14} color={C.orangeSoft} />}
-                  {loadingSample ? 'Carregando exemplo…' : 'Experimentar com um vídeo de exemplo'}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="rf-anim" style={{ animationDelay: '0.05s' }}>
-            <ModeChooser value={editMode} onChange={setEditMode} />
-          </div>
-
-          {editMode === 'auto' && (
-            <Card delay={0.1} style={{ padding: '6px 24px 20px' }}>
-              <h3 style={sectionLabel}>O que fazer com o vídeo</h3>
-              <OptionsPanel catalog={catalog} options={options} onChange={setOptions} videoUrl={videoUrl} />
-            </Card>
-          )}
-
-          {editMode === 'clips' && (
-            <Card delay={0.1} style={{ padding: '6px 24px 20px' }}>
-              <h3 style={sectionLabel}>Clipes curtos</h3>
-              <ClipsOptions catalog={catalog} options={options} onChange={setOptions} />
-            </Card>
-          )}
-
-          <div className="rf-anim" style={{ animationDelay: '0.15s' }}>
-            <CostLine
-              mode={editMode === 'clips' ? 'clips' : editMode === 'editor' ? 'transcribe' : 'auto'}
-              options={options}
-              style={{ marginTop: 0, marginBottom: 12 }}
-            />
-            <PrimaryButton onClick={start} disabled={!file} style={{ width: '100%', padding: '17px' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
-                <Icon name={CTA[editMode].icon} size={18} strokeWidth={1.9} />
-                {CTA[editMode].label}
-              </span>
-            </PrimaryButton>
-            {!file && (
-              <p style={{ textAlign: 'center', color: C.faint, fontSize: 12.5, marginTop: 10 }}>
-                Envie um vídeo para começar
-              </p>
-            )}
-          </div>
+      {phase === 'setup' && reopen && reopening && (
+        <div style={{ textAlign: 'center', padding: 60, color: C.muted }}>
+          <Spinner size={22} color={C.orange} />
+          <div style={{ marginTop: 14 }}>Abrindo “{reopen.title}” na timeline…</div>
         </div>
       )}
 
+      {phase === 'setup' && reopen && reopenError && !reopening && (
+        <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 12, border: `1px solid ${C.red}55`, background: 'rgba(240,82,107,0.08)', color: C.text, fontSize: 13.5 }}>
+          {reopenError} Envie o vídeo de novo abaixo.
+        </div>
+      )}
+
+      {phase === 'setup' && !(reopen && reopening) && (
+        <CreateWizard
+          catalog={catalog}
+          options={options}
+          onOptions={setOptions}
+          mode={editMode}
+          onMode={setEditMode}
+          file={file}
+          onFile={setFile}
+          videoUrl={videoUrl}
+          formatId={formatId}
+          onFormat={setFormatId}
+          onStart={start}
+          onExample={useExample}
+          loadingExample={loadingSample}
+          recent={reeditable}
+          onReopen={reopenFromHistory}
+          reopening={reopening}
+          reopenError={reopenError}
+          renderAdvanced={() => (editMode === 'clips'
+            ? <ClipsOptions catalog={catalog} options={options} onChange={setOptions} />
+            : <OptionsPanel catalog={catalog} options={options} onChange={setOptions} videoUrl={videoUrl} />)}
+        />
+      )}
+
       {phase === 'uploading' && (
-        <Loading title={`Enviando vídeo… ${Math.round(uploadPct * 100)}%`} pct={uploadPct} iconName="upload" />
+        <Processing title="Enviando seu vídeo" subtitle="Pode levar um pouco em arquivos grandes. Não feche esta tela." pct={uploadPct} />
       )}
 
       {phase === 'transcribing' && (
-        <Loading
-          title="Transcrevendo a fala…"
-          subtitle="Assim que ficar pronto, você poderá cortar o vídeo editando o texto."
-          pct={(job?.progress ?? 0) / 100}
-          iconName="mic"
-          spin
-        />
+        <Processing job={job} title="Preparando o editor" subtitle="Transcrevendo a fala — depois você corta o vídeo editando o texto." />
       )}
 
       {phase === 'editing' && transcriptData && (
@@ -367,19 +329,9 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
         </div>
       )}
 
-      {phase === 'processing' && job && job.mode === 'clips' && (
-        <Loading
-          title={job.stageLabel || 'Gerando clipes…'}
-          subtitle="Encontrando os melhores trechos e montando cada clipe."
-          pct={(job.progress ?? 0) / 100}
-          iconName="film"
-          spin
-        />
-      )}
-
-      {phase === 'processing' && job && job.mode !== 'clips' && (
+      {phase === 'processing' && job && (
         <div className="rf-anim">
-          <Pipeline job={job} />
+          <Processing job={job} title={job.mode === 'clips' ? 'A IA está criando seus cortes' : 'A IA está editando seu vídeo'} />
         </div>
       )}
 
@@ -403,26 +355,12 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   );
 }
 
-const sectionLabel = {
-  fontSize: 11,
-  color: C.faint,
-  textTransform: 'uppercase',
-  letterSpacing: 1.2,
-  fontWeight: 600,
-  margin: '18px 0 4px',
-};
 const codeStyle = {
   background: C.panel2,
   padding: '2px 6px',
   borderRadius: 6,
   fontSize: 12.5,
   fontFamily: 'ui-monospace, monospace',
-};
-
-const CTA = {
-  auto: { icon: 'sparkles', label: 'Editar com IA' },
-  editor: { icon: 'edit', label: 'Abrir editor / timeline' },
-  clips: { icon: 'film', label: 'Gerar clipes curtos' },
 };
 
 function ClipsOptions({ catalog, options, onChange }) {
@@ -529,64 +467,6 @@ function ClipsOptions({ catalog, options, onChange }) {
   );
 }
 
-function ModeChooser({ value, onChange }) {
-  const opts = [
-    { id: 'auto', icon: 'sparkles', title: 'Automático', desc: 'A IA corta, legenda e finaliza sozinha', tag: 'Recomendado' },
-    { id: 'editor', icon: 'edit', title: 'Editor / Timeline', desc: 'Preview + timeline: corrija a legenda e corte trechos' },
-    { id: 'clips', icon: 'film', title: 'Clipes curtos', desc: 'Gere cortes dos melhores trechos' },
-  ];
-  const [hover, setHover] = useState(null);
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
-      {opts.map((o) => {
-        const on = value === o.id;
-        const hovered = hover === o.id;
-        return (
-          <button
-            key={o.id}
-            onClick={() => onChange(o.id)}
-            onMouseEnter={() => setHover(o.id)}
-            onMouseLeave={() => setHover(null)}
-            style={{
-              textAlign: 'left',
-              cursor: 'pointer',
-              position: 'relative',
-              borderRadius: 18,
-              padding: '18px 18px 16px',
-              overflow: 'hidden',
-              transition: 'transform .18s ease, box-shadow .18s ease, border-color .18s',
-              transform: on || hovered ? 'translateY(-3px)' : 'none',
-              background: on
-                ? 'linear-gradient(180deg, rgba(255,107,53,0.16), rgba(124,58,237,0.10))'
-                : 'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015))',
-              border: `1px solid ${on ? 'transparent' : hovered ? C.borderStrong || C.border : C.border}`,
-              boxShadow: on
-                ? `0 0 0 1.5px ${C.orange}, 0 16px 38px -14px rgba(255,107,53,0.5)`
-                : hovered ? '0 12px 26px -16px rgba(0,0,0,0.6)' : 'none',
-            }}
-          >
-            {/* brilho decorativo no topo quando selecionado */}
-            {on && <div style={{ position: 'absolute', top: -40, right: -30, width: 120, height: 120, background: 'radial-gradient(circle, rgba(255,107,53,0.35), transparent 70%)', pointerEvents: 'none' }} />}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div style={{ width: 42, height: 42, borderRadius: 12, display: 'grid', placeItems: 'center', background: on ? GRAD : C.panel2, boxShadow: on ? '0 6px 16px -6px rgba(255,107,53,0.6)' : 'none', color: on ? '#fff' : C.muted, transition: 'all .18s' }}>
-                <Icon name={o.icon} size={20} strokeWidth={1.9} />
-              </div>
-              {o.tag && (
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.3, color: on ? '#fff' : C.orangeSoft, background: on ? 'rgba(255,255,255,0.16)' : 'rgba(255,107,53,0.12)', border: `1px solid ${on ? 'transparent' : 'rgba(255,107,53,0.25)'}`, borderRadius: 20, padding: '3px 9px' }}>{o.tag}</span>
-              )}
-              {on && !o.tag && (
-                <span style={{ width: 22, height: 22, borderRadius: '50%', background: GRAD, display: 'grid', placeItems: 'center', color: '#fff' }}><Icon name="check" size={13} strokeWidth={2.6} /></span>
-              )}
-            </div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: on ? C.text : C.text }}>{o.title}</div>
-            <div style={{ fontSize: 12, color: C.faint, marginTop: 4, lineHeight: 1.45 }}>{o.desc}</div>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 /** Ícone grande num disco de vidro (para telas de estado: erro, servidor off). */
 function IconBadge({ name, tone = C.orange }) {
   return (
@@ -607,64 +487,6 @@ function IconBadge({ name, tone = C.orange }) {
       >
         <Icon name={name} size={26} strokeWidth={1.9} />
       </div>
-    </div>
-  );
-}
-
-function Loading({ title, subtitle, pct, iconName, spin }) {
-  return (
-    <Card style={{ textAlign: 'center', padding: 34 }}>
-      <div style={{ position: 'relative', width: 68, height: 68, margin: '0 auto 16px' }}>
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            borderRadius: '50%',
-            background: GRAD,
-            filter: 'blur(14px)',
-            opacity: 0.5,
-            animation: 'rf-pulse-glow 2s ease-in-out infinite',
-          }}
-        />
-        <div
-          style={{
-            position: 'relative',
-            width: 68,
-            height: 68,
-            borderRadius: '50%',
-            display: 'grid',
-            placeItems: 'center',
-            color: '#fff',
-            background: 'rgba(255,255,255,0.06)',
-            border: `1px solid ${C.border}`,
-            animation: spin ? 'rf-float 2.4s ease-in-out infinite' : 'none',
-          }}
-        >
-          <Icon name={iconName} size={28} strokeWidth={1.8} />
-        </div>
-      </div>
-      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: subtitle ? 6 : 18 }}>{title}</div>
-      {subtitle && <div style={{ color: C.muted, fontSize: 13, marginBottom: 18, lineHeight: 1.5 }}>{subtitle}</div>}
-      <ProgressBar pct={pct} />
-    </Card>
-  );
-}
-
-export function ProgressBar({ pct }) {
-  return (
-    <div style={{ height: 9, background: 'rgba(255,255,255,0.06)', borderRadius: 8, overflow: 'hidden' }}>
-      <div
-        style={{
-          height: '100%',
-          width: `${Math.max(3, Math.round((pct || 0) * 100))}%`,
-          borderRadius: 8,
-          background: `linear-gradient(90deg, ${C.orange}, ${C.purple}), linear-gradient(90deg, rgba(255,255,255,0.4), transparent)`,
-          backgroundSize: '100% 100%, 200% 100%',
-          backgroundBlendMode: 'overlay',
-          animation: 'rf-shimmer 1.6s linear infinite',
-          transition: 'width .3s ease',
-        }}
-      />
     </div>
   );
 }
@@ -711,7 +533,7 @@ function Shell({ children, health, embedded, compact = false }) {
       )}
 
       <main className="rf-page" style={{ maxWidth: 1000, width: '100%', minWidth: 0, margin: 0, padding: '40px 32px 80px', flex: 1 }}>
-        <div className={`rf-anim rf-hero${compact ? ' rf-hero-compact' : ''}`} style={{ position: 'relative', marginBottom: 30 }}>
+        {!embedded && <div className={`rf-anim rf-hero${compact ? ' rf-hero-compact' : ''}`} style={{ position: 'relative', marginBottom: 30 }}>
           {/* halo suave atrás do título */}
           <div style={{ position: 'absolute', top: -60, left: -20, width: 280, height: 200, background: 'radial-gradient(circle, rgba(255,107,53,0.14), transparent 65%)', pointerEvents: 'none', filter: 'blur(4px)' }} />
           <div
@@ -767,13 +589,15 @@ function Shell({ children, health, embedded, compact = false }) {
               </span>
             ))}
           </div>
-        </div>
+        </div>}
         {children}
       </main>
 
-      <footer style={{ textAlign: 'center', padding: '20px', color: C.faint, fontSize: 12, borderTop: `1px solid ${C.border}` }}>
-        Riseframe · MVP do editor de vídeo com IA
-      </footer>
+      {!embedded && (
+        <footer style={{ textAlign: 'center', padding: '20px', color: C.faint, fontSize: 12, borderTop: `1px solid ${C.border}` }}>
+          Riseframe · editor de vídeo com IA
+        </footer>
+      )}
     </div>
   );
 }

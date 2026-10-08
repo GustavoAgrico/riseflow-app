@@ -3,7 +3,9 @@ import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
 import Icon, { Logo } from '../components/Icon.jsx';
 import BeforeAfter from '../components/BeforeAfter.jsx';
 import HeroDemo from '../components/HeroDemo.jsx';
-import { getPublicInfo } from '../api.js';
+import { Thumb } from './Templates.jsx';
+import { TEMPLATES } from '../templates.js';
+import { getPublicInfo, apiAsset } from '../api.js';
 
 function MeshBg() {
   return (
@@ -49,6 +51,50 @@ const FEATURES = [
   { icon: 'palette', title: 'Corrige luz e cor', desc: 'Acerta a cor de lâmpada amarela ou luz fria e clareia vídeo escuro, mantendo a pele natural. Looks opcionais.' },
   { icon: 'image', title: 'Imagens de apoio (B-roll)', desc: 'Insere imagens e vídeos que ilustram o que você fala — em tela cheia ou dividida. Você escolhe e troca cada uma.' },
 ];
+
+
+const DIFERENCIAIS = [
+  { icon: 'film', title: '1 vídeo, vários conteúdos', desc: 'A IA encontra os melhores momentos e gera cortes curtos prontos para cada rede.' },
+  { icon: 'sparkles', title: 'Entende o seu conteúdo', desc: 'Corta, legenda e destaca as palavras importantes da sua fala.' },
+  { icon: 'brush', title: 'Feito para a sua marca', desc: 'Brand Kit com logo, cores e estilo de legenda em todo vídeo.' },
+  { icon: 'shield', title: 'Seus vídeos são seus', desc: 'Sem marca d’água do Riseframe e sem usar seus vídeos para treinar IA.' },
+];
+
+const HERO_FEATS = [
+  { icon: 'scissors', title: 'Corte inteligente', desc: 'Remove pausas e silêncios' },
+  { icon: 'captions', title: 'Legendas automáticas', desc: 'Mais engajamento' },
+  { icon: 'crop', title: 'Enquadramento automático', desc: 'Foco no que importa' },
+  { icon: 'mic', title: 'Tratamento de áudio', desc: 'Som limpo e profissional' },
+  { icon: 'layers', title: 'Templates por nicho', desc: 'Do seu jeito, sempre' },
+];
+
+/** Um lado do "antes × depois": miniatura do vídeo + lista do que muda. */
+function BeforeAfterSide({ video, tag, items, bad }) {
+  const [ok, setOk] = useState(true);
+  return (
+    <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+      <div style={{ position: 'relative', width: 104, flexShrink: 0, aspectRatio: '9 / 13', borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, background: bad ? '#15151c' : 'linear-gradient(160deg, rgba(255,107,53,0.3), rgba(124,58,237,0.3))' }}>
+        {video && ok && (
+          <video src={`${apiAsset(video)}#t=2`} muted playsInline preload="metadata" onError={() => setOk(false)}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', filter: bad ? 'saturate(0.6) brightness(0.85)' : 'none' }} />
+        )}
+      </div>
+      <div>
+        <span style={{ display: 'inline-block', fontSize: 10.5, fontWeight: 800, letterSpacing: 0.8, color: '#fff', background: bad ? 'rgba(255,255,255,0.12)' : GRAD, borderRadius: 999, padding: '3px 9px', marginBottom: 10 }}>{tag}</span>
+        <div style={{ display: 'grid', gap: 7 }}>
+          {items.map((t) => (
+            <span key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: bad ? C.muted : C.text }}>
+              <span style={{ width: 18, height: 18, borderRadius: '50%', display: 'grid', placeItems: 'center', background: bad ? 'rgba(240,82,107,0.18)' : 'rgba(46,212,122,0.18)', color: bad ? C.red : C.green, flexShrink: 0 }}>
+                <Icon name={bad ? 'close' : 'check'} size={11} strokeWidth={3} />
+              </span>
+              {t}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const STEPS = [
   { n: '1', title: 'Suba o vídeo', desc: 'Arraste o bruto do celular ou da câmera (MP4, MOV, MKV, WEBM…), horizontal ou vertical.' },
@@ -175,6 +221,7 @@ function PhoneMock() {
 export default function Landing({ onEnter, onLogin }) {
   const [info, setInfo] = useState(null);
   const [bundled, setBundled] = useState(null);
+  const [heroFailed, setHeroFailed] = useState(false); // vídeo da vitrine não tocou → mostra o mockup
   // Demo do servidor (criada pelo admin) tem prioridade; senão a que vem com o site.
   const showcase = info?.showcase || bundled;
   useEffect(() => {
@@ -196,50 +243,85 @@ export default function Landing({ onEnter, onLogin }) {
       <MeshBg />
       <div style={{ position: 'relative', zIndex: 1 }}>
         {/* NAV fixo com blur */}
-        <nav style={{ position: 'sticky', top: 0, zIndex: 30, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', background: 'rgba(8,8,12,0.55)', borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '13px 20px', maxWidth: 1160, margin: '0 auto' }}>
+        <nav style={{ position: 'sticky', top: 0, zIndex: 30, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', background: 'rgba(8,8,12,0.6)', borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '13px 20px', maxWidth: 1180, margin: '0 auto' }}>
             <Logo size={30} />
             <span style={{ fontWeight: 800, fontSize: 18, fontFamily: FONT_DISPLAY, letterSpacing: -0.4 }}>Riseframe</span>
+            <div className="rf-nav-links" style={{ display: 'flex', gap: 22, marginLeft: 34 }}>
+              {[['Recursos', 'recursos'], ['Templates', 'templates'], ['Antes e depois', 'demo'], ['Preços', 'precos']].map(([l, id]) => (
+                <a key={id} href={`#${id}`} style={{ color: C.muted, fontSize: 14, fontWeight: 500, textDecoration: 'none' }}>{l}</a>
+              ))}
+            </div>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 9, alignItems: 'center' }}>
-              <GhostBtn onClick={onLogin} style={{ padding: '9px 16px' }}>Entrar</GhostBtn>
-              <GradBtn onClick={onEnter} style={{ padding: '9px 18px', whiteSpace: 'nowrap' }}>Começar grátis</GradBtn>
+              <GhostBtn onClick={onLogin} style={{ padding: '9px 16px', borderRadius: 999 }}>Entrar</GhostBtn>
+              <GradBtn onClick={onEnter} style={{ padding: '9px 18px', whiteSpace: 'nowrap', borderRadius: 999 }}>Começar grátis</GradBtn>
             </div>
           </div>
         </nav>
 
-        {/* HERO — duas colunas (texto + mockup) */}
-        <header style={{ maxWidth: 1120, margin: '0 auto', padding: '54px 24px 30px' }}>
-          <div className="rf-hero-grid" style={{ display: 'grid', gridTemplateColumns: '1.05fr 0.95fr', gap: 40, alignItems: 'center' }}>
+        {/* HERO — texto + vitrine (antes/depois tocando) + recursos */}
+        <header style={{ maxWidth: 1180, margin: '0 auto', padding: '56px 24px 30px' }}>
+          <div className="rf-hero-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 1fr)', gap: 36, alignItems: 'center' }}>
             <div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 20, fontSize: 12.5, fontWeight: 500, color: C.orangeSoft, background: 'rgba(255,107,53,0.1)', border: '1px solid rgba(255,107,53,0.25)', marginBottom: 22 }}>
-                <Icon name="sparkles" size={14} color={C.orangeSoft} /> Editor de vídeo com IA
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, color: C.orangeSoft, background: 'rgba(255,107,53,0.1)', border: '1px solid rgba(255,107,53,0.25)', marginBottom: 22 }}>
+                <Icon name="sparkles" size={13} color={C.orangeSoft} /> EDITOR DE VÍDEO COM IA
               </div>
-              <h1 className="rf-hero-h1" style={{ fontSize: 'clamp(36px, 6vw, 60px)', lineHeight: 1.04, margin: '0 0 18px', letterSpacing: -2, fontWeight: 800, fontFamily: FONT_DISPLAY }}>
-                Do bruto ao pronto,<br /><span style={gradientText}>em minutos.</span>
+              <h1 className="rf-hero-h1" style={{ fontSize: 'clamp(36px, 4.6vw, 58px)', lineHeight: 1.04, margin: '0 0 20px', letterSpacing: -2, fontWeight: 800, fontFamily: FONT_DISPLAY }}>
+                Seu vídeo entra bruto.<br /><span style={gradientText}>Sai pronto para postar.</span>
               </h1>
-              <p style={{ color: C.muted, fontSize: 'clamp(15px, 2.2vw, 18px)', lineHeight: 1.6, maxWidth: 520, margin: '0 0 26px' }}>
-                Suba o vídeo gravado no celular e o Riseframe corta as pausas, limpa a fala, coloca legendas,
-                acerta a cor e aproxima nos momentos-chave. Você revisa tudo antes de baixar.
+              <p style={{ color: C.muted, fontSize: 'clamp(15px, 2vw, 18px)', lineHeight: 1.6, maxWidth: 520, margin: '0 0 28px' }}>
+                A IA do Riseframe corta pausas, remove silêncios, cria legendas e transforma seus vídeos em conteúdos
+                profissionais em poucos minutos. Você revisa tudo antes de baixar.
               </p>
-              <div className="rf-hero-cta" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <GradBtn onClick={onEnter} big>Testar grátis</GradBtn>
-                <GhostBtn onClick={() => document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' })} style={{ padding: '15px 26px', fontSize: 16 }}>Ver antes e depois</GhostBtn>
+              <div className="rf-hero-cta" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <GradBtn onClick={onEnter} big style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>Criar meu primeiro vídeo <Icon name="arrowRight" size={18} strokeWidth={2.2} /></GradBtn>
+                <span style={{ color: C.muted, fontSize: 14 }}>Teste grátis — sem cartão</span>
               </div>
-              <div className="rf-trust" style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 22 }}>
-                {TRUST.map((t) => (
-                  <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: C.muted }}>
-                    <Icon name="check" size={14} color={C.green} strokeWidth={2.6} /> {t}
+              <div className="rf-trust" style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 26, alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: C.faint, fontWeight: 600 }}>Pronto para</span>
+                {[['instagram', 'Instagram'], ['tiktok', 'TikTok'], ['youtube', 'YouTube'], ['linkedin', 'LinkedIn']].map(([ic, l]) => (
+                  <span key={l} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: C.muted, fontWeight: 600 }}>
+                    <Icon name={ic} size={16} strokeWidth={1.9} /> {l}
                   </span>
                 ))}
               </div>
             </div>
-            <div className="rf-hero-mock" style={{ display: 'flex', justifyContent: 'center' }}>
-              {showcase?.after
-                ? <HeroDemo showcase={showcase} onMore={() => document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' })} />
-                : <PhoneMock />}
+            <div className="rf-hero-right" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 210px', gap: 18, alignItems: 'center' }}>
+              <div className="rf-hero-mock" style={{ display: 'flex', justifyContent: 'center' }}>
+                {showcase?.after && !heroFailed
+                  ? <HeroDemo showcase={showcase} onFail={() => setHeroFailed(true)} onMore={() => document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' })} />
+                  : <PhoneMock />}
+              </div>
+              <div className="rf-hero-feats" style={{ display: 'grid', gap: 10 }}>
+                {HERO_FEATS.map((f) => (
+                  <div key={f.title} style={{ ...glass({ padding: '11px 12px', borderRadius: 14 }), display: 'flex', gap: 11, alignItems: 'center' }}>
+                    <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'rgba(255,107,53,0.12)', border: '1px solid rgba(255,107,53,0.28)', color: C.orangeSoft, flexShrink: 0 }}>
+                      <Icon name={f.icon} size={17} strokeWidth={1.9} />
+                    </span>
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 700 }}>{f.title}</span>
+                      <span style={{ display: 'block', fontSize: 11.5, color: C.faint, marginTop: 1 }}>{f.desc}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </header>
+
+        {/* DE BRUTO PARA PRONTO: antes × depois em tópicos */}
+        <section style={{ maxWidth: 1180, margin: '0 auto', padding: '20px 24px 40px' }}>
+          <div style={{ ...glass({ padding: 'clamp(18px, 3vw, 28px)' }) }}>
+            <h2 style={{ fontSize: 'clamp(20px, 2.6vw, 26px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -0.6, margin: '0 0 18px' }}>De vídeo bruto para conteúdo pronto.</h2>
+            <div className="rf-ba-grid" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 18, alignItems: 'center' }}>
+              <BeforeAfterSide video={showcase?.before} tag="ANTES" items={['Pausas e silêncios', 'Sem legendas', 'Enquadramento ruim', 'Áudio irregular']} bad />
+              <span className="rf-ba-arrow" style={{ width: 44, height: 44, borderRadius: '50%', display: 'grid', placeItems: 'center', background: GRAD, boxShadow: '0 10px 24px -8px rgba(255,107,53,0.6)' }}>
+                <Icon name="arrowRight" size={20} strokeWidth={2.4} color="#fff" />
+              </span>
+              <BeforeAfterSide video={showcase?.after} tag="DEPOIS" items={['Cortes inteligentes', 'Legendas dinâmicas', 'Enquadramento perfeito', 'Áudio tratado']} />
+            </div>
+          </div>
+        </section>
 
         {/* DEMO: antes e depois */}
         <section id="demo" style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 24px 50px' }}>
@@ -255,7 +337,7 @@ export default function Landing({ onEnter, onLogin }) {
         </section>
 
         {/* FEATURES */}
-        <section style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 24px 60px' }}>
+        <section id="recursos" style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 24px 60px' }}>
           <h2 style={{ textAlign: 'center', fontSize: 'clamp(26px,4vw,38px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 12px' }}>
             O que o Riseframe <span style={gradientText}>faz por você</span>
           </h2>
@@ -299,6 +381,41 @@ export default function Landing({ onEnter, onLogin }) {
           </div>
         </section>
 
+        {/* TEMPLATES por nicho */}
+        <section id="templates" style={{ maxWidth: 1100, margin: '0 auto', padding: '10px 24px 60px' }}>
+          <h2 style={{ textAlign: 'center', fontSize: 'clamp(26px,4vw,38px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 12px' }}>
+            Templates <span style={gradientText}>por nicho</span>
+          </h2>
+          <p style={{ textAlign: 'center', color: C.muted, fontSize: 16, maxWidth: 580, margin: '0 auto 30px' }}>
+            Empresário, infoprodutor, advogado, médico, imobiliário, podcast… comece com um estilo pronto para o seu público.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
+            {TEMPLATES.slice(0, 5).map((t, i) => (
+              <div key={t.id}>
+                <Thumb t={t} i={i} />
+                <div style={{ fontSize: 13, fontWeight: 600, marginTop: 8 }}>{t.desc}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* DIFERENCIAIS */}
+        <section style={{ maxWidth: 1100, margin: '0 auto', padding: '0 24px 60px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+            {DIFERENCIAIS.map((d) => (
+              <div key={d.title} style={{ ...glass({ padding: 18 }), display: 'flex', gap: 13, alignItems: 'flex-start' }}>
+                <span style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', background: GRAD, flexShrink: 0, boxShadow: '0 8px 20px -8px rgba(255,107,53,0.6)' }}>
+                  <Icon name={d.icon} size={19} strokeWidth={1.9} color="#fff" />
+                </span>
+                <span>
+                  <b style={{ fontSize: 14.5 }}>{d.title}</b>
+                  <span style={{ display: 'block', fontSize: 13, color: C.muted, marginTop: 4, lineHeight: 1.5 }}>{d.desc}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <Pricing info={info} onEnter={onEnter} />
         <PrivacyNote info={info} />
 
@@ -332,7 +449,17 @@ export default function Landing({ onEnter, onLogin }) {
       </div>
 
       <style>{`
+        @media (max-width: 1180px){
+          .rf-hero-right{ grid-template-columns: 1fr !important; }
+          .rf-hero-feats{ grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)) !important; }
+        }
+        @media (max-width: 900px){ .rf-nav-links{ display: none !important; } }
+        @media (max-width: 760px){
+          .rf-ba-grid{ grid-template-columns: 1fr !important; justify-items: start; }
+          .rf-ba-arrow{ transform: rotate(90deg); margin-left: 30px; }
+        }
         @media (max-width: 860px){
+          .rf-hero-feats{ text-align: left; }
           .rf-hero-grid{ grid-template-columns: 1fr !important; text-align: center; }
           .rf-hero-h1{ letter-spacing: -1px !important; }
           .rf-hero-cta{ justify-content: center; }

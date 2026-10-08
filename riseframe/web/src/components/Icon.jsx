@@ -5,6 +5,78 @@ import React from 'react';
  * arredondado, herda a cor via `currentColor`. Uso: <Icon name="scissors" size={18} />
  */
 const PATHS = {
+  home: (
+    <>
+      <path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1v-8.5Z" />
+    </>
+  ),
+  plus: <path d="M12 5v14M5 12h14" />,
+  arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
+  layers: (
+    <>
+      <path d="m12 4 8.5 4.5L12 13 3.5 8.5 12 4Z" />
+      <path d="m3.5 12.5 8.5 4.5 8.5-4.5M3.5 16.5 12 21l8.5-4.5" />
+    </>
+  ),
+  brush: (
+    <>
+      <path d="M14.5 4.5 19.5 9.5 11 18l-5-5 8.5-8.5Z" />
+      <path d="M6 13c-2 0-3 1.5-3 3.5V20h3.5C8.5 20 10 19 10 17" />
+    </>
+  ),
+  instagram: (
+    <>
+      <rect x="4" y="4" width="16" height="16" rx="5" />
+      <circle cx="12" cy="12" r="3.6" />
+      <circle cx="16.8" cy="7.2" r="0.6" fill="currentColor" />
+    </>
+  ),
+  tiktok: <path d="M14 4v10.5a3.5 3.5 0 1 1-3.5-3.5M14 4c.4 2.6 2.1 4.2 5 4.4" />,
+  youtube: (
+    <>
+      <rect x="3" y="6" width="18" height="12" rx="4" />
+      <path d="m10.5 9.5 4 2.5-4 2.5v-5Z" fill="currentColor" />
+    </>
+  ),
+  linkedin: (
+    <>
+      <rect x="4" y="4" width="16" height="16" rx="3" />
+      <path d="M8 10.5V16M8 7.8v.1M11.5 16v-3.2c0-1.4.9-2.3 2.1-2.3s2 .9 2 2.3V16M11.5 10.5V16" />
+    </>
+  ),
+  megaphone: (
+    <>
+      <path d="M4 10v4h3l7 4V6L7 10H4Z" />
+      <path d="M17.5 9a3.5 3.5 0 0 1 0 6M8 14l1 5h2.5l-1-4.2" />
+    </>
+  ),
+  podcast: (
+    <>
+      <circle cx="12" cy="10" r="2.2" />
+      <path d="M8.2 14.5a5.5 5.5 0 1 1 7.6 0M5.6 17.2a9 9 0 1 1 12.8 0M12 13.5V20" />
+    </>
+  ),
+  star: <path d="m12 4 2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6L12 4Z" />,
+  users: (
+    <>
+      <circle cx="9" cy="9" r="3.2" />
+      <path d="M3.5 19c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6M15.5 6.2a3 3 0 0 1 0 5.6M17.5 14.6c1.6.5 2.7 2 3 4.4" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v4.5l3 1.8" />
+    </>
+  ),
+  target: (
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="12" cy="12" r="0.8" fill="currentColor" />
+    </>
+  ),
+  heart: <path d="M12 19s-7-4.4-7-9.5A3.9 3.9 0 0 1 12 7a3.9 3.9 0 0 1 7 2.5C19 14.6 12 19 12 19Z" />,
   volume: (
     <>
       <path d="M4 9.5v5h3.5L12 19V5L7.5 9.5H4Z" />

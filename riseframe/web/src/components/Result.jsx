@@ -33,41 +33,70 @@ export default function Result({ job, onReset, onEditTimeline }) {
   const [dlHover, setDlHover] = useState(false);
 
   return (
-    <div style={{ ...glass(), padding: 26 }}>
-      {/* Banner de sucesso */}
-      <div
-        style={{
-          position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 13, marginBottom: 18,
-          borderRadius: 14, padding: '14px 16px',
-          background: `linear-gradient(180deg, ${C.green}1f, rgba(255,255,255,0.015))`,
-          border: `1px solid ${C.green}44`,
-        }}
-      >
-        <div style={{ position: 'absolute', top: -40, right: -20, width: 140, height: 140, background: `radial-gradient(circle, ${C.green}33, transparent 70%)`, pointerEvents: 'none' }} />
-        <span style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', background: `linear-gradient(135deg, ${C.green}, #16A34A)`, boxShadow: `0 8px 18px -6px ${C.green}88`, color: '#fff', flexShrink: 0 }}>
-          <Icon name="check" size={21} strokeWidth={2.4} />
-        </span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: -0.2 }}>Seu vídeo está pronto</div>
-          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Baixe, ou ajuste os detalhes na timeline</div>
+    <div style={{ ...glass(), padding: 'clamp(16px, 3vw, 26px)' }}>
+      <style>{`@media (max-width: 860px){ .rf-res-grid{ grid-template-columns: 1fr !important; } }`}</style>
+      <div className="rf-res-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 330px', gap: 24, alignItems: 'start', marginBottom: 22 }}>
+        <div style={{ display: 'flex', justifyContent: 'center', borderRadius: 18, background: 'radial-gradient(circle at 50% 0%, rgba(255,107,53,0.14), transparent 60%), rgba(0,0,0,0.35)', border: `1px solid ${C.border}`, padding: 12 }}>
+          <video
+            src={previewUrl(job.id)}
+            controls
+            playsInline
+            style={{ width: '100%', maxHeight: 560, borderRadius: 12, background: '#000', display: 'block', objectFit: 'contain' }}
+          />
         </div>
-        <GhostButton onClick={onReset} style={{ flexShrink: 0 }}>Editar outro</GhostButton>
+
+        <div style={{ display: 'grid', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ width: 42, height: 42, borderRadius: 13, display: 'grid', placeItems: 'center', background: `linear-gradient(135deg, ${C.green}, #16A34A)`, boxShadow: `0 8px 18px -6px ${C.green}88`, color: '#fff', flexShrink: 0 }}>
+              <Icon name="check" size={22} strokeWidth={2.6} />
+            </span>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 19, letterSpacing: -0.3 }}>Seu vídeo está pronto</div>
+              <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>Exporte e publique onde quiser</div>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11.5, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>PRONTO PARA</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {[['instagram', 'Instagram'], ['tiktok', 'TikTok'], ['youtube', 'YouTube'], ['linkedin', 'LinkedIn']].map(([ic, l]) => (
+                <div key={l} style={{ display: 'grid', justifyItems: 'center', gap: 5, padding: '10px 4px', borderRadius: 12, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)', fontSize: 11, color: C.muted }}>
+                  <Icon name={ic} size={19} strokeWidth={1.8} color={C.text} /> {l}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {r.output?.aspect && <span style={chip}><Icon name="crop" size={13} strokeWidth={2} /> {r.output.aspect}</span>}
+            {r.output?.width && r.output?.height && <span style={chip}>{Math.min(r.output.width, r.output.height) >= 1080 ? '1080p' : `${Math.min(r.output.width, r.output.height)}p`}</span>}
+            {r.output?.sizeBytes > 0 && <span style={chip}>{fmtBytes(r.output.sizeBytes)}</span>}
+            <span style={chip}>MP4 · sem marca d'água</span>
+          </div>
+
+          <a
+            href={downloadUrl(job.id)}
+            onMouseEnter={() => setDlHover(true)}
+            onMouseLeave={() => setDlHover(false)}
+            style={{
+              textAlign: 'center', textDecoration: 'none', background: GRAD, color: '#fff', fontWeight: 700, fontSize: 15.5, borderRadius: 14, padding: '15px',
+              transform: dlHover ? 'translateY(-2px)' : 'none',
+              boxShadow: dlHover ? '0 14px 34px -8px rgba(255,107,53,0.55), 0 6px 18px -6px rgba(124,58,237,0.5)' : '0 8px 22px -8px rgba(255,107,53,0.45)',
+              transition: 'transform .18s ease, box-shadow .18s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+            }}
+          >
+            <Icon name="download" size={19} strokeWidth={2} /> Exportar vídeo
+          </a>
+          {onEditTimeline && (
+            <button onClick={onEditTimeline} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 14, padding: '13px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <Icon name="edit" size={17} strokeWidth={2} /> Ajustar na timeline
+            </button>
+          )}
+          <GhostButton onClick={onReset} style={{ width: '100%' }}>Criar outro vídeo</GhostButton>
+        </div>
       </div>
 
-      <video
-        src={previewUrl(job.id)}
-        controls
-        style={{
-          width: '100%',
-          maxHeight: 470,
-          borderRadius: 14,
-          background: '#000',
-          marginBottom: 18,
-          border: `1px solid ${C.border}`,
-          boxShadow: '0 20px 50px -24px rgba(0,0,0,0.8)',
-        }}
-      />
-
+      <div style={{ fontSize: 11.5, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>O QUE A IA FEZ</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))', gap: 10, marginBottom: 18 }}>
         <Stat label="Duração original" value={fmtDuration(inDur)} />
         {cutSec != null && cutSec > 0 && <Stat label="Trechos cortados" value={`−${fmtDuration(cutSec)}`} />}
@@ -164,45 +193,8 @@ export default function Result({ job, onReset, onEditTimeline }) {
         </div>
       )}
 
-      <a
-        href={downloadUrl(job.id)}
-        onMouseEnter={() => setDlHover(true)}
-        onMouseLeave={() => setDlHover(false)}
-        style={{
-          textAlign: 'center',
-          textDecoration: 'none',
-          background: GRAD,
-          color: '#fff',
-          fontWeight: 700,
-          fontSize: 15,
-          borderRadius: 14,
-          padding: '15px',
-          transform: dlHover ? 'translateY(-2px)' : 'none',
-          boxShadow: dlHover
-            ? '0 14px 34px -8px rgba(255,107,53,0.55), 0 6px 18px -6px rgba(124,58,237,0.5)'
-            : '0 8px 22px -8px rgba(255,107,53,0.45)',
-          transition: 'transform .18s ease, box-shadow .18s ease',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 9,
-        }}
-      >
-        <Icon name="download" size={19} strokeWidth={2} /> Baixar vídeo final
-      </a>
-
-      {onEditTimeline && (
-        <button
-          onClick={onEditTimeline}
-          style={{
-            marginTop: 10, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
-            background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text,
-            borderRadius: 14, padding: '13px', fontSize: 14.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          <Icon name="film" size={18} strokeWidth={2} /> Ajustar na timeline (cortes e legendas)
-        </button>
-      )}
     </div>
   );
 }
+
+const chip = { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: C.text, background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}`, borderRadius: 999, padding: '5px 10px' };

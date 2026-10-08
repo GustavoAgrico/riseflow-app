@@ -11,12 +11,17 @@ import Library from './pages/Library.jsx';
 import Settings from './pages/Settings.jsx';
 import Plans from './pages/Plans.jsx';
 import Editor from './App.jsx';
+import Templates from './pages/Templates.jsx';
+import BrandKit from './pages/BrandKit.jsx';
 import VerifyEmail from './pages/VerifyEmail.jsx';
 
 const NAV = [
-  { id: 'dashboard', label: 'Produtividade', icon: 'grid' },
-  { id: 'library', label: 'Biblioteca', icon: 'folder' },
-  { id: 'editor', label: 'Novo vídeo', icon: 'sparkles', cta: true },
+  { id: 'dashboard', label: 'Início', icon: 'home' },
+  { id: 'library', label: 'Meus projetos', icon: 'folder' },
+  { id: 'templates', label: 'Templates', icon: 'layers' },
+  { id: 'brand', label: 'Brand Kit', icon: 'brush' },
+  { id: 'plans', label: 'Planos', icon: 'zap' },
+  { id: 'settings', label: 'Configurações', icon: 'gear' },
 ];
 
 function NavItem({ item, active, onClick }) {
@@ -43,21 +48,24 @@ function NavItem({ item, active, onClick }) {
 
 function CreditsCard({ billing, onOpen }) {
   if (!billing) return null;
+  const title = billing.unlimited ? 'Uso ilimitado' : billing.plan ? `Plano ${billing.plan.name}` : billing.freeEdits > 0 ? 'Teste grátis' : 'Sem plano';
+  const value = billing.unlimited
+    ? 'Ilimitado'
+    : !billing.plan && billing.freeEdits > 0
+      ? `${billing.freeEdits} ${billing.freeEdits === 1 ? 'edição grátis' : 'edições grátis'}`
+      : `${billing.credits.toLocaleString('pt-BR')} créditos`;
   return (
-    <button onClick={onOpen} style={{ width: '100%', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer', background: 'rgba(124,58,237,0.09)', border: '1px solid rgba(124,58,237,0.25)', borderRadius: 12, padding: 12, color: C.text }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, color: C.muted }}>
-        <Icon name="zap" size={14} strokeWidth={2} color={C.purpleSoft} />
-        {billing.unlimited ? 'Uso ilimitado' : billing.plan ? `Plano ${billing.plan.name}` : billing.freeEdits > 0 ? 'Teste grátis' : 'Sem plano'}
+    <div style={{ borderRadius: 14, padding: 14, background: 'linear-gradient(160deg, rgba(255,107,53,0.12), rgba(124,58,237,0.12))', border: `1px solid ${C.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 700 }}>
+        <Icon name="zap" size={14} strokeWidth={2.2} color={C.orangeSoft} /> {title}
       </div>
-      <div style={{ fontSize: 24, fontWeight: 800, fontFamily: FONT_DISPLAY, margin: '4px 0 6px' }}>
-        {billing.unlimited
-          ? 'Ilimitado'
-          : !billing.plan && billing.freeEdits > 0
-            ? <>{billing.freeEdits} <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>{billing.freeEdits === 1 ? 'edição grátis' : 'edições grátis'}</span></>
-            : <>{billing.credits.toLocaleString('pt-BR')} <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>créditos</span></>}
-      </div>
-      {!billing.unlimited && <div style={{ fontSize: 12, fontWeight: 700, color: C.purpleSoft }}>{billing.plan ? 'Ver planos' : 'Assinar um plano →'}</div>}
-    </button>
+      <div style={{ fontSize: 12, color: C.muted, margin: '4px 0 10px' }}>{value}</div>
+      {!billing.unlimited && (
+        <button onClick={onOpen} style={{ width: '100%', minHeight: 34, borderRadius: 10, border: `1px solid ${C.borderStrong}`, background: 'rgba(255,255,255,0.06)', color: C.text, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+          {billing.plan ? 'Fazer upgrade' : 'Ver planos'}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -69,25 +77,24 @@ function Sidebar({ user, billing, view, onView, onLogout }) {
         <Logo size={32} />
         <div style={{ textAlign: 'left' }}>
           <div style={{ fontWeight: 800, fontSize: 16, fontFamily: FONT_DISPLAY, letterSpacing: -0.4, color: C.text }}>Riseframe</div>
-          <div style={{ fontSize: 10.5, color: C.faint, letterSpacing: 0.2 }}>Editor de vídeo IA</div>
+          <div style={{ fontSize: 10.5, color: C.faint, letterSpacing: 0.2 }}>Editor de vídeo com IA</div>
         </div>
       </button>
 
-      <div style={{ display: 'grid', gap: 4 }}>
+      <button onClick={() => onView('editor')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', minHeight: 44, borderRadius: 12, border: 'none', background: GRAD, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 16, boxShadow: '0 10px 24px -10px rgba(255,107,53,0.65)' }}>
+        <Icon name="plus" size={17} strokeWidth={2.4} color="#fff" /> Criar vídeo
+      </button>
+
+      <div style={{ display: 'grid', gap: 3 }}>
         {NAV.map((n) => <NavItem key={n.id} item={n} active={view === n.id} onClick={() => onView(n.id)} />)}
       </div>
 
-      <div style={{ marginTop: 20 }}>
+      <div style={{ marginTop: 'auto', display: 'grid', gap: 12 }}>
         <CreditsCard billing={billing} onOpen={() => onView('plans')} />
-      </div>
-
-      <div style={{ marginTop: 20, marginBottom: 8, fontSize: 10.5, color: C.faint, letterSpacing: 1.2, fontWeight: 700, padding: '0 8px' }}>CONTA</div>
-      <div style={{ display: 'grid', gap: 4 }}>
-        <NavItem item={{ id: 'settings', label: 'Conta', icon: 'user' }} active={view === 'settings'} onClick={() => onView('settings')} />
         <NavItem item={{ id: 'logout', label: 'Sair', icon: 'logout' }} active={false} onClick={onLogout} />
       </div>
 
-      <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderTop: `1px solid ${C.border}` }}>
+      <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px 0', borderTop: `1px solid ${C.border}` }}>
         <div style={{ width: 34, height: 34, borderRadius: '50%', background: GRAD, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 14, color: '#fff', flexShrink: 0 }}>{initial}</div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || 'Você'}</div>
@@ -117,10 +124,10 @@ function MobileTopBar({ billing, onView }) {
 }
 
 const TABS = [
-  { id: 'dashboard', label: 'Início', icon: 'grid' },
-  { id: 'library', label: 'Biblioteca', icon: 'folder' },
-  { id: 'editor', label: 'Novo', icon: 'sparkles', cta: true },
-  { id: 'plans', label: 'Planos', icon: 'zap' },
+  { id: 'dashboard', label: 'Início', icon: 'home' },
+  { id: 'library', label: 'Projetos', icon: 'folder' },
+  { id: 'editor', label: 'Criar', icon: 'plus', cta: true },
+  { id: 'templates', label: 'Templates', icon: 'layers' },
   { id: 'settings', label: 'Conta', icon: 'user' },
 ];
 
@@ -184,7 +191,8 @@ export default function Root() {
   const [publicRoute, setPublicRoute] = useState(resetToken ? 'login' : 'landing');
   const [billingReturn] = useState(readBillingReturn);
   const [view, setView] = useState(billingReturn ? 'plans' : 'dashboard');
-  // Intenção com que o editor abre: 'editor' (timeline) ou 'broll' (B-roll ligado).
+  // Intenção com que o editor abre: 'editor' (timeline), 'broll' (B-roll ligado) ou um
+  // template por nicho ({ template }).
   const [editorIntent, setEditorIntent] = useState(null);
 
   function go(next, intent = null) {
@@ -250,12 +258,26 @@ export default function Root() {
             onEditVideo={() => go('editor', 'editor')}
             onBroll={() => go('editor', 'broll')}
             onLibrary={() => go('library')}
+            onTemplates={() => go('templates')}
+            onOpen={(j) => go('editor', { reopen: j })}
+            onFormat={(id) => go('editor', { format: id })}
           />
         )}
-        {view === 'library' && <Library onNewVideo={() => go('editor')} />}
+        {view === 'library' && <Library onNewVideo={() => go('editor')} onOpen={(j) => go('editor', { reopen: j })} />}
+        {view === 'templates' && <Templates onUse={(t) => go('editor', { template: t })} onNewVideo={() => go('editor')} />}
+        {view === 'brand' && <BrandKit onNewVideo={() => go('editor')} />}
         {view === 'settings' && <Settings onNewVideo={() => go('editor')} onLogout={logout} />}
         {view === 'plans' && <Plans user={user} checkOnOpen={billingReturn} />}
-        {view === 'editor' && <Editor key={editorIntent || 'new'} embedded intent={editorIntent} onSettings={() => go('settings')} />}
+        {view === 'editor' && (
+          <Editor
+            key={typeof editorIntent === 'string' ? editorIntent : editorIntent?.template?.id || editorIntent?.reopen?.sourceId || editorIntent?.format || 'new'}
+            embedded
+            intent={typeof editorIntent === 'string' ? editorIntent : null}
+            template={editorIntent?.template || (editorIntent?.format ? { id: editorIntent.format, format: editorIntent.format } : null)}
+            reopen={editorIntent?.reopen || null}
+            onSettings={() => go('settings')}
+          />
+        )}
       </div>
       <MobileTabBar view={view} onView={go} />
       <style>{`
