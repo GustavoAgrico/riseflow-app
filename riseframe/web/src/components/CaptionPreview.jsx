@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { C } from '../theme.js';
+import { pickKeyword } from '../../../shared/captionKeyword.js';
 
 // Espelha o servidor: cada estilo tem fonte e animação padrão.
 const TPL = {
@@ -10,6 +11,10 @@ const TPL = {
   neon: { mode: 'phrase', font: 'Poppins', anim: 'fade', upper: false, size: 32, glow: true },
   bounce: { mode: 'word', font: 'Luckiest Guy', anim: 'bounce', upper: true, size: 46 },
   keyword: { mode: 'phrase', font: 'Poppins', anim: 'pop', upper: true, size: 34, highlightKeyword: true },
+  karaoke: { mode: 'phrase', font: 'Montserrat', anim: 'fade', upper: true, size: 32, forceHighlight: true },
+  marker: { mode: 'phrase', font: 'Poppins', anim: 'fade', upper: true, size: 31, marker: true },
+  duo: { mode: 'phrase', font: 'Archivo Black', anim: 'pop', upper: true, size: 31, highlightKeyword: true, keywordBreak: true, kwScale: 1.35 },
+  minimal: { mode: 'phrase', font: 'Poppins', anim: 'fade', upper: false, size: 27, forceHighlight: true, dimOthers: true },
 };
 const FONT_FAMILY = {
   montserrat: 'Montserrat', gotham: 'Poppins', helvetica: 'Arimo',
@@ -25,10 +30,6 @@ const ANIM_CSS = {
   zoom: 'rf-zoom .4s ease both', 'pop-rot': 'rf-pop-rot .45s ease both', shake: 'rf-shake .5s ease both', none: 'none',
 };
 
-const SAMPLE = ['ISSO', 'MUDA', 'TUDO', 'AGORA'];
-const SAMPLE_PHRASE = 'isso muda tudo agora';
-// Índice da palavra-chave na frase de exemplo (destaque do estilo "keyword").
-const KW_INDEX = 3; // "agora"
 
 /**
  * Visual da legenda (fonte, cor, fundo, animação, modo, posição) a partir das opções.
@@ -86,57 +87,75 @@ export function captionLook(options) {
   return { tplKey, T, fontFamily, animKind, anim, color, scale, bg, useBox, glowOn, mode, pos, vAlign, textStyle };
 }
 
-export default function CaptionPreview({ options }) {
-  const { tplKey, T, fontFamily, animKind, color, scale, bg, glowOn, mode, pos, vAlign, textStyle: styleFor } = captionLook(options);
+// Frases de exemplo da prévia (tempos em segundos, repetem em loop).
+const SAMPLE_LINES = ['Esse é o seu vídeo', 'com a legenda pronta', 'do jeito que vai sair'];
+const SAMPLE_SEGS = (() => {
+  const segs = [];
+  let t = 0.2;
+  for (const line of SAMPLE_LINES) {
+    const words = line.split(' ').map((word) => {
+      const w = { start: +t.toFixed(2), end: +(t + 0.38).toFixed(2), word };
+      t += 0.42;
+      return w;
+    });
+    segs.push({ start: words[0].start, end: words[words.length - 1].end + 0.35, words });
+    t += 0.45;
+  }
+  return segs;
+})();
+const SAMPLE_DUR = SAMPLE_SEGS[SAMPLE_SEGS.length - 1].end + 0.3;
+const RATIOS = { '9:16': 9 / 16, '1:1': 1, '16:9': 16 / 9, '4:5': 4 / 5 };
 
-  const [i, setI] = useState(0);
-  // No modo palavra, cicla as palavras para dar a sensação de dinâmica.
+/**
+ * Prévia da legenda ANTES de editar: o próprio vídeo do usuário (quando já escolhido)
+ * no formato escolhido, com frases de exemplo no estilo selecionado — igual ao render.
+ */
+export default function CaptionPreview({ options, videoUrl }) {
+  const wrapRef = useRef(null);
+  const [availW, setAvailW] = useState(320);
+  const [natural, setNatural] = useState(null); // proporção do vídeo (formato "original")
   useEffect(() => {
-    if (mode !== 'word') return undefined;
-    const id = setInterval(() => setI((v) => (v + 1) % SAMPLE.length), 900);
-    return () => clearInterval(id);
-  }, [mode, tplKey, animKind]);
-  // reinicia o ciclo de frase para reanimar
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    if (mode === 'word') return undefined;
-    const id = setInterval(() => setTick((v) => v + 1), 1800);
-    return () => clearInterval(id);
-  }, [mode, tplKey, animKind]);
-
-  const textStyle = styleFor(Math.round(T.size * scale));
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => setAvailW(el.clientWidth || 320));
+    ro.observe(el);
+    setAvailW(el.clientWidth || 320);
+    return () => ro.disconnect();
+  }, []);
+  const ratio = RATIOS[options.aspect] || natural || 9 / 16;
+  const h = Math.round(Math.min(ratio >= 1 ? 240 : 380, availW / ratio));
+  const w = Math.round(h * ratio);
+  const startedAt = useRef(typeof performance !== 'undefined' ? performance.now() : 0);
+  const clock = () => ((performance.now() - startedAt.current) / 1000) % SAMPLE_DUR;
+  const look = captionLook(options);
 
   return (
-    <div style={{ marginTop: 6 }}>
-      <div style={{ fontSize: 12, color: C.faint, marginBottom: 8, fontWeight: 600, letterSpacing: 0.3 }}>PRÉVIA DA LEGENDA</div>
-      <div
-        style={{
-          position: 'relative', height: 150, borderRadius: 14, overflow: 'hidden',
-          background: 'linear-gradient(135deg, #1b2436, #0c0c16)',
-          display: 'flex', alignItems: vAlign, justifyContent: 'center',
-          padding: pos === 'auto' ? 0 : '14px 0',
-          boxSizing: 'border-box',
-          border: `1px solid ${C.border}`,
-        }}
-      >
-        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 120%, rgba(255,107,53,0.18), transparent 60%)' }} />
-        {mode === 'word' ? (
-          <span key={`${i}-${animKind}-${fontFamily}`} style={textStyle}>{SAMPLE[i]}</span>
-        ) : T.highlightKeyword ? (
-          <span key={`${tick}-${animKind}-${fontFamily}`} style={{ ...textStyle, color: '#FFFFFF', maxWidth: '86%', textAlign: 'center' }}>
-            {SAMPLE_PHRASE.split(' ').map((wd, k) => (
-              <React.Fragment key={k}>
-                {k > 0 ? ' ' : ''}
-                <span style={k === KW_INDEX ? { color: glowOn ? undefined : color, fontSize: '1.18em', display: 'inline-block' } : undefined}>{wd}</span>
-              </React.Fragment>
-            ))}
-          </span>
-        ) : (
-          <span key={`${tick}-${animKind}-${fontFamily}`} style={{ ...textStyle, maxWidth: '86%', textAlign: 'center' }}>{SAMPLE_PHRASE}</span>
-        )}
+    <div style={{ marginTop: 6 }} ref={wrapRef}>
+      <div style={{ fontSize: 12, color: C.faint, marginBottom: 8, fontWeight: 600, letterSpacing: 0.3 }}>
+        PRÉVIA DA LEGENDA{videoUrl ? ' · NO SEU VÍDEO' : ''}
       </div>
-      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>
-        {fontFamily} · {options.captionColor || 'white'} · {animKind} · {{ box: 'caixa', bar: 'barra', glow: 'brilho', none: 'sem sombra', clean: 'limpo' }[bg] || 'sombra'} · {mode === 'word' ? 'palavra' : 'frase'}
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <div style={{ position: 'relative', width: w, height: h, borderRadius: 14, overflow: 'hidden', background: 'linear-gradient(135deg, #1b2436, #0c0c16)', border: `1px solid ${C.border}` }}>
+          {videoUrl ? (
+            <video
+              src={videoUrl}
+              autoPlay
+              muted
+              loop
+              playsInline
+              onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth && v.videoHeight) setNatural(v.videoWidth / v.videoHeight); }}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+          ) : (
+            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 120%, rgba(255,107,53,0.18), transparent 60%)' }} />
+          )}
+          {options.captions !== false && <CaptionOverlay clock={clock} segments={SAMPLE_SEGS} options={options} box={{ x: 0, y: 0, w, h }} />}
+        </div>
+      </div>
+      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6, textAlign: 'center' }}>
+        {options.captions === false
+          ? 'Sem legenda no vídeo'
+          : `${look.fontFamily} · ${look.mode === 'word' ? 'palavra por palavra' : 'frase'}${videoUrl ? '' : ' · escolha o vídeo para ver a prévia nele'}`}
       </div>
     </div>
   );
@@ -152,6 +171,10 @@ const SERVER_TPL = {
   neon: { size: 0.066, align: 'bottom', marginV: 0.14 },
   bounce: { size: 0.092, align: 'center', marginV: 0 },
   keyword: { size: 0.07, align: 'bottom', marginV: 0.15 },
+  karaoke: { size: 0.066, align: 'bottom', marginV: 0.15 },
+  marker: { size: 0.064, align: 'bottom', marginV: 0.15 },
+  duo: { size: 0.064, align: 'bottom', marginV: 0.15 },
+  minimal: { size: 0.056, align: 'bottom', marginV: 0.14 },
 };
 
 function wordsOf(seg) {
@@ -165,15 +188,18 @@ function wordsOf(seg) {
  * (requestAnimationFrame) para acompanhar palavra a palavra sem re-renderizar o editor.
  * `box` = retângulo onde o vídeo aparece dentro do player (px).
  */
-export function CaptionOverlay({ videoRef, segments, options, box, sample, editable = false, onDragPos }) {
+export function CaptionOverlay({ videoRef, clock, segments, options, box, sample, editable = false, onDragPos }) {
   const [t, setT] = useState(0);
   const boxRef = useRef(null);
+  // `clock` (opcional) substitui o tempo do <video> — usado na prévia com frases de exemplo.
+  const clockRef = useRef(clock);
+  clockRef.current = clock;
   useEffect(() => {
     let id;
     let last = -1;
     const loop = () => {
-      const v = videoRef.current;
-      if (v && Math.abs(v.currentTime - last) > 0.03) { last = v.currentTime; setT(v.currentTime); }
+      const now = clockRef.current ? clockRef.current() : videoRef?.current?.currentTime;
+      if (now != null && Math.abs(now - last) > 0.03) { last = now; setT(now); }
       id = requestAnimationFrame(loop);
     };
     id = requestAnimationFrame(loop);
@@ -199,32 +225,7 @@ export function CaptionOverlay({ videoRef, segments, options, box, sample, edita
 
   const align = look.pos === 'top' ? 'top' : look.pos === 'center' ? 'center' : look.pos === 'bottom' ? 'bottom' : S.align;
   const marginV = look.pos === 'auto' ? S.marginV : 0.12;
-  const style = look.textStyle(fontPx);
-  const up = (w) => (look.T.upper ? String(w).toUpperCase() : w);
-
-  let content;
-  if (look.mode === 'word') {
-    content = <span key={`${seg.start}-${wi}-${look.animKind}`} style={{ ...style, maxWidth: '92%', textAlign: 'center' }}>{up(words[wi].word)}</span>;
-  } else if (!options.captionHighlight) {
-    // Padrão: legenda normal — frase inteira, todas as palavras iguais (como no render).
-    content = (
-      <span key={`${seg.start}-${look.animKind}`} style={{ ...style, maxWidth: '90%', textAlign: 'center' }}>
-        {words.map((w) => up(w.word)).join(' ')}
-      </span>
-    );
-  } else {
-    const white = (options.captionColor || 'white') === 'white';
-    content = (
-      <span key={`${seg.start}-${look.animKind}`} style={{ ...style, color: '#fff', maxWidth: '90%', textAlign: 'center' }}>
-        {words.map((w, k) => (
-          <React.Fragment key={k}>
-            {k > 0 ? ' ' : ''}
-            <span style={k === wi ? { color: white || look.glowOn ? '#fff' : look.color } : white ? { opacity: 0.55 } : undefined}>{up(w.word)}</span>
-          </React.Fragment>
-        ))}
-      </span>
-    );
-  }
+  const content = <CaptionWords words={words} wi={wi} look={look} options={options} fontPx={fontPx} keyId={seg.start} />;
 
   // Posição manual (arrastada): da palavra (modo palavra) ou da frase; senão a geral.
   const wpos = (w) => (w && w.px != null && w.py != null ? { x: w.px, y: w.py } : null);
@@ -278,5 +279,63 @@ export function CaptionOverlay({ videoRef, segments, options, box, sample, edita
     }}>
       {handle}
     </div>
+  );
+}
+
+const LIGHT = new Set(['white', 'yellow', 'green', 'cyan']);
+
+/**
+ * O texto da legenda num instante (palavra `wi` sendo falada), com as mesmas regras do
+ * render: modo palavra/frase, destaque da palavra falada, palavra-chave (e quebra de
+ * linha do estilo "duas linhas"), marca-texto e a ênfase manual de cada palavra.
+ * `still` = sem animação (miniaturas da galeria).
+ */
+export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, still = false }) {
+  const T = look.T;
+  // Miniatura (still): sem animação e com um respiro entre as palavras (letra pequena).
+  const style = { ...look.textStyle(fontPx), ...(still ? { animation: 'none', wordSpacing: '0.18em' } : null) };
+  const up = (w) => (T.upper ? String(w).toUpperCase() : w);
+  const colorId = options.captionColor || 'white';
+  const emStyle = (w) => (w.emColor || w.emBig
+    ? { ...(w.emColor ? { color: COLOR_HEX[w.emColor], opacity: 1 } : null), ...(w.emBig ? { fontSize: '1.3em' } : null), display: 'inline-block' }
+    : null);
+
+  if (look.mode === 'word') {
+    const w = words[wi] || words[0];
+    return <span key={`${keyId}-${wi}-${look.animKind}`} style={{ ...style, maxWidth: '92%', textAlign: 'center', ...emStyle(w) }}>{up(w.word)}</span>;
+  }
+
+  const kw = T.highlightKeyword ? pickKeyword(words) : -1;
+  const kwStyle = { color: look.glowOn ? undefined : look.color, fontSize: `${T.kwScale || 1.18}em`, display: 'inline-block' };
+  const breakAt = (k) => T.keywordBreak && (k === kw || (kw === 0 && k === 1));
+  const highlight = options.captionHighlight === true || !!T.forceHighlight;
+  // Nos estilos de palavra-chave e no marca-texto a frase fica branca.
+  const base = T.highlightKeyword || T.marker ? { color: '#fff' } : null;
+
+  const wordStyle = (w, k) => {
+    const em = emStyle(w);
+    if (em) return em;
+    if (T.marker && k === wi) {
+      return {
+        background: look.color, color: LIGHT.has(colorId) ? '#111' : '#fff', textShadow: 'none',
+        padding: '0 0.1em', borderRadius: 3, display: 'inline-block',
+      };
+    }
+    if (k === kw) return kwStyle;
+    if (!highlight || T.marker) return undefined;
+    if (k === wi) return T.highlightKeyword || colorId === 'white' || look.glowOn ? { color: '#fff' } : { color: look.color };
+    if (colorId === 'white' || T.dimOthers) return { opacity: T.dimOthers ? 0.62 : 0.55 };
+    return undefined;
+  };
+
+  return (
+    <span key={`${keyId}-${look.animKind}`} style={{ ...style, ...(highlight ? { color: '#fff' } : null), ...base, maxWidth: '90%', textAlign: 'center' }}>
+      {words.map((w, k) => (
+        <React.Fragment key={k}>
+          {k > 0 ? (breakAt(k) ? <br /> : ' ') : ''}
+          <span style={wordStyle(w, k)}>{up(w.word)}</span>
+        </React.Fragment>
+      ))}
+    </span>
   );
 }

@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { groupIntoPhrases } from './narrative.js';
 import { makeLogger } from '../logger.js';
+import { emphasisOf } from '../../../shared/captionKeyword.js';
 
 const log = makeLogger('timeline');
 
@@ -120,7 +121,7 @@ export function remapTranscript(transcript, keep, perSegment = 4) {
       if (!inKeep) continue;
       const ns = remapTime(w.start, keep);
       const ne = Math.max(ns + 0.05, remapTime(w.end, keep));
-      kept.push({ start: ns, end: ne, word: w.word, ...posOf(w) });
+      kept.push({ start: ns, end: ne, word: w.word, ...posOf(w), ...emphasisOf(w) });
     }
   }
 

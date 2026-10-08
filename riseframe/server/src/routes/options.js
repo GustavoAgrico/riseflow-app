@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { capabilities } from '../config.js';
 import { lookNames } from '../pipeline/color.js';
 import { NICHES } from '../pipeline/niche.js';
-import { CAPTION_FONTS, CAPTION_ANIMATIONS, CAPTION_BACKGROUNDS, CAPTION_POSITIONS } from '../pipeline/captions.js';
+import { CAPTION_FONTS, CAPTION_TEMPLATE_LABELS, CAPTION_ANIMATIONS, CAPTION_BACKGROUNDS, CAPTION_POSITIONS } from '../pipeline/captions.js';
 
 export const optionsRouter = Router();
 
@@ -11,15 +11,7 @@ optionsRouter.get('/options', (_req, res) => {
   res.json({
     capabilities: capabilities(),
     colorLooks: lookNames().map((id) => ({ id, label: LABELS.color[id] || id })),
-    captionTemplates: [
-      { id: 'clean', label: 'Clássico (limpo)' },
-      { id: 'pop', label: 'Pop (palavra a palavra)' },
-      { id: 'hormozi', label: 'Impacto (bold)' },
-      { id: 'box', label: 'Caixa (destaque)' },
-      { id: 'neon', label: 'Neon (glow)' },
-      { id: 'bounce', label: 'Bounce' },
-      { id: 'keyword', label: 'Palavra-chave (dinâmico)' },
-    ],
+    captionTemplates: Object.entries(CAPTION_TEMPLATE_LABELS).map(([id, label]) => ({ id, label })),
     captionFonts: [
       { id: 'auto', label: 'Automática (por estilo)' },
       ...Object.entries(CAPTION_FONTS).map(([id, f]) => ({ id, label: f.label })),

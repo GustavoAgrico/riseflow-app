@@ -108,3 +108,42 @@ test('posição manual sobrevive aos cortes e separa frases com posições difer
   assert.deepEqual(out.segments[0].words.map((w) => [w.word, w.px, w.py]), [['a', 0.1, 0.1], ['b', 0.1, 0.1]]);
   assert.equal(out.segments[1].words[0].px, undefined);
 });
+
+test('ênfase por palavra: cor própria e maior na frase e no modo palavra; sobrevive aos cortes', async () => {
+  const seg = [{ start: 0, end: 1.5, words: [
+    { start: 0, end: 0.5, word: 'isso' },
+    { start: 0.5, end: 1, word: 'muda', emColor: 'yellow', emBig: true },
+    { start: 1, end: 1.5, word: 'tudo', emColor: 'hacker' },
+  ] }];
+  const yellow = '&H004BE2FF';
+  const phrase = buildAss(seg, meta, { template: 'clean' }).split('\n').find((l) => l.startsWith('Dialogue'));
+  assert.ok(phrase.includes(`\\c${yellow}`), 'cor da ênfase');
+  assert.match(phrase, /\\fs\d+}muda\{\\fs\d+/, 'maior só nela');
+  assert.doesNotMatch(phrase, /\{[^}]*\}tudo/, 'cor inválida é ignorada');
+  const word = buildAss(seg, meta, { template: 'pop' }).split('\n').filter((l) => l.startsWith('Dialogue'));
+  assert.ok(word[1].includes(`\\c${yellow}`) && /\\fs\d+/.test(word[1]), 'modo palavra: cor e tamanho');
+  assert.doesNotMatch(word[0], new RegExp(yellow.replace(/&/g, '\\&')));
+
+  const { remapTranscript } = await import('../src/pipeline/timeline.js');
+  const out = remapTranscript({ segments: seg }, [{ start: 0, end: 2 }]);
+  const w = out.segments.flatMap((s) => s.words);
+  assert.deepEqual([w[1].emColor, w[1].emBig, w[2].emColor], ['yellow', true, undefined]);
+});
+
+test('estilos novos: karaokê destaca sempre, marca-texto põe caixa só na palavra falada, duas linhas quebra na palavra-chave', () => {
+  const k = buildAss(segments, meta, { template: 'karaoke', color: 'yellow' }).split('\n').filter((l) => l.startsWith('Dialogue'));
+  assert.equal(k.length, 3, 'karaokê: um evento por palavra falada mesmo sem "destacar" ligado');
+
+  const m = buildAss(segments, meta, { template: 'marker', color: 'purple' });
+  const markStyle = m.split('\n').find((l) => l.startsWith('Style: RiseMark,')).split(',');
+  assert.equal(markStyle[15], '3', 'caixa por letra (BorderStyle=3)');
+  assert.ok(markStyle[5].startsWith('&HFF'), 'caixa começa invisível');
+  const layer1 = m.split('\n').filter((l) => l.startsWith('Dialogue: 1,'));
+  assert.equal(layer1.length, 3);
+  assert.ok(layer1[2].includes('\\1a&H00&\\3a&H00&}PREMIUM'), 'caixa ligada só na palavra da vez');
+  assert.equal(m.split('\n').filter((l) => l.startsWith('Dialogue: 0,')).length, 1, 'frase base numa camada só');
+
+  const d = buildAss(segments, meta, { template: 'duo', color: 'green' }).split('\n').find((l) => l.startsWith('Dialogue'));
+  assert.match(d, /\\N\{\\fscx135\\fscy135\\c&H007AD42E\}PREMIUM/, 'palavra-chave desce, maior e colorida');
+  assert.match(d, /\}ESSE É\\N/, 'o resto da frase fica branco, na linha de cima');
+});

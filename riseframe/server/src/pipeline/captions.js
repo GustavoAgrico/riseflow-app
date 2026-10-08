@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 import { posOf } from './timeline.js';
+import { pickKeyword, emphasisOf } from '../../../shared/captionKeyword.js';
 
 const log = makeLogger('captions');
 
@@ -45,48 +46,6 @@ function escapeAss(text) {
   return String(text).replace(/\\/g, '\\\\').replace(/\{/g, '(').replace(/\}/g, ')').replace(/\n/g, ' ');
 }
 
-// ─── Destaque de palavra-chave ────────────────────────────────────────
-// Stopwords (PT + EN): palavras funcionais que nunca devem ser destacadas.
-const STOPWORDS = new Set([
-  // português
-  'a', 'o', 'e', 'é', 'as', 'os', 'um', 'uma', 'uns', 'umas', 'de', 'do', 'da', 'dos', 'das',
-  'em', 'no', 'na', 'nos', 'nas', 'por', 'para', 'pra', 'pro', 'com', 'sem', 'que', 'se', 'não',
-  'sim', 'mais', 'mas', 'ou', 'como', 'quando', 'onde', 'quem', 'qual', 'quais', 'isso', 'isto',
-  'esse', 'essa', 'este', 'esta', 'aquele', 'aquela', 'ele', 'ela', 'eles', 'elas', 'eu', 'tu',
-  'você', 'vocês', 'nós', 'meu', 'minha', 'seu', 'sua', 'ao', 'aos', 'à', 'às', 'já', 'ainda',
-  'muito', 'muita', 'pouco', 'tão', 'ser', 'ter', 'estar', 'foi', 'era', 'são', 'vai', 'vou',
-  'tem', 'tinha', 'está', 'até', 'também', 'só', 'lá', 'aqui', 'ali', 'então', 'porque',
-  // inglês
-  'the', 'a', 'an', 'and', 'or', 'but', 'of', 'to', 'in', 'on', 'at', 'for', 'with', 'without',
-  'is', 'are', 'was', 'were', 'be', 'been', 'this', 'that', 'these', 'those', 'it', 'you', 'i',
-  'we', 'they', 'he', 'she', 'my', 'your', 'so', 'if', 'as', 'not', 'no', 'yes', 'do', 'does',
-]);
-
-/** Comprimento da palavra sem pontuação, para pontuar candidatas a palavra-chave. */
-function coreLen(word) {
-  return String(word).replace(/[^\p{L}\p{N}]/gu, '').length;
-}
-
-/**
- * Escolhe a palavra-chave de um conjunto de palavras (índice) — a palavra de
- * conteúdo mais "forte": não-stopword, ≥4 letras, priorizando a mais longa.
- * Retorna -1 quando não há candidata clara.
- */
-function pickKeyword(words) {
-  let best = -1;
-  let bestLen = 0;
-  for (let i = 0; i < words.length; i++) {
-    const clean = String(words[i].word).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
-    if (clean.length < 4 || STOPWORDS.has(clean)) continue;
-    const len = coreLen(words[i].word);
-    if (len > bestLen) {
-      bestLen = len;
-      best = i;
-    }
-  }
-  return best;
-}
-
 // ─── Paleta de cores de destaque (padrão: branco) ─────────────────────
 export const CAPTION_COLORS = {
   white: 'FFFFFF',
@@ -109,6 +68,14 @@ export const CAPTION_TEMPLATES = {
   neon: { mode: 'phrase', size: 0.066, align: 2, marginV: 0.14, outline: 0.05, bold: true, upper: false, anim: 'fade', glow: true, defaultFont: 'poppins' },
   bounce: { mode: 'word', size: 0.092, align: 5, marginV: 0, outline: 0.1, bold: true, upper: true, anim: 'bounce', defaultFont: 'luckiest' },
   keyword: { mode: 'phrase', size: 0.07, align: 2, marginV: 0.15, outline: 0.1, bold: true, upper: true, anim: 'pop', highlightKeyword: true, defaultFont: 'poppins' },
+  // Karaokê: a frase inteira e a palavra falada sempre na cor de destaque.
+  karaoke: { mode: 'phrase', size: 0.066, align: 2, marginV: 0.15, outline: 0.1, bold: true, upper: true, anim: 'fade', forceHighlight: true, defaultFont: 'montserrat' },
+  // Marca-texto: caixa colorida atrás da palavra falada (as outras ficam com contorno).
+  marker: { mode: 'phrase', size: 0.064, align: 2, marginV: 0.15, outline: 0.09, bold: true, upper: true, anim: 'fade', marker: true, defaultFont: 'poppins' },
+  // Duas linhas: a palavra-chave desce para a linha de baixo, maior e colorida.
+  duo: { mode: 'phrase', size: 0.064, align: 2, marginV: 0.15, outline: 0.1, bold: true, upper: true, anim: 'pop', highlightKeyword: true, keywordBreak: true, kwScale: 135, defaultFont: 'archivo' },
+  // Minimalista: minúsculas, sem contorno; as outras palavras apagadas e a falada colorida.
+  minimal: { mode: 'phrase', size: 0.056, align: 2, marginV: 0.14, outline: 0.05, bold: true, upper: false, anim: 'fade', forceHighlight: true, dimOthers: true, defaultFont: 'poppins' },
 };
 
 export const CAPTION_TEMPLATE_LABELS = {
@@ -119,6 +86,10 @@ export const CAPTION_TEMPLATE_LABELS = {
   neon: 'Neon (glow)',
   bounce: 'Bounce',
   keyword: 'Palavra-chave (dinâmico)',
+  karaoke: 'Karaokê',
+  marker: 'Marca-texto',
+  duo: 'Duas linhas',
+  minimal: 'Minimalista',
 };
 
 /** Posição vertical da legenda no quadro. */
@@ -260,6 +231,18 @@ export function buildAss(segments, meta, style = {}) {
       `Style: RiseBox,${fontName},${size},${textColor},${textColor},${boxColor},${boxColor},${boldFlag},0,0,0,100,100,0,0,3,${pad},0,${align},60,60,${marginV},1`,
     );
   }
+  // Marca-texto: 2ª camada com o mesmo texto, só que invisível; a palavra falada ganha
+  // caixa (BorderStyle=3 desenha a caixa por letra, então dá para ligar só nela).
+  // Branco → caixa branca com texto escuro; cores claras → texto escuro; demais → branco.
+  const markerOn = T.marker && mode === 'phrase';
+  if (markerOn) {
+    const boxHex = CAPTION_COLORS[color];
+    const darkText = ['white', 'yellow', 'green', 'cyan'].includes(color);
+    const pad = Math.max(6, Math.round(size * 0.14));
+    header.push(
+      `Style: RiseMark,${fontName},${size},${darkText ? assColor('111111') : WHITE},${WHITE},&HFF${assColor(boxHex).slice(4)},&HFF000000,${boldFlag},0,0,0,100,100,0,0,3,${pad},0,${align},60,60,${marginV},1`,
+    );
+  }
   header.push('', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text');
 
   // Animação escolhida pelo usuário (style.animation) OU a padrão do estilo.
@@ -278,16 +261,29 @@ export function buildAss(segments, meta, style = {}) {
     return `\\an5\\pos(${x},${y})`;
   };
 
+  // Ênfase manual de uma palavra (cor própria e/ou maior). Depois dela volta ao normal.
+  const bigSize = Math.round(size * 1.3);
+  const emOpen = (wd) => (wd.emColor ? `\\alpha&H00&\\c${assColor(CAPTION_COLORS[wd.emColor])}` : '') + (wd.emBig ? `\\fs${bigSize}` : '');
+  const hasEm = (wd) => !!(wd.emColor || wd.emBig);
+  const emWrap = (wd, t, fill) => `{${emOpen(wd)}}${t}{\\fs${size}\\c${fill}}`;
+  // Junta as palavras da frase. No estilo "duas linhas" a palavra-chave vai para baixo.
+  const joinWords = (parts, kw) => parts
+    .map((p, j) => (j === 0 ? p : `${T.keywordBreak && (j === kw || (kw === 0 && j === 1)) ? '\\N' : ' '}${p}`))
+    .join('');
+  const kwBig = `\\fscx${T.kwScale || 118}\\fscy${T.kwScale || 118}`; // realce da palavra-chave (maior)
+  const highlight = style.highlight === true || !!T.forceHighlight;
+  const up = (word) => escapeAss(T.upper ? word.toUpperCase() : word);
+
   for (const seg of segments) {
     const raw = seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }];
     const words = raw
-      .map((wd) => ({ start: Number(wd.start) || 0, end: Number(wd.end) || 0, word: String(wd.word ?? '').trim(), ...posOf(wd) }))
+      .map((wd) => ({ start: Number(wd.start) || 0, end: Number(wd.end) || 0, word: String(wd.word ?? '').trim(), ...posOf(wd), ...emphasisOf(wd) }))
       .filter((wd) => wd.word.length > 0);
     if (!words.length) continue;
+    const phraseStyle = useBox ? 'RiseBox' : 'Rise';
 
     if (mode === 'word') {
       // Uma palavra por vez, centralizada, com o movimento do template.
-      const styleName = useBox ? 'RiseBox' : 'Rise';
       // No brilho neon o texto fica branco e a cor aparece no halo (mais legível).
       const wordColor = useBox || glowOn ? '' : `\\c${accent}`;
       for (let i = 0; i < words.length; i++) {
@@ -298,58 +294,82 @@ export function buildAss(segments, meta, style = {}) {
         const end = Math.max(wd.start + 0.1, Math.min(Math.max(wd.end, wd.start + 0.12), nextStart));
         const disp = T.upper ? wd.word.toUpperCase() : wd.word;
         const txt = escapeAss(disp);
-        const fs = fitFontSize(disp, size);
+        const fs = fitFontSize(disp, wd.emBig ? bigSize : size);
         const fsTag = fs !== size ? `\\fs${fs}` : '';
-        const ov = `{${posTag(wd) || `\\an${align}`}${fsTag}${anim}${glow}${wordColor}}`;
-        lines.push(`Dialogue: 0,${assTime(wd.start)},${assTime(end)},${styleName},,0,0,0,,${ov}${txt}`);
+        const colorTag = wd.emColor ? `\\c${assColor(CAPTION_COLORS[wd.emColor])}` : wordColor;
+        const ov = `{${posTag(wd) || `\\an${align}`}${fsTag}${anim}${glow}${colorTag}}`;
+        lines.push(`Dialogue: 0,${assTime(wd.start)},${assTime(end)},${phraseStyle},,0,0,0,,${ov}${txt}`);
       }
-    } else if (!style.highlight) {
+    } else if (markerOn) {
+      // Camada 0: a frase inteira (contorno normal). Camada 1, palavra a palavra: o mesmo
+      // texto invisível com a caixa ligada só na palavra falada — fica exatamente atrás dela.
+      // (aqui a cor escolhida é a da caixa; o texto da frase fica branco)
+      const parts = words.map((wd) => (hasEm(wd) ? emWrap(wd, up(wd.word), WHITE) : up(wd.word)));
+      const endAll = Math.max(words[words.length - 1].end, Number(seg.end) || 0);
+      // Folga da caixa: um pouco dos lados, quase nada em cima/embaixo (a fonte já tem respiro).
+      const markPadX = Math.max(4, Math.round(size * 0.1));
+      const markPadY = Math.max(1, Math.round(size * 0.02));
+      const p0 = posTag(words[0]);
+      lines.push(`Dialogue: 0,${assTime(words[0].start)},${assTime(endAll)},${phraseStyle},,0,0,0,,{${p0}${anim}${glow}}${joinWords(parts, -1)}`);
+      for (let i = 0; i < words.length; i++) {
+        const start = words[i].start;
+        const end = i + 1 < words.length ? words[i + 1].start : endAll;
+        const marked = words.map((wd, j) => {
+          const big = wd.emBig ? `{\\fs${bigSize}}` : '';
+          const back = wd.emBig ? `{\\fs${size}}` : '';
+          const t = up(wd.word);
+          return j === i ? `${big}{\\1a&H00&\\3a&H00&}${t}{\\1a&HFF&\\3a&HFF&}${back}` : `${big}${t}${back}`;
+        });
+        // A 1ª palavra entra junto com a frase (mesma animação, para a caixa acompanhar).
+        const a1 = i === 0 ? anim : i === words.length - 1 ? '\\fad(0,60)' : '';
+        lines.push(`Dialogue: 1,${assTime(start)},${assTime(end)},RiseMark,,0,0,0,,{${p0}\\1a&HFF&\\xbord${markPadX}\\ybord${markPadY}${a1}}${joinWords(marked, -1)}`);
+      }
+    } else if (!highlight) {
       // PADRÃO: legenda normal — a frase inteira, todas as palavras iguais (na cor
       // escolhida), sem destacar a palavra falada. No estilo "palavra-chave" a
       // palavra-chave continua realçada (é a proposta do estilo).
       const kw = T.highlightKeyword ? pickKeyword(words) : -1;
-      const phraseStyle = useBox ? 'RiseBox' : 'Rise';
-      const base = useBox || glowOn || color === 'white' ? '' : `\\c${accent}`;
-      const rendered = words
-        .map((wd, j) => {
-          const t = escapeAss(T.upper ? wd.word.toUpperCase() : wd.word);
-          if (j !== kw) return t;
-          if (glowOn) return `{\\fscx118\\fscy118}${t}{\\fscx100\\fscy100}`;
-          return `{\\fscx118\\fscy118\\c${accent}}${t}{\\fscx100\\fscy100\\c${base ? accent : WHITE}}`;
-        })
-        .join(' ');
+      // Nos estilos de palavra-chave a frase fica branca e só a palavra-chave ganha a cor.
+      const base = useBox || glowOn || color === 'white' || T.highlightKeyword ? '' : `\\c${accent}`;
+      const fill = base ? accent : WHITE;
+      const parts = words.map((wd, j) => {
+        const t = up(wd.word);
+        if (hasEm(wd)) return emWrap(wd, t, fill);
+        if (j !== kw) return t;
+        if (glowOn) return `{${kwBig}}${t}{\\fscx100\\fscy100}`;
+        return `{${kwBig}\\c${accent}}${t}{\\fscx100\\fscy100\\c${fill}}`;
+      });
       const end = Math.max(words[words.length - 1].end, Number(seg.end) || 0);
-      lines.push(`Dialogue: 0,${assTime(words[0].start)},${assTime(end)},${phraseStyle},,0,0,0,,{${posTag(words[0])}${anim}${glow}${base}}${rendered}`);
+      lines.push(`Dialogue: 0,${assTime(words[0].start)},${assTime(end)},${phraseStyle},,0,0,0,,{${posTag(words[0])}${anim}${glow}${base}}${joinWords(parts, kw)}`);
     } else {
       // Destaque ligado: frase inteira e a palavra corrente realçada (por cor, ou —
       // no branco — pelo escurecimento das demais).
       // No estilo "palavra-chave", a palavra de conteúdo mais forte da frase é
       // sempre destacada (cor + maior), independente de qual está sendo falada.
       const kw = T.highlightKeyword ? pickKeyword(words) : -1;
-      const kwBig = '\\fscx118\\fscy118'; // realce da palavra-chave (maior)
-      const phraseStyle = useBox ? 'RiseBox' : 'Rise';
+      // Minimalista: as outras palavras ficam bem apagadas (a falada aparece na cor).
+      const dim = T.dimOthers ? '\\alpha&H60&' : '\\alpha&H70&';
       for (let i = 0; i < words.length; i++) {
         const start = words[i].start;
         const end = i + 1 < words.length ? words[i + 1].start : Math.max(words[i].end, seg.end);
-        const rendered = words
-          .map((wd, j) => {
-            const t = escapeAss(T.upper ? wd.word.toUpperCase() : wd.word);
-            // Brilho neon: texto branco, a cor vira o halo (legível). A palavra-chave
-            // ainda cresce, mas sem recolorir o preenchimento.
-            if (glowOn) return j === kw ? `{\\alpha&H00&${kwBig}}${t}{\\fscx100\\fscy100}` : `{\\alpha&H00&}${t}`;
-            if (j === kw) return `{\\alpha&H00&${kwBig}\\c${accent}}${t}{\\fscx100\\fscy100\\c${WHITE}}`;
-            if (j === i) {
-              // No estilo palavra-chave, SÓ a palavra-chave é colorida; a corrente
-              // realça apenas pelo brilho (branco opaco). Nos demais estilos, a
-              // corrente usa a cor de destaque quando ela não é branca.
-              if (T.highlightKeyword || color === 'white') return `{\\alpha&H00&}${t}`;
-              return `{\\alpha&H00&\\c${accent}}${t}{\\c${WHITE}}`;
-            }
-            if (color === 'white') return `{\\alpha&H70&}${t}{\\alpha&H00&}`;
-            return t;
-          })
-          .join(' ');
-        lines.push(`Dialogue: 0,${assTime(start)},${assTime(end)},${phraseStyle},,0,0,0,,{${posTag(words[0])}${anim}${glow}}${rendered}`);
+        const parts = words.map((wd, j) => {
+          const t = up(wd.word);
+          if (hasEm(wd)) return `{\\alpha&H00&}${emWrap(wd, t, WHITE)}`;
+          // Brilho neon: texto branco, a cor vira o halo (legível). A palavra-chave
+          // ainda cresce, mas sem recolorir o preenchimento.
+          if (glowOn) return j === kw ? `{\\alpha&H00&${kwBig}}${t}{\\fscx100\\fscy100}` : `{\\alpha&H00&}${t}`;
+          if (j === kw) return `{\\alpha&H00&${kwBig}\\c${accent}}${t}{\\fscx100\\fscy100\\c${WHITE}}`;
+          if (j === i) {
+            // No estilo palavra-chave, SÓ a palavra-chave é colorida; a corrente
+            // realça apenas pelo brilho (branco opaco). Nos demais estilos, a
+            // corrente usa a cor de destaque quando ela não é branca.
+            if (T.highlightKeyword || color === 'white') return `{\\alpha&H00&}${t}`;
+            return `{\\alpha&H00&\\c${accent}}${t}{\\c${WHITE}}`;
+          }
+          if (color === 'white' || T.dimOthers) return `{${dim}}${t}{\\alpha&H00&}`;
+          return t;
+        });
+        lines.push(`Dialogue: 0,${assTime(start)},${assTime(end)},${phraseStyle},,0,0,0,,{${posTag(words[0])}${anim}${glow}}${joinWords(parts, kw)}`);
       }
     }
   }

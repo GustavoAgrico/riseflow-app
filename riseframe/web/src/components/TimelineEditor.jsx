@@ -7,6 +7,7 @@ import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
 import { CaptionOverlay } from './CaptionPreview.jsx';
+import CaptionGallery from './CaptionGallery.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
 
@@ -22,6 +23,16 @@ const PPS_MAX = 240;
  * - corrigir o texto (duplo-clique na palavra)
  * "Renderizar" reprocessa com a transcrição editada.
  */
+// Palavra como vai para o servidor: tempos, texto, corte, posição manual e ênfase.
+function wordOut(w) {
+  return {
+    start: w.start, end: w.end, word: w.word, removed: !!w.removed,
+    ...(w.px != null ? { px: w.px, py: w.py } : {}),
+    ...(w.emColor ? { emColor: w.emColor } : {}),
+    ...(w.emBig ? { emBig: true } : {}),
+  };
+}
+
 export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, onSettings, busy }) {
   const { billing } = useAuth();
   const caps = catalog?.capabilities || {};
@@ -37,6 +48,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     captionMode: cap0.captionMode || 'auto',
     captionScale: cap0.captionScale || 1,
     captionHighlight: cap0.captionHighlight === true,
+    captionAnimation: cap0.captionAnimation || 'auto',
+    captionPreset: cap0.captionPreset,
   });
   const setCapField = (patch) => setCap((c) => ({ ...c, ...patch }));
   // Posição manual da legenda (arrastar na prévia): só esta frase, só esta palavra ou todas.
@@ -670,7 +683,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return {
       provider: transcript.provider,
       language: transcript.language,
-      segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map((w) => ({ start: w.start, end: w.end, word: w.word, removed: !!w.removed, ...(w.px != null ? { px: w.px, py: w.py } : {}) })) })),
+      segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map(wordOut) })),
     };
   }
 
@@ -742,7 +755,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {
         provider: transcript.provider,
         language: transcript.language,
-        segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map((w) => ({ start: w.start, end: w.end, word: w.word, removed: !!w.removed, ...(w.px != null ? { px: w.px, py: w.py } : {}) })) })),
+        segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map(wordOut) })),
       },
       {
         manualSilence: true,
@@ -816,6 +829,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
   const capSegNow = segments.find((s) => cur >= s.start && cur < s.end) || null;
   const capMoved = segments.some((s) => s.words.some((w) => w.px != null)) || cap.captionX != null;
+  // Ênfase manual de uma palavra (cor própria / maior) — identificada pelo início dela.
+  const [emWord, setEmWord] = useState(null);
+  function setWordEm(seg, start, patch) {
+    setSegments((prev) => prev.map((s) => (s.start !== seg.start ? s : {
+      ...s,
+      words: s.words.map((w) => {
+        if (w.start !== start) return w;
+        const next = { ...w, ...patch };
+        if (!next.emColor) delete next.emColor;
+        if (!next.emBig) delete next.emBig;
+        return next;
+      }),
+    })));
+  }
   function resetCapPos(all) {
     setSegments((prev) => prev.map((s) => (all || s === capSegNow
       ? { ...s, words: s.words.map(({ px, py, ...w }) => w) }
@@ -1381,7 +1408,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               {cap.captions && catalog ? (
                 <>
                 <div style={{ display: 'grid', gap: 8 }}>
-                  <CapRow label="Estilo"><Sel value={cap.captionTemplate} opts={catalog.captionTemplates} onChange={(v) => setCapField({ captionTemplate: v })} /></CapRow>
+                  <div>
+                    <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>Modelo</div>
+                    <CaptionGallery options={cap} onApply={setCapField} compact />
+                  </div>
                   <CapRow label="Fonte"><Sel value={cap.captionFont} opts={catalog.captionFonts} onChange={(v) => setCapField({ captionFont: v })} /></CapRow>
                   <CapRow label="Modo (palavra / frase)"><Sel value={cap.captionMode} opts={catalog.captionModes} onChange={(v) => setCapField({ captionMode: v })} /></CapRow>
                   <CapRow label="Destacar palavra falada">
@@ -1402,6 +1432,52 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <CapRow label={`Tamanho (${Math.round((cap.captionScale ?? 1) * 100)}%)`}>
                     <input type="range" min="0.6" max="1.4" step="0.05" value={cap.captionScale ?? 1} onChange={(e) => setCapField({ captionScale: Number(e.target.value) })} style={{ width: '100%' }} />
                   </CapRow>
+                  <div style={{ marginTop: 4, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>Ênfase nas palavras</div>
+                    {capSegNow ? (() => {
+                      const kept = capSegNow.words.filter((w) => !w.removed);
+                      const pick = kept.find((w) => w.start === emWord) || null;
+                      return (
+                        <>
+                          <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Toque numa palavra da frase e escolha uma cor ou deixe maior. Vale só para ela.</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                            {kept.map((w) => {
+                              const on = w.start === emWord;
+                              const hex = (catalog.captionColors || []).find((c) => c.id === w.emColor)?.hex;
+                              return (
+                                <button key={w.start} onClick={() => setEmWord(on ? null : w.start)}
+                                  style={{ padding: '5px 9px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: w.emBig ? 13.5 : 12, fontWeight: 700,
+                                    color: hex || C.text, background: on ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.3)', border: on ? '1.5px solid #fff' : `1px solid ${C.border}` }}>
+                                  {w.word}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {pick ? (
+                            <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                <span style={{ fontSize: 11, color: C.muted, marginRight: 2 }}>Cor de "{pick.word}":</span>
+                                {(catalog.captionColors || []).map((o) => (
+                                  <button key={o.id} onClick={() => setWordEm(capSegNow, pick.start, { emColor: pick.emColor === o.id ? undefined : o.id })} title={o.label}
+                                    style={{ width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', background: o.hex, border: pick.emColor === o.id ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)' }} />
+                                ))}
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <button onClick={() => setWordEm(capSegNow, pick.start, { emBig: !pick.emBig })} style={miniBtn(!!pick.emBig, false)}>{pick.emBig ? 'Maior ✓' : 'Deixar maior'}</button>
+                                {(pick.emColor || pick.emBig) && (
+                                  <button onClick={() => setWordEm(capSegNow, pick.start, { emColor: undefined, emBig: undefined })} style={miniBtn(false, false)}>Tirar ênfase</button>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 11, color: C.faint, marginTop: 8 }}>Nenhuma palavra escolhida.</div>
+                          )}
+                        </>
+                      );
+                    })() : (
+                      <div style={{ fontSize: 11, color: C.faint }}>Leve o vídeo até um trecho com fala para escolher as palavras.</div>
+                    )}
+                  </div>
                   <div style={{ marginTop: 4, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
                     <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>Corrigir o texto</div>
                     {capSegNow ? (

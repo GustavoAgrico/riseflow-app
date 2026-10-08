@@ -16,6 +16,9 @@ import { analyze } from '../pipeline/analyze.js';
 import { brollCandidates } from '../pipeline/broll.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
 import { analyzeAndGrade } from '../pipeline/autoColor.js';
+import { CAPTION_TEMPLATES } from '../pipeline/captions.js';
+
+const CAPTION_TEMPLATE_IDS = Object.keys(CAPTION_TEMPLATES);
 
 /** Opções do job com as chaves salvas do usuário (Pexels/Anthropic) — o servidor manda. */
 function optionsForUser(req) {
@@ -323,7 +326,7 @@ function parseOptions(raw) {
     soundEffects: o.soundEffects === true, // pop na legenda + whoosh no B-roll
     sfxIntensity: ['suave', 'medio', 'forte'].includes(o.sfxIntensity) ? o.sfxIntensity : 'medio',
     captions: o.captions !== false,
-    captionTemplate: ['clean', 'pop', 'hormozi', 'box', 'neon', 'bounce', 'keyword'].includes(o.captionTemplate) ? o.captionTemplate : 'clean',
+    captionTemplate: CAPTION_TEMPLATE_IDS.includes(o.captionTemplate) ? o.captionTemplate : 'clean',
     captionColor: ['white', 'yellow', 'orange', 'purple', 'green', 'cyan', 'pink', 'red'].includes(o.captionColor) ? o.captionColor : 'white',
     captionFont: ['auto', 'montserrat', 'gotham', 'helvetica', 'poppins', 'inter', 'opensans', 'anton', 'bebas', 'archivo', 'garamond', 'luckiest'].includes(o.captionFont) ? o.captionFont : 'auto',
     captionAnimation: ['auto', 'fade', 'pop', 'bounce', 'zoom', 'pop-rot', 'shake', 'none'].includes(o.captionAnimation) ? o.captionAnimation : 'auto',
