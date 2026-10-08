@@ -50,3 +50,14 @@ test('teclas da legenda: uma faixa só (WAV) entra como mais uma entrada do mix'
   assert.match(mix.filter, /amix=inputs=3/);
   assert.ok(buildSfxMix([], { tickTrack: true }), 'só cliques também mixa');
 });
+
+test('teclas gravadas: carrega os WAVs de assets/sfx e usa no lugar do som sintético', async () => {
+  const { tickTrackWav, loadKeySamples } = await import('../src/pipeline/sfx.js');
+  const samples = await loadKeySamples();
+  assert.ok(samples.length >= 4, 'tem as teclas do teclado empacotadas');
+  assert.ok(samples.every((f) => f.length > 1000 && f.length < 44100 * 0.2), 'cada tecla é curtinha');
+  const wav = tickTrackWav([0.2, 0.6], 1, { samples, gain: 0.6 });
+  let pk = 0;
+  for (let i = 0; i < 4410; i++) pk = Math.max(pk, Math.abs(wav.readInt16LE(44 + (Math.round(0.2 * 44100) + i) * 2)));
+  assert.ok(pk > 32767 * 0.3, 'a tecla aparece com força');
+});

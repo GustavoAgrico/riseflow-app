@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { runFfmpeg } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 
@@ -12,24 +13,62 @@ const LEVELS = {
   forte: { pop: 0.5, whoosh: 0.85, tick: 1 },
 };
 
+// Batidas de teclado reais (assets/sfx/tecla-*.wav), carregadas uma vez.
+const SFX_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets', 'sfx');
+let keySamples = null;
+/** Lê os WAVs de tecla (16 bits mono) como Float32Array. [] se não houver. */
+export async function loadKeySamples(dir = SFX_DIR) {
+  if (keySamples && dir === SFX_DIR) return keySamples;
+  let names = [];
+  try {
+    names = (await fs.readdir(dir)).filter((n) => /^tecla-\d+\.wav$/.test(n)).sort();
+  } catch {
+    names = [];
+  }
+  const out = [];
+  for (const n of names) {
+    const b = await fs.readFile(path.join(dir, n));
+    const pos = b.indexOf('data');
+    if (pos < 0 || b.readUInt16LE(22) !== 1 || b.readUInt16LE(34) !== 16) continue;
+    const len = Math.floor(b.readUInt32LE(pos + 4) / 2);
+    const f = new Float32Array(len);
+    for (let i = 0; i < len && pos + 8 + i * 2 + 1 < b.length; i++) f[i] = b.readInt16LE(pos + 8 + i * 2) / 32768;
+    out.push(f);
+  }
+  if (dir === SFX_DIR) keySamples = out;
+  return out;
+}
+
 /**
- * Faixa com os sons de tecla das palavras da legenda: um "tec" curtinho (~15 ms) como o
- * de um teclado — estalo inicial + ruído filtrado em ~2,6 kHz + um corpo grave bem leve.
- * Cada tecla varia um pouco de tom e força (soa como digitação, não como metrônomo).
+ * Faixa com os sons de tecla das palavras da legenda. Com `samples` (as teclas gravadas
+ * de assets/sfx), sorteia uma por palavra; sem elas, sintetiza um "tec" parecido (estalo
+ * + ruído filtrado em ~2,4 kHz + corpo grave leve). A força varia um pouco a cada tecla
+ * (soa como digitação, não como metrônomo).
  * Gerada aqui mesmo como WAV: muitas teclas viram UMA entrada no mix. Exportada para teste.
  * @returns {Buffer} WAV mono 16 bits
  */
-export function tickTrackWav(times, durationSec, { rate = 44100, gain = 0.5 } = {}) {
+export function tickTrackWav(times, durationSec, { rate = 44100, gain = 0.5, samples = null } = {}) {
   const total = Math.max(1, Math.ceil((durationSec + 0.1) * rate));
   const pcm = new Float32Array(total);
   const len = Math.round(0.03 * rate);
   let seed = 7;
   const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   let last = -Infinity;
+  let lastKey = -1;
   for (const t of [...times].sort((a, b) => a - b)) {
     if (!Number.isFinite(t) || t < 0 || t - last < 0.09) continue; // teclas coladas viram uma só
     last = t;
     const i0 = Math.round(t * rate);
+    if (samples?.length) {
+      // Tecla gravada: sorteia uma (nunca a mesma duas vezes seguidas) com força variando um pouco.
+      let k = Math.floor(rnd() * samples.length);
+      if (k === lastKey && samples.length > 1) k = (k + 1) % samples.length;
+      lastKey = k;
+      const smp = samples[k];
+      const g = gain * (0.88 + 0.24 * rnd());
+      for (let n = 0; n < smp.length && i0 + n < total; n++) pcm[i0 + n] += g * smp[n];
+      continue;
+    }
     const f0 = 2400 * (0.95 + 0.1 * rnd()); // centro do "tec"
     const amp = gain * (0.85 + 0.3 * rnd());
     // passa-faixa (biquad, Q≈4) para o ruído do clique
@@ -134,7 +173,8 @@ export async function applySoundEffects(input, work, meta, events, options, onPr
   let tickPath = null;
   if (ticks.length) {
     tickPath = path.join(work, 'sfx_ticks.wav');
-    await fs.writeFile(tickPath, tickTrackWav(ticks, meta.duration || Math.max(...ticks) + 1));
+    const samples = await loadKeySamples();
+    await fs.writeFile(tickPath, tickTrackWav(ticks, meta.duration || Math.max(...ticks) + 1, samples.length ? { samples, gain: 0.6 } : {}));
   }
   const mix = buildSfxMix(events, { intensity: options.sfxIntensity, tickTrack: !!tickPath });
   if (!mix) return { output: input, applied: false, count: 0 };
