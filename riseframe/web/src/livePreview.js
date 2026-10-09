@@ -139,3 +139,11 @@ export function playWhoosh(intensity = 'medio') {
     /* sem áudio no navegador: ignora */
   }
 }
+
+/** Ajuste fino de cor (brilho/contraste/saturação/temperatura) como filtro CSS + véu. */
+export function colorAdjustCss(a = {}) {
+  const b = Number(a.brightness) || 0, c = Number(a.contrast) || 0, s = Number(a.saturation) || 0, t = Number(a.temperature) || 0;
+  const filter = b || c || s ? `brightness(${1 + (b / 100) * 0.25}) contrast(${1 + (c / 100) * 0.35}) saturate(${1 + (s / 100) * 0.8})` : undefined;
+  const tint = t ? { background: t > 0 ? '#ff8a3d' : '#3d8bff', mixBlendMode: 'soft-light', opacity: (Math.abs(t) / 100) * 0.55 } : null;
+  return { filter, tint };
+}

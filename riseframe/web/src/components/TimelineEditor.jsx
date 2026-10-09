@@ -10,7 +10,7 @@ import { useAuth } from '../AuthContext.jsx';
 import { CaptionOverlay } from './CaptionPreview.jsx';
 import CaptionGallery from './CaptionGallery.jsx';
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
-import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS } from '../livePreview.js';
+import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
 
 // Tempo no formato do player: 00:12
@@ -1183,10 +1183,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const srcDim = vdim || (vbox?.vw ? { w: vbox.vw, h: vbox.vh } : null);
   const previewRatio = aspectSel === '1:1' ? '1 / 1' : aspectSel === '16:9' ? '16 / 9' : aspectSel === '9:16' ? '9 / 16' : srcDim ? `${srcDim.w} / ${srcDim.h}` : '9 / 16';
   const landscapePreview = aspectSel === '16:9' || (aspectSel === 'original' && srcDim && srcDim.w > srcDim.h);
+  // Proporção (largura/altura) do vídeo original e do formato final — dividem a largura.
+  const mainAr = srcDim ? srcDim.w / srcDim.h : 9 / 16;
+  const fmtAr = aspectSel === '1:1' ? 1 : aspectSel === '16:9' ? 16 / 9 : aspectSel === '9:16' ? 9 / 16 : mainAr;
   const previewLabel = aspectSel === 'original' ? 'formato original' : aspectSel;
   const composedPreview = (
-    <div ref={composedRef} style={{ position: 'relative', ...(landscapePreview ? { width: '100%', maxHeight: 'var(--rf-stage-h)' } : { height: 'var(--rf-stage-h)', width: 'auto' }), maxWidth: '100%', margin: '0 auto', aspectRatio: previewRatio, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
+    <div ref={composedRef} style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${fmtAr.toFixed(4)}), calc((100cqw - 16px) * var(--fmt-share)))`, aspectRatio: previewRatio, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
       {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
+      <span className="rf-tl-pvlabel" style={{ position: 'absolute', top: 6, right: 6, zIndex: 3, pointerEvents: 'none', fontSize: 9.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 6, padding: '3px 6px' }}>
+        Prévia {previewLabel}{previewMode === 'split' ? ' · dividida' : previewMode === 'broll' ? ' · B-roll' : ''}
+      </span>
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
       {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={segments} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} />}
     </div>
@@ -1330,10 +1336,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
         <div className="rf-tl-preview">
           {/* Vídeo principal + prévia 9:16 do ajuste, LADO A LADO (mesma linha) */}
-          <div className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}`} style={{ display: 'grid', gridTemplateColumns: showFormatPreview ? (landscapePreview ? 'minmax(0,1.3fr) minmax(0,1fr)' : 'minmax(0,1fr) auto') : '1fr', gap: 12, alignItems: 'center', padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(124,58,237,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
-            <div className="rf-tl-main" style={{ minWidth: 0, containerType: 'inline-size' }}>
-              <div style={{ position: 'relative', width: 'fit-content', maxWidth: '100%', margin: '0 auto', borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
-                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ display: 'block', width: 'auto', maxWidth: '100%', height: vdim ? `min(var(--rf-stage-h), ${((vdim.h / vdim.w) * 100).toFixed(3)}cqw)` : 'var(--rf-stage-h)', objectFit: 'contain', background: '#000', filter: videoFilter }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim({ w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
+          {/* Vídeo e prévia do formato centralizados, lado a lado e com a MESMA altura:
+              cada um ocupa uma fatia da largura proporcional ao seu formato. */}
+          <div className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}`} style={{ '--main-share': showFormatPreview ? (mainAr / (mainAr + fmtAr)).toFixed(4) : 1, '--fmt-share': showFormatPreview ? (fmtAr / (mainAr + fmtAr)).toFixed(4) : 1, containerType: 'inline-size', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(124,58,237,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
+            <div className="rf-tl-main" style={{ flex: '0 0 auto', minWidth: 0 }}>
+              <div style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${mainAr.toFixed(4)}), calc((100cqw - ${showFormatPreview ? 16 : 0}px) * var(--main-share)))`, aspectRatio: `${mainAr}`, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
+                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilter }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim({ w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
                 {vbox && lookCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...lookCss.tint }} />}
                 {vbox && colorCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...colorCss.tint }} />}
                 {vbox && brollNow && (
@@ -1371,7 +1379,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </div>
             {showFormatPreview && (
               <div className="rf-tl-pv-fmt">
-                <div className="rf-tl-pvlabel" style={{ fontSize: 10.5, color: C.faint, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', textAlign: 'center', marginBottom: 6 }}>Prévia {previewLabel} · {previewMode === 'split' ? 'tela dividida' : previewMode === 'broll' ? 'B-roll' : 'vídeo'}</div>
                 {composedPreview}
                 {previewMode === 'split' && <button onClick={() => setPersonSide((s) => (s === 'top' ? 'bottom' : 'top'))} style={{ ...zoomBtn, width: '100%', padding: '6px 0', marginTop: 8, fontSize: 11, fontWeight: 600 }}>Você: {personSide === 'top' ? 'em cima' : 'embaixo'}</button>}
               </div>
@@ -2556,6 +2563,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           /* tela estreita: mostra só a prévia do formato final (o player continua tocando o som) */
           .rf-tl-pv{ grid-template-columns: minmax(0, 1fr) !important; }
           .rf-tl-pv--fmt .rf-tl-main{ display: none; }
+          .rf-tl-pv--fmt{ --fmt-share: 1 !important; }
         }
         @media (max-width: 860px){
           .rf-tl-grid{ grid-template-columns: minmax(0, 1fr) !important; }
@@ -2712,12 +2720,7 @@ function coverCrop(inW, inH, regionW, regionH, focus = {}, zoom = 1) {
   return { scaledW, scaledH, cropX, cropY };
 }
 
-function colorPreviewCss(a) {
-  const b = Number(a.brightness) || 0, c = Number(a.contrast) || 0, s = Number(a.saturation) || 0, t = Number(a.temperature) || 0;
-  const filter = b || c || s ? `brightness(${1 + (b / 100) * 0.25}) contrast(${1 + (c / 100) * 0.35}) saturate(${1 + (s / 100) * 0.8})` : undefined;
-  const tint = t ? { background: t > 0 ? '#ff8a3d' : '#3d8bff', mixBlendMode: 'soft-light', opacity: (Math.abs(t) / 100) * 0.55 } : null;
-  return { filter, tint };
-}
+const colorPreviewCss = colorAdjustCss;
 function sectionTab(active) {
   return { display: 'inline-flex', alignItems: 'center', gap: 7, border: `1px solid ${active ? C.orange : C.border}`, background: active ? 'rgba(255,107,53,0.16)' : 'rgba(255,255,255,0.05)', color: active ? C.orange : C.muted, borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' };
 }

@@ -26,6 +26,14 @@ test('respiração entre as frases sai junto com a pausa (e fica com o limiar co
   assert.ok(resp.end <= 1.85, 'não invade a próxima palavra');
 });
 
+test('respirações ligadas NÃO cortam o final da palavra que vai sumindo (o "s" baixinho)', () => {
+  // palavra até 1.0 (ASR), mas o som ainda some devagar até 1.15 (-38 dB: abaixo do limiar
+  // de respiração, acima do de fala) · silêncio · próxima palavra em 2.0
+  const e = env(3, [[0.2, 1.0, -8], [1.0, 1.15, -38], [2.0, 2.8, -8]]);
+  const [r] = fitPausesToAudio([{ start: 1.02, end: 1.95 }], e, { breaths: true });
+  assert.ok(r.start >= 1.15, `o corte começa em ${r.start}: depois do fim real da palavra`);
+});
+
 test('vãos entre palavras viram faixas de corte (início, meio e fim)', () => {
   const t = { segments: [{ words: [
     { start: 0.5, end: 1.0, word: 'a' }, { start: 1.1, end: 1.5, word: 'b' },
@@ -71,7 +79,8 @@ test('áudio real: a inspiração antes da frase é cortada só com "remover res
   const comum = await preciseRemovals(wav, { pauses, transcript });
   const resp = await preciseRemovals(wav, { pauses, transcript, breaths: true });
   const fimResp = Math.max(...resp.pauses.map((r) => r.end));
-  assert.ok(fimResp >= 1.72, `o corte vai até perto da próxima palavra (${fimResp})`);
+  assert.ok(fimResp >= 1.7, `o corte vai até perto da próxima palavra (${fimResp})`);
+  assert.ok(fimResp <= 1.87 - 0.12, 'deixa folga antes do ataque da próxima palavra');
   assert.ok(sum(resp.pauses) > sum(comum.pauses) + 0.2, `corta mais (${sum(resp.pauses).toFixed(2)}s vs ${sum(comum.pauses).toFixed(2)}s)`);
   fs.rmSync(dir, { recursive: true, force: true });
 });

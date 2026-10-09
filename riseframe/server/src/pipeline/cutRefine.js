@@ -129,18 +129,25 @@ export function protectWords(ranges, words, { pre = 0.08, post = 0.12, minRemove
  */
 export function fitPausesToAudio(ranges, env, { maxShift = 0.3, tail = 0.04, preroll = 0.06, minRemove = 0.06, breaths = false } = {}) {
   if (!env) return ranges;
-  const thr = breaths ? breathThreshold(env) : speechThreshold(env);
-  const loud = (t) => env.db[frameAt(env, t)] > thr;
+  // Fim da palavra ANTERIOR: sempre com o limiar de fala (pega o "s"/"a" que vai sumindo
+  // devagar — com o limiar de respiração esse final era cortado).
+  const speechThr = speechThreshold(env);
+  // Começo da PRÓXIMA palavra: com respirações ligadas, a inspiração (bem abaixo da voz)
+  // não segura o corte; o ataque da palavra continua protegido pela folga (preroll) e
+  // pela transcrição (protectWords).
+  const endThr = breaths ? breathThreshold(env) : speechThr;
+  const loudS = (t) => env.db[frameAt(env, t)] > speechThr;
+  const loudE = (t) => env.db[frameAt(env, t)] > endThr;
   const out = [];
   for (const r of ranges) {
     let s = r.start;
     const sLimit = Math.min(r.end, r.start + maxShift);
     // fim da palavra anterior ainda soando? (precisa de 2 quadros quietos seguidos)
-    while (s < sLimit && (loud(s) || loud(s + env.hop))) s += env.hop;
+    while (s < sLimit && (loudS(s) || loudS(s + env.hop))) s += env.hop;
     let e = r.end;
     const eLimit = Math.max(s, r.end - maxShift);
     // ataque da próxima palavra já começou antes do fim do corte?
-    while (e > eLimit && (loud(e - env.hop) || loud(e - 2 * env.hop))) e -= env.hop;
+    while (e > eLimit && (loudE(e - env.hop) || loudE(e - 2 * env.hop))) e -= env.hop;
     s += tail;
     e -= preroll;
     if (e - s > minRemove) out.push({ start: +s.toFixed(3), end: +e.toFixed(3) });
@@ -224,9 +231,10 @@ export async function preciseRemovals(input, { pauses = [], transcript, hasAudio
   const words = keptWords(transcript);
   // Com corte de respirações: folgas menores em volta das palavras e borda guiada pelo
   // limiar de respiração (a inspiração antes da frase sai junto com a pausa).
-  const safePauses = breaths
-    ? fitPausesToAudio(protectWords(pauses, words, { pre: 0.05, post: 0.07 }), env, { breaths: true, maxShift: 0.2, tail: 0.03, preroll: 0.04 })
-    : fitPausesToAudio(protectWords(pauses, words), env);
+  // As folgas em volta das palavras são as MESMAS com ou sem respirações (com folgas
+  // menores o corte comia o começo/fim das palavras). Respirações só mudam o limiar do
+  // fim do corte: a inspiração antes da frase sai, o ataque da palavra fica.
+  const safePauses = fitPausesToAudio(protectWords(pauses, words), env, breaths ? { breaths: true, preroll: 0.08 } : {});
   const removed = removedWordRanges(transcript, env);
   const before = pauses.reduce((a, r) => a + (r.end - r.start), 0);
   const after = safePauses.reduce((a, r) => a + (r.end - r.start), 0);
