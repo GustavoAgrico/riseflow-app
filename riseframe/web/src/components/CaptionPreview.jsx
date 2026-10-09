@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { C } from '../theme.js';
+import { motionAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { pickKeyword, premiumChunks, layoutCaption, autoMaxChars } from '../../../shared/captionKeyword.js';
 
 // Espelha o servidor: cada estilo tem fonte e animação padrão.
@@ -108,13 +109,21 @@ export const SAMPLE_DUR = SAMPLE_SEGS[SAMPLE_SEGS.length - 1].end + 0.3;
 const RATIOS = { '9:16': 9 / 16, '1:1': 1, '16:9': 16 / 9, '4:5': 4 / 5 };
 
 /**
- * Prévia da legenda ANTES de editar: o próprio vídeo do usuário (quando já escolhido)
- * no formato escolhido, com frases de exemplo no estilo selecionado — igual ao render.
+ * Prévia ANTES de editar: o próprio vídeo do usuário (quando já escolhido) no formato
+ * escolhido, COM SOM e com os recursos ligados — velocidade, cor (look + ajuste fino),
+ * movimento/zoom, efeitos sonoros (whoosh nos punch-ins) e a legenda no estilo escolhido
+ * (frases de exemplo; o texto real vem da transcrição, na edição).
  */
 export default function CaptionPreview({ options, videoUrl }) {
   const wrapRef = useRef(null);
+  const videoRef = useRef(null);
+  const motionRef = useRef(null);
   const [availW, setAvailW] = useState(320);
   const [natural, setNatural] = useState(null); // proporção do vídeo (formato "original")
+  const [muted, setMuted] = useState(true); // o navegador só deixa tocar sozinho sem som
+  const [playing, setPlaying] = useState(false);
+  const [cur, setCur] = useState(0);
+  const [dur, setDur] = useState(0);
   useEffect(() => {
     const el = wrapRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
@@ -125,43 +134,138 @@ export default function CaptionPreview({ options, videoUrl }) {
   }, []);
   const ratio = RATIOS[options.aspect] || natural || 9 / 16;
   // Tela estreita (celular): prévia mais baixa, para as opções não ficarem longe.
-  const h = Math.round(Math.min(ratio >= 1 ? 240 : availW < 420 ? 270 : 380, availW / ratio));
+  const narrow = typeof window !== 'undefined' && window.innerWidth < 640;
+  const h = Math.round(Math.min(ratio >= 1 ? 260 : narrow ? 300 : 420, availW / ratio));
   const w = Math.round(h * ratio);
   const startedAt = useRef(typeof performance !== 'undefined' ? performance.now() : 0);
-  const clock = () => ((performance.now() - startedAt.current) / 1000) % SAMPLE_DUR;
+  // Com vídeo: a legenda de exemplo acompanha o tempo do vídeo (pausa junto).
+  const clock = () => (videoRef.current ? videoRef.current.currentTime : (performance.now() - startedAt.current) / 1000) % SAMPLE_DUR;
   const look = captionLook(options);
+  const speed = Number(options.speed) > 0 ? Number(options.speed) : 1;
+  const lookCss = LOOK_CSS[options.colorLook] || LOOK_CSS.auto;
+  const adj = colorAdjustCss(options.colorAdjust || {});
+  const filter = [lookCss.filter, adj.filter].filter(Boolean).join(' ') || undefined;
+  const motion = options.videoMotion && options.videoMotion !== 'none' ? options.videoMotion : null;
+
+  // Velocidade escolhida (a voz não muda de tom no navegador, como no render).
+  useEffect(() => { const v = videoRef.current; if (v) v.playbackRate = speed; }, [speed, videoUrl]);
+  useEffect(() => { const v = videoRef.current; if (v) v.muted = muted; }, [muted]);
+
+  // Movimento (zoom) + whoosh nos punch-ins, a cada quadro, sobre o tempo do vídeo.
+  useEffect(() => {
+    if (!videoUrl) return undefined;
+    let id;
+    let lastT = null;
+    const loop = () => {
+      const v = videoRef.current;
+      const box = motionRef.current;
+      if (v && box) {
+        const t = v.currentTime || 0;
+        const d = v.duration || 10;
+        // "Dinâmico": nos momentos-chave (na prévia, um punch-in a cada 4 s).
+        const windows = [];
+        for (let a = 1; a < d; a += 4) windows.push([a, a + 1.6, null]);
+        const m = motion ? motionAt(motion, options.motionIntensity, t, d, windows) : { scale: 1, ox: 50, oy: 50 };
+        const tf = m.scale && m.scale !== 1 ? `scale(${m.scale.toFixed(4)})` : 'none';
+        if (box.style.transform !== tf) box.style.transform = tf;
+        box.style.transformOrigin = `${m.ox ?? 50}% ${m.oy ?? 50}%`;
+        if (!v.paused && !v.muted && options.soundEffects && motion === 'dynamic' && lastT != null && t > lastT && t - lastT < 0.6) {
+          if (windows.some(([a]) => a - 0.3 > lastT && a - 0.3 <= t)) playWhoosh(options.sfxIntensity);
+        }
+        lastT = v.paused ? null : t;
+        setCur((c) => (Math.abs(c - t) > 0.25 ? t : c));
+      }
+      id = requestAnimationFrame(loop);
+    };
+    id = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(id);
+  }, [videoUrl, motion, options.motionIntensity, options.soundEffects, options.sfxIntensity]);
+
+  function togglePlay() {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) v.play().catch(() => {}); else v.pause();
+  }
+  function toggleSound() {
+    const v = videoRef.current;
+    const next = !muted;
+    setMuted(next);
+    if (v) {
+      v.muted = next;
+      if (!next) v.play().catch(() => {}); // ao ligar o som, garante que está tocando
+    }
+  }
+  const fmt = (t) => `${Math.floor((t || 0) / 60)}:${String(Math.floor((t || 0) % 60)).padStart(2, '0')}`;
 
   return (
     <div style={{ marginTop: 6 }} ref={wrapRef}>
       <div style={{ fontSize: 12, color: C.faint, marginBottom: 8, fontWeight: 600, letterSpacing: 0.3 }}>
-        PRÉVIA DA LEGENDA{videoUrl ? ' · NO SEU VÍDEO' : ''}
+        PRÉVIA{videoUrl ? ' · NO SEU VÍDEO, COM OS RECURSOS ESCOLHIDOS' : ' DA LEGENDA'}
       </div>
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <div style={{ position: 'relative', width: w, height: h, borderRadius: 14, overflow: 'hidden', background: 'linear-gradient(135deg, #1b2436, #0c0c16)', border: `1px solid ${C.border}` }}>
           {videoUrl ? (
-            <video
-              src={videoUrl}
-              autoPlay
-              muted
-              loop
-              playsInline
-              onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth && v.videoHeight) setNatural(v.videoWidth / v.videoHeight); }}
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            />
+            <>
+              <div ref={motionRef} style={{ position: 'absolute', inset: 0, transition: 'transform .35s ease' }}>
+                <video
+                  ref={videoRef}
+                  src={videoUrl}
+                  autoPlay
+                  muted={muted}
+                  loop
+                  playsInline
+                  onClick={togglePlay}
+                  onPlay={() => setPlaying(true)}
+                  onPause={() => setPlaying(false)}
+                  onLoadedMetadata={(e) => { const v = e.currentTarget; v.playbackRate = speed; setDur(v.duration || 0); if (v.videoWidth && v.videoHeight) setNatural(v.videoWidth / v.videoHeight); }}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', filter, cursor: 'pointer' }}
+                />
+              </div>
+              {lookCss.tint && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', ...lookCss.tint }} />}
+              {adj.tint && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', ...adj.tint }} />}
+            </>
           ) : (
             <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 120%, rgba(255,107,53,0.18), transparent 60%)' }} />
           )}
           {options.captions !== false && <CaptionOverlay clock={clock} segments={SAMPLE_SEGS} options={options} box={{ x: 0, y: 0, w, h }} />}
+          {videoUrl && muted && (
+            <button onClick={toggleSound} style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: 999, padding: '7px 13px', background: 'rgba(0,0,0,0.62)', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', backdropFilter: 'blur(6px)', whiteSpace: 'nowrap' }}>
+              🔊 Ouvir com som
+            </button>
+          )}
+          {videoUrl && (
+            <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8, display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 10, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}>
+              <button onClick={togglePlay} aria-label={playing ? 'Pausar' : 'Tocar'} style={ctlBtn}>{playing ? '❚❚' : '▶'}</button>
+              <div onPointerDown={(e) => { const v = videoRef.current; if (!v || !dur) return; const r = e.currentTarget.getBoundingClientRect(); v.currentTime = Math.max(0, Math.min(dur, ((e.clientX - r.left) / r.width) * dur)); }}
+                style={{ flex: 1, height: 14, display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                <div style={{ position: 'relative', width: '100%', height: 3, borderRadius: 3, background: 'rgba(255,255,255,0.25)' }}>
+                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${dur ? (cur / dur) * 100 : 0}%`, borderRadius: 3, background: 'linear-gradient(90deg, #FF6B35, #7C3AED)' }} />
+                </div>
+              </div>
+              <span style={{ fontSize: 10.5, color: '#fff', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmt(cur)}/{fmt(dur)}</span>
+              <button onClick={toggleSound} aria-label={muted ? 'Ligar o som' : 'Tirar o som'} style={ctlBtn}>{muted ? '🔇' : '🔊'}</button>
+            </div>
+          )}
         </div>
       </div>
-      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6, textAlign: 'center' }}>
-        {options.captions === false
-          ? 'Sem legenda no vídeo'
-          : `${look.fontFamily} · ${look.mode === 'word' ? 'palavra por palavra' : 'frase'}${videoUrl ? '' : ' · escolha o vídeo para ver a prévia nele'}`}
+      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6, textAlign: 'center', lineHeight: 1.5 }}>
+        {videoUrl
+          ? [
+            speed !== 1 ? `${String(speed).replace('.', ',')}×` : null,
+            options.colorLook && options.colorLook !== 'none' ? 'cor' : null,
+            motion ? 'zoom' : null,
+            options.soundEffects ? 'efeitos sonoros' : null,
+            options.captions === false ? 'sem legenda' : `legenda ${look.mode === 'word' ? 'palavra por palavra' : 'por frase'} (texto de exemplo)`,
+          ].filter(Boolean).join(' · ')
+          : options.captions === false
+            ? 'Sem legenda no vídeo'
+            : `${look.fontFamily} · ${look.mode === 'word' ? 'palavra por palavra' : 'frase'} · escolha o vídeo para ver a prévia nele`}
       </div>
     </div>
   );
 }
+
+const ctlBtn = { width: 26, height: 26, flexShrink: 0, border: 'none', borderRadius: 7, background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 11, cursor: 'pointer', display: 'grid', placeItems: 'center', padding: 0, fontFamily: 'inherit' };
 
 // Tamanho (fração da altura do vídeo), alinhamento e margem de cada estilo — iguais
 // aos do servidor (pipeline/captions.js), para a legenda sobre o vídeo bater com o render.
