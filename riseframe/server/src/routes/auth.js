@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import {
   createUser,
@@ -16,6 +17,7 @@ import { signToken, verifyToken } from '../auth/tokens.js';
 import { createResetToken, consumeResetToken } from '../auth/reset.js';
 import { canEmailCustomers, emailReady, sendMail, sendResetEmail } from '../auth/email.js';
 import { config } from '../config.js';
+import { remoteAccount, remoteUser, sendAccountError } from '../account.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('auth');
@@ -191,6 +193,11 @@ authRouter.post('/auth/verify/resend', requireAuth, async (req, res) => {
  * Contas antigas e as do Google já contam como confirmadas.
  */
 export function requireVerified(req, res, next) {
+  // App de PC/Mac: quem confirma o e-mail é a conta do site.
+  if (remoteAccount()) {
+    if (req.user?.verified === false) return res.status(403).json({ error: 'confirme seu e-mail com o código que enviamos para continuar', needsVerification: true });
+    return next();
+  }
   if (!verifyRequired()) return next();
   const u = findById(req.user?.id);
   if (u && u.verified === false) {
@@ -198,6 +205,52 @@ export function requireVerified(req, res, next) {
   }
   next();
 }
+
+// ── Entrar pelo navegador (app de PC/Mac) ──
+// O app pede um código, abre o site no navegador (?device=CÓDIGO); a pessoa entra no site
+// (senha ou Google) e confirma; o app, que fica perguntando, recebe o token da conta.
+// O código é secreto (só o app e aquela aba conhecem) e vale 10 minutos.
+const DEVICE_TTL_MS = 10 * 60 * 1000;
+const deviceCodes = new Map(); // código → { exp, token, user }
+function pruneDevice() {
+  const now = Date.now();
+  for (const [k, v] of deviceCodes) if (v.exp < now) deviceCodes.delete(k);
+}
+
+// POST /api/auth/device/start → { code, url, expiresIn }
+authRouter.post('/auth/device/start', (req, res) => {
+  pruneDevice();
+  if (deviceCodes.size > 5000) return res.status(429).json({ error: 'muitos pedidos de login agora; tente em instantes' });
+  const code = crypto.randomBytes(24).toString('base64url');
+  deviceCodes.set(code, { exp: Date.now() + DEVICE_TTL_MS, token: null, user: null });
+  const base = (config.auth.appUrl || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+  res.json({ code, url: `${base}/?device=${encodeURIComponent(code)}`, expiresIn: DEVICE_TTL_MS / 1000 });
+});
+
+// POST /api/auth/device/approve { code } (logado no site) → libera o login do app
+authRouter.post('/auth/device/approve', requireAuth, (req, res) => {
+  pruneDevice();
+  const d = deviceCodes.get(String(req.body?.code || ''));
+  if (!d) return res.status(404).json({ error: 'este pedido de login expirou — clique em "Entrar pelo navegador" no app de novo' });
+  const u = findById(req.user.id);
+  if (!u) return res.status(401).json({ error: 'sessão inválida' });
+  const user = publicUser(u);
+  d.token = signToken(user);
+  d.user = user;
+  log.ok(`app do computador conectado: ${user.email}`);
+  res.json({ ok: true });
+});
+
+// POST /api/auth/device/poll { code } → { pending: true } | { token, user } (uma vez só)
+authRouter.post('/auth/device/poll', (req, res) => {
+  pruneDevice();
+  const code = String(req.body?.code || '');
+  const d = deviceCodes.get(code);
+  if (!d) return res.status(404).json({ error: 'o pedido de login expirou; tente de novo' });
+  if (!d.token) return res.json({ pending: true });
+  deviceCodes.delete(code);
+  res.json({ token: d.token, user: d.user });
+});
 
 // GET /api/auth/me → { user }  (requer token)
 authRouter.get('/auth/me', requireAuth, (req, res) => {
@@ -210,6 +263,18 @@ authRouter.get('/auth/me', requireAuth, (req, res) => {
 export function requireAuth(req, res, next) {
   const hdr = req.get('authorization') || '';
   const token = hdr.startsWith('Bearer ') ? hdr.slice(7) : '';
+  // App de PC/Mac: o token é da conta do site; quem diz se vale é o site.
+  if (remoteAccount()) {
+    if (!token) return res.status(401).json({ error: 'faça login para continuar' });
+    return remoteUser(token).then(
+      (u) => {
+        if (!u) return res.status(401).json({ error: 'faça login para continuar' });
+        req.user = { id: u.id, email: u.email, name: u.name, verified: u.verified !== false };
+        next();
+      },
+      (err) => sendAccountError(res, err),
+    );
+  }
   const payload = verifyToken(token);
   if (!payload) return res.status(401).json({ error: 'faça login para continuar' });
   req.user = { id: payload.sub, email: payload.email, name: payload.name };

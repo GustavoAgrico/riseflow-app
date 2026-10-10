@@ -14,6 +14,8 @@ import Editor from './App.jsx';
 import Templates from './pages/Templates.jsx';
 import BrandKit from './pages/BrandKit.jsx';
 import VerifyEmail from './pages/VerifyEmail.jsx';
+import DeviceLogin from './pages/DeviceLogin.jsx';
+import InstallApp from './components/InstallApp.jsx';
 
 const NAV = [
   { id: 'dashboard', label: 'Início', icon: 'home' },
@@ -91,6 +93,7 @@ function Sidebar({ user, billing, view, onView, onLogout }) {
 
       <div style={{ marginTop: 'auto', display: 'grid', gap: 12 }}>
         <CreditsCard billing={billing} onOpen={() => onView('plans')} />
+        <InstallApp />
         <NavItem item={{ id: 'logout', label: 'Sair', icon: 'logout' }} active={false} onClick={onLogout} />
       </div>
 
@@ -113,12 +116,15 @@ function MobileTopBar({ billing, onView }) {
         <Logo size={28} />
         <span style={{ fontWeight: 800, fontSize: 16, fontFamily: FONT_DISPLAY, letterSpacing: -0.4, color: C.text }}>Riseframe</span>
       </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <InstallApp compact />
       {billing && (
         <button onClick={() => onView('plans')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 12px', borderRadius: 999, background: 'rgba(124,58,237,0.14)', border: '1px solid rgba(124,58,237,0.35)', color: C.text, fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
           <Icon name="zap" size={14} strokeWidth={2.2} color={C.purpleSoft} />
           {billing.unlimited ? 'Ilimitado' : !billing.plan && billing.freeEdits > 0 ? `${billing.freeEdits} grátis` : billing.credits.toLocaleString('pt-BR')}
         </button>
       )}
+      </div>
     </header>
   );
 }
@@ -172,6 +178,23 @@ function clearResetToken() {
   }
 }
 
+// ?device=CÓDIGO: o app de PC/Mac abriu o site para entrar na conta. Guardado na sessão
+// para sobreviver ao login (a pessoa pode precisar entrar primeiro).
+function readDeviceCode() {
+  try {
+    const url = new URL(window.location.href);
+    const c = url.searchParams.get('device');
+    if (c) {
+      sessionStorage.setItem('rf_device', c);
+      url.searchParams.delete('device');
+      window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+    }
+    return c || sessionStorage.getItem('rf_device') || '';
+  } catch {
+    return '';
+  }
+}
+
 // ?billing=return: volta do checkout da AbacatePay → abre a Assinatura e confere o pagamento.
 function readBillingReturn() {
   try {
@@ -188,7 +211,8 @@ function readBillingReturn() {
 export default function Root() {
   const { user, ready, logout, billing } = useAuth();
   const [resetToken] = useState(readResetToken);
-  const [publicRoute, setPublicRoute] = useState(resetToken ? 'login' : 'landing');
+  const [deviceCode, setDeviceCode] = useState(readDeviceCode);
+  const [publicRoute, setPublicRoute] = useState(resetToken || deviceCode ? 'login' : 'landing');
   const [billingReturn] = useState(readBillingReturn);
   const [view, setView] = useState(billingReturn ? 'plans' : 'dashboard');
   // Intenção com que o editor abre: 'editor' (timeline), 'broll' (B-roll ligado) ou um
@@ -244,6 +268,15 @@ export default function Root() {
   // Conta nova ainda sem o e-mail confirmado: só entra depois do código.
   if (user.verified === false) {
     return <VerifyEmail user={user} onLogout={logout} />;
+  }
+
+  // Conectar o app de PC/Mac a esta conta (aberto pelo "Entrar pelo navegador").
+  if (deviceCode) {
+    const done = () => {
+      try { sessionStorage.removeItem('rf_device'); } catch { /* ignora */ }
+      setDeviceCode('');
+    };
+    return <DeviceLogin code={deviceCode} user={user} onDone={done} />;
   }
 
   return (

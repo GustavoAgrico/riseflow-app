@@ -3,7 +3,7 @@ import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
 import Icon, { Logo } from '../components/Icon.jsx';
 import { Spinner } from '../components/ui.jsx';
 import { useAuth } from '../AuthContext.jsx';
-import { getHealth, forgotPassword } from '../api.js';
+import { getHealth, forgotPassword, deviceStart, devicePoll } from '../api.js';
 
 /** Carrega o script do Google Identity Services uma única vez. */
 let gsiPromise = null;
@@ -77,7 +77,12 @@ const GoogleG = ({ size = 18 }) => (
 );
 
 export default function Auth({ initialMode = 'login', resetToken, onDone, onHome }) {
-  const { login, register, loginWithGoogle, resetPassword } = useAuth();
+  const { login, register, loginWithGoogle, resetPassword, loginWithToken } = useAuth();
+  // App de PC/Mac: a conta é a do site (login pelo navegador, que também serve para Google).
+  const [remote, setRemote] = useState(false);
+  const [browserWait, setBrowserWait] = useState(null); // { url } enquanto espera o navegador
+  const waitRef = useRef(0);
+  useEffect(() => () => { waitRef.current += 1; }, []);
   const [mode, setMode] = useState(initialMode); // login | register | forgot | reset
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -98,7 +103,14 @@ export default function Auth({ initialMode = 'login', resetToken, onDone, onHome
   useEffect(() => {
     let alive = true;
     getHealth()
-      .then((h) => { if (alive && h?.capabilities) setCaps(h.capabilities); })
+      .then((h) => {
+        if (!alive) return;
+        if (h?.account?.remote) {
+          // Login, cadastro e "esqueci a senha" vão para a conta do site.
+          setRemote(true);
+          setCaps({ googleReady: false, googleClientId: '', emailReady: true });
+        } else if (h?.capabilities) setCaps(h.capabilities);
+      })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -160,6 +172,39 @@ export default function Auth({ initialMode = 'login', resetToken, onDone, onHome
       setError(err.message || 'não foi possível continuar');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function browserLogin() {
+    const run = ++waitRef.current;
+    setError('');
+    setNotice('');
+    try {
+      const { code, url, expiresIn } = await deviceStart();
+      setBrowserWait({ url });
+      window.open(url, '_blank');
+      const until = Date.now() + (expiresIn || 600) * 1000;
+      while (Date.now() < until) {
+        await new Promise((r) => setTimeout(r, 2000));
+        if (run !== waitRef.current) return; // cancelado
+        let r;
+        try {
+          r = await devicePoll(code);
+        } catch (e) {
+          if (/expirou/.test(e.message)) throw e;
+          continue; // sem rede por um instante: tenta de novo
+        }
+        if (r?.token) {
+          loginWithToken(r.token, r.user);
+          onDone?.();
+          return;
+        }
+      }
+      throw new Error('o tempo para entrar pelo navegador acabou; tente de novo');
+    } catch (e) {
+      if (run === waitRef.current) setError(e.message || 'não foi possível entrar pelo navegador');
+    } finally {
+      if (run === waitRef.current) setBrowserWait(null);
     }
   }
 
@@ -250,8 +295,43 @@ export default function Auth({ initialMode = 'login', resetToken, onDone, onHome
               </>
             )}
 
+            {/* App de PC/Mac: entra com a conta do site pelo navegador (senha ou Google) */}
+            {!isForgot && !isReset && remote && (
+              <>
+                <div style={{ background: 'rgba(124,58,237,0.1)', border: `1px solid ${C.purple}44`, borderRadius: 12, padding: '10px 12px', fontSize: 12.8, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
+                  Use a <b style={{ color: C.text }}>mesma conta do site</b>: seu plano e seus créditos valem aqui no computador também.
+                </div>
+                {browserWait ? (
+                  <div style={{ border: `1px solid ${C.borderStrong}`, borderRadius: 12, padding: '14px', textAlign: 'center', fontSize: 13.5, color: C.muted }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, color: C.text, fontWeight: 700, marginBottom: 6 }}>
+                      <Spinner size={15} color={C.orange} /> Esperando você no navegador…
+                    </div>
+                    Entre na sua conta na página que abrimos e clique em <b style={{ color: C.text }}>Conectar app</b>.
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
+                      <button type="button" onClick={() => window.open(browserWait.url, '_blank')} style={{ background: 'none', border: `1px solid ${C.border}`, color: C.text, borderRadius: 9, padding: '7px 12px', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>Abrir de novo</button>
+                      <button type="button" onClick={() => { waitRef.current += 1; setBrowserWait(null); }} style={{ background: 'none', border: `1px solid ${C.border}`, color: C.muted, borderRadius: 9, padding: '7px 12px', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={browserLogin}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: '#fff', color: '#1f1f1f', border: 'none', borderRadius: 999, padding: '12px', fontSize: 14.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    <GoogleG size={18} /> Entrar pelo navegador
+                  </button>
+                )}
+                <div style={{ fontSize: 11.5, color: C.faint, textAlign: 'center', marginTop: 7 }}>Serve para contas com Google ou com senha.</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '18px 0' }}>
+                  <div style={{ flex: 1, height: 1, background: C.border }} />
+                  <span style={{ fontSize: 12, color: C.faint }}>ou com e-mail e senha</span>
+                  <div style={{ flex: 1, height: 1, background: C.border }} />
+                </div>
+              </>
+            )}
+
             {/* Fallback estático do Google quando o script ainda não configurado no server */}
-            {!isForgot && !isReset && !caps.googleReady && (
+            {!isForgot && !isReset && !caps.googleReady && !remote && (
               <>
                 <button
                   type="button"

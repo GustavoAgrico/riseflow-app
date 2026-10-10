@@ -1,0 +1,19 @@
+{
+  "name": "Riseframe — Editor de vídeo com IA",
+  "short_name": "Riseframe",
+  "description": "Corta pausas, coloca legendas, corrige a cor e aproxima nos momentos-chave.",
+  "id": "/",
+  "start_url": "/?app=1",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#08080C",
+  "theme_color": "#08080C",
+  "lang": "pt-BR",
+  "categories": ["photo", "productivity", "entertainment"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -38,8 +38,9 @@ class JobQueue extends EventEmitter {
     }
   }
 
-  create({ filename, inputPath, options, mode = 'auto', editedTranscript = null }) {
-    const id = nanoid(12);
+  create({ id: wantedId, filename, inputPath, options, mode = 'auto', editedTranscript = null }) {
+    // id escolhido antes (app de PC/Mac: a cobrança no site já usa este id).
+    const id = wantedId && !this.jobs.has(wantedId) ? wantedId : nanoid(12);
     const workDir = workDirFor(id);
     fsSync.mkdirSync(workDir, { recursive: true });
     const job = {

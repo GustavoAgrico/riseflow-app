@@ -48,12 +48,17 @@ RewriteRule ^ /index.html [L]
 AddType video/mp4 .mp4
 AddType font/ttf .ttf
 AddType application/json .json
+AddType application/manifest+json .webmanifest
 
 <IfModule mod_headers.c>
   <FilesMatch "\\.(js|css|woff2?|ttf)$">
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
   <FilesMatch "index\\.html$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  # App instalável: o service worker e o manifest sempre da versão mais nova
+  <FilesMatch "^(sw\\.js|manifest\\.webmanifest)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
 </IfModule>

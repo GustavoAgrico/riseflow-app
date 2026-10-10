@@ -8,7 +8,8 @@ import { config } from '../config.js';
 import { queue } from '../queue.js';
 import { requireAuth, requireVerified } from './auth.js';
 import { getSettings } from '../auth/settings.js';
-import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod, trialCovers, useFreeEdit, refundFreeEdit } from '../auth/billing.js';
+import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod, trialCovers, useFreeEdit, refundFreeEdit, holdRemote, releaseRemote } from '../auth/billing.js';
+import { remoteAccount, remoteCheck, remoteCharge, holdRemoteCharge, settleRemoteCharge, sendAccountError } from '../account.js';
 import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../../shared/credits.js';
 import { registerMedia, resolveMedia } from '../mediaStore.js';
 import { formatBytes, freeDiskBytes } from '../storage.js';
@@ -61,41 +62,69 @@ function optionsForUser(req) {
 
 export const jobsRouter = Router();
 
-/** Recusa (403) quando o job usa recurso que o plano do usuário não libera. */
-function planBlocks(req, res, items) {
-  const locked = lockedItems(items, allowedFeatures(req.user));
-  if (!locked.length) return false;
+/** Corpo da recusa (403) quando o job usa recurso que o plano do usuário não libera. */
+function planBlockBody(locked) {
   const plan = cheapestPlanFor(locked[0].id, config.billing.plans) || 'superior';
-  res.status(403).json({
+  return {
     code: 'PLAN_REQUIRED',
     locked: locked.map((i) => i.id),
     error: `${locked.map((i) => i.label).join(', ')}: disponível a partir do plano ${plan}. Veja em Planos, no menu, ou desligue o recurso.`,
-  });
-  return true;
+  };
 }
 
-function noCredits(req, res, cost) {
-  const { credits, plan, freeEditsTotal } = billingStatus(req.user);
-  res.status(402).json({
+/** Corpo da recusa (402) por falta de créditos. */
+function noCreditsBody(user, cost) {
+  const { credits, plan, freeEditsTotal } = billingStatus(user);
+  return {
     code: 'PAYMENT_REQUIRED',
     cost,
     credits,
     error: !plan && !credits && freeEditsTotal
       ? `Suas ${freeEditsTotal} edições grátis acabaram. Para continuar, assine um plano em Planos, no menu.`
       : `Este vídeo custa ${cost} créditos e você tem ${credits}. Assine um plano ou faça uma recarga em Planos, no menu.`,
-  });
+  };
+}
+
+/**
+ * Pré-checagem (antes de receber o vídeo): recurso fora do plano ou sem saldo nem para
+ * o mínimo. → null se pode seguir, ou { status, body } da recusa.
+ */
+function precheck(user, mode) {
+  if (trialCovers(user, mode)) return null; // edição grátis de teste
+  const items = creditItems(mode, {}, config.billing.costs);
+  const locked = lockedItems(items, allowedFeatures(user));
+  if (locked.length) return { status: 403, body: planBlockBody(locked) };
+  const min = creditTotal(items);
+  return canAfford(user, min) ? null : { status: 402, body: noCreditsBody(user, min) };
+}
+
+/**
+ * Decide e faz a cobrança do job. → { ok: true, trial } | { ok: true, charged, until } |
+ * { ok: false, status, body }. Usado pelos jobs daqui e pelos do app de PC/Mac
+ * (POST /billing/remote/charge).
+ */
+function gateCharge(user, mode, options, sourceId) {
+  if (trialCovers(user, mode, sourceId)) return { ok: true, trial: true };
+  const items = creditItems(mode, options, config.billing.costs);
+  const locked = lockedItems(items, allowedFeatures(user));
+  if (locked.length) return { ok: false, status: 403, body: planBlockBody(locked) };
+  const cost = creditTotal(items);
+  const until = currentPeriod(user.id);
+  const charged = charge(user, cost);
+  if (charged === null) return { ok: false, status: 402, body: noCreditsBody(user, cost) };
+  return { ok: true, charged, until };
 }
 
 // Checagem antes do multer: recurso fora do plano (ex.: clipes) ou sem saldo nem para o
-// mínimo → recusa sem receber o upload.
+// mínimo → recusa sem receber o upload. App de PC/Mac: quem decide é a conta do site.
 function requireCredits(mode) {
   return (req, res, next) => {
-    if (trialCovers(req.user, mode)) return next(); // edição grátis de teste
-    const items = creditItems(mode, {}, config.billing.costs);
-    if (planBlocks(req, res, items)) return;
-    const min = creditTotal(items);
-    if (canAfford(req.user, min)) return next();
-    noCredits(req, res, min);
+    if (remoteAccount()) {
+      return remoteCheck(req, mode).then(() => next(), (err) => sendAccountError(res, err));
+    }
+    const no = precheck(req.user, mode);
+    if (no) return res.status(no.status).json(no.body);
+    next();
   };
 }
 
@@ -118,13 +147,47 @@ queue.on('update', (j) => {
   if (j.status === 'error') refund(held.userId, held);
 });
 
+// App de PC/Mac: job que falhou devolve a cobrança feita na conta do site.
+queue.on('update', (j) => { settleRemoteCharge(j); });
+
+/** Só o que entra no preço (sem chaves de API nem caminhos de arquivo) — vai para o site. */
+function pricingOptions(o = {}) {
+  return {
+    captions: o.captions,
+    captionTemplate: o.captionTemplate,
+    autoClean: o.autoClean,
+    broll: o.broll,
+    brollMax: o.brollMax,
+    brollPlan: Array.isArray(o.brollPlan) ? o.brollPlan.map((p) => ({ remove: Boolean(p?.remove) })) : undefined,
+  };
+}
+
 /** Cobra o job e cria na fila; responde 402 (e apaga o upload) se faltar saldo. */
 function chargeAndQueue(req, res, mode, jobInput, { sourceId } = {}) {
-  const items = creditItems(mode, jobInput.options, config.billing.costs);
   const dropUpload = () => req.file && fs.unlink(req.file.path, () => {});
+  if (remoteAccount()) {
+    // App de PC/Mac: cobra na conta do site; o vídeo é processado aqui.
+    const id = nanoid(12);
+    return remoteCharge(req, { mode, options: pricingOptions(jobInput.options), sourceId, jobId: id }).then(
+      (r) => {
+        const job = queue.create({ id, mode, ...jobInput });
+        holdRemoteCharge(job.id, req, r.chargeId);
+        res.status(201).json({ ...queue.public(job), creditsCharged: r.creditsCharged || 0, ...(r.freeEdit ? { freeEdit: true, freeEditsLeft: r.freeEditsLeft } : {}) });
+      },
+      (err) => {
+        dropUpload();
+        sendAccountError(res, err);
+      },
+    );
+  }
+  const g = gateCharge(req.user, mode, jobInput.options, sourceId);
+  if (!g.ok) {
+    dropUpload();
+    return res.status(g.status).json(g.body);
+  }
+  const job = queue.create({ mode, ...jobInput });
   // Edição grátis de teste: todos os recursos, sem gastar créditos.
-  if (trialCovers(req.user, mode, sourceId)) {
-    const job = queue.create({ mode, ...jobInput });
+  if (g.trial) {
     let freeEditsLeft = billingStatus(req.user).freeEdits;
     if (mode !== 'render') {
       freeEditsLeft = useFreeEdit(req.user.id, job.id);
@@ -132,18 +195,52 @@ function chargeAndQueue(req, res, mode, jobInput, { sourceId } = {}) {
     }
     return res.status(201).json({ ...queue.public(job), creditsCharged: 0, freeEdit: true, freeEditsLeft });
   }
-  if (planBlocks(req, res, items)) return dropUpload();
-  const cost = creditTotal(items);
-  const until = currentPeriod(req.user.id);
-  const charged = charge(req.user, cost);
-  if (charged === null) {
-    dropUpload();
-    return noCredits(req, res, cost);
-  }
-  const job = queue.create({ mode, ...jobInput });
-  if (charged.total) heldCredits.set(job.id, { userId: req.user.id, monthly: charged.monthly, extra: charged.extra, until });
-  res.status(201).json({ ...queue.public(job), creditsCharged: charged.total });
+  if (g.charged.total) heldCredits.set(job.id, { userId: req.user.id, monthly: g.charged.monthly, extra: g.charged.extra, until: g.until });
+  res.status(201).json({ ...queue.public(job), creditsCharged: g.charged.total });
 }
+
+// ── Cobrança dos apps de PC/Mac (conta central) ──
+// O app processa o vídeo no computador do usuário e cobra aqui, na conta do site.
+const REMOTE_MODES = ['auto', 'transcribe', 'clips', 'render'];
+const validMode = (m) => (REMOTE_MODES.includes(m) ? m : null);
+
+// POST /api/billing/remote/check { mode } → { ok } | 402/403 (mesmo corpo do site)
+jobsRouter.post('/billing/remote/check', requireAuth, requireVerified, (req, res) => {
+  const mode = validMode(req.body?.mode);
+  if (!mode) return res.status(400).json({ error: 'modo inválido' });
+  const no = precheck(req.user, mode);
+  if (no) return res.status(no.status).json(no.body);
+  res.json({ ok: true });
+});
+
+// POST /api/billing/remote/charge { mode, options, sourceId, jobId } → { chargeId, creditsCharged, freeEdit, freeEditsLeft }
+jobsRouter.post('/billing/remote/charge', requireAuth, requireVerified, (req, res) => {
+  const { sourceId, jobId } = req.body || {};
+  const mode = validMode(req.body?.mode);
+  if (!mode) return res.status(400).json({ error: 'modo inválido' });
+  if (!/^[\w-]{6,40}$/.test(String(jobId || ''))) return res.status(400).json({ error: 'jobId inválido' });
+  const src = /^[\w-]{6,40}$/.test(String(sourceId || '')) ? sourceId : undefined;
+  const g = gateCharge(req.user, mode, parseOptions(req.body?.options), src);
+  if (!g.ok) return res.status(g.status).json(g.body);
+  if (g.trial) {
+    if (mode === 'render') return res.json({ chargeId: null, creditsCharged: 0, freeEdit: true, freeEditsLeft: billingStatus(req.user).freeEdits });
+    const freeEditsLeft = useFreeEdit(req.user.id, jobId);
+    return res.json({ chargeId: holdRemote(req.user.id, { trial: true, jobId }), creditsCharged: 0, freeEdit: true, freeEditsLeft });
+  }
+  const chargeId = g.charged.total
+    ? holdRemote(req.user.id, { monthly: g.charged.monthly, extra: g.charged.extra, until: g.until, jobId })
+    : null;
+  res.json({ chargeId, creditsCharged: g.charged.total });
+});
+
+// POST /api/billing/remote/refund { chargeId } → devolve a cobrança de um job que falhou
+jobsRouter.post('/billing/remote/refund', requireAuth, (req, res) => {
+  const hold = releaseRemote(req.user.id, String(req.body?.chargeId || ''));
+  if (!hold) return res.status(404).json({ error: 'cobrança não encontrada, expirada ou limite de devoluções do dia' });
+  if (hold.trial) refundFreeEdit(req.user.id, hold.jobId);
+  else refund(req.user.id, hold);
+  res.json({ ok: true });
+});
 
 // Antes de receber o vídeo: recusa na hora o que passa do limite ou não cabe no disco
 // (em vez de o usuário esperar horas de upload para descobrir no fim).
