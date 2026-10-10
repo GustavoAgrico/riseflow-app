@@ -70,6 +70,25 @@ class JobQueue extends EventEmitter {
     return job;
   }
 
+  /**
+   * Registra um job JÁ PRONTO (sem passar pela fila), ex.: o trecho de um clipe aberto
+   * na timeline — o relatório já vem montado. Fica gravado em disco como os demais.
+   */
+  addDone({ filename, inputPath, options = null, mode = 'transcribe', report }) {
+    const id = nanoid(12);
+    const now = Date.now();
+    const job = {
+      id, mode, status: 'done', progress: 100, stage: 'done', stageLabel: 'Concluído',
+      filename, inputPath, workDir: workDirFor(id), outputsDir: config.paths.outputs,
+      options, editedTranscript: null, report: { ...report, sourceId: id }, error: null,
+      createdAt: now, startedAt: now, finishedAt: now,
+    };
+    this.jobs.set(id, job);
+    this._evict();
+    this._persist(job);
+    return job;
+  }
+
   get(id) {
     return this.jobs.get(id) || null;
   }
@@ -102,7 +121,8 @@ class JobQueue extends EventEmitter {
    * vídeo enviado vira inacessível mesmo estando no disco.
    */
   _persist(job) {
-    if (!job.report?.sourceId) return;
+    // Clipes também: cada um pode ser aberto na timeline depois de um reinício.
+    if (!job.report?.sourceId && !job.report?.clipsTranscript) return;
     const snap = {
       id: job.id,
       mode: job.mode,

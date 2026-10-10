@@ -270,7 +270,7 @@ export default function Root() {
         {view === 'plans' && <Plans user={user} checkOnOpen={billingReturn} />}
         {view === 'editor' && (
           <Editor
-            key={typeof editorIntent === 'string' ? editorIntent : editorIntent?.template?.id || editorIntent?.reopen?.sourceId || editorIntent?.format || 'new'}
+            key={typeof editorIntent === 'string' ? editorIntent : editorIntent?.template?.id || editorIntent?.reopen?.sourceId || editorIntent?.reopen?.id || editorIntent?.format || 'new'}
             embedded
             intent={typeof editorIntent === 'string' ? editorIntent : null}
             template={editorIntent?.template || (editorIntent?.format ? { id: editorIntent.format, format: editorIntent.format } : null)}

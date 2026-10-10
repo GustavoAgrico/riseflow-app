@@ -200,6 +200,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
       st.onProgress,
     );
     report.clips = clips;
+    // Transcrição na timeline do vídeo original: cada clipe pode ser aberto na timeline
+    // depois (POST /jobs/:id/clips/:index/edit) sem transcrever de novo.
+    report.clipsTranscript = { provider: transcript.provider, language: transcript.language, segments: transcript.segments };
     report.provider.transcribe = transcript.provider;
     emit({ progress: 100, stage: 'done', stageLabel: 'Clipes prontos' });
     log.ok(`${clips.length} clipes gerados para job ${job.id}`);

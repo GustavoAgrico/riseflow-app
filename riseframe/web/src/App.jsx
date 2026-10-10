@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from './theme.js';
-import { getOptions, getHealth, getSettings, createJob, transcribe, generateClips, renderEdited, subscribeJob, sampleFile, getJob } from './api.js';
+import { getOptions, getHealth, getSettings, createJob, transcribe, generateClips, renderEdited, subscribeJob, sampleFile, getJob, editClip } from './api.js';
 import { PrimaryButton, Card, Spinner } from './components/ui.jsx';
 import Icon, { Logo } from './components/Icon.jsx';
 import OptionsPanel, { Row, Toggle, Select, Swatches } from './components/OptionsPanel.jsx';
@@ -43,6 +43,8 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   const [loadingSample, setLoadingSample] = useState(false);
   const [reopening, setReopening] = useState('');
   const [reopenError, setReopenError] = useState('');
+  // Cortes de onde veio o clipe aberto na timeline: o "voltar" do editor volta para eles.
+  const [clipsJob, setClipsJob] = useState(null);
   const reeditable = useMemo(() => listJobs().filter((j) => j.sourceId).slice(0, 5), []);
 
   async function useExample() {
@@ -102,9 +104,10 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   // Aberto a partir de "Continuar editando" (Início / Meus projetos): vai direto para a timeline.
   const reopened = React.useRef(false);
   useEffect(() => {
-    if (!reopen?.sourceId || !catalog || !options || reopened.current) return;
+    if (!(reopen?.sourceId || reopen?.mode === 'clips') || !catalog || !options || reopened.current) return;
     reopened.current = true;
-    reopenFromHistory(reopen);
+    if (reopen.mode === 'clips') reopenClips(reopen);
+    else reopenFromHistory(reopen);
   }, [reopen, catalog, options]);
 
     function fail(msg) {
@@ -218,6 +221,44 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     }
   }
 
+  // Abre de novo a lista de cortes (Meus projetos → Ver e editar cortes).
+  async function reopenClips(entry) {
+    setReopening(entry.id);
+    setReopenError('');
+    try {
+      const j = await getJob(entry.id);
+      if (j?.status !== 'done' || !j.report?.clips?.length) throw new Error('os cortes não estão mais disponíveis');
+      setJob(j);
+      setPhase('done');
+    } catch (e) {
+      setReopenError(`Não deu para abrir os cortes de “${entry.title}”: ${e.message === 'o vídeo de origem não está mais disponível' ? 'os arquivos expiraram' : e.message}.`);
+    } finally {
+      setReopening('');
+    }
+  }
+
+  // "Editar" de um clipe: o servidor recorta o trecho do vídeo original (sem legenda
+  // queimada) e o clipe abre na timeline com o formato e o estilo de legenda dele.
+  async function editClipInTimeline(cj, index) {
+    const clip = cj.report?.clips?.find((c) => c.index === index);
+    const j = await editClip(cj.id, index);
+    setClipsJob(cj);
+    setOptions((o) => ({
+      ...o,
+      aspect: clip?.aspect || cj.options?.clipAspect || o.aspect,
+      captionTemplate: cj.options?.captionTemplate || 'pop',
+    }));
+    openTimeline(j);
+  }
+
+  function backFromEditor() {
+    if (clipsJob) {
+      setJob(clipsJob);
+      setClipsJob(null);
+      setPhase('done');
+    } else reset();
+  }
+
   async function generateFromEdits(editedTranscript, extra = {}) {
     setPhase('processing');
     try {
@@ -237,6 +278,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     setSourceId(null);
     setTranscriptData(null);
     setDurationSec(0);
+    setClipsJob(null);
     setPhase('setup');
     setFormatId(null);
     if (catalog) setOptions({ ...catalog.defaults, ...brandOptions() });
@@ -271,7 +313,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
       {phase === 'setup' && reopen && reopening && (
         <div style={{ textAlign: 'center', padding: 60, color: C.muted }}>
           <Spinner size={22} color={C.orange} />
-          <div style={{ marginTop: 14 }}>Abrindo “{reopen.title}” na timeline…</div>
+          <div style={{ marginTop: 14 }}>Abrindo “{reopen.title}”{reopen.mode === 'clips' ? '…' : ' na timeline…'}</div>
         </div>
       )}
 
@@ -323,7 +365,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
             catalog={catalog}
             options={options}
             onGenerate={generateFromEdits}
-            onBack={reset}
+            onBack={backFromEditor}
             onSettings={onSettings}
           />
         </div>
@@ -337,7 +379,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
 
       {phase === 'done' && job && (
         <div className="rf-anim">
-          {job.mode === 'clips' ? <ClipsResult job={job} onReset={reset} /> : <Result job={job} onReset={reset} onEditTimeline={job.report?.editorTranscript ? () => openTimeline(job) : null} />}
+          {job.mode === 'clips' ? <ClipsResult job={job} onReset={reset} onEdit={(i) => editClipInTimeline(job, i)} /> : <Result job={job} onReset={reset} onEditTimeline={job.report?.editorTranscript ? () => openTimeline(job) : null} />}
         </div>
       )}
 

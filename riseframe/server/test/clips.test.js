@@ -67,6 +67,9 @@ test('generateClips (pipeline mode=clips): produz N clipes curtos válidos', asy
   };
   const report = await runPipeline(job, () => {});
   assert.ok(Array.isArray(report.clips) && report.clips.length >= 2, 'gerou ao menos 2 clipes');
+  // Para o "Editar" do clipe: transcrição da fonte e a janela exata de cada clipe.
+  assert.ok(report.clipsTranscript?.segments?.length, 'guarda a transcrição para editar os clipes depois');
+  for (const c of report.clips) assert.ok(c.srcStart <= c.start && c.srcEnd >= c.end, `janela do clipe ${c.index} com folga`);
 
   for (const c of report.clips) {
     const file = path.join(config.paths.outputs, c.file);

@@ -21,7 +21,7 @@ const fmtWhen = (ms) => {
  */
 export default function ProjectCard({ job, onOpen, extra }) {
   const [thumbOk, setThumbOk] = useState(job.mode !== 'clips');
-  const canEdit = Boolean(job.sourceId);
+  const canEdit = Boolean(job.sourceId) && job.mode !== 'clips';
   const vertical = job.aspect === '9:16';
   return (
     <div className="rf-proj" style={{ borderRadius: 16, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015))', display: 'flex', flexDirection: 'column' }}>
@@ -51,9 +51,9 @@ export default function ProjectCard({ job, onOpen, extra }) {
         <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.title}</div>
         <div style={{ fontSize: 12, color: C.faint }}>{MODE_LABEL[job.mode] || job.mode} · {fmtWhen(job.at)}</div>
         <div style={{ display: 'flex', gap: 7, marginTop: 10 }}>
-          {canEdit ? (
+          {canEdit || job.mode === 'clips' ? (
             <button onClick={() => onOpen?.(job)} style={{ flex: 1, minHeight: 34, borderRadius: 10, border: `1px solid ${C.borderStrong}`, background: 'rgba(255,255,255,0.05)', color: C.text, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-              Continuar editando
+              {job.mode === 'clips' ? 'Ver e editar cortes' : 'Continuar editando'}
             </button>
           ) : <span style={{ flex: 1 }} />}
           {job.downloadUrl && job.mode !== 'clips' && (
