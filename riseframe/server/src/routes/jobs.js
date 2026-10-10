@@ -16,7 +16,7 @@ import { formatBytes, freeDiskBytes } from '../storage.js';
 import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
 import { remuxByKeepSegments, remapTranscript, snapKeep } from '../pipeline/timeline.js';
-import { brollCandidates, resolveSource } from '../pipeline/broll.js';
+import { brollCandidates, resolveSource, googleConfig, googleReady } from '../pipeline/broll.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
 import { analyzeAndGrade } from '../pipeline/autoColor.js';
 import { CAPTION_TEMPLATES } from '../pipeline/captions.js';
@@ -404,6 +404,8 @@ function sanitizeBrollPlan(raw) {
     };
     // URL do banco: só http(s) de imagem/vídeo (o download roda no pipeline).
     if (typeof p.url === 'string' && /^https:\/\/[^\s]+$/i.test(p.url)) item.url = p.url;
+    // Miniatura: reserva quando o site da imagem original recusa o download.
+    if (typeof p.thumb === 'string' && /^https:\/\/[^\s]+$/i.test(p.thumb)) item.thumb = p.thumb;
     if (typeof p.mediaId === 'string' && p.mediaId) item.mediaId = p.mediaId;
     // Ajuste do quadro do B-roll: zoom 1–2.5 e ponto de foco X/Y (0–1) dentro da imagem.
     item.zoom = clampNum(p.zoom, 1, 2.5, 1);
@@ -643,9 +645,9 @@ jobsRouter.post('/broll/plan', requireAuth, requireVerified, async (req, res) =>
 
     const orientation = (meta.height || 1920) >= (meta.width || 1080) ? 'portrait' : 'landscape';
     const apiKey = options.pexelsKey || config.broll.pexelsKey;
-    const google = { key: config.broll.googleImagesKey, cx: config.broll.googleImagesCx, unrestricted: config.broll.googleImagesUnrestricted };
+    const google = googleConfig();
     const pixabayKey = config.broll.pixabayKey;
-    const src = resolveSource(options.imageSource, { apiKey, pixabayKey, googleReady: Boolean(google.key && google.cx) });
+    const src = resolveSource(options.imageSource, { apiKey, pixabayKey, googleReady: googleReady(google) });
 
     const out = [];
     for (const m of moments) {
@@ -669,9 +671,9 @@ jobsRouter.post('/broll/search', requireAuth, requireVerified, async (req, res) 
   if (query.length < 2) return res.status(400).json({ error: 'digite o que buscar' });
   const s = getSettings(req.user.id);
   const apiKey = s.pexelsKey || config.broll.pexelsKey;
-  const google = { key: config.broll.googleImagesKey, cx: config.broll.googleImagesCx, unrestricted: config.broll.googleImagesUnrestricted };
+  const google = googleConfig();
   const pixabayKey = config.broll.pixabayKey;
-  const source = resolveSource(req.body?.source, { apiKey, pixabayKey, googleReady: Boolean(google.key && google.cx) });
+  const source = resolveSource(req.body?.source, { apiKey, pixabayKey, googleReady: googleReady(google) });
   const orientation = req.body?.orientation === 'landscape' ? 'landscape' : 'portrait';
   try {
     const candidates = await brollCandidates(query, { source, apiKey, google, pixabayKey, orientation, targetH: 1280, limit: source === 'mix' ? 9 : 8, unrestricted: google.unrestricted, lang: 'pt' });

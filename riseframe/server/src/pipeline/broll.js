@@ -208,6 +208,71 @@ export async function nasaCandidates(query, { limit = 4 } = {}) {
  * Fonte efetiva do B-roll: a escolhida, se disponível; senão a mistura de todas.
  * Puro/exportado para teste.
  */
+/** Credenciais do "Google Imagens": API do Google (CSE) e/ou Serper e/ou Brave. */
+export function googleConfig() {
+  return {
+    key: config.broll.googleImagesKey,
+    cx: config.broll.googleImagesCx,
+    unrestricted: config.broll.googleImagesUnrestricted,
+    serperKey: config.broll.serperKey,
+    braveKey: config.broll.braveKey,
+  };
+}
+export const googleReady = (g) => Boolean((g?.key && g?.cx) || g?.serperKey || g?.braveKey);
+
+// Só https (o render só baixa https) e nada de ícone/animação.
+const isPhotoUrl = (u) => /^https:\/\/\S+$/i.test(u || '') && !/\.(svg|gif)(\?|$)/i.test(u);
+
+/**
+ * Busca de imagens na web para o "Google Imagens", na ordem: API do Google (quem já tem a
+ * chave; fecha em 2027), Serper (resultados do Google Imagens) e Brave Search. Em
+ * português do Brasil (as buscas da IA vêm no idioma da fala). Só fotos, sem as pequenas.
+ */
+export async function googleImageCandidates(query, google, limit = 6) {
+  const out = [];
+  const want = Math.max(limit * 2, 10);
+  if (google.key && google.cx) {
+    const params = new URLSearchParams({ key: google.key, cx: google.cx, q: query, searchType: 'image', num: String(Math.min(10, want)), safe: 'active', imgType: 'photo', imgSize: 'xlarge' });
+    if (!google.unrestricted) params.set('rights', 'cc_publicdomain,cc_attribute,cc_sharealike');
+    const res = await http(`https://www.googleapis.com/customsearch/v1?${params}`).catch(() => null);
+    if (res?.ok) {
+      const d = await res.json();
+      for (const it of d.items || []) {
+        if (isPhotoUrl(it.link)) out.push({ id: `g${it.link}`, link: it.link, thumb: it.image?.thumbnailLink || it.link, kind: 'image', source: 'google' });
+      }
+    }
+  }
+  if (!out.length && google.serperKey) {
+    const res = await http('https://google.serper.dev/images', {
+      method: 'POST',
+      headers: { 'X-API-KEY': google.serperKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: query, gl: 'br', hl: 'pt-br', num: want }),
+    }).catch(() => null);
+    if (res?.ok) {
+      const d = await res.json();
+      for (const it of d.images || []) {
+        if (!isPhotoUrl(it.imageUrl) || (it.imageWidth && it.imageWidth < 500)) continue;
+        out.push({ id: `g${it.imageUrl}`, link: it.imageUrl, thumb: it.thumbnailUrl || it.imageUrl, kind: 'image', source: 'google', credit: it.domain || it.source || null });
+      }
+    } else if (res) log.warn(`Serper respondeu ${res.status}`);
+  }
+  if (!out.length && google.braveKey) {
+    const params = new URLSearchParams({ q: query, count: String(Math.min(50, want)), country: 'BR', search_lang: 'pt-br', safesearch: 'strict' });
+    const res = await http(`https://api.search.brave.com/res/v1/images/search?${params}`, {
+      headers: { Accept: 'application/json', 'X-Subscription-Token': google.braveKey },
+    }).catch(() => null);
+    if (res?.ok) {
+      const d = await res.json();
+      for (const it of d.results || []) {
+        const link = it.properties?.url || it.url;
+        if (!isPhotoUrl(link)) continue;
+        out.push({ id: `g${link}`, link, thumb: it.thumbnail?.src || link, kind: 'image', source: 'google', credit: it.source || null });
+      }
+    } else if (res) log.warn(`Brave Search respondeu ${res.status}`);
+  }
+  return out.slice(0, want);
+}
+
 export function resolveSource(wanted, { apiKey, pixabayKey, googleReady } = {}) {
   if (wanted === 'pexels') return apiKey ? 'pexels' : 'mix';
   if (wanted === 'pixabay') return pixabayKey ? 'pixabay' : 'mix';
@@ -235,7 +300,7 @@ export async function brollCandidates(query, opts = {}) {
   // Commons/Openverse, Wikimedia Commons) numa lista só, intercalada (vídeo primeiro),
   // para o usuário escolher entre todos.
   if (source === 'mix') {
-    const srcs = [apiKey ? 'pexels' : null, pixabayKey ? 'pixabay' : null, google?.key && google?.cx ? 'google' : null, 'openverse', 'wikimedia'].filter(Boolean);
+    const srcs = [apiKey ? 'pexels' : null, pixabayKey ? 'pixabay' : null, googleReady(google) ? 'google' : null, 'openverse', 'wikimedia'].filter(Boolean);
     const per = Math.max(3, Math.ceil((limit + 3) / srcs.length));
     const lists = await Promise.all(srcs.map((src) => brollCandidates(query, { ...opts, source: src, limit: per })));
     const mixed = [];
@@ -270,17 +335,8 @@ export async function brollCandidates(query, opts = {}) {
           if (it.url && /^https?:\/\//i.test(it.url)) out.push({ id: `o${it.id || it.url}`, link: it.url, thumb: it.thumbnail || it.url, kind: 'image', source: 'openverse' });
         }
       }
-    } else if (source === 'google' && google?.key && google?.cx) {
-      const params = new URLSearchParams({ key: google.key, cx: google.cx, q: query, searchType: 'image', num: String(limit * 2), safe: 'active', imgType: 'photo', imgSize: 'xlarge' });
-      if (!google.unrestricted) params.set('rights', 'cc_publicdomain,cc_attribute,cc_sharealike');
-      const res = await http(`https://www.googleapis.com/customsearch/v1?${params}`);
-      if (res.ok) {
-        const d = await res.json();
-        for (const it of d.items || []) {
-          const link = it.link;
-          if (link && /\.(jpe?g|png|webp)(\?|$)/i.test(link)) out.push({ id: `g${it.image?.thumbnailLink || link}`, link, thumb: it.image?.thumbnailLink || link, kind: 'image', source: 'google' });
-        }
-      }
+    } else if (source === 'google' && googleReady(google)) {
+      out.push(...await googleImageCandidates(query, google, limit));
     } else if (apiKey) {
       const loc = lang === 'pt' ? '&locale=pt-BR' : '';
       const rv = await http(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}${loc}`, { headers: { Authorization: apiKey } });
@@ -373,19 +429,14 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   const apiKey = options.pexelsKey || config.broll.pexelsKey;
   // Fonte de imagens: pexels (padrão) ou google (Custom Search). Google exige as
   // credenciais configuradas; se pedirem google sem elas, cai para o Pexels.
-  const google = {
-    key: config.broll.googleImagesKey,
-    cx: config.broll.googleImagesCx,
-    unrestricted: config.broll.googleImagesUnrestricted,
-  };
-  const googleReady = Boolean(google.key && google.cx);
+  const google = googleConfig();
   // Fonte escolhida: pexels (padrão histórico) | google (Custom Search, exige chave) |
   // openverse (Creative Commons, grátis e SEM chave). Google sem credenciais cai para
   // Pexels; Openverse funciona sempre.
   const pixabayKey = options.pixabayKey || config.broll.pixabayKey;
   // Fonte pedida, se estiver disponível (Pexels/Pixabay/Google precisam de chave); senão
   // a mistura de tudo o que há — que sempre inclui os acervos livres (CC e Wikimedia).
-  const source = resolveSource(options.imageSource, { apiKey, pixabayKey, googleReady });
+  const source = resolveSource(options.imageSource, { apiKey, pixabayKey, googleReady: googleReady(google) });
   const moments = (analysis.brollMoments || []).slice(0, options.brollMax ?? 6);
   const hasPlan = Array.isArray(options.brollPlan) && options.brollPlan.length > 0;
   if (!moments.length && !hasPlan) return { output: input, inserted: 0 };
