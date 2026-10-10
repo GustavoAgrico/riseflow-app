@@ -1,11 +1,24 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { C, GRAD, glass, fmtDuration } from '../theme.js';
-import { GhostButton } from './ui.jsx';
+import { GhostButton, Spinner } from './ui.jsx';
 import Icon from './Icon.jsx';
 import { clipPreviewUrl, clipDownloadUrl } from '../api.js';
 
-export default function ClipsResult({ job, onReset }) {
+export default function ClipsResult({ job, onReset, onEdit }) {
   const clips = job.report?.clips || [];
+  const [opening, setOpening] = useState(null);
+  const [editError, setEditError] = useState('');
+  async function edit(index) {
+    if (!onEdit || opening != null) return;
+    setOpening(index);
+    setEditError('');
+    try {
+      await onEdit(index);
+    } catch (e) {
+      setEditError(e.message);
+      setOpening(null);
+    }
+  }
   return (
     <div style={{ ...glass(), padding: 26 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 6 }}>
@@ -27,6 +40,12 @@ export default function ClipsResult({ job, onReset }) {
           Novo vídeo
         </GhostButton>
       </div>
+
+      {editError && (
+        <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, border: `1px solid ${C.red}55`, background: 'rgba(240,82,107,0.08)', fontSize: 13 }}>
+          Não deu para abrir o clipe: {editError}
+        </div>
+      )}
 
       <div
         style={{
@@ -62,16 +81,33 @@ export default function ClipsResult({ job, onReset }) {
               <div style={{ fontSize: 11, color: C.faint, marginBottom: 10 }}>
                 {fmtTime(c.start)}–{fmtTime(c.end)} · {c.aspect}
               </div>
-              <a
-                href={clipDownloadUrl(job.id, c.index)}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                  textDecoration: 'none', fontSize: 13, fontWeight: 600, color: '#fff',
-                  background: GRAD, borderRadius: 10, padding: '9px',
-                }}
-              >
-                <Icon name="download" size={15} /> Baixar
-              </a>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {onEdit && (
+                  <button
+                    onClick={() => edit(c.index)}
+                    disabled={opening != null}
+                    title="Abrir este clipe na timeline: cortes, legenda, cor, zoom, B-roll…"
+                    style={{
+                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                      fontSize: 13, fontWeight: 600, color: C.text, fontFamily: 'inherit',
+                      background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.borderStrong}`, borderRadius: 10, padding: '9px',
+                      cursor: opening != null ? 'wait' : 'pointer', opacity: opening != null && opening !== c.index ? 0.5 : 1,
+                    }}
+                  >
+                    {opening === c.index ? <Spinner size={14} color={C.orange} /> : <Icon name="edit" size={15} />} Editar
+                  </button>
+                )}
+                <a
+                  href={clipDownloadUrl(job.id, c.index)}
+                  style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                    textDecoration: 'none', fontSize: 13, fontWeight: 600, color: '#fff',
+                    background: GRAD, borderRadius: 10, padding: '9px',
+                  }}
+                >
+                  <Icon name="download" size={15} /> Baixar
+                </a>
+              </div>
             </div>
           </div>
         ))}

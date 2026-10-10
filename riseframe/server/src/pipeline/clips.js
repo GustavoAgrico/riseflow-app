@@ -184,6 +184,9 @@ export async function generateClips(ctx, onProgress = () => {}) {
       title: w.title,
       score: w.score,
       durationSec: Math.round((w.end - w.start) * 10) / 10,
+      // Janela exata no vídeo original (com as folgas): o "Editar" do clipe recorta daqui.
+      srcStart: keep[0].start,
+      srcEnd: keep[0].end,
       file: path.basename(r.output),
       aspect,
     });

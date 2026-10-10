@@ -14,6 +14,7 @@ import { registerMedia, resolveMedia } from '../mediaStore.js';
 import { formatBytes, freeDiskBytes } from '../storage.js';
 import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
+import { remuxByKeepSegments, remapTranscript, snapKeep } from '../pipeline/timeline.js';
 import { brollCandidates, resolveSource } from '../pipeline/broll.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
 import { analyzeAndGrade } from '../pipeline/autoColor.js';
@@ -687,6 +688,54 @@ jobsRouter.get('/jobs/:id/clips/:index/preview', (req, res) => {
   const found = job && job.status === 'done' ? clipFile(job, req.params.index) : null;
   if (!found) return res.status(404).json({ error: 'clipe não disponível' });
   res.sendFile(found.file);
+});
+
+// POST /api/jobs/:id/clips/:index/edit → abre um clipe pronto na timeline: recorta a
+// janela do clipe do vídeo ORIGINAL (sem legenda/cor queimadas) num vídeo novo, com a
+// transcrição dele, e devolve um job pronto para o editor (mesmo formato do /transcribe).
+// Não cobra: a edição só é cobrada quando o usuário gerar o vídeo (/render).
+jobsRouter.post('/jobs/:id/clips/:index/edit', requireAuth, requireVerified, async (req, res) => {
+  const job = queue.get(req.params.id);
+  const clip = job?.report?.clips?.find((c) => String(c.index) === String(req.params.index));
+  if (!job || job.mode !== 'clips' || job.status !== 'done' || !clip) return res.status(404).json({ error: 'clipe não encontrado' });
+  const tr = job.report.clipsTranscript;
+  if (!tr?.segments?.length) {
+    return res.status(409).json({ error: 'estes cortes foram feitos numa versão antiga e não guardaram a transcrição — gere os cortes de novo para poder editar' });
+  }
+  if (!job.inputPath || !fs.existsSync(job.inputPath)) return res.status(410).json({ error: 'o vídeo de origem expirou; gere os cortes de novo' });
+  let dir;
+  try {
+    const meta = await probeSummary(job.inputPath);
+    const start = Number.isFinite(clip.srcStart) ? clip.srcStart : Math.max(0, clip.start - 0.4);
+    const end = Number.isFinite(clip.srcEnd) ? clip.srcEnd : Math.min(meta.duration, clip.end + 0.35);
+    const keep = snapKeep([{ start, end: Math.min(meta.duration, end) }], meta.fps);
+    if (!keep.length) return res.status(400).json({ error: 'trecho do clipe inválido' });
+    dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'rf-clipe-'));
+    const cut = await remuxByKeepSegments(job.inputPath, dir, meta, keep, () => {}, 'clipe');
+    const dest = path.join(config.paths.uploads, `${nanoid(12)}.mp4`);
+    await fs.promises.copyFile(cut.output, dest);
+    const local = remapTranscript(tr, keep);
+    const cmeta = await probeSummary(dest);
+    const base = path.parse(job.filename || 'video').name;
+    const created = queue.addDone({
+      filename: `${base} — clipe ${clip.index + 1}.mp4`,
+      inputPath: dest,
+      options: job.options,
+      report: {
+        mode: 'transcribe',
+        input: cmeta,
+        provider: { transcribe: tr.provider || 'clips' },
+        transcript: local,
+        editorTranscript: { provider: tr.provider, language: tr.language, segments: local.segments },
+        fromClip: { jobId: job.id, index: clip.index, title: clip.title, aspect: clip.aspect },
+      },
+    });
+    res.status(201).json(queue.public(created));
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'falha ao abrir o clipe na timeline' });
+  } finally {
+    if (dir) fs.rm(dir, { recursive: true, force: true }, () => {});
+  }
 });
 
 // GET /api/jobs/:id/preview → stream inline (para <video>)

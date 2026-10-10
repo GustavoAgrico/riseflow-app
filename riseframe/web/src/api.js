@@ -276,6 +276,14 @@ export function uploadMedia(file, onProgress) {
 export const clipPreviewUrl = (id, i) => `${BASE}/jobs/${id}/clips/${i}/preview`;
 export const clipDownloadUrl = (id, i) => `${BASE}/jobs/${id}/clips/${i}/download`;
 
+/** Abre um clipe pronto na timeline: o servidor recorta o trecho do vídeo original. */
+export async function editClip(jobId, index) {
+  const r = await fetch(`${BASE}/jobs/${jobId}/clips/${index}/edit`, { method: 'POST', headers: authHeaders() });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data;
+}
+
 /** Baixa o vídeo de exemplo (modo demo) como um File pronto para usar. */
 export async function sampleFile() {
   const r = await fetch(`${BASE}/sample`);
