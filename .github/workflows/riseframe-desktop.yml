@@ -102,6 +102,26 @@ jobs:
       - name: Dependências
         run: npm install --no-audit --no-fund
 
+      # O ffprobe-static 3.1.0 traz um binário INTEL no lugar do de chip Apple M
+      # (bin/darwin/arm64): no Mac M sem Rosetta o app dava "spawn Unknown system error -86".
+      # Troca pelo ffprobe oficial do ffmpeg-static na arquitetura do build e confere
+      # que o ffmpeg e o ffprobe que vão no app são dessa arquitetura (senão o build falha).
+      - name: ffmpeg/ffprobe do Mac na arquitetura certa
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCH=$(node -p "process.arch")
+          WANT=$([ "$ARCH" = arm64 ] && echo arm64 || echo x86_64)
+          curl -fsSL --retry 4 "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffprobe-darwin-$ARCH.gz" | gunzip > "$RUNNER_TEMP/ffprobe"
+          chmod +x "$RUNNER_TEMP/ffprobe"
+          find . -path "*/ffprobe-static/bin/darwin/$ARCH/ffprobe" -not -path "./dist/*" | while read -r f; do cp "$RUNNER_TEMP/ffprobe" "$f"; echo "trocado: $f"; done
+          for f in $(find . \( -path "*/ffprobe-static/bin/darwin/$ARCH/ffprobe" -o -path "*/ffmpeg-static/ffmpeg" \) -not -path "./dist/*"); do
+            file "$f"
+            file "$f" | grep -q "$WANT" || { echo "::error::$f não é $WANT"; exit 1; }
+            "$f" -version | head -1
+          done
+
       - name: Build do site + instalador
         shell: bash
         env:

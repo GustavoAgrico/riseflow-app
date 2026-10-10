@@ -1,5 +1,7 @@
 import path from 'node:path';
+import os from 'node:os';
 import fs from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { groupIntoPhrases } from './narrative.js';
 import { makeLogger } from '../logger.js';
@@ -131,44 +133,179 @@ export function remapTranscript(transcript, keep, perSegment = 4) {
 }
 
 /**
- * Remonta o vídeo mantendo apenas `keep` (corte frame-accurate via filter_complex
- * trim/concat, num único passe). Compartilhado pelo corte de silêncio e pela edição
- * por transcrição.
+ * Divide os trechos mantidos em BLOCOS de até ~`maxSpan` s do vídeo original (e no
+ * máximo `maxSegs` trechos cada). Trechos longos são partidos no grid de frames; nessas
+ * emendas internas não há micro-fade (o som é contínuo). Puro/testável.
+ * @returns {Array<{start:number,end:number,segs:Array<{start:number,end:number,fadeIn:boolean,fadeOut:boolean}>}>}
+ */
+export function planCutChunks(keep, fps = 30, { maxSpan = 60, maxSegs = 40 } = {}) {
+  const f = Math.max(1, Math.round(fps || 30));
+  const pieces = [];
+  for (const k of keep || []) {
+    let s = k.start;
+    while (k.end - s > maxSpan + 1e-6) {
+      const cut = Math.round((s + maxSpan) * f) / f;
+      pieces.push({ start: s, end: cut, fadeIn: s === k.start, fadeOut: false });
+      s = cut;
+    }
+    pieces.push({ start: s, end: k.end, fadeIn: s === k.start, fadeOut: true });
+  }
+  const chunks = [];
+  let cur = null;
+  for (const p of pieces) {
+    if (cur && p.end - cur.start <= maxSpan && cur.segs.length < maxSegs) {
+      cur.segs.push(p);
+      cur.end = p.end;
+    } else {
+      cur = { start: p.start, end: p.end, segs: [p] };
+      chunks.push(cur);
+    }
+  }
+  return chunks;
+}
+
+/** Limite de memória do contêiner (cgroup v2/v1), em bytes; Infinity se não houver. */
+function containerMemLimit() {
+  for (const f of ['/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes']) {
+    try {
+      const v = Number(readFileSync(f, 'utf8').trim());
+      if (Number.isFinite(v) && v > 0 && v < 2 ** 60) return v;
+    } catch {
+      /* sem cgroup (Windows/Mac) */
+    }
+  }
+  return Infinity;
+}
+
+/**
+ * Quantos blocos codificar ao mesmo tempo (o x264 já usa vários núcleos por bloco).
+ * Paralelo só com folga de núcleos E de memória: servidores pequenos (Render grátis,
+ * VM de 1 núcleo) ficam em 1 bloco por vez para não estourar a RAM.
+ */
+function cutConcurrency() {
+  const n = Number(process.env.CUT_CONCURRENCY);
+  if (n >= 1) return Math.floor(n);
+  const cpus = os.availableParallelism?.() || os.cpus()?.length || 1;
+  const mem = Math.min(os.totalmem(), containerMemLimit());
+  const byMem = Math.max(1, Math.floor(mem / (1.5 * 1024 ** 3)));
+  return Math.max(1, Math.min(cpus >= 8 ? 3 : cpus >= 4 ? 2 : 1, byMem));
+}
+
+/**
+ * Remonta o vídeo mantendo apenas `keep`, com corte frame-accurate. Compartilhado pelo
+ * corte de silêncio e pela edição por transcrição.
+ *
+ * Em BLOCOS: um único filter_complex com centenas de trim/concat passa cada frame do
+ * vídeo inteiro por todos os trechos (tempo ~ duração × nº de cortes — vídeos longos
+ * "travavam" nesta etapa). Aqui cada bloco busca só a sua janela (-ss), corta os seus
+ * trechos e vira um arquivo; os blocos rodam em paralelo e são emendados sem recodificar
+ * (concat demuxer). O áudio dos blocos sai em PCM (sem o atraso de priming do AAC nas
+ * emendas) e é codificado uma vez só no final.
+ *
+ * O fps=CFR vem ANTES do trim: com fonte CFR e trechos no grid de frames, cada trecho
+ * tem exatamente (fim − início) × fps frames — sem o meio frame extra por corte que
+ * atrasava as legendas no fim de vídeos com muitos cortes.
  * @returns {Promise<{output:string, keptDuration:number}>}
  */
-export async function remuxByKeepSegments(input, work, meta, keep, onProgress, tag = 'cut') {
+export async function remuxByKeepSegments(input, work, meta, keep, onProgress, tag = 'cut', opts = {}) {
   const kd = keptDuration(keep);
   const wantAudio = meta.hasAudio;
   const fps = Math.max(1, Math.round(meta.fps || 30));
   const output = path.join(work, `${tag}.mp4`);
+  const chunks = planCutChunks(keep, fps, opts);
+  const dir = path.join(work, `${tag}_parts`);
+  await fs.mkdir(dir, { recursive: true });
 
-  const parts = [];
-  const concatInputs = [];
-  keep.forEach((seg, i) => {
-    // fps=CFR normaliza o tempo (protege vídeos com frame rate variável, ex.: celular)
-    // e mantém cada trecho com duração exata no grid → sem drift de legenda/áudio.
-    parts.push(`[0:v]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS,fps=${fps}[v${i}]`);
-    concatInputs.push(`[v${i}]`);
-    if (wantAudio) {
-      // Micro-fade de 6 ms nas emendas: tira o "clique" do corte sem engolir som.
-      const len = seg.end - seg.start;
-      const fades = len > 0.05 ? `,afade=t=in:d=0.006,afade=t=out:st=${(len - 0.006).toFixed(3)}:d=0.006` : '';
-      parts.push(`[0:a]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS${fades}[a${i}]`);
-      concatInputs.push(`[a${i}]`);
-    }
-  });
-  parts.push(
-    `${concatInputs.join('')}concat=n=${keep.length}:v=1:a=${wantAudio ? 1 : 0}[outv]${wantAudio ? '[outa]' : ''}`,
-  );
+  const doneByChunk = new Array(chunks.length).fill(0);
+  const report = () => {
+    if (!onProgress || !kd) return;
+    const done = doneByChunk.reduce((a, b) => a + b, 0);
+    onProgress(Math.min(0.97, (done / kd) * 0.97));
+  };
 
-  const scriptPath = path.join(work, `${tag}_filter.txt`);
-  await fs.writeFile(scriptPath, parts.join(';\n'), 'utf8');
+  const runChunk = async (chunk, ci) => {
+    // Busca com folga antes da janela: o -ss de entrada (com recodificação) é preciso,
+    // mas a folga deixa o fps/trim trabalharem sobre frames já estáveis.
+    const seek = Math.max(0, chunk.start - 1);
+    const span = chunk.end - seek + 0.5;
+    const parts = [`[0:v]fps=${fps},split=${chunk.segs.length}${chunk.segs.map((_, i) => `[s${i}]`).join('')}`];
+    if (wantAudio) parts.push(`[0:a]asplit=${chunk.segs.length}${chunk.segs.map((_, i) => `[t${i}]`).join('')}`);
+    const concatInputs = [];
+    chunk.segs.forEach((seg, i) => {
+      const a = (seg.start - seek).toFixed(4);
+      const b = (seg.end - seek).toFixed(4);
+      // Depois do fps, os frames caem exatamente em k/fps: a janela recuada meio frame
+      // pega exatamente os frames do trecho, sem depender de arredondamento.
+      const half = 0.5 / fps;
+      parts.push(`[s${i}]trim=start=${Math.max(0, seg.start - seek - half).toFixed(5)}:end=${(seg.end - seek - half).toFixed(5)},setpts=PTS-STARTPTS[v${i}]`);
+      concatInputs.push(`[v${i}]`);
+      if (wantAudio) {
+        // Micro-fade de 6 ms nas emendas: tira o "clique" do corte sem engolir som.
+        const len = seg.end - seg.start;
+        const fades = [];
+        if (len > 0.05 && seg.fadeIn) fades.push('afade=t=in:d=0.006');
+        if (len > 0.05 && seg.fadeOut) fades.push(`afade=t=out:st=${(len - 0.006).toFixed(3)}:d=0.006`);
+        parts.push(`[t${i}]atrim=start=${a}:end=${b},asetpts=PTS-STARTPTS${fades.map((x) => ',' + x).join('')}[a${i}]`);
+        concatInputs.push(`[a${i}]`);
+      }
+    });
+    // O concat não repassa a taxa de frames: sem o fps no fim o encoder assume 25 fps e
+    // descarta frames. Aqui é só declarar a taxa (os frames já estão no grid).
+    parts.push(`${concatInputs.join('')}concat=n=${chunk.segs.length}:v=1:a=${wantAudio ? 1 : 0}[cv]${wantAudio ? '[outa]' : ''}`);
+    parts.push(`[cv]fps=${fps}[outv]`);
+    const script = path.join(dir, `p${ci}.txt`);
+    await fs.writeFile(script, parts.join(';\n'), 'utf8');
 
-  const args = ['-i', input, '-filter_complex_script', scriptPath, '-map', '[outv]'];
-  if (wantAudio) args.push('-map', '[outa]', '-c:a', 'aac', '-b:a', '160k');
-  args.push(...x264Fast(), '-movflags', '+faststart', '-y', output);
+    const vOut = path.join(dir, `p${ci}.mp4`);
+    const aOut = path.join(dir, `p${ci}.wav`);
+    const args = ['-ss', seek.toFixed(3), '-t', span.toFixed(3), '-i', input, '-filter_complex_script', script,
+      '-map', '[outv]', '-an', ...x264Fast(), '-pix_fmt', 'yuv420p', '-y', vOut];
+    if (wantAudio) args.push('-map', '[outa]', '-vn', '-c:a', 'pcm_s16le', '-y', aOut);
+    const chunkDur = keptDuration(chunk.segs);
+    await runFfmpeg(args, {
+      label: `${tag}#${ci + 1}/${chunks.length}`,
+      totalDuration: chunkDur,
+      onProgress: (p) => {
+        doneByChunk[ci] = p * chunkDur;
+        report();
+      },
+    });
+    doneByChunk[ci] = chunkDur;
+    report();
+    return { vOut, aOut };
+  };
 
-  await runFfmpeg(args, { label: tag, totalDuration: kd, onProgress });
-  log.ok(`remux: ${keep.length} segmentos mantidos (${kd.toFixed(1)}s)`);
+  const results = await pool(chunks, cutConcurrency(), runChunk);
+
+  const list = async (name, files) => {
+    const p = path.join(dir, name);
+    await fs.writeFile(p, files.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n') + '\n', 'utf8');
+    return p;
+  };
+  const vList = await list('v.txt', results.map((r) => r.vOut));
+  const args = ['-f', 'concat', '-safe', '0', '-i', vList];
+  if (wantAudio) args.push('-f', 'concat', '-safe', '0', '-i', await list('a.txt', results.map((r) => r.aOut)));
+  args.push('-map', '0:v', '-c:v', 'copy');
+  if (wantAudio) args.push('-map', '1:a', '-c:a', 'aac', '-b:a', '160k');
+  args.push('-movflags', '+faststart', '-y', output);
+  await runFfmpeg(args, { label: `${tag}-emenda` });
+  await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  onProgress?.(1);
+
+  log.ok(`remux: ${keep.length} segmentos mantidos (${kd.toFixed(1)}s) em ${chunks.length} bloco(s)`);
   return { output, keptDuration: kd };
+}
+
+/** Executa `fn` em `items` com no máximo `limit` ao mesmo tempo, mantendo a ordem. */
+async function pool(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }
