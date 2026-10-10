@@ -8,6 +8,18 @@ import { config } from '../config.js';
 const ffprobePath = ffprobeStatic.path;
 const log = makeLogger('ffmpeg');
 
+/**
+ * Erro ao iniciar o ffmpeg/ffprobe com explicação. O -86 (EBADARCH) do Mac quer dizer
+ * que o programa embutido é de outro processador (Intel × chip Apple M) — sem isto o
+ * usuário via só "spawn Unknown system error -86".
+ */
+function spawnError(err, name) {
+  if (err?.errno === -86 || /-86\b/.test(String(err?.message))) {
+    return new Error(`o ${name} embutido não é compatível com o processador deste Mac (Intel × chip Apple M). Baixe o instalador da versão mais nova para o seu tipo de Mac.`);
+  }
+  return err;
+}
+
 export { ffmpegPath, ffprobePath };
 
 /**
@@ -80,7 +92,7 @@ export function runFfmpeg(args, opts = {}) {
       }
     });
 
-    proc.on('error', (err) => reject(err));
+    proc.on('error', (err) => reject(spawnError(err, 'ffmpeg')));
     proc.on('close', (code) => {
       if (code === 0) resolve({ stderr });
       else {
@@ -106,7 +118,7 @@ export function probe(inputPath) {
     let err = '';
     proc.stdout.on('data', (b) => (out += b.toString()));
     proc.stderr.on('data', (b) => (err += b.toString()));
-    proc.on('error', reject);
+    proc.on('error', (e) => reject(spawnError(e, 'ffprobe')));
     proc.on('close', (code) => {
       if (code !== 0) return reject(new Error(`ffprobe falhou: ${err.trim()}`));
       try {

@@ -273,7 +273,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
     }
     // Precisão: pausas nunca invadem palavras (transcrição + volume real do áudio) e as
     // palavras removidas são cortadas no vale de volume entre as vizinhas.
+    st.onProgress(0.04); // análise do áudio pronta: a barra anda antes do corte em si
     const precise = await preciseRemovals(input, { pauses, transcript, hasAudio: meta.hasAudio, breaths: options.cutBreaths !== false });
+    st.onProgress(0.08);
     const removals = [...precise.pauses];
     // Trechos cortados à mão na faixa de vídeo: valem sempre, com ou sem corte de silêncio.
     for (const c of options.videoCuts || []) {
@@ -289,7 +291,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
     const removedSeconds = Math.max(0, meta.duration - keptDuration(keep));
     if (removedSeconds > 0.15) {
-      const r = await remuxByKeepSegments(input, work, meta, keep, st.onProgress, 'cut');
+      const r = await remuxByKeepSegments(input, work, meta, keep, (p) => st.onProgress(0.08 + 0.92 * p), 'cut');
       input = r.output;
       trackInput = input; // fonte limpa (pós-corte, pré-legendas/B-roll) para o tracker
       transcript = remapTranscript(transcript, keep); // sincroniza legendas com a nova timeline
