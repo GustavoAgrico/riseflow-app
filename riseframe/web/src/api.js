@@ -51,6 +51,15 @@ export async function resendVerify() {
   return data;
 }
 export const login = (email, password) => authPost('/auth/login', { email, password });
+/** Entrar pelo navegador (app de PC/Mac): pede o código, pergunta se já liberou e libera. */
+export const deviceStart = () => authPost('/auth/device/start', {});
+export const devicePoll = (code) => authPost('/auth/device/poll', { code });
+export async function deviceApprove(code) {
+  const r = await fetch(`${BASE}/auth/device/approve`, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ code }) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data;
+}
 /** Login com Google: envia o ID token (credential) do Google Identity Services. */
 export const loginWithGoogle = (credential) => authPost('/auth/google', { credential });
 /** Pede o e-mail de recuperação de senha (resposta sempre neutra). */

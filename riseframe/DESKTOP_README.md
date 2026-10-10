@@ -52,6 +52,23 @@ chmod +x Riseframe-0.1.0.AppImage
 
 ---
 
+## 👤 Conta e assinatura (iguais às do site)
+
+O app usa a **mesma conta do site**: o login, o plano, os créditos e os pagamentos ficam no
+servidor do site (`https://riseframe.onrender.com` por padrão), e o vídeo é processado no
+próprio computador (mais rápido e sem fila).
+
+- **Entrar pelo navegador**: abre o site, você entra (senha ou Google) e clica em
+  **Conectar app**; o app entra sozinho. Também dá para entrar com e-mail e senha no app.
+- Cada vídeo é cobrado na conta do site antes de processar; se o processamento falhar,
+  os créditos (ou a edição grátis) voltam sozinhos.
+- Sem internet o app ainda abre com o último login (até 3 dias), mas para processar um
+  vídeo precisa conferir o plano no site.
+- Servidor da conta diferente (ex.: o site mudou para a VPS): defina
+  `RISEFRAME_ACCOUNT_SERVER=https://seu-site` no ambiente antes de abrir o app.
+
+---
+
 ## 📊 Performance
 
 | Tamanho | Duração | Tempo (Render) | Tempo (Local) |

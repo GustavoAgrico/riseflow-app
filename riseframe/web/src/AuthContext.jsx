@@ -82,13 +82,19 @@ export function AuthProvider({ children }) {
     setUser(u);
     return u;
   }
+  // Entrar pelo navegador (app de PC/Mac): o site devolve o token da conta.
+  function loginWithToken(token, u) {
+    setToken(token);
+    setUser(u);
+    return u;
+  }
   function logout() {
     setToken('');
     setUser(null);
   }
 
   return (
-    <AuthCtx.Provider value={{ user, ready, login, register, verifyAccount, loginWithGoogle, resetPassword, logout, billing, refreshBilling, setBilling }}>
+    <AuthCtx.Provider value={{ user, ready, login, loginWithToken, register, verifyAccount, loginWithGoogle, resetPassword, logout, billing, refreshBilling, setBilling }}>
       {children}
     </AuthCtx.Provider>
   );

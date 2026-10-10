@@ -10,6 +10,7 @@ import { jobsRouter } from './routes/jobs.js';
 import { queue } from './queue.js';
 import { optionsRouter } from './routes/options.js';
 import { authRouter } from './routes/auth.js';
+import { remoteAccount, accountProxy } from './account.js';
 import { settingsRouter } from './routes/settings.js';
 import { billingRouter } from './routes/billing.js';
 import { publicRouter } from './routes/public.js';
@@ -69,6 +70,8 @@ app.get('/api/health', (_req, res) => {
     ffmpeg: Boolean(ffmpegPath),
     capabilities: capabilities(),
     cloud: cloudStatus().enabled ? (cloudStatus().ok ? 'ok' : 'erro') : 'off',
+    // App de PC/Mac: a conta (login/planos) é a do site.
+    account: remoteAccount() ? { remote: true, server: config.account.server } : { remote: false },
     time: new Date().toISOString(),
   });
 });
@@ -97,6 +100,8 @@ app.get('/api/sample', async (_req, res) => {
 // Fontes das legendas (para a prévia no navegador via @font-face). Público e cacheável.
 app.use('/api/fonts', express.static(path.join(__dirname, '..', 'assets', 'fonts'), { maxAge: '7d', immutable: true }));
 
+// App de PC/Mac com conta central: login, cadastro e planos são os da conta do site.
+if (remoteAccount()) app.use('/api', accountProxy());
 app.use('/api', authRouter);
 app.use('/api', settingsRouter);
 app.use('/api', billingRouter);

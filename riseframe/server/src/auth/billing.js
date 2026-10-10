@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
@@ -201,6 +202,39 @@ export function refund(userId, { monthly = 0, extra = 0, until = null } = {}) {
   e.credits += extra;
   persist();
   log.info(`${monthly + extra} crédito(s) devolvidos (user ${userId})`);
+}
+
+// ── Cobranças dos apps de PC/Mac ──
+// O app cobra aqui antes de processar e pede a devolução se o vídeo falhar. Cada cobrança
+// fica guardada (id aleatório) por 2 dias; a devolução vale nas primeiras 12 h, uma vez
+// só, e no máximo 10 por dia (o app roda no computador do cliente: limite contra abuso).
+const HOLD_KEEP_MS = 2 * DAY_MS;
+const HOLD_REFUND_MS = 12 * 3600 * 1000;
+const MAX_REFUNDS_DAY = 10;
+
+/** Guarda uma cobrança do app (créditos ou edição grátis) e devolve o id dela. */
+export function holdRemote(userId, rec) {
+  const e = entry(userId);
+  const now = Date.now();
+  e.remoteHolds = Object.fromEntries(Object.entries(e.remoteHolds || {}).filter(([, h]) => now - h.at < HOLD_KEEP_MS));
+  const id = crypto.randomBytes(12).toString('hex');
+  e.remoteHolds[id] = { ...rec, at: now };
+  persist();
+  return id;
+}
+
+/** Tira a cobrança para devolver (null se não existe, já foi devolvida, venceu ou passou do limite). */
+export function releaseRemote(userId, id) {
+  const e = entry(userId);
+  const hold = e.remoteHolds?.[id];
+  const now = Date.now();
+  if (!hold || now - hold.at > HOLD_REFUND_MS) return null;
+  const recent = (e.remoteRefunds || []).filter((t) => now - t < DAY_MS);
+  if (recent.length >= MAX_REFUNDS_DAY) return null;
+  delete e.remoteHolds[id];
+  e.remoteRefunds = [...recent, now];
+  persist();
+  return hold;
 }
 
 /** Só para testes: o registro do usuário em memória. */

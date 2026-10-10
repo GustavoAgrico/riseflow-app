@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v102';
+export const APP_VERSION = 'v103';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -100,6 +100,13 @@ export const config = {
     googleImagesKey: process.env.GOOGLE_CSE_KEY || '',
     googleImagesCx: process.env.GOOGLE_CSE_ID || '',
     googleImagesUnrestricted: bool(process.env.GOOGLE_IMAGES_UNRESTRICTED, false),
+  },
+
+  // Conta central (app de PC/Mac): login, planos e créditos ficam no servidor do site
+  // (ACCOUNT_SERVER, ex.: https://riseframe.onrender.com); o vídeo é processado aqui.
+  // Vazio = este servidor é a própria conta (site) ou um app local sem cobrança.
+  account: {
+    server: String(process.env.ACCOUNT_SERVER || '').trim().replace(/\/+$/, ''),
   },
 
   auth: {

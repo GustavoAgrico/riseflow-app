@@ -126,6 +126,13 @@ function waitForServer(port, timeoutMs = 90_000) {
   });
 }
 
+/** Servidor da conta (site). RISEFRAME_ACCOUNT_SERVER=off: só para desenvolvimento. */
+function accountServer() {
+  const v = String(process.env.RISEFRAME_ACCOUNT_SERVER || '').trim();
+  if (v.toLowerCase() === 'off') return '';
+  return (v || 'https://riseframe.onrender.com').replace(/\/+$/, '');
+}
+
 async function startServer() {
   const serverPath = path.join(projectRoot, 'server', 'src', 'index.js');
   if (!existsSync(serverPath)) throw new Error(`arquivo do servidor não encontrado: ${serverPath}`);
@@ -142,7 +149,11 @@ async function startServer() {
     CORS_ORIGIN: `${origin},http://localhost:${serverPort}`,
     APP_URL: origin,
     DATA_DIR: dataDir,
-    BILLING_MODE: 'off', // app local: sem limites de créditos/planos
+    // Conta central: login, planos e créditos são os da conta do site (uma assinatura vale
+    // no site, no PC e no Mac); o vídeo é processado aqui no computador. Fica DEPOIS das
+    // chaves do chaves.env de propósito (não dá para desligar por lá).
+    ACCOUNT_SERVER: accountServer(),
+    BILLING_MODE: 'off', // a cobrança é feita na conta do site, não aqui
     CLOUD_SYNC: 'off', // dados do app local NUNCA vão para a nuvem do site
     TRANSCRIBE_PROVIDER: keys.TRANSCRIBE_PROVIDER || (keys.DEEPGRAM_API_KEY ? 'deepgram' : keys.GROQ_API_KEY ? 'groq' : 'whisper-local'),
   };
