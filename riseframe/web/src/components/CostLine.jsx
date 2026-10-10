@@ -35,8 +35,9 @@ export default function CostLine({ mode, options, style, sourceId }) {
   }
   const items = creditItems(mode, options, billing.costs);
   const total = creditTotal(items);
-  if (!total) return null;
   const locked = lockedItems(items, billing.features);
+  // Recurso sem custo extra mas fora do plano (ex.: 4K) ainda mostra o aviso.
+  if (!total && !locked.length) return null;
   const short = billing.credits < total;
   return (
     <div style={{ marginTop: 12, fontSize: 13, color: C.muted, ...style }}>
@@ -54,7 +55,7 @@ export default function CostLine({ mode, options, style, sourceId }) {
           <button onClick={openPlans} style={{ ...linkBtn, padding: 0, flexShrink: 0 }}>Ver planos</button>
         </div>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+      {total > 0 && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Icon name="zap" size={14} strokeWidth={2} color={C.purpleSoft} />
           Custa <b style={{ color: C.text }}>{total} créditos</b>
@@ -65,7 +66,7 @@ export default function CostLine({ mode, options, style, sourceId }) {
             Assinar ou recarregar →
           </button>
         )}
-      </div>
+      </div>}
       {items.length > 1 && (
         <div style={{ fontSize: 11.5, color: C.faint, marginTop: 4 }}>
           {items.map((i) => `${i.label} ${i.credits}`).join(' · ')}

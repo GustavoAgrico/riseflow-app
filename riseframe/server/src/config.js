@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v103';
+export const APP_VERSION = 'v104';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -87,6 +87,10 @@ export const config = {
     // fala. Troque por claude-sonnet-5/opus se quiser mais capricho (mais caro).
     model: process.env.ANALYZE_MODEL || 'claude-haiku-4-5-20251001',
     openaiModel: process.env.ANALYZE_OPENAI_MODEL || 'gpt-4o-mini',
+    // Sem Anthropic/OpenAI: a chave da Groq (a mesma da transcrição) faz a IA do B-roll
+    // entender o assunto do vídeo. ANALYZE_GROQ=off desliga.
+    groqKey: String(process.env.ANALYZE_GROQ || '').toLowerCase() === 'off' ? '' : process.env.GROQ_API_KEY || '',
+    groqModel: process.env.ANALYZE_GROQ_MODEL || 'llama-3.3-70b-versatile',
   },
 
   broll: {
@@ -155,11 +159,11 @@ export const config = {
     // Recursos de quem não tem plano ativo (o vídeo básico é sempre liberado).
     freeFeatures: json(process.env.BILLING_FREE_FEATURES, []),
     // Planos mensais: créditos renovam a cada período e não acumulam. `features` usa os
-    // ids de shared/credits.js (captionStyle, image, ai, clips). Sobrescreva com BILLING_PLANS.
+    // ids de shared/credits.js (captionStyle, image, ai, clips, hd). Sobrescreva com BILLING_PLANS.
     plans: json(process.env.BILLING_PLANS, [
       { id: 'basico', name: 'Básico', priceCents: 2990, credits: 300, features: [] },
       { id: 'pro', name: 'Pro', priceCents: 8990, credits: 1000, features: ['captionStyle', 'image', 'ai'], popular: true },
-      { id: 'premium', name: 'Premium', priceCents: 24790, credits: 3000, features: ['captionStyle', 'image', 'ai', 'clips'] },
+      { id: 'premium', name: 'Premium', priceCents: 24790, credits: 3000, features: ['captionStyle', 'image', 'ai', 'clips', 'hd'] },
     ]),
     // Recarga avulsa (não expira; mais cara por crédito que os planos). Sobrescreva com CREDIT_PACKS.
     packs: json(process.env.CREDIT_PACKS, [

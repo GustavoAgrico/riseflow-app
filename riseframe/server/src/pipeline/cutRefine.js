@@ -23,14 +23,16 @@ const HOP = 0.01; // 10 ms por quadro do envelope
  * streaming (memória ~ 4 bytes por quadro, mesmo em vídeos de horas).
  * @returns {Promise<{db: Float32Array, hop: number, floor: number, peak: number} | null>}
  */
-export function audioEnvelope(input, { rate = 8000 } = {}) {
+export function audioEnvelope(input, { rate = 8000, af = null } = {}) {
   return new Promise((resolve) => {
     const per = Math.round(rate * HOP);
     const frames = [];
     let acc = 0;
     let n = 0;
     let carry = null;
-    const proc = spawn(ffmpegPath, ['-v', 'error', '-i', input, '-vn', '-ac', '1', '-ar', String(rate), '-f', 's16le', '-'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const args = ['-v', 'error', '-i', input, '-vn', '-ac', '1', '-ar', String(rate)];
+    if (af) args.push('-af', af);
+    const proc = spawn(ffmpegPath, [...args, '-f', 's16le', '-'], { stdio: ['ignore', 'pipe', 'ignore'] });
     proc.stdout.on('data', (chunk) => {
       let buf = chunk;
       if (carry) {
@@ -115,6 +117,48 @@ export function protectWords(ranges, words, { pre = 0.08, post = 0.12, minRemove
         const left = { start: p.start, end: Math.min(p.end, g0) };
         const right = { start: Math.max(p.start, g1), end: p.end };
         return [left, right].filter((x) => x.end - x.start > 0);
+      });
+    }
+    out.push(...pieces.filter((p) => p.end - p.start > minRemove));
+  }
+  return out;
+}
+
+/** Faixa de frequência da VOZ (vogais): respiração e chiado ficam quase todos acima dela. */
+export const VOICE_BAND = 'highpass=f=80,lowpass=f=800,lowpass=f=800';
+
+/**
+ * Nenhum corte de pausa passa por cima de VOZ, mesmo que a transcrição não tenha a
+ * palavra (a transcrição às vezes "pula" palavras curtas, repetidas ou ditas baixo, e o
+ * vão vira um corte que levava a palavra junto) ou que o detector de silêncio ache que
+ * é silêncio (fala baixa no fim da frase). Olha o envelope só na faixa da voz
+ * (`VOICE_BAND`): onde há voz por pelo menos `minRun`, aquele pedaço (com folga) sai do
+ * corte. Respiração quase não tem energia nessa faixa, então continua sendo cortada. Puro.
+ */
+export function protectVoice(ranges, venv, { minRun = 0.06, pre = 0.12, post = 0.16, minRemove = 0.06 } = {}) {
+  if (!venv) return ranges;
+  const thr = Math.max(venv.floor + 12, venv.peak - 32);
+  const minFrames = Math.max(1, Math.round(minRun / venv.hop));
+  const out = [];
+  for (const r of ranges) {
+    // trechos com voz dentro da faixa a cortar
+    const voiced = [];
+    let runStart = -1;
+    const a = frameAt(venv, r.start);
+    const b = frameAt(venv, r.end);
+    for (let i = a; i <= b + 1; i++) {
+      const on = i <= b && venv.db[i] > thr;
+      if (on && runStart < 0) runStart = i;
+      if (!on && runStart >= 0) {
+        if (i - runStart >= minFrames) voiced.push({ start: runStart * venv.hop - pre, end: i * venv.hop + post });
+        runStart = -1;
+      }
+    }
+    let pieces = [{ start: r.start, end: r.end }];
+    for (const v of voiced) {
+      pieces = pieces.flatMap((p) => {
+        if (v.end <= p.start || v.start >= p.end) return [p];
+        return [{ start: p.start, end: Math.min(p.end, v.start) }, { start: Math.max(p.start, v.end), end: p.end }].filter((x) => x.end - x.start > 0);
       });
     }
     out.push(...pieces.filter((p) => p.end - p.start > minRemove));
@@ -227,14 +271,18 @@ function valley(env, a, b, fallback) {
  * vale. Sem envelope (falha do ffmpeg) ou sem transcrição, cai no que der.
  */
 export async function preciseRemovals(input, { pauses = [], transcript, hasAudio = true, breaths = false } = {}) {
-  const env = hasAudio ? await audioEnvelope(input).catch(() => null) : null;
+  const [env, venv] = hasAudio
+    ? await Promise.all([audioEnvelope(input).catch(() => null), audioEnvelope(input, { af: VOICE_BAND }).catch(() => null)])
+    : [null, null];
   const words = keptWords(transcript);
   // Com corte de respirações: folgas menores em volta das palavras e borda guiada pelo
   // limiar de respiração (a inspiração antes da frase sai junto com a pausa).
   // As folgas em volta das palavras são as MESMAS com ou sem respirações (com folgas
   // menores o corte comia o começo/fim das palavras). Respirações só mudam o limiar do
   // fim do corte: a inspiração antes da frase sai, o ataque da palavra fica.
-  const safePauses = fitPausesToAudio(protectWords(pauses, words), env, breaths ? { breaths: true, preroll: 0.08 } : {});
+  // Ordem: palavras da transcrição → voz no áudio (mesmo sem palavra na transcrição) →
+  // bordas guiadas pelo volume.
+  const safePauses = fitPausesToAudio(protectVoice(protectWords(pauses, words), venv), env, breaths ? { breaths: true, preroll: 0.08 } : {});
   const removed = removedWordRanges(transcript, env);
   const before = pauses.reduce((a, r) => a + (r.end - r.start), 0);
   const after = safePauses.reduce((a, r) => a + (r.end - r.start), 0);

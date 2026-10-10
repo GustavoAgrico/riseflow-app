@@ -420,7 +420,7 @@ function sanitizeBrollPlan(raw) {
 // LUTs ficam a cargo de configuração do servidor, não da requisição.
 const ALLOWED_LOOKS = new Set(['auto', 'none', 'clean', 'teal-orange', 'warm', 'cold', 'vibrant', 'moody']);
 
-function parseOptions(raw) {
+export function parseOptions(raw) {
   let o = {};
   if (raw) {
     try {
@@ -496,6 +496,8 @@ function parseOptions(raw) {
     cutBreaths: o.cutBreaths !== false,
     // Velocidade do vídeo final (0,5× a 2×), aplicada no render final — fala sem mudar o tom.
     speed: speedOf(o.speed),
+    // Qualidade de exportação (Premium): 720p, 1080p ou 4K (lado menor do quadro).
+    quality: ['720', '1080', '2160'].includes(String(o.quality)) ? String(o.quality) : 'original',
     audioVolume: clampNum(o.audioVolume, 0, 4, 1),
     audioGains: Array.isArray(o.audioGains)
       ? o.audioGains

@@ -68,9 +68,10 @@ test('render final em 1,5× encurta o vídeo e o áudio na mesma proporção', a
 test('áudio real: a inspiração antes da frase é cortada só com "remover respirações"', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-breath-'));
   const wav = path.join(dir, 'fala.wav');
-  // "fala" (tom alto) 0–1 s · silêncio · "respiração" (ruído baixo, ~30 dB abaixo) 1.4–1.85 s · "fala" 1.85–3 s
-  await runFfmpeg(['-f', 'lavfi', '-i', 'sine=frequency=220:duration=3:sample_rate=16000', '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.03:duration=3:sample_rate=16000:seed=42',
-    '-filter_complex', "[0:a]volume='if(lt(t,1)+gte(t,1.85),0.9,0)':eval=frame[s];[1:a]volume='if(between(t,1.4,1.85),1,0)':eval=frame[n];[s][n]amix=inputs=2:normalize=0[a]",
+  // "fala" (tom alto) 0–1 s · silêncio · "respiração" 1.4–1.85 s · "fala" 1.85–3 s. A respiração
+  // é chiado de ar: energia nos agudos (ruído acima de 1 kHz), ~30 dB abaixo da voz.
+  await runFfmpeg(['-f', 'lavfi', '-i', 'sine=frequency=220:duration=3:sample_rate=16000', '-f', 'lavfi', '-i', 'anoisesrc=color=white:amplitude=0.012:duration=3:sample_rate=16000:seed=42',
+    '-filter_complex', "[0:a]volume='if(lt(t,1)+gte(t,1.85),0.9,0)':eval=frame[s];[1:a]highpass=f=1200,highpass=f=1200,volume='if(between(t,1.4,1.85),1,0)':eval=frame[n];[s][n]amix=inputs=2:normalize=0[a]",
     '-map', '[a]', '-y', wav], { label: 'teste' });
   const transcript = { segments: [{ words: [{ start: 0.05, end: 1.0, word: 'oi' }, { start: 1.87, end: 2.9, word: 'tudo' }] }] };
   const { preciseRemovals } = await import('../src/pipeline/cutRefine.js');
@@ -82,5 +83,24 @@ test('áudio real: a inspiração antes da frase é cortada só com "remover res
   assert.ok(fimResp >= 1.7, `o corte vai até perto da próxima palavra (${fimResp})`);
   assert.ok(fimResp <= 1.87 - 0.12, 'deixa folga antes do ataque da próxima palavra');
   assert.ok(sum(resp.pauses) > sum(comum.pauses) + 0.2, `corta mais (${sum(resp.pauses).toFixed(2)}s vs ${sum(comum.pauses).toFixed(2)}s)`);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('áudio real: palavra que a transcrição "pulou" não é cortada (voz no meio do vão)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-pulou-'));
+  const wav = path.join(dir, 'fala.wav');
+  // fala 0–1 s · silêncio · PALAVRA FALADA 1.6–1.9 s (fora da transcrição) · silêncio · fala 2.6–3.5 s
+  await runFfmpeg(['-f', 'lavfi', '-i', 'sine=frequency=200:duration=3.5:sample_rate=16000',
+    '-af', "volume='if(lt(t,1)+between(t,1.6,1.9)*0.5+gte(t,2.6),0.9,0)':eval=frame", '-y', wav], { label: 'teste' });
+  const transcript = { segments: [{ words: [{ start: 0.05, end: 1.0, word: 'oi' }, { start: 2.6, end: 3.4, word: 'tudo' }] }] };
+  const { preciseRemovals } = await import('../src/pipeline/cutRefine.js');
+  const pauses = wordGapRanges(transcript, { minGap: 0.3, duration: 3.5 }).filter((r) => r.start > 0.5 && r.end < 3.4);
+  for (const breaths of [false, true]) {
+    const { pauses: cuts } = await preciseRemovals(wav, { pauses, transcript, breaths });
+    for (const c of cuts) {
+      assert.ok(c.end <= 1.6 - 0.05 || c.start >= 1.9 + 0.05, `corte ${c.start}–${c.end} invade a palavra 1.6–1.9 (respirações: ${breaths})`);
+    }
+    assert.ok(cuts.some((c) => c.start < 1.5) && cuts.some((c) => c.end > 2.0), 'os silêncios em volta continuam sendo cortados');
+  }
   fs.rmSync(dir, { recursive: true, force: true });
 });

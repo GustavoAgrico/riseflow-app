@@ -16,7 +16,7 @@ test('conta nova: 3 edições grátis com todos os recursos', () => {
   const st = billing.billingStatus(user);
   assert.equal(st.freeEdits, 3);
   assert.equal(st.credits, 0, 'sem créditos avulsos: o teste são as edições grátis');
-  assert.deepEqual(st.features.sort(), ['ai', 'captionStyle', 'clips', 'image']);
+  assert.deepEqual(st.features.sort(), ['ai', 'captionStyle', 'clips', 'hd', 'image']);
   assert.equal(billing.trialCovers(user, 'auto'), true);
   assert.equal(billing.trialCovers(user, 'clips'), true);
 });

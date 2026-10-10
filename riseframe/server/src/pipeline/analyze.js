@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import { makeLogger } from '../logger.js';
-import { analyzeWithClaude, analyzeWithOpenAI } from './analyzeLLM.js';
+import { analyzeWithClaude, analyzeWithOpenAI, analyzeWithGroq } from './analyzeLLM.js';
 import { resolveNiche, NICHES } from './niche.js';
 
 const log = makeLogger('analyze');
@@ -241,17 +241,20 @@ export async function analyze(transcript, meta, options) {
   // não precisa também setar ANALYZE_PROVIDER.
   const anthropicKey = options.anthropicKey || config.analyze.anthropicKey;
   const useOpenAI = !anthropicKey && config.analyze.provider === 'openai' && config.analyze.openaiKey;
-  if (options.broll && (anthropicKey || useOpenAI)) {
-    const provider = anthropicKey ? 'anthropic' : 'openai';
+  const useGroq = !anthropicKey && !useOpenAI && Boolean(config.analyze.groqKey);
+  if (options.broll && (anthropicKey || useOpenAI || useGroq)) {
+    const provider = anthropicKey ? 'anthropic' : useOpenAI ? 'openai' : 'groq';
     try {
       const nicheLabel = niche ? NICHES[niche.id]?.label : null;
       const imageSource = options.imageSource === 'google' ? 'google' : 'pexels';
       const llm = anthropicKey
         ? await analyzeWithClaude(transcript, meta, options, { ...config.analyze, anthropicKey, niche: nicheLabel, imageSource })
-        : await analyzeWithOpenAI(transcript, meta, options, { ...config.analyze, niche: nicheLabel, imageSource });
+        : useOpenAI
+          ? await analyzeWithOpenAI(transcript, meta, options, { ...config.analyze, niche: nicheLabel, imageSource })
+          : await analyzeWithGroq(transcript, meta, options, { ...config.analyze, niche: nicheLabel, imageSource });
       if (llm?.brollMoments?.length) {
-        log.ok(`análise por IA (${provider}): ${llm.brollMoments.length} momentos${niche ? ` · nicho ${niche.id}` : ''}`);
-        return { provider, themes: llm.themes?.length ? llm.themes : themes, brollMoments: llm.brollMoments, niche: niche?.id || null };
+        log.ok(`análise por IA (${provider}): ${llm.brollMoments.length} momentos${llm.topic ? ` · assunto: ${llm.topic}` : ''}${niche ? ` · nicho ${niche.id}` : ''}`);
+        return { provider, themes: llm.themes?.length ? llm.themes : themes, brollMoments: llm.brollMoments, niche: niche?.id || null, topic: llm.topic || null };
       }
     } catch (err) {
       log.warn(`análise por IA falhou (${err.message}); usando heurística`);
