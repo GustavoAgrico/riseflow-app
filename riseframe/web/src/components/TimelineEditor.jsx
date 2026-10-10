@@ -889,7 +889,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if (m.myMediaId) return { start: m.start, end: m.end, mediaId: m.myMediaId, kind: m.myKind, query: m.term, ...frame };
       const c = m.candidates[m.pick];
       if (!c) return { start: m.start, end: m.end, remove: true };
-      return { start: m.start, end: m.end, url: c.link, kind: c.kind, query: m.term, credit: c.credit || null, ...frame };
+      return { start: m.start, end: m.end, url: c.link, thumb: c.thumb || undefined, kind: c.kind, query: m.term, credit: c.credit || null, ...frame };
     });
   }
 

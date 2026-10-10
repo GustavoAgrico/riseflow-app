@@ -60,6 +60,10 @@ services:
       # - key: PEXELS_API_KEY      # B-roll automático
       # - key: PIXABAY_API_KEY     # B-roll: mais vídeos e fotos livres (chave grátis)
       #   sync: false
+      # - key: SERPER_API_KEY      # "Google Imagens" no B-roll (serper.dev; a API do Google fechou)
+      #   sync: false
+      # - key: BRAVE_SEARCH_KEY    # alternativa: busca de imagens do Brave (api-dashboard.search.brave.com)
+      #   sync: false
       # - key: ANTHROPIC_API_KEY   # correção de fala + color grade por IA
       #   sync: false
       # ── Planos e créditos: os limites valem sempre (BILLING_MODE=off desliga). Sem a chave da AbacatePay, ninguém assina ainda ──

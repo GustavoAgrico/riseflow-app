@@ -52,7 +52,7 @@ nano /opt/riseflow-app/riseframe/deploy/.env
 Preencha com os **mesmos valores** do Render → Environment (o que não usa, deixe vazio):
 - **Essenciais:** `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` (contas e planos), `RESEND_API_KEY`
   e `EMAIL_FROM` (e-mails), `DEEPGRAM_API_KEY`/`GROQ_API_KEY` (legendas).
-- **Imagens e IA:** `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `GOOGLE_CSE_KEY`, `GOOGLE_CSE_ID`, `ANTHROPIC_API_KEY`.
+- **Imagens e IA:** `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `SERPER_API_KEY` ou `BRAVE_SEARCH_KEY` (Google Imagens), `GOOGLE_CSE_KEY`, `GOOGLE_CSE_ID`, `ANTHROPIC_API_KEY`.
 - **Cobrança:** `ABACATE_PAY_API_KEY`, `ABACATE_WEBHOOK_SECRET`, `BILLING_PLANS`, `CREDIT_PACKS`,
   `CREDIT_COSTS`, `BILLING_METHODS`, `BILLING_SIGNUP_CREDITS`.
 - **Outros:** `GOOGLE_CLIENT_ID`, `SMTP_*`, `WHATSAPP_*`, `ADMIN_WHATSAPP`, `SUPPORT_EMAIL`, `SUPPORT_WHATSAPP`.

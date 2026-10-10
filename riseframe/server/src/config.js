@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v104';
+export const APP_VERSION = 'v105';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -104,6 +104,10 @@ export const config = {
     googleImagesKey: process.env.GOOGLE_CSE_KEY || '',
     googleImagesCx: process.env.GOOGLE_CSE_ID || '',
     googleImagesUnrestricted: bool(process.env.GOOGLE_IMAGES_UNRESTRICTED, false),
+    // "Google Imagens" sem a API do Google (fechada para contas novas e desligada em 2027):
+    // Serper (resultados do próprio Google Imagens; serper.dev) ou Brave Search (imagens).
+    serperKey: process.env.SERPER_API_KEY || '',
+    braveKey: process.env.BRAVE_SEARCH_KEY || process.env.BRAVE_API_KEY || '',
   },
 
   // Conta central (app de PC/Mac): login, planos e créditos ficam no servidor do site
@@ -252,7 +256,7 @@ export function capabilities() {
     wikimediaReady: true,
     nasaReady: true,
     // Imagens do Google (Custom Search) disponíveis?
-    googleImagesReady: Boolean(config.broll.googleImagesKey && config.broll.googleImagesCx),
+    googleImagesReady: Boolean((config.broll.googleImagesKey && config.broll.googleImagesCx) || config.broll.serperKey || config.broll.braveKey),
     // Login com Google só aparece se o Client ID estiver configurado.
     googleReady: Boolean(config.auth.googleClientId),
     googleClientId: config.auth.googleClientId,
