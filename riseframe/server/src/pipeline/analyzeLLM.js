@@ -2,12 +2,20 @@ import { makeLogger } from '../logger.js';
 
 const log = makeLogger('analyze-ai');
 
-/** Representação compacta da transcrição (tempo + texto por segmento) para o LLM. */
-function compactTranscript(transcript, maxSegments = 80) {
-  return (transcript.segments || [])
-    .slice(0, maxSegments)
-    .map((s) => `[${s.start.toFixed(1)}s] ${s.text}`)
-    .join('\n');
+/**
+ * Representação compacta da transcrição (tempo + texto) para o LLM. Vídeo longo: junta
+ * segmentos vizinhos em blocos para o vídeo INTEIRO caber (antes só os 80 primeiros
+ * segmentos iam, e o B-roll ficava todo no começo).
+ */
+export function compactTranscript(transcript, maxLines = 120) {
+  const segs = (transcript.segments || []).filter((s) => String(s.text || '').trim());
+  const per = Math.max(1, Math.ceil(segs.length / maxLines));
+  const lines = [];
+  for (let i = 0; i < segs.length; i += per) {
+    const group = segs.slice(i, i + per);
+    lines.push(`[${group[0].start.toFixed(1)}s] ${group.map((s) => s.text.trim()).join(' ')}`);
+  }
+  return lines.join('\n');
 }
 
 const INSTRUCTION = (duration, maxCount, niche, source = 'pexels') => {
@@ -20,10 +28,11 @@ const INSTRUCTION = (duration, maxCount, niche, source = 'pexels') => {
 ${niche
     ? `O NICHO/LINGUAGEM do vídeo é: ${niche}. TODAS as buscas devem ser visualmente coerentes com esse nicho (o clima, as pessoas e os cenários precisam combinar com ${niche}).`
     : `Primeiro, identifique o NICHO/tema do vídeo (ex.: liderança, medicina, mentoria, finanças, fitness) e mantenha TODAS as buscas visualmente coerentes com ele.`}
-Escolha até ${maxCount} momentos onde inserir imagens de apoio, distribuídos ao longo do vídeo (evite a introdução). IMPORTANTE: cada "query" deve ser DIFERENTE das demais — nunca repita o mesmo termo de busca, para não repetir imagens ao longo do vídeo.
+Antes de escolher, entenda o ASSUNTO CENTRAL do vídeo (sobre o que a pessoa está falando, para quem e com qual objetivo). Toda imagem precisa deixar CLARO esse assunto para quem assiste sem som: mostre a cena concreta do que está sendo dito naquele trecho, dentro do contexto do assunto central (ex.: num vídeo sobre cobrar resultados da equipe, "metas" vira "gestor revisando metas com a equipe em reunião", e não "alvo com flecha"). Evite imagens genéricas, abstratas, de ícones ou de texto, e nada que contradiga o que está sendo dito.
+Escolha até ${maxCount} momentos onde inserir imagens de apoio, distribuídos ao longo do vídeo INTEIRO (evite a introdução e escolha trechos em que a fala cita algo que dá para mostrar). IMPORTANTE: cada "query" deve ser DIFERENTE das demais — nunca repita o mesmo termo de busca, para não repetir imagens ao longo do vídeo.
 Para cada momento devolva: "start" (segundo de início, número), "end" (fim, número, 1.5–4s após o start) e ${queryRule}
-Também devolva "niche" (o nicho em 1-2 palavras, em português) e "themes": 3–6 temas centrais.
-Responda APENAS com JSON no formato: {"niche":"...","themes":["..."],"brollMoments":[{"start":0,"end":0,"query":"..."}]}`;
+Também devolva "topic" (o assunto central em uma frase curta, em português), "niche" (o nicho em 1-2 palavras, em português) e "themes": 3–6 temas centrais.
+Responda APENAS com JSON no formato: {"topic":"...","niche":"...","themes":["..."],"brollMoments":[{"start":0,"end":0,"query":"..."}]}`;
 };
 
 function parseJson(text) {
@@ -53,7 +62,7 @@ function normalize(data, duration, maxCount) {
     })
     .slice(0, maxCount);
   const themes = (data.themes || []).map((t) => ({ term: String(t).toLowerCase(), count: 1 })).slice(0, 6);
-  return { themes, brollMoments: moments };
+  return { themes, brollMoments: moments, topic: String(data.topic || '').slice(0, 160) };
 }
 
 // ─── Anthropic (Claude) via SDK oficial ───────────────────────────────
@@ -80,13 +89,22 @@ export async function analyzeWithClaude(transcript, meta, options, cfg) {
   return normalize(parseJson(text), meta.duration, maxCount);
 }
 
-// ─── OpenAI via HTTP (provedor distinto; fetch é aceitável aqui) ───────
+// ─── OpenAI / Groq via HTTP (API no formato OpenAI; fetch é aceitável aqui) ───────
 export async function analyzeWithOpenAI(transcript, meta, options, cfg) {
+  return chatJson(transcript, meta, options, cfg, { url: 'https://api.openai.com/v1/chat/completions', key: cfg.openaiKey, model: cfg.openaiModel || 'gpt-4o-mini', label: 'OpenAI' });
+}
+
+/** Groq (Llama): a mesma chave da transcrição já basta para o B-roll entender o assunto. */
+export async function analyzeWithGroq(transcript, meta, options, cfg) {
+  return chatJson(transcript, meta, options, cfg, { url: 'https://api.groq.com/openai/v1/chat/completions', key: cfg.groqKey, model: cfg.groqModel || 'llama-3.3-70b-versatile', label: 'Groq' });
+}
+
+async function chatJson(transcript, meta, options, cfg, { url, key, model, label }) {
   const maxCount = options.brollMax ?? 6;
-  const model = cfg.openaiModel || 'gpt-4o-mini';
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(45000),
     method: 'POST',
-    headers: { Authorization: `Bearer ${cfg.openaiKey}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
       max_tokens: 1200,
@@ -97,8 +115,9 @@ export async function analyzeWithOpenAI(transcript, meta, options, cfg) {
       ],
     }),
   });
-  if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`${label} ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const data = await res.json();
   const text = data.choices?.[0]?.message?.content || '';
+  log.info(`${label} (${model}) respondeu ${text.length} chars`);
   return normalize(parseJson(text), meta.duration, maxCount);
 }

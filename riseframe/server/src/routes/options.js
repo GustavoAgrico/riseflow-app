@@ -79,6 +79,12 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'nasa', label: 'NASA (ciência e espaço, domínio público)' },
       { id: 'google', label: 'Google Imagens (contextual) ⚠️ copyright' },
     ],
+    qualities: [
+      { id: 'original', label: 'Original' },
+      { id: '720', label: '720p HD' },
+      { id: '1080', label: '1080p Full HD' },
+      { id: '2160', label: '4K Ultra HD' },
+    ],
     aspects: [
       { id: 'original', label: 'Manter original' },
       { id: '9:16', label: 'Vertical 9:16 (Reels/Shorts/TikTok)' },
@@ -90,6 +96,7 @@ optionsRouter.get('/options', (_req, res) => {
       cutStrength: 'forte', // enxuga mais por padrão (pausas curtas + muletas)
       cutBreaths: true, // respirações entre as frases saem junto com as pausas
       speed: 1, // velocidade do vídeo final
+      quality: 'original', // qualidade de exportação (720p/1080p/4K: Premium)
       voiceEnhance: false,
       voiceIntensity: 'medio',
       voiceNoise: 'medio',

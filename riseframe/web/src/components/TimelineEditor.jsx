@@ -163,6 +163,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Formato do vídeo final e como ele entra no formato (igual ao servidor):
   // auto = segue o rosto · manual = ponto escolhido · fit = inteiro com fundo desfocado.
   const [aspectSel, setAspectSel] = useState(['original', '9:16', '1:1', '16:9'].includes(options?.aspect) ? options.aspect : 'original');
+  // Qualidade de exportação (720p/1080p/4K: recurso do Premium).
+  const [quality, setQuality] = useState(['720', '1080', '2160'].includes(String(options?.quality)) ? String(options.quality) : 'original');
+  const hdAllowed = !billing || billing.unlimited || billing.features?.includes('hd');
   const [reframeMode, setReframeMode] = useState(['auto', 'manual', 'fit'].includes(options?.reframeMode) ? options.reframeMode : 'auto');
   const bgVideoRef = useRef(null); // fundo desfocado da prévia no modo "vídeo inteiro"
   const composedRef = useRef(null);
@@ -910,6 +913,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         personZoom: +Number(zoom).toFixed(2),
         // Formato do vídeo final + enquadramento no formato (escolhidos na aba Enquadramento).
         aspect: aspectSel,
+        quality: hdAllowed ? quality : 'original',
         reframeMode,
         ...(framingMode === 'manual'
           ? { personFocusX: +focus.x.toFixed(3), personFocusY: +focus.y.toFixed(3) }
@@ -1540,6 +1544,35 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   {reframeMode === 'manual' && <div style={{ fontSize: 11, color: C.faint, marginTop: 8 }}>Arraste o vídeo na <b>prévia</b> (ou o ponto laranja no player) para escolher o que fica no quadro.</div>}
                 </>
               )}
+            </div>
+          )}
+          {tab === 'enquadramento' && (
+            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="sparkles" size={15} strokeWidth={2} /></span>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Qualidade da exportação</div>
+                {!hdAllowed && <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, letterSpacing: 0.4, color: '#fff', background: GRAD, borderRadius: 20, padding: '2px 8px' }}>PREMIUM</span>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
+                {QUALITY_OPTS.map((o) => {
+                  const on = (hdAllowed ? quality : 'original') === o.id;
+                  const locked = o.id !== 'original' && !hdAllowed;
+                  return (
+                    <button key={o.id} onClick={() => (locked ? openPlans() : setQuality(o.id))} title={locked ? 'Disponível no plano Premium' : o.hint}
+                      style={{ ...framingTab(on), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px', opacity: locked ? 0.55 : 1 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{locked && <Icon name="lock" size={11} strokeWidth={2.4} />}{o.label}</span>
+                      <span style={{ fontSize: 10, color: C.faint, fontWeight: 600 }}>{o.sub}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: C.faint, marginTop: 8, lineHeight: 1.45 }}>
+                {hdAllowed
+                  ? quality === 'original'
+                    ? 'Mantém a resolução do formato escolhido. Escolha 720p, 1080p ou 4K para ampliar com redução de ruído e nitidez.'
+                    : `O vídeo sai em ${QUALITY_OPTS.find((q) => q.id === quality)?.label}, ampliado com redução de ruído e nitidez${quality === '2160' ? ' (4K demora mais e gera arquivo maior)' : ''}. Não inventa detalhes que a gravação não tem.`
+                  : <>720p, 1080p e 4K são do plano <b style={{ color: C.text }}>Premium</b>. <button onClick={openPlans} style={{ background: 'none', border: 'none', color: C.orangeSoft, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit', fontSize: 11 }}>Ver planos</button></>}
+              </div>
             </div>
           )}
           {tab === 'enquadramento' && (
@@ -2633,6 +2666,14 @@ function miniBtn(active, disabled) {
   return { display: 'inline-flex', alignItems: 'center', gap: 5, border: `1px solid ${active ? C.red : C.border}`, background: active ? 'rgba(240,82,107,0.18)' : 'rgba(255,255,255,0.05)', color: active ? C.red : C.muted, borderRadius: 8, padding: '5px 10px', fontSize: 11.5, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, fontFamily: 'inherit' };
 }
 // Velocidades oferecidas (o servidor aceita de 0,5× a 2×)
+// Qualidade de exportação (lado menor do quadro): Premium.
+const QUALITY_OPTS = [
+  { id: 'original', label: 'Original', sub: 'padrão', hint: 'Resolução do formato escolhido' },
+  { id: '720', label: '720p', sub: 'HD', hint: 'Lado menor com 720 pixels' },
+  { id: '1080', label: '1080p', sub: 'Full HD', hint: 'Lado menor com 1080 pixels' },
+  { id: '2160', label: '4K', sub: 'Ultra HD', hint: 'Lado menor com 2160 pixels' },
+];
+
 const SPEEDS = [0.75, 1, 1.1, 1.2, 1.25, 1.5, 2];
 const fmtSpeed = (k) => `${String(k).replace('.', ',')}×`;
 function SpeedPicker({ value, onChange, big = false }) {

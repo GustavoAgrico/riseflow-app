@@ -30,7 +30,7 @@ const FILE = path.join(config.paths.data, 'billing.json');
 const API_BASE = 'https://api.abacatepay.com/v';
 const DAY_MS = 24 * 3600 * 1000;
 const PENDING_TTL_MS = 7 * DAY_MS;
-const ALL_FEATURES = ['captionStyle', 'image', 'ai', 'clips'];
+const ALL_FEATURES = ['captionStyle', 'image', 'ai', 'clips', 'hd'];
 
 let db = null;
 onCloudReload('billing.json', () => { db = null; });

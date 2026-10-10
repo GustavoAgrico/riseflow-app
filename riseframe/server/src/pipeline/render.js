@@ -9,6 +9,35 @@ const log = makeLogger('render');
 
 const RESIZE = { original: null, ...TARGETS };
 
+// Qualidade de exportação (Premium): lado MENOR do quadro final, em pixels.
+export const QUALITIES = { 720: 720, 1080: 1080, 2160: 2160 };
+const even = (x) => Math.max(2, Math.round(x / 2) * 2);
+
+/**
+ * Tamanho do quadro final: o do formato (9:16 → 1080×1920…) ou o do vídeo (original),
+ * levado à qualidade pedida (720p/1080p/4K, pelo lado menor). Null = sem mudança. Puro.
+ */
+export function outputTarget(meta, options = {}) {
+  const base = RESIZE[options.aspect || 'original'] || null;
+  const q = QUALITIES[options.quality];
+  if (!q) return base;
+  const w0 = base ? base.w : meta?.width;
+  const h0 = base ? base.h : meta?.height;
+  if (!w0 || !h0) return base;
+  const s = q / Math.min(w0, h0);
+  return { w: even(w0 * s), h: even(h0 * s) };
+}
+
+/**
+ * Ampliação com melhoria: escala Lanczos e, quando aumenta bastante, uma redução leve
+ * de ruído antes (para não ampliar o chuvisco) e nitidez depois. Puro.
+ */
+export function upscaleVf(fromW, toW, W, H) {
+  const k = fromW ? toW / fromW : 1;
+  if (k > 1.25) return `hqdn3d=1.5:1.5:4:4,scale=${W}:${H}:flags=lanczos,unsharp=5:5:0.6:3:3:0`;
+  return `scale=${W}:${H}:flags=lanczos`;
+}
+
 /** O vídeo já está na proporção do formato pedido? */
 export function matchesAspect(meta, target) {
   return Boolean(target && meta?.width && meta?.height && Math.abs(meta.width / meta.height - target.w / target.h) < 0.01);
@@ -62,15 +91,28 @@ export async function aspectVf(input, meta, target, options = {}, trackInput = i
  * @returns {Promise<{output:string, applied:boolean, reframe:object|null}>}
  */
 export async function convertAspect(input, work, meta, options, trackInput, onProgress) {
-  const target = RESIZE[options.aspect || 'original'];
-  if (!target || matchesAspect(meta, target)) return { output: input, applied: false, reframe: null };
-  const { vf, reframe } = await aspectVf(input, meta, target, options, trackInput || input);
+  const target = outputTarget(meta, options);
+  if (!target) return { output: input, applied: false, reframe: null };
+  // Já no formato: só muda se a qualidade pedida pede outro tamanho (aí amplia ANTES das
+  // legendas, para elas serem desenhadas nítidas na resolução final).
+  const sameSize = meta.width === target.w && meta.height === target.h;
+  if (matchesAspect(meta, target) && (sameSize || !QUALITIES[options.quality])) return { output: input, applied: false, reframe: null };
+  let vf;
+  let reframe = null;
+  if (matchesAspect(meta, target)) {
+    vf = `${upscaleVf(meta.width, target.w, target.w, target.h)},setsar=1,format=yuv420p`;
+  } else {
+    ({ vf, reframe } = await aspectVf(input, meta, target, options, trackInput || input));
+    // Fonte bem menor que o quadro final (ex.: 464p → 4K): limpa o ruído antes e dá nitidez depois.
+    const k = Math.min(target.w / meta.width, target.h / meta.height);
+    if (QUALITIES[options.quality] && k > 1.25 && options.reframeMode !== 'fit') vf = `hqdn3d=1.5:1.5:4:4,${vf},unsharp=5:5:0.6:3:3:0`;
+  }
   const output = path.join(work, 'aspect.mp4');
   const args = ['-i', input, '-vf', vf, ...x264Fast()];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push('-movflags', '+faststart', '-y', output);
   await runFfmpeg(args, { label: 'formato', totalDuration: meta.duration, onProgress });
-  log.ok(`formato ${options.aspect} (${reframe.source}${reframe.tracked ? ', tracking' : ''})`);
+  log.ok(`formato ${options.aspect || 'original'} ${target.w}x${target.h}${reframe ? ` (${reframe.source}${reframe.tracked ? ', tracking' : ''})` : ''}`);
   return { output, applied: true, reframe };
 }
 
@@ -96,14 +138,14 @@ export function speedFilters(speed, fps) {
 
 export async function finalRender(input, outputsDir, jobId, meta, options, onProgress) {
   const aspect = options.aspect || 'original';
-  const target = RESIZE[aspect];
+  const target = outputTarget(meta, options);
   const output = path.join(outputsDir, `${jobId}.mp4`);
 
   let vf;
   let reframe = options.reframe || null;
   if (target && matchesAspect(meta, target)) {
     // Já está no formato (convertido antes das legendas): só a resolução final.
-    vf = `scale=${target.w}:${target.h}:flags=bicubic,setsar=1,format=yuv420p`;
+    vf = `scale=${target.w}:${target.h}:flags=${QUALITIES[options.quality] ? 'lanczos' : 'bicubic'},setsar=1,format=yuv420p`;
   } else if (target) {
     // Vídeo que não passou pela etapa de formato: converte aqui mesmo.
     ({ vf, reframe } = await aspectVf(input, meta, target, options, options.trackInput || input));

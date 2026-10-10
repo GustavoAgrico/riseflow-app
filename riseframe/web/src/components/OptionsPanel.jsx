@@ -5,6 +5,8 @@ import CaptionPreview from './CaptionPreview.jsx';
 import VoicePanel from './VoicePanel.jsx';
 import CaptionGallery, { CAPTION_PRESETS, currentPreset } from './CaptionGallery.jsx';
 import LayoutPreview from './LayoutPreview.jsx';
+import { useAuth } from '../AuthContext.jsx';
+import { openPlans } from './CostLine.jsx';
 
 export function Row({ label, hint, children }) {
   return (
@@ -110,6 +112,9 @@ export function Swatches({ value, options, onChange }) {
 
 export default function OptionsPanel({ catalog, options, onChange, disabled, videoUrl }) {
   const set = (patch) => onChange({ ...options, ...patch });
+  const { billing } = useAuth();
+  // 720p/1080p/4K: recurso do Premium (o servidor confere de novo ao processar).
+  const hdAllowed = !billing || billing.unlimited || billing.features?.includes('hd');
   const caps = catalog?.capabilities || {};
   const keyValid = /^[A-Za-z0-9]{20,80}$/.test((options.pexelsKey || '').trim());
   // Openverse (CC, sem chave) deixa o B-roll utilizável mesmo sem chave do Pexels.
@@ -288,6 +293,11 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
         <Row label="Formato de saída" hint="Reframe automático para a plataforma">
           <Select value={options.aspect} options={catalog.aspects} onChange={(v) => set({ aspect: v })} />
         </Row>
+        {catalog.qualities && (
+          <Row label="Qualidade da exportação" hint={hdAllowed ? '720p, 1080p ou 4K: amplia com redução de ruído e nitidez' : '720p, 1080p e 4K são do plano Premium'}>
+            <Select value={hdAllowed ? options.quality || 'original' : 'original'} options={catalog.qualities.map((q) => (q.id === 'original' || hdAllowed ? q : { ...q, label: `${q.label} · Premium` }))} onChange={(v) => (v === 'original' || hdAllowed ? set({ quality: v }) : openPlans())} />
+          </Row>
+        )}
         {options.aspect !== 'original' && (
           <Row label="Seguir o sujeito (tracking)" hint="A IA mantém o rosto/sujeito no quadro em vez de crop central">
             <Toggle on={options.reframeTrack !== false} onChange={(v) => set({ reframeTrack: v })} />

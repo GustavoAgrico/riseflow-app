@@ -17,6 +17,7 @@ const FEATURE_ROWS = [
   { id: 'image', label: 'B-roll (imagens automáticas)' },
   { id: 'ai', label: 'Limpeza de fala por IA' },
   { id: 'clips', label: 'Clipes curtos' },
+  { id: 'hd', label: 'Exportar em 720p, 1080p e 4K' },
 ];
 
 const input = {

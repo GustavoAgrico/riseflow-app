@@ -58,7 +58,7 @@ function buildPlan(mode, options) {
       { key: 'frame', label: 'Reenquadrando o vídeo', weight: 8, enabled: (Number(options.personZoom) || 1) > 1.001 },
       { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
       { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: Array.isArray(options.userMedia) && options.userMedia.length > 0 },
-      { key: 'aspect', label: 'Ajustando ao formato', weight: 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) },
+      { key: 'aspect', label: QUALITY_STAGE[options.quality] || 'Ajustando ao formato', weight: QUALITY_STAGE[options.quality] ? 12 : 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) || Boolean(QUALITY_STAGE[options.quality]) },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'watermark', label: 'Aplicando o seu logo', weight: 6, enabled: Boolean(options.watermark?.file) },
       { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true },
@@ -92,6 +92,9 @@ function dropRemovedWords(transcript) {
  * Executa o pipeline sobre um job.
  * @param {object} job {id, mode, inputPath, workDir, outputsDir, options, editedTranscript?}
  */
+
+// Etapa de formato quando há qualidade de exportação escolhida (Premium).
+const QUALITY_STAGE = { 720: 'Melhorando para 720p', 1080: 'Melhorando para 1080p', 2160: 'Melhorando para 4K' };
 export async function runPipeline(job, onUpdate = () => {}) {
   const mode = job.mode || 'auto';
   const plan = buildPlan(mode, job.options);

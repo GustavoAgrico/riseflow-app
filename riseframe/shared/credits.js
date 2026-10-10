@@ -7,7 +7,10 @@ export const DEFAULT_COSTS = {
   image: 5, // cada imagem/vídeo de B-roll inserido
   ai: 10, // limpeza de fala por IA (muletas, gaguejos)
   clips: 40, // pacote de clipes curtos
+  hd: 0, // exportar em 720p/1080p/4K (recurso do Premium; sem custo extra)
 };
+
+export const QUALITY_LABEL = { 720: '720p', 1080: '1080p', 2160: '4K' };
 
 function brollCount(o) {
   if (!o.broll) return 0;
@@ -33,6 +36,7 @@ export function creditItems(mode, options = {}, costs = DEFAULT_COSTS) {
   const n = brollCount(o);
   if (n > 0) items.push({ id: 'image', label: `${n} imagem(ns) de B-roll`, credits: n * costs.image });
   if (o.autoClean) items.push({ id: 'ai', label: 'Limpeza de fala por IA', credits: costs.ai });
+  if (QUALITY_LABEL[o.quality]) items.push({ id: 'hd', label: `Exportar em ${QUALITY_LABEL[o.quality]}`, credits: costs.hd ?? 0 });
   return items;
 }
 

@@ -32,6 +32,7 @@ const timers = new Map();
 const chains = new Map();
 const reloaders = new Map();
 let watchTimer = null;
+let watchGen = 0; // muda ao reiniciar: uma conferência em andamento não se reagenda
 
 function settings() {
   const url = String(process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
@@ -199,9 +200,11 @@ async function restoreShowcase() {
  */
 function startWatch(every) {
   const until = Date.now() + WATCH_MS;
+  const gen = ++watchGen;
   const tick = async () => {
     watchTimer = null;
     for (const name of SYNCED) {
+      if (gen !== watchGen) return;
       if (name === 'auth_secret' || dirty.has(name)) continue;
       try {
         const buf = await download(name);
@@ -214,7 +217,7 @@ function startWatch(every) {
         /* tenta no próximo ciclo */
       }
     }
-    if (Date.now() < until) watchTimer = setTimeout(tick, every).unref();
+    if (gen === watchGen && Date.now() < until) watchTimer = setTimeout(tick, every).unref();
   };
   watchTimer = setTimeout(tick, every).unref();
 }
@@ -327,6 +330,7 @@ export async function flushCloud(timeoutMs = 10_000) {
 export function __resetCloud() {
   for (const t of timers.values()) clearTimeout(t);
   clearTimeout(watchTimer);
+  watchGen++;
   timers.clear();
   chains.clear();
   known.clear();
