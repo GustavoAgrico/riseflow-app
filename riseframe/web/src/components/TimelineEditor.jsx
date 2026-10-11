@@ -188,6 +188,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const mediaInputRef = useRef(null);
   // Revisão de B-roll: null = ainda não revisou; senão { moments:[{...escolhas}] }
   const [brollReview, setBrollReview] = useState(null);
+  // B-roll ligado neste vídeo? Desligar guarda as escolhas (dá para religar depois).
+  const [brollOn, setBrollOn] = useState(Boolean(options?.broll));
+  const [brollPasteHint, setBrollPasteHint] = useState(null); // índice do momento esperando a imagem do Google
   const [brollBusy, setBrollBusy] = useState(false);
   const [brollErr, setBrollErr] = useState('');
   const brollUploadRef = useRef(null); // input file para "usar minha mídia" num momento
@@ -836,6 +839,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
 
   async function reviewBroll(srcOverride) {
+    setBrollOn(true); // revisar as imagens = quer usar B-roll
     setBrollErr('');
     setBrollBusy(true);
     try {
@@ -879,6 +883,66 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setBrollBusy(false);
     }
   }
+
+  /** Coloca no momento `i` uma imagem enviada (arquivo) — do computador, colada ou arrastada. */
+  async function takeBrollFile(i, file) {
+    if (i == null || !file) return;
+    setBrollBusy(true);
+    setBrollErr('');
+    try {
+      const info = await uploadMedia(file);
+      setMoment(i, { myMediaId: info.id, myKind: info.kind, myThumb: URL.createObjectURL(file), removed: false });
+      setBrollPasteHint(null);
+    } catch (err) {
+      setBrollErr(err.message || 'falha ao enviar a imagem');
+    } finally {
+      setBrollBusy(false);
+    }
+  }
+
+  /**
+   * Imagem vinda do Google (ou de outro site) para o momento `i`: arquivo, imagem em
+   * data: (miniatura arrastada) ou link https da imagem. Devolve true se usou algo.
+   */
+  async function takeBrollTransfer(i, dt) {
+    if (i == null || !dt) return false;
+    const file = [...(dt.files || [])].find((f) => /^(image|video)\//.test(f.type));
+    if (file) {
+      await takeBrollFile(i, file);
+      return true;
+    }
+    const html = dt.getData?.('text/html') || '';
+    const fromHtml = (html.match(/<img[^>]+src="([^"]+)"/i) || [])[1] || '';
+    const text = (dt.getData?.('text/uri-list') || dt.getData?.('text/plain') || '').split(/\s+/)[0];
+    const url = [fromHtml, text].find((u) => /^(https:\/\/|data:image\/)/i.test(u || ''));
+    if (!url) return false;
+    if (url.startsWith('data:')) {
+      const blob = await (await fetch(url)).blob();
+      await takeBrollFile(i, new File([blob], 'google.jpg', { type: blob.type || 'image/jpeg' }));
+      return true;
+    }
+    // Link da imagem: entra como opção do momento (o servidor baixa ao gerar o vídeo).
+    setBrollReview((r) => ({ ...r, moments: r.moments.map((m, j) => (j === i
+      ? { ...m, candidates: [{ id: `u${url}`, link: url.replace(/&amp;/g, '&'), thumb: url.replace(/&amp;/g, '&'), kind: 'image', source: 'google' }, ...m.candidates], pick: 0, removed: false, myMediaId: null, myThumb: null }
+      : m)) }));
+    setBrollPasteHint(null);
+    return true;
+  }
+
+  // Ctrl+V com a aba B-roll aberta: cola a imagem copiada do Google no momento selecionado.
+  useEffect(() => {
+    if (tab !== 'broll' || selBroll == null || !brollReview) return undefined;
+    const onPaste = (e) => {
+      const dt = e.clipboardData;
+      const hasImage = [...(dt?.files || [])].some((f) => f.type.startsWith('image/'));
+      const typing = /^(INPUT|TEXTAREA)$/.test(e.target?.tagName || '');
+      if (typing && !hasImage) return; // colando texto na busca
+      e.preventDefault();
+      takeBrollTransfer(selBroll, dt);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [tab, selBroll, brollReview]);
 
   // Monta o plano de B-roll travado para enviar no render (a partir da revisão).
   function brollPlanForRender() {
@@ -952,7 +1016,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           opacity: +Number(m.opacity).toFixed(2),
         })),
         // B-roll revisado: trava o que entra em cada momento (e liga o B-roll).
-        ...(brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}),
+        ...(!brollOn ? { broll: false, brollPlan: [] } : brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}),
         // Layout do B-roll escolhido aqui (tela cheia ou tela dividida).
         brollLayout: brollLayoutSel,
         imageSource,
@@ -1089,7 +1153,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Prévia da composição 9:16 (sua metade interativa + metade do B-roll). Fica ao
   // lado do vídeo (mesma linha) quando o enquadramento é manual.
   // B-roll escolhido no instante atual (mostrado sobre o vídeo, como no render).
-  const brollMoment = (brollReview?.moments || []).find((m) => !m.removed && cur >= m.start && cur < m.end);
+  const brollMoment = brollOn ? (brollReview?.moments || []).find((m) => !m.removed && cur >= m.start && cur < m.end) : null;
   const thumbOf = (m) => (m && !m.removed ? (m.myThumb || m.candidates?.[m.pick]?.thumb || null) : null);
   const brollNow = thumbOf(brollMoment);
   // Na prévia 9:16 mostra o B-roll do momento atual ou, se nenhum, o selecionado na aba.
@@ -1609,8 +1673,21 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <div style={{ marginTop: 14, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>B-roll · imagens automáticas</div>
+                <div style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>B-roll · imagens automáticas</div>
+                <button onClick={() => setBrollOn((v) => !v)} role="switch" aria-checked={brollOn} title={brollOn ? 'Desligar o B-roll neste vídeo (as escolhas ficam guardadas)' : 'Ligar o B-roll neste vídeo'}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'none', border: 'none', cursor: 'pointer', color: brollOn ? C.text : C.muted, fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', padding: 0 }}>
+                  {brollOn ? 'Ligado' : 'Desligado'}
+                  <span style={{ width: 34, height: 20, borderRadius: 20, background: brollOn ? C.green : 'rgba(255,255,255,0.16)', position: 'relative', transition: 'background .15s' }}>
+                    <span style={{ position: 'absolute', top: 2, left: brollOn ? 16 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
+                  </span>
+                </button>
               </div>
+              {!brollOn && (
+                <div style={{ fontSize: 12, color: C.muted, background: 'rgba(255,255,255,0.04)', border: `1px dashed ${C.border}`, borderRadius: 9, padding: '8px 10px', marginBottom: 10 }}>
+                  B-roll desligado: o vídeo sai sem imagens de apoio. Suas escolhas abaixo ficam guardadas — ligue de novo quando quiser.
+                </div>
+              )}
+              <div style={{ opacity: brollOn ? 1 : 0.45, pointerEvents: brollOn ? 'auto' : 'none' }}>
               <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.3, marginBottom: 6 }}>COMO O B-ROLL APARECE</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, marginBottom: 12 }}>
                 {BROLL_LAYOUTS.map((o) => {
@@ -1669,6 +1746,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     const isSel = i === selBroll;
                     return (
                       <div key={m.key || i} onClick={() => { setSelBroll(i); seek(m.start + 0.05); }}
+                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+                        onDrop={(e) => { e.preventDefault(); setSelBroll(i); takeBrollTransfer(i, e.dataTransfer).then((ok) => { if (!ok) setBrollErr('Não reconheci uma imagem aí. No Google, abra a imagem e arraste ela (ou copie e cole com Ctrl+V).'); }); }}
                         style={{ background: isSel ? 'rgba(124,58,237,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isSel ? C.purpleSoft : C.border}`, borderRadius: 10, padding: 8, opacity: m.removed ? 0.55 : 1, cursor: 'pointer' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                           <span style={{ fontSize: 10.5, color: C.faint, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(m.start)}</span>
@@ -1693,7 +1772,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                             </div>
                             <div style={{ display: 'flex', gap: 5 }}>
                               <button onClick={() => { brollTargetIdx.current = i; brollUploadRef.current?.click(); }} style={{ ...zoomBtn, width: 'auto', flex: 1, padding: '0 6px', fontSize: 10, fontWeight: 600 }} title="Usar minha imagem/vídeo">Minha</button>
-                              <button onClick={() => setMoment(i, { removed: !m.removed })} style={{ ...zoomBtn, width: 'auto', flex: 1, padding: '0 6px', fontSize: 10, fontWeight: 600, color: m.removed ? C.green : C.red }}>{m.removed ? 'Repor' : 'Remover'}</button>
+                              <button onClick={() => setMoment(i, { removed: !m.removed })} title={m.removed ? 'Usar este B-roll' : 'Não usar este B-roll (fica guardado)'} style={{ ...zoomBtn, width: 'auto', flex: 1, padding: '0 6px', fontSize: 10, fontWeight: 600, color: m.removed ? C.green : C.muted }}>{m.removed ? '○ Usar' : '● Em uso'}</button>
                             </div>
                           </div>
                         </div>
@@ -1704,6 +1783,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                                 style={{ flex: 1, minWidth: 0, minHeight: 30, padding: '0 9px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 12, fontFamily: 'inherit' }} />
                               <button type="submit" disabled={searching === i} style={{ ...zoomBtn, width: 'auto', padding: '0 10px', fontSize: 11, fontWeight: 700 }}>{searching === i ? '…' : 'Buscar'}</button>
                             </form>
+                            <button
+                              onClick={(e) => {
+                                // Google busca melhor em português: o termo da fala (m.term), a não ser
+                                // que a pessoa tenha digitado outra busca no campo acima.
+                                const typed = (e.currentTarget.parentElement?.querySelector('input[name=q]')?.value || '').trim();
+                                const q = (typed && typed !== m.query ? typed : m.term || typed || m.query || '').trim();
+                                window.open(`https://www.google.com/search?tbm=isch&hl=pt-BR&q=${encodeURIComponent(q)}`, '_blank', 'noopener');
+                                setBrollPasteHint(i);
+                              }}
+                              style={{ ...zoomBtn, width: '100%', height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontSize: 11.5, fontWeight: 700, color: '#fff', background: '#1a73e8', border: 'none' }}>
+                              <GoogleMark /> Buscar no Google Imagens
+                            </button>
+                            {brollPasteHint === i && (
+                              <div style={{ fontSize: 11, color: C.text, background: 'rgba(26,115,232,0.14)', border: '1px solid rgba(26,115,232,0.5)', borderRadius: 8, padding: '7px 9px', lineHeight: 1.45 }}>
+                                No Google, abra a imagem que quiser, clique com o botão direito → <b>Copiar imagem</b> e volte aqui: aperte <b>Ctrl+V</b> (no Mac, ⌘+V). Também dá para <b>arrastar</b> a imagem para este quadro ou salvar e usar <b>Minha</b>.
+                                <div style={{ color: C.faint, marginTop: 3 }}>Imagens do Google costumam ter dono: use só as que você pode usar.</div>
+                              </div>
+                            )}
                             {!m.removed && m.candidates[m.pick]?.credit && !m.myMediaId && (
                               <div style={{ fontSize: 10.5, color: C.faint }}>Crédito: {m.candidates[m.pick].credit}</div>
                             )}
@@ -1731,6 +1828,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <div style={{ fontSize: 10.5, color: C.faint }}>As trocas são aplicadas quando você clicar em <b>Gerar vídeo</b>.</div>
                 </div>
               )}
+              </div>
             </div>
           )}
 
@@ -2331,7 +2429,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
             {/* Faixa B-ROLL: momentos revisados (clique abre o ajuste; arraste move) */}
             {showBrollLane && (
-              <div style={{ position: 'relative', height: LANE.broll, marginTop: 4 }}>
+              <div style={{ position: 'relative', height: LANE.broll, marginTop: 4, opacity: brollOn ? 1 : 0.35 }} title={brollOn ? undefined : 'B-roll desligado (aba B-roll)'}>
                 {brollReview.moments.map((m, i) => {
                   const isSel = i === selBroll;
                   const th = thumbOf(m);
@@ -2348,8 +2446,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                         opacity: m.removed ? 0.5 : 1, fontSize: 10, fontWeight: 700, color: C.text,
                       }}
                     >
+                      <button
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); setMoment(i, { removed: !m.removed }); }}
+                        title={m.removed ? 'Usar este B-roll' : 'Não usar este B-roll'}
+                        aria-label={m.removed ? 'Usar este B-roll' : 'Não usar este B-roll'}
+                        style={{ width: 16, height: 16, flexShrink: 0, borderRadius: '50%', border: `1.5px solid ${m.removed ? C.faint : '#fff'}`, background: m.removed ? 'transparent' : C.green, padding: 0, cursor: 'pointer' }}
+                      />
                       {th && !badThumbs.has(th) && <img src={th} alt="" style={{ height: 20, width: 20, objectFit: 'cover', borderRadius: 3, flexShrink: 0 }} />}
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.term}</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: m.removed ? 'line-through' : 'none' }}>{m.term}</span>
                       <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'left', e)} style={handleStyle('left')} />
                       <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'right', e)} style={handleStyle('right')} />
                     </div>
@@ -2505,7 +2610,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <CostLine
           mode="render"
           sourceId={sourceId}
-          options={{ ...options, ...cap, ...(brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}) }}
+          options={{ ...options, ...cap, ...(!brollOn ? { broll: false } : brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}) }}
           style={{ marginTop: 18 }}
         />
         <PrimaryButton onClick={generate} disabled={busy || allGone} style={{ width: '100%', marginTop: 12 }}>
@@ -2666,6 +2771,15 @@ function miniBtn(active, disabled) {
   return { display: 'inline-flex', alignItems: 'center', gap: 5, border: `1px solid ${active ? C.red : C.border}`, background: active ? 'rgba(240,82,107,0.18)' : 'rgba(255,255,255,0.05)', color: active ? C.red : C.muted, borderRadius: 8, padding: '5px 10px', fontSize: 11.5, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, fontFamily: 'inherit' };
 }
 // Velocidades oferecidas (o servidor aceita de 0,5× a 2×)
+const GoogleMark = () => (
+  <svg width="13" height="13" viewBox="0 0 48 48" aria-hidden="true" style={{ background: '#fff', borderRadius: '50%', padding: 1 }}>
+    <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.5 29.5 4.5 24 4.5 13.2 4.5 4.5 13.2 4.5 24S13.2 43.5 24 43.5 43.5 34.8 43.5 24c0-1.2-.1-2.3-.4-3.5Z" />
+    <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.5 29.5 4.5 24 4.5 16.3 4.5 9.7 8.8 6.3 14.7Z" />
+    <path fill="#4CAF50" d="M24 43.5c5.4 0 10.3-2 13.9-5.3l-6.4-5.4C29.4 34.5 26.9 35.5 24 35.5c-5.3 0-9.7-3.1-11.3-7.6l-6.5 5C9.6 39 16.2 43.5 24 43.5Z" />
+    <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.4l6.4 5.4C41.4 35.7 43.5 30.3 43.5 24c0-1.2-.1-2.3-.4-3.5Z" />
+  </svg>
+);
+
 // Qualidade de exportação (lado menor do quadro): Premium.
 const QUALITY_OPTS = [
   { id: 'original', label: 'Original', sub: 'padrão', hint: 'Resolução do formato escolhido' },
