@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pixabayCandidates, wikimediaCandidates, nasaCandidates, brollCandidates, resolveSource, extOf } from '../src/pipeline/broll.js';
+import { pixabayCandidates, wikimediaCandidates, brollCandidates, resolveSource, extOf } from '../src/pipeline/broll.js';
 
 const json = (d) => ({ ok: true, json: async () => d });
 async function withFetch(fn, body) {
@@ -51,44 +51,25 @@ test('Wikimedia Commons: só licenças livres para uso comercial, sem imagens pe
   });
 });
 
-test('NASA: imagem em tamanho grande e vídeo pelo manifesto (mp4)', async () => {
-  await withFetch(async (url) => {
-    const u = String(url);
-    if (u.includes('/search?')) {
-      return json({ collection: { items: [
-        { href: 'https://images-assets.nasa.gov/image/a/collection.json', data: [{ nasa_id: 'a', media_type: 'image' }], links: [{ href: 'https://images-assets.nasa.gov/image/a/a~thumb.jpg', render: 'image' }] },
-        { href: 'https://images-assets.nasa.gov/video/v/collection.json', data: [{ nasa_id: 'v', media_type: 'video' }], links: [{ href: 'https://images-assets.nasa.gov/video/v/v~thumb.jpg', render: 'image' }] },
-      ] } });
-    }
-    if (u.includes('/video/v/collection.json')) return json(['http://images-assets.nasa.gov/video/v/v~orig.mp4', 'http://images-assets.nasa.gov/video/v/v~mobile.mp4']);
-    return { ok: false };
-  }, async () => {
-    const c = await nasaCandidates('rocket', { limit: 4 });
-    assert.deepEqual(c.map((x) => [x.kind, x.link]), [
-      ['image', 'https://images-assets.nasa.gov/image/a/a~large.jpg'],
-      ['video', 'https://images-assets.nasa.gov/video/v/v~mobile.mp4'],
-    ]);
-  });
-});
-
 test("'mix' junta Pixabay e Wikimedia aos demais; fonte indisponível cai para a mistura", async () => {
   await withFetch(async (url) => {
     const u = String(url);
     if (u.includes('/api/videos/')) return json({ hits: [{ id: 1, videos: { medium: { url: 'https://p/1.mp4', height: 1080, thumbnail: 't' } } }] });
     if (u.includes('pixabay.com/api/?')) return json({ hits: [] });
-    if (u.includes('api.openverse.org')) return json({ results: [{ id: 1, url: 'https://o/1.jpg', thumbnail: 'ot' }] });
     if (u.includes('commons.wikimedia.org')) return json({ query: { pages: [{ pageid: 9, imageinfo: [{ url: 'https://w/9.jpg', mime: 'image/jpeg', width: 2000, extmetadata: { LicenseShortName: { value: 'CC0' } } }] }] } });
     return { ok: false, json: async () => ({}) };
   }, async () => {
     const c = await brollCandidates('trabalho', { source: 'mix', pixabayKey: 'k', google: {}, limit: 6 });
     const srcs = new Set(c.map((x) => x.source));
-    assert.ok(srcs.has('pixabay') && srcs.has('openverse') && srcs.has('wikimedia'), [...srcs].join(','));
+    assert.ok(srcs.has('pixabay') && srcs.has('wikimedia') && !srcs.has('openverse'), [...srcs].join(','));
     assert.equal(c[0].source, 'pixabay', 'vídeo primeiro');
   });
   assert.equal(resolveSource('pexels', {}), 'mix');
   assert.equal(resolveSource('pixabay', { pixabayKey: 'k' }), 'pixabay');
   assert.equal(resolveSource('wikimedia', {}), 'wikimedia');
   assert.equal(resolveSource('youtube', {}), 'mix');
+  assert.equal(resolveSource('nasa', {}), 'mix', 'NASA saiu');
+  assert.equal(resolveSource('openverse', {}), 'mix', 'Openverse saiu');
   assert.equal(extOf('https://x/a.webm', false), 'webm');
   assert.equal(extOf('https://x/a.png?x=1', true), 'png');
   assert.equal(extOf('https://x/video', false), 'mp4');

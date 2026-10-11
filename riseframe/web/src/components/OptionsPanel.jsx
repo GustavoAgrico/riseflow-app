@@ -117,7 +117,7 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
   const hdAllowed = !billing || billing.unlimited || billing.features?.includes('hd');
   const caps = catalog?.capabilities || {};
   const keyValid = /^[A-Za-z0-9]{20,80}$/.test((options.pexelsKey || '').trim());
-  // Openverse (CC, sem chave) deixa o B-roll utilizável mesmo sem chave do Pexels.
+  // Wikimedia (licença livre, sem chave) deixa o B-roll utilizável mesmo sem chaves.
   const brollUsable = caps.openverseReady || caps.brollReady || keyValid || caps.googleImagesReady;
 
   // resumo curto para o subtítulo de cada seção (fechada)
@@ -262,7 +262,7 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
           return (
             <Row
               label="Fonte das imagens"
-              hint="Tudo (padrão): mistura vídeos e fotos de todos os bancos gratuitos, sempre ligados ao que você fala. Pexels e Pixabay: vídeos e fotos livres. Wikimedia e Openverse: acervos de licença livre. NASA: ciência e espaço. Google: mais opções, porém muitas têm copyright."
+              hint="Tudo (padrão): mistura vídeos e fotos de todos os bancos, sempre ligados ao que você fala. Pexels e Pixabay: vídeos e fotos livres. Wikimedia: acervo de licença livre. Google: mais opções, porém muitas têm copyright."
             >
               <Select value={value} options={srcOpts} onChange={(v) => set({ imageSource: v })} />
             </Row>

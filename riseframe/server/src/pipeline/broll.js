@@ -175,36 +175,6 @@ export async function wikimediaCandidates(query, { kind = 'image', limit = 6 } =
 }
 
 /**
- * NASA Image and Video Library (domínio público, sem chave). Ótimo para ciência,
- * tecnologia, espaço, natureza vista de cima. Vídeos: busca o arquivo mp4 no manifesto.
- */
-export async function nasaCandidates(query, { limit = 4 } = {}) {
-  const r = await http(`https://images-api.nasa.gov/search?q=${encodeURIComponent(query)}&media_type=image,video`, { headers: UA });
-  if (!r.ok) return [];
-  const d = await r.json();
-  const out = [];
-  for (const it of (d.collection?.items || []).slice(0, limit * 2)) {
-    const meta = it.data?.[0] || {};
-    const thumb = it.links?.find((l) => l.render === 'image' || /\.(jpe?g|png)$/i.test(l.href || ''))?.href;
-    if (!meta.nasa_id || !thumb) continue;
-    if (meta.media_type === 'video') {
-      try {
-        const m = await http(it.href, { headers: UA });
-        const files = m.ok ? await m.json() : [];
-        const mp4 = (files || []).find((u) => /~mobile\.mp4$/i.test(u)) || (files || []).find((u) => /~(small|medium|orig)\.mp4$/i.test(u));
-        if (mp4) out.push({ id: `n${meta.nasa_id}`, link: mp4.replace(/^http:/, 'https:'), thumb, kind: 'video', source: 'nasa', credit: 'NASA (domínio público)' });
-      } catch {
-        /* pula este */
-      }
-    } else {
-      out.push({ id: `n${meta.nasa_id}`, link: thumb.replace('~thumb.', '~large.'), thumb, kind: 'image', source: 'nasa', credit: 'NASA (domínio público)' });
-    }
-    if (out.length >= limit) break;
-  }
-  return out;
-}
-
-/**
  * Fonte efetiva do B-roll: a escolhida, se disponível; senão a mistura de todas.
  * Puro/exportado para teste.
  */
@@ -277,7 +247,7 @@ export function resolveSource(wanted, { apiKey, pixabayKey, googleReady } = {}) 
   if (wanted === 'pexels') return apiKey ? 'pexels' : 'mix';
   if (wanted === 'pixabay') return pixabayKey ? 'pixabay' : 'mix';
   if (wanted === 'google') return googleReady ? 'google' : 'mix';
-  if (['openverse', 'wikimedia', 'nasa', 'mix'].includes(wanted)) return wanted;
+  if (['wikimedia', 'mix'].includes(wanted)) return wanted; // NASA/Openverse saíram: viram a mistura
   return 'mix';
 }
 
@@ -296,11 +266,10 @@ export function extOf(url, isImage) {
  */
 export async function brollCandidates(query, opts = {}) {
   const { source, apiKey, google, pixabayKey, orientation = 'portrait', targetH = 1280, limit = 6, unrestricted = false, lang = '' } = opts;
-  // 'mix': junta VÍDEOS (Pexels, Pixabay), Google Imagens e os acervos livres (Creative
-  // Commons/Openverse, Wikimedia Commons) numa lista só, intercalada (vídeo primeiro),
-  // para o usuário escolher entre todos.
+  // 'mix': junta VÍDEOS (Pexels, Pixabay), Google Imagens e o acervo livre (Wikimedia
+  // Commons) numa lista só, intercalada (vídeo primeiro), para o usuário escolher entre todos.
   if (source === 'mix') {
-    const srcs = [apiKey ? 'pexels' : null, pixabayKey ? 'pixabay' : null, googleReady(google) ? 'google' : null, 'openverse', 'wikimedia'].filter(Boolean);
+    const srcs = [apiKey ? 'pexels' : null, pixabayKey ? 'pixabay' : null, googleReady(google) ? 'google' : null, 'wikimedia'].filter(Boolean);
     const per = Math.max(3, Math.ceil((limit + 3) / srcs.length));
     const lists = await Promise.all(srcs.map((src) => brollCandidates(query, { ...opts, source: src, limit: per })));
     const mixed = [];
@@ -321,20 +290,6 @@ export async function brollCandidates(query, opts = {}) {
     } else if (source === 'wikimedia') {
       const [vids, imgs] = await Promise.all([wikimediaCandidates(query, { kind: 'video', limit: 2 }), wikimediaCandidates(query, { kind: 'image', limit })]);
       out.push(...vids, ...imgs);
-    } else if (source === 'nasa') {
-      out.push(...await nasaCandidates(query, { limit }));
-    } else if (source === 'openverse') {
-      const params = new URLSearchParams({ q: query, page_size: String(limit * 2), mature: 'false' });
-      if (!unrestricted) params.set('license_type', 'commercial');
-      const res = await http(`https://api.openverse.org/v1/images/?${params}`, {
-        headers: { Accept: 'application/json', 'User-Agent': 'Riseframe/1.0 (video editor)' },
-      });
-      if (res.ok) {
-        const d = await res.json();
-        for (const it of d.results || []) {
-          if (it.url && /^https?:\/\//i.test(it.url)) out.push({ id: `o${it.id || it.url}`, link: it.url, thumb: it.thumbnail || it.url, kind: 'image', source: 'openverse' });
-        }
-      }
     } else if (source === 'google' && googleReady(google)) {
       out.push(...await googleImageCandidates(query, google, limit));
     } else if (apiKey) {

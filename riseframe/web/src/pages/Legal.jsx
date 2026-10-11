@@ -44,7 +44,7 @@ function Privacy({ info }) {
         <ul>
           <li><b>Transcrição da fala</b> (legendas): o áudio do vídeo é enviado à Deepgram.</li>
           <li><b>Análise e limpeza da fala por IA</b>: o texto transcrito pode ser enviado à Anthropic (Claude).</li>
-          <li><b>Imagens de apoio (B-roll)</b>: palavras-chave do vídeo são usadas para buscar imagens no Pexels, Openverse e Google — não enviamos seu vídeo a esses serviços.</li>
+          <li><b>Imagens de apoio (B-roll)</b>: palavras-chave do vídeo são usadas para buscar imagens no Pexels, Pixabay, Wikimedia e Google — não enviamos seu vídeo a esses serviços.</li>
           <li><b>Hospedagem</b>: os arquivos ficam nos servidores onde o Riseframe roda durante o processamento.</li>
           <li><b>Pagamentos</b>: Pix pelo banco (link de pagamento) ou intermediador de pagamento, conforme o plano.</li>
         </ul>

@@ -75,8 +75,6 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'pexels', label: 'Pexels (vídeos + fotos livres)' },
       { id: 'pixabay', label: 'Pixabay (vídeos + fotos livres)' },
       { id: 'wikimedia', label: 'Wikimedia Commons (acervo livre, sem chave)' },
-      { id: 'openverse', label: 'Openverse (Creative Commons, sem chave)' },
-      { id: 'nasa', label: 'NASA (ciência e espaço, domínio público)' },
       { id: 'google', label: 'Google Imagens (contextual) ⚠️ copyright' },
     ],
     qualities: [
