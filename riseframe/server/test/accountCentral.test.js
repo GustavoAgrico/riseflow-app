@@ -114,6 +114,7 @@ test('app de PC/Mac usa a conta do site: login, cobrança, devolução e entrar 
   // Entrar pelo navegador: o app pede o código, a pessoa confirma no site, o app recebe o token (uma vez).
   const start = (await post(`${app}/auth/device/start`)).body;
   assert.match(start.url, /\?device=/);
+  assert.equal(new URL(start.url).origin, new URL(site).origin, 'abre a página do próprio servidor da conta (mesma versão)');
   assert.equal((await post(`${app}/auth/device/poll`, { code: start.code })).body.pending, true);
   assert.equal((await post(`${site}/auth/device/approve`, { code: start.code })).status, 401, 'confirmar exige login no site');
   assert.equal((await post(`${site}/auth/device/approve`, { code: start.code }, token)).status, 200);
@@ -121,6 +122,11 @@ test('app de PC/Mac usa a conta do site: login, cobrança, devolução e entrar 
   assert.ok(got.token);
   assert.equal(got.user.email, 'cliente@exemplo.com');
   assert.equal((await post(`${app}/auth/device/poll`, { code: start.code })).status, 404, 'código vale uma vez só');
+
+  // Conecta sozinho logo depois do login no site (sem clicar em "Conectar app").
+  const s2 = (await post(`${app}/auth/device/start`)).body;
+  assert.equal((await post(`${site}/auth/device/approve`, { code: s2.code, auto: true }, token)).status, 200);
+  assert.ok((await post(`${app}/auth/device/poll`, { code: s2.code })).body.token);
   assert.equal((await get(`${app}/auth/me`, got.token)).status, 200);
 
   // Token inválido não entra no app.

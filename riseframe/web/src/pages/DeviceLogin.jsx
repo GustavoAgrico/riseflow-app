@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { C, GRAD, glass, FONT_DISPLAY } from '../theme.js';
 import Icon, { Logo } from '../components/Icon.jsx';
 import { Spinner } from '../components/ui.jsx';
@@ -9,27 +9,42 @@ import { deviceApprove } from '../api.js';
  * está logada aqui e confirma que quer conectar o app a esta conta.
  */
 export default function DeviceLogin({ code, user, onDone }) {
-  const [state, setState] = useState('ask'); // ask | busy | ok | error
+  // Conecta sozinho ao abrir (a pessoa acabou de clicar no app); só pede o clique se o
+  // pedido for antigo (o servidor responde needsConfirm).
+  const [state, setState] = useState('busy'); // busy | ask | ok | error
   const [error, setError] = useState('');
+  const tried = useRef(false);
 
-  async function approve() {
+  async function approve(auto = false) {
     setState('busy');
     setError('');
     try {
-      await deviceApprove(code);
+      await deviceApprove(code, { auto });
       setState('ok');
     } catch (e) {
+      if (e.needsConfirm) return setState('ask');
       setError(e.message);
       setState('error');
     }
   }
+  useEffect(() => {
+    if (tried.current) return;
+    tried.current = true;
+    approve(true);
+  }, []);
 
   const btn = { border: 'none', borderRadius: 12, padding: '13px 18px', fontSize: 14.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' };
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: '24px 16px', background: C.bg }}>
       <div style={{ ...glass({ padding: '30px 26px' }), width: '100%', maxWidth: 420, textAlign: 'center' }}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}><Logo size={44} /></div>
-        {state === 'ok' ? (
+        {state === 'busy' && !error ? (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}><Spinner size={22} color={C.orange} /></div>
+            <h1 style={{ fontSize: 20, fontWeight: 800, fontFamily: FONT_DISPLAY, margin: '0 0 6px' }}>Conectando o app do computador…</h1>
+            <p style={{ color: C.muted, fontSize: 13.5, margin: 0 }}>Conta <b style={{ color: C.text }}>{user.email}</b></p>
+          </>
+        ) : state === 'ok' ? (
           <>
             <div style={{ width: 46, height: 46, borderRadius: '50%', background: 'rgba(46,212,122,0.15)', color: C.green, display: 'grid', placeItems: 'center', margin: '0 auto 12px' }}>
               <Icon name="check" size={24} strokeWidth={2.4} />
@@ -54,7 +69,7 @@ export default function DeviceLogin({ code, user, onDone }) {
             )}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button onClick={onDone} style={{ ...btn, background: 'rgba(255,255,255,0.05)', color: C.muted, border: `1px solid ${C.border}` }}>Cancelar</button>
-              <button onClick={approve} disabled={state === 'busy'} style={{ ...btn, background: GRAD, color: '#fff', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: '0 10px 28px -8px rgba(255,107,53,0.5)' }}>
+              <button onClick={() => approve(false)} disabled={state === 'busy'} style={{ ...btn, background: GRAD, color: '#fff', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: '0 10px 28px -8px rgba(255,107,53,0.5)' }}>
                 {state === 'busy' && <Spinner size={15} color="#fff" />} Conectar app
               </button>
             </div>
