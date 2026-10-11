@@ -54,10 +54,10 @@ export const login = (email, password) => authPost('/auth/login', { email, passw
 /** Entrar pelo navegador (app de PC/Mac): pede o código, pergunta se já liberou e libera. */
 export const deviceStart = () => authPost('/auth/device/start', {});
 export const devicePoll = (code) => authPost('/auth/device/poll', { code });
-export async function deviceApprove(code) {
-  const r = await fetch(`${BASE}/auth/device/approve`, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ code }) });
+export async function deviceApprove(code, { auto = false } = {}) {
+  const r = await fetch(`${BASE}/auth/device/approve`, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ code, auto }) });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(data.error || `erro ${r.status}`), { needsConfirm: Boolean(data.needsConfirm) });
   return data;
 }
 /** Login com Google: envia o ID token (credential) do Google Identity Services. */

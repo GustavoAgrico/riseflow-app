@@ -209,8 +209,11 @@ export function requireVerified(req, res, next) {
 // ── Entrar pelo navegador (app de PC/Mac) ──
 // O app pede um código, abre o site no navegador (?device=CÓDIGO); a pessoa entra no site
 // (senha ou Google) e confirma; o app, que fica perguntando, recebe o token da conta.
-// O código é secreto (só o app e aquela aba conhecem) e vale 10 minutos.
+// O código é secreto (só o app e aquela aba conhecem) e vale 10 minutos. Conecta sozinho
+// quando a pessoa entra no site logo depois de clicar no app (até 5 min do pedido); mais
+// tarde que isso (ex.: um link antigo/encaminhado), pede o clique em "Conectar app".
 const DEVICE_TTL_MS = 10 * 60 * 1000;
+const DEVICE_AUTO_MS = 5 * 60 * 1000;
 const deviceCodes = new Map(); // código → { exp, token, user }
 function pruneDevice() {
   const now = Date.now();
@@ -222,8 +225,10 @@ authRouter.post('/auth/device/start', (req, res) => {
   pruneDevice();
   if (deviceCodes.size > 5000) return res.status(429).json({ error: 'muitos pedidos de login agora; tente em instantes' });
   const code = crypto.randomBytes(24).toString('base64url');
-  deviceCodes.set(code, { exp: Date.now() + DEVICE_TTL_MS, token: null, user: null });
-  const base = (config.auth.appUrl || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+  deviceCodes.set(code, { at: Date.now(), exp: Date.now() + DEVICE_TTL_MS, token: null, user: null });
+  // A página é a DESTE servidor (onde o código está guardado e na mesma versão) — o site
+  // da Hostinger podia estar numa versão antiga que ignora o ?device= e o app ficava esperando.
+  const base = `${req.protocol}://${req.get('host')}`;
   res.json({ code, url: `${base}/?device=${encodeURIComponent(code)}`, expiresIn: DEVICE_TTL_MS / 1000 });
 });
 
@@ -232,6 +237,7 @@ authRouter.post('/auth/device/approve', requireAuth, (req, res) => {
   pruneDevice();
   const d = deviceCodes.get(String(req.body?.code || ''));
   if (!d) return res.status(404).json({ error: 'este pedido de login expirou — clique em "Entrar pelo navegador" no app de novo' });
+  if (req.body?.auto && Date.now() - d.at > DEVICE_AUTO_MS) return res.status(409).json({ needsConfirm: true, error: 'confirme para conectar o app' });
   const u = findById(req.user.id);
   if (!u) return res.status(401).json({ error: 'sessão inválida' });
   const user = publicUser(u);

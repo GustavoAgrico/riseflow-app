@@ -262,7 +262,7 @@ export default function Root() {
     if (publicRoute === 'landing') {
       return <Landing onEnter={() => setPublicRoute('register')} onLogin={() => setPublicRoute('login')} />;
     }
-    return <Auth initialMode={publicRoute === 'register' ? 'register' : 'login'} onDone={() => setView('dashboard')} onHome={() => setPublicRoute('landing')} />;
+    return <Auth initialMode={publicRoute === 'register' ? 'register' : 'login'} onDone={() => setView('dashboard')} onHome={() => setPublicRoute('landing')} connectingApp={Boolean(deviceCode)} />;
   }
 
   // Conta nova ainda sem o e-mail confirmado: só entra depois do código.

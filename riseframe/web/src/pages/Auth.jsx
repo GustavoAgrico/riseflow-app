@@ -76,7 +76,7 @@ const GoogleG = ({ size = 18 }) => (
   </svg>
 );
 
-export default function Auth({ initialMode = 'login', resetToken, onDone, onHome }) {
+export default function Auth({ initialMode = 'login', resetToken, onDone, onHome, connectingApp = false }) {
   const { login, register, loginWithGoogle, resetPassword, loginWithToken } = useAuth();
   // App de PC/Mac: a conta é a do site (login pelo navegador, que também serve para Google).
   const [remote, setRemote] = useState(false);
@@ -279,6 +279,11 @@ export default function Auth({ initialMode = 'login', resetToken, onDone, onHome
           <div style={glass({ padding: '30px 28px' })}>
             <h1 style={{ fontSize: 23, fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -0.6, margin: '0 0 6px' }}>{titles.h}</h1>
             <p style={{ color: C.muted, fontSize: 14, margin: '0 0 22px' }}>{titles.s}</p>
+            {connectingApp && !remote && (
+              <div style={{ background: 'rgba(46,212,122,0.1)', border: `1px solid ${C.green}55`, borderRadius: 12, padding: '10px 12px', fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.45 }}>
+                Entre na sua conta para <b style={{ color: C.text }}>conectar o app do computador</b>. Assim que você entrar, ele conecta sozinho.
+              </div>
+            )}
 
             {/* Google (login/cadastro) */}
             {!isForgot && !isReset && caps.googleReady && (
