@@ -19,7 +19,8 @@ import { burnCaptions, captionSfxEvents } from './captions.js';
 import { applySoundEffects } from './sfx.js';
 import { applyWatermark } from './watermark.js';
 import { colorFilter, hasColorAdjust } from './color.js';
-import { convertAspect, finalRender } from './render.js';
+import { convertAspect, finalRender, outputTarget } from './render.js';
+import { burnHeadline, makeCover } from './headline.js';
 import { generateClips } from './clips.js';
 import { makeLogger } from '../logger.js';
 
@@ -60,6 +61,7 @@ function buildPlan(mode, options) {
       { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: Array.isArray(options.userMedia) && options.userMedia.length > 0 },
       { key: 'aspect', label: QUALITY_STAGE[options.quality] || 'Ajustando ao formato', weight: QUALITY_STAGE[options.quality] ? 12 : 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) || Boolean(QUALITY_STAGE[options.quality]) },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
+      { key: 'headline', label: 'Colocando o título (headline)', weight: 6, enabled: Boolean(options.headline?.text) },
       { key: 'watermark', label: 'Aplicando o seu logo', weight: 6, enabled: Boolean(options.watermark?.file) },
       { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true },
       { key: 'color', label: 'Analisando as cores', weight: 3, enabled: (options.colorLook || 'teal-orange') !== 'none' || hasColorAdjust(options.colorAdjust) },
@@ -438,6 +440,15 @@ export async function runPipeline(job, onUpdate = () => {}) {
   }
 
   // 6a. Logo do Brand Kit num canto (depois do formato final e das legendas).
+  // 6a. Headline: título fixo no topo (ou meio/embaixo), do começo até N s ou o vídeo todo.
+  if (has('headline')) {
+    const st = enter('headline');
+    const r = await burnHeadline(input, work, meta, options.headline, st.onProgress);
+    input = r.output;
+    report.headline = { text: options.headline.text, seconds: options.headline.seconds };
+    st.onProgress(1);
+  }
+
   if (has('watermark')) {
     const st = enter('watermark');
     const r = await applyWatermark(input, work, meta, options, st.onProgress);
@@ -490,10 +501,31 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
+  // 7b. Capa (JPG para baixar e, se pedido, nos primeiros instantes do vídeo): o quadro
+  // escolhido do vídeo limpo (sem legendas), com a mesma cor e o título por cima.
+  let coverFile = null;
+  if (options.cover) {
+    try {
+      const c = options.cover;
+      const dims = outputTarget(meta, options) || { w: meta.width, h: meta.height };
+      const tCut = cutKeep ? remapTime(c.t, cutKeep) : c.t;
+      coverFile = path.join(job.outputsDir, `${job.id}_cover.jpg`);
+      await makeCover(trackInput, path.join(work, 'capa'), {
+        t: tCut, W: dims.w, H: dims.h, fx: c.fx, preVf: colorVf || '',
+        text: c.text, headline: options.headline, position: c.position,
+      }, coverFile);
+      report.cover = { file: path.basename(coverFile), intro: c.intro, t: c.t };
+      log.ok(`capa gerada (${dims.w}x${dims.h}${c.intro ? ', no início do vídeo' : ''})`);
+    } catch (err) {
+      coverFile = null;
+      log.warn(`capa não gerada: ${err.message}`);
+    }
+  }
+
   // 8. Render final
   {
     const st = enter('render');
-    const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf, reframe: aspectReframe }, st.onProgress);
+    const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf, reframe: aspectReframe, coverFile: options.cover?.intro ? coverFile : null }, st.onProgress);
     const outMeta = await probeSummary(r.output).catch(() => ({}));
     report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe, width: outMeta.width || null, height: outMeta.height || null, speed: options.speed && options.speed !== 1 ? options.speed : undefined, duration: outMeta.duration || null };
     st.record({ aspect: r.aspect });

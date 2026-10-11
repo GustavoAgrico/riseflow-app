@@ -16,6 +16,8 @@ import { formatBytes, freeDiskBytes } from '../storage.js';
 import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
 import { remuxByKeepSegments, remapTranscript, snapKeep } from '../pipeline/timeline.js';
+import { sanitizeHeadline, sanitizeCover, makeCover } from '../pipeline/headline.js';
+import { outputTarget } from '../pipeline/render.js';
 import { brollCandidates, resolveSource, googleConfig, googleReady } from '../pipeline/broll.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
 import { analyzeAndGrade } from '../pipeline/autoColor.js';
@@ -480,8 +482,11 @@ export function parseOptions(raw) {
     personFocusX: Number.isFinite(Number(o.personFocusX)) ? clampNum(o.personFocusX, 0, 1, undefined) : undefined,
     personFocusY: Number.isFinite(Number(o.personFocusY)) ? clampNum(o.personFocusY, 0, 1, undefined) : undefined,
     personZoom: clampNum(o.personZoom, 1, 2.5, 1),
-    // Fonte das imagens de B-roll: openverse (CC, sem chave) | pexels (livre) | google (contextual, ver copyright).
-    imageSource: ['openverse', 'pexels', 'pixabay', 'wikimedia', 'nasa', 'google', 'mix'].includes(o.imageSource) ? o.imageSource : 'mix',
+    // Fonte das imagens de B-roll: pexels | pixabay | wikimedia | google | mix (tudo).
+    imageSource: ['pexels', 'pixabay', 'wikimedia', 'google', 'mix'].includes(o.imageSource) ? o.imageSource : 'mix',
+    // Título fixo no vídeo e capa (quadro + título em JPG; opcional no início do vídeo).
+    headline: sanitizeHeadline(o.headline),
+    cover: sanitizeCover(o.cover),
     niche: ['auto', 'leadership', 'mentor', 'medical', 'fitness', 'finance', 'business', 'marketing', 'education', 'tech', 'mindset', 'law', 'realestate'].includes(o.niche) ? o.niche : 'auto',
     // Chave do Pexels vinda da interface (opcional). Sanitiza: só o formato esperado
     // (alfanumérico, 20–80 chars) é aceito; qualquer outra coisa é descartada.
@@ -977,6 +982,57 @@ jobsRouter.get('/jobs/:id/color-frame', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message || 'falha na prévia de cor' });
   }
+});
+
+// GET /api/jobs/:id/cover?t=&text=&style=&color=&pos=&aspect=&quality=&fx=&full=1 → capa
+// (JPG): o quadro do vídeo original no segundo `t`, no formato do vídeo final, com o
+// título. Prévia no editor (menor) e "Baixar capa" (full=1, tamanho do vídeo final).
+// Público como /source e /color-frame (o id não é adivinhável; <img> não manda cabeçalho).
+jobsRouter.get('/jobs/:id/cover', async (req, res) => {
+  try {
+    const job = queue.get(req.params.id);
+    if (!job?.inputPath || !fs.existsSync(job.inputPath)) return res.status(404).json({ error: 'vídeo não encontrado' });
+    if (!sourceMetaCache.has(job.id)) sourceMetaCache.set(job.id, await probeSummary(job.inputPath));
+    const meta = sourceMetaCache.get(job.id);
+    const q = req.query;
+    const cover = sanitizeCover({ t: q.t, text: q.text, position: q.pos, fx: q.fx }) || { t: 0, text: '', position: 'center', fx: 0.5 };
+    const style = sanitizeHeadline({ text: 'x', style: q.style, color: q.color }) || {};
+    const aspect = ['9:16', '1:1', '16:9'].includes(q.aspect) ? q.aspect : 'original';
+    const full = q.full === '1';
+    let dims = outputTarget(meta, { aspect, quality: full ? q.quality : undefined }) || { w: meta.width, h: meta.height };
+    if (!full) {
+      // prévia: lado menor com 540 px (rápido)
+      const k = 540 / Math.min(dims.w, dims.h);
+      dims = { w: Math.round((dims.w * k) / 2) * 2, h: Math.round((dims.h * k) / 2) * 2 };
+    }
+    const dir = path.join(config.paths.cache, 'covers');
+    fs.mkdirSync(dir, { recursive: true });
+    const key = [job.id, Math.round(cover.t * 10), cover.text, cover.position, cover.fx, style.style, style.color, dims.w, dims.h]
+      .join('|');
+    const hash = (await import('node:crypto')).createHash('sha1').update(key).digest('hex').slice(0, 20);
+    const out = path.join(dir, `${hash}.jpg`);
+    if (!fs.existsSync(out)) {
+      await makeCover(job.inputPath, path.join(dir, `w_${hash}`), {
+        t: cover.t, W: dims.w, H: dims.h, fx: cover.fx, preVf: sdrVf(meta) || '',
+        text: cover.text, headline: style, position: cover.position,
+      }, out);
+      fs.rm(path.join(dir, `w_${hash}`), { recursive: true, force: true }, () => {});
+    }
+    res.set('Cache-Control', 'private, max-age=600');
+    if (full) res.set('Content-Disposition', 'attachment; filename="riseframe_capa.jpg"');
+    res.type('image/jpeg').sendFile(path.resolve(out));
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'falha ao gerar a capa' });
+  }
+});
+
+// GET /api/jobs/:id/cover.jpg → a capa gerada junto com o vídeo (render pronto)
+jobsRouter.get('/jobs/:id/cover.jpg', (req, res) => {
+  const job = queue.get(req.params.id);
+  const file = job?.report?.cover?.file && path.join(config.paths.outputs, job.report.cover.file);
+  if (!file || !fs.existsSync(file)) return res.status(404).json({ error: 'capa não disponível' });
+  const base = path.parse(job.filename || 'video').name.replace(/[^\w.-]+/g, '_');
+  res.download(file, `riseframe_${base}_capa.jpg`);
 });
 
 jobsRouter.get('/jobs/:id/source', (req, res) => {

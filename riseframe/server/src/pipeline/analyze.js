@@ -228,7 +228,11 @@ export function pickBrollMoments(segments, themes, duration, opts = {}) {
  * @returns {Promise<{provider,themes:Array,brollMoments:Array}>}
  */
 export async function analyze(transcript, meta, options) {
-  const themes = extractThemes(transcript.text);
+  // A transcrição editada na timeline não traz o texto inteiro (só os segmentos): sem
+  // isto os temas viravam a palavra "undefined".
+  const fullText = transcript.text || (transcript.segments || []).map((s) => s.text || (s.words || []).filter((w) => !w.removed).map((w) => w.word).join(' ')).join(' ');
+  transcript = { ...transcript, text: fullText };
+  const themes = extractThemes(fullText);
   // Nicho do vídeo: escolha do usuário (options.niche) ou detecção pela fala. Faz o
   // B-roll casar com o tema (liderança, médico, mentor...).
   const niche = resolveNiche(options.niche, transcript.text);

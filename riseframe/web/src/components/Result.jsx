@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { C, GRAD, glass, fmtBytes, fmtDuration } from '../theme.js';
 import { GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { previewUrl, downloadUrl } from '../api.js';
+import { previewUrl, downloadUrl, coverDownloadUrl } from '../api.js';
 
 // +X% / −X% em relação a 1.0 (ganho neutro)
 const fmtGain = (g) => `${g >= 1 ? '+' : '−'}${Math.abs(Math.round((g - 1) * 100))}%`;
@@ -87,6 +87,11 @@ export default function Result({ job, onReset, onEditTimeline }) {
           >
             <Icon name="download" size={19} strokeWidth={2} /> Exportar vídeo
           </a>
+          {r.cover?.file && (
+            <a href={coverDownloadUrl(job.id)} style={{ width: '100%', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, textDecoration: 'none', background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 14, padding: '13px', fontSize: 14, fontWeight: 700 }}>
+              <Icon name="image" size={17} strokeWidth={2} /> Baixar capa (JPG)
+            </a>
+          )}
           {onEditTimeline && (
             <button onClick={onEditTimeline} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 14, padding: '13px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
               <Icon name="edit" size={17} strokeWidth={2} /> Ajustar na timeline
@@ -155,7 +160,7 @@ export default function Result({ job, onReset, onEditTimeline }) {
             Temas detectados
           </div>
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-            {r.themes.map((t) => (
+            {r.themes.filter((t) => t?.term && t.term !== 'undefined').map((t) => (
               <span
                 key={t.term}
                 style={{

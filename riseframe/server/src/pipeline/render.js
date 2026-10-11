@@ -158,7 +158,16 @@ export async function finalRender(input, outputsDir, jobId, meta, options, onPro
   // vídeo, então tudo acelera junto e continua sincronizado). A voz mantém o tom.
   const speed = speedFilters(options.speed, meta.fps);
   if (speed) vf = `${vf},${speed.vf}`;
-  const args = ['-i', input, '-vf', vf, ...x264Final()];
+  let args = ['-i', input, '-vf', vf, ...x264Final()];
+  // Capa no começo (vira a miniatura nas redes): a imagem por cima dos primeiros 0,4 s,
+  // no mesmo passe (não muda a duração nem a sincronia).
+  if (options.coverFile) {
+    const W = target ? target.w : meta.width;
+    const H = target ? target.h : meta.height;
+    args = ['-i', input, '-loop', '1', '-t', '1', '-i', options.coverFile,
+      '-filter_complex', `[0:v]${vf}[rfbase];[1:v]scale=${W}:${H},setsar=1,format=yuv420p[rfcover];[rfbase][rfcover]overlay=0:0:enable='lt(t,0.4)':eof_action=pass[rfout]`,
+      '-map', '[rfout]', ...(meta.hasAudio ? ['-map', '0:a'] : []), ...x264Final()];
+  }
   if (meta.hasAudio) {
     if (speed) args.push('-af', speed.af);
     args.push('-c:a', 'aac', '-b:a', '192k');

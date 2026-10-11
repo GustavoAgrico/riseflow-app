@@ -340,6 +340,11 @@ export async function getJob(id) {
 
 export const sourceUrl = (id) => `${BASE}/jobs/${id}/source`;
 // Quadro do vídeo com a cor EXATA do render (mesma cadeia de filtros do servidor).
+/** Capa gerada junto com o vídeo (resultado). */
+export const coverDownloadUrl = (id) => `${BASE}/jobs/${id}/cover.jpg`;
+/** Capa (JPG): quadro do vídeo original no segundo `t`, no formato final, com o título. */
+export const coverUrl = (id, { t = 0, text = '', style = 'box', color = 'FF6B35', pos = 'center', aspect = 'original', quality = 'original', fx = 0.5, full = false } = {}) =>
+  `${BASE}/jobs/${id}/cover?${new URLSearchParams({ t: Number(t || 0).toFixed(1), text, style, color, pos, aspect, quality, fx: Number(fx).toFixed(2), ...(full ? { full: '1' } : {}) })}`;
 export const colorFrameUrl = (id, t, look, a = {}) =>
   `${BASE}/jobs/${id}/color-frame?t=${Number(t || 0).toFixed(1)}&look=${encodeURIComponent(look || 'auto')}&b=${a.brightness || 0}&c=${a.contrast || 0}&s=${a.saturation || 0}&tp=${a.temperature || 0}`;
 /** Tira de miniaturas da faixa de vídeo da timeline. */

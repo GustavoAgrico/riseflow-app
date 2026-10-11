@@ -124,7 +124,7 @@ export default function Settings({ onNewVideo, onLogout }) {
                   ? `${PROVIDERS[status.transcribeProvider] || status.transcribeProvider}: ${status.transcribeKey.error} Troque a chave no Environment do Render.`
                   : PROVIDERS[status.transcribeProvider] || status.transcribeProvider}
                 value={<StatusDot on={status.transcribeReady} offLabel={status.transcribeKey && !status.transcribeKey.ok ? 'Chave recusada' : 'Inativo'} />} />
-              <Row label="B-roll · Openverse" hint="Imagens Creative Commons, sem chave" value={<StatusDot on={status.openverse} />} />
+              <Row label="B-roll · Wikimedia" hint="Acervo de licença livre, sem chave" value={<StatusDot on={status.openverse} />} />
               <Row label="B-roll · Pexels" hint="PEXELS_API_KEY — vídeos e fotos livres" value={<StatusDot on={status.brollFromServer} offLabel="Sem chave" />} />
               <Row label="IA · Anthropic (Claude)" hint="ANTHROPIC_API_KEY — B-roll mais relevante e limpeza de fala" value={<StatusDot on={status.aiFromServer} offLabel="Sem chave" />} />
               <Row label={billing.payment === 'pix-links' ? 'Pagamentos · Pix (links do banco)' : 'Pagamentos · AbacatePay'}

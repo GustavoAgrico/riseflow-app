@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { C, GRAD, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan, previewVoice, searchBroll } from '../api.js';
+import { sourceUrl, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan, previewVoice, searchBroll } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -188,6 +188,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const mediaInputRef = useRef(null);
   // Revisão de B-roll: null = ainda não revisou; senão { moments:[{...escolhas}] }
   const [brollReview, setBrollReview] = useState(null);
+  // Título fixo no vídeo (headline) e capa (quadro + título).
+  const [headline, setHeadline] = useState(() => ({ on: Boolean(options?.headline?.text), text: options?.headline?.text || '', seconds: options?.headline?.seconds ?? 5, style: options?.headline?.style || 'box', color: options?.headline?.color || 'FF6B35', position: options?.headline?.position || 'top' }));
+  const [cover, setCover] = useState(() => ({ on: false, t: null, text: '', position: 'center', intro: true }));
+  const setHl = (patch) => setHeadline((h) => ({ ...h, ...patch }));
+  const setCv = (patch) => setCover((c) => ({ ...c, ...patch }));
   // B-roll ligado neste vídeo? Desligar guarda as escolhas (dá para religar depois).
   const [brollOn, setBrollOn] = useState(Boolean(options?.broll));
   const [brollPasteHint, setBrollPasteHint] = useState(null); // índice do momento esperando a imagem do Google
@@ -944,6 +949,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return () => window.removeEventListener('paste', onPaste);
   }, [tab, selBroll, brollReview]);
 
+  /** Novo momento de B-roll na posição atual do vídeo (3 s); depois escolhe a imagem. */
+  function addBrollHere() {
+    const start = Math.max(0, Math.min(cur, durationSec - 0.8));
+    const m = { key: `m${Date.now()}`, zoom: 1, fx: 0.5, fy: 0.5, start: +start.toFixed(2), end: +Math.min(durationSec, start + 3).toFixed(2), term: 'nova imagem', query: '', candidates: [], pick: -1, removed: false, myThumb: null, myMediaId: null, myKind: null, manual: true };
+    setBrollOn(true);
+    setBrollReview((r) => {
+      const moments = [...(r?.moments || []), m].sort((a, b) => a.start - b.start);
+      setSelBroll(moments.indexOf(m));
+      return { source: r?.source || imageSource, moments };
+    });
+    setTab('broll');
+  }
+
   // Monta o plano de B-roll travado para enviar no render (a partir da revisão).
   function brollPlanForRender() {
     if (!brollReview) return null;
@@ -1017,6 +1035,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         })),
         // B-roll revisado: trava o que entra em cada momento (e liga o B-roll).
         ...(!brollOn ? { broll: false, brollPlan: [] } : brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}),
+        headline: headline.on && headline.text.trim() ? { text: headline.text.trim(), seconds: headline.seconds, style: headline.style, color: headline.color, position: headline.position } : null,
+        cover: cover.on ? { t: cover.t ?? 0, text: (cover.text || headline.text || '').trim(), position: cover.position, intro: cover.intro, fx: framingMode === 'manual' ? focus.x : 0.5 } : null,
         // Layout do B-roll escolhido aqui (tela cheia ou tela dividida).
         brollLayout: brollLayoutSel,
         imageSource,
@@ -1411,6 +1431,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${mainAr.toFixed(4)}), calc((100cqw - ${showFormatPreview ? 16 : 0}px) * var(--main-share)))`, aspectRatio: `${mainAr}`, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
                 <video ref={videoRef} src={sourceUrl(sourceId)} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilter }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim({ w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
                 {vbox && lookCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...lookCss.tint }} />}
+                {vbox && headline.on && headline.text.trim() && (!headline.seconds || cur < headline.seconds) && (
+                  <HeadlineOverlay h={headline} box={vbox} />
+                )}
                 {vbox && colorCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...colorCss.tint }} />}
                 {vbox && brollNow && (
                   <div style={{
@@ -1687,6 +1710,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   B-roll desligado: o vídeo sai sem imagens de apoio. Suas escolhas abaixo ficam guardadas — ligue de novo quando quiser.
                 </div>
               )}
+              <button onClick={addBrollHere} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }} title="Cria um momento de B-roll onde o vídeo está agora; depois escolha a imagem (Google, Minha ou busca)">
+                <Icon name="plus" size={13} strokeWidth={2.4} /> Adicionar B-roll aqui ({fmtDuration(cur)})
+              </button>
               <div style={{ opacity: brollOn ? 1 : 0.45, pointerEvents: brollOn ? 'auto' : 'none' }}>
               <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.3, marginBottom: 6 }}>COMO O B-ROLL APARECE</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, marginBottom: 12 }}>
@@ -1965,6 +1991,93 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               )}
               <div style={{ fontSize: 11.5, color: C.faint }}>
                 <b>Prévia:</b> ao escolher um movimento, o player ao lado mostra o efeito na hora; dê play para ver no ritmo da fala e ouvir os whooshes. O <b>zoom nos momentos-chave</b> só aproxima nos pontos de ênfase (pausa antes, números, perguntas, palavras fortes) — não o vídeo inteiro. Na faixa <b>ZOOM</b> da timeline: clique para ajustar, arraste para mover, puxe as pontas para mudar a duração. Os whooshes tocam nesses zooms e nas entradas de B-roll.
+              </div>
+            </div>
+          )}
+
+          {tab === 'capa' && (
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="type" size={15} strokeWidth={2} /></span>
+                  <div style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>Título no vídeo (headline)</div>
+                  <Switch on={headline.on} onChange={(v) => setHl({ on: v })} />
+                </div>
+                <div style={{ opacity: headline.on ? 1 : 0.45, pointerEvents: headline.on ? 'auto' : 'none', display: 'grid', gap: 8 }}>
+                  <textarea value={headline.text} onChange={(e) => setHl({ text: e.target.value.slice(0, 90) })} rows={2} placeholder="Ex.: 3 erros que travam sua equipe"
+                    style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', minHeight: 54, padding: '8px 10px', borderRadius: 9, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 13, fontFamily: 'inherit' }} />
+                  {segments[0]?.words?.length > 0 && (
+                    <button onClick={() => setHl({ text: segments[0].words.filter((w) => !w.removed).map((w) => w.word).join(' ').slice(0, 90) })} style={{ ...zoomBtn, width: 'auto', justifySelf: 'start', padding: '0 9px', fontSize: 11, fontWeight: 600 }}>Usar a primeira frase do vídeo</button>
+                  )}
+                  <CapRow label="Quanto tempo">
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                      {[[3, '3 s'], [5, '5 s'], [10, '10 s'], [0, 'Vídeo todo']].map(([v, l]) => (
+                        <button key={v} onClick={() => setHl({ seconds: v })} style={{ ...miniBtn(headline.seconds === v, false), flex: '1 1 auto' }}>{l}</button>
+                      ))}
+                    </div>
+                  </CapRow>
+                  <CapRow label="Onde">
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      {[['top', 'Topo'], ['center', 'Meio'], ['bottom', 'Embaixo']].map(([v, l]) => (
+                        <button key={v} onClick={() => setHl({ position: v })} style={{ ...miniBtn(headline.position === v, false), flex: 1 }}>{l}</button>
+                      ))}
+                    </div>
+                  </CapRow>
+                  <CapRow label="Estilo">
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      {[['box', 'Caixa'], ['bar', 'Faixa escura'], ['clean', 'Só texto']].map(([v, l]) => (
+                        <button key={v} onClick={() => setHl({ style: v })} style={{ ...miniBtn(headline.style === v, false), flex: 1 }}>{l}</button>
+                      ))}
+                    </div>
+                  </CapRow>
+                  {headline.style === 'box' && (
+                    <CapRow label="Cor da caixa">
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {['FF6B35', '7C3AED', 'FFD60A', '111111', 'FFFFFF', '2ED47A'].map((c) => (
+                          <button key={c} onClick={() => setHl({ color: c })} aria-label={`cor ${c}`} style={{ width: 24, height: 24, borderRadius: '50%', background: `#${c}`, border: headline.color === c ? '2px solid #fff' : `1px solid ${C.border}`, cursor: 'pointer', padding: 0 }} />
+                        ))}
+                      </div>
+                    </CapRow>
+                  )}
+                  <div style={{ fontSize: 10.5, color: C.faint }}>A prévia mostra o título por cima do vídeo; no vídeo final ele sai com a mesma fonte das legendas.</div>
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="image" size={15} strokeWidth={2} /></span>
+                  <div style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>Capa do vídeo</div>
+                  <Switch on={cover.on} onChange={(v) => setCv({ on: v, t: cover.t ?? cur })} />
+                </div>
+                <div style={{ opacity: cover.on ? 1 : 0.45, pointerEvents: cover.on ? 'auto' : 'none', display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <div style={{ width: 96, flexShrink: 0, borderRadius: 8, overflow: 'hidden', background: '#000', border: `1px solid ${C.border}`, aspectRatio: aspectSel === '9:16' ? '9 / 16' : aspectSel === '1:1' ? '1 / 1' : aspectSel === '16:9' ? '16 / 9' : `${mainAr}` }}>
+                      {cover.on && <img alt="Prévia da capa" src={coverUrl(sourceId, { t: cover.t ?? cur, text: cover.text || headline.text, style: headline.style, color: headline.color, pos: cover.position, aspect: aspectSel, fx: framingMode === 'manual' ? focus.x : 0.5 })} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+                    </div>
+                    <div style={{ flex: 1, display: 'grid', gap: 6 }}>
+                      <div style={{ fontSize: 11.5, color: C.muted }}>Quadro: <b style={{ color: C.text }}>{fmtDuration(cover.t ?? cur)}</b></div>
+                      <button onClick={() => setCv({ t: +cur.toFixed(1) })} style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 11, fontWeight: 600 }}>Usar o quadro de agora ({fmtDuration(cur)})</button>
+                      <a href={coverUrl(sourceId, { t: cover.t ?? cur, text: cover.text || headline.text, style: headline.style, color: headline.color, pos: cover.position, aspect: aspectSel, quality, fx: framingMode === 'manual' ? focus.x : 0.5, full: true })}
+                        style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, textDecoration: 'none', color: '#fff', background: GRAD, border: 'none' }}>
+                        <Icon name="download" size={12} strokeWidth={2.2} /> Baixar capa (JPG)
+                      </a>
+                    </div>
+                  </div>
+                  <input value={cover.text} onChange={(e) => setCv({ text: e.target.value.slice(0, 80) })} placeholder={headline.text ? `Texto da capa (vazio = "${headline.text.slice(0, 30)}…")` : 'Texto da capa (ex.: Como cobrar sem brigar)'}
+                    style={{ minHeight: 32, padding: '0 9px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 12.5, fontFamily: 'inherit' }} />
+                  <CapRow label="Texto na capa">
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      {[['top', 'Topo'], ['center', 'Meio'], ['bottom', 'Embaixo']].map(([v, l]) => (
+                        <button key={v} onClick={() => setCv({ position: v })} style={{ ...miniBtn(cover.position === v, false), flex: 1 }}>{l}</button>
+                      ))}
+                    </div>
+                  </CapRow>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={cover.intro} onChange={(e) => setCv({ intro: e.target.checked })} />
+                    Mostrar a capa no começo do vídeo (vira a miniatura no Reels/TikTok)
+                  </label>
+                  <div style={{ fontSize: 10.5, color: C.faint }}>A capa usa o estilo e a cor do título. Ao gerar o vídeo, ela também fica para baixar no resultado.</div>
+                </div>
               </div>
             </div>
           )}
@@ -2640,7 +2753,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             { k: 'cap', icon: 'captions', label: 'Legendas', act: () => setMTool('legenda') },
             { k: 'split', icon: 'scissors', label: 'Dividir', act: splitAtPlayhead, off: !canSplit },
             { k: 'speed', icon: 'clock', label: speed !== 1 ? `Velocidade ${fmtSpeed(speed)}` : 'Velocidade', act: () => openSheet('speed') },
-            ...TABS.filter((t) => t.id !== 'legenda').map((t) => ({ k: t.id, icon: t.icon, label: t.id === 'enquadramento' ? 'Formato' : t.id === 'midias' ? 'Mídias' : t.label, act: () => openSheet('tab', t.id) })),
+            ...TABS.filter((t) => t.id !== 'legenda').map((t) => ({ k: t.id, icon: t.icon, label: t.id === 'enquadramento' ? 'Formato' : t.id === 'midias' ? 'Mídias' : t.id === 'capa' ? 'Capa' : t.label, act: () => openSheet('tab', t.id) })),
             { k: 'pauses', icon: 'scissors', label: pausesCut.length === pauses.length && pauses.length ? 'Manter pausas' : 'Remover pausas', act: () => (pausesCut.length === pauses.length ? keepAllPauses() : cutAllPauses()), off: !pauses.length },
           ]).map((t) => (
             <button key={t.k} onClick={t.act} disabled={t.off} className="rf-m-tool" style={{ opacity: t.off ? 0.38 : 1 }}>
@@ -2771,6 +2884,33 @@ function miniBtn(active, disabled) {
   return { display: 'inline-flex', alignItems: 'center', gap: 5, border: `1px solid ${active ? C.red : C.border}`, background: active ? 'rgba(240,82,107,0.18)' : 'rgba(255,255,255,0.05)', color: active ? C.red : C.muted, borderRadius: 8, padding: '5px 10px', fontSize: 11.5, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, fontFamily: 'inherit' };
 }
 // Velocidades oferecidas (o servidor aceita de 0,5× a 2×)
+/** Interruptor liga/desliga. */
+function Switch({ on, onChange }) {
+  return (
+    <button onClick={() => onChange(!on)} role="switch" aria-checked={on} style={{ width: 34, height: 20, borderRadius: 20, border: 'none', background: on ? C.green : 'rgba(255,255,255,0.16)', position: 'relative', cursor: 'pointer', padding: 0, flexShrink: 0 }}>
+      <span style={{ position: 'absolute', top: 2, left: on ? 16 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
+    </button>
+  );
+}
+
+/** Título por cima da prévia (aproximação do que o servidor desenha com o libass). */
+function HeadlineOverlay({ h, box }) {
+  const size = Math.max(9, Math.min(box.w, box.h) * 0.068);
+  const lum = (() => { const n = parseInt(h.color, 16); return 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255); })();
+  const style = h.style === 'box'
+    ? { background: `#${h.color}`, color: lum > 160 ? '#111' : '#fff', padding: `${size * 0.22}px ${size * 0.4}px`, borderRadius: 2 }
+    : h.style === 'bar'
+      ? { background: 'rgba(0,0,0,0.68)', color: '#fff', padding: `${size * 0.22}px ${size * 0.4}px` }
+      : { color: '#fff', textShadow: '0 0 3px #000, 0 2px 4px #000' };
+  const top = h.position === 'top' ? box.y + box.h * 0.085 : h.position === 'center' ? box.y + box.h / 2 : null;
+  return (
+    <div style={{ position: 'absolute', left: box.x + box.w * 0.08, width: box.w * 0.84, pointerEvents: 'none', display: 'flex', justifyContent: 'center', textAlign: 'center',
+      ...(top != null ? { top, transform: h.position === 'center' ? 'translateY(-50%)' : 'none' } : { bottom: box.y + box.h * 0.085 }) }}>
+      <span style={{ fontFamily: 'Montserrat, Inter, sans-serif', fontWeight: 800, fontSize: size, lineHeight: 1.18, boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone', ...style }}>{h.text}</span>
+    </div>
+  );
+}
+
 const GoogleMark = () => (
   <svg width="13" height="13" viewBox="0 0 48 48" aria-hidden="true" style={{ background: '#fff', borderRadius: '50%', padding: 1 }}>
     <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.5 29.5 4.5 24 4.5 13.2 4.5 4.5 13.2 4.5 24S13.2 43.5 24 43.5 43.5 34.8 43.5 24c0-1.2-.1-2.3-.4-3.5Z" />
@@ -2820,6 +2960,7 @@ const TABS = [
   { id: 'midias', label: 'Minhas mídias', icon: 'film' },
   { id: 'efeitos', label: 'Efeitos', icon: 'wand' },
   { id: 'cor', label: 'Cor', icon: 'palette' },
+  { id: 'capa', label: 'Capa e título', icon: 'type' },
 ];
 
 // Formatos do vídeo final (ids iguais aos do servidor) e o desenho do ícone.
@@ -2847,11 +2988,9 @@ const BROLL_SOURCES = [
   { id: 'pexels', label: '▶ Pexels', hint: 'Vídeos e fotos livres de direitos' },
   { id: 'pixabay', label: '▶ Pixabay', hint: 'Vídeos e fotos livres de direitos' },
   { id: 'wikimedia', label: 'Wikimedia', hint: 'Acervo livre (fotos e vídeos com licença livre)' },
-  { id: 'openverse', label: 'Creative Commons', hint: 'Openverse: imagens de uso livre' },
-  { id: 'nasa', label: 'NASA', hint: 'Ciência, tecnologia e espaço — domínio público' },
   { id: 'google', label: 'Google Imagens', hint: 'Imagens contextuais — atenção a direitos autorais' },
 ];
-const SOURCE_LABEL = { google: 'Google', openverse: 'CC', pexels: 'Pexels', pixabay: 'Pixabay', wikimedia: 'Wikimedia', nasa: 'NASA' };
+const SOURCE_LABEL = { google: 'Google', pexels: 'Pexels', pixabay: 'Pixabay', wikimedia: 'Wikimedia' };
 
 const INTENSITIES = [{ id: 'suave', label: 'Suave' }, { id: 'medio', label: 'Médio' }, { id: 'forte', label: 'Forte' }];
 const COLOR_SLIDERS = [
