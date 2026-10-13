@@ -30,7 +30,7 @@ billingRouter.get('/billing', requireAuth, async (req, res) => {
 // POST /api/billing/checkout { kind: 'plan'|'pack', itemId, name, cpf, phone } → { url } do pagamento
 billingRouter.post('/billing/checkout', requireAuth, requireVerified, async (req, res) => {
   if (!billingEnabled()) return res.status(400).json({ error: 'pagamentos não estão configurados' });
-  if (billingStatus(req.user).admin) return res.status(400).json({ error: 'conta de administrador já tem uso ilimitado' });
+  if (billingStatus(req.user).unlimited) return res.status(400).json({ error: 'sua conta já tem uso ilimitado' });
 
   const { kind, itemId, name, cpf, phone, recurring } = req.body || {};
   const taxId = digits(cpf);

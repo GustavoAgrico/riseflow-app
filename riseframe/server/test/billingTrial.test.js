@@ -43,3 +43,21 @@ test('admin (ilimitado) não gasta edições grátis', () => {
   assert.equal(billing.trialCovers({ id: 'adm', email: 'admin@example.com' }, 'auto'), false);
   assert.equal(billing.billingStatus({ id: 'adm', email: 'admin@example.com' }).freeEdits, 0);
 });
+
+test('UNLIMITED_EMAILS: uso ilimitado sem virar admin', () => {
+  const socio = { id: 'socio-1', email: 'Socio@Example.com' };
+  config.billing.unlimitedEmails = ['socio@example.com'];
+  try {
+    const st = billing.billingStatus(socio);
+    assert.equal(st.unlimited, true);
+    assert.equal(st.admin, false, 'não vê painel de pagamentos nem configurações');
+    assert.deepEqual(billing.allowedFeatures(socio).sort(), ['ai', 'captionStyle', 'clips', 'hd', 'image']);
+    assert.ok(billing.canAfford(socio, 999999), 'nunca falta saldo');
+    assert.deepEqual(billing.charge(socio, 500), { total: 0, monthly: 0, extra: 0 }, 'não gasta créditos');
+    assert.equal(billing.trialCovers(socio, 'auto'), false, 'não gasta edições grátis');
+    // fora da lista: conta comum
+    assert.equal(billing.billingStatus({ id: 'outro', email: 'outro@example.com' }).unlimited, false);
+  } finally {
+    config.billing.unlimitedEmails = [];
+  }
+});

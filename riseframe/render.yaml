@@ -74,8 +74,10 @@ services:
       #   sync: false                  #   https://SEU-APP.onrender.com/api/billing/webhook?webhookSecret=VALOR
       # - key: APP_URL                 # para onde o cliente volta após pagar
       #   value: https://SEU-APP.onrender.com
-      - key: ADMIN_EMAILS              # ÚNICAS contas com uso ilimitado (separe por vírgula); todos os outros têm limites
+      - key: ADMIN_EMAILS              # admins: uso ilimitado + painel de pagamentos e configurações (separe por vírgula)
         sync: false
+      # - key: UNLIMITED_EMAILS        # uso ilimitado SEM acesso de admin (sócio/parceiro); separe por vírgula
+      #   sync: false
       # - key: BILLING_SIGNUP_CREDITS  # créditos de teste para cada conta nova (recursos básicos)
       #   value: 60
       # - key: BILLING_PLANS           # planos mensais (features: captionStyle, image, ai, clips)

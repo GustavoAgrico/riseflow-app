@@ -76,8 +76,12 @@ const pixMode = () => config.billing.payment === 'pix-links';
 const pixLink = (id) => config.billing.pixLinks[id] || '';
 export const billingEnabled = () => (pixMode() ? Object.keys(config.billing.pixLinks).length > 0 : Boolean(config.billing.abacateKey));
 const isAdmin = (email) => config.billing.adminEmails.includes(String(email || '').toLowerCase());
-/** Ilimitado: admins (ADMIN_EMAILS), ou todos quando BILLING_MODE=off (desktop/local). */
-const unlimited = (user) => config.billing.mode === 'off' || isAdmin(user.email);
+const isUnlimitedEmail = (email) => (config.billing.unlimitedEmails || []).includes(String(email || '').toLowerCase());
+/**
+ * Ilimitado: admins (ADMIN_EMAILS), contas de uso ilimitado sem acesso de admin
+ * (UNLIMITED_EMAILS), ou todos quando BILLING_MODE=off (desktop/local).
+ */
+const unlimited = (user) => config.billing.mode === 'off' || isAdmin(user.email) || isUnlimitedEmail(user.email);
 const planConfig = (id) => config.billing.plans.find((p) => p.id === id) || null;
 
 /** Plano vigente (config + estado) ou null se não tem / venceu. */
