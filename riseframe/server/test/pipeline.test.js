@@ -139,3 +139,26 @@ test('pipeline lida com vídeo sem áudio', async () => {
   await fs.rm(work, { recursive: true, force: true });
   await fs.rm(outFile, { force: true });
 });
+
+test('timeline: silêncios que a timeline não mostrou também saem (menos as pausas mantidas)', async () => {
+  await ensureDirs();
+  const base = 'test_kept_' + Date.now();
+  const work = path.join(config.paths.work, base);
+  await fs.mkdir(work, { recursive: true });
+  const input = path.join(work, 'in.mp4');
+  await makeClip(input); // tom 1,5 s · silêncio 0,9 s (x3)
+  // transcrição "esticada": nenhuma pausa entre as palavras (a timeline não mostra nenhuma)
+  const edited = { segments: [{ start: 0, end: 8, words: [{ start: 0, end: 3.9, word: 'um' }, { start: 3.9, end: 8, word: 'dois' }] }] };
+  const run = async (id, keptPauses) => runPipeline({
+    id, mode: 'render', inputPath: input, workDir: path.join(work, id), outputsDir: config.paths.outputs, editedTranscript: edited,
+    options: { manualSilence: true, silenceCuts: [], keptPauses, captions: false, colorLook: 'none', broll: false, aspect: 'original' },
+  }, () => {});
+  const cut = await run(base + '_a', []);
+  assert.ok(cut.cut.removedSeconds > 1, `silêncios escondidos cortados (${cut.cut.removedSeconds}s)`);
+  const kept = await run(base + '_b', [{ start: 0, end: 8 }]);
+  assert.ok((kept.cut.removedSeconds || 0) < 0.2, 'pausas mantidas pelo usuário ficam');
+  const old = await run(base + '_c', undefined);
+  assert.ok((old.cut.removedSeconds || 0) < 0.2, 'app antigo (sem a lista) continua como antes');
+  await fs.rm(work, { recursive: true, force: true });
+  for (const s of ['_a', '_b', '_c']) await fs.rm(path.join(config.paths.outputs, `${base}${s}.mp4`), { force: true });
+});

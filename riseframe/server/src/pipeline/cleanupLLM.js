@@ -1,4 +1,5 @@
 import { makeLogger } from '../logger.js';
+import { isFiller } from './cleanup.js';
 
 const log = makeLogger('cleanup-ai');
 
@@ -81,6 +82,42 @@ export function guardRemovals(indices, [a, b]) {
   return set;
 }
 
+const normWord = (w) => String(w ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+// muletas de vício que a IA pode tirar soltas
+const VICE = new Set(['ne', 'tipo', 'sabe', 'entendeu', 'ta', 'assim']);
+// marcadores de correção ("50, digo, 60")
+const MARKERS = new Set(['digo', 'melhor', 'alias', 'perdao', 'desculpa', 'desculpe', 'corrigindo', 'quer', 'dizer']);
+
+/**
+ * Confere o que a IA mandou tirar: só passa o que tem CARA de erro de fala —
+ * muleta; repetição / frase refeita (as palavras tiradas reaparecem logo depois); pedaço
+ * de palavra; ou correção com marcador ("digo", "ou melhor"). Um trecho que a IA tirou
+ * sem nenhum desses sinais é descartado (a IA às vezes erra o índice ou "resume" a fala,
+ * e aí cortava palavras de verdade). Puro.
+ */
+export function plausibleRemovals(flat, set) {
+  const n = flat.map((f) => normWord(f.word));
+  const sorted = [...set].sort((a, b) => a - b);
+  const keep = new Set();
+  for (let k = 0; k < sorted.length;) {
+    let j = k;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    const run = sorted.slice(k, j + 1);
+    const after = [];
+    for (let q = run[run.length - 1] + 1; q < Math.min(n.length, run[run.length - 1] + 1 + run.length + 8); q++) after.push(n[q]);
+    const reappears = (x) => x && (after.includes(x) || after.some((a) => a.length > x.length && x.length >= 2 && a.startsWith(x)));
+    const content = run.filter((i) => !isFiller(flat[i].word, true) && !VICE.has(n[i]) && !MARKERS.has(n[i]));
+    const repeated = content.filter((i) => reappears(n[i])).length;
+    const ok =
+      content.length === 0 || // só muletas
+      run.some((i) => MARKERS.has(n[i])) || // correção com marcador
+      (reappears(n[run[0]]) && repeated >= Math.ceil(content.length * 0.5)); // frase refeita / repetição
+    if (ok) for (const i of run) keep.add(i);
+    k = j + 1;
+  }
+  return keep;
+}
+
 async function askClaude(system, user, cfg) {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({
@@ -132,12 +169,13 @@ export async function cleanupWithLLM(transcript, cfg) {
   if (flat.length > 20000) throw new Error(`transcrição longa demais para limpeza por IA (${flat.length} palavras)`);
   const ask = provider === 'claude' ? askClaude : askGroq;
 
-  const remove = new Set();
+  const asked = new Set();
   for (const w of windows(flat.length)) {
     const text = await ask(INSTRUCTION, numberedText(flat, w.from, w.to), cfg);
-    for (const i of guardRemovals(parseIndices(text), w.core)) remove.add(i);
+    for (const i of guardRemovals(parseIndices(text), w.core)) asked.add(i);
   }
-  log.info(`${provider} marcou ${remove.size} palavras para remover (${flat.length} palavras)`);
+  const remove = plausibleRemovals(flat, asked);
+  log.info(`${provider} marcou ${asked.size} palavras para remover; ${remove.size} conferidas como erro de fala (${flat.length} palavras)`);
 
   // Aplica as marcações numa cópia da transcrição (não muta a original).
   const segments = (transcript.segments || []).map((seg) => {

@@ -262,6 +262,14 @@ export async function runPipeline(job, onUpdate = () => {}) {
       for (const c of options.silenceCuts || []) {
         if (c && c.end > c.start) pauses.push({ start: Math.max(0, c.start), end: Math.min(meta.duration, c.end) });
       }
+      // Silêncios que a timeline não mostrou (a transcrição esticou as palavras e a pausa
+      // "sumiu"): saem também, menos onde o usuário escolheu manter a pausa.
+      if (Array.isArray(options.keptPauses) && options.cutSilence !== false) {
+        const kept = options.keptPauses;
+        for (const r of await silenceRemovalRanges(input, meta, options)) {
+          if (!kept.some((k) => r.start < k.end + 0.15 && r.end > k.start - 0.15)) pauses.push(r);
+        }
+      }
     } else if (options.cutSilence !== false) {
       pauses.push(...(await silenceRemovalRanges(input, meta, options)));
       // Respirações ficam acima do limiar do detector de volume: os vãos entre as
@@ -279,6 +287,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       // tosse, pigarro e estalos de boca nos vãos entre as palavras
       coughs: options.cutCoughs !== false,
       duration: meta.duration,
+      strength: options.cutStrength,
     });
     if (precise.noises?.length) report.noisesRemoved = precise.noises.length;
     st.onProgress(0.08);
@@ -293,12 +302,22 @@ export async function runPipeline(job, onUpdate = () => {}) {
     // Ajusta ao grid de frames e usa o MESMO keep no corte do vídeo e no remap das
     // legendas — evita o drift progressivo (legenda adiantando/atrasando após cortes).
     // (sem os pedacinhos soltos entre dois cortes, que soavam como clique)
-    const keep = snapKeep(dropSlivers(subtractRanges(meta.duration, removals), precise.words), meta.fps);
+    const exact = dropSlivers(subtractRanges(meta.duration, removals), precise.words);
+    const keep = snapKeep(exact, meta.fps);
     if (!keep.length) throw new Error('todos os trechos foram removidos — nada para renderizar');
 
     const removedSeconds = Math.max(0, meta.duration - keptDuration(keep));
     if (removedSeconds > 0.15) {
-      const r = await remuxByKeepSegments(input, work, meta, keep, (p) => st.onProgress(0.08 + 0.92 * p), 'cut');
+      // Som cortado no ponto exato (o vídeo, no quadro): o pedacinho que o ajuste ao frame
+      // traz de volta só fica mudo se tiver som de algo cortado; se for só o ruído de
+      // fundo, fica (sem "buraco" no som ambiente).
+      const fps = Math.max(1, Math.round(meta.fps || 30));
+      const audioKeep = exact.map((k) => {
+        const s0 = Math.floor(k.start * fps + 1e-6) / fps;
+        const e0 = Math.ceil(k.end * fps - 1e-6) / fps;
+        return { start: precise.quietBetween(s0, k.start) ? s0 : k.start, end: precise.quietBetween(k.end, e0) ? e0 : k.end };
+      });
+      const r = await remuxByKeepSegments(input, work, meta, keep, (p) => st.onProgress(0.08 + 0.92 * p), 'cut', { audioKeep });
       input = r.output;
       trackInput = input; // fonte limpa (pós-corte, pré-legendas/B-roll) para o tracker
       transcript = remapTranscript(transcript, keep); // sincroniza legendas com a nova timeline

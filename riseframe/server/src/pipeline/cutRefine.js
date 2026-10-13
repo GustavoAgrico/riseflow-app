@@ -314,6 +314,73 @@ export function fitPausesToAudio(ranges, env, { maxShift = 0.3, tail = 0.04, pre
 }
 
 /**
+ * Bordas finais de cada PAUSA pelo som real, nos dois sentidos:
+ *  - se a borda caiu em som (fim de palavra que ainda soa, ataque já começando), ela
+ *    recua para o silêncio (como `fitPausesToAudio`);
+ *  - se caiu em silêncio, ela AVANÇA para dentro do silêncio até encostar no som
+ *    (antes ficava a folga fixa das proteções + o atraso da transcrição, que costuma
+ *    esticar o fim da frase: sobravam 0,4–0,8 s de silêncio em cada emenda).
+ * Fica só um respiro curto: `tail` depois do fim do som e `preroll` antes do próximo.
+ * Com `breaths`, a inspiração antes da frase (som sem voz) também sai: o corte vai até
+ * `voiceLead` antes da voz (o "s"/"ch"/"t" do começo da palavra fica). Puro.
+ */
+export function fitCutEdges(ranges, env, venv, { maxShift = 0.3, maxExpand = 0.6, tail = 0.06, preroll = 0.06, voiceLead = 0.14, minRemove = 0.08, breaths = false } = {}) {
+  if (!env) return ranges;
+  const speechThr = speechThreshold(env);
+  const endThr = breaths ? breathThreshold(env) : speechThr;
+  const at = (t) => env.db[frameAt(env, t)];
+  // (recuo) qualquer quadro acima do limiar conta como som
+  const loudS = (t) => t >= 0 && at(t) > speechThr;
+  const loudE = (t) => t >= 0 && at(t) > endThr;
+  // (avanço) som = 2 de 3 quadros seguidos acima do limiar, um pouco acima do ruído:
+  // um quadro solto do chiado de fundo não segura o corte
+  const quietThr = Math.max(env.floor + 12, env.peak - 50);
+  const loud = (t) => [t - env.hop, t, t + env.hop].filter((x) => x >= 0 && at(x) > quietThr).length >= 2;
+  const vthr = venv ? Math.max(venv.floor + 12, venv.peak - 32) : Infinity;
+  const voiced = (t) => venv && venv.db[frameAt(venv, t)] > vthr;
+  const H = env.hop;
+  const sorted = [...ranges].sort((a, b) => a.start - b.start);
+  const out = [];
+  sorted.forEach((r, i) => {
+    const prevLimit = i > 0 ? sorted[i - 1].end : 0;
+    const nextLimit = i < sorted.length - 1 ? sorted[i + 1].start : env.db.length * H;
+    // começo do corte
+    let s = r.start;
+    if (loudS(s) || loudS(s + H)) {
+      const lim = Math.min(r.end, r.start + maxShift);
+      while (s < lim && (loudS(s) || loudS(s + H))) s += H;
+    } else {
+      const lim = Math.max(prevLimit, r.start - maxExpand);
+      while (s - H > lim && !loud(s - H) && !loud(s - 2 * H)) s -= H;
+    }
+    // fim do corte
+    let e = r.end;
+    let lead = preroll;
+    if (loudE(e - H) || loudE(e - 2 * H)) {
+      const lim = Math.max(s, r.end - maxShift);
+      while (e > lim && (loudE(e - H) || loudE(e - 2 * H))) e -= H;
+    } else {
+      const lim = Math.min(nextLimit, r.end + maxExpand);
+      while (e + H < lim && !loud(e) && !loud(e + H)) e += H;
+    }
+    if (breaths && venv && !voiced(e)) {
+      // som sem voz antes da frase (inspiração): o corte vai até perto da voz
+      let v = e;
+      const lim = Math.min(nextLimit, e + 0.8);
+      while (v < lim && !(voiced(v) && voiced(v + H) && voiced(v + 2 * H))) v += H;
+      if (v < lim && v - voiceLead > e) {
+        e = v - voiceLead;
+        lead = 0;
+      }
+    }
+    s += tail;
+    e -= lead;
+    if (e - s > minRemove) out.push({ start: +s.toFixed(3), end: +e.toFixed(3) });
+  });
+  return out;
+}
+
+/**
  * Faixas das palavras REMOVIDAS (muletas, repetições, frases refeitas, edição manual).
  * Palavras removidas seguidas viram UM bloco só (cortar palavra por palavra deixava
  * "pedacinhos" de som entre elas). Cada borda vai para o ponto mais silencioso entre a
@@ -345,10 +412,24 @@ export function removedWordRanges(transcript, env, { pad = 0.04, window = 0.06, 
       let s = Math.max(lo, bStart - pad);
       let e = Math.min(hi, bEnd + pad);
       if (env) {
+        const quiet = Math.max(env.floor + 12, env.peak - 50);
+        const dbAt = (t) => env.db[frameAt(env, t)];
         // começo: o ponto quieto entre a palavra anterior e o bloco, perto do bloco
         s = quietPoint(env, Math.max(lo, Math.min(s, bStart) - Math.max(window, Math.min(0.5, bStart - lo))), Math.min(bStart + window / 2, e), bStart);
+        // A transcrição erra o tempo das palavras em até ~0,1 s: se a borda ficou no meio
+        // do som (palavras coladas), procura o vão de verdade um pouco além da margem
+        // da palavra vizinha — só aceita se ali for silêncio, ou um vale bem mais baixo
+        // (palavras coladas quase não têm silêncio entre si).
+        if (dbAt(s) > quiet && Number.isFinite(prevEnd)) {
+          const alt = quietPoint(env, Math.max(0, prevEnd - 0.08), Math.min(bStart + window / 2, e), bStart);
+          if (dbAt(alt) <= quiet || dbAt(alt) <= dbAt(s) - 8) s = alt;
+        }
         // fim: o ponto quieto entre o bloco e a próxima palavra, perto do bloco
         e = quietPoint(env, Math.max(s, bEnd - window / 2), Math.min(hi, Math.max(e, bEnd) + Math.max(window, Math.min(0.5, hi - bEnd))), bEnd);
+        if (dbAt(e) > quiet && Number.isFinite(nextStart)) {
+          const alt = quietPoint(env, Math.max(s, bEnd - window / 2), nextStart + 0.08, bEnd);
+          if (dbAt(alt) <= quiet || dbAt(alt) <= dbAt(e) - 8) e = alt;
+        }
       }
       if (e - s > 0.02) out.push({ start: +s.toFixed(3), end: +e.toFixed(3) });
     }
@@ -408,6 +489,54 @@ export function phantomWords(words, env) {
     let mx = -Infinity;
     for (let i = frameAt(env, w.start); i <= frameAt(env, w.end); i++) mx = Math.max(mx, env.db[i]);
     return mx < thr;
+  });
+}
+
+/**
+ * Palavras "encolhidas" até onde o som delas vai de verdade. O Whisper costuma esticar a
+ * última palavra da frase por cima da pausa inteira (e às vezes a primeira da próxima
+ * para trás): a pausa ficava "dentro" da palavra, protegida, e não era cortada.
+ * Dentro do tempo da palavra, o som é separado em blocos por silêncios de 0,2 s ou mais
+ * (nenhuma palavra tem um silêncio desses no meio); a proteção fica só nos blocos com
+ * voz (a respiração antes da frase seguinte não tem voz), com uma margem — uma palavra
+ * pode virar mais de um pedaço protegido. Puro.
+ */
+export function trimWordsToSound(words, env, venv = null, { margin = 0.05, gap = 0.2 } = {}) {
+  if (!env) return words;
+  const thr = Math.max(env.floor + 12, env.peak - 50);
+  const vthr = venv ? Math.max(venv.floor + 12, venv.peak - 32) : Infinity;
+  const loud = (i) => [i - 1, i, i + 1].filter((k) => k >= 0 && env.db[k] > thr).length >= 2;
+  const gapFrames = Math.round(gap / env.hop);
+  return words.flatMap((w) => {
+    const a = frameAt(env, w.start);
+    const b = frameAt(env, w.end);
+    const blocks = [];
+    let cur = null;
+    let quiet = 0;
+    for (let i = a; i <= b; i++) {
+      if (loud(i)) {
+        if (!cur || quiet >= gapFrames) {
+          cur = { a: i, b: i, voiced: 0 };
+          blocks.push(cur);
+        }
+        cur.b = i;
+        if (venv && venv.db[Math.min(venv.db.length - 1, i)] > vthr) cur.voiced++;
+        quiet = 0;
+      } else {
+        quiet++;
+      }
+    }
+    if (!blocks.length) return [w];
+    const voiced = blocks.filter((k) => k.voiced >= 3);
+    const use = voiced.length ? voiced : blocks;
+    // um pedaço por bloco com voz: o silêncio de 0,2 s+ entre eles (a transcrição juntou
+    // duas falas numa palavra só) também pode ser cortado
+    const pieces = use.map((k) => ({
+      ...w,
+      start: Math.max(w.start, k.a * env.hop - margin),
+      end: Math.min(w.end, (k.b + 1) * env.hop + margin),
+    })).filter((x) => x.end - x.start >= 0.05);
+    return pieces.length ? pieces : [w];
   });
 }
 
@@ -478,13 +607,21 @@ export function dropSlivers(keep, words, { min = 0.15 } = {}) {
  * vale, tosses/ruídos de boca, e palavras "fantasmas" ignoradas. Sem envelope (falha do
  * ffmpeg) ou sem transcrição, cai no que der.
  */
-export async function preciseRemovals(input, { pauses = [], transcript, hasAudio = true, breaths = false, coughs = false, duration = Infinity } = {}) {
+/** Respiro deixado em cada emenda conforme a força do corte. */
+export function edgePads(strength = 'forte') {
+  if (strength === 'suave') return { tail: 0.14, preroll: 0.12 };
+  if (strength === 'equilibrado') return { tail: 0.09, preroll: 0.08 };
+  return { tail: 0.06, preroll: 0.06 };
+}
+
+export async function preciseRemovals(input, { pauses = [], transcript, hasAudio = true, breaths = false, coughs = false, duration = Infinity, strength = 'forte' } = {}) {
   const [env, venv] = hasAudio
     ? await Promise.all([audioEnvelope(input).catch(() => null), audioEnvelope(input, { af: VOICE_BAND }).catch(() => null)])
     : [null, null];
   const all = keptWords(transcript);
   const ghosts = new Set(phantomWords(all, env));
-  const words = all.filter((w) => !ghosts.has(w));
+  // (protege só o trecho com som de cada palavra: o Whisper estica palavras por cima da pausa)
+  const words = trimWordsToSound(all.filter((w) => !ghosts.has(w)), env, venv);
   // Tosses e ruídos: não seguram o corte da pausa (protectVoice) e saem mesmo fora dela.
   const noises = coughs ? await findNoises(input, words, env, venv, { duration }).catch(() => []) : [];
   // As folgas em volta das palavras são as MESMAS com ou sem respirações (com folgas
@@ -492,10 +629,17 @@ export async function preciseRemovals(input, { pauses = [], transcript, hasAudio
   // fim do corte: a inspiração antes da frase sai, o ataque da palavra fica.
   // Ordem: palavras da transcrição → voz no áudio (mesmo sem palavra na transcrição,
   // menos tosse/pigarro) → bordas guiadas pelo volume.
-  const safePauses = fitPausesToAudio(protectVoice(protectWords(pauses, words), venv, { noise: noises }), env, breaths ? { breaths: true, preroll: 0.08 } : {});
+  const safePauses = fitCutEdges(protectVoice(protectWords(pauses, words), venv, { noise: noises }), env, venv, { breaths, ...edgePads(strength) });
   const removed = [...removedWordRanges(transcript, env), ...noises];
   const before = pauses.reduce((a, r) => a + (r.end - r.start), 0);
   const after = safePauses.reduce((a, r) => a + (r.end - r.start), 0);
   log.info(`cortes precisos: ${pauses.length} pausas → ${safePauses.length} (${(before - after).toFixed(2)}s devolvidos às palavras) · ${removed.length - noises.length} trechos de palavras removidas no vale · ${noises.length} tosses/ruídos · ${ghosts.size} palavras fantasmas${env ? '' : ' (sem envelope de áudio)'}`);
-  return { pauses: safePauses, removed, noises, words };
+  // Só ruído de fundo entre a, b (sem fiapo de fala/muleta/tosse)?
+  const quietThr = env ? Math.max(env.floor + 12, env.peak - 50) : 0;
+  const quietBetween = (a, b) => {
+    if (!env) return false;
+    for (let i = frameAt(env, a); i <= frameAt(env, Math.max(a, b - 1e-6)); i++) if (env.db[i] > quietThr) return false;
+    return true;
+  };
+  return { pauses: safePauses, removed, noises, words, quietBetween };
 }

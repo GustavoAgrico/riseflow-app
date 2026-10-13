@@ -211,42 +211,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     })),
   );
 
-  // Desfazer / refazer (texto, cortes e divisões da legenda + cortes do vídeo)
-  const histRef = useRef({ past: [], future: [], prev: null, skip: false });
-  const [, setHistTick] = useState(0);
-  useEffect(() => {
-    const h = histRef.current;
-    const snap = { segments, cuts };
-    if (h.prev && !h.skip) {
-      h.past.push(h.prev);
-      if (h.past.length > 80) h.past.shift();
-      h.future = [];
-    }
-    h.skip = false;
-    h.prev = snap;
-    setHistTick((n) => n + 1);
-  }, [segments, cuts]);
-  function undo() {
-    const h = histRef.current;
-    if (!h.past.length) return;
-    h.future.push(h.prev);
-    const p = h.past.pop();
-    h.skip = true;
-    setSegments(p.segments);
-    setCuts(p.cuts);
-  }
-  function redo() {
-    const h = histRef.current;
-    if (!h.future.length) return;
-    h.past.push(h.prev);
-    const n = h.future.pop();
-    h.skip = true;
-    setSegments(n.segments);
-    setCuts(n.cuts);
-  }
-  const canUndo = histRef.current.past.length > 0;
-  const canRedo = histRef.current.future.length > 0;
-
   const dur = durationSec || segments.reduce((m, s) => Math.max(m, s.end || 0), 0) || 1;
   const width = Math.max(320, Math.round(dur * pps));
 
@@ -277,6 +241,69 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
     return out;
   }, [flatWords, dur]);
+
+  // Desfazer / refazer: TODA edição da timeline (texto, cortes, pausas, legendas, B-roll,
+  // capa e título, cor, áudio, enquadramento, minhas mídias). Mudanças seguidas em menos
+  // de 0,4 s (arrastar um controle, ajustes automáticos logo depois de uma edição) viram
+  // um passo só; o que chega do servidor pela 1ª vez (vazio → carregado) não é um passo.
+  const histState = {
+    segments, cuts, keptPauses, gains, media, brollReview, brollOn, zoomMoments, headline, cover,
+    colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs,
+    aspectSel, quality, reframeMode, framingMode, focus, zoom,
+  };
+  const histSet = {
+    segments: setSegments, cuts: setCuts, keptPauses: setKeptPauses, gains: setGains, media: setMedia,
+    brollReview: setBrollReview, brollOn: setBrollOn, zoomMoments: setZoomMoments, headline: setHeadline,
+    cover: setCover, colorLook: setColorLook, colorAdj: setColorAdj, cap: setCap, fx: setFx, voice: setVoice,
+    audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths,
+    cutCoughs: setCutCoughs, aspectSel: setAspectSel, quality: setQuality, reframeMode: setReframeMode,
+    framingMode: setFramingMode, focus: setFocus, zoom: setZoom,
+  };
+  const histRef = useRef({ past: [], future: [], prev: null, skip: false, at: 0 });
+  const [, setHistTick] = useState(0);
+  useEffect(() => {
+    const h = histRef.current;
+    const snap = histState;
+    const prev = h.prev;
+    h.prev = snap;
+    if (!prev || h.skip) {
+      h.skip = false;
+      setHistTick((n) => n + 1);
+      return;
+    }
+    const changed = Object.keys(snap).filter((k) => snap[k] !== prev[k]);
+    if (!changed.length) return;
+    // vazio → carregado (B-roll, zooms automáticos): não é edição do usuário
+    if (changed.every((k) => prev[k] == null)) return;
+    const now = Date.now();
+    if (now - h.at > 400) {
+      h.past.push(prev);
+      if (h.past.length > 100) h.past.shift();
+    }
+    h.at = now;
+    h.future = [];
+    setHistTick((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, Object.values(histState));
+  function restore(snap) {
+    histRef.current.skip = true;
+    histRef.current.at = 0;
+    for (const [k, set] of Object.entries(histSet)) if (snap[k] !== histState[k]) set(snap[k]);
+  }
+  function undo() {
+    const h = histRef.current;
+    if (!h.past.length) return;
+    h.future.push(h.prev);
+    restore(h.past.pop());
+  }
+  function redo() {
+    const h = histRef.current;
+    if (!h.future.length) return;
+    h.past.push(h.prev);
+    restore(h.future.pop());
+  }
+  const canUndo = histRef.current.past.length > 0;
+  const canRedo = histRef.current.future.length > 0;
 
   const isPauseCut = (p) => !keptPauses.has(pauseKey(p));
   function togglePause(p) {
@@ -991,6 +1018,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {
         manualSilence: true,
         silenceCuts,
+        // pausas que o usuário escolheu manter (os outros silêncios que o servidor achar saem)
+        keptPauses: pauses.filter((p) => !isPauseCut(p)).map((p) => ({ start: +p.start.toFixed(2), end: +p.end.toFixed(2) })),
         // Enquadramento (tela dividida): manual envia foco; auto deixa o servidor
         // detectar o rosto. Zoom vale para os dois.
         personZoom: +Number(zoom).toFixed(2),
@@ -2363,6 +2392,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <div className="rf-tl-bottom" style={{ minWidth: 0 }}>
         {/* Barra de ferramentas da timeline */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 8, flexWrap: 'wrap' }}>
+          <button onClick={undo} disabled={!canUndo} title="Desfazer (Ctrl+Z)" aria-label="Desfazer" style={toolBtn(!canUndo)}>
+            <Icon name="undo" size={14} strokeWidth={2} /> <span className="rf-tl-hide-sm">Desfazer</span>
+          </button>
+          <button onClick={redo} disabled={!canRedo} title="Refazer (Ctrl+Shift+Z)" aria-label="Refazer" style={toolBtn(!canRedo)}>
+            <Icon name="undo" size={14} strokeWidth={2} style={{ transform: 'scaleX(-1)' }} /> <span className="rf-tl-hide-sm">Refazer</span>
+          </button>
+          <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />
           <button onClick={splitAtPlayhead} disabled={!canSplit} title="Dividir no playhead (S)" style={toolBtn(!canSplit)}>
             <Icon name="scissors" size={14} strokeWidth={2} /> <span className="rf-tl-hide-sm">Dividir no playhead</span>
           </button>
