@@ -205,7 +205,7 @@ export default function Plans({ user, checkOnOpen }) {
   const switching = pick?.kind === 'plan' && current && current.id !== pick.id;
   const canPay = selected && cpf.replace(/\D/g, '').length >= 11 && phone.replace(/\D/g, '').length >= 10 && !paying;
   // Botões sempre visíveis; só ficam ativos para clientes quando os pagamentos estão ligados.
-  const canBuy = billing.enabled && !billing.admin;
+  const canBuy = billing.enabled && !billing.unlimited;
   const pix = billing.payment === 'pix-links';
   // Pix: só libera pagar/avisar com nome, e-mail e WhatsApp válidos (e e-mail confirmado, quando exigido).
   const contactFresh = contact && contact.key === contactKey && !checkingContact;
@@ -283,9 +283,11 @@ export default function Plans({ user, checkOnOpen }) {
         )}
       </div>
 
-      {(billing.admin || !billing.enabled) && (
+      {(billing.unlimited || !billing.enabled) && (
         <div style={glass({ padding: '14px 18px', marginBottom: 18, borderColor: `${C.orange}55`, fontSize: 13.5, color: C.muted, lineHeight: 1.55 })}>
-          {billing.admin ? (
+          {billing.unlimited && !billing.admin ? (
+            <><b style={{ color: C.text }}>Sua conta tem uso ilimitado.</b> Todos os recursos estão liberados e nenhum vídeo gasta créditos — não precisa assinar um plano.</>
+          ) : billing.admin ? (
             <>
               <b style={{ color: C.text }}>Você é admin (uso ilimitado).</b> É assim que seus clientes veem esta página.{' '}
               {billing.enabled
@@ -338,10 +340,10 @@ export default function Plans({ user, checkOnOpen }) {
               <button
                 onClick={() => canBuy && setPick({ kind: 'plan', id: p.id })}
                 disabled={!canBuy}
-                title={canBuy ? undefined : billing.admin ? 'Conta admin: uso ilimitado' : 'Assinaturas em breve'}
+                title={canBuy ? undefined : billing.unlimited ? 'Sua conta tem uso ilimitado' : 'Assinaturas em breve'}
                 style={{ marginTop: 'auto', width: '100%', minHeight: 46, borderRadius: 11, fontSize: 14, fontWeight: 700, cursor: canBuy ? 'pointer' : 'not-allowed', opacity: canBuy ? 1 : 0.55, fontFamily: 'inherit', border: p.popular || on ? 'none' : `1px solid ${C.borderStrong}`, background: p.popular || on ? GRAD : 'transparent', color: C.text }}
               >
-                {!billing.enabled && !billing.admin ? 'Em breve' : billing.admin ? `Assinar ${p.name}` : cta}
+                {!billing.enabled && !billing.unlimited ? 'Em breve' : billing.unlimited ? `Assinar ${p.name}` : cta}
               </button>
             </div>
           );

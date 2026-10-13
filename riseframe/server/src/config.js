@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v110';
+export const APP_VERSION = 'v111';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -208,6 +208,12 @@ export const config = {
       sessionUserId: process.env.WHATSAPP_SESSION_USER_ID || '',
     },
     adminEmails: (process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+    // Uso ilimitado SEM ser admin (sócio, parceiro): usa o app sem gastar créditos, mas
+    // não vê o painel de pagamentos nem as configurações do servidor.
+    unlimitedEmails: (process.env.UNLIMITED_EMAILS || '')
       .split(',')
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
