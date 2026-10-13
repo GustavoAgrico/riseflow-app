@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Transcrição local com faster-whisper (word-level timestamps).
 
-Uso: python3 whisper_local.py <audio.wav> [model]
+Uso: python3 whisper_local.py <audio.wav> [model] [prompt]
 Saída: JSON em stdout -> {"language","text","words":[{"start","end","word"}]}
 
 Requer: pip install faster-whisper
@@ -17,6 +17,8 @@ def main() -> int:
         return 2
     audio = sys.argv[1]
     model_name = sys.argv[2] if len(sys.argv) > 2 else "base"
+    # exemplo de fala natural: o Whisper mantém muletas e repetições (para poder cortá-las)
+    prompt = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None
 
     try:
         from faster_whisper import WhisperModel
@@ -28,7 +30,7 @@ def main() -> int:
 
     # CPU + int8 mantém o uso de memória baixo (sem GPU neste ambiente).
     model = WhisperModel(model_name, device="cpu", compute_type="int8")
-    segments, info = model.transcribe(audio, word_timestamps=True)
+    segments, info = model.transcribe(audio, word_timestamps=True, initial_prompt=prompt)
 
     words = []
     text_parts = []

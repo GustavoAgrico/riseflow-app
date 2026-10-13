@@ -1,6 +1,7 @@
 import { config } from '../../config.js';
 import { makeLogger } from '../../logger.js';
 import { transcribeMock } from './mock.js';
+import { markNoiseTags } from '../cleanup.js';
 import {
   transcribeOpenAI,
   transcribeDeepgram,
@@ -19,6 +20,11 @@ const log = makeLogger('transcribe');
  * @returns {Promise<{provider,language,text,segments}>}
  */
 export async function transcribe(input, work, meta, onProgress) {
+  // "(tosse)", "[pigarro]" viram palavras removidas; "[Música]", "(risos)" saem do texto.
+  return markNoiseTags(await transcribeAny(input, work, meta, onProgress));
+}
+
+async function transcribeAny(input, work, meta, onProgress) {
   const provider = config.transcribe.provider;
   const cfg = config.transcribe;
   // Vídeo sem faixa de áudio (gravação de tela muda, por exemplo): não há fala para

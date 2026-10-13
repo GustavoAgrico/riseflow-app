@@ -151,8 +151,11 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
         <Row label="Velocidade do vídeo" hint="Acelera (ou desacelera) o vídeo final inteiro. A voz não muda de tom; legendas e sons acompanham.">
           <Segmented value={String(options.speed || 1)} options={[{ id: '1', label: '1×' }, { id: '1.1', label: '1,1×' }, { id: '1.2', label: '1,2×' }, { id: '1.25', label: '1,25×' }, { id: '1.5', label: '1,5×' }]} onChange={(v) => set({ speed: Number(v) })} />
         </Row>
-        <Row label="Corrigir a fala automaticamente" hint="Remove muletas (é..., hã, hmm), gagueiras e palavras repetidas. Em corte Forte fica mais agressiva. A IA também corta falsos começos e autocorreções.">
+        <Row label="Corrigir a fala automaticamente" hint="Remove muletas (é..., hã, hmm), gagueiras, palavras repetidas, frases que você começou e refez (fica só a versão final) e erros corrigidos (“50, digo, 60”). Em corte Forte fica mais agressiva. No editor, o que vai sair aparece riscado — toque para devolver.">
           <Toggle on={options.autoClean !== false} onChange={(v) => set({ autoClean: v })} />
+        </Row>
+        <Row label="Cortar tosse e pigarro" hint="Tosse, pigarro, estalos de boca e batidas no microfone entre as falas saem do vídeo. Palavras nunca são cortadas: qualquer som com voz fica.">
+          <Toggle on={options.cutCoughs !== false} onChange={(v) => set({ cutCoughs: v })} />
         </Row>
         <VoicePanel catalog={catalog} value={options} onChange={(v) => set(v)} />
         <Row label="Efeitos sonoros" hint="Whoosh nas entradas de B-roll e nos punch-ins do zoom; na legenda, som de tecla a cada palavra (estilo Premium) e nas palavras com ênfase">
