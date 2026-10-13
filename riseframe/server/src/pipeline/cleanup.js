@@ -9,10 +9,13 @@
  */
 
 // Muletas / sons de hesitação (pt-BR + algumas en), já normalizados (sem acento).
+// ("aham"/"uhum" ficam: são "sim" e têm sentido)
 const FILLERS = new Set([
   'ha', 'han', 'ahn', 'ahnn', 'hum', 'humm', 'hmm', 'hm', 'ahm', 'ahmm',
-  'uhm', 'uh', 'uhh', 'er', 'err', 'ehm', 'mmm', 'ahan', 'anham', 'uhum', 'aham',
+  'uhm', 'uh', 'uhh', 'er', 'err', 'ehm', 'mmm',
 ]);
+// Palavras de verdade que, sem acento, ficam iguais a uma muleta ("há" → "ha").
+const REAL_WORDS = new Set(['há', 'hà', 'àh']);
 
 // Muletas extras removidas só no modo agressivo ("forte"): sons de hesitação
 // puros (não conectivos com sentido). Conectivos como "tipo"/"né"/"então" só são
@@ -39,16 +42,25 @@ function isElongated(n) {
 export function isFiller(word, aggressive = false) {
   const n = norm(word);
   if (!n) return false;
+  const raw = String(word ?? '').toLowerCase().replace(/[^\p{L}]/gu, '');
+  if (REAL_WORDS.has(raw)) return false; // "há dois anos" não é o "hã" de hesitação
   if (FILLERS.has(n) || isElongated(n)) return true;
   return aggressive && FILLERS_AGGRESSIVE.has(n);
 }
 
-// Palavras curtas comuns (pt/en) que NÃO devem ser tratadas como fragmento de
-// gagueira mesmo sendo prefixo da palavra seguinte (ex.: "com computador").
+// Palavras comuns (pt/en) que NUNCA são tratadas como fragmento de gagueira, mesmo
+// sendo o começo da palavra seguinte: "se sentir", "no nosso", "de dentro", "ou outro",
+// "do dobro", "com computador", "para parar"...
 const PROTECTED = new Set([
-  'com', 'como', 'para', 'por', 'que', 'uma', 'um', 'dos', 'das', 'nos', 'nas',
-  'meu', 'minha', 'seu', 'sua', 'foi', 'vou', 'vai', 'tem', 'ser', 'ver', 'dar',
-  'mais', 'mas', 'sem', 'sob', 'sao', 'nao', 'sim', 'the', 'and', 'for', 'you', 'are',
+  'a', 'o', 'e', 'as', 'os', 'ao', 'aos', 'de', 'da', 'do', 'das', 'dos', 'no', 'na', 'nos', 'nas',
+  'em', 'um', 'uma', 'uns', 'umas', 'se', 'me', 'te', 'lhe', 'eu', 'tu', 'ele', 'ela', 'eles', 'elas',
+  'nos', 'vos', 'ou', 'nem', 'mas', 'mais', 'que', 'com', 'sem', 'sob', 'por', 'pra', 'pro', 'para',
+  'como', 'quem', 'qual', 'onde', 'quando', 'isso', 'isto', 'esse', 'essa', 'este', 'esta', 'aqui', 'ali',
+  'la', 'ja', 'so', 'ate', 'bem', 'mal', 'sim', 'nao', 'tao', 'meu', 'minha', 'seu', 'sua', 'nosso', 'nossa',
+  'foi', 'vou', 'vai', 'tem', 'ter', 'ser', 'ver', 'dar', 'faz', 'fez', 'diz', 'ir', 'sou', 'sao', 'era',
+  'pode', 'quer', 'cada', 'todo', 'toda', 'tudo', 'nada', 'muito', 'pouco', 'dia', 'ano', 'vez', 'bom', 'boa',
+  'mao', 'fim', 'cor', 'mar', 'sol', 'paz', 'mes', 'casa', 'parte', 'tempo', 'forma', 'hoje', 'agora',
+  'the', 'and', 'for', 'you', 'are', 'in', 'on', 'to', 'of', 'at', 'is', 'it', 'be', 'we', 'he', 'she',
 ]);
 
 /**
@@ -56,10 +68,15 @@ const PROTECTED = new Set([
  * prefixo dela (ex.: "trans" → "transformar", "com-" → "comprar"). Guardas para
  * não cortar palavras curtas legítimas (PROTECTED) nem casos ambíguos.
  */
-function isStutterFragment(a, b, aggressive = false) {
-  const maxLen = aggressive ? 7 : 6;
-  if (a.length < 2 || a.length > maxLen || PROTECTED.has(a)) return false; // fragmento curto
+function isStutterFragment(a, b, aggressive = false, { cutMark = false, gap = 0 } = {}) {
   if (a === b || !b.startsWith(a)) return false;
+  // a transcrição marcou a palavra cortada ("super-", "trans…"): é tentativa abandonada
+  if (cutMark) return a.length >= 2 && b.length > a.length;
+  const maxLen = aggressive ? 7 : 6;
+  if (a.length < 3 || a.length > maxLen || PROTECTED.has(a)) return false;
+  // sem marca: só se a pessoa parou um instante antes de refazer a palavra (fala
+  // corrida, como "pra preparar", não é gagueira)
+  if (!(gap >= 0.1)) return false;
   return b.length >= a.length + (aggressive ? 1 : 2); // a próxima é claramente mais longa
 }
 
@@ -107,7 +124,7 @@ export function markFillers(transcript, opts = {}) {
     const list = kept();
     for (let i = 0; i < list.length; i++) {
       const raw = String(list[i].w.word ?? '').trim();
-      if (!/^(é|e|eh|ah|ã|hã|o|ó)(\.\.\.|…)$/i.test(raw)) continue;
+      if (!/^(é|eh|ah|ã|hã)(\.\.\.|…)$/i.test(raw)) continue;
       const prev = list[i - 1];
       const afterPause = !prev || ENDS_CLAUSE.test(String(prev.w.word)) || Number(list[i].w.start) - Number(prev.w.end) >= 0.3;
       if (afterPause) {
@@ -146,7 +163,9 @@ export function markFillers(transcript, opts = {}) {
     list = kept();
     for (let i = 0; i < list.length - 1; i++) {
       if (list[i].w.removed) continue;
-      if (isStutterFragment(list[i].n, list[i + 1].n, aggressive)) {
+      const raw = String(list[i].w.word ?? '').trim();
+      const gap = Number(list[i + 1].w.start) - Number(list[i].w.end);
+      if (isStutterFragment(list[i].n, list[i + 1].n, aggressive, { cutMark: /(-|…|\.\.\.)$/.test(raw), gap })) {
         list[i].w.removed = true;
         removedCount++;
       }
@@ -165,6 +184,8 @@ export function markFillers(transcript, opts = {}) {
         }
         // Repetição de UMA palavra que é ênfase intencional → mantém as duas.
         if (equal && n === 1 && EMPHATIC.has(list[i].n)) equal = false;
+        // Fim de frase no meio ("...é o dinheiro. Dinheiro é poder.") é estilo, não engasgo.
+        if (equal && /[.!?;:]["')\]]*$/.test(String(list[i + n - 1].w.word ?? '').trim())) equal = false;
         if (equal) {
           for (let k = 0; k < n; k++) { list[i + k].w.removed = true; removedCount++; }
           i += n; // pula o bloco removido; a cópia mantida pode repetir de novo adiante
