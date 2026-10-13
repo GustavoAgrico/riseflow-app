@@ -4,7 +4,7 @@ import { probeSummary, runFfmpeg, sdrVf, x264Fast } from './ffmpeg.js';
 import { transcribe } from './transcribe/index.js';
 import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
-import { preciseRemovals, wordGapRanges } from './cutRefine.js';
+import { preciseRemovals, wordGapRanges, dropSlivers } from './cutRefine.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, unmapTime } from './timeline.js';
 import { insertBroll } from './broll.js';
 import { applyManualFrame } from './frame.js';
@@ -14,7 +14,7 @@ import { enhanceVoice, voiceActive, voiceSettings } from './voice.js';
 import { applyAudioGain, gainAf } from './gain.js';
 import { markFillers } from './cleanup.js';
 import { classifyNarrative } from './narrative.js';
-import { cleanupWithClaude } from './cleanupLLM.js';
+import { cleanupWithLLM } from './cleanupLLM.js';
 import { burnCaptions, captionSfxEvents } from './captions.js';
 import { applySoundEffects } from './sfx.js';
 import { applyWatermark } from './watermark.js';
@@ -216,6 +216,13 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
   // Modo transcribe: devolve a transcrição e para (o upload é preservado para o render).
   if (mode === 'transcribe') {
+    // O editor já abre com as muletas, frases refeitas e erros corrigidos riscados
+    // (o usuário vê o que vai sair e pode devolver qualquer palavra com um toque).
+    if (options.autoClean) {
+      const c = await cleanSpeech(transcript, options);
+      transcript = c.transcript;
+      report.autoClean = c.report;
+    }
     report.transcript = transcript;
     report.sourceId = job.id;
     emit({ progress: 100, stage: 'done', stageLabel: 'Transcrição pronta' });
@@ -239,32 +246,14 @@ export async function runPipeline(job, onUpdate = () => {}) {
   if (has('cut')) {
     const st = enter('cut');
 
-    // Limpeza automática da fala: marca muletas/hesitações, gagueiras e — com a
-    // chave da Anthropic do usuário — também falsos começos e autocorreções (IA).
-    if (options.autoClean) {
-      // 1) Heurística SEMPRE (garante o óbvio: muletas, repetições, gagueiras).
-      //    Em "forte", fica mais agressiva (pega mais muletas e falsos começos).
-      const h = markFillers(transcript, { aggressive: options.cutStrength === 'forte' });
-      let cleaned = h;
-      let method = 'heurística';
-      let total = h.removedCount;
-      // 2) IA POR CIMA (com a chave do usuário OU do servidor): pega falsos
-      //    começos e autocorreções sutis, preservando o que a heurística marcou.
-      const aiKey = options.anthropicKey || config.analyze.anthropicKey;
-      if (aiKey) {
-        try {
-          const ai = await cleanupWithClaude(h, { anthropicKey: aiKey, model: config.analyze.model, anthropicWorkspaceId: config.analyze.anthropicWorkspaceId });
-          cleaned = ai;
-          method = 'heurística + IA';
-          total = h.removedCount + ai.removedCount; // ai conta só as NOVAS (preserva as da heurística)
-        } catch (err) {
-          log.warn(`limpeza por IA falhou (${err.message}); mantendo heurística`);
-        }
-      }
-      transcript = cleaned;
-      editorTranscript = cleaned; // timeline original com as muletas/cortes já marcados
-      report.autoClean = { removed: total, method };
-      if (total) log.info(`limpeza automática (${method}): ${total} palavras marcadas`);
+    // Limpeza automática da fala: muletas, gagueiras, frases refeitas e erros corrigidos.
+    // No render (timeline) a transcrição já vem limpa e revisada pelo usuário — rodar de
+    // novo cortaria as palavras que ele devolveu.
+    if (options.autoClean && mode !== 'render') {
+      const c = await cleanSpeech(transcript, options);
+      transcript = c.transcript;
+      editorTranscript = c.transcript; // timeline original com as muletas/cortes já marcados
+      report.autoClean = c.report;
     }
 
     const pauses = [];
@@ -282,7 +271,16 @@ export async function runPipeline(job, onUpdate = () => {}) {
     // Precisão: pausas nunca invadem palavras (transcrição + volume real do áudio) e as
     // palavras removidas são cortadas no vale de volume entre as vizinhas.
     st.onProgress(0.04); // análise do áudio pronta: a barra anda antes do corte em si
-    const precise = await preciseRemovals(input, { pauses, transcript, hasAudio: meta.hasAudio, breaths: options.cutBreaths !== false });
+    const precise = await preciseRemovals(input, {
+      pauses,
+      transcript,
+      hasAudio: meta.hasAudio,
+      breaths: options.cutBreaths !== false,
+      // tosse, pigarro e estalos de boca nos vãos entre as palavras
+      coughs: options.cutCoughs !== false,
+      duration: meta.duration,
+    });
+    if (precise.noises?.length) report.noisesRemoved = precise.noises.length;
     st.onProgress(0.08);
     const removals = [...precise.pauses];
     // Trechos cortados à mão na faixa de vídeo: valem sempre, com ou sem corte de silêncio.
@@ -294,7 +292,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
     // Ajusta ao grid de frames e usa o MESMO keep no corte do vídeo e no remap das
     // legendas — evita o drift progressivo (legenda adiantando/atrasando após cortes).
-    const keep = snapKeep(subtractRanges(meta.duration, removals), meta.fps);
+    // (sem os pedacinhos soltos entre dois cortes, que soavam como clique)
+    const keep = snapKeep(dropSlivers(subtractRanges(meta.duration, removals), precise.words), meta.fps);
     if (!keep.length) throw new Error('todos os trechos foram removidos — nada para renderizar');
 
     const removedSeconds = Math.max(0, meta.duration - keptDuration(keep));
@@ -317,7 +316,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     } else {
       // Nada relevante para recortar. Ainda assim, se a limpeza automática marcou
       // palavras, tira-as das legendas (sem remapear tempos — o vídeo não foi cortado).
-      if (options.autoClean) transcript = dropRemovedWords(transcript);
+      transcript = dropRemovedWords(transcript);
       report.cut = { removedSeconds: 0, kept: keep.length };
     }
     st.record(report.cut);
@@ -542,4 +541,37 @@ export async function runPipeline(job, onUpdate = () => {}) {
   emit({ progress: 100, stage: 'done', stageLabel: 'Concluído' });
   log.ok(`pipeline (${mode}) concluído para job ${job.id}`);
   return report;
+}
+
+/**
+ * Limpeza da fala: 1) heurística SEMPRE (muletas, repetições, gagueiras, frases refeitas;
+ * em "forte" fica mais agressiva); 2) IA por cima (Claude com a chave do usuário ou do
+ * servidor; sem ela, o Llama da Groq): frases refeitas, erros corrigidos e falsos começos
+ * sutis, preservando o que a heurística marcou. Falha da IA → fica a heurística.
+ */
+export async function cleanSpeech(transcript, options = {}) {
+  const h = markFillers(transcript, { aggressive: options.cutStrength === 'forte' });
+  let cleaned = h;
+  let method = 'heurística';
+  let total = h.removedCount;
+  const aiKey = options.anthropicKey || config.analyze.anthropicKey;
+  if (options.cleanAI !== false && (aiKey || config.analyze.groqKey)) {
+    try {
+      const ai = await cleanupWithLLM(h, {
+        anthropicKey: aiKey,
+        model: config.analyze.model,
+        anthropicWorkspaceId: config.analyze.anthropicWorkspaceId,
+        groqKey: config.analyze.groqKey,
+        groqModel: config.analyze.groqModel,
+      });
+      cleaned = ai;
+      method = `heurística + IA (${ai.llm})`;
+      total = h.removedCount + ai.removedCount; // a IA conta só as NOVAS
+    } catch (err) {
+      log.warn(`limpeza por IA falhou (${err.message}); mantendo heurística`);
+    }
+  }
+  if (total) log.info(`limpeza automática (${method}): ${total} palavras marcadas`);
+  const { removedCount, llm, ...rest } = cleaned;
+  return { transcript: rest, report: { removed: total, method } };
 }

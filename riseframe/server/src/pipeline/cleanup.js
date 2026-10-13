@@ -101,6 +101,22 @@ export function markFillers(transcript, opts = {}) {
     return out;
   };
 
+  // Hesitação "é..." / "ah..." (com reticências) no começo de uma frase ou depois de
+  // uma pausa: no corte forte é muleta ("É... então eu fui"), não o verbo.
+  if (removeFillers && aggressive) {
+    const list = kept();
+    for (let i = 0; i < list.length; i++) {
+      const raw = String(list[i].w.word ?? '').trim();
+      if (!/^(é|e|eh|ah|ã|hã|o|ó)(\.\.\.|…)$/i.test(raw)) continue;
+      const prev = list[i - 1];
+      const afterPause = !prev || ENDS_CLAUSE.test(String(prev.w.word)) || Number(list[i].w.start) - Number(prev.w.end) >= 0.3;
+      if (afterPause) {
+        list[i].w.removed = true;
+        removedCount++;
+      }
+    }
+  }
+
   if (removeRepeats) {
     // 0) Repetição com muleta no meio: "isso né isso" / "quero tipo quero" →
     // remove o marcador e a 1ª cópia, mantém a 2ª. Marcadores só são removidos
@@ -157,7 +173,141 @@ export function markFillers(transcript, opts = {}) {
         }
       }
     }
+
+    // 3) Frase REFEITA (retomada): a pessoa começa, erra ou trava, e fala de novo
+    // ("hoje eu vou mostrar três... hoje eu vou te mostrar as três dicas") → sai a
+    // tentativa abandonada inteira, fica a versão final.
+    removedCount += markRetakes(kept());
+    // 4) Correção explícita: "custa 50, digo, 60 reais" → sai "50, digo,".
+    if (aggressive) removedCount += markCorrections(kept());
   }
 
   return { ...transcript, segments, removedCount };
+}
+
+/** Pontuação de fim de frase/oração na palavra crua ("vendas." "assim,"). */
+const ENDS_CLAUSE = /[.,!?;:…]["')\]]*$/;
+
+/**
+ * Frases refeitas. Para cada palavra i, procura adiante (até 20 palavras / 12 s) um
+ * recomeço j em que as palavras voltam a se repetir (ao menos 2 iguais seguidas). O
+ * trecho [i, j) é uma tentativa abandonada se TODA palavra dele reaparece no recomeço
+ * (ou é um pedaço de palavra do recomeço — "super-" → "supermercado" — ou uma muleta).
+ * Uma palavra nova no trecho (ex.: "eu quero que você cresça, eu quero que você lucre")
+ * indica paralelismo de propósito → fica. Marca e devolve quantas palavras saíram.
+ */
+export function markRetakes(list) {
+  let removed = 0;
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].w.removed) continue;
+    for (let j = i + 2; j < list.length - 1 && j - i <= 20; j++) {
+      if (Number(list[j].w.start) - Number(list[i].w.start) > 12) break;
+      if (list[j].n !== list[i].n || list[j + 1].n !== list[i + 1].n) continue;
+      const span = j - i;
+      const redo = new Set();
+      for (let k = j; k < Math.min(list.length, j + span + 4); k++) redo.add(list[k].n);
+      const covered = (x) => {
+        if (redo.has(x.n) || isFiller(x.w.word, true) || /-$/.test(String(x.w.word))) return true;
+        if (x.n.length < 2) return false;
+        for (const r of redo) if (r.length > x.n.length && r.startsWith(x.n)) return true;
+        return false;
+      };
+      let ok = true;
+      for (let k = i; k < j && ok; k++) ok = covered(list[k]);
+      if (!ok) continue;
+      for (let k = i; k < j; k++) {
+        if (!list[k].w.removed) {
+          list[k].w.removed = true;
+          removed++;
+        }
+      }
+      i = j - 1;
+      break;
+    }
+  }
+  return removed;
+}
+
+// "digo", "ou melhor", "perdão", "desculpa" logo depois de um erro, seguidos da versão certa.
+const CORRECTION_MARKERS = [['digo'], ['ou', 'melhor'], ['perdao'], ['desculpa'], ['desculpe']];
+
+/**
+ * Correção explícita (só no corte forte): "no dia 15, digo, no dia 16" → sai
+ * "no dia 15, digo,". O trecho errado começa na palavra (até 5 antes do marcador) que
+ * se repete logo depois dele; sem essa repetição não mexe (o marcador pode ter outro
+ * sentido: "desculpa a demora"). Devolve quantas palavras saíram.
+ */
+export function markCorrections(list) {
+  let removed = 0;
+  for (let m = 1; m < list.length; m++) {
+    const marker = CORRECTION_MARKERS.find((mk) => mk.every((t, k) => list[m + k]?.n === t));
+    if (!marker) continue;
+    const after = m + marker.length;
+    if (after >= list.length) continue;
+    // o marcador vem logo depois de uma vírgula/pausa (é uma interrupção, não parte da frase)
+    const prev = list[m - 1];
+    const pause = Number(list[m].w.start) - Number(prev.w.end);
+    if (!ENDS_CLAUSE.test(String(prev.w.word)) && !(pause >= 0.2)) continue;
+    let p = -1;
+    for (let k = m - 1; k >= Math.max(0, m - 5); k--) {
+      if (list[k].n === list[after].n) { p = k; break; }
+    }
+    // número trocado por número: "50, digo, 60"
+    if (p < 0 && /^\d+$/.test(prev.n) && /^\d+$/.test(list[after].n)) p = m - 1;
+    if (p < 0) continue;
+    for (let k = p; k < after; k++) {
+      if (!list[k].w.removed) {
+        list[k].w.removed = true;
+        removed++;
+      }
+    }
+    m = after;
+  }
+  return removed;
+}
+
+// ── Marcações de som que a transcrição escreve no lugar da fala ──
+const TAG_OPEN = /^[[(*♪]/;
+const TAG_CLOSE = /[\])*♪][.,!?]*$/;
+// tosse, pigarro, espirro, fungada, estalo, respiração, suspiro (pt/en)
+const NOISE_WORDS = /toss|cough|pigarr|throat|garganta|espirr|sneez|fung|sniff|estal|click|respir|breath|suspir|sigh|inspir/i;
+
+/**
+ * Marcações como "(tosse)", "[pigarro]", "*limpa a garganta*", "[Música]", "(risos)":
+ * não são fala. As de tosse/pigarro/estalo viram palavras REMOVIDAS (o som sai do vídeo,
+ * e o editor mostra riscado — dá para voltar); as outras (música, risos, aplausos) só
+ * saem do texto, sem cortar nada. Devolve uma NOVA transcrição.
+ */
+export function markNoiseTags(transcript) {
+  if (!transcript?.segments?.length) return transcript;
+  let changed = false;
+  const segments = transcript.segments.map((seg) => {
+    if (!seg.words?.length) return seg;
+    const words = [];
+    for (let i = 0; i < seg.words.length; i++) {
+      const w = seg.words[i];
+      const raw = String(w.word ?? '').trim();
+      if (!TAG_OPEN.test(raw)) {
+        words.push(w);
+        continue;
+      }
+      // a marcação pode ter várias palavras: "[limpa" "a" "garganta]"
+      let j = i;
+      while (j < seg.words.length && j - i < 5 && !TAG_CLOSE.test(String(seg.words[j].word ?? '').trim())) j++;
+      if (j >= seg.words.length || j - i >= 5) {
+        words.push(w);
+        continue;
+      }
+      const group = seg.words.slice(i, j + 1);
+      const text = group.map((g) => String(g.word ?? '').trim()).join(' ');
+      changed = true;
+      if (NOISE_WORDS.test(text)) {
+        words.push({ start: group[0].start, end: group[group.length - 1].end, word: text, removed: true, noise: true });
+      }
+      i = j;
+    }
+    if (words.length === seg.words.length) return seg;
+    return { ...seg, words, text: words.filter((w) => !w.noise).map((w) => w.word).join(' ') };
+  }).filter((seg) => !seg.words || seg.words.length);
+  return changed ? { ...transcript, segments } : transcript;
 }

@@ -16,6 +16,7 @@ import { formatBytes, freeDiskBytes } from '../storage.js';
 import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
 import { remuxByKeepSegments, remapTranscript, snapKeep } from '../pipeline/timeline.js';
+import { markFillers } from '../pipeline/cleanup.js';
 import { sanitizeHeadline, sanitizeCover, makeCover } from '../pipeline/headline.js';
 import { outputTarget } from '../pipeline/render.js';
 import { brollCandidates, resolveSource, googleConfig, googleReady } from '../pipeline/broll.js';
@@ -501,6 +502,8 @@ export function parseOptions(raw) {
     audioMute: o.audioMute === true,
     // Respirações entre as frases saem junto com as pausas (padrão: ligado).
     cutBreaths: o.cutBreaths !== false,
+    // Tosse, pigarro e estalos de boca nos vãos entre as palavras saem (padrão: ligado).
+    cutCoughs: o.cutCoughs !== false,
     // Velocidade do vídeo final (0,5× a 2×), aplicada no render final — fala sem mudar o tom.
     speed: speedOf(o.speed),
     // Qualidade de exportação (Premium): 720p, 1080p ou 4K (lado menor do quadro).
@@ -820,7 +823,10 @@ jobsRouter.post('/jobs/:id/clips/:index/edit', requireAuth, requireVerified, asy
     const cut = await remuxByKeepSegments(job.inputPath, dir, meta, keep, () => {}, 'clipe');
     const dest = path.join(config.paths.uploads, `${nanoid(12)}.mp4`);
     await fs.promises.copyFile(cut.output, dest);
-    const local = remapTranscript(tr, keep);
+    // As muletas, gagueiras e frases refeitas do clipe já abrem riscadas (o render da
+    // timeline não limpa de novo, para respeitar o que o usuário devolver).
+    const raw = remapTranscript(tr, keep);
+    const local = job.options?.autoClean ? markFillers(raw, { aggressive: job.options.cutStrength === 'forte' }) : raw;
     const cmeta = await probeSummary(dest);
     const base = path.parse(job.filename || 'video').name;
     const created = queue.addDone({

@@ -26,7 +26,7 @@ function aiTasks({ options, mode, caps }) {
   const notClips = isClips ? 'não vale para cortes' : null;
   return [
     { id: 'cut', icon: 'scissors', title: 'Remover pausas e silêncios', desc: 'Deixa o vídeo mais dinâmico, sem tempo parado', on: options.cutSilence !== false, set: (v) => ({ cutSilence: v }), off: notClips },
-    { id: 'clean', icon: 'mic', title: 'Limpar a fala', desc: 'Tira “é…”, gaguejos e palavras repetidas', on: options.autoClean !== false, set: (v) => ({ autoClean: v }), off: notClips },
+    { id: 'clean', icon: 'mic', title: 'Limpar a fala', desc: 'Tira “é…”, gaguejos, frases refeitas e tosse', on: options.autoClean !== false, set: (v) => ({ autoClean: v, cutCoughs: v }), off: notClips },
     { id: 'captions', icon: 'captions', title: 'Gerar legendas', desc: 'Legendas automáticas e dinâmicas', on: options.captions !== false, set: (v) => ({ captions: v }) },
     {
       id: 'highlight', icon: 'sparkles', title: 'Destacar palavras importantes', desc: 'Realça o que realmente importa (estilo Premium)',

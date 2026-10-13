@@ -106,7 +106,10 @@ export default function Result({ job, onReset, onEditTimeline }) {
         <Stat label="Duração original" value={fmtDuration(inDur)} />
         {cutSec != null && cutSec > 0 && <Stat label="Trechos cortados" value={`−${fmtDuration(cutSec)}`} />}
         {r.autoClean?.removed > 0 && (
-          <Stat label="Fala corrigida" value={`${r.autoClean.removed} ${r.autoClean.removed === 1 ? 'palavra' : 'palavras'}${r.autoClean.method === 'IA' ? ' · IA' : ''}`} />
+          <Stat label="Fala corrigida" value={`${r.autoClean.removed} ${r.autoClean.removed === 1 ? 'palavra' : 'palavras'}${/IA/.test(r.autoClean.method || '') ? ' · IA' : ''}`} />
+        )}
+        {r.noisesRemoved > 0 && (
+          <Stat label="Tosse e ruídos" value={`${r.noisesRemoved} ${r.noisesRemoved === 1 ? 'cortado' : 'cortados'}`} />
         )}
         {r.voice?.applied && <Stat label="Voz" value="limpa · volume normalizado" />}
         {r.captions && <Stat label="Legendas" value={`${r.captions.segments} blocos`} />}

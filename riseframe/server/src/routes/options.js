@@ -93,6 +93,7 @@ optionsRouter.get('/options', (_req, res) => {
       cutSilence: true,
       cutStrength: 'forte', // enxuga mais por padrão (pausas curtas + muletas)
       cutBreaths: true, // respirações entre as frases saem junto com as pausas
+      cutCoughs: true, // tosse, pigarro e estalos de boca saem
       speed: 1, // velocidade do vídeo final
       quality: 'original', // qualidade de exportação (720p/1080p/4K: Premium)
       voiceEnhance: false,

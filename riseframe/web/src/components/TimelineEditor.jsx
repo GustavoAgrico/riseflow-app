@@ -126,6 +126,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Velocidade do vídeo final (a prévia toca na mesma velocidade) e corte de respirações.
   const [speed, setSpeed] = useState(() => (SPEEDS.includes(Number(options?.speed)) ? Number(options.speed) : 1));
   const [cutBreaths, setCutBreaths] = useState(options?.cutBreaths !== false);
+  const [cutCoughs, setCutCoughs] = useState(options?.cutCoughs !== false);
   useEffect(() => { const v = videoRef.current; if (v) v.playbackRate = speed; }, [speed, isMobile]);
   const [audioVolume, setAudioVolume] = useState(Number(options?.audioVolume ?? 1));
   const [gains, setGains] = useState([]);
@@ -1017,6 +1018,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // Volume da fala (tempo original — este estágio roda antes dos cortes).
         audioMute,
         cutBreaths,
+        cutCoughs,
         speed,
         audioVolume: +Number(audioVolume).toFixed(2),
         audioGains: gains.map((g) => ({ start: +g.start.toFixed(2), end: +g.end.toFixed(2), volume: +Number(g.volume).toFixed(2) })),
@@ -1550,6 +1552,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <button onClick={() => setCutBreaths(false)} style={{ ...miniBtn(!cutBreaths, false), minHeight: 40, justifyContent: 'center' }}>Manter</button>
                 </div>
               </div>
+              <div style={{ ...mRow, display: 'block' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><Icon name="mic" size={19} strokeWidth={1.9} /> <span style={{ flex: 1 }}>Tosse e pigarro</span></div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <button onClick={() => setCutCoughs(true)} style={{ ...miniBtn(cutCoughs, false), minHeight: 40, justifyContent: 'center' }}>Remover</button>
+                  <button onClick={() => setCutCoughs(false)} style={{ ...miniBtn(!cutCoughs, false), minHeight: 40, justifyContent: 'center' }}>Manter</button>
+                </div>
+              </div>
               <div style={{ fontSize: 12, color: C.faint, lineHeight: 1.5 }}>A prévia já toca nessa velocidade. A voz acelera sem mudar o tom; legendas e sons acompanham.</div>
             </div>
           ) : sheet === 'capAuto' && isMobile ? (
@@ -1862,11 +1871,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {tab === 'audio' && (
             <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
               <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}`, display: 'grid', gap: 8 }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>Silêncios e respirações</div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Silêncios, respirações e tosse</div>
                 <CapRow label="Respirações entre as frases">
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button onClick={() => setCutBreaths(true)} style={{ ...miniBtn(cutBreaths, false), flex: 1 }}>Remover</button>
                     <button onClick={() => setCutBreaths(false)} style={{ ...miniBtn(!cutBreaths, false), flex: 1 }}>Manter</button>
+                  </div>
+                </CapRow>
+                <CapRow label="Tosse, pigarro e estalos">
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => setCutCoughs(true)} style={{ ...miniBtn(cutCoughs, false), flex: 1 }}>Remover</button>
+                    <button onClick={() => setCutCoughs(false)} style={{ ...miniBtn(!cutCoughs, false), flex: 1 }}>Manter</button>
                   </div>
                 </CapRow>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>

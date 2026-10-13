@@ -29,6 +29,19 @@ export function wordsToSegments(words) {
   return groupIntoPhrases(words);
 }
 
+/**
+ * Texto de "contexto" para o Whisper: com um exemplo de fala natural (muletas,
+ * repetições, frase cortada), ele transcreve a fala COMO FOI DITA. Sem isso o Whisper
+ * "limpa" a fala — some com o "é...", o "hã" e as palavras repetidas — e aí elas não
+ * podem ser cortadas (ficavam no vídeo sem aparecer na transcrição).
+ */
+export function verbatimPrompt(language) {
+  const l = String(language || '').toLowerCase();
+  if (!l || l === 'pt' || l.startsWith('pt-') || l === 'portuguese') return 'Então, é... hã, eu, eu acho que, tipo... hmm, né? Ahn, vamos, vamos lá. Hum.';
+  if (l === 'en' || l === 'english') return 'Umm, so, uh... I, I think that, like... hmm, you know? Uh, let\'s, let\'s go.';
+  return '';
+}
+
 // ─── OpenAI (Whisper API) ─────────────────────────────────────────────
 export async function transcribeOpenAI(input, work, meta, cfg) {
   const audio = await extractAudio(input, work, 'mp3');
@@ -38,6 +51,7 @@ export async function transcribeOpenAI(input, work, meta, cfg) {
   form.append('model', 'whisper-1');
   form.append('response_format', 'verbose_json');
   form.append('timestamp_granularities[]', 'word');
+  if (verbatimPrompt(cfg.openaiLanguage)) form.append('prompt', verbatimPrompt(cfg.openaiLanguage));
 
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -116,6 +130,7 @@ export async function transcribeGroq(input, work, meta, cfg, onProgress, { chunk
       form.append('temperature', '0');
       // Idioma do 1º pedaço vale para os seguintes (legenda num idioma só).
       if (language) form.append('language', language);
+      if (verbatimPrompt(language)) form.append('prompt', verbatimPrompt(language));
       const res = await fetchRetry('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',
         headers: { Authorization: `Bearer ${cfg.groqKey}` },
@@ -227,7 +242,8 @@ async function deepgramRequest(buf, cfg, language, dur, onProgress) {
   // detect_language=true: descobre o idioma sozinho (pt, en, es...). Sem isso o
   // nova-2 assume inglês e transcreve fala em português errado. Um idioma fixo
   // pode ser forçado por env (DEEPGRAM_LANGUAGE, ex.: "pt").
-  const params = new URLSearchParams({ model: 'nova-2', smart_format: 'true', punctuate: 'true' });
+  // filler_words: transcreve as muletas ("uh", "um"...) para elas poderem ser cortadas.
+  const params = new URLSearchParams({ model: 'nova-2', smart_format: 'true', punctuate: 'true', filler_words: 'true' });
   if (language) params.set('language', language);
   else params.set('detect_language', 'true');
   // Upload + processamento: ~0,3 s por minuto de áudio + margem para a rede.
@@ -319,7 +335,7 @@ export async function transcribeWhisperLocal(input, work, meta, cfg) {
     ? Number(cfg.timeoutMs)
     : Math.min(600000, Math.max(180000, Math.ceil((meta?.duration || 60) * 12) * 1000));
   const data = await new Promise((resolve, reject) => {
-    const proc = spawn(py, [script, audio, cfg.whisperModel || 'base']);
+    const proc = spawn(py, [script, audio, cfg.whisperModel || 'base', verbatimPrompt('')]);
     let out = '';
     let err = '';
     let done = false;

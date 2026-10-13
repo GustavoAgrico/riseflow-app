@@ -2,66 +2,142 @@ import { makeLogger } from '../logger.js';
 
 const log = makeLogger('cleanup-ai');
 
-/** Achata as palavras da transcrição com um índice global estável. */
+/** Palavras ainda mantidas, com a posição na transcrição (seg, palavra) e o tempo. */
 function flattenWords(transcript) {
   const flat = [];
   (transcript.segments || []).forEach((seg, si) => {
     const words = seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }];
-    words.forEach((w, wi) => flat.push({ si, wi, word: String(w.word ?? '').trim() }));
+    words.forEach((w, wi) => {
+      if (!w.removed) flat.push({ si, wi, word: String(w.word ?? '').trim(), start: Number(w.start), end: Number(w.end) });
+    });
   });
   return flat;
 }
 
 const INSTRUCTION =
-  `Você limpa transcrições de fala para um editor de vídeo. Recebe as palavras numeradas (índice:palavra).
-Retorne os ÍNDICES das palavras que devem ser REMOVIDAS para o vídeo ficar limpo e direto, mantendo o sentido:
-- muletas e hesitações ("é", "éé", "ãã", "hã", "hum", "tipo" quando é vício, "né" repetido);
-- gagueiras e repetições imediatas (ex.: "eu eu quero" → remova o primeiro "eu");
-- falsos começos e autocorreções: quando a pessoa começa uma palavra/frase, se corrige e refaz — remova a tentativa abandonada e mantenha a versão final correta (ex.: "vou no merc- no banco" → remova "merc"/"no" da tentativa; "quero com- comprar" → remova "com").
-NÃO remova palavras com significado que fazem parte da frase final. Na dúvida, mantenha.
+  `Você é o editor de um vídeo falado (Reels/YouTube) e limpa a fala para o corte ficar profissional, como se a pessoa tivesse falado tudo certo de primeira.
+Recebe as palavras numeradas ("índice:palavra"). "⏸" marca uma pausa na fala.
+Devolva os ÍNDICES das palavras que devem SAIR do vídeo:
+1. Muletas e hesitações: "é...", "éé", "ãã", "hã", "hum", "ahn", "tipo" ou "né" usados como vício.
+2. Gagueiras e repetições sem querer: "eu eu quero" → sai o primeiro "eu".
+3. FRASES REFEITAS: a pessoa começa uma frase, erra, trava ou se perde, e FALA DE NOVO. Tire a tentativa que deu errado INTEIRA (do começo dela até onde parou) e deixe só a versão final, que é a última.
+   Ex.: "hoje eu vou mostrar três ⏸ hoje eu vou te mostrar as três dicas" → saem "hoje eu vou mostrar três".
+4. ERROS CORRIGIDOS: palavra, nome ou número errado que a pessoa corrige logo em seguida — sai o errado e a correção ("custa 50, digo, 60 reais" → saem "50," e "digo,").
+5. Frases abandonadas no meio que não se completam e são substituídas por outra.
+NUNCA tire: palavras que fazem parte da frase final; repetições de ênfase ("muito, muito importante"); paralelismos e listas de propósito ("eu quero que você cresça, eu quero que você lucre"); conectivos com sentido ("então", "porque", "mas"); nada que mude o que a pessoa quis dizer. O texto que sobrar precisa ficar natural e completo. Na dúvida, MANTENHA.
 Responda APENAS com JSON: {"remove":[índices]}`;
 
-function parseIndices(text, maxIdx) {
+function parseIndices(text) {
   let data;
   try {
     data = JSON.parse(text);
   } catch {
-    const m = text.match(/\{[\s\S]*\}/);
+    const m = String(text).match(/\{[\s\S]*\}/);
     if (!m) throw new Error('resposta não-JSON');
     data = JSON.parse(m[0]);
   }
   const arr = Array.isArray(data.remove) ? data.remove : [];
-  return new Set(arr.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n >= 0 && n < maxIdx));
+  return arr.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n >= 0);
+}
+
+/** Texto numerado de uma janela de palavras, com "⏸" nas pausas (ajuda a ver retomadas). */
+export function numberedText(flat, from, to) {
+  const parts = [];
+  for (let i = from; i < to; i++) {
+    if (i > from && flat[i].start - flat[i - 1].end >= 0.4) parts.push('⏸');
+    parts.push(`${i}:${flat[i].word}`);
+  }
+  return parts.join(' ');
 }
 
 /**
- * Limpeza da fala por IA (Claude): marca palavras a remover (muletas, gagueiras,
- * falsos começos, autocorreções). Retorna uma NOVA transcrição com `removed` nas
- * palavras indicadas — mesmo formato de saída do markFillers heurístico.
- * @returns {Promise<{segments:Array, removedCount:number}>}
+ * Janelas de até `size` palavras (o vídeo inteiro, mesmo longo), com `ctx` palavras de
+ * contexto de cada lado. Só valem os índices do miolo de cada janela. Puro.
  */
-export async function cleanupWithClaude(transcript, cfg) {
-  const flat = flattenWords(transcript);
-  if (!flat.length) return { ...transcript, segments: transcript.segments || [], removedCount: 0 };
-  if (flat.length > 2000) throw new Error(`transcrição longa demais para limpeza por IA (${flat.length} palavras)`);
+export function windows(n, size = 600, ctx = 40) {
+  const out = [];
+  for (let a = 0; a < n; a += size) {
+    const b = Math.min(n, a + size);
+    out.push({ core: [a, b], from: Math.max(0, a - ctx), to: Math.min(n, b + ctx) });
+  }
+  return out;
+}
 
+/**
+ * Proteções contra exageros da IA numa janela: se ela tirar mais de 30% das palavras,
+ * ou um trecho seguido de mais de 30 palavras, aquilo é descartado (melhor deixar uma
+ * muleta do que sumir com uma parte da fala). Puro.
+ */
+export function guardRemovals(indices, [a, b]) {
+  const set = new Set(indices.filter((i) => i >= a && i < b));
+  if (set.size > 0.3 * (b - a) + 2) return new Set();
+  const sorted = [...set].sort((x, y) => x - y);
+  let runStart = 0;
+  for (let k = 1; k <= sorted.length; k++) {
+    if (k < sorted.length && sorted[k] === sorted[k - 1] + 1) continue;
+    if (k - runStart > 30) for (let r = runStart; r < k; r++) set.delete(sorted[r]);
+    runStart = k;
+  }
+  return set;
+}
+
+async function askClaude(system, user, cfg) {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({
     apiKey: cfg.anthropicKey,
     ...(cfg.anthropicWorkspaceId ? { defaultHeaders: { 'anthropic-workspace-id': cfg.anthropicWorkspaceId } } : {}),
   });
-  const model = cfg.model || 'claude-opus-5';
-  const numbered = flat.map((f, i) => `${i}:${f.word}`).join(' ');
+  const response = await client.messages.create({ model: cfg.model || 'claude-opus-5', max_tokens: 3000, system, messages: [{ role: 'user', content: user }] });
+  return (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+}
 
-  const response = await client.messages.create({
-    model,
-    max_tokens: 2000,
-    system: INSTRUCTION,
-    messages: [{ role: 'user', content: numbered }],
-  });
-  const text = (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
-  const remove = parseIndices(text, flat.length);
-  log.info(`Claude (${model}) marcou ${remove.size} palavras para remover`);
+/** Groq (Llama), API no formato OpenAI. Uma nova tentativa se a Groq pedir para esperar (429). */
+async function askGroq(system, user, cfg) {
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      signal: AbortSignal.timeout(60_000),
+      method: 'POST',
+      headers: { Authorization: `Bearer ${cfg.groqKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: cfg.groqModel || 'llama-3.3-70b-versatile',
+        temperature: 0,
+        max_tokens: 3000,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      }),
+    });
+    if (res.status === 429 && attempt < 3) {
+      const wait = Math.min(20, Number(res.headers.get('retry-after')) || 5 * attempt);
+      log.warn(`Groq pediu para esperar ${wait}s`);
+      await new Promise((r) => setTimeout(r, wait * 1000));
+      continue;
+    }
+    if (!res.ok) throw new Error(`Groq ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || '';
+  }
+}
+
+/**
+ * Limpeza da fala por IA (Claude, ou Llama na Groq): marca muletas, gagueiras, frases
+ * refeitas e erros corrigidos. Recebe a transcrição já limpa pela heurística (as palavras
+ * que ela tirou nem vão para a IA) e devolve uma NOVA transcrição com `removed` nas
+ * palavras indicadas — `removedCount` conta só as novas.
+ * @returns {Promise<{segments:Array, removedCount:number, llm:string}>}
+ */
+export async function cleanupWithLLM(transcript, cfg) {
+  const flat = flattenWords(transcript);
+  const provider = cfg.anthropicKey ? 'claude' : cfg.groqKey ? 'groq' : '';
+  if (!flat.length || !provider) return { ...transcript, segments: transcript.segments || [], removedCount: 0, llm: provider };
+  if (flat.length > 20000) throw new Error(`transcrição longa demais para limpeza por IA (${flat.length} palavras)`);
+  const ask = provider === 'claude' ? askClaude : askGroq;
+
+  const remove = new Set();
+  for (const w of windows(flat.length)) {
+    const text = await ask(INSTRUCTION, numberedText(flat, w.from, w.to), cfg);
+    for (const i of guardRemovals(parseIndices(text), w.core)) remove.add(i);
+  }
+  log.info(`${provider} marcou ${remove.size} palavras para remover (${flat.length} palavras)`);
 
   // Aplica as marcações numa cópia da transcrição (não muta a original).
   const segments = (transcript.segments || []).map((seg) => {
@@ -69,11 +145,15 @@ export async function cleanupWithClaude(transcript, cfg) {
     return { ...seg, words: src.map((w) => ({ ...w })) };
   });
   let removedCount = 0;
-  flat.forEach((f, i) => {
-    if (remove.has(i) && !segments[f.si].words[f.wi].removed) {
-      segments[f.si].words[f.wi].removed = true;
-      removedCount++;
-    }
-  });
-  return { ...transcript, segments, removedCount };
+  for (const i of remove) {
+    const f = flat[i];
+    segments[f.si].words[f.wi].removed = true;
+    removedCount++;
+  }
+  return { ...transcript, segments, removedCount, llm: provider };
+}
+
+/** Compatibilidade: a limpeza só com o Claude. */
+export function cleanupWithClaude(transcript, cfg) {
+  return cleanupWithLLM(transcript, { ...cfg, groqKey: '' });
 }
