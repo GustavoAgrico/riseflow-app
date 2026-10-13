@@ -104,7 +104,7 @@ test('editor de transcrição: transcribe → render aplicando remoções e rema
   const rReport = await runPipeline(
     {
       id: jobId2, mode: 'render', inputPath: input, workDir: work2, outputsDir: config.paths.outputs,
-      editedTranscript: edited,
+      editedTranscript: edited, sourceId: jobId,
       options: { cutSilence: false, captions: true, colorLook: 'none', broll: false, aspect: 'original' },
     },
     () => {},
@@ -113,6 +113,9 @@ test('editor de transcrição: transcribe → render aplicando remoções e rema
   const outFile = path.join(config.paths.outputs, `${jobId2}.mp4`);
   const after = await probeSummary(outFile);
   assert.ok(rReport.cut.removedSeconds > 0.2, 'remoções por transcrição cortaram tempo');
+  // projeto editado na timeline pode ser reaberto: guarda a edição e o vídeo original
+  assert.equal(rReport.sourceId, jobId, 'aponta para o vídeo original');
+  assert.ok(rReport.editorTranscript.segments.flatMap((sg) => sg.words).some((w) => w.removed), 'guarda as palavras cortadas');
   assert.ok(after.duration < before.duration, 'render editado ficou mais curto');
 
   await fs.rm(work, { recursive: true, force: true });

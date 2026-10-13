@@ -38,7 +38,7 @@ class JobQueue extends EventEmitter {
     }
   }
 
-  create({ id: wantedId, filename, inputPath, options, mode = 'auto', editedTranscript = null }) {
+  create({ id: wantedId, filename, inputPath, options, mode = 'auto', editedTranscript = null, sourceId = null }) {
     // id escolhido antes (app de PC/Mac: a cobrança no site já usa este id).
     const id = wantedId && !this.jobs.has(wantedId) ? wantedId : nanoid(12);
     const workDir = workDirFor(id);
@@ -56,6 +56,8 @@ class JobQueue extends EventEmitter {
       outputsDir: config.paths.outputs,
       options,
       editedTranscript,
+      // render da timeline: o job da transcrição (vídeo original) que foi editado
+      sourceId,
       report: null,
       error: null,
       createdAt: Date.now(),
