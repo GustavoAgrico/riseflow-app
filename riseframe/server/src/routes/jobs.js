@@ -617,6 +617,7 @@ jobsRouter.post('/render', requireAuth, requireVerified, (req, res) => {
     inputPath: source.inputPath,
     options: optionsForUser(req),
     editedTranscript,
+    sourceId,
   }, { sourceId });
 });
 
@@ -774,14 +775,23 @@ jobsRouter.get('/jobs/:id/events', (req, res) => {
 // GET /api/jobs/:id/download → baixa o render final
 jobsRouter.get('/jobs/:id/download', (req, res) => {
   const job = queue.get(req.params.id);
-  if (!job || job.status !== 'done' || job.mode === 'transcribe') {
-    return res.status(404).json({ error: 'render não disponível' });
-  }
-  const file = path.join(config.paths.outputs, `${job.id}.mp4`);
-  if (!fs.existsSync(file)) return res.status(404).json({ error: 'arquivo não encontrado' });
-  const base = path.parse(job.filename).name.replace(/[^\w.-]+/g, '_');
+  const file = outputOf(req.params.id, job);
+  if (!file) return res.status(404).json({ error: 'render não disponível' });
+  const base = path.parse(job?.filename || req.params.id).name.replace(/[^\w.-]+/g, '_');
   res.download(file, `riseframe_${base}.mp4`);
 });
+
+/**
+ * Arquivo final de um job. Se o job não está mais na memória (o servidor reiniciou
+ * numa atualização e ele não era reabrível), o vídeo pronto que ainda está no disco
+ * continua servindo — antes a miniatura e o download desses projetos sumiam.
+ */
+function outputOf(id, job) {
+  if (job && (job.status !== 'done' || job.mode === 'transcribe' || job.mode === 'clips')) return null;
+  if (!/^[\w-]{6,40}$/.test(String(id))) return null;
+  const file = path.join(config.paths.outputs, `${id}.mp4`);
+  return fs.existsSync(file) ? file : null;
+}
 
 // Clipes: download/preview por índice (outputs/<jobId>_clip<index>.mp4)
 function clipFile(job, index) {
@@ -859,12 +869,8 @@ jobsRouter.post('/jobs/:id/clips/:index/edit', requireAuth, requireVerified, asy
 
 // GET /api/jobs/:id/preview → stream inline (para <video>)
 jobsRouter.get('/jobs/:id/preview', (req, res) => {
-  const job = queue.get(req.params.id);
-  if (!job || job.status !== 'done' || job.mode === 'transcribe') {
-    return res.status(404).json({ error: 'preview não disponível' });
-  }
-  const file = path.join(config.paths.outputs, `${job.id}.mp4`);
-  if (!fs.existsSync(file)) return res.status(404).json({ error: 'arquivo não encontrado' });
+  const file = outputOf(req.params.id, queue.get(req.params.id));
+  if (!file) return res.status(404).json({ error: 'preview não disponível' });
   res.sendFile(file);
 });
 

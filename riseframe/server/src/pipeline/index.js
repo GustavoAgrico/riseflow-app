@@ -187,6 +187,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
   if (mode === 'render') {
     transcript = job.editedTranscript || { segments: [], text: '' };
     report.provider.transcribe = 'edited';
+    // A edição da timeline (palavras cortadas, posições, ênfases) fica no relatório: o
+    // projeto pode ser reaberto na timeline depois ("Continuar editando").
+    editorTranscript = transcript;
   } else {
     const st = enter('transcribe');
     transcript = await transcribe(input, work, meta, st.onProgress);
@@ -555,7 +558,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
   // oferecer "Ajustar na timeline" depois de qualquer modo (auto/render).
   if (editorTranscript?.segments?.length) {
     report.editorTranscript = { provider: editorTranscript.provider, language: editorTranscript.language, segments: editorTranscript.segments };
-    report.sourceId = job.id;
+    // Vídeo original: o do próprio job, ou (render da timeline) o da transcrição editada.
+    report.sourceId = job.sourceId || job.id;
   }
 
   emit({ progress: 100, stage: 'done', stageLabel: 'Concluído' });

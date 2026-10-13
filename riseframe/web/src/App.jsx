@@ -194,7 +194,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   // Abre a timeline a partir de um resultado já processado (qualquer modo), usando
   // a transcrição da timeline original que o pipeline devolveu no relatório.
   function openTimeline(doneJob) {
-    const tr = doneJob?.report?.editorTranscript;
+    const tr = doneJob?.report?.editorTranscript || doneJob?.report?.transcript;
     const sid = doneJob?.report?.sourceId;
     if (!tr?.segments?.length || !sid) return;
     setSourceId(sid);
@@ -209,8 +209,12 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     setReopening(entry.sourceId);
     setReopenError('');
     try {
-      const j = await getJob(entry.sourceId);
-      if (!j?.report?.editorTranscript?.segments?.length) {
+      // O próprio projeto primeiro (um vídeo editado na timeline guarda as palavras
+      // cortadas, ênfases e posições); senão, a transcrição do vídeo original.
+      let j = await getJob(entry.id).catch(() => null);
+      if (!j?.report?.editorTranscript?.segments?.length) j = await getJob(entry.sourceId);
+      const tr = j?.report?.editorTranscript || j?.report?.transcript;
+      if (!tr?.segments?.length) {
         throw new Error('este vídeo não tem transcrição guardada');
       }
       openTimeline(j);
