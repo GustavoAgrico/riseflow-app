@@ -6,7 +6,7 @@ import path from 'node:path';
 import { runFfmpeg, probeSummary } from '../src/pipeline/ffmpeg.js';
 import { remuxByKeepSegments, audioBounds } from '../src/pipeline/timeline.js';
 import {
-  envelopeFrom, fitCutEdges, trimWordsToSound, edgePads, preciseRemovals, readPcm,
+  envelopeFrom, fitCutEdges, trimWordsToSound, edgePads, preciseRemovals, readPcm, protectQuietSpeech,
 } from '../src/pipeline/cutRefine.js';
 import { plausibleRemovals } from '../src/pipeline/cleanupLLM.js';
 
@@ -111,4 +111,26 @@ test('limpeza por IA: só passa o que tem cara de erro de fala', () => {
   // palavras com sentido que não se repetem: a IA errou → nada sai
   assert.equal(pick('eu acho que isso é muito importante para você', [5, 6]), '');
   assert.equal(pick('a gente vai falar sobre vendas e marketing hoje', [6, 7]), '');
+});
+
+test('micro-silêncio dentro da palavra ("ven-das") não vira fim de palavra', () => {
+  // palavra baixinha: "ven" 1.0–1.2 · consoante "d" quieta 1.2–1.25 · "das" 1.25–1.35 · silêncio
+  const e = env(3, [[0.2, 1.0, -12], [1.0, 1.2, -42], [1.25, 1.35, -45], [2.2, 3, -12]]);
+  // a pausa chegou começando no meio da consoante
+  const [r] = fitCutEdges([{ start: 1.21, end: 2.0 }], e, null, { tail: 0.09, preroll: 0.07 });
+  assert.ok(r.start >= 1.35 + 0.05, `a última sílaba fica (${r.start})`);
+});
+
+test('fala baixinha que a transcrição não escreveu: com tom de voz fica; sem tom (respiração) sai', () => {
+  const e = env(4, [[0, 1, -10], [1.5, 1.8, -40], [2.5, 2.8, -40], [3.5, 4, -10]]);
+  // "tom de voz" só no trecho 1.5–1.8 (palavra sussurrada); 2.5–2.8 é respiração
+  const voicing = (a, b) => (a < 1.85 && b > 1.45 ? 0.9 : 0);
+  const out = protectQuietSpeech([{ start: 1.1, end: 3.4 }], e, voicing);
+  const covers = (t) => out.some((x) => x.start <= t && x.end >= t);
+  assert.ok(!covers(1.6) && !covers(1.75), 'palavra baixinha fica');
+  assert.ok(covers(2.6), 'respiração sai');
+  // consoante no meio (micro-silêncio) não divide a palavra
+  const e2 = env(4, [[1.5, 1.62, -40], [1.68, 1.8, -40]]);
+  const out2 = protectQuietSpeech([{ start: 1.1, end: 3.4 }], e2, (a, b) => (a < 1.85 && b > 1.45 ? 0.9 : 0));
+  assert.ok(!out2.some((x) => x.start <= 1.65 && x.end >= 1.65));
 });

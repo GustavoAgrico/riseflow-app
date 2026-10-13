@@ -69,8 +69,22 @@ test('markFillers: remove repetição de frase (2-3 palavras) imediata', () => {
 });
 
 test('markFillers: corta falso começo (fragmento prefixo), preserva palavra comum', () => {
-  const frag = markFillers({ segments: [seg('trans', 'transformar', 'tudo')] });
+  // palavra cortada marcada pela transcrição ("trans-") ou seguida de uma paradinha
+  const frag = markFillers({ segments: [seg('trans-', 'transformar', 'tudo')] });
   assert.deepEqual(frag.segments[0].words.filter((w) => !w.removed).map((w) => w.word), ['transformar', 'tudo']);
+  const pausa = { segments: [{ words: [{ start: 0, end: 0.3, word: 'trans' }, { start: 0.45, end: 1, word: 'transformar' }, { start: 1.05, end: 1.4, word: 'tudo' }] }] };
+  assert.deepEqual(markFillers(pausa).segments[0].words.filter((w) => !w.removed).map((w) => w.word), ['transformar', 'tudo']);
+  // fala corrida sem marca: não é gagueira
+  const corrida = markFillers({ segments: [seg('trans', 'transformar', 'tudo')] });
+  assert.equal(corrida.removedCount, 0);
+  // palavras comuns que são o começo da seguinte nunca saem
+  for (const frase of [['me', 'sentir', 'bem'], ['no', 'nosso', 'canal'], ['de', 'dentro', 'pra'], ['ou', 'outro', 'dia'], ['do', 'dobro', 'disso']]) {
+    const r = markFillers({ segments: [seg(...frase)] }, { aggressive: true });
+    assert.equal(r.removedCount, 0, frase.join(' '));
+  }
+  // "há" (verbo) não é o "hã" de hesitação
+  assert.equal(markFillers({ segments: [seg('há', 'dois', 'anos')] }, { aggressive: true }).removedCount, 0);
+  assert.equal(markFillers({ segments: [seg('hã', 'dois', 'anos')] }).removedCount, 1);
   // "com" é palavra comum protegida — não vira fragmento de "computador"
   const prot = markFillers({ segments: [seg('com', 'computador', 'novo')] });
   assert.deepEqual(prot.segments[0].words.filter((w) => !w.removed).map((w) => w.word), ['com', 'computador', 'novo']);
