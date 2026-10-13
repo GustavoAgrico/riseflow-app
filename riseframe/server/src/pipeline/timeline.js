@@ -240,11 +240,17 @@ export async function remuxByKeepSegments(input, work, meta, keep, onProgress, t
       parts.push(`[s${i}]trim=start=${Math.max(0, seg.start - seek - half).toFixed(5)}:end=${(seg.end - seek - half).toFixed(5)},setpts=PTS-STARTPTS[v${i}]`);
       concatInputs.push(`[v${i}]`);
       if (wantAudio) {
-        // Micro-fade de 6 ms nas emendas: tira o "clique" do corte sem engolir som.
+        // Micro-fade de 10 ms nas emendas: tira o "clique" do corte sem engolir som. O
+        // vídeo é cortado no quadro, mas o SOM é cortado no ponto exato (`audioKeep`):
+        // o pedaço de até 1 quadro que o ajuste ao frame traz de volta fica mudo — antes
+        // ele trazia um fiapo da muleta/tosse cortada, que soava como um estalo.
         const len = seg.end - seg.start;
+        const { aStart, aEnd } = audioBounds(seg, opts.audioKeep);
+        const fin = Math.max(0, aStart - seg.start);
+        const fout = Math.max(fin, Math.min(len, aEnd - seg.start) - 0.01);
         const fades = [];
-        if (len > 0.05 && seg.fadeIn) fades.push('afade=t=in:d=0.006');
-        if (len > 0.05 && seg.fadeOut) fades.push(`afade=t=out:st=${(len - 0.006).toFixed(3)}:d=0.006`);
+        if (len > 0.05 && seg.fadeIn) fades.push(`afade=t=in:st=${fin.toFixed(4)}:d=0.01`);
+        if (len > 0.05 && seg.fadeOut) fades.push(`afade=t=out:st=${fout.toFixed(4)}:d=0.01`);
         parts.push(`[t${i}]atrim=start=${a}:end=${b},asetpts=PTS-STARTPTS${fades.map((x) => ',' + x).join('')}[a${i}]`);
         concatInputs.push(`[a${i}]`);
       }
@@ -294,6 +300,19 @@ export async function remuxByKeepSegments(input, work, meta, keep, onProgress, t
 
   log.ok(`remux: ${keep.length} segmentos mantidos (${kd.toFixed(1)}s) em ${chunks.length} bloco(s)`);
   return { output, keptDuration: kd };
+}
+
+/**
+ * Onde o som de um trecho (já ajustado ao frame) começa e termina de verdade: as bordas
+ * dos trechos mantidos ANTES do ajuste (`audioKeep`). Sem eles, as próprias bordas. Puro.
+ */
+export function audioBounds(seg, audioKeep) {
+  const inside = (audioKeep || []).filter((u) => u.end > seg.start && u.start < seg.end);
+  if (!inside.length) return { aStart: seg.start, aEnd: seg.end };
+  return {
+    aStart: Math.max(seg.start, Math.min(...inside.map((u) => u.start))),
+    aEnd: Math.min(seg.end, Math.max(...inside.map((u) => u.end))),
+  };
 }
 
 /** Executa `fn` em `items` com no máximo `limit` ao mesmo tempo, mantendo a ordem. */

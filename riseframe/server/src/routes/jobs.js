@@ -539,6 +539,9 @@ export function parseOptions(raw) {
     // manualSilence=true, o pipeline usa exatamente estes trechos em vez de detectar.
     manualSilence: o.manualSilence === true,
     silenceCuts: sanitizeSilenceCuts(o.silenceCuts),
+    // Pausas que o usuário escolheu MANTER na timeline: os outros silêncios que o detector
+    // achar (a transcrição às vezes "estica" as palavras e esconde a pausa) também saem.
+    keptPauses: Array.isArray(o.keptPauses) ? sanitizeSilenceCuts(o.keptPauses) : null,
     // Trechos cortados à mão na faixa de vídeo (tempo original), independentes do silêncio.
     videoCuts: sanitizeSilenceCuts(o.videoCuts),
     // clipes curtos
