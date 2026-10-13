@@ -22,7 +22,8 @@ import { outputTarget } from '../pipeline/render.js';
 import { brollCandidates, resolveSource, googleConfig, googleReady } from '../pipeline/broll.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
 import { analyzeAndGrade } from '../pipeline/autoColor.js';
-import { CAPTION_TEMPLATES } from '../pipeline/captions.js';
+import { CAPTION_TEMPLATES, CAPTION_FONTS } from '../pipeline/captions.js';
+import { isCaptionColor, HIGHLIGHT_IDS } from '../../../shared/captionStyle.js';
 import { VOICE_NOISE, VOICE_PRESETS, VOICE_EFFECTS, previewVoice } from '../pipeline/voice.js';
 
 const CAPTION_TEMPLATE_IDS = Object.keys(CAPTION_TEMPLATES);
@@ -454,8 +455,9 @@ export function parseOptions(raw) {
     sfxIntensity: ['suave', 'medio', 'forte'].includes(o.sfxIntensity) ? o.sfxIntensity : 'medio',
     captions: o.captions !== false,
     captionTemplate: CAPTION_TEMPLATE_IDS.includes(o.captionTemplate) ? o.captionTemplate : 'clean',
-    captionColor: ['white', 'yellow', 'orange', 'purple', 'green', 'cyan', 'pink', 'red'].includes(o.captionColor) ? o.captionColor : 'white',
-    captionFont: ['auto', 'montserrat', 'gotham', 'helvetica', 'poppins', 'inter', 'opensans', 'anton', 'bebas', 'archivo', 'garamond', 'luckiest'].includes(o.captionFont) ? o.captionFont : 'auto',
+    // cor da paleta ou livre ("#RRGGBB")
+    captionColor: isCaptionColor(o.captionColor) ? String(o.captionColor) : 'white',
+    captionFont: o.captionFont === 'auto' || CAPTION_FONTS[o.captionFont] ? o.captionFont : 'auto',
     captionAnimation: ['auto', 'fade', 'pop', 'bounce', 'zoom', 'pop-rot', 'shake', 'none'].includes(o.captionAnimation) ? o.captionAnimation : 'auto',
     captionBackground: ['auto', 'shadow', 'box', 'bar', 'glow', 'none', 'clean'].includes(o.captionBackground) ? o.captionBackground : 'auto',
     captionPosition: ['auto', 'top', 'center', 'bottom'].includes(o.captionPosition) ? o.captionPosition : 'auto',
@@ -463,6 +465,8 @@ export function parseOptions(raw) {
     captionMode: ['auto', 'word', 'phrase'].includes(o.captionMode) ? o.captionMode : 'auto',
     // Destacar a palavra falada na frase (padrão: legenda normal, sem destaque).
     captionHighlight: o.captionHighlight === true,
+    // como a palavra falada é destacada (auto = o do estilo)
+    captionHighlightStyle: HIGHLIGHT_IDS.includes(o.captionHighlightStyle) ? o.captionHighlightStyle : 'auto',
     captionScale: clampNum(o.captionScale, 0.6, 1.6, 1),
     // Linhas por legenda (1 ou 2) e caracteres por linha (0 = automático pelo tamanho da fonte).
     captionLines: Number(o.captionLines) === 1 ? 1 : 2,

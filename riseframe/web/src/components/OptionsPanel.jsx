@@ -3,7 +3,7 @@ import { C, GRAD } from '../theme.js';
 import Icon from './Icon.jsx';
 import CaptionPreview from './CaptionPreview.jsx';
 import VoicePanel from './VoicePanel.jsx';
-import CaptionGallery, { CAPTION_PRESETS, currentPreset } from './CaptionGallery.jsx';
+import CaptionGallery, { CAPTION_PRESETS, currentPreset, FontPicker, ColorSwatches } from './CaptionGallery.jsx';
 import LayoutPreview from './LayoutPreview.jsx';
 import { useAuth } from '../AuthContext.jsx';
 import { openPlans } from './CostLine.jsx';
@@ -185,9 +185,11 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
         </div>
         {options.captions && (
           <>
-            <Row label="Tipografia (fonte)" hint="Fonte premium embutida — renderiza igual em qualquer máquina">
-              <Select value={options.captionFont || 'auto'} options={catalog.captionFonts} onChange={(v) => set({ captionFont: v })} />
-            </Row>
+            <div style={{ padding: '10px 0 14px', borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Tipografia (fonte)</div>
+              <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 10 }}>Fontes embutidas — o vídeo final sai com a mesma letra da prévia.</div>
+              <FontPicker value={options.captionFont || 'auto'} fonts={catalog.captionFonts || []} onChange={(v) => set({ captionFont: v })} />
+            </div>
             {catalog.captionAnimations && (
               <Row label="Animação do texto" hint="Como cada palavra/frase entra na tela">
                 <Select value={options.captionAnimation || 'auto'} options={catalog.captionAnimations} onChange={(v) => set({ captionAnimation: v })} />
@@ -211,9 +213,16 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
             <Row label="Destacar palavra falada" hint="Desligado: legenda normal, todas as palavras iguais. Ligado: realça a palavra que está sendo dita">
               <Toggle on={options.captionHighlight === true} onChange={(v) => set({ captionHighlight: v })} />
             </Row>
-            <Row label="Cor da legenda" hint="Padrão branco">
-              <Swatches value={options.captionColor} options={catalog.captionColors} onChange={(v) => set({ captionColor: v })} />
-            </Row>
+            {catalog.captionHighlightStyles && (
+              <Row label="Tipo de destaque" hint="Como a palavra falada aparece: na cor, numa caixa (marca-texto), maior, com brilho ou sublinhada">
+                <Segmented value={options.captionHighlightStyle || 'auto'} options={catalog.captionHighlightStyles.map((h) => ({ id: h.id, label: h.label.replace(/ \(.*\)$/, '') }))} onChange={(v) => set({ captionHighlightStyle: v, ...(v !== 'auto' ? { captionHighlight: true } : null) })} />
+              </Row>
+            )}
+            <div style={{ padding: '10px 0 14px', borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Cor da legenda / do destaque</div>
+              <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 10 }}>16 cores prontas ou qualquer cor no círculo colorido (no fim).</div>
+              <ColorSwatches value={options.captionColor} options={catalog.captionColors || []} onChange={(v) => set({ captionColor: v })} />
+            </div>
             <Row label="Tamanho da legenda" hint={`${Math.round((options.captionScale ?? 1) * 100)}% — palavras longas encolhem sozinhas para caber`}>
               <input type="range" min={0.6} max={1.4} step={0.05} value={options.captionScale ?? 1} onChange={(e) => set({ captionScale: Number(e.target.value) })} style={{ minWidth: 190 }} />
             </Row>

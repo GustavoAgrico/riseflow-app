@@ -4,6 +4,7 @@ import { lookNames } from '../pipeline/color.js';
 import { NICHES } from '../pipeline/niche.js';
 import { VOICE_NOISE, VOICE_PRESETS, VOICE_EFFECTS } from '../pipeline/voice.js';
 import { CAPTION_FONTS, CAPTION_TEMPLATE_LABELS, CAPTION_ANIMATIONS, CAPTION_BACKGROUNDS, CAPTION_POSITIONS } from '../pipeline/captions.js';
+import { CAPTION_COLOR_LIST, HIGHLIGHT_STYLES } from '../../../shared/captionStyle.js';
 
 export const optionsRouter = Router();
 
@@ -28,15 +29,8 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'word', label: 'Palavra por palavra' },
       { id: 'phrase', label: 'Frase (várias palavras)' },
     ],
-    captionColors: [
-      { id: 'white', label: 'Branco', hex: '#FFFFFF' },
-      { id: 'yellow', label: 'Amarelo', hex: '#FFE24B' },
-      { id: 'orange', label: 'Laranja', hex: '#FF6B35' },
-      { id: 'purple', label: 'Roxo', hex: '#9F67FF' },
-      { id: 'green', label: 'Verde', hex: '#2ED47A' },
-      { id: 'cyan', label: 'Ciano', hex: '#22D3EE' },
-      { id: 'pink', label: 'Rosa', hex: '#FF5CA8' },
-    ],
+    captionColors: CAPTION_COLOR_LIST,
+    captionHighlightStyles: [{ id: 'auto', label: 'Do estilo' }, ...HIGHLIGHT_STYLES],
     videoMotions: [
       { id: 'none', label: 'Sem movimento' },
       { id: 'dynamic', label: 'Zoom dinâmico (punch-ins) ✨' },
@@ -118,6 +112,7 @@ optionsRouter.get('/options', (_req, res) => {
       captionScale: 1,
       captionLines: 2,
       captionMaxChars: 0,
+      captionHighlightStyle: 'auto',
       colorLook: 'auto',
       videoMotion: 'none',
       motionIntensity: 'medio',

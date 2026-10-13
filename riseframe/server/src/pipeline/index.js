@@ -444,6 +444,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       mode: options.captionMode, // compat legado
       fontScale: options.captionScale || 1,
       highlight: options.captionHighlight === true, // destacar a palavra falada (padrão: não)
+      highlightStyle: options.captionHighlightStyle, // cor | caixa | maior | brilho | sublinhado
       keys: options.captionKeys === 'todas' ? 'todas' : 'ritmo', // som de tecla: ritmo de digitação ou toda palavra
       lines: options.captionLines, // 1 ou 2 linhas por legenda
       maxChars: options.captionMaxChars, // caracteres por linha (0 = automático)

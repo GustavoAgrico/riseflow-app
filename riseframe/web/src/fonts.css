@@ -10,6 +10,18 @@
 @font-face { font-family: 'Archivo Black'; src: url('/api/fonts/ArchivoBlack-Regular.ttf'); font-display: swap; }
 @font-face { font-family: 'EB Garamond'; src: url('/api/fonts/EBGaramond.ttf'); font-display: swap; }
 @font-face { font-family: 'Luckiest Guy'; src: url('/api/fonts/LuckiestGuy-Regular.ttf'); font-display: swap; }
+@font-face { font-family: 'Oswald'; src: url('/api/fonts/Oswald-Bold.ttf'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Barlow Condensed ExtraBold'; src: url('/api/fonts/BarlowCondensed-ExtraBold.ttf'); font-weight: 800; font-display: swap; }
+@font-face { font-family: 'Kanit ExtraBold'; src: url('/api/fonts/Kanit-ExtraBold.ttf'); font-weight: 800; font-display: swap; }
+@font-face { font-family: 'Rubik ExtraBold'; src: url('/api/fonts/Rubik-ExtraBold.ttf'); font-weight: 800; font-display: swap; }
+@font-face { font-family: 'Nunito Black'; src: url('/api/fonts/Nunito-Black.ttf'); font-weight: 900; font-display: swap; }
+@font-face { font-family: 'Fredoka'; src: url('/api/fonts/Fredoka-Bold.ttf'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Lilita One'; src: url('/api/fonts/LilitaOne-Regular.ttf'); font-display: swap; }
+@font-face { font-family: 'Bangers'; src: url('/api/fonts/Bangers-Regular.ttf'); font-display: swap; }
+@font-face { font-family: 'Righteous'; src: url('/api/fonts/Righteous-Regular.ttf'); font-display: swap; }
+@font-face { font-family: 'Playfair Display Black'; src: url('/api/fonts/PlayfairDisplay-Black.ttf'); font-weight: 900; font-display: swap; }
+@font-face { font-family: 'Permanent Marker'; src: url('/api/fonts/PermanentMarker-Regular.ttf'); font-display: swap; }
+@font-face { font-family: 'Pacifico'; src: url('/api/fonts/Pacifico-Regular.ttf'); font-display: swap; }
 
 /* Animações de entrada das legendas (prévia) */
 @keyframes rf-fade { from { opacity: 0 } to { opacity: 1 } }

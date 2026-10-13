@@ -1,3 +1,5 @@
+import { CAPTION_COLOR_LIST, isCaptionColor } from './captionStyle.js';
+
 // Palavra-chave de uma frase de legenda — usada no render (servidor) e na prévia (web),
 // para os dois destacarem sempre a mesma palavra.
 
@@ -35,13 +37,13 @@ export function pickKeyword(words) {
   return best;
 }
 
-// Cores de ênfase/destaque aceitas (mesmos ids da paleta da legenda).
-export const EMPHASIS_COLORS = ['white', 'yellow', 'orange', 'purple', 'green', 'cyan', 'pink', 'red'];
+// Cores de ênfase/destaque aceitas: as da paleta da legenda (ou "#RRGGBB").
+export const EMPHASIS_COLORS = CAPTION_COLOR_LIST.map((c) => c.id);
 
 /** Ênfase manual de uma palavra (cor própria e/ou maior), já validada. */
 export function emphasisOf(w) {
   const out = {};
-  if (EMPHASIS_COLORS.includes(w?.emColor)) out.emColor = w.emColor;
+  if (isCaptionColor(w?.emColor)) out.emColor = w.emColor;
   if (w?.emBig === true) out.emBig = true;
   return out;
 }

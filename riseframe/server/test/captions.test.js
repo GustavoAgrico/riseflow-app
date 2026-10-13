@@ -17,11 +17,16 @@ test('todos os templates geram ASS válido (styles + events)', () => {
   }
 });
 
-test('template box usa estilo de caixa (BorderStyle=3)', () => {
+test('template box: caixa desenhada do tamanho da palavra, na cor, atrás do texto', () => {
   const ass = buildAss(segments, meta, { template: 'box', color: 'orange' });
-  assert.ok(ass.includes('Style: RiseBox,'), 'define estilo RiseBox');
-  const boxLine = ass.split('\n').find((l) => l.startsWith('Style: RiseBox,'));
-  assert.equal(boxLine.trim().split(',')[15], '3', 'BorderStyle=3 (caixa opaca)');
+  const boxes = ass.split('\n').filter((l) => l.startsWith('Dialogue: 0,') && l.includes('\\p1'));
+  assert.equal(boxes.length, 3, 'uma caixa por palavra');
+  assert.ok(boxes[0].includes('\\1c&H356BFF&'), 'na cor escolhida');
+  const text = ass.split('\n').filter((l) => l.startsWith('Dialogue: 1,'));
+  assert.equal(text.length, 3, 'texto por cima (camada 1)');
+  // caixa mais larga para palavra mais longa
+  const widthOf = (l) => Math.max(...l.split('}').pop().match(/\d+/g).map(Number));
+  assert.ok(widthOf(boxes[2]) > widthOf(boxes[1]), 'PREMIUM tem caixa maior que É');
 });
 
 test('animações: pop/bounce injetam escala animada; fade não', () => {
@@ -63,17 +68,20 @@ test('legenda padrão é normal: frase inteira, sem destacar a palavra falada', 
   ] };
   const meta = { width: 1080, height: 1920 };
   const plain = buildAss([seg], meta, { template: 'clean' }).split('\n').filter((l) => l.startsWith('Dialogue'));
-  assert.equal(plain.length, 1, 'uma linha por frase');
-  assert.match(plain[0], /3 razões\\Npelas quais$/, 'quebra em 2 linhas pelo tamanho da fonte');
-  assert.doesNotMatch(plain[0], /alpha&H70/, 'nenhuma palavra apagada');
+  assert.equal(plain.length, 2, 'a frase em 2 linhas (um evento por linha, com o espaçamento da prévia)');
+  assert.match(plain[0], /\}3 razões$/);
+  assert.match(plain[1], /\}pelas quais$/);
+  const ys = plain.map((l) => Number(/\\pos\(\d+,(\d+)\)/.exec(l)[1]));
+  const em = 1920 * CAPTION_TEMPLATES.clean.size;
+  assert.ok(Math.abs(ys[1] - ys[0] - em * 1.1) < 2, `linhas a 1,1 em uma da outra (${ys[1] - ys[0]})`);
+  assert.ok(plain.every((l) => !/alpha&H70/.test(l)), 'nenhuma palavra apagada');
 
   const colored = buildAss([seg], meta, { template: 'clean', color: 'yellow' }).split('\n').filter((l) => l.startsWith('Dialogue'));
-  assert.equal(colored.length, 1);
-  assert.match(colored[0], /\\c&H/, 'a frase toda na cor escolhida');
+  assert.ok(colored.every((l) => /\\c&H/.test(l)), 'a frase toda na cor escolhida');
 
   const hl = buildAss([seg], meta, { template: 'clean', highlight: true }).split('\n').filter((l) => l.startsWith('Dialogue'));
-  assert.equal(hl.length, 4, 'com destaque: uma linha por palavra falada');
-  assert.match(hl[2], /alpha&H70/, 'as outras palavras ficam apagadas');
+  assert.equal(new Set(hl.map((l) => l.split(',')[1])).size, 4, 'com destaque: um momento por palavra falada');
+  assert.ok(hl.some((l) => /alpha&H70/.test(l)), 'as outras palavras ficam apagadas');
 });
 
 test('posição manual: frase arrastada vira \\an5\\pos no quadro; a geral vale para as outras', async () => {
@@ -85,15 +93,18 @@ test('posição manual: frase arrastada vira \\an5\\pos no quadro; a geral vale 
   ];
   const ass = buildAss(segs, meta, { template: 'clean', posX: 0.3, posY: 0.7 });
   const lines = ass.split('\n').filter((l) => l.startsWith('Dialogue'));
-  assert.match(lines[0], /\\an5\\pos\(540,480\)/);
-  assert.match(lines[1], /\\an5\\pos\(324,1344\)/);
-  // modo palavra: cada palavra usa a sua posição
+  const at = (l) => /\\an5\\pos\((\d+),(\d+)\)/.exec(l).slice(1).map(Number);
+  const near = ([x, y], [ex, ey]) => Math.abs(x - ex) <= 1 && Math.abs(y - ey) < 40;
+  assert.ok(near(at(lines[0]), [540, 480]), `${at(lines[0])}`);
+  assert.ok(near(at(lines[1]), [324, 1344]), `${at(lines[1])}`);
+  // modo palavra: cada palavra usa a sua posição; sem ela, a do estilo (meio)
   const word = buildAss([{ start: 0, end: 1, words: [{ start: 0, end: 0.5, word: 'um', px: 0.2, py: 0.2 }, { start: 0.5, end: 1, word: 'dois' }] }], meta, { template: 'pop' });
   const wl = word.split('\n').filter((l) => l.startsWith('Dialogue'));
-  assert.match(wl[0], /\\an5\\pos\(216,384\)/);
-  assert.doesNotMatch(wl[1], /\\pos/);
-  // sem posição manual: nada de \pos
-  assert.doesNotMatch(buildAss([segs[1]], meta, { template: 'clean' }), /\\pos/);
+  assert.ok(near(at(wl[0]), [216, 384]));
+  assert.ok(near(at(wl[1]), [540, 960]));
+  // sem posição manual: embaixo, acima da margem do estilo
+  const [, y] = at(buildAss([segs[1]], meta, { template: 'clean' }).split('\n').find((l) => l.startsWith('Dialogue')));
+  assert.ok(y > 1920 * 0.7 && y < 1920 * (1 - CAPTION_TEMPLATES.clean.marginV));
 });
 
 test('posição manual sobrevive aos cortes e separa frases com posições diferentes', async () => {
@@ -118,7 +129,7 @@ test('ênfase por palavra: cor própria e maior na frase e no modo palavra; sobr
   const yellow = '&H004BE2FF';
   const phrase = buildAss(seg, meta, { template: 'clean' }).split('\n').find((l) => l.startsWith('Dialogue'));
   assert.ok(phrase.includes(`\\c${yellow}`), 'cor da ênfase');
-  assert.match(phrase, /\\fs\d+}muda\{\\fs\d+/, 'maior só nela');
+  assert.match(phrase, /\\fscx130\\fscy130\}muda\{\\fscx100/, 'maior só nela');
   assert.doesNotMatch(phrase, /\{[^}]*\}tudo/, 'cor inválida é ignorada');
   const word = buildAss(seg, meta, { template: 'pop' }).split('\n').filter((l) => l.startsWith('Dialogue'));
   assert.ok(word[1].includes(`\\c${yellow}`) && /\\fs\d+/.test(word[1]), 'modo palavra: cor e tamanho');
@@ -132,20 +143,20 @@ test('ênfase por palavra: cor própria e maior na frase e no modo palavra; sobr
 
 test('estilos novos: karaokê destaca sempre, marca-texto põe caixa só na palavra falada, duas linhas quebra na palavra-chave', () => {
   const k = buildAss(segments, meta, { template: 'karaoke', color: 'yellow' }).split('\n').filter((l) => l.startsWith('Dialogue'));
-  assert.equal(k.length, 3, 'karaokê: um evento por palavra falada mesmo sem "destacar" ligado');
+  assert.equal(new Set(k.map((l) => l.split(',')[1])).size, 3, 'karaokê: um momento por palavra falada mesmo sem "destacar" ligado');
 
-  const m = buildAss(segments, meta, { template: 'marker', color: 'purple' });
-  const markStyle = m.split('\n').find((l) => l.startsWith('Style: RiseMark,')).split(',');
-  assert.equal(markStyle[15], '3', 'caixa por letra (BorderStyle=3)');
-  assert.ok(markStyle[5].startsWith('&HFF'), 'caixa começa invisível');
-  const layer1 = m.split('\n').filter((l) => l.startsWith('Dialogue: 1,'));
-  assert.equal(layer1.length, 3);
-  assert.ok(layer1[2].includes('\\1a&H00&\\3a&H00&}PREMIUM'), 'caixa ligada só na palavra da vez');
-  assert.equal(m.split('\n').filter((l) => l.startsWith('Dialogue: 0,')).length, 1, 'frase base numa camada só');
+  const m = buildAss(segments, meta, { template: 'marker', color: 'purple' }).split('\n');
+  const marks = m.filter((l) => l.startsWith('Dialogue: 0,') && l.includes('\\p1'));
+  assert.equal(marks.length, 3, 'uma caixa por palavra falada, desenhada atrás dela');
+  assert.ok(marks.every((l) => l.includes('\\1c&HFF679F&')), 'na cor escolhida');
+  const last = m.filter((l) => l.startsWith('Dialogue: 1,') && l.includes('PREMIUM')).pop();
+  assert.match(last, /\\bord0\\shad0\}PREMIUM/, 'a palavra da vez sem contorno, por cima da caixa');
 
-  const d = buildAss(segments, meta, { template: 'duo', color: 'green' }).split('\n').find((l) => l.startsWith('Dialogue'));
-  assert.match(d, /\\N\{\\fscx135\\fscy135\\c&H007AD42E\}PREMIUM/, 'palavra-chave desce, maior e colorida');
-  assert.match(d, /\}ESSE É\\N/, 'o resto da frase fica branco, na linha de cima');
+  const d = buildAss(segments, meta, { template: 'duo', color: 'green' }).split('\n').filter((l) => l.startsWith('Dialogue'));
+  assert.ok(d.some((l) => /\{\\fscx135\\fscy135\\c&H007AD42E\}PREMIUM/.test(l)), 'palavra-chave maior e colorida');
+  const top = d.find((l) => /\}ESSE É$/.test(l));
+  const bot = d.find((l) => l.includes('PREMIUM'));
+  assert.ok(top && /pos\(540,(\d+)\)/.exec(top)[1] < /pos\(540,(\d+)\)/.exec(bot)[1], 'a palavra-chave desce para a linha de baixo');
 });
 
 test('premium: palavra a palavra, parte grande com brilho na linha de baixo e som de tecla', async () => {
@@ -154,10 +165,13 @@ test('premium: palavra a palavra, parte grande com brilho na linha de baixo e so
     { start: 0, end: 0.3, word: 'eles' }, { start: 0.4, end: 0.7, word: 'vivem' }, { start: 0.8, end: 1.4, word: 'perguntando' },
   ] }];
   const ev = buildAss(seg, meta, { template: 'premium' }).split('\n').filter((l) => l.startsWith('Dialogue'));
-  assert.equal(ev.length, 3, 'um evento por palavra falada');
+  assert.equal(new Set(ev.map((l) => l.split(',')[1])).size, 3, 'um momento por palavra falada');
   assert.match(ev[0], /\\1a&HFF&\\3a&HFF&\\4a&HFF&\}vivem/, 'a próxima palavra já ocupa o lugar, invisível');
-  assert.match(ev[2], /\\Nperguntando|\\N\{[^}]*\}perguntando/, 'a palavra-chave desce para a linha de baixo');
-  assert.match(ev[2], /\\blur\d+[^}]*\}perguntando/, 'com brilho');
+  const big = ev.filter((l) => l.includes('perguntando'));
+  const small = ev.filter((l) => l.includes('eles'));
+  const yOf = (l) => Number(/pos\(\d+,(\d+)\)/.exec(l)[1]);
+  assert.ok(yOf(big[0]) > yOf(small[0]), 'a palavra-chave fica na linha de baixo');
+  assert.match(big[big.length - 1], /\\blur\d+[^}]*\}perguntando/, 'com brilho');
   const sfx = captionSfxEvents(seg, { template: 'premium' });
   assert.deepEqual(sfx.map((e) => [e.type, e.t]), [['tick', 0], ['tick', 0.4], ['tick', 0.8]], 'som de tecla em cada palavra, sem whoosh');
   // outros estilos: só as palavras com ênfase manual ganham a tecla
@@ -192,9 +206,43 @@ test('linhas e caracteres: no máximo 1 ou 2 linhas, cada uma até o limite; o r
   assert.ok(one.length > two.length);
 
   const seg = { start: 0, end: 4, words };
+  const cards = (ass) => new Set(ass.map((l) => l.split(',')[1])).size;
   const ass1 = buildAss([seg], meta, { template: 'clean', lines: 1, maxChars: 14 }).split('\n').filter((l) => l.startsWith('Dialogue'));
-  assert.ok(ass1.length >= 4 && ass1.every((l) => !l.includes('\\N')), 'uma linha por cartão, sem quebra');
+  assert.ok(cards(ass1) >= 4 && cards(ass1) === ass1.length && ass1.every((l) => !l.includes('\\N')), 'uma linha por cartão');
   const ass2 = buildAss([seg], meta, { template: 'clean', lines: 2, maxChars: 14 }).split('\n').filter((l) => l.startsWith('Dialogue'));
-  assert.ok(ass2.some((l) => l.includes('\\N')) && ass2.length < ass1.length);
+  assert.ok(ass2.length > cards(ass2) && cards(ass2) < cards(ass1), '2 linhas por cartão (um evento por linha)');
   assert.match(buildAss([seg], meta, { template: 'clean' }), /WrapStyle: 2/, 'sem quebra automática do libass');
+});
+
+test('mesmo tamanho da prévia: a fonte do ASS é o "em" do CSS × a célula da fonte', async () => {
+  const { fontMetrics } = await import('../src/pipeline/fontMetrics.js');
+  const style = buildAss(segments, meta, { template: 'clean' }).split('\n').find((l) => l.startsWith('Style: Rise,')).split(',');
+  const em = 1920 * CAPTION_TEMPLATES.clean.size;
+  assert.equal(style[1], 'Poppins');
+  assert.equal(Number(style[2]), Math.round(em * fontMetrics('Poppins').cell), 'Poppins: célula de 1,76 em');
+  assert.ok(fontMetrics('Poppins').cell > 1.7 && fontMetrics('Anton').cell > 1.7);
+  // largura real das letras (caixas do tamanho do texto)
+  assert.ok(fontMetrics('Anton').width('RESULTADO') < fontMetrics('Poppins').width('RESULTADO'), 'Anton é condensada');
+});
+
+test('fontes novas, cor livre e tipos de destaque', () => {
+  const lines = (o) => buildAss(segments, meta, o).split('\n');
+  assert.ok(lines({ template: 'clean', font: 'oswald' }).find((l) => l.startsWith('Style: Rise,')).includes(',Oswald,'));
+  assert.ok(lines({ template: 'clean', font: 'bangers' }).find((l) => l.startsWith('Style: Rise,')).split(',')[7] === '0', 'fonte de letreiro sem negrito');
+  // cor livre (#RRGGBB)
+  assert.ok(lines({ template: 'pop', color: '#12AB34' }).some((l) => l.includes('\\c&H0034AB12')));
+  // destaques
+  const hl = (h) => lines({ template: 'karaoke', color: 'orange', highlightStyle: h }).filter((l) => l.startsWith('Dialogue'));
+  assert.ok(hl('scale').some((l) => l.includes('\\fscx118\\fscy118')), 'maior');
+  assert.ok(hl('glow').some((l) => /\\3c&H00356BFF\\bord\d+\\blur\d+/.test(l)), 'brilho na cor');
+  assert.equal(hl('box').filter((l) => l.includes('\\p1')).length, 3, 'caixa atrás de cada palavra falada');
+  const und = hl('underline');
+  assert.equal(und.filter((l) => l.includes('\\p1')).length, 3, 'sublinhado desenhado');
+  assert.ok(!und.some((l) => /\\c&H00356BFF\}/.test(l)), 'sublinhado: a palavra fica branca');
+  // estilos novos geram eventos
+  for (const t of ['tiktok', 'beast', 'comic', 'hollow', 'shadow3d', 'elegant', 'handwritten']) {
+    assert.ok(lines({ template: t, color: 'yellow' }).some((l) => l.startsWith('Dialogue')), t);
+  }
+  assert.ok(lines({ template: 'hollow', color: 'yellow' }).some((l) => l.includes('\\1a&HFF&')), 'vazado: letras só com contorno');
+  assert.ok(lines({ template: 'shadow3d', color: 'magenta' }).some((l) => l.includes('\\4c&H00FB40E0')), 'sombra 3D na cor');
 });
