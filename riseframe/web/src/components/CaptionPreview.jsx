@@ -2,91 +2,98 @@ import React, { useEffect, useRef, useState } from 'react';
 import { C } from '../theme.js';
 import { motionAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { pickKeyword, premiumChunks, layoutCaption, autoMaxChars } from '../../../shared/captionKeyword.js';
+import {
+  CAPTION_TEMPLATES, CAPTION_FONTS, CAPTION_COLOR_LIST, fontById, fontBold, colorHex, isLightHex, isWhiteish, HIGHLIGHT_IDS, LINE_HEIGHT,
+} from '../../../shared/captionStyle.js';
 
-// Espelha o servidor: cada estilo tem fonte e animação padrão.
-const TPL = {
-  clean: { mode: 'phrase', font: 'Poppins', anim: 'fade', upper: false, size: 30 },
-  pop: { mode: 'word', font: 'Anton', anim: 'pop', upper: true, size: 46 },
-  hormozi: { mode: 'word', font: 'Anton', anim: 'pop', upper: true, size: 50 },
-  box: { mode: 'word', font: 'Archivo Black', anim: 'pop', upper: true, size: 42, box: true },
-  neon: { mode: 'phrase', font: 'Poppins', anim: 'fade', upper: false, size: 32, glow: true },
-  bounce: { mode: 'word', font: 'Luckiest Guy', anim: 'bounce', upper: true, size: 46 },
-  keyword: { mode: 'phrase', font: 'Poppins', anim: 'pop', upper: true, size: 34, highlightKeyword: true },
-  karaoke: { mode: 'phrase', font: 'Montserrat', anim: 'fade', upper: true, size: 32, forceHighlight: true },
-  marker: { mode: 'phrase', font: 'Poppins', anim: 'fade', upper: true, size: 31, marker: true },
-  duo: { mode: 'phrase', font: 'Archivo Black', anim: 'pop', upper: true, size: 31, highlightKeyword: true, keywordBreak: true, kwScale: 1.35 },
-  minimal: { mode: 'phrase', font: 'Poppins', anim: 'fade', upper: false, size: 27, forceHighlight: true, dimOthers: true },
-  premium: { mode: 'phrase', font: 'Archivo Black', anim: 'fade', upper: false, size: 34, premium: true },
-};
-const FONT_FAMILY = {
-  montserrat: 'Montserrat', gotham: 'Poppins', helvetica: 'Arimo',
-  poppins: 'Poppins', inter: 'Inter', opensans: 'Open Sans', anton: 'Anton',
-  bebas: 'Bebas Neue', archivo: 'Archivo Black', garamond: 'EB Garamond', luckiest: 'Luckiest Guy',
-};
-const COLOR_HEX = {
-  white: '#FFFFFF', yellow: '#FFE24B', orange: '#FF6B35', purple: '#9F67FF',
-  green: '#2ED47A', cyan: '#22D3EE', pink: '#FF5CA8', red: '#F0526B',
-};
+// Fontes, cores, estilos e destaques: os MESMOS do render (shared/captionStyle.js).
+export const COLOR_HEX = Object.fromEntries(CAPTION_COLOR_LIST.map((c) => [c.id, c.hex]));
+const hexOf = (v) => `#${colorHex(v)}`;
 const ANIM_CSS = {
   fade: 'rf-fade .5s ease both', pop: 'rf-pop .35s ease both', bounce: 'rf-bounce .5s ease both',
   zoom: 'rf-zoom .4s ease both', 'pop-rot': 'rf-pop-rot .45s ease both', shake: 'rf-shake .5s ease both', none: 'none',
 };
 
+// Largura de um texto (em "em") na fonte já carregada — para o auto-ajuste da palavra
+// longa ficar igual ao do render.
+let measureCtx = null;
+function textEm(text, family, weight) {
+  try {
+    measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+    measureCtx.font = `${weight} 100px '${family}'`;
+    return measureCtx.measureText(text).width / 100;
+  } catch {
+    return String(text).length * 0.58;
+  }
+}
 
 /**
- * Visual da legenda (fonte, cor, fundo, animação, modo, posição) a partir das opções.
- * `textStyle(fontPx)` monta o estilo do texto. Usado na prévia de exemplo e na legenda
- * desenhada por cima do vídeo na timeline.
+ * Visual da legenda (fonte, cor, fundo, animação, modo, posição, destaque) a partir das
+ * opções — as mesmas regras do render (server/src/pipeline/captions.js).
+ * `textStyle(fontPx)` monta o estilo do texto.
  */
 export function captionLook(options) {
-  const tplKey = TPL[options.captionTemplate] ? options.captionTemplate : 'clean';
-  const T = TPL[tplKey];
-  const fontFamily = options.captionFont && options.captionFont !== 'auto' ? FONT_FAMILY[options.captionFont] : T.font;
+  const tplKey = CAPTION_TEMPLATES[options.captionTemplate] ? options.captionTemplate : 'clean';
+  const T = CAPTION_TEMPLATES[tplKey];
+  const font = options.captionFont && options.captionFont !== 'auto' && CAPTION_FONTS[options.captionFont] ? CAPTION_FONTS[options.captionFont] : fontById(T.defaultFont);
+  const fontFamily = font.family;
+  const weight = T.bold && fontBold(font) ? 800 : 400;
   const animKind = options.captionAnimation && options.captionAnimation !== 'auto' ? options.captionAnimation : T.anim;
   const anim = ANIM_CSS[animKind] || ANIM_CSS.fade;
-  const color = COLOR_HEX[options.captionColor] || '#FFFFFF';
+  const color = hexOf(options.captionColor);
+  const accentIsWhite = isWhiteish(color);
   const scale = options.captionScale || 1;
   const bg = ['shadow', 'box', 'bar', 'glow', 'none', 'clean'].includes(options.captionBackground)
     ? options.captionBackground
-    : (T.box ? 'box' : 'shadow');
+    : T.box ? 'box' : T.soft ? 'clean' : 'shadow';
   const useBox = bg === 'box' || bg === 'bar';
-  const glowOn = bg === 'glow' || (options.captionBackground == null && T.glow) || (options.captionBackground === 'auto' && T.glow);
+  const glowOn = bg === 'glow' || ((options.captionBackground == null || options.captionBackground === 'auto') && !!T.glow);
   const mode = ['word', 'phrase'].includes(options.captionMode) ? options.captionMode : T.mode;
   const pos = ['top', 'center', 'bottom'].includes(options.captionPosition) ? options.captionPosition : 'auto';
   const vAlign = pos === 'top' ? 'flex-start' : pos === 'bottom' ? 'flex-end' : 'center';
+  const highlight = options.captionHighlight === true || !!T.forceHighlight;
+  const hl = HIGHLIGHT_IDS.includes(options.captionHighlightStyle) ? options.captionHighlightStyle : T.hl || 'color';
 
+  function stroke(px, c = '#000') {
+    return `-${px}px 0 ${c}, ${px}px 0 ${c}, 0 -${px}px ${c}, 0 ${px}px ${c},`
+      + `-${px}px -${px}px ${c}, ${px}px ${px}px ${c}, -${px}px ${px}px ${c}, ${px}px -${px}px ${c}`;
+  }
   function textStyle(fontPx) {
-    const outline = Math.max(1, Math.round(fontPx * 0.09));
-    const shadow = `0 2px 6px rgba(0,0,0,.5)`;
-    const stroke = `-${outline}px 0 #000, ${outline}px 0 #000, 0 -${outline}px #000, 0 ${outline}px #000,` +
-      `-${outline}px -${outline}px #000, ${outline}px ${outline}px #000, -${outline}px ${outline}px #000, ${outline}px -${outline}px #000`;
+    const outline = bg === 'clean' || T.outline === 0 ? 0 : Math.max(1, Math.round(fontPx * T.outline));
+    const shadow = `0 ${Math.max(1, Math.round(fontPx * 0.05))}px ${Math.round(fontPx * 0.12)}px rgba(0,0,0,.55)`;
+    const hs = Math.max(1, Math.round(fontPx * (T.hardShadow === 'accent' ? 0.07 : 0.06)));
+    // sombra dura: no libass a sombra é a letra COM o contorno deslocada
+    const hc = T.hardShadow === 'accent' ? color : '#000';
+    const hard = T.hardShadow && bg !== 'clean' && !useBox
+      ? `, ${hs}px ${hs}px 0 ${hc}${outline ? [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]].map(([dx, dy]) => `, ${hs + dx * outline}px ${hs + dy * outline}px 0 ${hc}`).join('') : ''}`
+      : '';
     const baseShadow = glowOn
-      ? `0 0 10px ${color}, 0 0 20px ${color}, 0 0 30px ${color}, ${stroke}`
-      : bg === 'clean' ? shadow
-        : bg === 'none' ? stroke : `${stroke}, ${shadow}`;
+      ? `0 0 ${fontPx * 0.15}px ${color}, 0 0 ${fontPx * 0.3}px ${color}${outline ? `, ${stroke(outline, color)}` : ''}`
+      : bg === 'clean' || !outline ? shadow
+        : bg === 'none' ? stroke(outline) + hard : `${stroke(outline)}, ${shadow}${hard}`;
     return {
       fontFamily: `'${fontFamily}', system-ui, sans-serif`,
-      fontWeight: 800,
+      fontWeight: weight,
       fontSize: fontPx,
-      lineHeight: 1.1,
+      lineHeight: LINE_HEIGHT,
       color: glowOn ? '#fff' : color,
       textShadow: baseShadow,
       textTransform: T.upper ? 'uppercase' : 'none',
-      letterSpacing: fontFamily === 'Bebas Neue' ? 1 : -0.3,
+      letterSpacing: 0,
       display: 'inline-block',
-      padding: useBox ? `${Math.max(1, Math.round(fontPx * 0.05))}px ${Math.round(fontPx * 0.28)}px` : 0,
+      padding: useBox ? `${fontPx * 0.05}px ${fontPx * 0.28}px` : 0,
       ...(useBox
         ? bg === 'bar'
-          ? { background: 'rgba(16,16,20,0.55)', color: '#fff', textShadow: 'none', borderRadius: 6 }
+          ? { background: 'rgba(16,16,20,0.55)', color: '#fff', textShadow: 'none', borderRadius: fontPx * 0.2 }
           : mode === 'phrase'
-            ? { background: '#101014', color: '#fff', textShadow: 'none', borderRadius: 6 }
-            : { background: options.captionColor === 'white' ? '#fff' : color, color: options.captionColor === 'white' ? '#111' : '#fff', textShadow: 'none', borderRadius: 6 }
+            ? { background: '#101014', color: '#fff', textShadow: 'none', borderRadius: fontPx * 0.2 }
+            : { background: accentIsWhite ? '#fff' : color, color: isLightHex(accentIsWhite ? 'FFFFFF' : color) ? '#111' : '#fff', textShadow: 'none', borderRadius: fontPx * 0.2 }
         : { background: 'transparent' }),
       animation: anim,
     };
   }
 
-  return { tplKey, T, fontFamily, animKind, anim, color, scale, bg, useBox, glowOn, mode, pos, vAlign, textStyle };
+  return { tplKey, T, font, fontFamily, weight, animKind, anim, color, accentIsWhite, scale, bg, useBox, glowOn, mode, pos, vAlign, highlight, hl, stroke, textStyle };
 }
 
 // Frases de exemplo da prévia (tempos em segundos, repetem em loop).
@@ -267,23 +274,6 @@ export default function CaptionPreview({ options, videoUrl }) {
 
 const ctlBtn = { width: 26, height: 26, flexShrink: 0, border: 'none', borderRadius: 7, background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 11, cursor: 'pointer', display: 'grid', placeItems: 'center', padding: 0, fontFamily: 'inherit' };
 
-// Tamanho (fração da altura do vídeo), alinhamento e margem de cada estilo — iguais
-// aos do servidor (pipeline/captions.js), para a legenda sobre o vídeo bater com o render.
-const SERVER_TPL = {
-  clean: { size: 0.062, align: 'bottom', marginV: 0.14 },
-  pop: { size: 0.088, align: 'center', marginV: 0 },
-  hormozi: { size: 0.1, align: 'bottom', marginV: 0.17 },
-  box: { size: 0.082, align: 'center', marginV: 0 },
-  neon: { size: 0.066, align: 'bottom', marginV: 0.14 },
-  bounce: { size: 0.092, align: 'center', marginV: 0 },
-  keyword: { size: 0.07, align: 'bottom', marginV: 0.15 },
-  karaoke: { size: 0.066, align: 'bottom', marginV: 0.15 },
-  marker: { size: 0.064, align: 'bottom', marginV: 0.15 },
-  duo: { size: 0.064, align: 'bottom', marginV: 0.15 },
-  minimal: { size: 0.056, align: 'bottom', marginV: 0.14 },
-  premium: { size: 0.08, align: 'bottom', marginV: 0.2 },
-};
-
 function wordsOf(seg) {
   return (seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }])
     .filter((w) => !w.removed && String(w.word ?? '').trim());
@@ -315,8 +305,8 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
 
   if (!box || box.h < 10) return null;
   const look = captionLook(options);
-  const S = SERVER_TPL[look.tplKey] || SERVER_TPL.clean;
-  const fontPx = Math.max(8, Math.round(S.size * box.h * look.scale));
+  const T = look.T;
+  const fontPx = Math.max(4, T.size * box.h * look.scale);
 
   // Frase ativa no instante t; sem fala agora e `sample` ligado → mostra a 1ª frase como exemplo.
   let seg = (segments || []).find((s) => t >= s.start && t < (s.end || s.start + 0.1) && wordsOf(s).length);
@@ -336,9 +326,9 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
   let wi = words.findIndex((w, i) => at >= w.start && (i + 1 >= words.length || at < words[i + 1].start));
   if (wi < 0) wi = 0;
 
-  const align = look.pos === 'top' ? 'top' : look.pos === 'center' ? 'center' : look.pos === 'bottom' ? 'bottom' : S.align;
-  const marginV = look.pos === 'auto' ? S.marginV : 0.12;
-  const content = <CaptionWords words={words} wi={wi} look={look} options={options} fontPx={fontPx} keyId={words[0]?.start ?? seg.start} />;
+  const align = look.pos !== 'auto' ? look.pos : T.align === 8 ? 'top' : T.align === 5 ? 'center' : 'bottom';
+  const marginV = look.pos === 'auto' ? T.marginV : look.pos === 'center' ? 0 : 0.12;
+  const content = <CaptionWords words={words} wi={wi} look={look} options={options} fontPx={fontPx} keyId={words[0]?.start ?? seg.start} frameW={box.w} />;
 
   // Posição manual (arrastada): da palavra (modo palavra) ou da frase; senão a geral.
   const wpos = (w) => (w && w.px != null && w.py != null ? { x: w.px, y: w.py } : null);
@@ -395,27 +385,32 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
   );
 }
 
-const LIGHT = new Set(['white', 'yellow', 'green', 'cyan']);
-
 /**
  * O texto da legenda num instante (palavra `wi` sendo falada), com as mesmas regras do
- * render: modo palavra/frase, destaque da palavra falada, palavra-chave (e quebra de
- * linha do estilo "duas linhas"), marca-texto e a ênfase manual de cada palavra.
+ * render: modo palavra/frase, destaque da palavra falada (cor, caixa, maior, brilho,
+ * sublinhado), palavra-chave (e quebra do estilo "duas linhas"), vazado e a ênfase manual.
  * `still` = sem animação (miniaturas da galeria).
  */
-export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, still = false }) {
+export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, still = false, frameW = 0 }) {
   const T = look.T;
   // Miniatura (still): sem animação e com um respiro entre as palavras (letra pequena).
   const style = { ...look.textStyle(fontPx), ...(still ? { animation: 'none', wordSpacing: '0.18em' } : null) };
   const up = (w) => (T.upper ? String(w).toUpperCase() : w);
-  const colorId = options.captionColor || 'white';
   const emStyle = (w) => (w.emColor || w.emBig
-    ? { ...(w.emColor ? { color: COLOR_HEX[w.emColor], opacity: 1 } : null), ...(w.emBig ? { fontSize: '1.3em' } : null), display: 'inline-block' }
+    ? { ...(w.emColor ? { color: hexOfEm(w.emColor), opacity: 1 } : null), ...(w.emBig ? { fontSize: '1.3em' } : null), display: 'inline-block' }
     : null);
 
   if (look.mode === 'word') {
     const w = words[wi] || words[0];
-    return <span key={`${keyId}-${wi}-${look.animKind}`} style={{ ...style, maxWidth: '92%', textAlign: 'center', ...emStyle(w) }}>{up(w.word)}</span>;
+    // Auto-ajuste igual ao render: palavra longa encolhe para caber no quadro.
+    let px = fontPx * (w.emBig ? 1.3 : 1);
+    if (frameW && !still) {
+      const avail = frameW * 0.86 - (look.useBox ? 2 * 0.28 * fontPx : 0);
+      const wpx = textEm(up(w.word), look.fontFamily, look.weight) * px;
+      if (wpx > avail) px = Math.max(px * 0.45, (px * avail) / wpx);
+    }
+    const em = emStyle(w);
+    return <span key={`${keyId}-${wi}-${look.animKind}`} style={{ ...style, ...(px !== fontPx ? look.textStyle(px) : null), whiteSpace: 'nowrap', textAlign: 'center', ...(em ? { color: em.color || style.color } : null) }}>{up(w.word)}</span>;
   }
 
   if (T.premium) return <PremiumWords words={words} wi={still ? words.length - 1 : wi} look={look} options={options} fontPx={fontPx} still={still} />;
@@ -426,28 +421,38 @@ export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, 
   const twoLines = options.captionLines !== 1;
   const duo = T.keywordBreak && twoLines && kw >= 0 && words.length > 1;
   const breakAt = (k) => (duo ? k === kw || (kw === 0 && k === 1) : !!words[k].br);
-  const highlight = options.captionHighlight === true || !!T.forceHighlight;
-  // Nos estilos de palavra-chave e no marca-texto a frase fica branca.
-  const base = T.highlightKeyword || T.marker ? { color: '#fff' } : null;
+  const { highlight, hl } = look;
+  const markHex = look.accentIsWhite ? '#FFFFFF' : look.color;
+  // Frase base: branca com destaque, palavra-chave, caixa ou brilho; senão na cor escolhida.
+  const base = highlight || T.highlightKeyword || look.useBox ? { color: '#fff' } : null;
+  const hollowOff = T.hollow ? { color: 'transparent', WebkitTextStroke: `${Math.max(1, fontPx * 0.045)}px #fff`, textShadow: 'none' } : null;
+  const dimmed = (hl === 'color' && look.accentIsWhite) || T.dimOthers;
 
   const wordStyle = (w, k) => {
     const em = emStyle(w);
     if (em) return em;
-    if (T.marker && k === wi) {
-      return {
-        background: look.color, color: LIGHT.has(colorId) ? '#111' : '#fff', textShadow: 'none',
-        padding: '0 0.1em', borderRadius: 3, display: 'inline-block',
-      };
-    }
     if (k === kw) return kwStyle;
-    if (!highlight || T.marker) return undefined;
-    if (k === wi) return T.highlightKeyword || colorId === 'white' || look.glowOn ? { color: '#fff' } : { color: look.color };
-    if (colorId === 'white' || T.dimOthers) return { opacity: T.dimOthers ? 0.62 : 0.55 };
+    if (!highlight || still && k !== wi) return hollowOff || undefined;
+    if (k === wi) {
+      if (T.hollow) return { color: look.accentIsWhite ? '#fff' : look.color };
+      if (hl === 'box') {
+        return { background: markHex, color: isLightHex(markHex) ? '#111' : '#fff', textShadow: 'none', padding: '0 0.1em', margin: '0 -0.1em', borderRadius: '0.1em', display: 'inline-block' };
+      }
+      if (hl === 'glow') return { color: '#fff', textShadow: `0 0 ${fontPx * 0.1}px ${look.color}, 0 0 ${fontPx * 0.22}px ${look.color}, 0 0 ${fontPx * 0.35}px ${look.color}` };
+      if (hl === 'underline') {
+        return { color: '#fff', textDecorationLine: 'underline', textDecorationColor: markHex, textDecorationThickness: '0.08em', textUnderlineOffset: '0.12em', textDecorationSkipInk: 'none' };
+      }
+      const col = T.highlightKeyword || look.accentIsWhite || look.glowOn ? '#fff' : look.color;
+      if (hl === 'scale') return { color: col, fontSize: '1.18em', lineHeight: LINE_HEIGHT / 1.18, display: 'inline-block' };
+      return { color: col };
+    }
+    if (T.hollow) return hollowOff;
+    if (dimmed) return { opacity: T.dimOthers ? 0.62 : 0.56 };
     return undefined;
   };
 
   return (
-    <span key={`${keyId}-${look.animKind}`} style={{ ...style, ...(highlight ? { color: '#fff' } : null), ...base, maxWidth: still ? '90%' : 'none', whiteSpace: still ? 'normal' : 'nowrap', textAlign: 'center' }}>
+    <span key={`${keyId}-${look.animKind}`} style={{ ...style, ...base, maxWidth: still ? '90%' : 'none', whiteSpace: still ? 'normal' : 'nowrap', textAlign: 'center' }}>
       {words.map((w, k) => (
         <React.Fragment key={k}>
           {k > 0 ? (breakAt(k) ? <br /> : ' ') : ''}
@@ -457,6 +462,9 @@ export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, 
     </span>
   );
 }
+
+/** Cor de ênfase manual: id da paleta ou "#RRGGBB". */
+const hexOfEm = (v) => `#${colorHex(v)}`;
 
 /** Mistura uma cor (#RRGGBB) com o branco — igual ao render. */
 function tintHex(hex, t) {
@@ -477,19 +485,18 @@ function PremiumWords({ words, wi, look, options, fontPx, still }) {
     off += c.words.length;
   }
   const local = wi - off;
-  const colorId = options.captionColor || 'white';
-  const glowHex = colorId === 'white' ? '#C6F25A' : look.color;
-  const fill = tintHex(glowHex, colorId === 'white' ? 0.72 : 0.55);
+  const glowHex = look.accentIsWhite ? '#C6F25A' : look.color;
+  const fill = tintHex(glowHex, look.accentIsWhite ? 0.72 : 0.55);
   const small = Math.max(6, Math.round(fontPx * 0.5));
   const span = (wd, j) => {
     const big = j >= ch.big;
     const glow = big && ch.glow;
-    const em = wd.emColor ? COLOR_HEX[wd.emColor] : null;
+    const em = wd.emColor ? hexOfEm(wd.emColor) : null;
     const base = !big
-      ? { fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 600, fontSize: small, color: em || '#fff', textShadow: '0 1px 3px rgba(0,0,0,.6)', letterSpacing: 0 }
+      ? { fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 700, fontSize: small, color: em || '#fff', textShadow: '0 1px 3px rgba(0,0,0,.6)', letterSpacing: 0 }
       : glow
-        ? { fontFamily: `'${look.fontFamily}', system-ui, sans-serif`, fontSize: wd.emBig ? '1.3em' : '1em', color: em || fill, textShadow: `0 0 ${fontPx * 0.12}px ${em || glowHex}, 0 0 ${fontPx * 0.3}px ${em || glowHex}` }
-        : { fontFamily: `'${look.fontFamily}', system-ui, sans-serif`, fontSize: '0.78em', color: em || '#fff', textShadow: '0 2px 4px rgba(0,0,0,.55)' };
+        ? { fontFamily: `'${look.fontFamily}', system-ui, sans-serif`, fontWeight: 400, fontSize: wd.emBig ? '1.3em' : '1em', color: em || fill, textShadow: `0 0 ${fontPx * 0.12}px ${em || glowHex}, 0 0 ${fontPx * 0.3}px ${em || glowHex}` }
+        : { fontFamily: `'${look.fontFamily}', system-ui, sans-serif`, fontWeight: 400, fontSize: '0.78em', color: em || '#fff', textShadow: '0 2px 4px rgba(0,0,0,.55)' };
     const vis = j < local || still ? null
       : j === local ? { animation: big ? 'rf-blurin .22s ease-out both' : 'rf-fade .15s ease both' }
         : { visibility: 'hidden' };
@@ -498,7 +505,7 @@ function PremiumWords({ words, wi, look, options, fontPx, still }) {
   const top = ch.words.slice(0, ch.big);
   const bottom = ch.words.slice(ch.big);
   return (
-    <span key={ch.words[0].start} style={{ display: 'inline-block', textAlign: 'center', maxWidth: '92%', lineHeight: 1.02, fontSize: fontPx, fontWeight: 800, letterSpacing: -0.3 }}>
+    <span key={ch.words[0].start} style={{ display: 'inline-block', textAlign: 'center', maxWidth: '92%', lineHeight: 1.02, fontSize: fontPx, fontWeight: 800, letterSpacing: 0 }}>
       {top.length > 0 && <span style={{ display: 'block' }}>{top.map((wd, j) => <React.Fragment key={j}>{j > 0 ? ' ' : ''}{span(wd, j)}</React.Fragment>)}</span>}
       <span style={{ display: 'block' }}>{bottom.map((wd, j) => <React.Fragment key={j}>{j > 0 ? ' ' : ''}{span(wd, ch.big + j)}</React.Fragment>)}</span>
     </span>

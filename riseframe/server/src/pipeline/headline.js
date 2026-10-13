@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { fontsDirArg } from './captions.js';
+import { fontMetrics } from './fontMetrics.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('headline');
@@ -80,7 +81,10 @@ function textOn(hex) {
  * letra (a capa usa letra maior). Puro/testável.
  */
 export function headlineAss(h, W, H, { start = 0, end = 3600, scale = 1 } = {}) {
-  const size = Math.round(Math.min(W, H) * 0.068 * scale);
+  // Tamanho da letra igual ao da prévia (font-size do CSS = em); no ASS o tamanho é a
+  // célula da fonte (Montserrat: 1,56 em) — sem isso o título saía bem menor.
+  const em = Math.min(W, H) * 0.068 * scale;
+  const size = Math.round(em * fontMetrics('Montserrat').cell);
   const align = h.position === 'center' ? 5 : h.position === 'bottom' ? 2 : 8;
   const marginV = Math.round(H * (h.position === 'center' ? 0 : 0.085));
   const marginH = Math.round(W * 0.08);
@@ -88,22 +92,22 @@ export function headlineAss(h, W, H, { start = 0, end = 3600, scale = 1 } = {}) 
   let outlineC = assColor('000000');
   let backC = '&H64000000';
   let border = 1;
-  let outline = Math.max(2, Math.round(size * 0.06));
-  let shadow = Math.max(1, Math.round(size * 0.04));
+  let outline = Math.max(2, Math.round(em * 0.06));
+  let shadow = Math.max(1, Math.round(em * 0.04));
   if (h.style === 'box') {
     // caixa na cor da marca (BorderStyle 3 = caixa opaca; o "outline" vira o respiro da caixa)
     primary = assColor(textOn(h.color));
     outlineC = assColor(h.color);
     backC = assColor(h.color);
     border = 3;
-    outline = Math.round(size * 0.32);
+    outline = Math.round(em * 0.3);
     shadow = 0;
   } else if (h.style === 'bar') {
     primary = assColor('FFFFFF');
     outlineC = '&H50000000';
     backC = '&H50000000';
     border = 3;
-    outline = Math.round(size * 0.32);
+    outline = Math.round(em * 0.3);
     shadow = 0;
   }
   const text = h.text.replace(/\\/g, '\\\\').replace(/\{/g, '(').replace(/\}/g, ')');

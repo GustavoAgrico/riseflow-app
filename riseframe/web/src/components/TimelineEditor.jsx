@@ -8,7 +8,7 @@ import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
 import { CaptionOverlay } from './CaptionPreview.jsx';
-import CaptionGallery from './CaptionGallery.jsx';
+import CaptionGallery, { FontPicker, ColorSwatches } from './CaptionGallery.jsx';
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
@@ -59,6 +59,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     captionLines: cap0.captionLines === 1 ? 1 : 2,
     captionMaxChars: Number(cap0.captionMaxChars) || 0,
     captionHighlight: cap0.captionHighlight === true,
+    captionHighlightStyle: cap0.captionHighlightStyle || 'auto',
     captionAnimation: cap0.captionAnimation || 'auto',
     captionPreset: cap0.captionPreset,
   });
@@ -2265,22 +2266,30 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>Modelo</div>
                     <CaptionGallery options={cap} onApply={(p) => { setCapField(p); if (p.soundEffects) setFx((f) => ({ ...f, soundEffects: true })); }} compact />
                   </div>
-                  <CapRow label="Fonte"><Sel value={cap.captionFont} opts={catalog.captionFonts} onChange={(v) => setCapField({ captionFont: v })} /></CapRow>
+                  <div>
+                    <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>Fonte</div>
+                    <FontPicker value={cap.captionFont} fonts={catalog.captionFonts || []} onChange={(v) => setCapField({ captionFont: v })} compact />
+                  </div>
                   <CapRow label="Modo (palavra / frase)"><Sel value={cap.captionMode} opts={catalog.captionModes} onChange={(v) => setCapField({ captionMode: v })} /></CapRow>
                   <CapRow label="Destacar palavra falada">
                     <button onClick={() => setCapField({ captionHighlight: !cap.captionHighlight })} style={miniBtn(cap.captionHighlight, false)}>
                       {cap.captionHighlight ? 'Ligado' : 'Desligado (legenda normal)'}
                     </button>
                   </CapRow>
+                  {catalog.captionHighlightStyles && (
+                    <CapRow label="Tipo de destaque">
+                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                        {catalog.captionHighlightStyles.map((h) => (
+                          <button key={h.id} onClick={() => setCapField({ captionHighlightStyle: h.id, ...(h.id !== 'auto' ? { captionHighlight: true } : null) })}
+                            style={miniBtn((cap.captionHighlightStyle || 'auto') === h.id, false)}>{h.label.replace(/ \(.*\)$/, '')}</button>
+                        ))}
+                      </div>
+                    </CapRow>
+                  )}
                   <CapRow label="Fundo do texto"><Sel value={cap.captionBackground} opts={catalog.captionBackgrounds} onChange={(v) => setCapField({ captionBackground: v })} /></CapRow>
                   <CapRow label="Posição"><Sel value={cap.captionPosition} opts={catalog.captionPositions} onChange={(v) => setCapField({ captionPosition: v, captionX: undefined, captionY: undefined })} /></CapRow>
                   <CapRow label="Cor">
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {(catalog.captionColors || []).map((o) => (
-                        <button key={o.id} onClick={() => setCapField({ captionColor: o.id })} title={o.label}
-                          style={{ width: 24, height: 24, borderRadius: '50%', cursor: 'pointer', background: o.hex, border: cap.captionColor === o.id ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)' }} />
-                      ))}
-                    </div>
+                    <ColorSwatches value={cap.captionColor} options={catalog.captionColors || []} onChange={(v) => setCapField({ captionColor: v })} size={24} />
                   </CapRow>
                   <CapRow label={`Tamanho (${Math.round((cap.captionScale ?? 1) * 100)}%)`}>
                     <input type="range" min="0.6" max="1.4" step="0.05" value={cap.captionScale ?? 1} onChange={(e) => setCapField({ captionScale: Number(e.target.value) })} style={{ width: '100%' }} />
