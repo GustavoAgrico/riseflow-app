@@ -178,6 +178,10 @@ export async function generateClips(ctx, onProgress = () => {}) {
         position: options.captionPosition,
         highlightStyle: options.captionHighlightStyle,
         safeZone: options.captionSafeZone !== false,
+        letterSpacing: options.captionSpacing,
+        shadowMode: options.captionShadow,
+        shadowSize: options.captionShadowSize,
+        shadowOpacity: options.captionShadowOpacity,
       };
       const r = await burnCaptions(input, cwork, cmeta, localTranscript, style, () => {});
       input = r.output;

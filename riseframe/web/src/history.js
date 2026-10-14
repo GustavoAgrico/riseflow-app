@@ -7,7 +7,7 @@ export function listJobs(withDrafts = false) {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || '[]');
     // rascunhos = vídeos abertos no editor e ainda não exportados (não entram nas estatísticas)
-    return Array.isArray(v) ? withSources(withDrafts ? v : v.filter((j) => !j.draft)) : [];
+    return Array.isArray(v) ? withSources((withDrafts ? v : v.filter((j) => !j.draft)).map((j) => ({ ...j, title: fixMojibake(j.title) }))) : [];
   } catch {
     return [];
   }
@@ -18,6 +18,17 @@ export function listJobs(withDrafts = false) {
  * (sourceId) e ficavam sem "Continuar editando". Se o mesmo vídeo (mesmo nome) tem outro
  * projeto com o original guardado, reabre por ele. Puro.
  */
+/** Nomes antigos gravados com acento quebrado ("CrianÃ§a") → "Criança". Puro. */
+export function fixMojibake(name) {
+  const s = String(name || '');
+  if (!/[\u0080-\u00ff]/.test(s) || /[^\u0000-\u00ff]/.test(s)) return s;
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(s, (c) => c.charCodeAt(0)));
+  } catch {
+    return s;
+  }
+}
+
 export function withSources(list) {
   return list.map((j) => {
     if (j.sourceId || j.mode === 'clips') return j;

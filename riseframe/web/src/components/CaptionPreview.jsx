@@ -55,6 +55,11 @@ export function captionLook(options) {
   const vAlign = pos === 'top' ? 'flex-start' : pos === 'bottom' ? 'flex-end' : 'center';
   const highlight = options.captionHighlight === true || !!T.forceHighlight;
   const hl = HIGHLIGHT_IDS.includes(options.captionHighlightStyle) ? options.captionHighlightStyle : T.hl || 'color';
+  // espaçamento entre as letras (em) e sombra das letras — iguais ao render
+  const spacing = T.premium ? 0 : Math.min(0.3, Math.max(-0.05, Number(options.captionSpacing) || 0));
+  const shMode = ['off', 'on'].includes(options.captionShadow) ? options.captionShadow : 'auto';
+  const shSize = Math.min(3, Math.max(0.3, Number(options.captionShadowSize) || 1));
+  const shOpacity = Math.min(1, Math.max(0.1, Number(options.captionShadowOpacity) || 0.6));
 
   function stroke(px, c = '#000') {
     return `-${px}px 0 ${c}, ${px}px 0 ${c}, 0 -${px}px ${c}, 0 ${px}px ${c},`
@@ -66,13 +71,29 @@ export function captionLook(options) {
     const hs = Math.max(1, Math.round(fontPx * (T.hardShadow === 'accent' ? 0.07 : 0.06)));
     // sombra dura: no libass a sombra é a letra COM o contorno deslocada
     const hc = T.hardShadow === 'accent' ? color : '#000';
-    const hard = T.hardShadow && bg !== 'clean' && !useBox
+    const hard = T.hardShadow && bg !== 'clean' && !useBox && shMode === 'auto'
       ? `, ${hs}px ${hs}px 0 ${hc}${outline ? [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]].map(([dx, dy]) => `, ${hs + dx * outline}px ${hs + dy * outline}px 0 ${hc}`).join('') : ''}`
       : '';
-    const baseShadow = glowOn
+    let baseShadow = glowOn
       ? `0 0 ${fontPx * 0.15}px ${color}, 0 0 ${fontPx * 0.3}px ${color}${outline ? `, ${stroke(outline, color)}` : ''}`
       : bg === 'clean' || !outline ? shadow
         : bg === 'none' ? stroke(outline) + hard : `${stroke(outline)}, ${shadow}${hard}`;
+    // Sombra escolhida pelo usuário (a mesma conta do render): sem sombra, ou a letra (com o
+    // contorno) deslocada para baixo/direita com a intensidade escolhida.
+    if (shMode === 'off') {
+      baseShadow = glowOn
+        ? `0 0 ${fontPx * 0.15}px ${color}, 0 0 ${fontPx * 0.3}px ${color}${outline ? `, ${stroke(outline, color)}` : ''}`
+        : outline ? stroke(outline) : 'none';
+    } else if (shMode === 'on' && !useBox) {
+      const d = Math.max(1, Math.round(fontPx * 0.05 * shSize));
+      const c = `rgba(0,0,0,${shOpacity})`;
+      const ring = outline ? [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]].map(([dx, dy]) => `, ${d + dx * outline}px ${d + dy * outline}px 0 ${c}`).join('') : '';
+      const drop = `${d}px ${d}px 0 ${c}${ring}`;
+      const front = glowOn
+        ? `0 0 ${fontPx * 0.15}px ${color}, 0 0 ${fontPx * 0.3}px ${color}${outline ? `, ${stroke(outline, color)}` : ''}`
+        : outline ? stroke(outline) : '';
+      baseShadow = front ? `${front}, ${drop}` : drop;
+    }
     return {
       fontFamily: `'${fontFamily}', system-ui, sans-serif`,
       fontWeight: weight,
@@ -81,7 +102,7 @@ export function captionLook(options) {
       color: glowOn ? '#fff' : color,
       textShadow: baseShadow,
       textTransform: T.upper ? 'uppercase' : 'none',
-      letterSpacing: 0,
+      letterSpacing: `${spacing}em`,
       display: 'inline-block',
       padding: useBox ? `${fontPx * 0.05}px ${fontPx * 0.28}px` : 0,
       ...(useBox
@@ -287,7 +308,7 @@ function wordsOf(seg) {
  * (requestAnimationFrame) para acompanhar palavra a palavra sem re-renderizar o editor.
  * `box` = retângulo onde o vídeo aparece dentro do player (px).
  */
-export function CaptionOverlay({ videoRef, clock, segments, options, box, sample, editable = false, onDragPos }) {
+export function CaptionOverlay({ videoRef, clock, segments, options, box, sample, editable = false, onDragPos, centerWindows = null }) {
   const [t, setT] = useState(0);
   const boxRef = useRef(null);
   const [guides, setGuides] = useState(null); // linhas de centralização enquanto arrasta
@@ -327,6 +348,23 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
   }
   if (!seg) return guide;
   let words = wordsOf(seg);
+  // Tela dividida com B-roll: a legenda vai para o meio (linha entre as metades) — o cartão
+  // nunca atravessa o começo/fim do B-roll (a mesma conta do render).
+  const wins = (centerWindows || []).filter((x) => x && x.end > x.start);
+  const inWin = (w) => !!w && wins.some((x) => w.start >= x.start - 0.05 && w.start < x.end);
+  let segEnd = seg.end;
+  if (look.mode !== 'word' && wins.length) {
+    const runs = [];
+    for (const w of words) {
+      const inside = inWin(w);
+      if (!runs.length || runs[runs.length - 1].inside !== inside) runs.push({ inside, words: [] });
+      runs[runs.length - 1].words.push(w);
+    }
+    let ri = 0;
+    while (ri + 1 < runs.length && at >= runs[ri + 1].words[0].start) ri++;
+    words = runs[ri].words;
+    segEnd = ri + 1 < runs.length ? runs[ri + 1].words[0].start : seg.end;
+  }
   // Mesmos "cartões" do render: no máximo 1 ou 2 linhas, até N caracteres por linha.
   // Onde fica o bloco (com a área segura das redes no vídeo vertical — a mesma conta do render).
   const align = look.pos !== 'auto' ? look.pos : T.align === 8 ? 'top' : T.align === 5 ? 'center' : 'bottom';
@@ -334,11 +372,12 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
   const marginV = safeBox.marginV;
   if (look.mode !== 'word') {
     const maxChars = Number(options.captionMaxChars) > 0 ? Number(options.captionMaxChars) : autoMaxChars(box.w, fontPx, look.T.upper, T.premium ? 0.86 : safeBox.widthFrac);
-    const cards = layoutCaption(words, { lines: options.captionLines === 1 ? 1 : 2, maxChars, segEnd: seg.end });
+    const cards = layoutCaption(words, { lines: options.captionLines === 1 ? 1 : 2, maxChars, segEnd });
     words = (cards.find((c, i) => at < c.end || i === cards.length - 1) || cards[0]).words;
   }
   let wi = words.findIndex((w, i) => at >= w.start && (i + 1 >= words.length || at < words[i + 1].start));
   if (wi < 0) wi = 0;
+  const inBroll = inWin(look.mode === 'word' ? words[wi] : words[0]);
 
   const content = <CaptionWords words={words} wi={wi} look={look} options={options} fontPx={fontPx} keyId={words[0]?.start ?? seg.start} frameW={box.w} />;
 
@@ -394,9 +433,9 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
     <div ref={boxRef} style={{
       position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, pointerEvents: 'none',
       display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: align === 'top' ? 'flex-start' : align === 'bottom' ? 'flex-end' : 'center',
-      paddingTop: align === 'top' ? box.h * marginV : 0,
-      paddingBottom: align === 'bottom' ? box.h * marginV : 0,
+      justifyContent: inBroll ? 'center' : align === 'top' ? 'flex-start' : align === 'bottom' ? 'flex-end' : 'center',
+      paddingTop: !inBroll && align === 'top' ? box.h * marginV : 0,
+      paddingBottom: !inBroll && align === 'bottom' ? box.h * marginV : 0,
       boxSizing: 'border-box', overflow: 'hidden', zIndex: 1,
     }}>
       {handle}

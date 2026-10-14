@@ -213,14 +213,14 @@ export default function CreateWizard({
           {recent?.length > 0 && (
             <div style={{ marginTop: 24 }}>
               <div style={{ fontSize: 12, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>OU CONTINUE UM VÍDEO RECENTE</div>
-              <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 8 }}>
                 {recent.map((j) => (
                   <button key={j.sourceId} onClick={() => onReopen(j)} disabled={!!reopening} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', background: 'rgba(255,255,255,0.035)', border: `1px solid ${C.border}`, borderRadius: 12, padding: '10px 13px', color: C.text, fontFamily: 'inherit', fontSize: 14, cursor: reopening ? 'wait' : 'pointer' }}>
                     <span style={{ width: 32, height: 32, borderRadius: 9, background: C.panel2, display: 'grid', placeItems: 'center', color: C.orangeSoft, flexShrink: 0 }}>
                       {reopening === j.sourceId ? <Spinner size={14} color={C.orange} /> : <Icon name="clapper" size={16} strokeWidth={1.8} />}
                     </span>
                     <span style={{ flex: 1, minWidth: 0, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.title}</span>
-                    <span style={{ fontSize: 12, color: C.faint }}>Abrir na timeline</span>
+                    <span className="rf-hide-xs" style={{ fontSize: 12, color: C.faint, flexShrink: 0, whiteSpace: 'nowrap' }}>Abrir na timeline</span>
                   </button>
                 ))}
               </div>
