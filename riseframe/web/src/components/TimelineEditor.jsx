@@ -8,6 +8,7 @@ import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
 import { CaptionOverlay } from './CaptionPreview.jsx';
+import SnapGuides, { snapCenter } from './SnapGuides.jsx';
 import { loadAutosave, saveAutosave, markAutosaveSubmitted, clearAutosave } from '../autosave.js';
 import CaptionGallery, { FontPicker, ColorSwatches } from './CaptionGallery.jsx';
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
@@ -172,6 +173,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const hdAllowed = !billing || billing.unlimited || billing.features?.includes('hd');
   const [reframeMode, setReframeMode] = useState(['auto', 'manual', 'fit', 'split'].includes(options?.reframeMode) ? options.reframeMode : 'auto');
   const [splitSwap, setSplitSwap] = useState(Boolean(options?.splitSwap)); // tela dividida: quem fica em cima
+  // Linhas-guia de centralização enquanto arrasta: { where: 'focus'|'pan'|'broll', x, y }
+  const [guides, setGuides] = useState(null);
   const bgVideoRef = useRef(null); // fundo desfocado da prévia no modo "vídeo inteiro"
   const composedRef = useRef(null);
   const [cbox, setCbox] = useState(null); // tamanho da prévia do formato (para a legenda)
@@ -702,9 +705,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const ch = vh * scale;
     const offX = rect.left + (rect.width - cw) / 2;
     const offY = rect.top + (rect.height - ch) / 2;
-    const x = cw ? (clientX - offX) / cw : 0.5;
-    const y = ch ? (clientY - offY) / ch : 0.5;
-    setFocus({ x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) });
+    const sx = snapCenter(Math.min(1, Math.max(0, cw ? (clientX - offX) / cw : 0.5)), cw);
+    const sy = snapCenter(Math.min(1, Math.max(0, ch ? (clientY - offY) / ch : 0.5)), ch);
+    setGuides({ where: 'focus', x: sx.on, y: sy.on });
+    setFocus({ x: sx.v, y: sy.v });
   }
   useEffect(() => {
     const clamp01 = (v) => Math.min(1, Math.max(0, v));
@@ -717,10 +721,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // mostra mais da esquerda). Divide pelo zoom p/ um ajuste mais fino quando ampliado.
         const dx = (e.clientX - p.startX) / (p.w * p.zoom);
         const dy = (e.clientY - p.startY) / (p.h * p.zoom);
-        setFocus({ x: clamp01(p.fx - dx), y: clamp01(p.fy - dy) });
+        // centro do vídeo no centro do quadro: gruda e mostra a linha-guia
+        const sx = snapCenter(clamp01(p.fx - dx), p.w * p.zoom);
+        const sy = snapCenter(clamp01(p.fy - dy), p.h * p.zoom);
+        setGuides({ where: 'pan', x: sx.on, y: sy.on });
+        setFocus({ x: sx.v, y: sy.v });
       }
     }
-    function up() { focusDragRef.current = false; panRef.current = null; }
+    function up() {
+      if (focusDragRef.current || panRef.current) setGuides(null);
+      focusDragRef.current = false;
+      panRef.current = null;
+    }
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
@@ -1307,6 +1319,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <video ref={bgVideoRef} src={sourceUrl(sourceId)} muted playsInline preload="auto" aria-hidden="true" style={podHalfStyle(splitSwap ? 0.28 : 0.72)} />
         </div>
       )}
+      {guides?.where === 'pan' && <SnapGuides x={guides.x} y={guides.y} />}
       <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>
         {previewMode === 'video' ? (podSplit ? 'tela dividida · a IA recorta cada rosto' : fitMode ? 'vídeo inteiro · fundo desfocado' : aspectSel !== 'original' && reframeMode === 'auto' && framingMode !== 'manual' ? 'segue o rosto / quem fala (automático)' : 'vídeo · arraste/role') : 'você (arraste/role)'}
       </div>
@@ -1325,11 +1338,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setSelBroll(idx);
       const move = (ev) => {
         // arrastar a imagem para a direita mostra mais da esquerda (como mover a foto)
-        const fx = Math.min(1, Math.max(0, start.fx - (ev.clientX - start.x) / box.width));
-        const fy = Math.min(1, Math.max(0, start.fy - (ev.clientY - start.y) / box.height));
-        setMoment(idx, { fx: +fx.toFixed(3), fy: +fy.toFixed(3) });
+        const sx = snapCenter(Math.min(1, Math.max(0, start.fx - (ev.clientX - start.x) / box.width)), box.width);
+        const sy = snapCenter(Math.min(1, Math.max(0, start.fy - (ev.clientY - start.y) / box.height)), box.height);
+        setGuides({ where: 'broll', x: sx.on, y: sy.on });
+        setMoment(idx, { fx: +sx.v.toFixed(3), fy: +sy.v.toFixed(3) });
       };
-      const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+      const up = () => { setGuides(null); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);
     };
@@ -1339,6 +1353,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <>
             <img src={th} alt="" draggable={false} onError={() => setBadThumbs((bt) => new Set(bt).add(th))} style={{ ...brollImgStyle(brollShown), position: 'absolute', inset: 0 }} />
             <span style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 9.5, fontWeight: 700, background: 'rgba(0,0,0,0.6)', color: '#fff', borderRadius: 6, padding: '2px 6px' }}>B-roll · arraste</span>
+            {guides?.where === 'broll' && <SnapGuides x={guides.x} y={guides.y} />}
           </>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
@@ -1556,6 +1571,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <div style={{ position: 'absolute', left: `${focus.x * 100}%`, top: `${focus.y * 100}%`, width: 34, height: 34, marginLeft: -17, marginTop: -17, borderRadius: '50%', border: `2px solid ${C.orange}`, boxShadow: '0 0 0 2px rgba(0,0,0,0.5), 0 0 14px rgba(0,0,0,0.6)', background: 'rgba(255,107,53,0.18)', pointerEvents: 'none' }} />
                   </div>
                 )}
+                {guides?.where === 'focus' && vbox && <SnapGuides box={vbox} x={guides.x} y={guides.y} />}
               </div>
             </div>
             {showFormatPreview && (
