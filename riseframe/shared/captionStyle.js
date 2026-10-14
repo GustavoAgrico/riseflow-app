@@ -154,3 +154,23 @@ export const CAPTION_TEMPLATE_LABELS = {
   elegant: 'Elegante (serifa)',
   handwritten: 'Caneta (manuscrita)',
 };
+
+/**
+ * Áreas cobertas pelos botões e textos do Instagram (Reels) e do TikTok num vídeo
+ * vertical, em fração do quadro: em cima (abas/"Seguindo"), embaixo (nome, descrição,
+ * música) e a coluna de botões à direita (curtir, comentar, compartilhar).
+ */
+export const SAFE_ZONE = { top: 0.1, bottom: 0.2, right: 0.13, rightFrom: 0.42, rightTo: 0.86 };
+export const isVerticalFrame = (w, h) => w > 0 && h / w > 1.4;
+
+/**
+ * Margem vertical (fração da altura) e largura útil (fração da largura) da legenda,
+ * respeitando a área segura das redes quando ligada e o vídeo é vertical. A MESMA conta
+ * na prévia e no render.
+ */
+export function safeCaptionBox({ w, h, kind, marginV, safe = true }) {
+  if (!safe || !isVerticalFrame(w, h)) return { marginV, widthFrac: 0.86 };
+  const m = kind === 'bottom' ? Math.max(marginV, SAFE_ZONE.bottom + 0.01) : kind === 'top' ? Math.max(marginV, SAFE_ZONE.top + 0.01) : marginV;
+  // centralizada, mas sem invadir a coluna de botões (largura simétrica)
+  return { marginV: m, widthFrac: 1 - 2 * SAFE_ZONE.right };
+}

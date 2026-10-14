@@ -4,7 +4,7 @@ import { probeSummary } from './ffmpeg.js';
 import { remapTranscript, remuxByKeepSegments } from './timeline.js';
 import { burnCaptions } from './captions.js';
 import { colorFilter } from './color.js';
-import { finalRender } from './render.js';
+import { finalRender, convertAspect } from './render.js';
 import { extractThemes } from './analyze.js';
 import { selectClips } from './clipSelect.js';
 import { llmConfig } from './llm.js';
@@ -154,7 +154,15 @@ export async function generateClips(ctx, onProgress = () => {}) {
     // 2) transcrição local (remapeada para 0..dur, palavras da janela)
     const localTranscript = remapTranscript(transcript, keep);
 
-    // 3) legendas
+    // 3) formato (9:16…) ANTES das legendas: a legenda é desenhada no quadro final (tamanho
+    // certo, sem sair cortada nas laterais e respeitando a área segura das redes).
+    const ar = await convertAspect(input, cwork, cmeta, { ...options, aspect }, trackInput, () => {});
+    if (ar.applied) {
+      input = ar.output;
+      cmeta = await probeSummary(input);
+    }
+
+    // 4) legendas
     if (options.captions !== false) {
       const style = {
         template: options.captionTemplate || 'pop', // clipes: default palavra-a-palavra
@@ -166,19 +174,23 @@ export async function generateClips(ctx, onProgress = () => {}) {
         highlight: options.captionHighlight === true,
         lines: options.captionLines,
         maxChars: options.captionMaxChars,
+        background: options.captionBackground,
+        position: options.captionPosition,
+        highlightStyle: options.captionHighlightStyle,
+        safeZone: options.captionSafeZone !== false,
       };
       const r = await burnCaptions(input, cwork, cmeta, localTranscript, style, () => {});
       input = r.output;
     }
     prog(0.5);
 
-    // 4) color grade (auto por padrão) — aplicado dentro do render final
+    // 5) color grade (auto por padrão) — aplicado dentro do render final
     const colorLook = options.colorLook || 'auto';
     const { vf: colorVf } = await colorFilter(input, { ...options, colorLook });
 
-    // 5) cor + reframe + render final → outputs/<jobId>_clipN.mp4
+    // 6) cor + render final → outputs/<jobId>_clipN.mp4 (já no formato: só a resolução)
     const clipId = `${jobId}_clip${i}`;
-    const r = await finalRender(input, outputsDir, clipId, cmeta, { ...options, aspect, trackInput, colorVf }, () => {});
+    const r = await finalRender(input, outputsDir, clipId, cmeta, { ...options, aspect, trackInput, colorVf, reframe: ar.reframe }, () => {});
     prog(1);
 
     results.push({

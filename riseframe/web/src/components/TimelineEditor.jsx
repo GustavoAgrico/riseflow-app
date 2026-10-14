@@ -8,6 +8,7 @@ import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
 import { CaptionOverlay } from './CaptionPreview.jsx';
+import { loadAutosave, saveAutosave, markAutosaveSubmitted, clearAutosave } from '../autosave.js';
 import CaptionGallery, { FontPicker, ColorSwatches } from './CaptionGallery.jsx';
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
@@ -62,6 +63,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     captionHighlightStyle: cap0.captionHighlightStyle || 'auto',
     captionAnimation: cap0.captionAnimation || 'auto',
     captionPreset: cap0.captionPreset,
+    captionSafeZone: cap0.captionSafeZone !== false,
   });
   const setCapField = (patch) => setCap((c) => ({ ...c, ...patch }));
   // Posição manual da legenda (arrastar na prévia): só esta frase, só esta palavra ou todas.
@@ -306,6 +308,39 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
   const canUndo = histRef.current.past.length > 0;
   const canRedo = histRef.current.future.length > 0;
+
+  // Salvamento automático: depois da 1ª edição, guarda tudo no navegador (1 s depois da
+  // última mudança). Ao reabrir o projeto com edições não exportadas, oferece recuperar.
+  const [recover, setRecover] = useState(() => {
+    const saved = loadAutosave(sourceId);
+    return saved && !saved.submitted && saved.state ? saved : null;
+  });
+  const [savedAt, setSavedAt] = useState(null);
+  const editedRef = useRef(false);
+  useEffect(() => {
+    if (canUndo || canRedo) editedRef.current = true;
+    if (!editedRef.current || !sourceId) return undefined;
+    const id = setTimeout(() => {
+      if (saveAutosave(sourceId, histState)) setSavedAt(Date.now());
+    }, 1000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...Object.values(histState), canUndo, canRedo, sourceId]);
+  function recoverEdits() {
+    if (!recover?.state) return;
+    // vira um passo do desfazer: dá para voltar ao que estava antes de recuperar
+    const h = histRef.current;
+    if (h.prev) h.past.push(h.prev);
+    h.future = [];
+    histRef.current.at = 0;
+    for (const [k, set] of Object.entries(histSet)) if (k in recover.state) set(recover.state[k]);
+    editedRef.current = true;
+    setRecover(null);
+  }
+  function discardRecovery() {
+    clearAutosave(sourceId);
+    setRecover(null);
+  }
 
   const isPauseCut = (p) => !keptPauses.has(pauseKey(p));
   function togglePause(p) {
@@ -1006,6 +1041,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
 
   function generate() {
+    markAutosaveSubmitted(sourceId);
     // Cortes de silêncio escolhidos: uma pequena folga interna evita cortar o
     // ataque/finalização das palavras vizinhas.
     const silenceCuts = pausesCut
@@ -1430,11 +1466,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </button>
         </div>
       )}
+      {recover && (
+        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12, padding: '10px 12px', borderRadius: 12, background: 'rgba(124,58,237,0.16)', border: '1px solid rgba(124,58,237,0.45)', fontSize: 13 }}>
+          <Icon name="undo" size={16} strokeWidth={2} />
+          <span style={{ flex: 1, minWidth: 180 }}>Há edições deste projeto que não foram exportadas (salvas {new Date(recover.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}).</span>
+          <button onClick={recoverEdits} style={{ height: 32, padding: '0 14px', borderRadius: 9, border: 'none', background: GRAD, color: '#fff', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' }}>Recuperar</button>
+          <button onClick={discardRecovery} style={{ height: 32, padding: '0 12px', borderRadius: 9, border: `1px solid ${C.border}`, background: 'transparent', color: C.muted, fontWeight: 600, fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' }}>Descartar</button>
+        </div>
+      )}
       <div className="rf-tl-head" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'rgba(255,107,53,0.14)', color: C.orangeSoft }}><Icon name="film" size={18} strokeWidth={1.9} /></span>
         <div>
           <div style={{ fontWeight: 800, fontSize: 16.5, letterSpacing: -0.2 }}>Editor de vídeo</div>
-          <div className="rf-tl-hide-sm" style={{ fontSize: 11.5, color: C.faint }}>Corte, legende e ajuste antes de exportar · {APP_VERSION}</div>
+          <div className="rf-tl-hide-sm" style={{ fontSize: 11.5, color: C.faint }}>Corte, legende e ajuste antes de exportar · {APP_VERSION}{savedAt ? ' · alterações salvas automaticamente' : ''}</div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <GhostButton onClick={onBack} disabled={busy} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -1629,6 +1673,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 </button>
                 {advOpen && catalog && (
                   <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+<CapRow label="Área segura (Reels/TikTok)">
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => setCapField({ captionSafeZone: true })} style={{ ...miniBtn(cap.captionSafeZone !== false, false), flex: 1, minHeight: 36 }}>Fora dos botões</button>
+                        <button onClick={() => setCapField({ captionSafeZone: false })} style={{ ...miniBtn(cap.captionSafeZone === false, false), flex: 1, minHeight: 36 }}>Livre</button>
+                      </div>
+                    </CapRow>
                     <CapRow label="Linhas por legenda">
                       <div style={{ display: 'flex', gap: 6 }}>
                         {[1, 2].map((n) => <button key={n} onClick={() => setCapField({ captionLines: n })} style={{ ...miniBtn(cap.captionLines === n, false), flex: 1, minHeight: 36 }}>{n === 1 ? '1 linha' : '2 linhas'}</button>)}
@@ -2310,6 +2360,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   )}
                   <CapRow label="Fundo do texto"><Sel value={cap.captionBackground} opts={catalog.captionBackgrounds} onChange={(v) => setCapField({ captionBackground: v })} /></CapRow>
                   <CapRow label="Posição"><Sel value={cap.captionPosition} opts={catalog.captionPositions} onChange={(v) => setCapField({ captionPosition: v, captionX: undefined, captionY: undefined })} /></CapRow>
+                  <CapRow label="Área segura (Reels/TikTok)">
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => setCapField({ captionSafeZone: true })} style={{ ...miniBtn(cap.captionSafeZone !== false, false), flex: 1 }}>Fora dos botões</button>
+                      <button onClick={() => setCapField({ captionSafeZone: false })} style={{ ...miniBtn(cap.captionSafeZone === false, false), flex: 1 }}>Livre</button>
+                    </div>
+                  </CapRow>
                   <CapRow label="Cor">
                     <ColorSwatches value={cap.captionColor} options={catalog.captionColors || []} onChange={(v) => setCapField({ captionColor: v })} size={24} />
                   </CapRow>

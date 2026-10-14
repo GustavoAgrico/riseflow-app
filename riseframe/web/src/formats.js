@@ -6,6 +6,7 @@ export const FORMATS = [
   { id: 'ad', label: 'Vídeo para anúncio', sub: 'Feed · 1:1', icon: 'megaphone', aspect: '1:1', tint: '#FFB020' },
   { id: 'youtube', label: 'Vídeo para YouTube', sub: 'Horizontal · 16:9', icon: 'play', aspect: '16:9', tint: '#FF6B35' },
   { id: 'cortes', label: 'Podcast / Cortes', sub: 'Vários clipes curtos', icon: 'podcast', aspect: '9:16', clips: true, tint: '#9F67FF' },
+  { id: 'resumo', label: 'Vídeo longo → curto', sub: 'Um vídeo só, com o essencial', icon: 'zap', aspect: '9:16', short: true, tint: '#22C55E' },
   { id: 'original', label: 'Manter o formato', sub: 'Como foi gravado', icon: 'film', aspect: 'original', tint: '#A6A6BC' },
 ];
 

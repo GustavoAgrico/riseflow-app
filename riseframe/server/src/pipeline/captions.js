@@ -8,7 +8,7 @@ import { fontMetrics } from './fontMetrics.js';
 import { pickKeyword, emphasisOf, premiumChunks, layoutCaption, autoMaxChars } from '../../../shared/captionKeyword.js';
 import {
   CAPTION_FONTS as FONT_DEFS, fontById, fontBold, CAPTION_COLORS, colorHex, isLightHex, isWhiteish,
-  HIGHLIGHT_IDS, LINE_HEIGHT, CAPTION_TEMPLATES, CAPTION_TEMPLATE_LABELS,
+  HIGHLIGHT_IDS, LINE_HEIGHT, CAPTION_TEMPLATES, CAPTION_TEMPLATE_LABELS, safeCaptionBox,
 } from '../../../shared/captionStyle.js';
 
 export { premiumChunks, CAPTION_COLORS, CAPTION_TEMPLATES, CAPTION_TEMPLATE_LABELS };
@@ -161,9 +161,10 @@ export function buildAss(segments, meta, style = {}) {
   // ── Onde fica o bloco de texto ──
   const pos = ['top', 'center', 'bottom'].includes(style.position) ? style.position : 'auto';
   const kind = pos !== 'auto' ? pos : T.align === 8 ? 'top' : T.align === 5 ? 'center' : 'bottom';
-  const margin = style.marginV != null
-    ? style.marginV
-    : pos === 'center' ? 0 : pos === 'top' || pos === 'bottom' ? Math.round(h * 0.12) : Math.round(h * T.marginV);
+  // Área segura das redes (vídeo vertical): a legenda não fica atrás dos botões nem da
+  // descrição do Instagram/TikTok — sobe acima da faixa de baixo e estreita nas laterais.
+  const safe = safeCaptionBox({ w, h, kind, marginV: pos === 'center' ? 0 : pos === 'top' || pos === 'bottom' ? 0.12 : T.marginV, safe: style.safeZone !== false });
+  const margin = style.marginV != null ? style.marginV : Math.round(h * safe.marginV);
   const globalPos = posOf({ px: style.posX, py: style.posY });
   const manual = (p) => {
     const q = p && p.px != null ? p : globalPos;
@@ -236,7 +237,7 @@ export function buildAss(segments, meta, style = {}) {
 
   // Linhas e caracteres por linha: cada frase vira "cartões" de no máximo 1 ou 2 linhas.
   const maxLines = style.lines === 1 ? 1 : 2;
-  const maxChars = Number(style.maxChars) > 0 ? Number(style.maxChars) : autoMaxChars(w, em, upper);
+  const maxChars = Number(style.maxChars) > 0 ? Number(style.maxChars) : autoMaxChars(w, em, upper, T.premium ? 0.86 : safe.widthFrac);
   const groups = [];
   for (const seg of segments) {
     const raw = seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }];

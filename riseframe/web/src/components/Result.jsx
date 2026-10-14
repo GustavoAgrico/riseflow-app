@@ -108,6 +108,9 @@ export default function Result({ job, onReset, onEditTimeline }) {
         {r.autoClean?.removed > 0 && (
           <Stat label="Fala corrigida" value={`${r.autoClean.removed} ${r.autoClean.removed === 1 ? 'palavra' : 'palavras'}${/IA/.test(r.autoClean.method || '') ? ' · IA' : ''}`} />
         )}
+        {r.short && (
+          <Stat label="Vídeo curto" value={`${r.short.parts} ${r.short.parts === 1 ? 'trecho' : 'trechos'} · ~${r.short.seconds}s de fala${/IA/.test(r.short.by || '') ? ' · IA' : ''}`} />
+        )}
         {r.noisesRemoved > 0 && (
           <Stat label="Tosse e ruídos" value={`${r.noisesRemoved} ${r.noisesRemoved === 1 ? 'cortado' : 'cortados'}`} />
         )}

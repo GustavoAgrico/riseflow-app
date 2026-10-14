@@ -33,7 +33,7 @@ export const CLIP_TYPES = {
   conclusao: 'Conclusão',
 };
 
-const GOAL_HINT = {
+export const GOAL_HINT = {
   auto: 'o que tiver mais força para prender e entregar valor',
   autoridade: 'mostrar que a pessoa domina o assunto: opiniões firmes, visão própria, diagnósticos, experiência',
   educacao: 'ensinar algo prático e aplicável: passo a passo, dicas, explicações claras com começo, meio e fim',
@@ -53,13 +53,13 @@ const GOAL_WEIGHTS = {
 
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 // Palavras que ABREM dependendo do que veio antes (o corte começa "no meio").
-const CONTEXT_OPENERS = new Set(
+export const CONTEXT_OPENERS = new Set(
   ('e mas porque porem entao ai dai pois logo assim portanto isso isto esse essa esses essas aquilo aquele aquela '
-    + 'ele ela eles elas dele dela ou seja alem tambem depois antes inclusive senao tipo ne').split(/\s+/),
+    + 'ele ela eles elas dele dela ou seja alem tambem depois antes inclusive senao tipo ne resultado conclusao').split(/\s+/),
 );
 // A frase seguinte continua a ideia (o corte não pode parar antes dela).
-const CONTINUES = new Set('porque pois entao senao mas que ou seja inclusive tipo'.split(/\s+/));
-const firstWord = (t) => (norm(t).match(/[a-z0-9]+/) || [''])[0];
+export const CONTINUES = new Set('porque pois entao senao mas que ou seja inclusive tipo'.split(/\s+/));
+export const firstWord = (t) => (norm(t).match(/[a-z0-9]+/) || [''])[0];
 
 /** Transcrição → frases [{ start, end, text }]: pontuação final ou pausa de 0,7 s+. */
 export function toSentences(transcript, { maxWords = 40 } = {}) {
@@ -95,7 +95,7 @@ const TYPE_PATTERNS = {
 };
 const CTA = /\b(link|bio|comprar|compre|garanta|inscreva|inscricao|chama no|direct|agende|whatsapp|comenta|comente|compartilha|salva|segue)\b/;
 
-function typeScores(text) {
+export function typeScores(text) {
   const t = norm(text);
   const out = {};
   for (const [k, re] of Object.entries(TYPE_PATTERNS)) out[k] = (t.match(new RegExp(re.source, 'g')) || []).length;
@@ -107,7 +107,7 @@ function typeScores(text) {
  * conteúdo pesados pelo objetivo, ideia completa (não começa dependendo do anterior,
  * termina fechando a frase, a seguinte não continua o raciocínio), densidade.
  */
-function ruleScore(S, a, b, goal) {
+export function ruleScore(S, a, b, goal) {
   const span = S.slice(a, b + 1);
   const text = span.map((s) => s.text).join(' ');
   const dur = span[span.length - 1].end - span[0].start;
@@ -186,7 +186,7 @@ function pickNonOverlapping(cands, count) {
 }
 
 const capitalize = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
-function titleFrom(text) {
+export function titleFrom(text) {
   const t = String(text).replace(/[.!?…]+$/, '').split(/\s+/).slice(0, 9).join(' ');
   return capitalize(t).slice(0, 60);
 }

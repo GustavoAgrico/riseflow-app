@@ -119,7 +119,7 @@ export function layoutCaption(words, { lines = 2, maxChars = 24, segEnd } = {}) 
  * Quantos caracteres cabem numa linha quando o limite é automático: largura útil do
  * quadro ÷ largura média de uma letra (fonte em maiúsculas é mais larga).
  */
-export function autoMaxChars(frameW, fontPx, upper) {
-  const avail = frameW * 0.86;
+export function autoMaxChars(frameW, fontPx, upper, widthFrac = 0.86) {
+  const avail = frameW * widthFrac;
   return Math.max(8, Math.floor(avail / (fontPx * (upper ? 0.66 : 0.56))));
 }
