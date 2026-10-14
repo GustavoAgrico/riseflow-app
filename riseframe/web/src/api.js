@@ -491,6 +491,30 @@ export async function preciseCuts(id, body, signal) {
   return data;
 }
 
+// ─── Fontes próprias (legendas) ───
+export function authFetch(url, init = {}) {
+  return fetch(url, { ...init, headers: authHeaders(init.headers || {}) });
+}
+export const customFontFileUrl = (id) => `${BASE}/custom-fonts/${id}/file`;
+export async function listCustomFontsApi() {
+  const r = await authFetch(`${BASE}/custom-fonts`);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `erro ${r.status}`);
+  return d.fonts || [];
+}
+export async function uploadCustomFontApi(file) {
+  const form = new FormData();
+  form.append('file', file);
+  const r = await authFetch(`${BASE}/custom-fonts`, { method: 'POST', body: form });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `erro ${r.status}`);
+  return d;
+}
+export async function deleteCustomFontApi(id) {
+  const r = await authFetch(`${BASE}/custom-fonts/${id}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error(`erro ${r.status}`);
+}
+
 export const downloadUrl = (id) => `${BASE}/jobs/${id}/download`;
 export const previewUrl = (id) => `${BASE}/jobs/${id}/preview`;
 /** URL do vídeo ORIGINAL enviado (para o editor/timeline pré-visualizar). */

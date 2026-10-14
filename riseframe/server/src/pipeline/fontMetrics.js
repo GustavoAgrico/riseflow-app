@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CAPTION_FONT_LIST } from '../../../shared/captionStyle.js';
+import { CAPTION_FONT_FILES } from '../../../shared/captionStyle.js';
 
 /**
  * Medidas das fontes empacotadas, lidas dos próprios arquivos .ttf, para o render (libass)
@@ -105,7 +105,7 @@ const FALLBACK = { cell: 1.4, cssBase: 0.25, assBase: 0.25, dy: 0, width: (t) =>
 /** Medidas da fonte pela família (nome interno). */
 export function fontMetrics(family) {
   if (cache.has(family)) return cache.get(family);
-  const f = CAPTION_FONT_LIST.find((x) => x.family === family);
+  const f = CAPTION_FONT_FILES.find((x) => x.family === family);
   let m = FALLBACK;
   if (f) {
     try {
@@ -115,5 +115,19 @@ export function fontMetrics(family) {
     }
   }
   cache.set(family, m);
+  return m;
+}
+
+/** Medidas de um arquivo de fonte qualquer (fonte própria do usuário). */
+export function fontMetricsFile(file) {
+  const key = `file:${file}`;
+  if (cache.has(key)) return cache.get(key);
+  let m = FALLBACK;
+  try {
+    m = parse(file);
+  } catch {
+    m = FALLBACK;
+  }
+  cache.set(key, m);
   return m;
 }

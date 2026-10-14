@@ -14,6 +14,7 @@ import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../..
 import { registerMedia, resolveMedia } from '../mediaStore.js';
 import { formatBytes, freeDiskBytes } from '../storage.js';
 import { startUpload, uploadStatus, receiveChunk, fromChunkedUpload } from '../chunkedUpload.js';
+import { saveCustomFont, listCustomFonts, resolveCustomFont, deleteCustomFont } from '../customFonts.js';
 import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
 import { remuxByKeepSegments, remapTranscript, snapKeep } from '../pipeline/timeline.js';
@@ -26,7 +27,7 @@ import { brollCandidates, resolveSource, googleConfig, googleReady } from '../pi
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
 import { analyzeAndGrade } from '../pipeline/autoColor.js';
 import { CAPTION_TEMPLATES, CAPTION_FONTS } from '../pipeline/captions.js';
-import { isCaptionColor, HIGHLIGHT_IDS } from '../../../shared/captionStyle.js';
+import { isCaptionColor, HIGHLIGHT_IDS, isFontStyle } from '../../../shared/captionStyle.js';
 import { VOICE_NOISE, VOICE_PRESETS, VOICE_EFFECTS, previewVoice } from '../pipeline/voice.js';
 
 const CAPTION_TEMPLATE_IDS = Object.keys(CAPTION_TEMPLATES);
@@ -45,6 +46,14 @@ export function fixName(name) {
 
 function optionsForUser(req) {
   const o = parseOptions(req.body?.options);
+  // Fonte própria: só a do próprio usuário (o cliente nunca manda caminho).
+  if (String(o.captionFont).startsWith('custom:')) {
+    const f = resolveCustomFont(req.user.id, o.captionFont.slice(7));
+    if (f) {
+      o.captionFontFile = f.path;
+      o.captionFontFamily = f.family;
+    } else o.captionFont = 'auto';
+  }
   const s = getSettings(req.user.id);
   if (s.pexelsKey) o.pexelsKey = s.pexelsKey;
   if (s.anthropicKey) o.anthropicKey = s.anthropicKey;
@@ -489,10 +498,17 @@ export function parseOptions(raw) {
     captionTemplate: CAPTION_TEMPLATE_IDS.includes(o.captionTemplate) ? o.captionTemplate : 'clean',
     // cor da paleta ou livre ("#RRGGBB")
     captionColor: isCaptionColor(o.captionColor) ? String(o.captionColor) : 'white',
-    captionFont: o.captionFont === 'auto' || CAPTION_FONTS[o.captionFont] ? o.captionFont : 'auto',
+    // fonte embutida, ou "custom:<id>" = fonte própria do usuário (resolvida em optionsForUser)
+    captionFont: o.captionFont === 'auto' || CAPTION_FONTS[o.captionFont] || /^custom:[A-Za-z0-9_-]{8,24}$/.test(String(o.captionFont || '')) ? o.captionFont : 'auto',
     captionAnimation: ['auto', 'fade', 'pop', 'bounce', 'zoom', 'pop-rot', 'shake', 'none'].includes(o.captionAnimation) ? o.captionAnimation : 'auto',
     captionBackground: ['auto', 'shadow', 'box', 'bar', 'glow', 'none', 'clean'].includes(o.captionBackground) ? o.captionBackground : 'auto',
     captionPosition: ['auto', 'top', 'center', 'bottom'].includes(o.captionPosition) ? o.captionPosition : 'auto',
+    // Estilo da fonte (arquivo próprio: Regular, Itálico, Negrito, Black…), itálico
+    // inclinado, sublinhado e maiúsculas/minúsculas (como os botões do Premiere).
+    captionFontStyle: typeof o.captionFontStyle === 'string' && o.captionFontStyle && isFontStyle(o.captionFont, o.captionFontStyle) ? o.captionFontStyle : '',
+    captionItalic: o.captionItalic === true || o.captionItalic === 'true',
+    captionUnderline: o.captionUnderline === true || o.captionUnderline === 'true',
+    captionCase: ['auto', 'upper', 'lower', 'normal'].includes(o.captionCase) ? o.captionCase : 'auto',
     // Espaçamento entre as letras (em) e sombra das letras (do estilo | sem | personalizada).
     captionSpacing: clampNum(o.captionSpacing, -0.05, 0.3, 0),
     captionShadow: ['auto', 'off', 'on'].includes(o.captionShadow) ? o.captionShadow : 'auto',
@@ -613,6 +629,27 @@ export function parseOptions(raw) {
       : null,
   };
 }
+
+// Fontes próprias do usuário (.ttf/.otf/.woff) para as legendas.
+const uploadFont = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 ** 2 } });
+jobsRouter.get('/custom-fonts', requireAuth, (req, res) => res.json({ fonts: listCustomFonts(req.user.id) }));
+jobsRouter.post('/custom-fonts', requireAuth, uploadFont.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'envie o arquivo da fonte (campo "file")' });
+  try {
+    const f = saveCustomFont(req.user.id, req.file.buffer, fixName(req.file.originalname));
+    res.status(201).json(f);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+jobsRouter.get('/custom-fonts/:id/file', requireAuth, (req, res) => {
+  const f = resolveCustomFont(req.user.id, req.params.id);
+  if (!f) return res.status(404).json({ error: 'fonte não encontrada' });
+  res.set('Cache-Control', 'private, max-age=86400').sendFile(f.path);
+});
+jobsRouter.delete('/custom-fonts/:id', requireAuth, (req, res) => {
+  res.json({ ok: deleteCustomFont(req.user.id, req.params.id) });
+});
 
 // Upload retomável em partes (o vídeo continua de onde parou se a conexão cair).
 // Confere o saldo ANTES de subir o vídeo (não faz a pessoa enviar gigas para ouvir "sem créditos").

@@ -3,7 +3,7 @@ import { C, GRAD } from '../theme.js';
 import Icon from './Icon.jsx';
 import CaptionPreview from './CaptionPreview.jsx';
 import VoicePanel from './VoicePanel.jsx';
-import CaptionGallery, { CAPTION_PRESETS, currentPreset, FontPicker, ColorSwatches } from './CaptionGallery.jsx';
+import CaptionGallery, { CAPTION_PRESETS, currentPreset, FontPicker, ColorSwatches, TextStyleBar } from './CaptionGallery.jsx';
 import LayoutPreview from './LayoutPreview.jsx';
 import { useAuth } from '../AuthContext.jsx';
 import { openPlans } from './CostLine.jsx';
@@ -188,7 +188,9 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
             <div style={{ padding: '10px 0 14px', borderBottom: `1px solid ${C.border}` }}>
               <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Tipografia (fonte)</div>
               <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 10 }}>Fontes embutidas — o vídeo final sai com a mesma letra da prévia.</div>
-              <FontPicker value={options.captionFont || 'auto'} fonts={catalog.captionFonts || []} onChange={(v) => set({ captionFont: v })} />
+              <FontPicker value={options.captionFont || 'auto'} fonts={catalog.captionFonts || []} onChange={(v) => set({ captionFont: v, captionFontStyle: '' })} />
+              <div style={{ fontSize: 12.5, color: C.muted, margin: '12px 0 8px' }}>Estilo do texto</div>
+              <TextStyleBar options={options} onChange={set} />
             </div>
             {catalog.captionAnimations && (
               <Row label="Animação do texto" hint="Como cada palavra/frase entra na tela">

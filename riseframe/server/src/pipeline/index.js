@@ -493,6 +493,11 @@ export async function runPipeline(job, onUpdate = () => {}) {
       maxChars: options.captionMaxChars, // caracteres por linha (0 = automático)
       posX: options.captionX, // posição livre arrastada na prévia (0–1), vale para todas as frases
       posY: options.captionY,
+      fontStyle: options.captionFontStyle, // estilo da fonte (Regular, Itálico, Black…)
+      customFont: options.captionFontFile ? { family: options.captionFontFamily, file: options.captionFontFile } : null, // fonte própria
+      italic: options.captionItalic === true, // itálico inclinado (fonte sem arquivo itálico)
+      underline: options.captionUnderline === true,
+      textCase: options.captionCase, // auto | upper | lower | normal
       letterSpacing: options.captionSpacing, // espaçamento entre as letras (em)
       shadowMode: options.captionShadow, // sombra: auto (do estilo) | off | on
       shadowSize: options.captionShadowSize,
