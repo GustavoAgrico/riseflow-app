@@ -25,6 +25,22 @@ const TIMEOUT_MS = 75_000; // o Render grátis leva até ~1 min para acordar
 const USER_TTL_MS = 5 * 60_000;
 const OFFLINE_GRACE_MS = 3 * 24 * 3600 * 1000; // sem internet: vale o último login confirmado
 
+// O Render responde 502/503/504 enquanto o servidor do site acorda (plano grátis dorme),
+// reinicia ou faz deploy: tenta de novo algumas vezes antes de desistir.
+const WAKE_RETRIES = [4000, 8000, 15000, 20000];
+const isWaking = (status) => status === 502 || status === 503 || status === 504;
+const WAKE_MSG = 'O servidor da sua conta está fora do ar ou acordando agora (pode levar 1 minuto). Tente de novo em instantes.';
+async function fetchWaking(url, init) {
+  let r;
+  for (let i = 0; ; i++) {
+    r = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!isWaking(r.status) || i >= WAKE_RETRIES.length) return r;
+    log.warn(`servidor da conta respondeu ${r.status}; tentando de novo em ${WAKE_RETRIES[i] / 1000}s`);
+    await r.arrayBuffer().catch(() => {});
+    await new Promise((x) => setTimeout(x, WAKE_RETRIES[i]));
+  }
+}
+
 /** Erro com status HTTP e corpo do site, para devolver igual ao cliente. */
 class AccountError extends Error {
   constructor(status, body) {
@@ -42,17 +58,16 @@ export async function accountFetch(apiPath, { method = 'GET', token = '', body, 
   if (ip) headers['x-forwarded-for'] = ip;
   let r;
   try {
-    r = await fetch(`${config.account.server}/api${apiPath}`, {
+    r = await fetchWaking(`${config.account.server}/api${apiPath}`, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (err) {
     throw new AccountError(503, { error: 'sem conexão com o servidor da sua conta — confira a internet e tente de novo', offline: true, detail: err.message });
   }
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new AccountError(r.status, data);
+  if (!r.ok) throw new AccountError(r.status, data.error ? data : isWaking(r.status) ? { error: WAKE_MSG, offline: true } : data);
   return data;
 }
 
@@ -193,14 +208,18 @@ export function accountProxy() {
     if (hasBody) headers['content-type'] = 'application/json';
     if (req.ip) headers['x-forwarded-for'] = req.ip;
     try {
-      const r = await fetch(`${config.account.server}${req.originalUrl}`, {
+      const r = await fetchWaking(`${config.account.server}${req.originalUrl}`, {
         method,
         headers,
         body: hasBody ? JSON.stringify(req.body || {}) : undefined,
-        signal: AbortSignal.timeout(TIMEOUT_MS),
       });
+      const type = r.headers.get('content-type') || '';
+      // Erro do site sem JSON (página do Render de "fora do ar"): mensagem clara em vez de "erro 503"
+      if (!r.ok && !type.includes('json')) {
+        await r.arrayBuffer().catch(() => {});
+        return res.status(r.status).json({ error: isWaking(r.status) ? WAKE_MSG : `o servidor da sua conta respondeu ${r.status} — tente de novo em instantes`, offline: isWaking(r.status) });
+      }
       res.status(r.status);
-      const type = r.headers.get('content-type');
       if (type) res.type(type);
       res.send(Buffer.from(await r.arrayBuffer()));
     } catch {
