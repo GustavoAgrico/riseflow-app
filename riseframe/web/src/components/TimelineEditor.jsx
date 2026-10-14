@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { C, GRAD, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan, previewVoice, searchBroll } from '../api.js';
+import { sourceUrl, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, fetchBrollPlan, previewVoice, searchBroll, preciseCuts } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -357,6 +357,35 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function cutAllPauses() { setKeptPauses(new Set()); }
   function keepAllPauses() { setKeptPauses(new Set(pauses.map(pauseKey))); }
   const pausesCut = pauses.filter(isPauseCut);
+
+  // Cortes PRECISOS para a prévia (a mesma conta do vídeo final, feita no servidor sobre o
+  // áudio): a transcrição erra o tempo das palavras em décimos de segundo, e pular a pausa
+  // ou a palavra removida pelos tempos dela comia pedaço de palavra na prévia. Recalcula
+  // (com espera curta) quando os cortes mudam; enquanto isso, usa os tempos da transcrição.
+  const cutKey = useMemo(() => JSON.stringify([
+    pausesCut.map((p) => [+p.start.toFixed(2), +p.end.toFixed(2)]),
+    segments.flatMap((sg) => (sg.words || []).filter((w) => w.removed).map((w) => +Number(w.start).toFixed(2))),
+    cutBreaths,
+  ]), [pausesCut, segments, cutBreaths]);
+  const [precise, setPrecise] = useState(null); // { key, pauses, removed }
+  useEffect(() => {
+    if (!sourceId) return undefined;
+    const ctl = new AbortController();
+    const id = setTimeout(async () => {
+      try {
+        const words = segments.flatMap((sg) => (sg.words || []).map((w) => ({ start: w.start, end: w.end, word: w.word, removed: !!w.removed })));
+        // mesma folga interna que vai para o render (ver generate)
+        const cand = pausesCut.map((p) => ({ start: p.start + Math.min(0.03, p.dur / 4), end: p.end - Math.min(0.03, p.dur / 4) })).filter((c) => c.end - c.start > 0.02);
+        const r = await preciseCuts(sourceId, { transcript: { segments: [{ start: 0, end: dur, words }] }, pauses: cand, breaths: cutBreaths, strength: options?.cutStrength }, ctl.signal);
+        setPrecise({ key: cutKey, pauses: r.pauses || [], removed: r.removed || [] });
+      } catch {
+        /* sem os cortes precisos: a prévia usa os tempos da transcrição */
+      }
+    }, 500);
+    return () => { clearTimeout(id); ctl.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cutKey, sourceId]);
+  const preciseNow = precise && precise.key === cutKey ? precise : null;
   const pauseCutSec = pausesCut.reduce((a, p) => a + p.dur, 0);
 
   // ── sincroniza o vídeo ↔ timeline
@@ -1388,11 +1417,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Trechos que NÃO vão para o vídeo final (cortes, pausas cortadas, palavras cortadas):
   // a prévia pula por cima deles ao tocar — igual ao resultado.
   const skipRanges = (() => {
-    const r = [
-      ...cuts.map((c) => [c.start, c.end]),
-      ...pausesCut.map((p) => [p.start, p.end]),
-    ];
-    for (const seg of segments) for (const w of seg.words || []) if (w.removed) r.push([w.start, w.end]);
+    const r = cuts.map((c) => [c.start, c.end]);
+    if (preciseNow) {
+      for (const p of preciseNow.pauses) r.push([p.start, p.end]);
+      for (const p of preciseNow.removed) r.push([p.start, p.end]);
+    } else {
+      r.push(...pausesCut.map((p) => [p.start, p.end]));
+      for (const seg of segments) for (const w of seg.words || []) if (w.removed) r.push([w.start, w.end]);
+    }
     r.sort((a, b) => a[0] - b[0]);
     const out = [];
     for (const [a, b] of r) {
@@ -2768,20 +2800,29 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               {pauses.map((p, pi) => {
                 const cut = isPauseCut(p);
                 const w = Math.max(6, p.dur * pps - 1);
+                // parte que sai de verdade (cortes precisos); o resto da pausa tem som de
+                // fala e fica
+                const real = cut && preciseNow
+                  ? preciseNow.pauses.filter((q) => q.end > p.start && q.start < p.end).map((q) => [Math.max(p.start, q.start), Math.min(p.end, q.end)])
+                  : null;
+                const hatch = 'repeating-linear-gradient(45deg, rgba(240,82,107,0.28), rgba(240,82,107,0.28) 5px, rgba(240,82,107,0.14) 5px, rgba(240,82,107,0.14) 10px)';
                 return (
                   <div
                     key={pi}
                     onClick={(e) => { e.stopPropagation(); togglePause(p); }}
-                    title={`Pausa de ${p.dur.toFixed(1)}s — ${cut ? 'será cortada (clique p/ manter)' : 'mantida (clique p/ cortar)'}`}
+                    title={`Pausa de ${p.dur.toFixed(1)}s — ${cut ? (real && !real.length ? 'tem fala: o som fica (clique p/ manter)' : 'será cortada só onde não há voz (clique p/ manter)') : 'mantida (clique p/ cortar)'}`}
                     style={{
                       position: 'absolute', left: p.start * pps, top: 0, width: w, height: 22, borderRadius: 6,
                       cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-                      background: cut ? 'repeating-linear-gradient(45deg, rgba(240,82,107,0.28), rgba(240,82,107,0.28) 5px, rgba(240,82,107,0.14) 5px, rgba(240,82,107,0.14) 10px)' : 'rgba(255,255,255,0.05)',
+                      background: cut ? (real ? 'rgba(240,82,107,0.06)' : hatch) : 'rgba(255,255,255,0.05)',
                       border: `1px ${cut ? 'solid' : 'dashed'} ${cut ? 'rgba(240,82,107,0.55)' : C.border}`,
                       color: cut ? C.red : C.faint,
                     }}
                   >
-                    {w > 26 && (cut ? <Icon name="scissors" size={11} strokeWidth={2.2} /> : <span style={{ fontSize: 9.5, fontWeight: 600 }}>{p.dur.toFixed(1)}s</span>)}
+                    {real && real.map(([a, b]) => (
+                      <span key={a} style={{ position: 'absolute', top: 0, bottom: 0, left: (a - p.start) * pps, width: Math.max(1, (b - a) * pps), background: hatch, pointerEvents: 'none' }} />
+                    ))}
+                    {w > 26 && (cut ? <Icon name="scissors" size={11} strokeWidth={2.2} style={{ position: 'relative' }} /> : <span style={{ fontSize: 9.5, fontWeight: 600 }}>{p.dur.toFixed(1)}s</span>)}
                   </div>
                 );
               })}

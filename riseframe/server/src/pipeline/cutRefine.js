@@ -746,14 +746,19 @@ export function edgePads(strength = 'forte') {
   return { tail: 0.09, preroll: 0.07 };
 }
 
-export async function preciseRemovals(input, { pauses = [], transcript, hasAudio = true, breaths = false, coughs = false, duration = Infinity, strength = 'forte' } = {}) {
-  const [env, venv, track] = hasAudio
-    ? await Promise.all([
-      audioEnvelope(input).catch(() => null),
-      audioEnvelope(input, { af: VOICE_BAND }).catch(() => null),
-      voicingTrack(input).catch(() => null),
-    ])
-    : [null, null, null];
+/** Análise do áudio usada nos cortes precisos (envelope, faixa da voz e tom). */
+export async function audioAnalysis(input) {
+  const [env, venv, track] = await Promise.all([
+    audioEnvelope(input).catch(() => null),
+    audioEnvelope(input, { af: VOICE_BAND }).catch(() => null),
+    voicingTrack(input).catch(() => null),
+  ]);
+  return { env, venv, track };
+}
+
+export async function preciseRemovals(input, { pauses = [], transcript, hasAudio = true, breaths = false, coughs = false, duration = Infinity, strength = 'forte', audio = null } = {}) {
+  // `audio`: análise já pronta (a prévia do editor reaproveita a do vídeo original)
+  const { env, venv, track } = hasAudio ? audio || (await audioAnalysis(input)) : { env: null, venv: null, track: null };
   const voicing = makeVoicing(track, env);
   const all = keptWords(transcript);
   const ghosts = new Set(phantomWords(all, env));

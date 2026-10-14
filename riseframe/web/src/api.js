@@ -475,6 +475,22 @@ export function subscribeJob(id, onUpdate) {
   };
 }
 
+/**
+ * Cortes precisos da prévia (os mesmos do vídeo final): pausas que não passam por cima de
+ * voz e palavras removidas cortadas no vale do som. → { pauses, removed }
+ */
+export async function preciseCuts(id, body, signal) {
+  const r = await fetch(`${BASE}/jobs/${id}/precise-cuts`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+    signal,
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data;
+}
+
 export const downloadUrl = (id) => `${BASE}/jobs/${id}/download`;
 export const previewUrl = (id) => `${BASE}/jobs/${id}/preview`;
 /** URL do vídeo ORIGINAL enviado (para o editor/timeline pré-visualizar). */
