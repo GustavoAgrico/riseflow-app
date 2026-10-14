@@ -4,6 +4,7 @@ import { motionAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.j
 import { pickKeyword, premiumChunks, layoutCaption, autoMaxChars } from '../../../shared/captionKeyword.js';
 import {
   CAPTION_TEMPLATES, CAPTION_FONTS, CAPTION_COLOR_LIST, fontById, fontBold, colorHex, isLightHex, isWhiteish, HIGHLIGHT_IDS, LINE_HEIGHT,
+  SAFE_ZONE, isVerticalFrame, safeCaptionBox,
 } from '../../../shared/captionStyle.js';
 
 // Fontes, cores, estilos e destaques: os MESMOS do render (shared/captionStyle.js).
@@ -304,6 +305,8 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
   }, [videoRef]);
 
   if (!box || box.h < 10) return null;
+  // Guia das áreas cobertas pelos botões/textos do Instagram e TikTok (só editando, vídeo vertical).
+  const guide = editable && isVerticalFrame(box.w, box.h) ? <SafeZoneGuide box={box} /> : null;
   const look = captionLook(options);
   const T = look.T;
   const fontPx = Math.max(4, T.size * box.h * look.scale);
@@ -315,19 +318,21 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
     seg = (segments || []).find((s) => wordsOf(s).length);
     at = seg ? wordsOf(seg)[0].start : 0;
   }
-  if (!seg) return null;
+  if (!seg) return guide;
   let words = wordsOf(seg);
   // Mesmos "cartões" do render: no máximo 1 ou 2 linhas, até N caracteres por linha.
+  // Onde fica o bloco (com a área segura das redes no vídeo vertical — a mesma conta do render).
+  const align = look.pos !== 'auto' ? look.pos : T.align === 8 ? 'top' : T.align === 5 ? 'center' : 'bottom';
+  const safeBox = safeCaptionBox({ w: box.w, h: box.h, kind: align, marginV: look.pos === 'auto' ? T.marginV : look.pos === 'center' ? 0 : 0.12, safe: options.captionSafeZone !== false });
+  const marginV = safeBox.marginV;
   if (look.mode !== 'word') {
-    const maxChars = Number(options.captionMaxChars) > 0 ? Number(options.captionMaxChars) : autoMaxChars(box.w, fontPx, look.T.upper);
+    const maxChars = Number(options.captionMaxChars) > 0 ? Number(options.captionMaxChars) : autoMaxChars(box.w, fontPx, look.T.upper, T.premium ? 0.86 : safeBox.widthFrac);
     const cards = layoutCaption(words, { lines: options.captionLines === 1 ? 1 : 2, maxChars, segEnd: seg.end });
     words = (cards.find((c, i) => at < c.end || i === cards.length - 1) || cards[0]).words;
   }
   let wi = words.findIndex((w, i) => at >= w.start && (i + 1 >= words.length || at < words[i + 1].start));
   if (wi < 0) wi = 0;
 
-  const align = look.pos !== 'auto' ? look.pos : T.align === 8 ? 'top' : T.align === 5 ? 'center' : 'bottom';
-  const marginV = look.pos === 'auto' ? T.marginV : look.pos === 'center' ? 0 : 0.12;
   const content = <CaptionWords words={words} wi={wi} look={look} options={options} fontPx={fontPx} keyId={words[0]?.start ?? seg.start} frameW={box.w} />;
 
   // Posição manual (arrastada): da palavra (modo palavra) ou da frase; senão a geral.
@@ -364,14 +369,19 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
 
   if (pos) {
     return (
+      <>
+      {guide}
       <div ref={boxRef} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, pointerEvents: 'none', overflow: 'hidden', zIndex: 1 }}>
         <div style={{ position: 'absolute', left: pos.x * box.w, top: pos.y * box.h, transform: 'translate(-50%, -50%)', width: box.w * 0.9, display: 'flex', justifyContent: 'center', textAlign: 'center' }}>
           {handle}
         </div>
       </div>
+      </>
     );
   }
   return (
+    <>
+    {guide}
     <div ref={boxRef} style={{
       position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, pointerEvents: 'none',
       display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -381,6 +391,23 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
       boxSizing: 'border-box', overflow: 'hidden', zIndex: 1,
     }}>
       {handle}
+    </div>
+    </>
+  );
+}
+
+/** Faixas que os botões e textos das redes cobrem (vídeo vertical), para posicionar a legenda. */
+function SafeZoneGuide({ box }) {
+  const z = SAFE_ZONE;
+  const area = { position: 'absolute', background: 'repeating-linear-gradient(135deg, rgba(255,80,80,0.16) 0 6px, rgba(255,80,80,0.06) 6px 12px)', border: '1px dashed rgba(255,120,120,0.55)', boxSizing: 'border-box' };
+  const tag = { position: 'absolute', fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.85)', background: 'rgba(0,0,0,0.45)', borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap' };
+  return (
+    <div aria-hidden="true" style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, pointerEvents: 'none', zIndex: 1 }}>
+      <div style={{ ...area, left: 0, right: 0, top: 0, height: box.h * z.top }} />
+      <div style={{ ...area, left: 0, right: 0, bottom: 0, height: box.h * z.bottom }}>
+        <span style={{ ...tag, left: 6, top: 4 }}>nome e descrição (Reels/TikTok)</span>
+      </div>
+      <div style={{ ...area, right: 0, width: box.w * z.right, top: box.h * z.rightFrom, height: box.h * (Math.min(z.rightTo, 1 - z.bottom) - z.rightFrom) }} />
     </div>
   );
 }

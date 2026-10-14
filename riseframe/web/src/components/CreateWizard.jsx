@@ -45,6 +45,7 @@ function aiTasks({ options, mode, caps }) {
     { id: 'zoom', icon: 'zap', title: 'Zoom nos momentos-chave', desc: 'Aproxima nas frases mais fortes', on: options.videoMotion === 'dynamic', set: (v) => ({ videoMotion: v ? 'dynamic' : 'none' }), off: notClips },
     { id: 'broll', icon: 'image', title: 'Imagens de apoio (B-roll)', desc: 'Ilustra o que você fala com imagens e vídeos', on: options.broll === true, set: (v) => ({ broll: v }), off: notClips || (!brollOk ? 'indisponível no servidor' : null) },
     { id: 'sfx', icon: 'volume', title: 'Efeitos sonoros', desc: 'Teclas na legenda e whoosh nas transições', on: options.soundEffects === true, set: (v) => ({ soundEffects: v }), off: notClips },
+    { id: 'short', icon: 'zap', title: 'Transformar em um vídeo curto', desc: 'A IA monta UM vídeo com o essencial: gancho, ideia principal e conclusão', on: Number(options.shortTarget) > 0, set: (v) => ({ shortTarget: v ? 60 : 0 }), off: notClips },
     { id: 'moments', icon: 'film', title: 'Detectar melhores momentos', desc: 'Gera vários cortes curtos com os trechos mais fortes', on: isClips, mode: (v) => (v ? 'clips' : 'auto') },
     { id: 'review', icon: 'edit', title: 'Revisar na timeline antes', desc: 'Abre o editor para você ajustar antes de finalizar', on: mode === 'editor', mode: (v) => (v ? 'editor' : 'auto'), off: isClips ? 'não vale para cortes' : null },
   ];
@@ -131,10 +132,11 @@ export default function CreateWizard({
     onFormat(f.id);
     if (f.clips) {
       onMode('clips');
-      set({ clipAspect: f.aspect === 'original' ? 'original' : f.aspect });
+      set({ clipAspect: f.aspect === 'original' ? 'original' : f.aspect, shortTarget: 0 });
     } else {
       if (mode === 'clips') onMode('auto');
-      set({ aspect: f.aspect });
+      // longo → curto: um vídeo só com o essencial (60 s por padrão)
+      set({ aspect: f.aspect, shortTarget: f.short ? Number(options.shortTarget) || 60 : 0 });
     }
     setStep(1);
   }
@@ -256,6 +258,45 @@ export default function CreateWizard({
               )}
             </div>
           </div>
+
+          {mode !== 'clips' && Number(options.shortTarget) > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 12, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>DURAÇÃO DO VÍDEO CURTO</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[30, 45, 60, 90, 120].map((s) => {
+                  const on = Number(options.shortTarget) === s;
+                  return (
+                    <button key={s} type="button" onClick={() => set({ shortTarget: s })}
+                      style={{ border: on ? '2px solid #fff' : `1px solid ${C.border}`, borderRadius: 999, padding: '8px 14px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                        background: on ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)', color: on ? C.text : C.muted, fontWeight: on ? 700 : 500 }}>
+                      {s < 60 ? `${s} s` : s === 60 ? '1 min' : s === 90 ? '1 min 30' : '2 min'}
+                    </button>
+                  );
+                })}
+              </div>
+              {catalog?.clipGoals && (
+                <>
+                  <div style={{ fontSize: 12, color: C.faint, fontWeight: 700, letterSpacing: 0.8, margin: '14px 0 8px' }}>OBJETIVO DO VÍDEO</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {catalog.clipGoals.map((g) => {
+                      const on = (options.clipGoal || 'auto') === g.id;
+                      return (
+                        <button key={g.id} type="button" onClick={() => set({ clipGoal: g.id })} title={g.label}
+                          style={{ border: on ? '2px solid #fff' : `1px solid ${C.border}`, borderRadius: 999, padding: '8px 14px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                            background: on ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)', color: on ? C.text : C.muted, fontWeight: on ? 700 : 500 }}>
+                          {g.label.replace(/ \(.*\)$/, '')}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+              <div style={{ fontSize: 12, color: C.faint, marginTop: 8, lineHeight: 1.5 }}>
+                A IA lê o vídeo inteiro e monta um único vídeo curto que conta a ideia do começo ao fim — abre com um gancho, pula apresentação, repetições e enrolação, e fecha com a conclusão.
+                {mode !== 'editor' && <> Dica: ligue <b>Revisar na timeline antes</b> para ver o que ficou (o resto aparece riscado) e devolver qualquer trecho.</>}
+              </div>
+            </div>
+          )}
 
           {mode === 'clips' && catalog?.clipGoals && (
             <div style={{ marginTop: 18 }}>

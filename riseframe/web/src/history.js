@@ -3,10 +3,11 @@
 // usuário, guardados só no dispositivo dele.
 const KEY = 'riseframe_history';
 
-export function listJobs() {
+export function listJobs(withDrafts = false) {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || '[]');
-    return Array.isArray(v) ? withSources(v) : [];
+    // rascunhos = vídeos abertos no editor e ainda não exportados (não entram nas estatísticas)
+    return Array.isArray(v) ? withSources(withDrafts ? v : v.filter((j) => !j.draft)) : [];
   } catch {
     return [];
   }
@@ -28,7 +29,8 @@ export function withSources(list) {
 export function recordJob(entry) {
   if (!entry?.id) return;
   try {
-    const all = listJobs().filter((j) => j.id !== entry.id);
+    // exportou: o rascunho do mesmo vídeo sai (vira o projeto editado)
+    const all = listJobs(true).filter((j) => j.id !== entry.id && !(j.draft && !entry.draft && j.sourceId && j.sourceId === entry.sourceId));
     all.unshift({ at: Date.now(), ...entry });
     localStorage.setItem(KEY, JSON.stringify(all.slice(0, 60)));
   } catch {

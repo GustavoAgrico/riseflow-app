@@ -45,7 +45,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   const [reopenError, setReopenError] = useState('');
   // Cortes de onde veio o clipe aberto na timeline: o "voltar" do editor volta para eles.
   const [clipsJob, setClipsJob] = useState(null);
-  const reeditable = useMemo(() => listJobs().filter((j) => j.sourceId).slice(0, 5), []);
+  const reeditable = useMemo(() => listJobs(true).filter((j) => j.sourceId).slice(0, 5), []);
 
   async function useExample() {
     setLoadingSample(true);
@@ -178,6 +178,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
             setSourceId(u.report.sourceId || u.id);
             setTranscriptData(tr);
             setDurationSec(u.report?.input?.duration || 0);
+            recordDraft(u, u.report.sourceId || u.id);
             setPhase('editing');
           }
           if (u.status === 'error') fail(u.error);
@@ -193,6 +194,13 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
 
   // Abre a timeline a partir de um resultado já processado (qualquer modo), usando
   // a transcrição da timeline original que o pipeline devolveu no relatório.
+  // Vídeo novo aberto no editor: entra nos projetos como rascunho, para dar para voltar
+  // a ele (com as edições salvas automaticamente) mesmo antes de exportar.
+  function recordDraft(tj, sid) {
+    if (listJobs(true).some((j) => j.sourceId === sid)) return;
+    recordJob({ id: tj.id, title: tj.filename || 'vídeo', mode: 'transcribe', draft: true, durationSec: tj.report?.input?.duration || 0, sourceId: sid });
+  }
+
   function openTimeline(doneJob) {
     const tr = doneJob?.report?.editorTranscript || doneJob?.report?.transcript;
     const sid = doneJob?.report?.sourceId;

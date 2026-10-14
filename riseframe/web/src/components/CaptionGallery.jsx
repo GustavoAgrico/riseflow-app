@@ -7,6 +7,11 @@ import { CAPTION_FONTS } from '../../../shared/captionStyle.js';
 // os ajustes finos (fonte, animação, tamanho…) continuam valendo depois.
 export const CAPTION_PRESETS = [
   { id: 'none', label: 'Sem legenda' },
+  // Prontos para cada tipo de perfil (o que costuma funcionar para cada público)
+  { id: 'especialista', label: 'Especialista', group: 'perfil', patch: { captionTemplate: 'clean', captionColor: 'sky', captionFont: 'montserrat', captionHighlight: true, captionHighlightStyle: 'color' } },
+  { id: 'podcast', label: 'Podcast', group: 'perfil', patch: { captionTemplate: 'karaoke', captionColor: 'yellow', captionFont: 'archivo' } },
+  { id: 'empresa', label: 'Empresa', group: 'perfil', patch: { captionTemplate: 'minimal', captionColor: 'blue', captionFont: 'inter', captionBackground: 'clean' } },
+  { id: 'criador', label: 'Criador', group: 'perfil', patch: { captionTemplate: 'tiktok', captionColor: 'lime', captionFont: 'montserrat' } },
   // Premium: palavra a palavra, palavra-chave grande com brilho + som de tecla a cada palavra.
   { id: 'premium', label: 'Premium ✨', patch: { captionTemplate: 'premium', captionColor: 'white', soundEffects: true } },
   { id: 'classico', label: 'Clássico', patch: { captionTemplate: 'clean', captionColor: 'white' } },

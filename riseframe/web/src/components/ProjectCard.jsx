@@ -3,7 +3,7 @@ import { C, GRAD, fmtDuration } from '../theme.js';
 import Icon from './Icon.jsx';
 import { previewUrl } from '../api.js';
 
-export const MODE_LABEL = { auto: 'Edição automática', render: 'Editado na timeline', clips: 'Cortes curtos', transcribe: 'Transcrição' };
+export const MODE_LABEL = { auto: 'Edição automática', render: 'Editado na timeline', clips: 'Cortes curtos', transcribe: 'Rascunho · não exportado' };
 const fmtWhen = (ms) => {
   const d = new Date(ms);
   const today = new Date();

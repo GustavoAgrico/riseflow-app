@@ -10,7 +10,7 @@ const MODE_LABEL = { auto: 'Automático', render: 'Timeline', clips: 'Clipes cur
 const fmtDate = (ms) => new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 
 export default function Library({ onNewVideo, onOpen }) {
-  const [jobs, setJobs] = useState(() => listJobs());
+  const [jobs, setJobs] = useState(() => listJobs(true));
   const [filter, setFilter] = useState('all');
   // Admin: escolher um vídeo editado como demonstração "antes e depois" da página inicial.
   const { billing } = useAuth();

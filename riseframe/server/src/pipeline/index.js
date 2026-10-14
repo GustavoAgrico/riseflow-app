@@ -22,6 +22,8 @@ import { colorFilter, hasColorAdjust } from './color.js';
 import { convertAspect, finalRender, outputTarget } from './render.js';
 import { burnHeadline, makeCover } from './headline.js';
 import { generateClips } from './clips.js';
+import { selectStory, markStory } from './shortVideo.js';
+import { llmConfig } from './llm.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('pipeline');
@@ -46,7 +48,7 @@ function buildPlan(mode, options) {
       { key: 'clips', label: 'Gerando clipes curtos', weight: 75, enabled: true },
     ];
   } else {
-    const hasRemoval = options.cutSilence !== false || options.autoClean === true || mode === 'render';
+    const hasRemoval = options.cutSilence !== false || options.autoClean === true || mode === 'render' || Number(options.shortTarget) > 0;
     all = [
       { key: 'probe', label: 'Sondando o vídeo', weight: 2, enabled: true },
       { key: 'voice', label: 'Tratando a voz (ruído e equalização)', weight: 10, enabled: voiceActive(options, 'clean') },
@@ -226,6 +228,13 @@ export async function runPipeline(job, onUpdate = () => {}) {
       transcript = c.transcript;
       report.autoClean = c.report;
     }
+    // Vídeo longo → curto: o editor já abre só com o que fica (o resto riscado).
+    if (Number(options.shortTarget) > 0) {
+      emit({ stageLabel: 'Montando o vídeo curto' });
+      const r = await shortStory(transcript, meta, options);
+      transcript = r.transcript;
+      if (r.report) report.short = r.report;
+    }
     report.transcript = transcript;
     report.sourceId = job.id;
     emit({ progress: 100, stage: 'done', stageLabel: 'Transcrição pronta' });
@@ -258,6 +267,14 @@ export async function runPipeline(job, onUpdate = () => {}) {
       editorTranscript = c.transcript; // timeline original com as muletas/cortes já marcados
       report.autoClean = c.report;
     }
+    // Vídeo longo → UM vídeo curto: só ficam as frases que contam a ideia principal.
+    if (Number(options.shortTarget) > 0 && mode !== 'render') {
+      emit({ stageLabel: 'Montando o vídeo curto' });
+      const r = await shortStory(transcript, meta, options);
+      transcript = r.transcript;
+      editorTranscript = r.transcript;
+      if (r.report) report.short = r.report;
+    }
 
     const pauses = [];
     if (options.manualSilence) {
@@ -278,6 +295,17 @@ export async function runPipeline(job, onUpdate = () => {}) {
       // Respirações ficam acima do limiar do detector de volume: os vãos entre as
       // palavras da transcrição também entram (as bordas são ajustadas pelo áudio).
       if (options.cutBreaths !== false) pauses.push(...wordGapRanges(transcript, { minGap: options.silenceMinDuration ?? 0.45, duration: meta.duration }));
+    }
+    // Vídeo curto: o que vem antes da 1ª frase escolhida e depois da última (abertura,
+    // vinheta, despedida, silêncio) sai sempre, com ou sem corte de silêncio.
+    if (Number(options.shortTarget) > 0) {
+      const kept = (transcript.segments || []).flatMap((sg) => sg.words || []).filter((w) => !w.removed && Number.isFinite(w.start));
+      if (kept.length) {
+        const first = Math.min(...kept.map((w) => w.start));
+        const last = Math.max(...kept.map((w) => w.end));
+        if (first > 0.4) pauses.push({ start: 0, end: first - 0.2 });
+        if (meta.duration - last > 0.5) pauses.push({ start: last + 0.3, end: meta.duration });
+      }
     }
     // Precisão: pausas nunca invadem palavras (transcrição + volume real do áudio) e as
     // palavras removidas são cortadas no vale de volume entre as vizinhas.
@@ -444,6 +472,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       animation: options.captionAnimation || 'auto', // animação de entrada do texto
       background: options.captionBackground || 'auto', // sombra | caixa | sem sombra
       position: options.captionPosition || 'auto', // topo | meio | embaixo
+      safeZone: options.captionSafeZone !== false, // fora dos botões do Reels/TikTok (vertical)
       mode: options.captionMode, // compat legado
       fontScale: options.captionScale || 1,
       highlight: options.captionHighlight === true, // destacar a palavra falada (padrão: não)
@@ -565,6 +594,16 @@ export async function runPipeline(job, onUpdate = () => {}) {
   emit({ progress: 100, stage: 'done', stageLabel: 'Concluído' });
   log.ok(`pipeline (${mode}) concluído para job ${job.id}`);
   return report;
+}
+
+/** Escolhe o que fica no vídeo curto e marca o resto como removido. */
+async function shortStory(transcript, meta, options) {
+  const story = await selectStory(transcript, meta, options, llmConfig(options));
+  if (!story) return { transcript, report: null };
+  return {
+    transcript: markStory(transcript, story.parts),
+    report: { target: story.target, seconds: story.seconds, parts: story.parts.length, title: story.title, summary: story.summary, by: story.by },
+  };
 }
 
 /**

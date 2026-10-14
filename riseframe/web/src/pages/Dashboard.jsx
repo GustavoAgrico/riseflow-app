@@ -23,7 +23,9 @@ const QUICK = ['reels', 'tiktok', 'shorts', 'youtube', 'cortes'];
 
 export default function Dashboard({ user, onNewVideo, onLibrary, onTemplates, onOpen, onFormat }) {
   const first = (user?.name || '').split(' ')[0];
-  const jobs = useMemo(() => listJobs(), []);
+  const all = useMemo(() => listJobs(true), []);
+  // estatísticas só com vídeos exportados; a lista mostra também os rascunhos
+  const jobs = useMemo(() => all.filter((j) => !j.draft), [all]);
   const [tab, setTab] = useState('todos');
   const stats = useMemo(() => ({
     total: jobs.length,
@@ -31,7 +33,7 @@ export default function Dashboard({ user, onNewVideo, onLibrary, onTemplates, on
     saved: jobs.reduce((s, j) => s + (j.savedSec || 0), 0),
     captions: jobs.reduce((s, j) => s + (j.captions || 0), 0),
   }), [jobs]);
-  const shown = (tab === 'recentes' ? jobs.filter((j) => j.at >= Date.now() - 7 * 864e5) : tab === 'cortes' ? jobs.filter((j) => j.mode === 'clips') : jobs).slice(0, 8);
+  const shown = (tab === 'recentes' ? all.filter((j) => j.at >= Date.now() - 7 * 864e5) : tab === 'cortes' ? all.filter((j) => j.mode === 'clips') : all).slice(0, 8);
 
   return (
     <div className="rf-page" style={{ maxWidth: 1180, margin: 0, padding: '36px 32px 90px', position: 'relative' }}>
@@ -82,7 +84,7 @@ export default function Dashboard({ user, onNewVideo, onLibrary, onTemplates, on
               <button key={t.id} onClick={() => setTab(t.id)} style={{ border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: tab === t.id ? 'rgba(255,255,255,0.12)' : 'transparent', color: tab === t.id ? C.text : C.muted }}>{t.label}</button>
             ))}
           </div>
-          {jobs.length > 8 && (
+          {all.length > 8 && (
             <button onClick={onLibrary} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.orangeSoft, fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'inherit' }}>
               Ver todos <Icon name="chevron" size={14} strokeWidth={2.4} />
             </button>
@@ -94,11 +96,11 @@ export default function Dashboard({ user, onNewVideo, onLibrary, onTemplates, on
             <div style={{ width: 52, height: 52, margin: '0 auto 14px', borderRadius: 15, background: C.panel2, display: 'grid', placeItems: 'center', color: C.muted }}>
               <Icon name="film" size={24} strokeWidth={1.7} />
             </div>
-            <div style={{ fontWeight: 700, fontSize: 15.5 }}>{jobs.length ? 'Nada por aqui neste filtro' : 'Seu primeiro vídeo começa aqui'}</div>
+            <div style={{ fontWeight: 700, fontSize: 15.5 }}>{all.length ? 'Nada por aqui neste filtro' : 'Seu primeiro vídeo começa aqui'}</div>
             <div style={{ color: C.faint, fontSize: 13.5, marginTop: 6, maxWidth: 360, marginInline: 'auto', lineHeight: 1.5 }}>
               Envie um vídeo bruto: a IA corta, legenda e entrega pronto para postar.
             </div>
-            {!jobs.length && (
+            {!all.length && (
               <button onClick={onNewVideo} style={{ marginTop: 16, display: 'inline-flex', alignItems: 'center', gap: 8, background: GRAD, color: '#fff', border: 'none', borderRadius: 12, padding: '11px 20px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                 <Icon name="plus" size={16} strokeWidth={2.4} /> Criar vídeo
               </button>
