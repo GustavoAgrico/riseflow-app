@@ -4,7 +4,7 @@ import SnapGuides, { snapCenter } from './SnapGuides.jsx';
 import { motionAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { pickKeyword, premiumChunks, layoutCaption, autoMaxChars } from '../../../shared/captionKeyword.js';
 import {
-  CAPTION_TEMPLATES, CAPTION_FONTS, CAPTION_COLOR_LIST, fontById, fontBold, colorHex, isLightHex, isWhiteish, HIGHLIGHT_IDS, LINE_HEIGHT,
+  CAPTION_TEMPLATES, CAPTION_FONTS, CAPTION_COLOR_LIST, fontById, fontBold, colorHex, isLightHex, isWhiteish, HIGHLIGHT_IDS, LINE_HEIGHT, resolveFontFace,
   SAFE_ZONE, isVerticalFrame, safeCaptionBox,
 } from '../../../shared/captionStyle.js';
 
@@ -37,9 +37,19 @@ function textEm(text, family, weight) {
 export function captionLook(options) {
   const tplKey = CAPTION_TEMPLATES[options.captionTemplate] ? options.captionTemplate : 'clean';
   const T = CAPTION_TEMPLATES[tplKey];
-  const font = options.captionFont && options.captionFont !== 'auto' && CAPTION_FONTS[options.captionFont] ? CAPTION_FONTS[options.captionFont] : fontById(T.defaultFont);
-  const fontFamily = font.family;
-  const weight = T.bold && fontBold(font) ? 800 : 400;
+  // fonte própria do usuário ("custom:<id>", registrada no navegador como "RFU <id>")
+  const customId = String(options.captionFont || '').startsWith('custom:') ? options.captionFont.slice(7) : null;
+  const font = customId
+    ? { id: 'custom', family: `RFU ${customId}`, bold: false }
+    : options.captionFont && options.captionFont !== 'auto' && CAPTION_FONTS[options.captionFont] ? CAPTION_FONTS[options.captionFont] : fontById(T.defaultFont);
+  // estilo da fonte (Regular, Itálico, Black…): arquivo próprio com família única
+  const face = resolveFontFace(font, options.captionFontStyle);
+  const fontFamily = face.family;
+  const weight = face.styled ? 400 : T.bold && fontBold(font) ? 800 : 400;
+  const fakeItalic = options.captionItalic === true && !face.italic;
+  const underline = options.captionUnderline === true;
+  const caseMode = ['upper', 'lower', 'normal'].includes(options.captionCase) ? options.captionCase : T.upper ? 'upper' : 'normal';
+  const caseFn = (w) => (caseMode === 'upper' ? String(w).toUpperCase() : caseMode === 'lower' ? String(w).toLowerCase() : String(w));
   const animKind = options.captionAnimation && options.captionAnimation !== 'auto' ? options.captionAnimation : T.anim;
   const anim = ANIM_CSS[animKind] || ANIM_CSS.fade;
   const color = hexOf(options.captionColor);
@@ -101,7 +111,9 @@ export function captionLook(options) {
       lineHeight: LINE_HEIGHT,
       color: glowOn ? '#fff' : color,
       textShadow: baseShadow,
-      textTransform: T.upper ? 'uppercase' : 'none',
+      textTransform: caseMode === 'upper' ? 'uppercase' : caseMode === 'lower' ? 'lowercase' : 'none',
+      fontStyle: fakeItalic ? 'italic' : 'normal',
+      textDecoration: underline ? 'underline' : 'none',
       letterSpacing: `${spacing}em`,
       display: 'inline-block',
       padding: useBox ? `${fontPx * 0.05}px ${fontPx * 0.28}px` : 0,
@@ -116,7 +128,7 @@ export function captionLook(options) {
     };
   }
 
-  return { tplKey, T, font, fontFamily, weight, animKind, anim, color, accentIsWhite, scale, bg, useBox, glowOn, mode, pos, vAlign, highlight, hl, stroke, textStyle };
+  return { tplKey, T, font, face, caseMode, caseFn, upper: caseMode === 'upper', fontFamily, weight, animKind, anim, color, accentIsWhite, scale, bg, useBox, glowOn, mode, pos, vAlign, highlight, hl, stroke, textStyle };
 }
 
 // Frases de exemplo da prévia (tempos em segundos, repetem em loop).
@@ -371,7 +383,7 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
   const safeBox = safeCaptionBox({ w: box.w, h: box.h, kind: align, marginV: look.pos === 'auto' ? T.marginV : look.pos === 'center' ? 0 : 0.12, safe: options.captionSafeZone !== false });
   const marginV = safeBox.marginV;
   if (look.mode !== 'word') {
-    const maxChars = Number(options.captionMaxChars) > 0 ? Number(options.captionMaxChars) : autoMaxChars(box.w, fontPx, look.T.upper, T.premium ? 0.86 : safeBox.widthFrac);
+    const maxChars = Number(options.captionMaxChars) > 0 ? Number(options.captionMaxChars) : autoMaxChars(box.w, fontPx, look.upper, T.premium ? 0.86 : safeBox.widthFrac);
     const cards = layoutCaption(words, { lines: options.captionLines === 1 ? 1 : 2, maxChars, segEnd });
     words = (cards.find((c, i) => at < c.end || i === cards.length - 1) || cards[0]).words;
   }
@@ -470,7 +482,7 @@ export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, 
   const T = look.T;
   // Miniatura (still): sem animação e com um respiro entre as palavras (letra pequena).
   const style = { ...look.textStyle(fontPx), ...(still ? { animation: 'none', wordSpacing: '0.18em' } : null) };
-  const up = (w) => (T.upper ? String(w).toUpperCase() : w);
+  const up = (w) => look.caseFn(w);
   const emStyle = (w) => (w.emColor || w.emBig
     ? { ...(w.emColor ? { color: hexOfEm(w.emColor), opacity: 1 } : null), ...(w.emBig ? { fontSize: '1.3em' } : null), display: 'inline-block' }
     : null);

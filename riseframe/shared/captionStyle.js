@@ -39,6 +39,60 @@ export const fontById = (id) => CAPTION_FONTS[id] || CAPTION_FONTS.poppins;
 /** Pede negrito para esta fonte? */
 export const fontBold = (f) => f.bold !== false;
 
+// ─── Estilos de cada fonte (Regular, Itálico, Negrito, Black…) ───
+// Cada estilo é um arquivo próprio (S-<fonte>-<código>.ttf) com um nome de família ÚNICO
+// ("RFS <fonte> <código>"): o libass e o navegador pegam exatamente aquele arquivo, sem
+// confundir com outro peso nem "inventar" negrito/itálico. "" = o estilo padrão da fonte.
+const STYLE_LABEL = {
+  400: 'Regular', '400i': 'Itálico', 600: 'Semi-negrito', 700: 'Negrito', '700i': 'Negrito itálico',
+  800: 'Extra-negrito', '800i': 'Extra-negrito itálico', 900: 'Black', '900i': 'Black itálico',
+};
+const STYLE_CODES = {
+  montserrat: ['400', '400i', '700i', '800', '900', '900i'],
+  poppins: ['400', '400i', '700i', '900', '900i'],
+  inter: ['400', '400i', '700', '700i', '900', '900i'],
+  opensans: ['400', '400i', '700', '700i', '800', '800i'],
+  barlow: ['400', '400i', '700', '700i', '800i', '900', '900i'],
+  kanit: ['400', '400i', '700', '700i', '800i', '900', '900i'],
+  rubik: ['400', '400i', '700', '700i', '800i', '900', '900i'],
+  nunito: ['400', '400i', '700', '700i', '900i'],
+  playfair: ['400', '400i', '700', '700i', '900i'],
+  garamond: ['400', '400i', '700', '700i', '800'],
+  oswald: ['400', '600'],
+};
+STYLE_CODES.gotham = STYLE_CODES.poppins; // "Gotham" usa a Poppins
+const STYLE_FILE_ID = { gotham: 'poppins' };
+/** Nome do estilo padrão (o arquivo original de cada fonte). */
+const defaultStyleLabel = (f) => (f.weight >= 900 ? 'Black' : f.weight >= 800 ? 'Extra-negrito' : f.weight >= 700 || f.bold !== false ? 'Negrito' : 'Regular');
+
+/** Estilos de uma fonte: [{ id, label, family, file, italic }] (o 1º é o padrão, id ""). */
+export function fontStyles(fontId) {
+  const f = CAPTION_FONTS[fontId];
+  if (!f) return [];
+  const fid = STYLE_FILE_ID[fontId] || fontId;
+  return [
+    { id: '', label: defaultStyleLabel(f), family: f.family, file: f.file, italic: false, isDefault: true },
+    ...(STYLE_CODES[fontId] || []).map((c) => ({ id: c, label: STYLE_LABEL[c], family: `RFS ${fid} ${c}`, file: `S-${fid}-${c}.ttf`, italic: c.endsWith('i') })),
+  ];
+}
+export const isFontStyle = (fontId, styleId) => fontStyles(fontId).some((x) => x.id === styleId);
+
+/** Todos os arquivos de fonte (padrões + estilos) — para medidas e @font-face. */
+export const CAPTION_FONT_FILES = [
+  ...CAPTION_FONT_LIST.map((f) => ({ family: f.family, file: f.file })),
+  ...Object.keys(STYLE_CODES).filter((id) => !STYLE_FILE_ID[id]).flatMap((id) => fontStyles(id).slice(1).map((x) => ({ family: x.family, file: x.file }))),
+];
+
+/**
+ * Fonte e estilo escolhidos → o que desenhar: família, se pede negrito (só no estilo
+ * padrão, como antes) e se o arquivo já é itálico.
+ */
+export function resolveFontFace(font, styleId) {
+  const st = styleId ? fontStyles(font.id).find((x) => x.id === styleId) : null;
+  if (!st) return { family: font.family, file: font.file, bold: fontBold(font), italic: false, styled: false };
+  return { family: st.family, file: st.file, bold: false, italic: st.italic, styled: true };
+}
+
 // ─── Cores ───
 export const CAPTION_COLOR_LIST = [
   { id: 'white', label: 'Branco', hex: '#FFFFFF' },

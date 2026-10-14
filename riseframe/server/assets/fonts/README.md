@@ -35,3 +35,19 @@ Origem: https://github.com/google/fonts
 
 Nota: Helvetica e Apple Garamond são fontes proprietárias e não podem ser
 redistribuídas; usamos equivalentes livres (Inter e EB Garamond) com visual próximo.
+
+## Estilos (S-*.ttf)
+
+Os arquivos `S-<fonte>-<código>.ttf` são os outros estilos das fontes acima (Regular,
+Itálico, Negrito, Black…: código = peso, `i` = itálico), tirados do pacote
+**@fontsource** (subconjunto latino, que inclui todos os acentos do português) — mesma
+licença **SIL OFL 1.1**. Cada arquivo tem um nome de família próprio
+(`RFS <fonte> <código>`), para o libass e o navegador escolherem exatamente aquele
+arquivo. Fontes: Montserrat, Poppins, Inter, Open Sans, Barlow Condensed, Kanit, Rubik,
+Nunito, Playfair Display, EB Garamond e Oswald.
+
+## Fontes próprias do usuário
+
+Fontes enviadas pelo usuário (botão "Enviar fonte") ficam em `DATA_DIR/fonts/<usuário>/`,
+renomeadas para `RFU <id>`, e são usadas só nos vídeos dele. Ele é responsável pela
+licença da fonte que envia.

@@ -10,7 +10,7 @@ import { useAuth } from '../AuthContext.jsx';
 import { CaptionOverlay } from './CaptionPreview.jsx';
 import SnapGuides, { snapCenter } from './SnapGuides.jsx';
 import { loadAutosave, saveAutosave, markAutosaveSubmitted, clearAutosave } from '../autosave.js';
-import CaptionGallery, { FontPicker, ColorSwatches } from './CaptionGallery.jsx';
+import CaptionGallery, { FontPicker, ColorSwatches, TextStyleBar } from './CaptionGallery.jsx';
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
@@ -54,6 +54,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     captions: cap0.captions !== false,
     captionTemplate: cap0.captionTemplate || 'clean',
     captionFont: cap0.captionFont || 'auto',
+    captionFontStyle: cap0.captionFontStyle || '',
+    captionItalic: cap0.captionItalic === true,
+    captionUnderline: cap0.captionUnderline === true,
+    captionCase: cap0.captionCase || 'auto',
     captionColor: cap0.captionColor || 'white',
     captionBackground: cap0.captionBackground || 'auto',
     captionPosition: cap0.captionPosition || 'auto',
@@ -2440,7 +2444,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </div>
                   <div>
                     <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>Fonte</div>
-                    <FontPicker value={cap.captionFont} fonts={catalog.captionFonts || []} onChange={(v) => setCapField({ captionFont: v })} compact />
+                    <FontPicker value={cap.captionFont} fonts={catalog.captionFonts || []} onChange={(v) => setCapField({ captionFont: v, captionFontStyle: '' })} compact />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>Estilo do texto</div>
+                    <TextStyleBar options={cap} onChange={setCapField} compact />
                   </div>
                   <CapRow label="Modo (palavra / frase)"><Sel value={cap.captionMode} opts={catalog.captionModes} onChange={(v) => setCapField({ captionMode: v })} /></CapRow>
                   <CapRow label="Destacar palavra falada">

@@ -4,11 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 import { posOf } from './timeline.js';
-import { fontMetrics } from './fontMetrics.js';
+import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
 import { pickKeyword, emphasisOf, premiumChunks, layoutCaption, autoMaxChars } from '../../../shared/captionKeyword.js';
 import {
   CAPTION_FONTS as FONT_DEFS, fontById, fontBold, CAPTION_COLORS, colorHex, isLightHex, isWhiteish,
-  HIGHLIGHT_IDS, LINE_HEIGHT, CAPTION_TEMPLATES, CAPTION_TEMPLATE_LABELS, safeCaptionBox,
+  HIGHLIGHT_IDS, LINE_HEIGHT, CAPTION_TEMPLATES, CAPTION_TEMPLATE_LABELS, safeCaptionBox, resolveFontFace,
 } from '../../../shared/captionStyle.js';
 
 export { premiumChunks, CAPTION_COLORS, CAPTION_TEMPLATES, CAPTION_TEMPLATE_LABELS };
@@ -130,10 +130,18 @@ export function buildAss(segments, meta, style = {}) {
   const tplKey = CAPTION_TEMPLATES[style.template] ? style.template : style.mode === 'word' ? 'pop' : 'clean';
   const T = CAPTION_TEMPLATES[tplKey];
   const scale = style.fontScale || 1;
-  const fontDef = FONT_DEFS[style.font] || fontById(T.defaultFont);
-  const fontName = style.fontName || fontDef.family;
-  const FM = fontMetrics(fontName);
-  const boldFlag = T.bold && fontBold(fontDef) ? -1 : 0;
+  // fonte própria do usuário (arquivo enviado) ou uma das embutidas
+  const fontDef = style.customFont?.family && style.customFont?.file
+    ? { id: 'custom', family: style.customFont.family, file: style.customFont.file, bold: false }
+    : FONT_DEFS[style.font] || fontById(T.defaultFont);
+  // estilo da fonte (Regular, Itálico, Black…): arquivo próprio, escolhido pelo nome
+  const face = resolveFontFace(fontDef, style.fontStyle);
+  const fontName = style.fontName || face.family;
+  const FM = fontDef.id === 'custom' && !style.fontName ? fontMetricsFile(fontDef.file) : fontMetrics(fontName);
+  const boldFlag = !face.styled && T.bold && face.bold ? -1 : 0;
+  // itálico "inclinado" (quando o arquivo não é itálico) e sublinhado — como no CSS da prévia
+  const italicFlag = style.italic && !face.italic ? -1 : 0;
+  const underlineFlag = style.underline ? -1 : 0;
   const accentHex = colorHex(style.color);
   const accent = assColor(accentHex);
   const accentIsWhite = isWhiteish(accentHex);
@@ -168,8 +176,10 @@ export function buildAss(segments, meta, style = {}) {
   const sp = T.premium ? 0 : Math.min(0.3, Math.max(-0.05, Number(style.letterSpacing) || 0));
   const highlight = style.highlight === true || !!T.forceHighlight;
   const hl = HIGHLIGHT_IDS.includes(style.highlightStyle) ? style.highlightStyle : T.hl || 'color';
-  const upper = !!T.upper;
-  const up = (word) => (upper ? String(word).toUpperCase() : String(word));
+  // maiúsculas/minúsculas: a escolha do usuário vence a do estilo
+  const caseMode = ['upper', 'lower', 'normal'].includes(style.textCase) ? style.textCase : T.upper ? 'upper' : 'normal';
+  const upper = caseMode === 'upper';
+  const up = (word) => (upper ? String(word).toUpperCase() : caseMode === 'lower' ? String(word).toLowerCase() : String(word));
 
   // ── Onde fica o bloco de texto ──
   const pos = ['top', 'center', 'bottom'].includes(style.position) ? style.position : 'auto';
@@ -221,7 +231,7 @@ export function buildAss(segments, meta, style = {}) {
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
     // No brilho neon, o contorno vira a COR de destaque (halo colorido, borrado).
-    `Style: Rise,${fontName},${size},${WHITE},${accent},${glowOn ? accent : BLACK},&H${backAlpha}000000,${boldFlag},0,0,0,100,100,${+(sp * em).toFixed(2)},0,1,${outline},${shadow},5,60,60,0,1`,
+    `Style: Rise,${fontName},${size},${WHITE},${accent},${glowOn ? accent : BLACK},&H${backAlpha}000000,${boldFlag},${italicFlag},${underlineFlag},0,100,100,${+(sp * em).toFixed(2)},0,1,${outline},${shadow},5,60,60,0,1`,
     // Desenhos (caixas, marca-texto, sublinhado)
     'Style: RiseBox,Arial,20,&H00000000,&H00000000,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1',
     '',
@@ -508,7 +518,18 @@ export async function burnCaptions(input, work, meta, transcript, style, onProgr
   // que quebravam o parser do FFmpeg no Windows (caminhos com espaço/`:`).
   // `fontsdir` (caminho RELATIVO, com "/" — sem drive/espaços) aponta para as fontes
   // premium empacotadas, garantindo a tipografia escolhida em qualquer máquina.
-  const fontsRel = await fontsDirArg(work);
+  // Fonte própria: uma pasta do job com as fontes embutidas (links, sem copiar) + a dela.
+  let fontsRel;
+  if (style.customFont?.file) {
+    const dir = path.join(work, 'fonts_job');
+    await fs.mkdir(dir, { recursive: true });
+    for (const f of await fs.readdir(FONTS_DIR)) {
+      if (!/\.(ttf|otf)$/i.test(f)) continue;
+      await fs.link(path.join(FONTS_DIR, f), path.join(dir, f)).catch(() => fs.copyFile(path.join(FONTS_DIR, f), path.join(dir, f)).catch(() => {}));
+    }
+    await fs.copyFile(style.customFont.file, path.join(dir, `custom${path.extname(style.customFont.file)}`));
+    fontsRel = await fontsDirArg(work, dir);
+  } else fontsRel = await fontsDirArg(work);
   const vf = `subtitles=${ASS_NAME}:fontsdir=${fontsRel}`;
   const args = ['-i', input, '-vf', vf, ...x264Fast()];
   if (meta.hasAudio) args.push('-c:a', 'copy');
