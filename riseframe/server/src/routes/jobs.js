@@ -32,6 +32,17 @@ import { VOICE_NOISE, VOICE_PRESETS, VOICE_EFFECTS, previewVoice } from '../pipe
 const CAPTION_TEMPLATE_IDS = Object.keys(CAPTION_TEMPLATES);
 
 /** Opções do job com as chaves salvas do usuário (Pexels/Anthropic) — o servidor manda. */
+/**
+ * Nome do arquivo com acento: o navegador manda em UTF-8, mas o multer lê como latin1
+ * ("CrianÃ§a", "vocÃª"). Se o nome volta a ser UTF-8 válido, usa a versão corrigida.
+ */
+export function fixName(name) {
+  const s = String(name || '');
+  if (!/[\u0080-\u00ff]/.test(s) || /[^\u0000-\u00ff]/.test(s)) return s;
+  const fixed = Buffer.from(s, 'latin1').toString('utf8');
+  return fixed.includes('\ufffd') ? s : fixed;
+}
+
 function optionsForUser(req) {
   const o = parseOptions(req.body?.options);
   const s = getSettings(req.user.id);
@@ -482,6 +493,13 @@ export function parseOptions(raw) {
     captionAnimation: ['auto', 'fade', 'pop', 'bounce', 'zoom', 'pop-rot', 'shake', 'none'].includes(o.captionAnimation) ? o.captionAnimation : 'auto',
     captionBackground: ['auto', 'shadow', 'box', 'bar', 'glow', 'none', 'clean'].includes(o.captionBackground) ? o.captionBackground : 'auto',
     captionPosition: ['auto', 'top', 'center', 'bottom'].includes(o.captionPosition) ? o.captionPosition : 'auto',
+    // Espaçamento entre as letras (em) e sombra das letras (do estilo | sem | personalizada).
+    captionSpacing: clampNum(o.captionSpacing, -0.05, 0.3, 0),
+    captionShadow: ['auto', 'off', 'on'].includes(o.captionShadow) ? o.captionShadow : 'auto',
+    captionShadowSize: clampNum(o.captionShadowSize, 0.3, 3, 1),
+    captionShadowOpacity: clampNum(o.captionShadowOpacity, 0.1, 1, 0.6),
+    // Tela dividida com B-roll: a legenda vai para o meio (na linha entre as metades).
+    captionBrollCenter: o.captionBrollCenter !== false && o.captionBrollCenter !== 'false',
     // Área segura das redes no vídeo vertical: legenda fora dos botões/descrição do Reels e TikTok.
     captionSafeZone: o.captionSafeZone !== false && o.captionSafeZone !== 'false',
     // Modo de exibição: auto (do estilo) | word (palavra por vez) | phrase (frase inteira).
@@ -612,7 +630,7 @@ jobsRouter.put('/uploads/:id', requireAuth, receiveChunk);
 jobsRouter.post('/jobs', requireAuth, requireVerified, requireCredits('auto'), checkUploadSize, upload.single('file'), fromChunkedUpload, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'auto', {
-    filename: req.file.originalname,
+    filename: fixName(req.file.originalname),
     inputPath: req.file.path,
     options: optionsForUser(req),
   });
@@ -623,7 +641,7 @@ jobsRouter.post('/jobs', requireAuth, requireVerified, requireCredits('auto'), c
 jobsRouter.post('/transcribe', requireAuth, requireVerified, requireCredits('transcribe'), checkUploadSize, upload.single('file'), fromChunkedUpload, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'transcribe', {
-    filename: req.file.originalname,
+    filename: fixName(req.file.originalname),
     inputPath: req.file.path,
     options: optionsForUser(req),
   });
@@ -633,7 +651,7 @@ jobsRouter.post('/transcribe', requireAuth, requireVerified, requireCredits('tra
 jobsRouter.post('/clips', requireAuth, requireVerified, requireCredits('clips'), checkUploadSize, upload.single('file'), fromChunkedUpload, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'clips', {
-    filename: req.file.originalname,
+    filename: fixName(req.file.originalname),
     inputPath: req.file.path,
     options: optionsForUser(req),
   });
@@ -763,7 +781,7 @@ jobsRouter.post('/media', requireAuth, requireVerified, uploadMedia.single('file
     id,
     filePath: req.file.path,
     kind,
-    originalname: req.file.originalname,
+    originalname: fixName(req.file.originalname),
     durationSec,
   });
   res.status(201).json(pub);

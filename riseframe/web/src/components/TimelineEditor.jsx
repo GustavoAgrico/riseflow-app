@@ -14,6 +14,7 @@ import CaptionGallery, { FontPicker, ColorSwatches } from './CaptionGallery.jsx'
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
+import { layoutCaption } from '../../../shared/captionKeyword.js';
 
 // Tempo no formato do player: 00:12
 // Timecode como no Premiere (mm:ss:quadros, 30 fps): 00:56:23
@@ -65,6 +66,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     captionAnimation: cap0.captionAnimation || 'auto',
     captionPreset: cap0.captionPreset,
     captionSafeZone: cap0.captionSafeZone !== false,
+    captionSpacing: Number(cap0.captionSpacing) || 0,
+    captionShadow: ['off', 'on'].includes(cap0.captionShadow) ? cap0.captionShadow : 'auto',
+    captionShadowSize: Number(cap0.captionShadowSize) || 1,
+    captionShadowOpacity: Number(cap0.captionShadowOpacity) || 0.6,
+    captionBrollCenter: cap0.captionBrollCenter !== false,
   });
   const setCapField = (patch) => setCap((c) => ({ ...c, ...patch }));
   // Posição manual da legenda (arrastar na prévia): só esta frase, só esta palavra ou todas.
@@ -1300,6 +1306,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Prévia 9:16 = o que sai no vídeo naquele instante: com B-roll ativo, tela dividida
   // (ou B-roll em tela cheia); sem B-roll, o VÍDEO INTEIRO com o enquadramento.
   const brollLayout = brollLayoutSel === 'fullscreen' ? 'fullscreen' : 'split';
+  // Tela dividida com B-roll: a legenda centraliza (linha entre as metades) — como no render.
+  const capCenterWins = brollOn && brollLayout === 'split' && cap.captionBrollCenter !== false
+    ? (brollReview?.moments || []).filter((m) => !m.removed && (m.myMediaId || m.candidates?.[m.pick])).map((m) => ({ start: m.start, end: m.end }))
+    : [];
   const previewMode = brollMoment && thumbOf(brollMoment) ? (brollLayout === 'split' ? 'split' : 'broll') : 'video';
   // Recorte da pessoa = a MESMA conta do servidor (faceCropGeometry): cobre o quadro,
   // amplia pelo zoom e CENTRALIZA no ponto do rosto. Assim a prévia bate com o render.
@@ -1408,7 +1418,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         Prévia {previewLabel}{previewMode === 'split' ? ' · dividida' : previewMode === 'broll' ? ' · B-roll' : ''}
       </span>
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
-      {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={segments} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} />}
+      {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={segments} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
     </div>
   );
   const showFormatPreview = framingMode === 'manual' || aspectSel !== 'original';
@@ -1449,6 +1459,47 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       ...((brollReview?.moments || []).filter((m) => !m.removed).map((m) => Math.max(0, Number(m.start) - 0.3))),
     ],
   };
+
+  // Blocos da faixa de legenda: os mesmos "cartões" que aparecem no vídeo (linhas e
+  // caracteres por linha da legenda), cada um no seu tempo — como a faixa de texto do CapCut.
+  function capCards(s, gone) {
+    const ws = (s.words || []).filter((w) => gone || !w.removed);
+    if (!ws.length) return [];
+    const cards = layoutCaption(ws.map((w) => ({ ...w })), { lines: cap.captionLines === 1 ? 1 : 2, maxChars: cap.captionMaxChars > 0 ? cap.captionMaxChars : 18, segEnd: s.end });
+    return cards.map((c) => ({ start: Math.max(s.start, c.words[0].start), end: Math.min(Math.max(s.end, s.start + 0.2), c.end), text: c.words.map((w) => w.word).join(' ') }));
+  }
+
+  // Espaçamento das letras, sombra e legenda no meio na tela dividida (aba Legenda).
+  const capFxRows = (
+    <>
+      <CapRow label={`Espaçamento das letras (${cap.captionSpacing > 0 ? '+' : ''}${Math.round((cap.captionSpacing || 0) * 100)})`}>
+        <input type="range" min="-0.05" max="0.3" step="0.01" value={cap.captionSpacing || 0} onChange={(e) => setCapField({ captionSpacing: Number(e.target.value) })} style={{ width: '100%' }} />
+      </CapRow>
+      <CapRow label="Sombra das letras">
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[['auto', 'Do estilo'], ['off', 'Sem sombra'], ['on', 'Personalizada']].map(([id, label]) => (
+            <button key={id} onClick={() => setCapField({ captionShadow: id })} style={{ ...miniBtn(cap.captionShadow === id, false), flex: 1, minHeight: 34 }}>{label}</button>
+          ))}
+        </div>
+      </CapRow>
+      {cap.captionShadow === 'on' && (
+        <>
+          <CapRow label={`Distância da sombra (${Math.round((cap.captionShadowSize || 1) * 100)}%)`}>
+            <input type="range" min="0.3" max="3" step="0.1" value={cap.captionShadowSize || 1} onChange={(e) => setCapField({ captionShadowSize: Number(e.target.value) })} style={{ width: '100%' }} />
+          </CapRow>
+          <CapRow label={`Intensidade da sombra (${Math.round((cap.captionShadowOpacity || 0.6) * 100)}%)`}>
+            <input type="range" min="0.1" max="1" step="0.05" value={cap.captionShadowOpacity || 0.6} onChange={(e) => setCapField({ captionShadowOpacity: Number(e.target.value) })} style={{ width: '100%' }} />
+          </CapRow>
+        </>
+      )}
+      <CapRow label="Na tela dividida do B-roll">
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => setCapField({ captionBrollCenter: true })} style={{ ...miniBtn(cap.captionBrollCenter !== false, false), flex: 1, minHeight: 34 }}>Legenda no meio</button>
+          <button onClick={() => setCapField({ captionBrollCenter: false })} style={{ ...miniBtn(cap.captionBrollCenter === false, false), flex: 1, minHeight: 34 }}>Posição normal</button>
+        </div>
+      </CapRow>
+    </>
+  );
 
   // Ênfase por palavra da legenda selecionada (cor própria / maior)
   const enfaseBlock = cap.captions && catalog && capSel ? (
@@ -1721,7 +1772,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 </button>
                 {advOpen && catalog && (
                   <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
-<CapRow label="Área segura (Reels/TikTok)">
+{capFxRows}
+                    <CapRow label="Área segura (Reels/TikTok)">
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={() => setCapField({ captionSafeZone: true })} style={{ ...miniBtn(cap.captionSafeZone !== false, false), flex: 1, minHeight: 36 }}>Fora dos botões</button>
                         <button onClick={() => setCapField({ captionSafeZone: false })} style={{ ...miniBtn(cap.captionSafeZone === false, false), flex: 1, minHeight: 36 }}>Livre</button>
@@ -2420,6 +2472,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <CapRow label={`Tamanho (${Math.round((cap.captionScale ?? 1) * 100)}%)`}>
                     <input type="range" min="0.6" max="1.4" step="0.05" value={cap.captionScale ?? 1} onChange={(e) => setCapField({ captionScale: Number(e.target.value) })} style={{ width: '100%' }} />
                   </CapRow>
+                  {capFxRows}
                   <CapRow label="Linhas por legenda">
                     <div style={{ display: 'flex', gap: 6 }}>
                       {[1, 2].map((n) => <button key={n} onClick={() => setCapField({ captionLines: n })} style={{ ...miniBtn(cap.captionLines === n, false), flex: 1 }}>{n === 1 ? '1 linha' : '2 linhas'}</button>)}
@@ -2628,10 +2681,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       position: 'absolute', left, width: fullW, top: 4, height: legH - 8, borderRadius: 6, overflow: 'hidden', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', border: isSel ? '2px solid #fff' : '1px solid rgba(0,0,0,0.25)',
                       background: gone ? 'rgba(240,82,107,0.35)' : '#E8A020', color: gone ? '#fff' : '#2a1800',
-                    } : { position: 'absolute', left, width: fullW, top: 6, height: 52, borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
-                      border: isSel ? `1.5px solid ${C.orange}` : `1px solid ${gone ? 'rgba(240,82,107,0.5)' : C.border}`,
-                      background: gone ? 'rgba(240,82,107,0.16)' : isActive ? 'linear-gradient(180deg, rgba(255,107,53,0.32), rgba(124,58,237,0.22))' : 'rgba(255,255,255,0.06)',
-                      color: gone ? C.red : C.text, boxShadow: isSel ? `0 0 0 2px ${C.orange}33` : 'none' }}>
+                    } : {
+                      // computador: como a faixa de texto do CapCut/Premiere — um bloco por
+                      // legenda (o cartão que aparece no vídeo), com o ícone de texto
+                      position: 'absolute', left, width: fullW, top: 4, height: legH - 8, borderRadius: 5, cursor: 'pointer',
+                      outline: isSel ? '2px solid #fff' : 'none', outlineOffset: 1, zIndex: isSel ? 2 : 1,
+                    }}>
                     {/* máscaras das pontas cortadas (trim) */}
                     {kr && !gone && kr[0] > s.start + 0.01 && (
                       <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: (kr[0] - s.start) * pps, background: 'rgba(240,82,107,0.22)', borderRight: `1px dashed ${C.red}` }} />
@@ -2644,9 +2699,22 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                         <Icon name="captions" size={13} strokeWidth={2} /> {s.words.filter((x) => !x.removed || gone).map((x) => x.word).join(' ')}
                       </span>
                     ) : (
-                    <span style={{ position: 'relative', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', padding: '5px 9px', fontSize: 10.5, lineHeight: 1.25, textDecoration: gone ? 'line-through' : 'none' }}>
-                      {s.words.map((x) => x.word).join(' ')}
-                    </span>
+                    capCards(s, gone).map((card, ci) => {
+                      const on = isActive && cur >= card.start && cur < card.end;
+                      return (
+                        <div key={ci} style={{
+                          position: 'absolute', left: (card.start - s.start) * pps, width: Math.max(4, (card.end - card.start) * pps - 3), top: 0, bottom: 0,
+                          borderRadius: 5, overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px',
+                          background: gone ? 'rgba(240,82,107,0.28)' : on ? '#D0603F' : '#A9472F', color: gone ? C.red : '#fff',
+                          border: `1px solid ${gone ? 'rgba(240,82,107,0.5)' : 'rgba(0,0,0,0.25)'}`, boxShadow: on ? '0 0 0 1px rgba(255,255,255,0.35) inset' : 'none',
+                        }}>
+                          {(card.end - card.start) * pps > 26 && (
+                            <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 900, letterSpacing: -0.3, background: 'rgba(0,0,0,0.22)', borderRadius: 3, padding: '1px 3px', lineHeight: 1.1 }}>A≡</span>
+                          )}
+                          <span style={{ minWidth: 0, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: gone ? 'line-through' : 'none' }}>{card.text}</span>
+                        </div>
+                      );
+                    })
                     )}
                     {/* alças de trim (só no bloco selecionado) */}
                     {isSel && !gone && (
@@ -3043,7 +3111,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
 // Altura de cada faixa. A coluna de nomes e as faixas leem daqui, para não
 // desalinharem quando uma mudar.
-const LANE = { ruler: 22, capitulos: 28, legenda: 64, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };
+const LANE = { ruler: 22, capitulos: 28, legenda: 36, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };
 
 /** Nome de uma faixa, na coluna fixa à esquerda da timeline. */
 function Rotulo({ h, gap, nome, dica }) {

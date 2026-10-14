@@ -59,9 +59,9 @@ function buildPlan(mode, options) {
       { key: 'analyze', label: 'Analisando temas', weight: 3, enabled: true },
       { key: 'motion', label: 'Aplicando movimento (zoom)', weight: 12, enabled: Boolean(options.videoMotion) && options.videoMotion !== 'none' },
       { key: 'frame', label: 'Reenquadrando o vídeo', weight: 8, enabled: (Number(options.personZoom) || 1) > 1.001 },
+      { key: 'aspect', label: QUALITY_STAGE[options.quality] || 'Ajustando ao formato', weight: QUALITY_STAGE[options.quality] ? 12 : 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) || Boolean(QUALITY_STAGE[options.quality]) },
       { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
       { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: Array.isArray(options.userMedia) && options.userMedia.length > 0 },
-      { key: 'aspect', label: QUALITY_STAGE[options.quality] || 'Ajustando ao formato', weight: QUALITY_STAGE[options.quality] ? 12 : 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) || Boolean(QUALITY_STAGE[options.quality]) },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'headline', label: 'Colocando o título (headline)', weight: 6, enabled: Boolean(options.headline?.text) },
       { key: 'watermark', label: 'Aplicando o seu logo', weight: 6, enabled: Boolean(options.watermark?.file) },
@@ -417,11 +417,37 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
+  // 6-. Formato de saída (9:16, 1:1, 16:9) ANTES do B-roll, das mídias e das legendas:
+  // tudo é montado no quadro final (como na prévia). Antes o B-roll era montado no vídeo
+  // ainda horizontal e o corte para 9:16 levava quase todo ele embora (e desmontava a
+  // tela dividida). O enquadramento segue o que o usuário escolheu.
+  let aspectReframe = null;
+  let preAspectInput = null; // vídeo antes do formato: a metade da pessoa na tela dividida sai dele
+  if (has('aspect')) {
+    const st = enter('aspect');
+    const r = await convertAspect(input, work, meta, options, trackInput, st.onProgress);
+    if (r.applied) {
+      preAspectInput = input;
+      input = r.output;
+      meta = { ...meta, ...(await probeSummary(input)) };
+      aspectReframe = r.reframe;
+    }
+    st.record({ applied: r.applied, mode: options.reframeMode || 'auto' });
+    st.onProgress(1);
+  }
+
   // 6. B-roll
+  let brollWindows = []; // momentos do B-roll em tela dividida (timeline deste vídeo) — a legenda centraliza neles
   if (has('broll')) {
     const st = enter('broll');
-    const r = await insertBroll(input, work, meta, analysis, { ...options, personInput: preFrameInput }, st.onProgress);
+    // Tela dividida: a pessoa vem da fonte sem o reenquadramento e sem o formato (recorta
+    // a metade direto do vídeo original, como a prévia faz).
+    const personInput = preFrameInput || preAspectInput;
+    const personMeta = personInput ? await probeSummary(personInput) : null;
+    const r = await insertBroll(input, work, meta, analysis, { ...options, personInput, personMeta }, st.onProgress);
     input = r.output;
+    // só na tela dividida: a legenda centraliza na linha entre as duas metades
+    brollWindows = r.layout && r.layout !== 'fullscreen' ? (r.items || []).map((it) => ({ start: it.start, end: it.end })) : [];
     // Tempos do B-roll de volta na timeline ORIGINAL (para o simulador da página inicial).
     const toOrig = (t) => (cutKeep ? unmapTime(t, cutKeep) : t);
     report.broll = {
@@ -446,21 +472,6 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
-  // 6+. Formato de saída (9:16, 1:1, 16:9) ANTES das legendas: a legenda é desenhada no
-  // quadro final e não sai cortada; o enquadramento segue o que o usuário escolheu.
-  let aspectReframe = null;
-  if (has('aspect')) {
-    const st = enter('aspect');
-    const r = await convertAspect(input, work, meta, options, trackInput, st.onProgress);
-    if (r.applied) {
-      input = r.output;
-      meta = { ...meta, ...(await probeSummary(input)) };
-      aspectReframe = r.reframe;
-    }
-    st.record({ applied: r.applied, mode: options.reframeMode || 'auto' });
-    st.onProgress(1);
-  }
-
   // 6. Legendas (transcrição sincronizada)
   let captionStyle = null; // o estilo usado também decide os sons da legenda (6b)
   if (has('captions')) {
@@ -482,6 +493,12 @@ export async function runPipeline(job, onUpdate = () => {}) {
       maxChars: options.captionMaxChars, // caracteres por linha (0 = automático)
       posX: options.captionX, // posição livre arrastada na prévia (0–1), vale para todas as frases
       posY: options.captionY,
+      letterSpacing: options.captionSpacing, // espaçamento entre as letras (em)
+      shadowMode: options.captionShadow, // sombra: auto (do estilo) | off | on
+      shadowSize: options.captionShadowSize,
+      shadowOpacity: options.captionShadowOpacity,
+      // tela dividida com B-roll: a legenda vai para o meio (na linha entre as metades)
+      centerWindows: options.captionBrollCenter !== false ? brollWindows : [],
     };
     captionStyle = style;
     const r = await burnCaptions(input, work, meta, transcript, style, st.onProgress);

@@ -486,7 +486,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
       personFocus = { x: mx, y: my, source: 'manual' };
       log.info(`enquadramento manual: foco (${mx.toFixed(2)}, ${my.toFixed(2)}) zoom ${personZoom}`);
     } else {
-      personFocus = await averageSubjectCenter(input);
+      personFocus = await averageSubjectCenter(options.personInput || input);
       if (personFocus) log.ok(`enquadramento no ${personFocus.source}: foco (${personFocus.x.toFixed(2)}, ${personFocus.y.toFixed(2)})`);
       else log.info('sem rastreamento; pessoa contida com fundo desfocado');
     }
@@ -509,7 +509,10 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     // a cabeça). O vazio é preenchido por uma cópia ampliada e DESFOCADA do próprio
     // quadro (estilo Reels), e a pessoa é alinhada em topo/centro/base (alignY).
     const n = clips.length;
-    const g = personFocus ? faceCropGeometry(W, H, regionW, regionH, personFocus, personZoom) : null;
+    // geometria da metade da pessoa sobre a fonte dela (o vídeo antes do formato, quando houver)
+    const pW = options.personInput && options.personMeta?.width ? options.personMeta.width : W;
+    const pH = options.personInput && options.personMeta?.height ? options.personMeta.height : H;
+    const g = personFocus ? faceCropGeometry(pW, pH, regionW, regionH, personFocus, personZoom) : null;
     // A metade da pessoa vem da fonte SEM o reenquadramento do vídeo inteiro (quando houver),
     // para o foco/zoom não ser aplicado duas vezes. O resto do vídeo usa a entrada 0.
     const personIdx = options.personInput ? clips.length + 1 : 0;

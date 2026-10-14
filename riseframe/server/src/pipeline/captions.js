@@ -150,9 +150,22 @@ export function buildAss(segments, meta, style = {}) {
   const useBox = bg === 'box' || bg === 'bar';
   const glowOn = bg === 'glow' || ((style.background == null || style.background === 'auto') && !!T.glow);
   const outline = bg === 'clean' || T.outline === 0 ? 0 : Math.max(2, Math.round(em * T.outline));
-  const shadow = bg === 'clean'
+  let shadow = bg === 'clean'
     ? Math.max(2, Math.round(em * 0.05))
     : bg === 'none' || glowOn || useBox ? 0 : Math.max(1, Math.round(em * 0.05));
+  // Sombra das letras escolhida pelo usuário: do estilo | sem | personalizada (distância
+  // e intensidade). Mesma conta da prévia (CaptionPreview → textStyle).
+  const shMode = ['off', 'on'].includes(style.shadowMode) ? style.shadowMode : 'auto';
+  let backAlpha = '90';
+  if (shMode === 'off') shadow = 0;
+  else if (shMode === 'on' && !useBox) {
+    const size = Math.min(3, Math.max(0.3, Number(style.shadowSize) || 1));
+    const op = Math.min(1, Math.max(0.1, Number(style.shadowOpacity) || 0.6));
+    shadow = Math.max(1, Math.round(em * 0.05 * size));
+    backAlpha = Math.round((1 - op) * 255).toString(16).padStart(2, '0').toUpperCase();
+  }
+  // Espaçamento entre as letras (em): também entra na largura das caixas/marcações.
+  const sp = T.premium ? 0 : Math.min(0.3, Math.max(-0.05, Number(style.letterSpacing) || 0));
   const highlight = style.highlight === true || !!T.forceHighlight;
   const hl = HIGHLIGHT_IDS.includes(style.highlightStyle) ? style.highlightStyle : T.hl || 'color';
   const upper = !!T.upper;
@@ -173,12 +186,17 @@ export function buildAss(segments, meta, style = {}) {
   };
   const padY = useBox ? em * 0.05 : 0;
   const padX = useBox ? em * 0.28 : 0;
+  // Tela dividida com B-roll: a legenda vai para o MEIO do quadro (na linha entre as duas
+  // metades) — a menos que o usuário tenha posto a legenda num lugar.
+  const centerWins = Array.isArray(style.centerWindows) ? style.centerWindows.filter((x) => x && x.end > x.start) : [];
+  const inCenterWin = (p) => Number.isFinite(p?.start) && centerWins.some((x) => p.start >= x.start - 0.05 && p.start < x.end);
   /** Centros (x, y de cada linha) de um bloco com estas alturas de linha. */
   function place(lineHs, p) {
     const total = lineHs.reduce((x, y) => x + y, 0) + 2 * padY;
     const m = manual(p);
     const cx = m ? m.x : w / 2;
-    const top = m ? m.y - total / 2 : kind === 'top' ? margin : kind === 'center' ? h / 2 - total / 2 : h - margin - total;
+    const k = !m && inCenterWin(p) ? 'center' : kind;
+    const top = m ? m.y - total / 2 : k === 'top' ? margin : k === 'center' ? h / 2 - total / 2 : h - margin - total;
     const ys = [];
     let y = top + padY;
     for (const lh of lineHs) {
@@ -203,7 +221,7 @@ export function buildAss(segments, meta, style = {}) {
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
     // No brilho neon, o contorno vira a COR de destaque (halo colorido, borrado).
-    `Style: Rise,${fontName},${size},${WHITE},${accent},${glowOn ? accent : BLACK},&H90000000,${boldFlag},0,0,0,100,100,0,0,1,${outline},${shadow},5,60,60,0,1`,
+    `Style: Rise,${fontName},${size},${WHITE},${accent},${glowOn ? accent : BLACK},&H${backAlpha}000000,${boldFlag},0,0,0,100,100,${+(sp * em).toFixed(2)},0,1,${outline},${shadow},5,60,60,0,1`,
     // Desenhos (caixas, marca-texto, sublinhado)
     'Style: RiseBox,Arial,20,&H00000000,&H00000000,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1',
     '',
@@ -223,7 +241,7 @@ export function buildAss(segments, meta, style = {}) {
   };
 
   // Efeitos fixos do estilo no texto: sombra dura (3D), vazado.
-  const hardShadow = T.hardShadow && bg !== 'clean' && !useBox
+  const hardShadow = T.hardShadow && bg !== 'clean' && !useBox && shMode === 'auto'
     ? `\\4c${T.hardShadow === 'accent' ? accent : BLACK}\\4a&H00&\\xshad${Math.max(2, Math.round(em * (T.hardShadow === 'accent' ? 0.07 : 0.06)))}\\yshad${Math.max(2, Math.round(em * (T.hardShadow === 'accent' ? 0.07 : 0.06)))}`
     : '';
   const hollowOff = T.hollow ? `\\1a&HFF&\\3c${WHITE}\\bord${Math.max(2, Math.round(em * 0.045))}\\shad0` : '';
@@ -233,7 +251,8 @@ export function buildAss(segments, meta, style = {}) {
   const emHex = (wd) => colorHex(wd.emColor, null);
   const hasEm = (wd) => !!(wd.emColor || wd.emBig);
   const wordScale = (wd, j, kw) => (wd.emBig ? 1.3 : j === kw ? T.kwScale || 1.18 : 1);
-  const spaceW = FM.width(' ');
+  const tw = (text) => FM.width(text) + sp * [...String(text)].length; // largura em em (com o espaçamento)
+  const spaceW = FM.width(' ') + sp;
 
   // Linhas e caracteres por linha: cada frase vira "cartões" de no máximo 1 ou 2 linhas.
   const maxLines = style.lines === 1 ? 1 : 2;
@@ -246,7 +265,20 @@ export function buildAss(segments, meta, style = {}) {
       .filter((wd) => wd.word.length > 0);
     if (!ws.length) continue;
     if (mode === 'word') groups.push({ seg, words: ws });
-    else for (const card of layoutCaption(ws, { lines: maxLines, maxChars, segEnd: seg.end })) groups.push({ seg: { ...seg, end: card.end }, words: card.words });
+    else {
+      // O cartão nunca atravessa o começo/fim da tela dividida do B-roll: assim a legenda
+      // pula para o meio no instante em que o B-roll entra (e volta quando ele sai).
+      const runs = [];
+      for (const wd of ws) {
+        const inside = inCenterWin(wd);
+        if (!runs.length || runs[runs.length - 1].inside !== inside) runs.push({ inside, words: [] });
+        runs[runs.length - 1].words.push(wd);
+      }
+      runs.forEach((run, ri) => {
+        const runEnd = ri + 1 < runs.length ? runs[ri + 1].words[0].start : seg.end;
+        for (const card of layoutCaption(run.words, { lines: maxLines, maxChars, segEnd: runEnd })) groups.push({ seg: { ...seg, end: card.end }, words: card.words });
+      });
+    }
   }
 
   /** Índices de cada linha do cartão (quebra do cartão, ou a palavra-chave que desce no "duas linhas"). */
@@ -267,7 +299,7 @@ export function buildAss(segments, meta, style = {}) {
     const box = place(lineHs, p);
     const wx = [];
     const lineW = ls.map((idx, li) => {
-      const widths = idx.map((j) => FM.width(up(words[j].word)) * em * wordScale(words[j], j, kw));
+      const widths = idx.map((j) => tw(up(words[j].word)) * em * wordScale(words[j], j, kw));
       const total = widths.reduce((x, y) => x + y, 0) + spaceW * em * (idx.length - 1);
       let x = box.cx - total / 2;
       idx.forEach((j, k) => {
@@ -309,7 +341,7 @@ export function buildAss(segments, meta, style = {}) {
         let e = em * (wd.emBig ? 1.3 : 1);
         // Auto-ajuste: palavra longa encolhe para caber na largura do quadro.
         const avail = w * 0.86 - 2 * padX;
-        const wpx = FM.width(disp) * e;
+        const wpx = tw(disp) * e;
         if (wpx > avail) e = Math.max(e * 0.45, (e * avail) / wpx);
         const lineH = e * LINE_HEIGHT;
         const box = place([lineH], wd);
@@ -317,7 +349,7 @@ export function buildAss(segments, meta, style = {}) {
         const fsTag = fs !== size ? `\\fs${fs}` : '';
         const fill = wd.emColor ? `\\c${assColor(emHex(wd))}` : wordFill ? `\\c${wordFill}` : '';
         if (useBox) {
-          const W = FM.width(disp) * e + 2 * padX;
+          const W = tw(disp) * e + 2 * padX;
           rect(0, wd.start, end, box.cx, box.top + box.total / 2, W, box.total, bg === 'bar' ? '101014' : boxHex, { alpha: bg === 'bar' ? '73' : '00', tags: anim });
         }
         ev(1, wd.start, end, 'Rise', `{${posTag(box.cx, yAss(box.ys[0], e))}${fsTag}${anim}${glow}${useBox ? '\\bord0\\shad0' : hardShadow}${fill}}${escapeAss(disp)}`);
