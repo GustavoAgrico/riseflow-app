@@ -5,6 +5,7 @@ import { NICHES } from '../pipeline/niche.js';
 import { VOICE_NOISE, VOICE_PRESETS, VOICE_EFFECTS } from '../pipeline/voice.js';
 import { CAPTION_FONTS, CAPTION_TEMPLATE_LABELS, CAPTION_ANIMATIONS, CAPTION_BACKGROUNDS, CAPTION_POSITIONS } from '../pipeline/captions.js';
 import { CAPTION_COLOR_LIST, HIGHLIGHT_STYLES } from '../../../shared/captionStyle.js';
+import { CLIP_GOALS } from '../pipeline/clipSelect.js';
 
 export const optionsRouter = Router();
 
@@ -30,6 +31,7 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'phrase', label: 'Frase (várias palavras)' },
     ],
     captionColors: CAPTION_COLOR_LIST,
+    clipGoals: Object.entries(CLIP_GOALS).map(([id, label]) => ({ id, label })),
     captionHighlightStyles: [{ id: 'auto', label: 'Do estilo' }, ...HIGHLIGHT_STYLES],
     videoMotions: [
       { id: 'none', label: 'Sem movimento' },

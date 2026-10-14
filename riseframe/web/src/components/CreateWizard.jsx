@@ -257,6 +257,25 @@ export default function CreateWizard({
             </div>
           </div>
 
+          {mode === 'clips' && catalog?.clipGoals && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 12, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>OBJETIVO DOS CORTES</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {catalog.clipGoals.map((g) => {
+                  const on = (options.clipGoal || 'auto') === g.id;
+                  return (
+                    <button key={g.id} type="button" onClick={() => set({ clipGoal: g.id })} title={g.label}
+                      style={{ border: on ? '2px solid #fff' : `1px solid ${C.border}`, borderRadius: 999, padding: '8px 14px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                        background: on ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)', color: on ? C.text : C.muted, fontWeight: on ? 700 : 500 }}>
+                      {g.label.replace(/ \(.*\)$/, '')}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 12, color: C.faint, marginTop: 8 }}>{(catalog.clipGoals.find((g) => g.id === (options.clipGoal || 'auto')) || {}).label}. Cada corte vem com nota e o motivo da escolha.</div>
+            </div>
+          )}
+
           <button onClick={() => setAdvanced((a) => !a)} style={{ marginTop: 18, display: 'inline-flex', alignItems: 'center', gap: 8, background: 'none', border: `1px solid ${C.border}`, color: C.text, borderRadius: 11, padding: '10px 14px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             <Icon name="gear" size={16} strokeWidth={1.9} /> Ajustes avançados
             <span style={{ display: 'inline-flex', transform: advanced ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }}><Icon name="chevron" size={14} strokeWidth={2.4} /></span>

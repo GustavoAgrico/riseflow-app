@@ -33,7 +33,7 @@ export default function ClipsResult({ job, onReset, onEdit }) {
         <div>
           <div style={{ fontWeight: 700, fontSize: 18 }}>{clips.length} clipes prontos</div>
           <div style={{ fontSize: 12, color: C.faint }}>
-            dos melhores trechos de {fmtDuration(job.report?.input?.duration)}
+            dos melhores trechos de {fmtDuration(job.report?.input?.duration)} · do melhor para o pior
           </div>
         </div>
         <GhostButton onClick={onReset} style={{ marginLeft: 'auto' }}>
@@ -77,10 +77,18 @@ export default function ClipsResult({ job, onReset, onEdit }) {
               </span>
             </div>
             <div style={{ padding: '11px 12px' }}>
-              <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 3, lineHeight: 1.3 }}>{c.title}</div>
-              <div style={{ fontSize: 11, color: C.faint, marginBottom: 10 }}>
-                {fmtTime(c.start)}–{fmtTime(c.end)} · {c.aspect}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 4 }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5, lineHeight: 1.3, flex: 1 }}>{c.title}</div>
+                {c.score != null && <ScoreBadge score={c.score} />}
               </div>
+              <div style={{ fontSize: 11, color: C.faint, marginBottom: c.reason ? 6 : 10 }}>
+                {fmtTime(c.start)}–{fmtTime(c.end)} · {c.aspect}{c.typeLabel ? ` · ${c.typeLabel}` : ''}
+              </div>
+              {c.reason && (
+                <div title={c.by ? `Escolhido por ${c.by}` : undefined} style={{ fontSize: 12, color: C.muted, lineHeight: 1.45, marginBottom: 10, padding: '7px 9px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}` }}>
+                  <b style={{ color: C.text }}>Por que este corte:</b> {c.reason}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 {onEdit && (
                   <button
@@ -113,6 +121,17 @@ export default function ClipsResult({ job, onReset, onEdit }) {
         ))}
       </div>
     </div>
+  );
+}
+
+/** Nota 0–100 do corte (verde = muito bom, amarelo = bom, cinza = ok). */
+function ScoreBadge({ score }) {
+  const col = score >= 80 ? '#2ED47A' : score >= 60 ? '#FFC24B' : '#9AA0AE';
+  return (
+    <span title="Nota do corte (0–100): potencial de desempenho para o objetivo escolhido"
+      style={{ flexShrink: 0, fontSize: 12, fontWeight: 800, color: '#111', background: col, borderRadius: 999, padding: '2px 8px', fontVariantNumeric: 'tabular-nums' }}>
+      {score}
+    </span>
   );
 }
 
