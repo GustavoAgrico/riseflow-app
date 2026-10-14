@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from './theme.js';
 import { getOptions, getHealth, getSettings, createJob, transcribe, generateClips, renderEdited, subscribeJob, sampleFile, getJob, editClip } from './api.js';
 import { PrimaryButton, Card, Spinner } from './components/ui.jsx';
@@ -12,6 +12,7 @@ import Processing from './components/Processing.jsx';
 import { presetPatch } from './components/CaptionGallery.jsx';
 import { brandOptions, brandWatermark } from './brandKit.js';
 import { formatById } from './formats.js';
+import { friendlyError } from './errors.js';
 import CaptionGallery from './components/CaptionGallery.jsx';
 import { recordJob, listJobs } from './history.js';
 import CostLine from './components/CostLine.jsx';
@@ -36,6 +37,8 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   const [uploadPct, setUploadPct] = useState(0);
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
+  // Tempo total do envio ao vídeo pronto (medido aqui, do clique em criar/exportar).
+  const startedAtRef = useRef(0);
 
   const [sourceId, setSourceId] = useState(null);
   const [transcriptData, setTranscriptData] = useState(null);
@@ -110,8 +113,9 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     else reopenFromHistory(reopen);
   }, [reopen, catalog, options]);
 
-    function fail(msg) {
-    setError(msg);
+    function fail(msg, during = 'process') {
+    // mensagem simples + o detalhe técnico; `during` diz se falhou no envio ou no processamento
+    setError({ ...friendlyError(msg), during });
     setPhase('error');
     refreshBilling();
   }
@@ -121,6 +125,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     setJob(created);
     setPhase('processing');
     subscribeJob(created.id, (u) => {
+      if (u.status === 'done' && startedAtRef.current) u = { ...u, totalSec: Math.round((Date.now() - startedAtRef.current) / 1000) };
       setJob(u);
       if (u.status === 'done') {
         setPhase('done');
@@ -139,6 +144,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
           clips: rep.clips?.length || 0,
           downloadUrl: u.downloadUrl || null,
           sourceId: rep.sourceId || null,
+          totalSec: u.totalSec || null, // do envio ao vídeo pronto
         });
       }
       if (u.status === 'error') fail(u.error);
@@ -148,6 +154,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   // Logo do Brand Kit (marca d'água): sobe a imagem e junta às opções do vídeo.
   async function withBrand(opts) {
     try {
+      if (opts.brandOff) return opts; // "Sem marca" escolhido para este vídeo
       const watermark = await brandWatermark();
       return watermark ? { ...opts, watermark } : opts;
     } catch {
@@ -160,6 +167,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     setError(null);
     setUploadPct(0);
     setPhase('uploading');
+    startedAtRef.current = Date.now();
     try {
       const opts = editMode === 'editor' ? options : await withBrand(options);
       if (editMode === 'clips') {
@@ -188,7 +196,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
         watchRender(created);
       }
     } catch (e) {
-      fail(e.message);
+      fail(e.message, 'upload');
     }
   }
 
@@ -273,6 +281,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
 
   async function generateFromEdits(editedTranscript, extra = {}) {
     setPhase('processing');
+    startedAtRef.current = Date.now();
     try {
       // extra traz os cortes de silêncio escolhidos na timeline (manualSilence + silenceCuts).
       const created = await renderEdited(sourceId, editedTranscript, await withBrand({ ...options, ...extra }));
@@ -399,10 +408,21 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
         <Card style={{ textAlign: 'center', borderColor: `${C.red}55` }}>
           <IconBadge name="alert" tone={C.red} />
           <div style={{ fontWeight: 700, margin: '12px 0 6px', fontSize: 17 }}>Algo deu errado</div>
-          <div style={{ color: C.muted, fontSize: 14, marginBottom: 20 }}>{error}</div>
-          <PrimaryButton onClick={reset} style={{ padding: '12px 26px' }}>
-            Tentar de novo
-          </PrimaryButton>
+          <div style={{ color: C.text, fontSize: 14.5, marginBottom: 8, lineHeight: 1.5 }}>{error?.text}</div>
+          {error?.during === 'process' && (
+            <div style={{ color: C.muted, fontSize: 13, marginBottom: 8 }}>Os créditos de um vídeo que falha voltam para a sua conta automaticamente.</div>
+          )}
+          {error?.detail && <div style={{ color: C.faint, fontSize: 11.5, marginBottom: 8 }}>Detalhe técnico: {error.detail}</div>}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 12 }}>
+            {error?.during === 'upload' && file && (
+              <PrimaryButton onClick={start} style={{ padding: '12px 26px' }}>
+                Tentar de novo (continua o envio)
+              </PrimaryButton>
+            )}
+            <PrimaryButton onClick={reset} style={{ padding: '12px 26px', ...(error?.during === 'upload' && file ? { background: 'rgba(255,255,255,0.08)' } : null) }}>
+              {error?.during === 'upload' && file ? 'Começar outro vídeo' : 'Tentar de novo'}
+            </PrimaryButton>
+          </div>
         </Card>
       )}
     </Shell>

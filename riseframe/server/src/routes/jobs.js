@@ -13,6 +13,7 @@ import { remoteAccount, remoteCheck, remoteCharge, holdRemoteCharge, settleRemot
 import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../../shared/credits.js';
 import { registerMedia, resolveMedia } from '../mediaStore.js';
 import { formatBytes, freeDiskBytes } from '../storage.js';
+import { startUpload, uploadStatus, receiveChunk, fromChunkedUpload } from '../chunkedUpload.js';
 import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
 import { remuxByKeepSegments, remapTranscript, snapKeep } from '../pipeline/timeline.js';
@@ -152,6 +153,19 @@ queue.on('update', (j) => {
   if (j.status === 'error') refund(held.userId, held);
 });
 
+// Job que voltou para a fila depois de um reinício do servidor: a cobrança guardada vale
+// de novo (devolve se falhar). Se não deu para retomar, já devolve agora.
+queue.on('restored', (j) => {
+  if (j.hold?.credits) {
+    if (j.status === 'error') refund(j.hold.credits.userId, j.hold.credits);
+    else heldCredits.set(j.id, j.hold.credits);
+  }
+  if (j.hold?.trial) {
+    if (j.status === 'error') refundFreeEdit(j.hold.trial, j.id);
+    else heldTrial.set(j.id, j.hold.trial);
+  }
+});
+
 // App de PC/Mac: job que falhou devolve a cobrança feita na conta do site.
 queue.on('update', (j) => { settleRemoteCharge(j); });
 
@@ -197,10 +211,15 @@ function chargeAndQueue(req, res, mode, jobInput, { sourceId } = {}) {
     if (mode !== 'render') {
       freeEditsLeft = useFreeEdit(req.user.id, job.id);
       heldTrial.set(job.id, req.user.id);
+      queue.setHold(job.id, { trial: req.user.id });
     }
     return res.status(201).json({ ...queue.public(job), creditsCharged: 0, freeEdit: true, freeEditsLeft });
   }
-  if (g.charged.total) heldCredits.set(job.id, { userId: req.user.id, monthly: g.charged.monthly, extra: g.charged.extra, until: g.until });
+  if (g.charged.total) {
+    const held = { userId: req.user.id, monthly: g.charged.monthly, extra: g.charged.extra, until: g.until };
+    heldCredits.set(job.id, held);
+    queue.setHold(job.id, { credits: held });
+  }
   res.status(201).json({ ...queue.public(job), creditsCharged: g.charged.total });
 }
 
@@ -576,8 +595,20 @@ export function parseOptions(raw) {
   };
 }
 
+// Upload retomável em partes (o vídeo continua de onde parou se a conexão cair).
+// Confere o saldo ANTES de subir o vídeo (não faz a pessoa enviar gigas para ouvir "sem créditos").
+const creditsFor = (req, res, next) => requireCredits(['auto', 'transcribe', 'clips'].includes(req.body?.mode) ? req.body.mode : 'auto')(req, res, next);
+jobsRouter.post('/uploads', requireAuth, requireVerified, creditsFor, (req, res) => {
+  startUpload(req.user.id, req.body || {}).then((r) => res.status(r.status).json(r.body), (err) => res.status(500).json({ error: err.message }));
+});
+jobsRouter.get('/uploads/:id', requireAuth, (req, res) => {
+  const r = uploadStatus(req.user.id, req.params.id);
+  res.status(r.status).json(r.body);
+});
+jobsRouter.put('/uploads/:id', requireAuth, receiveChunk);
+
 // POST /api/jobs  (multipart: file + options) → pipeline automático completo
-jobsRouter.post('/jobs', requireAuth, requireVerified, requireCredits('auto'), checkUploadSize, upload.single('file'), (req, res) => {
+jobsRouter.post('/jobs', requireAuth, requireVerified, requireCredits('auto'), checkUploadSize, upload.single('file'), fromChunkedUpload, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'auto', {
     filename: req.file.originalname,
@@ -588,7 +619,7 @@ jobsRouter.post('/jobs', requireAuth, requireVerified, requireCredits('auto'), c
 
 // POST /api/transcribe  (multipart: file) → transcreve e para; o upload fica salvo
 // para depois ser reusado por /api/render com a transcrição editada.
-jobsRouter.post('/transcribe', requireAuth, requireVerified, requireCredits('transcribe'), checkUploadSize, upload.single('file'), (req, res) => {
+jobsRouter.post('/transcribe', requireAuth, requireVerified, requireCredits('transcribe'), checkUploadSize, upload.single('file'), fromChunkedUpload, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'transcribe', {
     filename: req.file.originalname,
@@ -598,7 +629,7 @@ jobsRouter.post('/transcribe', requireAuth, requireVerified, requireCredits('tra
 });
 
 // POST /api/clips  (multipart: file) → gera vários clipes curtos do vídeo longo
-jobsRouter.post('/clips', requireAuth, requireVerified, requireCredits('clips'), checkUploadSize, upload.single('file'), (req, res) => {
+jobsRouter.post('/clips', requireAuth, requireVerified, requireCredits('clips'), checkUploadSize, upload.single('file'), fromChunkedUpload, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'clips', {
     filename: req.file.originalname,
