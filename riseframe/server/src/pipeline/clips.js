@@ -6,6 +6,8 @@ import { burnCaptions } from './captions.js';
 import { colorFilter } from './color.js';
 import { finalRender } from './render.js';
 import { extractThemes } from './analyze.js';
+import { selectClips } from './clipSelect.js';
+import { llmConfig } from './llm.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('clips');
@@ -122,7 +124,9 @@ function titleFor(segs, themes) {
  */
 export async function generateClips(ctx, onProgress = () => {}) {
   const { source, work, outputsDir, jobId, transcript, meta, options } = ctx;
-  const windows = findHighlights(transcript, meta, options);
+  // Escolha inteligente (IA lê a fala inteira; sem IA, análise por regras): trechos que
+  // fazem sentido sozinhos, com nota, tipo e motivo — do melhor para o pior.
+  const windows = await selectClips(transcript, meta, options, ctx.llm === false ? null : llmConfig(options));
   if (!windows.length) throw new Error('não foi possível identificar trechos para clipes');
 
   const aspect = options.clipAspect || '9:16';
@@ -182,7 +186,12 @@ export async function generateClips(ctx, onProgress = () => {}) {
       start: Math.round(w.start * 10) / 10,
       end: Math.round(w.end * 10) / 10,
       title: w.title,
-      score: w.score,
+      score: w.score, // 0–100
+      type: w.type, // gancho | historia | opiniao | ensinamento | conclusao
+      typeLabel: w.typeLabel,
+      reason: w.reason, // por que este trecho foi escolhido
+      by: w.by, // IA (claude/groq) ou regras
+      goal: w.goal,
       durationSec: Math.round((w.end - w.start) * 10) / 10,
       // Janela exata no vídeo original (com as folgas): o "Editar" do clipe recorta daqui.
       srcStart: keep[0].start,

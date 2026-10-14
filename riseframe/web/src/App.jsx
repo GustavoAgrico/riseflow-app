@@ -434,6 +434,24 @@ function ClipsOptions({ catalog, options, onChange }) {
         </div>
       </div>
 
+      {/* Objetivo: a IA escolhe os trechos que servem para isso */}
+      <div style={{ padding: '15px 0', borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ fontWeight: 600, fontSize: 14 }}>Objetivo dos cortes</div>
+        <div style={{ color: C.faint, fontSize: 12, marginTop: 3, marginBottom: 10 }}>A IA lê o vídeo inteiro e escolhe trechos que fazem sentido sozinhos — com nota e o motivo de cada um.</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {(cap.clipGoals || []).map((g) => {
+            const on = (options.clipGoal || 'auto') === g.id;
+            return (
+              <button key={g.id} onClick={() => set({ clipGoal: g.id })} title={g.label}
+                style={{ border: on ? 'none' : `1px solid ${C.border}`, borderRadius: 999, padding: '7px 13px', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit',
+                  background: on ? GRAD : 'rgba(255,255,255,0.04)', color: on ? '#fff' : C.muted, fontWeight: on ? 700 : 500 }}>
+                {g.label.replace(/ \(.*\)$/, '')}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div style={{ padding: '15px 0', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
         <div style={{ fontWeight: 600, fontSize: 14 }}>Formato dos clipes</div>
         <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.05)', padding: 4, borderRadius: 11, flexWrap: 'wrap' }}>

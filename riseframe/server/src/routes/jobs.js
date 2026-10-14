@@ -17,6 +17,7 @@ import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
 import { remuxByKeepSegments, remapTranscript, snapKeep } from '../pipeline/timeline.js';
 import { markFillers } from '../pipeline/cleanup.js';
+import { CLIP_GOALS } from '../pipeline/clipSelect.js';
 import { sanitizeHeadline, sanitizeCover, makeCover } from '../pipeline/headline.js';
 import { outputTarget } from '../pipeline/render.js';
 import { brollCandidates, resolveSource, googleConfig, googleReady } from '../pipeline/broll.js';
@@ -550,6 +551,8 @@ export function parseOptions(raw) {
     videoCuts: sanitizeSilenceCuts(o.videoCuts),
     // clipes curtos
     clipsCount: clampNum(o.clipsCount, 1, 8, 3),
+    // objetivo dos cortes: autoridade | educacao | entretenimento | venda | engajamento
+    clipGoal: CLIP_GOALS[o.clipGoal] ? o.clipGoal : 'auto',
     clipAspect: ['original', '9:16', '16:9', '1:1'].includes(o.clipAspect) ? o.clipAspect : '9:16',
     clipMin: clampNum(o.clipMin, 5, 60, 15),
     clipMax: clampNum(o.clipMax, 15, 120, 50),
