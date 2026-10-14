@@ -18,6 +18,7 @@ import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
 import { remuxByKeepSegments, remapTranscript, snapKeep } from '../pipeline/timeline.js';
 import { markFillers } from '../pipeline/cleanup.js';
+import { preciseRemovals, audioAnalysis } from '../pipeline/cutRefine.js';
 import { CLIP_GOALS } from '../pipeline/clipSelect.js';
 import { sanitizeHeadline, sanitizeCover, makeCover } from '../pipeline/headline.js';
 import { outputTarget } from '../pipeline/render.js';
@@ -980,6 +981,41 @@ jobsRouter.get('/jobs/:id/filmstrip', async (req, res) => {
     if (!fs.existsSync(out)) await once(out, () => buildFilmstrip(job, out));
     res.type('image/jpeg').sendFile(path.resolve(out));
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/jobs/:id/precise-cuts { transcript, pauses, breaths, coughs, strength }
+// → { pauses, removed }: os MESMOS cortes precisos do vídeo final (pausas que não passam
+// por cima de voz, palavras removidas cortadas no vale do som), para a prévia do editor
+// tocar e mostrar exatamente o que vai sair — sem comer pedaço de palavra.
+const audioCache = new Map(); // id → Promise<análise do áudio> (poucos vídeos, os mais recentes)
+jobsRouter.post('/jobs/:id/precise-cuts', requireAuth, async (req, res) => {
+  const job = sourceJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'vídeo de origem indisponível' });
+  const { transcript, pauses } = req.body || {};
+  if (!Array.isArray(transcript?.segments)) return res.status(400).json({ error: 'transcrição ausente' });
+  try {
+    if (!audioCache.has(job.id)) {
+      audioCache.set(job.id, audioAnalysis(job.inputPath));
+      while (audioCache.size > 4) audioCache.delete(audioCache.keys().next().value);
+    }
+    const audio = await audioCache.get(job.id);
+    const ranges = (Array.isArray(pauses) ? pauses : [])
+      .slice(0, 5000)
+      .map((p) => ({ start: Number(p?.start), end: Number(p?.end) }))
+      .filter((p) => Number.isFinite(p.start) && Number.isFinite(p.end) && p.end > p.start);
+    const r = await preciseRemovals(job.inputPath, {
+      pauses: ranges,
+      transcript,
+      breaths: req.body.breaths !== false,
+      coughs: false, // tosses não mudam o que a prévia corta das palavras (e são lentas de achar)
+      strength: ['forte', 'equilibrado', 'suave'].includes(req.body.strength) ? req.body.strength : 'forte',
+      audio,
+    });
+    res.json({ pauses: r.pauses, removed: r.removed });
+  } catch (err) {
+    audioCache.delete(job.id);
     res.status(500).json({ error: err.message });
   }
 });
