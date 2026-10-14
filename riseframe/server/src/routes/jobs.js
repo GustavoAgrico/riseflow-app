@@ -527,8 +527,9 @@ export function parseOptions(raw) {
           .map((m) => ({ start: Math.max(0, Number(m.start)), end: Number(m.end), query: typeof m.query === 'string' ? m.query.slice(0, 120) : '' }))
       : null,
     aspect: ['original', '9:16', '16:9', '1:1'].includes(o.aspect) ? o.aspect : 'original',
-    // Como o vídeo entra no formato: segue o rosto (auto), ponto escolhido (manual) ou inteiro com fundo desfocado (fit).
-    reframeMode: ['auto', 'manual', 'fit'].includes(o.reframeMode) ? o.reframeMode : 'auto',
+    // Como o vídeo entra no formato: segue o rosto/quem fala (auto), ponto escolhido (manual), inteiro com fundo desfocado (fit) ou tela dividida com duas pessoas (split).
+    reframeMode: ['auto', 'manual', 'fit', 'split'].includes(o.reframeMode) ? o.reframeMode : 'auto',
+    splitSwap: o.splitSwap === true || o.splitSwap === 'true',
     // Posição livre da legenda (arrastada na prévia), 0–1 no quadro final; vazia = a do estilo.
     captionX: Number.isFinite(Number(o.captionX)) && o.captionX !== null && o.captionX !== '' ? clampNum(o.captionX, 0, 1, undefined) : undefined,
     captionY: Number.isFinite(Number(o.captionY)) && o.captionY !== null && o.captionY !== '' ? clampNum(o.captionY, 0, 1, undefined) : undefined,

@@ -168,7 +168,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Qualidade de exportação (720p/1080p/4K: recurso do Premium).
   const [quality, setQuality] = useState(['720', '1080', '2160'].includes(String(options?.quality)) ? String(options.quality) : 'original');
   const hdAllowed = !billing || billing.unlimited || billing.features?.includes('hd');
-  const [reframeMode, setReframeMode] = useState(['auto', 'manual', 'fit'].includes(options?.reframeMode) ? options.reframeMode : 'auto');
+  const [reframeMode, setReframeMode] = useState(['auto', 'manual', 'fit', 'split'].includes(options?.reframeMode) ? options.reframeMode : 'auto');
+  const [splitSwap, setSplitSwap] = useState(Boolean(options?.splitSwap)); // tela dividida: quem fica em cima
   const bgVideoRef = useRef(null); // fundo desfocado da prévia no modo "vídeo inteiro"
   const composedRef = useRef(null);
   const [cbox, setCbox] = useState(null); // tamanho da prévia do formato (para a legenda)
@@ -250,7 +251,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const histState = {
     segments, cuts, keptPauses, gains, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs,
-    aspectSel, quality, reframeMode, framingMode, focus, zoom,
+    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom,
   };
   const histSet = {
     segments: setSegments, cuts: setCuts, keptPauses: setKeptPauses, gains: setGains, media: setMedia,
@@ -258,7 +259,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     cover: setCover, colorLook: setColorLook, colorAdj: setColorAdj, cap: setCap, fx: setFx, voice: setVoice,
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths,
     cutCoughs: setCutCoughs, aspectSel: setAspectSel, quality: setQuality, reframeMode: setReframeMode,
-    framingMode: setFramingMode, focus: setFocus, zoom: setZoom,
+    splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom,
   };
   const histRef = useRef({ past: [], future: [], prev: null, skip: false, at: 0 });
   const [, setHistTick] = useState(0);
@@ -1028,6 +1029,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         aspect: aspectSel,
         quality: hdAllowed ? quality : 'original',
         reframeMode,
+        splitSwap,
         ...(framingMode === 'manual'
           ? { personFocusX: +focus.x.toFixed(3), personFocusY: +focus.y.toFixed(3) }
           : {}),
@@ -1225,6 +1227,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Recorte da pessoa = a MESMA conta do servidor (faceCropGeometry): cobre o quadro,
   // amplia pelo zoom e CENTRALIZA no ponto do rosto. Assim a prévia bate com o render.
   const fitMode = reframeMode === 'fit' && aspectSel !== 'original' && previewMode === 'video';
+  // Tela dividida (podcast): prévia aproximada — cada metade mostra um lado do vídeo; no
+  // render a IA acha o rosto de cada pessoa e recorta nele.
+  const podSplit = reframeMode === 'split' && aspectSel !== 'original' && previewMode === 'video';
+  const podHalfStyle = (side) => ({
+    width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+    objectPosition: `${side * 100}% 40%`, transform: 'scale(1.9)', transformOrigin: `${side * 100}% 40%`, filter: videoFilter,
+  });
   const personCropStyle = (() => {
     if (fitMode) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilter };
     const sd = vdim || (vbox?.vw ? { w: vbox.vw, h: vbox.vh } : null);
@@ -1249,16 +1258,21 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <video ref={bgVideoRef} src={sourceUrl(sourceId)} muted playsInline preload="auto" aria-hidden="true"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.12)', filter: `${videoFilter && videoFilter !== 'none' ? `${videoFilter} ` : ''}blur(9px) brightness(0.88)` }} />
       )}
-      <div ref={motionWrapRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <div ref={motionWrapRef} style={{ width: '100%', height: podSplit ? '50%' : '100%', position: 'relative', overflow: 'hidden' }}>
         <video
           ref={previewVideoRef}
           src={sourceUrl(sourceId)}
           muted playsInline preload="auto"
-          style={personCropStyle}
+          style={podSplit ? podHalfStyle(splitSwap ? 0.72 : 0.28) : personCropStyle}
         />
       </div>
+      {podSplit && (
+        <div style={{ height: '50%', position: 'relative', overflow: 'hidden', borderTop: '2px solid rgba(0,0,0,0.6)' }}>
+          <video ref={bgVideoRef} src={sourceUrl(sourceId)} muted playsInline preload="auto" aria-hidden="true" style={podHalfStyle(splitSwap ? 0.28 : 0.72)} />
+        </div>
+      )}
       <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>
-        {previewMode === 'video' ? (fitMode ? 'vídeo inteiro · fundo desfocado' : aspectSel !== 'original' && reframeMode === 'auto' && framingMode !== 'manual' ? 'segue o rosto (automático)' : 'vídeo · arraste/role') : 'você (arraste/role)'}
+        {previewMode === 'video' ? (podSplit ? 'tela dividida · a IA recorta cada rosto' : fitMode ? 'vídeo inteiro · fundo desfocado' : aspectSel !== 'original' && reframeMode === 'auto' && framingMode !== 'manual' ? 'segue o rosto / quem fala (automático)' : 'vídeo · arraste/role') : 'você (arraste/role)'}
       </div>
     </div>
   );
@@ -1668,6 +1682,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     ))}
                   </div>
                   {reframeMode === 'manual' && <div style={{ fontSize: 11, color: C.faint, marginTop: 8 }}>Arraste o vídeo na <b>prévia</b> (ou o ponto laranja no player) para escolher o que fica no quadro.</div>}
+                  {reframeMode === 'split' && (
+                    <div style={{ marginTop: 8 }}>
+                      <button onClick={() => setSplitSwap((v) => !v)} style={{ ...framingTab(false), width: '100%', padding: '7px 10px', fontSize: 12, fontWeight: 700 }}>
+                        Trocar de lugar · {splitSwap ? 'pessoa da direita em cima' : 'pessoa da esquerda em cima'}
+                      </button>
+                      <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Precisa de duas pessoas lado a lado no vídeo. Com uma pessoa só, o quadro segue o rosto. Se a IA errar, use <b>Posição que eu escolher</b>.</div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -3031,7 +3053,8 @@ const FORMATS = [
   { id: '16:9', label: '16:9', w: 24, h: 14, hint: 'Horizontal — YouTube' },
 ];
 const REFRAME_MODES = [
-  { id: 'auto', label: 'Automático · segue o rosto', hint: 'A IA acompanha você no quadro ao longo do vídeo.' },
+  { id: 'auto', label: 'Automático · segue o rosto', hint: 'A IA acompanha você no quadro. Com duas pessoas, mostra quem está falando.' },
+  { id: 'split', label: 'Tela dividida · podcast', hint: 'Duas pessoas: uma em cima e outra embaixo, cada uma no próprio rosto.' },
   { id: 'manual', label: 'Posição que eu escolher', hint: 'O quadro fica fixo no ponto que você arrastar na prévia.' },
   { id: 'fit', label: 'Vídeo inteiro · fundo desfocado', hint: 'Não corta nada: o vídeo aparece inteiro com o fundo desfocado.' },
 ];
