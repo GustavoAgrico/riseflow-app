@@ -48,11 +48,13 @@ export function matchesAspect(meta, target) {
  *  - 'auto'   segue o rosto/sujeito (tracking); sem tracking, recorte central;
  *  - 'manual' recorte fixo no ponto escolhido pelo usuário (personFocusX/Y, já
  *             considerando o zoom do reenquadramento, se houve);
- *  - 'fit'    vídeo INTEIRO, sem cortar nada, com fundo desfocado (estilo Reels).
+ *  - 'fit'    vídeo INTEIRO, sem cortar nada, com fundo desfocado (estilo Reels);
+ *  - 'split'  tela dividida para duas pessoas (podcast), uma em cada metade, cada uma
+ *             no próprio rosto; com uma pessoa só, segue o rosto como no 'auto'.
  * @returns {Promise<{vf:string, reframe:object}>}
  */
 export async function aspectVf(input, meta, target, options = {}, trackInput = input) {
-  const mode = ['manual', 'fit'].includes(options.reframeMode) ? options.reframeMode : 'auto';
+  const mode = ['manual', 'fit', 'split'].includes(options.reframeMode) ? options.reframeMode : 'auto';
   const { w: W, h: H } = target;
   if (mode === 'fit') {
     return {
@@ -75,8 +77,8 @@ export async function aspectVf(input, meta, target, options = {}, trackInput = i
       reframe: { tracked: false, axis: null, source: 'manual' },
     };
   }
-  if (options.reframeTrack !== false) {
-    const smart = await smartReframeVf(input, meta, target, trackInput);
+  if (options.reframeTrack !== false || mode === 'split') {
+    const smart = await smartReframeVf(input, meta, target, trackInput, { split: mode === 'split', swap: Boolean(options.splitSwap) });
     if (smart) return smart;
   }
   return {
@@ -105,7 +107,7 @@ export async function convertAspect(input, work, meta, options, trackInput, onPr
     ({ vf, reframe } = await aspectVf(input, meta, target, options, trackInput || input));
     // Fonte bem menor que o quadro final (ex.: 464p → 4K): limpa o ruído antes e dá nitidez depois.
     const k = Math.min(target.w / meta.width, target.h / meta.height);
-    if (QUALITIES[options.quality] && k > 1.25 && options.reframeMode !== 'fit') vf = `hqdn3d=1.5:1.5:4:4,${vf},unsharp=5:5:0.6:3:3:0`;
+    if (QUALITIES[options.quality] && k > 1.25 && !['fit', 'split'].includes(options.reframeMode)) vf = `hqdn3d=1.5:1.5:4:4,${vf},unsharp=5:5:0.6:3:3:0`;
   }
   const output = path.join(work, 'aspect.mp4');
   const args = ['-i', input, '-vf', vf, ...x264Fast()];
