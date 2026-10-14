@@ -104,6 +104,7 @@ export default function Result({ job, onReset, onEditTimeline }) {
       <div style={{ fontSize: 11.5, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>O QUE A IA FEZ</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))', gap: 10, marginBottom: 18 }}>
         <Stat label="Duração original" value={fmtDuration(inDur)} />
+        {job.totalSec > 0 && <Stat label="Pronto em" value={`${fmtDuration(job.totalSec)} (do envio ao vídeo final)`} />}
         {cutSec != null && cutSec > 0 && <Stat label="Trechos cortados" value={`−${fmtDuration(cutSec)}`} />}
         {r.autoClean?.removed > 0 && (
           <Stat label="Fala corrigida" value={`${r.autoClean.removed} ${r.autoClean.removed === 1 ? 'palavra' : 'palavras'}${/IA/.test(r.autoClean.method || '') ? ' · IA' : ''}`} />

@@ -7,6 +7,7 @@ import CaptionPreview from './CaptionPreview.jsx';
 import CaptionGallery, { presetPatch } from './CaptionGallery.jsx';
 import CostLine from './CostLine.jsx';
 import { FORMATS } from '../formats.js';
+import { listBrands, loadBrand, activeBrandId, setActiveBrand, brandOptions } from '../brandKit.js';
 
 const STEPS = [
   { id: 'format', label: 'Formato' },
@@ -125,6 +126,17 @@ export default function CreateWizard({
 }) {
   const [step, setStep] = useState(formatId ? 1 : 0);
   const [advanced, setAdvanced] = useState(false);
+  // Marca (cliente) deste vídeo: a ativa do Brand Kit, outra, ou nenhuma.
+  const [brands] = useState(() => listBrands().filter((b) => b.name || b.logo || b.preset));
+  const [brandSel, setBrandSel] = useState(() => (options.brandOff ? '' : activeBrandId()));
+  function chooseBrand(id) {
+    setBrandSel(id);
+    // tira os ajustes de legenda da marca anterior (volta ao padrão) e aplica os da nova
+    const base = Object.fromEntries(Object.entries(catalog?.defaults || {}).filter(([k]) => k.startsWith('caption')));
+    if (!id) return set({ ...base, captionPreset: undefined, brandOff: true });
+    setActiveBrand(id);
+    set({ ...base, captionPreset: undefined, ...brandOptions({ ...loadBrand(id), enabled: true }), brandOff: false });
+  }
   const caps = catalog?.capabilities || {};
   const set = (patch) => onOptions({ ...options, ...patch });
 
@@ -258,6 +270,26 @@ export default function CreateWizard({
               )}
             </div>
           </div>
+
+          {brands.length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 12, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>MARCA DESTE VÍDEO</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[...brands, { id: '', name: 'Sem marca' }].map((x) => {
+                  const on = brandSel === x.id;
+                  return (
+                    <button key={x.id || 'none'} type="button" onClick={() => chooseBrand(x.id)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, border: on ? '2px solid #fff' : `1px solid ${C.border}`, borderRadius: 999, padding: '6px 14px 6px 8px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                        background: on ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)', color: on ? C.text : C.muted, fontWeight: on ? 700 : 500 }}>
+                      {x.logo ? <img src={x.logo} alt="" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} /> : <span style={{ width: 20, height: 20, borderRadius: 6, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,0.08)', fontSize: 11, fontWeight: 800 }}>{x.id ? (x.name || '?').slice(0, 1).toUpperCase() : '–'}</span>}
+                      {x.name || 'Sem nome'}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 12, color: C.faint, marginTop: 8 }}>A legenda, as cores, a fonte e o logo da marca entram neste vídeo. Cadastre outras marcas no <b>Brand Kit</b>.</div>
+            </div>
+          )}
 
           {mode !== 'clips' && Number(options.shortTarget) > 0 && (
             <div style={{ marginTop: 18 }}>

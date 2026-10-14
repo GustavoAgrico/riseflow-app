@@ -1,19 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { C, GRAD, glass, FONT_DISPLAY } from '../theme.js';
 import Icon from '../components/Icon.jsx';
-import CaptionGallery, { currentPreset } from '../components/CaptionGallery.jsx';
+import CaptionGallery, { ColorSwatches } from '../components/CaptionGallery.jsx';
 import { CaptionOverlay, SAMPLE_SEGS, SAMPLE_DUR } from '../components/CaptionPreview.jsx';
-import { loadBrand, saveBrand, brandOptions } from '../brandKit.js';
+import { loadBrand, saveBrand, brandOptions, listBrands, setActiveBrand, createBrand, deleteBrand } from '../brandKit.js';
+import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, HIGHLIGHT_STYLES } from '../../../shared/captionStyle.js';
 
-const COLORS = [
-  { id: 'white', hex: '#FFFFFF' }, { id: 'yellow', hex: '#FFE24B' }, { id: 'orange', hex: '#FF6B35' }, { id: 'purple', hex: '#9F67FF' },
-  { id: 'green', hex: '#2ED47A' }, { id: 'cyan', hex: '#22D3EE' }, { id: 'pink', hex: '#FF5CA8' }, { id: 'red', hex: '#F0526B' },
-];
-const FONTS = [
-  { id: '', label: 'Do estilo escolhido' }, { id: 'montserrat', label: 'Montserrat' }, { id: 'poppins', label: 'Poppins' }, { id: 'inter', label: 'Inter' },
-  { id: 'helvetica', label: 'Helvética (Arimo)' }, { id: 'anton', label: 'Anton' }, { id: 'bebas', label: 'Bebas Neue' }, { id: 'archivo', label: 'Archivo Black' },
-  { id: 'opensans', label: 'Open Sans' }, { id: 'garamond', label: 'EB Garamond' }, { id: 'luckiest', label: 'Divertida (cartoon)' },
-];
+const FONTS = [{ id: '', label: 'Do estilo escolhido' }, ...CAPTION_FONT_LIST.map((f) => ({ id: f.id, label: f.label }))];
+const HIGHLIGHTS = [{ id: '', label: 'Do estilo' }, ...HIGHLIGHT_STYLES];
 const POSITIONS = [{ id: '', label: 'Do estilo' }, { id: 'top', label: 'Em cima' }, { id: 'center', label: 'No meio' }, { id: 'bottom', label: 'Embaixo' }];
 const CORNERS = [{ id: 'tl', label: '↖' }, { id: 'tr', label: '↗' }, { id: 'bl', label: '↙' }, { id: 'br', label: '↘' }];
 
@@ -49,13 +43,29 @@ function Card({ title, hint, children }) {
 const seg = (on) => ({ border: 'none', borderRadius: 9, padding: '8px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: on ? GRAD : 'rgba(255,255,255,0.05)', color: on ? '#fff' : C.muted });
 
 export default function BrandKit({ onNewVideo }) {
-  const [b, setB] = useState(loadBrand);
+  const [b, setB] = useState(() => loadBrand());
+  const [brands, setBrands] = useState(listBrands);
   const [msg, setMsg] = useState('');
   const fileRef = useRef(null);
   const set = (patch) => setB((x) => ({ ...x, ...patch }));
   useEffect(() => {
     setMsg(saveBrand(b) ? 'Salvo neste navegador' : 'Não deu para salvar (o logo é grande demais?)');
+    setBrands(listBrands());
   }, [b]);
+  function pickBrand(id) {
+    setActiveBrand(id);
+    setB(loadBrand(id));
+  }
+  function newBrand(copy) {
+    const nb = createBrand(copy ? b : null);
+    if (nb) setB(loadBrand(nb.id));
+    else setMsg('Não deu para criar (armazenamento cheio — use logos menores)');
+  }
+  function removeBrand() {
+    if (!window.confirm(`Excluir a marca “${b.name || 'sem nome'}”?`)) return;
+    deleteBrand(b.id);
+    setB(loadBrand());
+  }
 
   async function pickLogo(e) {
     const f = e.target.files?.[0];
@@ -83,17 +93,38 @@ export default function BrandKit({ onNewVideo }) {
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginBottom: 22, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: 'clamp(24px,4vw,34px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 4px' }}>Brand Kit</h1>
-          <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>Sua identidade visual, sempre: aplicada em todo vídeo novo.</p>
+          <p style={{ color: C.muted, fontSize: 14, margin: 0 }}>Uma identidade por cliente: a marca ativa é aplicada em todo vídeo novo.</p>
         </div>
         <label style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>
           <input type="checkbox" checked={b.enabled} onChange={(e) => set({ enabled: e.target.checked })} style={{ width: 18, height: 18, accentColor: C.orange }} />
-          Usar nos vídeos novos
+          Aplicar automaticamente nos vídeos novos
         </label>
+      </div>
+
+      {/* Marcas (clientes): escolher, criar, duplicar e excluir */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 18 }}>
+        {brands.map((x) => {
+          const on = x.id === b.id;
+          return (
+            <button key={x.id} onClick={() => pickBrand(x.id)} aria-pressed={on} title={on ? 'Marca ativa' : 'Usar esta marca'}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 40, padding: '0 14px 0 6px', borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, fontWeight: on ? 700 : 500,
+                border: on ? '2px solid #fff' : `1px solid ${C.border}`, background: on ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)', color: on ? C.text : C.muted }}>
+              <span style={{ width: 28, height: 28, borderRadius: 8, display: 'grid', placeItems: 'center', overflow: 'hidden', background: 'rgba(255,255,255,0.08)' }}>
+                {x.logo ? <img src={x.logo} alt="" style={{ maxWidth: '90%', maxHeight: '90%' }} /> : <span style={{ fontWeight: 800, fontSize: 12 }}>{(x.name || '?').trim().slice(0, 1).toUpperCase()}</span>}
+              </span>
+              {x.name || 'Sem nome'}
+              {on && <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.4, color: '#fff', background: GRAD, borderRadius: 20, padding: '2px 7px' }}>ATIVA</span>}
+            </button>
+          );
+        })}
+        <button onClick={() => newBrand(false)} style={{ ...seg(false), color: C.text, border: `1px dashed ${C.borderStrong}`, minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="plus" size={14} strokeWidth={2.4} /> Nova marca</button>
+        <button onClick={() => newBrand(true)} title="Cria outra marca com as mesmas configurações" style={{ ...seg(false), minHeight: 40 }}>Duplicar</button>
+        <button onClick={removeBrand} style={{ ...seg(false), minHeight: 40 }}>Excluir</button>
       </div>
 
       <div className="rf-bk-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 290px', gap: 22, alignItems: 'start', opacity: b.enabled ? 1 : 0.55 }}>
         <div style={{ display: 'grid', gap: 14 }}>
-          <Card title="Minha marca" hint="O nome é só para você se organizar. O logo pode entrar no vídeo como marca d'água.">
+          <Card title="Marca / cliente" hint="O nome é só para você se organizar. O logo pode entrar no vídeo como marca d'água.">
             <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
               <div style={{ width: 92, height: 92, borderRadius: 16, border: `1px dashed ${C.borderStrong}`, display: 'grid', placeItems: 'center', overflow: 'hidden', background: 'repeating-conic-gradient(rgba(255,255,255,0.05) 0% 25%, transparent 0% 50%) 50% / 16px 16px' }}>
                 {b.logo ? <img src={b.logo} alt="Logo" style={{ maxWidth: '86%', maxHeight: '86%' }} /> : <Icon name="image" size={26} color={C.faint} />}
@@ -146,10 +177,7 @@ export default function BrandKit({ onNewVideo }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 13, color: C.muted, width: 70 }}>Cor</span>
                 <button onClick={() => set({ captionColor: '' })} style={{ ...seg(!b.captionColor), padding: '6px 10px' }}>Do estilo</button>
-                {COLORS.map((c) => (
-                  <button key={c.id} onClick={() => set({ captionColor: c.id })} title={c.id}
-                    style={{ width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', background: c.hex, border: b.captionColor === c.id ? '2px solid #fff' : '2px solid rgba(255,255,255,0.15)', boxShadow: b.captionColor === c.id ? `0 0 0 2px ${c.hex}` : 'none' }} />
-                ))}
+                <ColorSwatches value={b.captionColor} options={CAPTION_COLOR_LIST} onChange={(v) => set({ captionColor: v })} size={26} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 13, color: C.muted, width: 70 }}>Fonte</span>
@@ -160,6 +188,10 @@ export default function BrandKit({ onNewVideo }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 13, color: C.muted, width: 70 }}>Posição</span>
                 {POSITIONS.map((p) => <button key={p.id} onClick={() => set({ captionPosition: p.id })} style={seg(b.captionPosition === p.id)}>{p.label}</button>)}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, color: C.muted, width: 70 }}>Destaque</span>
+                {HIGHLIGHTS.map((h) => <button key={h.id} onClick={() => set({ captionHighlightStyle: h.id })} style={seg((b.captionHighlightStyle || '') === h.id)}>{h.label}</button>)}
               </div>
             </div>
           </Card>

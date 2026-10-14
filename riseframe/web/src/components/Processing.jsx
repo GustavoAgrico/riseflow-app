@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { C, GRAD, glass, FONT_DISPLAY } from '../theme.js';
 import Icon from './Icon.jsx';
 
@@ -54,6 +54,33 @@ export function Ring({ pct = 0, size = 168, stroke = 11, label }) {
   );
 }
 
+const fmtLeft = (sec) => (sec < 50 ? 'menos de 1 min' : sec < 90 ? 'cerca de 1 min' : `cerca de ${Math.round(sec / 60)} min`);
+const fmtClock = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+
+/**
+ * Tempo restante estimado pelo ritmo real do progresso (média suavizada, só depois de
+ * dados suficientes) e o tempo decorrido. Puro em relação ao relógio de quem chama.
+ */
+function useEta(value, active) {
+  const t0 = useRef(null);
+  const ema = useRef(null);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!active) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  if (active && t0.current == null) t0.current = Date.now();
+  const elapsed = t0.current ? (now - t0.current) / 1000 : 0;
+  let left = null;
+  if (active && value >= 0.04 && value < 0.995 && elapsed >= 6) {
+    const raw = (elapsed * (1 - value)) / value;
+    ema.current = ema.current == null ? raw : ema.current * 0.8 + raw * 0.2;
+    left = Math.max(5, ema.current);
+  }
+  return { elapsed, left };
+}
+
 /**
  * Tela "A IA está editando seu vídeo": anel de progresso + etapas (feitas ✓, a atual,
  * as próximas). `job` = o job do servidor (etapas reais); sem job, use `pct` e `steps`.
@@ -63,6 +90,8 @@ export default function Processing({ job, title = 'A IA está editando seu víde
   const order = flow.map((s) => s.key);
   const cur = job?.stage === 'done' ? order.length : order.indexOf(job?.stage);
   const value = pct ?? (job?.progress ?? 0) / 100;
+  const queued = job?.status === 'queued';
+  const { elapsed, left } = useEta(value, !queued && value < 1);
 
   return (
     <div style={{ ...glass({ padding: 'clamp(24px, 4vw, 40px)' }), position: 'relative', overflow: 'hidden', textAlign: 'center' }}>
@@ -73,7 +102,14 @@ export default function Processing({ job, title = 'A IA está editando seu víde
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 26 }}>
           <Ring pct={value} />
         </div>
-        {job?.stageLabel && <div style={{ fontSize: 14, fontWeight: 600, color: C.orangeSoft, marginBottom: 18 }}>{job.stageLabel}…</div>}
+        {queued && <div style={{ fontSize: 14, fontWeight: 600, color: C.orangeSoft, marginBottom: 10 }}>Na fila{job?.queuePosition > 0 ? ` (${job.queuePosition}º)` : ''} — começa assim que o vídeo anterior terminar…</div>}
+        {job?.stageLabel && !queued && <div style={{ fontSize: 14, fontWeight: 600, color: C.orangeSoft, marginBottom: 10 }}>{job.stageLabel}…</div>}
+        {!queued && elapsed >= 3 && (
+          <div style={{ fontSize: 13, color: C.muted, marginBottom: 18 }}>
+            {left != null ? <>Faltam <b style={{ color: C.text }}>{fmtLeft(left)}</b> · </> : 'Calculando o tempo restante… · '}
+            {fmtClock(elapsed)} decorridos
+          </div>
+        )}
         {flow.length > 0 && (
           <div style={{ display: 'inline-grid', gap: 10, textAlign: 'left', minWidth: 'min(320px, 100%)' }}>
             {flow.map((s, i) => {

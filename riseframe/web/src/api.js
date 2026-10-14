@@ -195,11 +195,115 @@ function formatGB(bytes) {
   return gb >= 1 ? `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
+// ─── Upload retomável (em partes) ─────────────────────────────────────
+// O vídeo sobe em partes de 8 MB. Se a conexão cair, tenta de novo sozinho (com espera
+// crescente) e continua de onde parou; se desistir, um novo "Tentar de novo" com o mesmo
+// arquivo retoma do ponto salvo (o id do envio fica guardado no navegador).
+const CHUNK = 8 * 1024 ** 2;
+const upKey = (file) => `rf-up:${file.name}:${file.size}:${file.lastModified}`;
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function putChunk(id, blob, offset, onChunkProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', `${BASE}/uploads/${id}`);
+    const t = getToken();
+    if (t) xhr.setRequestHeader('Authorization', `Bearer ${t}`);
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.setRequestHeader('X-Offset', String(offset));
+    xhr.upload.onprogress = (e) => e.lengthComputable && onChunkProgress(e.loaded);
+    xhr.onload = () => {
+      let data = {};
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        /* resposta vazia */
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data.received);
+      else if (xhr.status === 409 && Number.isFinite(data.received)) resolve(data.received); // já estava lá
+      else {
+        const err = new Error(data.error || `erro ${xhr.status}`);
+        err.status = xhr.status;
+        reject(err);
+      }
+    };
+    xhr.onerror = () => reject(Object.assign(new Error('a conexão caiu durante o envio'), { network: true }));
+    xhr.send(blob);
+  });
+}
+
+async function chunkedUpload(file, onProgress, mode) {
+  const key = upKey(file);
+  let id = null;
+  let received = 0;
+  try {
+    id = localStorage.getItem(key);
+  } catch {
+    id = null;
+  }
+  if (id) {
+    const r = await fetch(`${BASE}/uploads/${id}`, { headers: authHeaders() }).catch(() => null);
+    if (r?.ok) received = Number((await r.json()).received) || 0;
+    else id = null;
+  }
+  if (!id) {
+    const r = await fetch(`${BASE}/uploads`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: file.name, size: file.size, mode }),
+    });
+    if (r.status === 404) return null; // servidor antigo: envio de uma vez
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+    id = data.id;
+    try {
+      localStorage.setItem(key, id);
+    } catch {
+      /* sem armazenamento: só não retoma entre tentativas */
+    }
+  }
+  let fails = 0;
+  while (received < file.size) {
+    const end = Math.min(file.size, received + CHUNK);
+    try {
+      received = await putChunk(id, file.slice(received, end), received, (n) => onProgress?.((received + n) / file.size));
+      fails = 0;
+      onProgress?.(received / file.size);
+    } catch (err) {
+      if (err.status === 404) {
+        try { localStorage.removeItem(key); } catch { /* ignora */ }
+        throw new Error('o envio expirou no servidor — tente de novo');
+      }
+      if (err.status && err.status < 500 && err.status !== 408 && err.status !== 429) throw err;
+      fails += 1;
+      if (fails > 8) throw new Error('a conexão caiu e não voltou. Clique em tentar de novo: o envio continua de onde parou.');
+      await wait(Math.min(30000, 1000 * 2 ** (fails - 1)));
+      // confirma onde o servidor parou antes de mandar de novo
+      const r = await fetch(`${BASE}/uploads/${id}`, { headers: authHeaders() }).catch(() => null);
+      if (r?.ok) received = Number((await r.json()).received) || received;
+    }
+  }
+  return { id, key };
+}
+
 /** Envia o vídeo + opções. onProgress(0..1) reflete o upload. */
 async function uploadTo(endpoint, file, options, onProgress) {
   const limit = await maxUploadBytes();
   if (limit && file.size > limit) {
     throw new Error(`o vídeo tem ${formatGB(file.size)} e o limite é ${formatGB(limit)}.`);
+  }
+  // Retomável (em partes); se o servidor não tiver, cai no envio de uma vez.
+  const up = await chunkedUpload(file, onProgress, endpoint === '/transcribe' ? 'transcribe' : endpoint === '/clips' ? 'clips' : 'auto');
+  if (up) {
+    const r = await fetch(`${BASE}${endpoint}`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ uploadId: up.id, options: JSON.stringify(options) }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+    try { localStorage.removeItem(up.key); } catch { /* ignora */ }
+    return data;
   }
   return new Promise((resolve, reject) => {
     const form = new FormData();
@@ -315,16 +419,60 @@ export async function renderEdited(sourceId, editedTranscript, options) {
 
 /** Assina o SSE de progresso de um job. Retorna uma função para cancelar. */
 export function subscribeJob(id, onUpdate) {
-  const es = new EventSource(`${BASE}/jobs/${id}/events`);
-  es.onmessage = (ev) => {
-    try {
-      onUpdate(JSON.parse(ev.data));
-    } catch {
-      /* ignore */
-    }
+  // Se a conexão cair (internet, servidor reiniciando), reconecta sozinho: o job volta
+  // para a fila no servidor e a tela continua acompanhando — nunca fica parada.
+  let es = null;
+  let stopped = false;
+  let finished = false;
+  let tries = 0;
+  let timer = null;
+  const connect = () => {
+    if (stopped || finished) return;
+    es = new EventSource(`${BASE}/jobs/${id}/events`);
+    es.onmessage = (ev) => {
+      tries = 0;
+      try {
+        const u = JSON.parse(ev.data);
+        if (u.status === 'done' || u.status === 'error') {
+          finished = true;
+          es.close();
+        }
+        onUpdate(u);
+      } catch {
+        /* ignore */
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      if (stopped || finished) return;
+      tries += 1;
+      timer = setTimeout(async () => {
+        // o job ainda existe? (404 depois de muitas tentativas = perdido de vez)
+        try {
+          const j = await getJob(id);
+          if (j.status === 'done' || j.status === 'error') {
+            finished = true;
+            onUpdate(j);
+            return;
+          }
+          onUpdate(j);
+        } catch (err) {
+          if (tries > 40) {
+            finished = true;
+            onUpdate({ id, status: 'error', error: `perdemos o contato com o servidor (${err.message})` });
+            return;
+          }
+        }
+        connect();
+      }, Math.min(15000, 1000 * 2 ** Math.min(tries, 4)));
+    };
   };
-  es.onerror = () => es.close();
-  return () => es.close();
+  connect();
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+    es?.close();
+  };
 }
 
 export const downloadUrl = (id) => `${BASE}/jobs/${id}/download`;
