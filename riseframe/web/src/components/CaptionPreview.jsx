@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { C } from '../theme.js';
+import SnapGuides, { snapCenter } from './SnapGuides.jsx';
 import { motionAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { pickKeyword, premiumChunks, layoutCaption, autoMaxChars } from '../../../shared/captionKeyword.js';
 import {
@@ -289,6 +290,7 @@ function wordsOf(seg) {
 export function CaptionOverlay({ videoRef, clock, segments, options, box, sample, editable = false, onDragPos }) {
   const [t, setT] = useState(0);
   const boxRef = useRef(null);
+  const [guides, setGuides] = useState(null); // linhas de centralização enquanto arrasta
   // `clock` (opcional) substitui o tempo do <video> — usado na prévia com frases de exemplo.
   const clockRef = useRef(clock);
   clockRef.current = clock;
@@ -306,7 +308,12 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
 
   if (!box || box.h < 10) return null;
   // Guia das áreas cobertas pelos botões/textos do Instagram e TikTok (só editando, vídeo vertical).
-  const guide = editable && isVerticalFrame(box.w, box.h) ? <SafeZoneGuide box={box} /> : null;
+  const guide = (
+    <>
+      {editable && isVerticalFrame(box.w, box.h) && <SafeZoneGuide box={box} />}
+      {guides && <SnapGuides box={box} x={guides.x} y={guides.y} />}
+    </>
+  );
   const look = captionLook(options);
   const T = look.T;
   const fontPx = Math.max(4, T.size * box.h * look.scale);
@@ -349,11 +356,13 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
     if (!el) return;
     const move = (ev) => {
       const r = el.getBoundingClientRect();
-      const x = Math.min(0.94, Math.max(0.06, (ev.clientX - r.left) / r.width));
-      const y = Math.min(0.96, Math.max(0.04, (ev.clientY - r.top) / r.height));
-      onDragPos(+x.toFixed(3), +y.toFixed(3), seg, words[wi]);
+      // gruda no centro do quadro (com a linha-guia) quando passa perto
+      const sx = snapCenter(Math.min(0.94, Math.max(0.06, (ev.clientX - r.left) / r.width)), r.width);
+      const sy = snapCenter(Math.min(0.96, Math.max(0.04, (ev.clientY - r.top) / r.height)), r.height);
+      setGuides({ x: sx.on, y: sy.on });
+      onDragPos(+sx.v.toFixed(3), +sy.v.toFixed(3), seg, words[wi]);
     };
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    const up = () => { setGuides(null); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     move(e);
@@ -405,7 +414,7 @@ function SafeZoneGuide({ box }) {
     <div aria-hidden="true" style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, pointerEvents: 'none', zIndex: 1 }}>
       <div style={{ ...area, left: 0, right: 0, top: 0, height: box.h * z.top }} />
       <div style={{ ...area, left: 0, right: 0, bottom: 0, height: box.h * z.bottom }}>
-        <span style={{ ...tag, left: 6, top: 4 }}>nome e descrição (Reels/TikTok)</span>
+        <span style={{ ...tag, right: 4, top: 3, maxWidth: '62%', overflow: 'hidden', textOverflow: 'ellipsis' }} title="Área coberta pelo nome e pela descrição no Reels/TikTok">área da descrição</span>
       </div>
       <div style={{ ...area, right: 0, width: box.w * z.right, top: box.h * z.rightFrom, height: box.h * (Math.min(z.rightTo, 1 - z.bottom) - z.rightFrom) }} />
     </div>
