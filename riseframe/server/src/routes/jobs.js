@@ -416,6 +416,9 @@ function sanitizeUserMedia(raw) {
       animOut: Object.hasOwn(LAYER_ANIMATIONS, m.animOut) ? m.animOut : 'none',
       animDur: clampNum(m.animDur, 0.15, 2, 0.4),
       blend: Object.hasOwn(BLEND_MODES, m.blend) ? m.blend : 'normal',
+      // Camada (0 = mais embaixo) e ponto de início no arquivo (aparar/dividir).
+      layer: Math.round(clampNum(m.layer, 0, 20, 0)),
+      offset: clampNum(m.offset, 0, 100000, 0),
     };
     out.push(item);
     if (out.length >= 40) break; // teto de segurança

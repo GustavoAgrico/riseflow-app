@@ -82,6 +82,38 @@ function buildPlan(mode, options) {
   return all;
 }
 
+/**
+ * Só o que aparece na legenda: tira as palavras com legenda oculta (hidden — a fala
+ * continua no vídeo) e os segmentos que ficaram vazios.
+ */
+export function visibleCaptions(transcript) {
+  const segments = [];
+  for (const seg of transcript?.segments || []) {
+    const src = seg.words?.length ? seg.words : null;
+    if (!src) { segments.push(seg); continue; }
+    const words = src.filter((w) => !w.hidden);
+    if (!words.length) continue;
+    if (words.length === src.length) { segments.push(seg); continue; }
+    segments.push({ ...seg, start: words[0].start, end: words[words.length - 1].end, text: words.map((w) => w.word).join(' '), words });
+  }
+  return { ...transcript, segments };
+}
+
+/**
+ * Leva as mídias do usuário da timeline original para a cortada: o início vai para a
+ * nova posição e a duração encolhe pelo que foi cortado dentro da janela dela. Mídias
+ * que caíram inteiras num trecho cortado saem.
+ */
+export function remapUserMedia(items, keep) {
+  return items
+    .map((m) => {
+      const start = remapTime(Number(m.start) || 0, keep);
+      const end = remapTime((Number(m.start) || 0) + (Number(m.duration) || 0), keep);
+      return end - start >= 0.2 ? { ...m, start: +start.toFixed(3), duration: +(end - start).toFixed(3) } : null;
+    })
+    .filter(Boolean);
+}
+
 /** Remove palavras marcadas (removed) da transcrição sem remapear tempos. */
 function dropRemovedWords(transcript) {
   const segments = [];
@@ -366,6 +398,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
       if (Array.isArray(options.brollPlan)) options.brollPlan = options.brollPlan.map(remapRange).filter(Boolean);
       if (Array.isArray(options.zoomMoments)) options.zoomMoments = options.zoomMoments.map(remapRange).filter(Boolean);
       if (Array.isArray(options.sfxMoments)) options.sfxMoments = options.sfxMoments.map((m) => ({ ...m, t: +remapTime(Number(m.t), keep).toFixed(3) }));
+      // Minhas mídias também foram posicionadas na timeline original.
+      if (Array.isArray(options.userMedia)) options.userMedia = remapUserMedia(options.userMedia, keep);
       joins = cutJoins(keep);
       meta = { ...meta, ...(await probeSummary(input)) };
       report.cut = { removedSeconds: Math.round(removedSeconds * 10) / 10, kept: keep.length, keep };
@@ -526,11 +560,11 @@ export async function runPipeline(job, onUpdate = () => {}) {
     };
     captionStyle = style;
     // Tradução opcional: só muda o texto queimado; a transcrição do editor segue no original.
-    let captionTranscript = transcript;
+    let captionTranscript = visibleCaptions(transcript);
     let translation = null;
     if (options.captionLanguage) {
       try {
-        captionTranscript = await translateTranscript(transcript, options.captionLanguage, {
+        captionTranscript = await translateTranscript(captionTranscript, options.captionLanguage, {
           anthropicKey: options.anthropicKey || config.analyze.anthropicKey,
           model: config.analyze.model,
           anthropicWorkspaceId: config.analyze.anthropicWorkspaceId,

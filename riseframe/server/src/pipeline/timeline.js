@@ -114,7 +114,7 @@ export function remapTranscript(transcript, keep, perSegment = 4) {
   if (!transcript?.segments?.length) return { ...transcript, segments: [] };
 
   const kept = [];
-  for (const seg of transcript.segments) {
+  transcript.segments.forEach((seg, si) => {
     const words = seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }];
     for (const w of words) {
       if (w.removed) continue;
@@ -123,9 +123,10 @@ export function remapTranscript(transcript, keep, perSegment = 4) {
       if (!inKeep) continue;
       const ns = remapTime(w.start, keep);
       const ne = Math.max(ns + 0.05, remapTime(w.end, keep));
-      kept.push({ start: ns, end: ne, word: w.word, ...posOf(w), ...emphasisOf(w) });
+      // seg: bloco de origem (as frases não atravessam blocos); hidden: legenda oculta.
+      kept.push({ start: ns, end: ne, word: w.word, seg: si, ...(w.hidden ? { hidden: true } : {}), ...posOf(w), ...emphasisOf(w) });
     }
-  }
+  });
 
   // Reagrupa em frases naturais (análise de frases: pontuação + pausas + tamanho).
   const segments = groupIntoPhrases(kept, { maxWords: perSegment > 4 ? perSegment : 6 });

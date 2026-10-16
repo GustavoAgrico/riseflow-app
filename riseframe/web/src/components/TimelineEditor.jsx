@@ -42,6 +42,7 @@ function wordOut(w) {
     ...(w.px != null ? { px: w.px, py: w.py } : {}),
     ...(w.emColor ? { emColor: w.emColor } : {}),
     ...(w.emBig ? { emBig: true } : {}),
+    ...(w.hidden ? { hidden: true } : {}),
   };
 }
 
@@ -175,6 +176,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [cur, setCur] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [sel, setSel] = useState(0);
+  // Seleção na timeline: qual faixa está ativa (Dividir/Excluir agem nela) e o que está selecionado.
+  const [selKind, setSelKind] = useState('caption'); // caption | video | media | zoom | broll | gain
+  const [selSet, setSelSet] = useState(() => new Set([0])); // blocos de legenda (Ctrl/Shift+clique)
+  const [selMedia, setSelMedia] = useState(null);
+  const [selGain, setSelGain] = useState(null);
+  const [vsplits, setVsplits] = useState([]); // divisões feitas na faixa de vídeo
+  const [selVideo, setSelVideo] = useState(null); // {start,end} do pedaço de vídeo selecionado
+  const [editText, setEditText] = useState(null); // texto do bloco de legenda em edição
   const [pps, setPps] = useState(64); // zoom da timeline (pixels por segundo)
   const zoomTl = (dir) => setPps((p) => Math.max(PPS_MIN, Math.min(PPS_MAX, Math.round(p * (dir > 0 ? 1.4 : 1 / 1.4)))));
 
@@ -276,7 +285,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const histState = {
     segments, cuts, keptPauses, gains, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs,
-    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom,
+    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments,
   };
   const histSet = {
     segments: setSegments, cuts: setCuts, keptPauses: setKeptPauses, gains: setGains, media: setMedia,
@@ -285,6 +294,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths,
     cutCoughs: setCutCoughs, aspectSel: setAspectSel, quality: setQuality, reframeMode: setReframeMode,
     splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom,
+    vsplits: setVsplits, sfxMoments: setSfxMoments,
   };
   const histRef = useRef({ past: [], future: [], prev: null, skip: false, at: 0 });
   const [, setHistTick] = useState(0);
@@ -580,21 +590,39 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const d = mediaDragRef.current;
       if (!d) return;
       const dt = (e.clientX - d.x0) / pps;
-      const maxDur = d.kind === 'audio' ? dur : Math.min(d.srcDuration || dur, dur);
+      const timed = d.kind !== 'image'; // vídeo/música: aparar a esquerda avança no arquivo
+      const srcLeft = timed && d.srcDuration ? Math.max(0.3, d.srcDuration - d.off0) : Infinity;
       if (d.mode === 'move') {
         const start = Math.max(0, Math.min(d.start0 + dt, dur - Math.min(d.dur0, dur)));
-        updateMedia(d.key, { start: +start.toFixed(2) });
+        // Arrastar para cima/baixo troca de camada (cima = por cima no vídeo).
+        const layer = Math.max(0, Math.min(d.maxLayer + 1, d.layer0 + Math.round((d.y0 - e.clientY) / LANE.midias)));
+        updateMedia(d.key, { start: +start.toFixed(2), layer });
       } else if (d.mode === 'right') {
-        const duration = Math.max(0.3, Math.min(d.dur0 + dt, maxDur, dur - d.start0));
+        const duration = Math.max(0.3, Math.min(d.dur0 + dt, srcLeft, dur - d.start0));
         updateMedia(d.key, { duration: +duration.toFixed(2) });
       } else { // left
-        const start = Math.max(0, Math.min(d.start0 + dt, d.start0 + d.dur0 - 0.3));
-        const duration = Math.min(d.start0 + d.dur0 - start, maxDur);
-        updateMedia(d.key, { start: +start.toFixed(2), duration: +duration.toFixed(2) });
+        const minStart = timed ? d.start0 - d.off0 : 0; // não volta antes do início do arquivo
+        const start = Math.max(0, minStart, Math.min(d.start0 + dt, d.start0 + d.dur0 - 0.3));
+        const duration = d.start0 + d.dur0 - start;
+        const patch = { start: +start.toFixed(2), duration: +duration.toFixed(2) };
+        if (timed) patch.offset = +Math.max(0, d.off0 + (start - d.start0)).toFixed(2);
+        updateMedia(d.key, patch);
       }
     }
     function up() {
-      if (mediaDragRef.current) { mediaDragRef.current = null; document.body.style.userSelect = ''; }
+      const d = mediaDragRef.current;
+      if (d) {
+        mediaDragRef.current = null;
+        document.body.style.userSelect = '';
+        // Soltou numa camada ocupada no mesmo tempo: abre uma camada nova logo acima
+        // (se subiu) ou abaixo (se desceu) da alvo. Depois renumera sem buracos.
+        setMedia((list) => {
+          const m = list.find((x) => x.key === d.key);
+          const clash = m && list.some((x) => x.key !== m.key && (x.layer || 0) === (m.layer || 0) && x.start < m.start + m.duration && x.start + x.duration > m.start);
+          const next = clash ? list.map((x) => (x.key === m.key ? { ...x, layer: (m.layer || 0) + ((m.layer || 0) >= d.layer0 ? 0.5 : -0.5) } : x)) : list;
+          return normalizeLayers(next);
+        });
+      }
     }
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
@@ -642,8 +670,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setDrawing(null);
       const a = Math.min(d.t0, d.cur ?? d.t0);
       const b = Math.max(d.t0, d.cur ?? d.t0);
-      // Clique seco (sem arrastar) não vira corte — seria fácil criar um sem querer.
+      // Clique seco (sem arrastar) não vira corte — seleciona o pedaço de vídeo (entre divisões).
       if (b - a > 0.15) setCuts((l) => [...l, { key: `c${Date.now()}`, start: +a.toFixed(2), end: +b.toFixed(2) }]);
+      else {
+        setSelKind('video');
+        setSelVideo(videoParts(d.splits, dur).find((p) => d.t0 >= p.start && d.t0 <= p.end) || null);
+      }
     }
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
@@ -654,7 +686,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (e.button !== 0) return;
     const box = e.currentTarget.getBoundingClientRect();
     const t = Math.max(0, Math.min(dur, (e.clientX - box.left) / pps));
-    drawRef.current = { t0: t, cur: t, left: box.left };
+    drawRef.current = { t0: t, cur: t, left: box.left, splits: vsplits };
+    seek(t);
     setDrawing({ start: t, end: t });
     e.stopPropagation();
     e.preventDefault();
@@ -671,7 +704,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function startMediaDrag(m, mode, e) {
     e.stopPropagation();
     e.preventDefault();
-    mediaDragRef.current = { key: m.key, mode, x0: e.clientX, start0: m.start, dur0: m.duration, kind: m.kind, srcDuration: m.srcDuration };
+    setSelMedia(m.key);
+    setSelKind('media');
+    mediaDragRef.current = {
+      key: m.key, mode, x0: e.clientX, y0: e.clientY, start0: m.start, dur0: m.duration, kind: m.kind,
+      srcDuration: m.srcDuration, off0: Number(m.offset) || 0, layer0: m.layer || 0,
+      maxLayer: media.reduce((mx, x) => Math.max(mx, x.layer || 0), 0),
+    };
     document.body.style.userSelect = 'none';
   }
 
@@ -829,6 +868,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const segB = { ...s, start: b[0].start, words: b };
     setSegments((prev) => [...prev.slice(0, idx), segA, segB, ...prev.slice(idx + 1)]);
     setSel(idx);
+    setSelSet(new Set([idx]));
   }
   function mergeNext(si) {
     setSegments((prev) => {
@@ -860,6 +900,134 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }, [segments, dur, cortadoSec]);
   const segRemoved = (s) => s.words.every((w) => w.removed);
   const canSplit = segments.some((s) => cur > s.start + 0.05 && cur < s.end - 0.05);
+
+  // ── Seleção, dividir e excluir em qualquer faixa ─────────────────────
+  function selectCaption(si, e) {
+    setSelKind('caption');
+    setEditText(null);
+    if (e?.shiftKey) {
+      const [a, b] = [Math.min(sel, si), Math.max(sel, si)];
+      setSelSet(new Set(Array.from({ length: b - a + 1 }, (_, i) => a + i)));
+      return; // mantém o bloco âncora como principal
+    }
+    if (e?.ctrlKey || e?.metaKey) {
+      setSelSet((prev) => {
+        const next = new Set(prev);
+        if (next.has(si) && next.size > 1) next.delete(si); else next.add(si);
+        return next;
+      });
+      setSel(si);
+      return;
+    }
+    setSelSet(new Set([si]));
+    setSel(si);
+    seek(segments[si].start);
+  }
+  /** Blocos de legenda selecionados (sempre inclui o principal), em ordem. */
+  const selCaptions = useMemo(() => [...new Set([...selSet, sel])].filter((i) => i < segments.length).sort((a, b) => a - b), [selSet, sel, segments.length]);
+  const segHidden = (s) => s.words.filter((w) => !w.removed).every((w) => w.hidden);
+  function setCaptionsHidden(hidden) {
+    const set = new Set(selCaptions);
+    setSegments((prev) => prev.map((s, i) => (set.has(i) ? { ...s, words: s.words.map((w) => ({ ...w, hidden })) } : s)));
+  }
+  function setCaptionsCut(removed) {
+    const set = new Set(selCaptions);
+    setSegments((prev) => prev.map((s, i) => (set.has(i) ? { ...s, words: s.words.map((w) => ({ ...w, removed })) } : s)));
+  }
+  /** Junta os blocos selecionados (do primeiro ao último) num só. */
+  function mergeSelected() {
+    if (selCaptions.length < 2) { mergeNext(sel); return; }
+    const a = selCaptions[0];
+    const b = selCaptions[selCaptions.length - 1];
+    setSegments((prev) => {
+      const group = prev.slice(a, b + 1);
+      const merged = { ...group[0], end: group[group.length - 1].end, words: group.flatMap((g) => g.words) };
+      return [...prev.slice(0, a), merged, ...prev.slice(b + 1)];
+    });
+    setSel(a);
+    setSelSet(new Set([a]));
+  }
+  function saveEditText() {
+    if (editText == null) return;
+    setPhraseText(sel, editText);
+    setEditText(null);
+  }
+
+  /** Divide um trecho {start,end} de uma lista em dois no tempo t (chaves novas). */
+  function splitRange(setList, key, t) {
+    setList((list) => {
+      const i = list.findIndex((r) => r.key === key);
+      const r = list[i];
+      if (!r || t <= r.start + 0.2 || t >= r.end - 0.2) return list;
+      const a = { ...r, end: +t.toFixed(2) };
+      const b = { ...r, key: `${r.key}_${Date.now()}`, start: +t.toFixed(2) };
+      return [...list.slice(0, i), a, b, ...list.slice(i + 1)];
+    });
+  }
+  function splitMedia(key, t) {
+    setMedia((list) => {
+      const i = list.findIndex((m) => m.key === key);
+      const m = list[i];
+      if (!m || t <= m.start + 0.2 || t >= m.start + m.duration - 0.2) return list;
+      const cutAt = t - m.start;
+      const a = { ...m, duration: +cutAt.toFixed(2), animOut: 'none' };
+      const b = {
+        ...m, key: `${m.key}_${Date.now()}`, start: +t.toFixed(2), duration: +(m.duration - cutAt).toFixed(2), animIn: 'none',
+        // vídeo/música: a segunda parte continua do ponto do arquivo onde a primeira parou
+        offset: m.kind === 'image' ? 0 : +((Number(m.offset) || 0) + cutAt).toFixed(2),
+      };
+      return [...list.slice(0, i), a, b, ...list.slice(i + 1)];
+    });
+  }
+  const selMediaItem = media.find((m) => m.key === selMedia) || null;
+  const within = (r, t) => !!r && t > r.start + 0.2 && t < r.end - 0.2;
+  const canSplitSel = (() => {
+    if (selKind === 'caption') return canSplit;
+    if (selKind === 'video') return cur > 0.05 && cur < dur - 0.05 && !vsplits.some((x) => Math.abs(x - cur) < 0.05);
+    if (selKind === 'media') return !!selMediaItem && within({ start: selMediaItem.start, end: selMediaItem.start + selMediaItem.duration }, cur);
+    if (selKind === 'zoom') return within(selZoomItem, cur);
+    if (selKind === 'broll') return within(brollReview?.moments[selBroll], cur);
+    if (selKind === 'gain') return within(gains.find((g) => g.key === selGain), cur);
+    return false;
+  })();
+  function splitSelected() {
+    if (!canSplitSel) return;
+    if (selKind === 'caption') splitAtPlayhead();
+    else if (selKind === 'video') setVsplits((l) => [...l, +cur.toFixed(2)].sort((a, b) => a - b));
+    else if (selKind === 'media') splitMedia(selMedia, cur);
+    else if (selKind === 'zoom') splitRange(setZoomMoments, selZoom, cur);
+    else if (selKind === 'broll') splitRange(setBrollMoments, brollReview.moments[selBroll].key, cur);
+    else if (selKind === 'gain') splitRange(setGains, selGain, cur);
+  }
+  const canDeleteSel = (selKind === 'caption' && selCaptions.length > 0) || (selKind === 'video' && !!selVideo)
+    || (selKind === 'media' && !!selMediaItem) || (selKind === 'zoom' && !!selZoomItem)
+    || (selKind === 'broll' && !!brollReview?.moments[selBroll]) || (selKind === 'gain' && !!selGain);
+  /** Excluir: legenda some (a fala fica); vídeo vira corte; os demais itens saem da faixa. */
+  function deleteSelected() {
+    if (!canDeleteSel) return;
+    if (selKind === 'caption') setCaptionsHidden(true);
+    else if (selKind === 'video') {
+      setCuts((l) => [...l, { key: `c${Date.now()}`, start: +selVideo.start.toFixed(2), end: +selVideo.end.toFixed(2) }]);
+      setSelVideo(null);
+    } else if (selKind === 'media') { removeMedia(selMedia); setSelMedia(null); }
+    else if (selKind === 'zoom') { setZoomMoments((l) => l.filter((z) => z.key !== selZoom)); setSelZoom(null); }
+    else if (selKind === 'broll') setBrollMoments((l) => l.map((m, i) => (i === selBroll ? { ...m, removed: true } : m)));
+    else if (selKind === 'gain') { setGains((l) => l.filter((g) => g.key !== selGain)); setSelGain(null); }
+  }
+  /** Sobe/desce a camada da mídia (troca de lugar com quem estiver na camada vizinha). */
+  function moveLayer(key, delta) {
+    setMedia((list) => {
+      const m = list.find((x) => x.key === key);
+      if (!m) return list;
+      const from = m.layer || 0;
+      const to = Math.max(0, from + delta);
+      if (to === from) return list;
+      return normalizeLayers(list.map((x) => (x.key === key ? { ...x, layer: to } : (x.layer || 0) === to ? { ...x, layer: from } : x)));
+    });
+  }
+  const mediaRows = media.reduce((mx, m) => Math.max(mx, (m.layer || 0) + 1), 1);
+  const SEL_LABEL = { caption: 'legenda', video: 'vídeo', media: 'camada', zoom: 'zoom', broll: 'B-roll', gain: 'volume' };
+
 
   function toggleSeg(si) { setSegments((prev) => prev.map((s, i) => { if (i !== si) return s; const gone = segRemoved(s); return { ...s, words: s.words.map((w) => ({ ...w, removed: !gone })) }; })); }
   function toggleWord(si, wi) { setSegments((prev) => prev.map((s, i) => (i !== si ? s : { ...s, words: s.words.map((w, j) => (j !== wi ? w : { ...w, removed: !w.removed })) }))); }
@@ -930,6 +1098,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             animIn: 'none', // animação de entrada/saída da camada
             animOut: 'none',
             blend: 'normal', // modo de mesclagem (só tela cheia)
+            offset: 0, // ponto de início no arquivo (aparar/dividir)
+            layer: freeLayer(prev, cur, info.kind === 'audio' ? Math.min(srcDur, dur) : Math.min(info.kind === 'image' ? 4 : srcDur, 8)),
           },
         ]);
       }
@@ -1169,6 +1339,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           animIn: m.animIn || 'none',
           animOut: m.animOut || 'none',
           blend: m.blend || 'normal',
+          layer: m.layer || 0,
+          offset: +Number(m.offset || 0).toFixed(2),
         })),
         // Efeitos sonoros colocados à mão (tempo original; o servidor remapeia após os cortes).
         sfxMoments: sfxMoments.map((m) => ({ t: +m.t.toFixed(2), type: m.type })),
@@ -1266,9 +1438,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       box.scrollTop = Math.max(0, row.offsetTop - box.clientHeight / 3);
     }
   }, [capFollow, capPane, tab]);
-  // Atalhos de teclado (fora de campos de texto): espaço, setas, S para dividir.
+  // Atalhos de teclado (fora de campos de texto): espaço, setas, S/Ctrl+B dividem a
+  // faixa selecionada, Delete exclui o selecionado.
   const keysRef = useRef({});
-  keysRef.current = { togglePlay, seek, cur, goCaption, splitAtPlayhead, undo, redo };
+  keysRef.current = { togglePlay, seek, cur, goCaption, splitSelected, deleteSelected, undo, redo };
   useEffect(() => {
     function onKey(e) {
       const t = e.target;
@@ -1276,13 +1449,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const k = keysRef.current;
       if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) k.redo(); else k.undo(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); k.redo(); return; }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); k.splitSelected(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'Space') { e.preventDefault(); k.togglePlay(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); k.seek(k.cur - (e.shiftKey ? 5 : 1)); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); k.seek(k.cur + (e.shiftKey ? 5 : 1)); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); k.goCaption(-1); }
       else if (e.key === 'ArrowDown') { e.preventDefault(); k.goCaption(1); }
-      else if (e.key === 's' || e.key === 'S') { k.splitAtPlayhead(); }
+      else if (e.key === 's' || e.key === 'S') { k.splitSelected(); }
+      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); k.deleteSelected(); }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -2653,9 +2828,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <Icon name="undo" size={14} strokeWidth={2} style={{ transform: 'scaleX(-1)' }} /> <span className="rf-tl-hide-sm">Refazer</span>
           </button>
           <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />
-          <button onClick={splitAtPlayhead} disabled={!canSplit} title="Dividir no playhead (S)" style={toolBtn(!canSplit)}>
-            <Icon name="scissors" size={14} strokeWidth={2} /> <span className="rf-tl-hide-sm">Dividir no playhead</span>
+          <button onClick={splitSelected} disabled={!canSplitSel} title={`Dividir ${SEL_LABEL[selKind]} no playhead (S ou Ctrl+B)`} style={toolBtn(!canSplitSel)}>
+            <Icon name="scissors" size={14} strokeWidth={2} /> <span className="rf-tl-hide-sm">Dividir {SEL_LABEL[selKind]}</span>
           </button>
+          <button onClick={deleteSelected} disabled={!canDeleteSel} style={toolBtn(!canDeleteSel)}
+            title={selKind === 'caption' ? 'Esconde a legenda dos blocos selecionados (a fala continua) — Delete' : selKind === 'video' ? 'Corta o pedaço de vídeo selecionado — Delete' : 'Remove o item selecionado — Delete'}>
+            <Icon name="close" size={14} strokeWidth={2} /> <span className="rf-tl-hide-sm">{selKind === 'caption' ? 'Ocultar legenda' : selKind === 'video' ? 'Cortar pedaço' : 'Excluir'}</span>
+          </button>
+          {selKind === 'media' && selMediaItem && (
+            <>
+              <button onClick={() => moveLayer(selMediaItem.key, 1)} style={toolBtn(false)} title="Coloca esta mídia por cima da camada de cima">▲ <span className="rf-tl-hide-sm">Subir camada</span></button>
+              <button onClick={() => moveLayer(selMediaItem.key, -1)} disabled={!selMediaItem.layer} style={toolBtn(!selMediaItem.layer)} title="Coloca esta mídia por baixo">▼ <span className="rf-tl-hide-sm">Descer camada</span></button>
+            </>
+          )}
           <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />
           <button
             onClick={() => {
@@ -2708,12 +2893,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {showBrollLane && <Rotulo h={LANE.broll} gap={4} nome="B-ROLL" dica="clique p/ ajustar" />}
             <Rotulo h={LANE.audio} gap={4} nome="ÁUDIO" dica={gains.length ? null : 'use a aba Áudio'} />
             <Rotulo h={LANE.pausas} gap={4} nome="PAUSAS" dica={pauses.length ? 'clique p/ manter' : null} />
-            {media.length > 0 && <Rotulo h={LANE.midias} gap={4} nome="MÍDIAS" />}
+            {media.length > 0 && Array.from({ length: mediaRows }, (_, r) => mediaRows - 1 - r).map((l) => (
+              <Rotulo key={l} h={LANE.midias} gap={l === mediaRows - 1 ? 4 : 0} nome={`CAMADA ${l + 1}`} dica={l === mediaRows - 1 && mediaRows > 1 ? 'fica por cima' : null} />
+            ))}
           </div>
           <div ref={trackRef} onClick={onTrackClick} onScroll={onTrackScroll} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
-            <div style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + 4 + LANE.video + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias : 0) }}>
+            <div style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + 4 + LANE.video + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
             <div style={{ position: 'relative', height: LANE.ruler, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
               {Array.from({ length: Math.ceil(dur) + 1 }).map((_, s) => (
                 <div key={s} style={{ position: 'absolute', left: s * pps, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
@@ -2737,12 +2924,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 const left = s.start * pps;
                 const fullW = Math.max(10, (Math.max(s.end, s.start + 0.2) - s.start) * pps - 2);
                 const gone = segRemoved(s);
-                const isSel = si === sel;
+                const isSel = selKind === 'caption' && selCaptions.includes(si);
                 const isActive = si === activeIndex;
                 const kr = keptRange(s);
+                const hid = !gone && segHidden(s);
                 return (
-                  <div key={si} onClick={(e) => { e.stopPropagation(); setSel(si); seek(s.start); if (isMobile) setMTool('legenda'); }} title={s.words.map((x) => x.word).join(' ')}
-                    style={isMobile ? {
+                  <div key={si} onClick={(e) => { e.stopPropagation(); selectCaption(si, e); if (isMobile) setMTool('legenda'); }}
+                    title={`${s.words.map((x) => x.word).join(' ')}${hid ? ' (legenda oculta)' : ''} — Ctrl/Shift+clique seleciona vários`}
+                    style={{ opacity: hid ? 0.45 : 1, ...(isMobile ? {
                       // celular: blocos âmbar como no CapCut; o selecionado ganha borda branca
                       position: 'absolute', left, width: fullW, top: 4, height: legH - 8, borderRadius: 6, overflow: 'hidden', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', border: isSel ? '2px solid #fff' : '1px solid rgba(0,0,0,0.25)',
@@ -2751,8 +2940,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       // computador: como a faixa de texto do CapCut/Premiere — um bloco por
                       // legenda (o cartão que aparece no vídeo), com o ícone de texto
                       position: 'absolute', left, width: fullW, top: 4, height: legH - 8, borderRadius: 5, cursor: 'pointer',
-                      outline: isSel ? '2px solid #fff' : 'none', outlineOffset: 1, zIndex: isSel ? 2 : 1,
-                    }}>
+                      outline: isSel ? '2px solid #fff' : hid ? '1px dashed rgba(255,255,255,0.5)' : 'none', outlineOffset: 1, zIndex: isSel ? 2 : 1,
+                    }) }}>
                     {/* máscaras das pontas cortadas (trim) */}
                     {kr && !gone && kr[0] > s.start + 0.01 && (
                       <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: (kr[0] - s.start) * pps, background: 'rgba(240,82,107,0.22)', borderRight: `1px dashed ${C.red}` }} />
@@ -2782,8 +2971,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       );
                     })
                     )}
-                    {/* alças de trim (só no bloco selecionado) */}
-                    {isSel && !gone && (
+                    {/* alças de trim (só no bloco principal selecionado) */}
+                    {isSel && si === sel && !gone && (
                       <>
                         <div onMouseDown={(e) => startDrag(si, 'left', e)} onClick={(e) => e.stopPropagation()} style={handleStyle('left')} />
                         <div onMouseDown={(e) => startDrag(si, 'right', e)} onClick={(e) => e.stopPropagation()} style={handleStyle('right')} />
@@ -2825,6 +3014,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <div onMouseDown={(e) => startRangeDrag(setCuts, c, 'right', e)} style={handleStyle('right')} />
                 </div>
               ))}
+              {/* pedaço selecionado + divisões (S/Ctrl+B na faixa de vídeo) */}
+              {selKind === 'video' && selVideo && (
+                <div style={{ position: 'absolute', left: selVideo.start * pps, width: (selVideo.end - selVideo.start) * pps, top: 0, bottom: 0, border: '2px solid #fff', borderRadius: 4, boxShadow: `inset 0 0 0 2px ${C.orange}`, pointerEvents: 'none' }} />
+              )}
+              {vsplits.map((t) => (
+                <div key={t} style={{ position: 'absolute', left: t * pps - 1, top: 0, bottom: 0, width: 2, background: '#fff' }}>
+                  <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setVsplits((l) => l.filter((x) => x !== t)); setSelVideo(null); }}
+                    title="Desfazer esta divisão"
+                    style={{ position: 'absolute', top: 1, left: -7, width: 16, height: 14, padding: 0, borderRadius: 4, border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 10, lineHeight: 1, cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
+                </div>
+              ))}
               {cutStart != null && Math.abs(cur - cutStart) > 0.02 && (
                 <div style={{ position: 'absolute', left: Math.min(cutStart, cur) * pps, width: Math.abs(cur - cutStart) * pps, top: 0, bottom: 0, background: 'rgba(240,82,107,0.22)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
               )}
@@ -2842,8 +3042,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <div
                       key={z.key}
                       title={`Zoom ${Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}× — clique para ajustar, arraste para mover`}
-                      onMouseDown={(e) => { setSelZoom(z.key); startRangeDrag(setZoomMoments, z, 'move', e); }}
-                      onClick={(e) => { e.stopPropagation(); setSelZoom(z.key); setTab('efeitos'); seek(z.start); }}
+                      onMouseDown={(e) => { setSelZoom(z.key); setSelKind('zoom'); startRangeDrag(setZoomMoments, z, 'move', e); }}
+                      onClick={(e) => { e.stopPropagation(); setSelZoom(z.key); setSelKind('zoom'); setTab('efeitos'); seek(z.start); }}
                       style={{
                         position: 'absolute', left: z.start * pps, width: Math.max(14, (z.end - z.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
@@ -2870,8 +3070,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <div
                       key={m.key || i}
                       title={`${m.term} — clique para ajustar`}
-                      onMouseDown={(e) => { setSelBroll(i); startRangeDrag(setBrollMoments, m, 'move', e); }}
-                      onClick={(e) => { e.stopPropagation(); setSelBroll(i); setTab('broll'); seek(m.start + 0.05); }}
+                      onMouseDown={(e) => { setSelBroll(i); setSelKind('broll'); startRangeDrag(setBrollMoments, m, 'move', e); }}
+                      onClick={(e) => { e.stopPropagation(); setSelBroll(i); setSelKind('broll'); setTab('broll'); seek(m.start + 0.05); }}
                       style={{
                         position: 'absolute', left: m.start * pps, width: Math.max(16, (m.end - m.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
                         display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
@@ -2911,12 +3111,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <div
                     key={g.key}
                     title={`Volume ${mudo ? 'mudo' : `${Number(g.volume).toFixed(2)}×`}`}
-                    onMouseDown={(e) => startRangeDrag(setGains, g, 'move', e)}
+                    onMouseDown={(e) => { setSelGain(g.key); setSelKind('gain'); startRangeDrag(setGains, g, 'move', e); }}
                     onClick={(e) => e.stopPropagation()}
                     style={{
                       position: 'absolute', left, width: w, top: 0, bottom: 0, borderRadius: 5,
                       display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab',
-                      border: `1px solid ${mudo ? C.red : C.orange}`,
+                      border: selKind === 'gain' && selGain === g.key ? '1.5px solid #fff' : `1px solid ${mudo ? C.red : C.orange}`,
                       background: mudo ? 'rgba(240,82,107,0.28)' : 'rgba(255,107,53,0.22)',
                       fontSize: 10.5, fontWeight: 700, color: C.text, overflow: 'hidden', whiteSpace: 'nowrap',
                     }}
@@ -2963,21 +3163,25 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </div>}
             {/* Lane das minhas mídias — arraste para mover, pontas para redimensionar */}
             {media.length > 0 && (
-              <div style={{ position: 'relative', height: LANE.midias, marginTop: 4 }}>
+              <div style={{ position: 'relative', height: LANE.midias * mediaRows, marginTop: 4 }}>
+                {Array.from({ length: mediaRows - 1 }, (_, r) => (
+                  <div key={r} style={{ position: 'absolute', left: 0, right: 0, top: (r + 1) * LANE.midias - 1, borderTop: `1px dashed ${C.border}`, pointerEvents: 'none' }} />
+                ))}
                 {media.map((m) => {
                   const left = m.start * pps;
                   const w = Math.max(16, m.duration * pps - 1);
                   const col = m.kind === 'audio' ? C.purple : m.kind === 'video' ? C.orange : '#22D3EE';
+                  const isSelM = selKind === 'media' && selMedia === m.key;
                   return (
                     <div
                       key={m.key}
                       onMouseDown={(e) => startMediaDrag(m, 'move', e)}
-                      onClick={(e) => { e.stopPropagation(); seek(m.start); }}
-                      title={`${m.filename} — arraste para mover, pontas para ajustar a duração`}
+                      onClick={(e) => { e.stopPropagation(); setSelMedia(m.key); setSelKind('media'); seek(m.start); }}
+                      title={`${m.filename} — arraste para os lados (tempo) ou para cima/baixo (camada); pontas ajustam a duração`}
                       style={{
-                        position: 'absolute', left, top: 0, width: w, height: 28, borderRadius: 7, overflow: 'hidden',
+                        position: 'absolute', left, top: (mediaRows - 1 - (m.layer || 0)) * LANE.midias, width: w, height: 28, borderRadius: 7, overflow: 'hidden',
                         cursor: 'grab', display: 'flex', alignItems: 'center', gap: 5, padding: '0 9px',
-                        background: `${col}2b`, border: `1px solid ${col}`, color: C.text, userSelect: 'none',
+                        background: `${col}2b`, border: isSelM ? '1.5px solid #fff' : `1px solid ${col}`, boxShadow: isSelM ? `0 0 0 2px ${col}66` : 'none', color: C.text, userSelect: 'none',
                       }}
                     >
                       <span style={{ display: 'flex', flexShrink: 0, color: col }}><Icon name={m.kind === 'audio' ? 'play' : m.kind === 'video' ? 'film' : 'image'} size={11} strokeWidth={2.2} /></span>
@@ -3012,16 +3216,49 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {selSeg && (
             <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.4 }}>TRECHO {sel + 1}/{segments.length} · {fmtDuration(selSeg.start)}</div>
+                <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.4 }}>
+                  {selCaptions.length > 1 ? `${selCaptions.length} BLOCOS SELECIONADOS` : `TRECHO ${sel + 1}/${segments.length} · ${fmtDuration(selSeg.start)}`}
+                </div>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <button onClick={() => mergeNext(sel)} disabled={sel >= segments.length - 1} style={miniBtn(false, sel >= segments.length - 1)}>
+                  <button onClick={() => { setSelKind('caption'); setSelSet(new Set(segments.map((_, i) => i))); }} style={miniBtn(false, false)}>Selecionar todas</button>
+                  <button onClick={mergeSelected} disabled={selCaptions.length < 2 && sel >= segments.length - 1} style={miniBtn(false, selCaptions.length < 2 && sel >= segments.length - 1)}>
                     <Icon name="arrowLeft" size={12} strokeWidth={2.2} style={{ transform: 'rotate(180deg)' }} /> Juntar
                   </button>
-                  <button onClick={() => toggleSeg(sel)} style={miniBtn(segRemoved(selSeg))}>
-                    <Icon name={segRemoved(selSeg) ? 'undo' : 'close'} size={12} strokeWidth={2.2} /> {segRemoved(selSeg) ? 'Reincluir' : 'Cortar trecho'}
-                  </button>
+                  {selCaptions.length === 1 && (
+                    <button onClick={() => setEditText(editText == null ? selSeg.words.filter((w) => !w.removed).map((w) => w.word).join(' ') : null)} disabled={segRemoved(selSeg)} style={miniBtn(editText != null, segRemoved(selSeg))}>
+                      <Icon name="edit" size={12} strokeWidth={2.2} /> Editar texto
+                    </button>
+                  )}
+                  {(() => {
+                    const allHidden = selCaptions.every((i) => segHidden(segments[i]));
+                    return (
+                      <button onClick={() => setCaptionsHidden(!allHidden)} style={miniBtn(allHidden)} title="Esconde só o texto: a fala continua no vídeo">
+                        <Icon name={allHidden ? 'eye' : 'eyeOff'} size={12} strokeWidth={2.2} /> {allHidden ? 'Mostrar legenda' : 'Ocultar legenda'}
+                      </button>
+                    );
+                  })()}
+                  {(() => {
+                    const allCut = selCaptions.every((i) => segRemoved(segments[i]));
+                    return (
+                      <button onClick={() => setCaptionsCut(!allCut)} style={miniBtn(allCut)} title="Corta a fala destes blocos do vídeo">
+                        <Icon name={allCut ? 'undo' : 'scissors'} size={12} strokeWidth={2.2} /> {allCut ? 'Reincluir' : 'Cortar trecho'}
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
+              {editText != null && selCaptions.length === 1 && (
+                <div style={{ display: 'grid', gap: 6, marginBottom: 10 }}>
+                  <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={2} autoFocus
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEditText(); } if (e.key === 'Escape') setEditText(null); }}
+                    style={{ width: '100%', boxSizing: 'border-box', background: '#13131B', color: C.text, border: `1px solid ${C.orange}`, borderRadius: 9, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <button onClick={saveEditText} style={miniBtn(true, false)}><Icon name="check" size={12} strokeWidth={2.2} /> Salvar texto</button>
+                    <button onClick={() => setEditText(null)} style={miniBtn(false, false)}>Cancelar</button>
+                    <span style={{ fontSize: 11, color: C.faint }}>Muda só o que aparece na legenda, no mesmo tempo da fala.</span>
+                  </div>
+                </div>
+              )}
               <div style={{ lineHeight: 2 }}>
                 {selSeg.words.map((w, wi) => (
                   <span key={wi} onClick={() => toggleWord(sel, wi)} onDoubleClick={() => editWord(sel, wi)} title={`${w.start.toFixed(1)}s — clique corta, 2 cliques edita`}
@@ -3044,7 +3281,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <Icon name="edit" size={12} strokeWidth={2.2} /> Corrigir o texto da legenda
                 </button>
               )}
-              <div style={{ fontSize: 11.5, color: C.faint, marginTop: 8 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir só ela · arraste as bordas do bloco na timeline</div>
+              <div style={{ fontSize: 11.5, color: C.faint, marginTop: 8 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir só ela · arraste as bordas do bloco na timeline · Ctrl/Shift+clique nos blocos seleciona vários · S divide · Delete oculta a legenda</div>
             </div>
           )}
         </div>
@@ -3175,6 +3412,26 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   return isMobile && typeof document !== 'undefined' ? createPortal(editorCard, document.body) : editorCard;
 }
 
+/** Primeira camada livre (sem outra mídia no mesmo intervalo de tempo). */
+function freeLayer(list, start, duration) {
+  const end = start + duration;
+  let l = 0;
+  while (list.some((m) => (m.layer || 0) === l && m.start < end && m.start + m.duration > start)) l++;
+  return l;
+}
+/** Renumera as camadas em 0, 1, 2… mantendo a ordem (tira as camadas vazias). */
+function normalizeLayers(list) {
+  const used = [...new Set(list.map((m) => m.layer || 0))].sort((a, b) => a - b);
+  if (used.every((l, i) => l === i)) return list;
+  return list.map((m) => ({ ...m, layer: used.indexOf(m.layer || 0) }));
+}
+/** Pedaços da faixa de vídeo entre as divisões (início, divisões, fim). */
+function videoParts(splits, dur) {
+  const pts = [0, ...splits.filter((t) => t > 0.05 && t < dur - 0.05).sort((a, b) => a - b), dur];
+  const parts = [];
+  for (let i = 0; i < pts.length - 1; i++) if (pts[i + 1] - pts[i] > 0.02) parts.push({ start: pts[i], end: pts[i + 1] });
+  return parts;
+}
 // Altura de cada faixa. A coluna de nomes e as faixas leem daqui, para não
 // desalinharem quando uma mudar.
 const LANE = { ruler: 22, capitulos: 28, legenda: 36, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };

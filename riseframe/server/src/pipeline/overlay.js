@@ -233,7 +233,8 @@ export async function applyUserMedia(input, work, meta, options, onProgress = ()
       return { ...m, start, end, d: end - start };
     })
     .filter((m) => m.d > 0.05)
-    .sort((a, b) => a.start - b.start);
+    // Camada mais alta é desenhada por último (fica por cima); na mesma camada, por tempo.
+    .sort((a, b) => (Number(a.layer) || 0) - (Number(b.layer) || 0) || a.start - b.start);
 
   for (const m of vis) {
     m._inIdx = inputs.length + 1; // +1 porque 0 é o vídeo principal
@@ -284,6 +285,10 @@ export async function applyUserMedia(input, work, meta, options, onProgress = ()
     if (m.kind === 'image') {
       const d = clamp(m.duration, 0.2, dur, 4);
       args.push('-loop', '1', '-t', d.toFixed(2));
+    } else {
+      // Vídeo/música aparado na ponta esquerda (ou dividido): começa deste ponto do arquivo.
+      const offset = clamp(m.offset, 0, 100000, 0);
+      if (offset > 0.01) args.push('-ss', offset.toFixed(3));
     }
     args.push('-i', m.file);
   }
