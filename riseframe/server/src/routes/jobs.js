@@ -32,6 +32,8 @@ import { VOICE_NOISE, VOICE_PRESETS, VOICE_EFFECTS, previewVoice } from '../pipe
 
 const CAPTION_TEMPLATE_IDS = Object.keys(CAPTION_TEMPLATES);
 import { CAPTION_LANGUAGES } from '../pipeline/translate.js';
+import { MOMENT_EFFECTS, cleanKeys } from '../../../shared/transform.js';
+import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
 import { SFX_LIBRARY } from '../pipeline/sfx.js';
 import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
@@ -418,6 +420,9 @@ function sanitizeUserMedia(raw) {
       blend: Object.hasOwn(BLEND_MODES, m.blend) ? m.blend : 'normal',
       // Camada (0 = mais embaixo) e ponto de início no arquivo (aparar/dividir).
       layer: Math.round(clampNum(m.layer, 0, 20, 0)),
+      // Entrada/saída suave da música (segundos).
+      fadeIn: clampNum(m.fadeIn, 0, 10, 0),
+      fadeOut: clampNum(m.fadeOut, 0, 10, 0),
       offset: clampNum(m.offset, 0, 100000, 0),
     };
     out.push(item);
@@ -439,6 +444,7 @@ function sanitizeZoomMoments(raw) {
     if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < 0.15) continue;
     const item = { start: Math.max(0, start), end: Math.min(start + 30, end) };
     if (Number.isFinite(Number(m.scale))) item.scale = clampNum(m.scale, 1.01, 1.6, 1.12);
+    if (Object.hasOwn(MOMENT_EFFECTS, m.effect)) item.effect = m.effect; // efeito próprio do momento
     out.push(item);
     if (out.length >= 60) break;
   }
@@ -572,6 +578,11 @@ export function parseOptions(raw) {
     brollMax: clampNum(o.brollMax, 1, 12, 6),
     brollPlan: sanitizeBrollPlan(o.brollPlan),
     zoomMoments: sanitizeZoomMoments(o.zoomMoments),
+    // Quadros-chave do Transformar (escala, posição, giro) — tempo original.
+    transformKeys: cleanKeys(o.transformKeys),
+    // Efeitos de vídeo nos momentos e textos livres (tempo original).
+    fxMoments: cleanFxMoments(o.fxMoments),
+    textLayers: cleanTextLayers(o.textLayers, Object.keys(CAPTION_FONTS)),
     // ── Restaurados (tinham sumido numa atualização e o servidor descartava: cortes da
     // timeline, volume, formato, força do corte de silêncio, clipes e minhas mídias).
     // Volume da fala: geral, mudo e trechos com volume próprio (tempo original).

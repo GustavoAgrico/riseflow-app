@@ -14,6 +14,9 @@ import CaptionGallery, { FontPicker, ColorSwatches, TextStyleBar } from './Capti
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
+import { keyAt, cleanKeys, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
+import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES } from '../../../shared/textLayers.js';
+import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById } from '../../../shared/captionStyle.js';
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 
 // Tempo no formato do player: 00:12
@@ -35,10 +38,38 @@ const PPS_MAX = 240;
  * - corrigir o texto (duplo-clique na palavra)
  * "Renderizar" reprocessa com a transcrição editada.
  */
+/** Faixa de fala mantida de um bloco (palavras não cortadas), ou null. */
+function speechRange(s) {
+  const kept = s.words.filter((w) => !w.removed);
+  if (!kept.length) return null;
+  return [Math.min(...kept.map((w) => w.start)), Math.max(...kept.map((w) => w.end))];
+}
+/**
+ * Quando a legenda aparece e some. Como no CapCut, a legenda é um bloco de texto com
+ * tempo próprio: puxar as pontas ou arrastar muda só capStart/capEnd — a fala (e os
+ * cortes do vídeo) continuam no tempo das palavras. Sem ajuste, é o tempo da fala.
+ */
+function capRangeOf(s) {
+  const kr = speechRange(s) || [s.start, s.end];
+  return [s.capStart ?? kr[0], s.capEnd ?? kr[1]];
+}
+/** O bloco como aparece na legenda: palavras esticadas/deslocadas para o tempo de exibição. */
+function dispSeg(s) {
+  if (s.capStart == null && s.capEnd == null) return s;
+  const kr = speechRange(s);
+  if (!kr) return s;
+  const [c0, c1] = capRangeOf(s);
+  const k = (c1 - c0) / Math.max(0.01, kr[1] - kr[0]);
+  const at = (t) => +(c0 + (t - kr[0]) * k).toFixed(3);
+  return { ...s, start: c0, end: c1, words: s.words.map((w) => ({ ...w, start: at(w.start), end: at(w.end) })) };
+}
+
 // Palavra como vai para o servidor: tempos, texto, corte, posição manual e ênfase.
-function wordOut(w) {
+// `dw` é a mesma palavra no tempo de exibição (cs/ce): só vai quando a legenda foi movida.
+function wordOut(w, dw = null) {
   return {
     start: w.start, end: w.end, word: w.word, removed: !!w.removed,
+    ...(dw && (dw.start !== w.start || dw.end !== w.end) ? { cs: dw.start, ce: dw.end } : {}),
     ...(w.px != null ? { px: w.px, py: w.py } : {}),
     ...(w.emColor ? { emColor: w.emColor } : {}),
     ...(w.emBig ? { emBig: true } : {}),
@@ -112,6 +143,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [sfxPick, setSfxPick] = useState('shutter');
   // Zoom nos MOMENTOS-CHAVE (faixa ZOOM da timeline). null = ainda não calculado.
   const [zoomMoments, setZoomMoments] = useState(null);
+  // Quadros-chave do Transformar (escala, posição, giro) — tempo original, como no CapCut.
+  const [transformKeys, setTransformKeys] = useState([]);
+  const [selKey, setSelKey] = useState(null); // t do quadro-chave selecionado na faixa
+  // Textos livres (modelos de texto) e efeitos de vídeo nos momentos — tempo original.
+  const [textLayers, setTextLayers] = useState([]);
+  const [selText, setSelText] = useState(null);
+  const [fxMoments, setFxMoments] = useState([]);
+  const [selFx, setSelFx] = useState(null);
+  const [fxPick, setFxPick] = useState('bw');
   const [selZoom, setSelZoom] = useState(null);
   const [selBroll, setSelBroll] = useState(null); // momento de B-roll selecionado (índice)
   const [badThumbs, setBadThumbs] = useState(() => new Set()); // miniaturas que não carregaram
@@ -185,6 +225,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [selVideo, setSelVideo] = useState(null); // {start,end} do pedaço de vídeo selecionado
   const [editText, setEditText] = useState(null); // texto do bloco de legenda em edição
   const [pps, setPps] = useState(64); // zoom da timeline (pixels por segundo)
+  const ppsRef = useRef(64); // o arrasto da legenda lê o zoom atual
+  ppsRef.current = pps;
   const zoomTl = (dir) => setPps((p) => Math.max(PPS_MIN, Math.min(PPS_MAX, Math.round(p * (dir > 0 ? 1.4 : 1 / 1.4)))));
 
   // Enquadramento no rosto (tela dividida): 'auto' detecta o rosto no servidor;
@@ -254,6 +296,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   );
 
   const dur = durationSec || segments.reduce((m, s) => Math.max(m, s.end || 0), 0) || 1;
+  // Os blocos no tempo em que a legenda aparece (o que a faixa, a prévia e o vídeo mostram).
+  const capSegments = useMemo(() => segments.map(dispSeg), [segments]);
   const width = Math.max(320, Math.round(dur * pps));
 
   // ── Pausas de silêncio (gaps entre palavras mantidas). O usuário decide, na
@@ -291,7 +335,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const histState = {
     segments, cuts, keptPauses, gains, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs,
-    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments,
+    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments,
   };
   const histSet = {
     segments: setSegments, cuts: setCuts, keptPauses: setKeptPauses, gains: setGains, media: setMedia,
@@ -300,7 +344,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths,
     cutCoughs: setCutCoughs, aspectSel: setAspectSel, quality: setQuality, reframeMode: setReframeMode,
     splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom,
-    vsplits: setVsplits, sfxMoments: setSfxMoments,
+    vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, fxMoments: setFxMoments,
   };
   const histRef = useRef({ past: [], future: [], prev: null, skip: false, at: 0 });
   const [, setHistTick] = useState(0);
@@ -536,10 +580,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         const m = v.paused && now < demoRef.current.until
           ? demoMotion(L.fx.videoMotion, L.fx.motionIntensity, (now - demoRef.current.start) / 1000)
           : motionAt(L.fx.videoMotion, L.fx.motionIntensity, t, L.dur, L.windows);
-        const tf = m.scale > 1.0005 ? `scale(${m.scale.toFixed(4)})` : '';
+        // Quadros-chave (Transformar) + zoom do momento numa transformação só.
+        const K = keyAt(L.keys, t);
+        const tparts = [];
+        if (Math.abs(K.x) > 1e-4 || Math.abs(K.y) > 1e-4) tparts.push(`translate(${(K.x * 100).toFixed(2)}%, ${(K.y * 100).toFixed(2)}%)`);
+        if (Math.abs(K.rot) > 1e-3) tparts.push(`rotate(${K.rot.toFixed(2)}deg)`);
+        const sc = K.scale * m.scale;
+        if (Math.abs(sc - 1) > 0.0005) tparts.push(`scale(${sc.toFixed(4)})`);
+        const tf = tparts.join(' ');
         if (v.style.transform !== tf) v.style.transform = tf;
         v.style.transformOrigin = `${m.ox}% ${m.oy}%`;
-        v.style.transition = L.fx.videoMotion === 'dynamic' ? 'transform .12s ease-out' : 'none';
+        v.style.transition = !L.keys?.length && L.fx.videoMotion === 'dynamic' ? 'transform .12s ease-out' : 'none';
         // Prévia 9:16 no mesmo instante do player (mesmo quadro, mesmo zoom).
         const pv = previewVideoRef.current;
         if (pv) {
@@ -578,11 +629,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // ── arrastar bordas dos blocos (trim) — listeners globais durante o arrasto
   useEffect(() => {
     function move(e) {
+      const m = capMoveRef.current;
+      if (m) {
+        const dx = e.clientX - m.x0;
+        if (!m.moved && Math.abs(dx) < 4) return; // clique, não arrasto
+        if (!m.moved) { m.moved = true; document.body.style.userSelect = 'none'; }
+        moveCaption(m.si, m.c0, m.c1, dx / ppsRef.current);
+        return;
+      }
       const d = dragRef.current;
       if (!d) return;
       applyTrim(d.si, d.edge, timeAtClientX(e.clientX));
     }
     function up() {
+      const m = capMoveRef.current;
+      if (m) {
+        capMoveRef.current = null;
+        if (m.moved) { capClickBlockRef.current = true; document.body.style.userSelect = ''; setTimeout(() => { capClickBlockRef.current = false; }, 0); }
+      }
       if (dragRef.current) { dragRef.current = null; document.body.style.userSelect = ''; }
     }
     window.addEventListener('mousemove', move);
@@ -770,7 +834,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return keyZoomMoments(segments, dur).map((m, i) => ({ key: `z${i}_${Date.now()}`, start: m.start, end: m.end, scale: null }));
   }
   useEffect(() => {
-    if (fx.videoMotion === 'dynamic' && zoomMoments === null) setZoomMoments(autoZoomMoments());
+    if (fx.videoMotion !== 'none' && zoomMoments === null) setZoomMoments(autoZoomMoments());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fx.videoMotion]);
   function addZoomAtPlayhead() {
@@ -849,29 +913,56 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return [Math.min(...kept.map((w) => w.start)), Math.max(...kept.map((w) => w.end))];
   }
 
-  // trim: arrastar a borda esquerda/direita corta as palavras fora da faixa mantida
+  // Pontas do bloco de legenda (como no CapCut): mudam só quando o texto aparece/some.
+  // Não passam das legendas vizinhas nem cortam a fala — para cortar a fala, "Cortar trecho".
   function applyTrim(si, edge, t) {
     setSegments((prev) => prev.map((s, i) => {
       if (i !== si) return s;
-      const kr = keptRange(s) || [s.start, s.end];
-      let [left, right] = kr;
-      if (edge === 'left') left = Math.max(s.start, Math.min(t, right - 0.15));
-      else right = Math.min(s.end, Math.max(t, left + 0.15));
-      return { ...s, words: s.words.map((w) => { const mid = (w.start + w.end) / 2; return { ...w, removed: mid < left - 0.001 || mid > right + 0.001 }; }) };
+      const [c0, c1] = capRangeOf(s);
+      const lo = si > 0 ? capRangeOf(prev[si - 1])[1] : 0;
+      const hi = si < prev.length - 1 ? capRangeOf(prev[si + 1])[0] : dur;
+      if (edge === 'left') return { ...s, capStart: +Math.max(lo, Math.min(t, c1 - 0.2)).toFixed(3), capEnd: c1 };
+      return { ...s, capStart: c0, capEnd: +Math.min(hi, Math.max(t, c0 + 0.2)).toFixed(3) };
     }));
+  }
+  // Arrastar o bloco inteiro: adianta/atrasa a legenda sem mexer na fala.
+  function moveCaption(si, c0, c1, shift) {
+    setSegments((prev) => prev.map((s, i) => {
+      if (i !== si) return s;
+      const lo = si > 0 ? capRangeOf(prev[si - 1])[1] : 0;
+      const hi = si < prev.length - 1 ? capRangeOf(prev[si + 1])[0] : dur;
+      const len = c1 - c0;
+      const start = Math.max(lo, Math.min(hi - len, c0 + shift));
+      return { ...s, capStart: +start.toFixed(3), capEnd: +(start + len).toFixed(3) };
+    }));
+  }
+  const capMoveRef = useRef(null); // { si, x0, c0, c1, moved }
+  const capClickBlockRef = useRef(false);
+  function startCapMove(si, e) {
+    if (e.button !== 0 || isMobile) return;
+    const [c0, c1] = capRangeOf(segments[si]);
+    capMoveRef.current = { si, x0: e.clientX, c0, c1, moved: false };
   }
 
   function startDrag(si, edge, e) { e.stopPropagation(); e.preventDefault(); setSel(si); dragRef.current = { si, edge }; document.body.style.userSelect = 'none'; }
 
+  // Divide a legenda exatamente no playhead (como o Ctrl+B do CapCut): cada metade fica
+  // com o seu tempo de exibição, de ponta a ponta até o ponto do corte.
   function splitAtPlayhead() {
-    const idx = segments.findIndex((s) => cur > s.start + 0.05 && cur < s.end - 0.05);
+    const idx = capSegments.findIndex((d) => cur > d.start + 0.05 && cur < d.end - 0.05);
     if (idx < 0) return;
     const s = segments[idx];
-    const a = s.words.filter((w) => (w.start + w.end) / 2 <= cur);
-    const b = s.words.filter((w) => (w.start + w.end) / 2 > cur);
-    if (!a.length || !b.length) return;
-    const segA = { ...s, end: a[a.length - 1].end, words: a };
-    const segB = { ...s, start: b[0].start, words: b };
+    const d = capSegments[idx];
+    let cutAt = d.words.findIndex((w) => (w.start + w.end) / 2 > cur);
+    const live = s.words.filter((w) => !w.removed).length;
+    if (live < 2) return; // uma palavra só: não há o que separar
+    if (cutAt <= 0) cutAt = 1; // o playhead caiu dentro da 1ª palavra: ela fica na 1ª parte
+    if (cutAt >= s.words.length) cutAt = s.words.length - 1;
+    const a = s.words.slice(0, cutAt);
+    const b = s.words.slice(cutAt);
+    const t = +cur.toFixed(3);
+    const segA = { ...s, end: a[a.length - 1].end, words: a, capStart: d.start, capEnd: t };
+    const segB = { ...s, start: b[0].start, words: b, capStart: t, capEnd: d.end };
     setSegments((prev) => [...prev.slice(0, idx), segA, segB, ...prev.slice(idx + 1)]);
     setSel(idx);
     setSelSet(new Set([idx]));
@@ -880,12 +971,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setSegments((prev) => {
       if (si >= prev.length - 1) return prev;
       const a = prev[si]; const b = prev[si + 1];
-      const merged = { ...a, end: b.end, words: [...a.words, ...b.words] };
+      const moved = a.capStart != null || a.capEnd != null || b.capStart != null || b.capEnd != null;
+      const merged = { ...a, end: b.end, words: [...a.words, ...b.words], ...(moved ? { capStart: capRangeOf(a)[0], capEnd: capRangeOf(b)[1] } : {}) };
       return [...prev.slice(0, si), merged, ...prev.slice(si + 2)];
     });
   }
 
-  const activeIndex = useMemo(() => segments.findIndex((s) => cur >= s.start && cur < (s.end || s.start + 0.1)), [segments, cur]);
+  const activeIndex = useMemo(() => capSegments.findIndex((s) => cur >= s.start && cur < (s.end || s.start + 0.1)), [capSegments, cur]);
   // Segundos cobertos por pausas cortadas + cortes da faixa de vídeo, unindo os
   // trechos que se sobrepõem para não descontar o mesmo pedaço duas vezes.
   const cortadoSec = useMemo(() => {
@@ -905,7 +997,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return { total, removed, removedSec, keptSec };
   }, [segments, dur, cortadoSec]);
   const segRemoved = (s) => s.words.every((w) => w.removed);
-  const canSplit = segments.some((s) => cur > s.start + 0.05 && cur < s.end - 0.05);
+  const canSplit = capSegments.some((d, i) => cur > d.start + 0.05 && cur < d.end - 0.05 && segments[i].words.filter((w) => !w.removed).length > 1);
 
   // ── Seleção, dividir e excluir em qualquer faixa ─────────────────────
   function selectCaption(si, e) {
@@ -947,7 +1039,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const b = selCaptions[selCaptions.length - 1];
     setSegments((prev) => {
       const group = prev.slice(a, b + 1);
-      const merged = { ...group[0], end: group[group.length - 1].end, words: group.flatMap((g) => g.words) };
+      const moved = group.some((g) => g.capStart != null || g.capEnd != null);
+      const merged = { ...group[0], end: group[group.length - 1].end, words: group.flatMap((g) => g.words), ...(moved ? { capStart: capRangeOf(group[0])[0], capEnd: capRangeOf(group[group.length - 1])[1] } : {}) };
       return [...prev.slice(0, a), merged, ...prev.slice(b + 1)];
     });
     setSel(a);
@@ -994,6 +1087,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (selKind === 'zoom') return within(selZoomItem, cur);
     if (selKind === 'broll') return within(brollReview?.moments[selBroll], cur);
     if (selKind === 'gain') return within(gains.find((g) => g.key === selGain), cur);
+    if (selKind === 'text') return within(textLayers.find((l) => l.key === selText), cur);
+    if (selKind === 'vfx') return within(fxMoments.find((m) => m.key === selFx), cur);
     return false;
   })();
   function splitSelected() {
@@ -1004,10 +1099,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     else if (selKind === 'zoom') splitRange(setZoomMoments, selZoom, cur);
     else if (selKind === 'broll') splitRange(setBrollMoments, brollReview.moments[selBroll].key, cur);
     else if (selKind === 'gain') splitRange(setGains, selGain, cur);
+    else if (selKind === 'text') splitRange(setTextLayers, selText, cur);
+    else if (selKind === 'vfx') splitRange(setFxMoments, selFx, cur);
   }
   const canDeleteSel = (selKind === 'caption' && selCaptions.length > 0) || (selKind === 'video' && !!selVideo)
     || (selKind === 'media' && !!selMediaItem) || (selKind === 'zoom' && !!selZoomItem)
-    || (selKind === 'broll' && !!brollReview?.moments[selBroll]) || (selKind === 'gain' && !!selGain);
+    || (selKind === 'broll' && !!brollReview?.moments[selBroll]) || (selKind === 'gain' && !!selGain)
+    || (selKind === 'keyframe' && selKey != null) || (selKind === 'text' && !!selText) || (selKind === 'vfx' && !!selFx);
   /** Excluir: legenda some (a fala fica); vídeo vira corte; os demais itens saem da faixa. */
   function deleteSelected() {
     if (!canDeleteSel) return;
@@ -1019,6 +1117,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     else if (selKind === 'zoom') { setZoomMoments((l) => l.filter((z) => z.key !== selZoom)); setSelZoom(null); }
     else if (selKind === 'broll') setBrollMoments((l) => l.map((m, i) => (i === selBroll ? { ...m, removed: true } : m)));
     else if (selKind === 'gain') { setGains((l) => l.filter((g) => g.key !== selGain)); setSelGain(null); }
+    else if (selKind === 'keyframe') { setTransformKeys((l) => l.filter((k) => k.t !== selKey)); setSelKey(null); }
+    else if (selKind === 'text') { setTextLayers((l) => l.filter((x) => x.key !== selText)); setSelText(null); }
+    else if (selKind === 'vfx') { setFxMoments((l) => l.filter((x) => x.key !== selFx)); setSelFx(null); }
   }
   /** Sobe/desce a camada da mídia (troca de lugar com quem estiver na camada vizinha). */
   function moveLayer(key, delta) {
@@ -1032,7 +1133,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     });
   }
   const mediaRows = media.reduce((mx, m) => Math.max(mx, (m.layer || 0) + 1), 1);
-  const SEL_LABEL = { caption: 'legenda', video: 'vídeo', media: 'camada', zoom: 'zoom', broll: 'B-roll', gain: 'volume' };
+  const SEL_LABEL = { text: 'texto', vfx: 'efeito', keyframe: 'quadro-chave', caption: 'legenda', video: 'vídeo', media: 'camada', zoom: 'zoom', broll: 'B-roll', gain: 'volume' };
 
 
   function toggleSeg(si) { setSegments((prev) => prev.map((s, i) => { if (i !== si) return s; const gone = segRemoved(s); return { ...s, words: s.words.map((w) => ({ ...w, removed: !gone })) }; })); }
@@ -1092,6 +1193,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             mediaId: info.id,
             kind: info.kind,
             filename: info.filename || file.name,
+            previewUrl: info.kind === 'audio' ? null : URL.createObjectURL(file), // só para a prévia
+            fadeIn: 0,
+            fadeOut: 0,
             srcDuration: srcDur,
             start: +cur.toFixed(2), // entra no ponto atual do playhead
             duration: info.kind === 'audio' ? Math.min(srcDur, dur) : Math.min(info.kind === 'image' ? 4 : srcDur, 8),
@@ -1123,7 +1227,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return {
       provider: transcript.provider,
       language: transcript.language,
-      segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map(wordOut) })),
+      segments: segments.map((s, si) => ({ start: s.start, end: s.end, words: s.words.map((w, wi) => wordOut(w, capSegments[si]?.words[wi])) })),
     };
   }
 
@@ -1324,7 +1428,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {
         provider: transcript.provider,
         language: transcript.language,
-        segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map(wordOut) })),
+        segments: segments.map((s, si) => ({ start: s.start, end: s.end, words: s.words.map((w, wi) => wordOut(w, capSegments[si]?.words[wi])) })),
       },
       {
         // Recursos desligados aqui (ex.: limpeza por IA fora do plano).
@@ -1351,9 +1455,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // Tratamento e modificadores da voz (aba Áudio).
         ...voice,
         // Zooms nos momentos-chave (tempo original; o servidor remapeia após os cortes).
-        ...(fx.videoMotion === 'dynamic' && zoomMoments
-          ? { zoomMoments: zoomMoments.map((z) => ({ start: +z.start.toFixed(2), end: +z.end.toFixed(2), ...(z.scale ? { scale: +Number(z.scale).toFixed(2) } : {}) })) }
+        ...(fx.videoMotion !== 'none' && zoomMoments
+          ? { zoomMoments: zoomMoments.map((z) => ({ start: +z.start.toFixed(2), end: +z.end.toFixed(2), ...(z.scale ? { scale: +Number(z.scale).toFixed(2) } : {}), ...(z.effect ? { effect: z.effect } : {}) })) }
           : {}),
+        // Quadros-chave do Transformar (tempo original; o servidor remapeia após os cortes).
+        transformKeys: cleanKeys(transformKeys),
         colorLook,
         colorAdjust: colorAdj,
         // Trechos cortados à mão na faixa de vídeo (tempo original).
@@ -1382,7 +1488,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           blend: m.blend || 'normal',
           layer: m.layer || 0,
           offset: +Number(m.offset || 0).toFixed(2),
+          ...(m.kind === 'audio' ? { fadeIn: +Number(m.fadeIn || 0).toFixed(2), fadeOut: +Number(m.fadeOut || 0).toFixed(2) } : {}),
         })),
+        // Efeitos de vídeo nos momentos e textos livres (tempo original).
+        fxMoments: fxMoments.map((m) => ({ start: +m.start.toFixed(2), end: +m.end.toFixed(2), effect: m.effect })),
+        textLayers: textLayers.map(({ key, ...l }) => ({ ...l, start: +l.start.toFixed(2), end: +l.end.toFixed(2) })),
         // Efeitos sonoros colocados à mão (tempo original; o servidor remapeia após os cortes).
         sfxMoments: sfxMoments.map((m) => ({ t: +m.t.toFixed(2), type: m.type })),
         // B-roll revisado: trava o que entra em cada momento (e liga o B-roll).
@@ -1424,8 +1534,188 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return list.filter((c) => c.end - c.start > 0.5);
   }, [segments, dur]);
 
+  // ── Transformar (quadros-chave, como no CapCut) ──
+  // Mexer num valor grava um quadro-chave no playhead (ou atualiza o que já está nele);
+  // entre dois quadros o vídeo anima sozinho.
+  const K = keyAt(transformKeys, cur);
+  const keyHere = transformKeys.find((k) => Math.abs(k.t - cur) < 0.04) || null;
+  const prevKey = [...transformKeys].reverse().find((k) => k.t < cur - 0.04) || null;
+  const nextKey = transformKeys.find((k) => k.t > cur + 0.04) || null;
+  function setKeyValue(prop, value) {
+    const t = +cur.toFixed(3);
+    setTransformKeys((list) => {
+      const i = list.findIndex((k) => Math.abs(k.t - t) < 0.04);
+      if (i >= 0) return list.map((k, j) => (j === i ? { ...k, [prop]: value } : k));
+      return cleanKeys([...list, { t, ...keyAt(list, t), [prop]: value }]);
+    });
+  }
+  function toggleKeyHere() {
+    const t = +cur.toFixed(3);
+    setTransformKeys((list) => {
+      const i = list.findIndex((k) => Math.abs(k.t - t) < 0.04);
+      if (i >= 0) return list.filter((_, j) => j !== i);
+      return cleanKeys([...list, { t, ...keyAt(list, t) }]);
+    });
+  }
+  const keyDragRef = useRef(null); // { t0, x0, moved }
+  function startKeyDrag(k, e) {
+    e.stopPropagation();
+    keyDragRef.current = { t0: k.t, cur: k.t, x0: e.clientX, moved: false };
+  }
+  useEffect(() => {
+    function move(e) {
+      const d = keyDragRef.current;
+      if (!d) return;
+      const dx = e.clientX - d.x0;
+      if (!d.moved && Math.abs(dx) < 4) return;
+      d.moved = true;
+      document.body.style.userSelect = 'none';
+      const t = +Math.max(0, Math.min(dur, d.t0 + dx / pps)).toFixed(3);
+      setTransformKeys((list) => list.map((k) => (k.t === d.cur ? { ...k, t } : k)));
+      setSelKey(t);
+      d.cur = t;
+    }
+    function up() {
+      const d = keyDragRef.current;
+      if (!d) return;
+      keyDragRef.current = null;
+      document.body.style.userSelect = '';
+      if (d.moved) { setTransformKeys((list) => cleanKeys(list)); setSelKind('keyframe'); }
+    }
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, [pps, dur]);
+  const kfBtn = (off, on) => ({ ...zoomBtn, width: 24, height: 24, fontSize: 13, opacity: off ? 0.35 : 1, cursor: off ? 'default' : 'pointer', color: on ? '#22D3EE' : C.text, borderColor: on ? '#22D3EE' : C.border });
+  const kfRow = (label, prop, min, max, step, fmt, toV = (x) => x, fromV = (x) => x) => (
+    <div key={prop} style={{ display: 'grid', gridTemplateColumns: '58px minmax(0, 1fr) 54px', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
+      <span>{label}</span>
+      <input type="range" min={min} max={max} step={step} value={toV(K[prop])} onChange={(e) => setKeyValue(prop, fromV(Number(e.target.value)))} style={{ width: '100%' }} />
+      <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: keyHere ? '#22D3EE' : C.text }}>{fmt(K[prop])}</span>
+    </div>
+  );
+  const transformBlock = (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 10, display: 'grid', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: C.text, flex: 1 }}>Transformar {transformKeys.length ? `· ${transformKeys.length} quadro(s)-chave` : ''}</span>
+        <button title="Quadro-chave anterior" disabled={!prevKey} onClick={() => prevKey && seek(prevKey.t)} style={kfBtn(!prevKey)}>‹</button>
+        <button title={keyHere ? 'Remover o quadro-chave deste ponto' : 'Adicionar quadro-chave no playhead'} onClick={toggleKeyHere} style={kfBtn(false, !!keyHere)}>◆</button>
+        <button title="Próximo quadro-chave" disabled={!nextKey} onClick={() => nextKey && seek(nextKey.t)} style={kfBtn(!nextKey)}>›</button>
+        <button title="Apagar todos os quadros-chave" disabled={!transformKeys.length} onClick={() => { setTransformKeys([]); setSelKey(null); }} style={kfBtn(!transformKeys.length)}>⟲</button>
+      </div>
+      {kfRow('Escala', 'scale', 50, 300, 1, (v) => `${Math.round(v * 100)}%`, (v) => Math.round(v * 100), (v) => v / 100)}
+      {kfRow('Posição X', 'x', -100, 100, 1, (v) => `${Math.round(v * 100)}`, (v) => Math.round(v * 100), (v) => v / 100)}
+      {kfRow('Posição Y', 'y', -100, 100, 1, (v) => `${Math.round(v * 100)}`, (v) => Math.round(v * 100), (v) => v / 100)}
+      {kfRow('Girar', 'rot', -180, 180, 1, (v) => `${Math.round(v)}°`)}
+      <div style={{ fontSize: 11, color: C.faint }}>
+        Mexa num valor para gravar um ◆ no ponto do playhead. Mova o playhead, mude o valor de novo e o vídeo anima sozinho entre os dois quadros (faixa QUADROS na timeline).
+      </div>
+    </div>
+  );
+
+  // ── Textos livres (aba Texto) ──
+  const updateText = (key, patch) => setTextLayers((l) => l.map((x) => (x.key === key ? { ...x, ...patch } : x)));
+  function addText(tplId) {
+    const { label, ...tpl } = TEXT_TEMPLATES[tplId] || TEXT_TEMPLATES.simples;
+    const start = Math.max(0, Math.min(cur, dur - 0.5));
+    const t = { key: `t${Date.now()}`, ...tpl, start: +start.toFixed(2), end: +Math.min(dur, start + 3).toFixed(2) };
+    setTextLayers((l) => [...l, t].sort((a, b) => a.start - b.start));
+    setSelText(t.key);
+    setSelKind('text');
+  }
+  const selTextItem = textLayers.find((l) => l.key === selText) || null;
+  const swatch = (hex, on, onClick) => (
+    <button key={hex} onClick={onClick} title={hex} style={{ width: 22, height: 22, borderRadius: 6, background: hex, border: on ? '2px solid #fff' : `1px solid ${C.border}`, cursor: 'pointer', padding: 0 }} />
+  );
+  const textBlock = (
+    <div style={{ display: 'grid', gap: 12, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+      <CapRow label={`Modelos de texto — entram no playhead (${fmtDuration(cur)})`}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+          {Object.entries(TEXT_TEMPLATES).map(([id, t]) => (
+            <button key={id} onClick={() => addText(id)} style={{ ...framingTab(false), textAlign: 'left', display: 'grid', gap: 2 }}>
+              <span style={{ fontSize: 11, color: C.faint }}>{t.label}</span>
+              <span style={{ fontFamily: `'${fontById(t.font).family}'`, fontWeight: fontById(t.font).bold === false ? 400 : 700, fontSize: 13, color: t.color, background: t.box === 'box' ? t.boxColor : 'transparent', padding: t.box === 'box' ? '1px 5px' : 0, borderRadius: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', WebkitTextStroke: t.box === 'outline' ? `0.6px ${t.boxColor}` : undefined }}>{t.text.split('\n')[0]}</span>
+            </button>
+          ))}
+        </div>
+      </CapRow>
+      {textLayers.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {textLayers.map((l) => (
+            <button key={l.key} onClick={() => { setSelText(l.key); setSelKind('text'); seek(l.start + 0.05); }} style={{ ...miniBtn(selText === l.key, false), maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtDuration(l.start)} · {l.text.split('\n')[0]}</button>
+          ))}
+        </div>
+      )}
+      {selTextItem && (
+        <div style={{ border: '1px solid #E8A020', borderRadius: 10, padding: 10, display: 'grid', gap: 8 }}>
+          <textarea value={selTextItem.text} rows={2} onChange={(e) => updateText(selTextItem.key, { text: e.target.value })}
+            style={{ width: '100%', boxSizing: 'border-box', background: '#13131B', color: C.text, border: `1px solid ${C.border}`, borderRadius: 9, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
+          <CapRow label="Fonte"><Sel value={selTextItem.font} opts={CAPTION_FONT_LIST.map((f) => ({ id: f.id, label: f.label }))} onChange={(v) => updateText(selTextItem.key, { font: v })} /></CapRow>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
+            <span style={{ width: 58 }}>Tamanho</span>
+            <input type="range" min="0.015" max="0.2" step="0.002" value={selTextItem.size} onChange={(e) => updateText(selTextItem.key, { size: Number(e.target.value) })} style={{ flex: 1 }} />
+            <span style={{ width: 36, textAlign: 'right' }}>{Math.round(selTextItem.size * 1000) / 10}</span>
+          </label>
+          <CapRow label="Cor do texto"><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{CAPTION_COLOR_LIST.map((c) => swatch(c.hex, selTextItem.color.toUpperCase() === c.hex.toUpperCase(), () => updateText(selTextItem.key, { color: c.hex })))}{swatch('#111111', selTextItem.color === '#111111', () => updateText(selTextItem.key, { color: '#111111' }))}</div></CapRow>
+          <CapRow label="Fundo">
+            <div style={{ display: 'flex', gap: 6 }}>{Object.entries(TEXT_BOXES).map(([id, label]) => (<button key={id} onClick={() => updateText(selTextItem.key, { box: id })} style={framingTab(selTextItem.box === id)}>{label}</button>))}</div>
+          </CapRow>
+          {selTextItem.box !== 'none' && (
+            <CapRow label={selTextItem.box === 'box' ? 'Cor da caixa' : 'Cor do contorno'}><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{['#000000', '#111111', '#FFFFFF', ...CAPTION_COLOR_LIST.map((c) => c.hex).filter((h) => h !== '#FFFFFF')].map((hex) => swatch(hex, selTextItem.boxColor.toUpperCase() === hex.toUpperCase(), () => updateText(selTextItem.key, { boxColor: hex })))}</div></CapRow>
+          )}
+          {[['x', 'Posição X'], ['y', 'Posição Y']].map(([k, label]) => (
+            <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
+              <span style={{ width: 58 }}>{label}</span>
+              <input type="range" min="0" max="1" step="0.01" value={selTextItem[k]} onChange={(e) => updateText(selTextItem.key, { [k]: Number(e.target.value) })} style={{ flex: 1 }} />
+              <span style={{ width: 36, textAlign: 'right' }}>{Math.round(selTextItem[k] * 100)}%</span>
+            </label>
+          ))}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            <CapRow label="Entrada"><Sel value={selTextItem.animIn} opts={Object.entries(TEXT_ANIMS_IN).map(([id, label]) => ({ id, label }))} onChange={(v) => updateText(selTextItem.key, { animIn: v })} /></CapRow>
+            <CapRow label="Saída"><Sel value={selTextItem.animOut} opts={Object.entries(TEXT_ANIMS_OUT).map(([id, label]) => ({ id, label }))} onChange={(v) => updateText(selTextItem.key, { animOut: v })} /></CapRow>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.faint }}>
+            {fmtDuration(selTextItem.start)} → {fmtDuration(selTextItem.end)} · arraste o texto no vídeo ou o bloco na faixa TEXTOS
+            <button onClick={() => { setTextLayers((l) => l.filter((x) => x.key !== selTextItem.key)); setSelText(null); }} style={{ ...miniBtn(false, false), marginLeft: 'auto', color: C.red }}>Excluir</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Efeitos de vídeo nos momentos (aba Efeitos) ──
+  const selFxItem = fxMoments.find((m) => m.key === selFx) || null;
+  function addFxAtPlayhead() {
+    const start = Math.max(0, Math.min(cur, dur - 0.3));
+    const m = { key: `f${Date.now()}`, start: +start.toFixed(2), end: +Math.min(dur, start + 2).toFixed(2), effect: fxPick };
+    setFxMoments((l) => [...l, m].sort((a, b) => a.start - b.start));
+    setSelFx(m.key);
+    setSelKind('vfx');
+  }
+  const fxOpts = Object.entries(VIDEO_FX).map(([id, label]) => ({ id, label }));
+  const fxBlock = (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 10, display: 'grid', gap: 8 }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Efeitos de vídeo nos momentos {fxMoments.length ? `· ${fxMoments.length}` : ''}</span>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ flex: 1 }}><Sel value={fxPick} opts={fxOpts} onChange={setFxPick} /></div>
+        <button onClick={addFxAtPlayhead} style={{ ...framingTab(false), flex: 'none' }}>+ No playhead</button>
+      </div>
+      {selFxItem && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ flex: 1 }}><Sel value={selFxItem.effect} opts={fxOpts} onChange={(v) => setFxMoments((l) => l.map((m) => (m.key === selFxItem.key ? { ...m, effect: v } : m)))} /></div>
+          <span style={{ fontSize: 11, color: C.faint }}>{fmtDuration(selFxItem.start)} → {fmtDuration(selFxItem.end)}</span>
+          <button onClick={() => { setFxMoments((l) => l.filter((m) => m.key !== selFxItem.key)); setSelFx(null); }} style={{ ...miniBtn(false, false), color: C.red }}>Remover</button>
+        </div>
+      )}
+      <div style={{ fontSize: 11, color: C.faint }}>O efeito só acontece no trecho do bloco (faixa EFEITOS) e não afeta a legenda nem os textos.</div>
+    </div>
+  );
+  // Prévia: o efeito do momento atual entra no filtro do player.
+  const fxNow = fxMoments.find((m) => cur >= m.start && cur < m.end);
+  const videoFilterFx = [videoFilter, fxNow ? VIDEO_FX_CSS[fxNow.effect] : ''].filter(Boolean).join(' ') || undefined;
+
   const allGone = stats.removed >= stats.total;
-  const showZoomLane = fx.videoMotion === 'dynamic';
+  const showZoomLane = fx.videoMotion !== 'none';
   const showChapLane = chapters.length > 0 && !isMobile;
   const legH = isMobile ? 44 : LANE.legenda;
   const showBrollLane = !!brollReview?.moments?.length;
@@ -1438,15 +1728,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setCapField({ captionX: x, captionY: y });
       return;
     }
-    setSegments((prev) => prev.map((s) => {
-      if (s.start !== seg?.start) return s;
+    setSegments((prev) => prev.map((s, i) => {
+      if (capSegments[i]?.start !== seg?.start) return s;
       return {
         ...s,
         words: s.words.map((w) => (capScope === 'palavra' && w.start !== word?.start) || w.removed ? w : { ...w, px: x, py: y }),
       };
     }));
   }
-  const capSegNow = segments.find((s) => cur >= s.start && cur < s.end) || null;
+  const capSegNow = segments[capSegments.findIndex((s) => cur >= s.start && cur < s.end)] || null;
   // ── Painel de legendas (lista estilo Premiere + propriedades da selecionada)
   const [capPane, setCapPane] = useState('lista');
   const [capQuery, setCapQuery] = useState('');
@@ -1546,7 +1836,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     width: '100%', height: '100%', objectFit: 'cover', display: 'block',
     objectPosition: `${(m?.fx ?? 0.5) * 100}% ${(m?.fy ?? 0.5) * 100}%`,
     transform: `scale(${m?.zoom || 1})`, transformOrigin: `${(m?.fx ?? 0.5) * 100}% ${(m?.fy ?? 0.5) * 100}%`,
-    filter: videoFilter,
+    filter: videoFilterFx,
   });
 
   // Prévia 9:16 = o que sai no vídeo naquele instante: com B-roll ativo, tela dividida
@@ -1565,16 +1855,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const podSplit = reframeMode === 'split' && aspectSel !== 'original' && previewMode === 'video';
   const podHalfStyle = (side) => ({
     width: '100%', height: '100%', objectFit: 'cover', display: 'block',
-    objectPosition: `${side * 100}% 40%`, transform: 'scale(1.9)', transformOrigin: `${side * 100}% 40%`, filter: videoFilter,
+    objectPosition: `${side * 100}% 40%`, transform: 'scale(1.9)', transformOrigin: `${side * 100}% 40%`, filter: videoFilterFx,
   });
   const personCropStyle = (() => {
-    if (fitMode) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilter };
+    if (fitMode) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilterFx };
     const sd = vdim || (vbox?.vw ? { w: vbox.vw, h: vbox.vh } : null);
     if (!sd || !pbox?.w || !pbox?.h) {
-      return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, filter: videoFilter };
+      return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, filter: videoFilterFx };
     }
     const g = coverCrop(sd.w, sd.h, pbox.w, pbox.h, focus, zoom);
-    return { position: 'absolute', left: -g.cropX, top: -g.cropY, width: g.scaledW, height: g.scaledH, maxWidth: 'none', objectFit: 'fill', filter: videoFilter };
+    return { position: 'absolute', left: -g.cropX, top: -g.cropY, width: g.scaledW, height: g.scaledH, maxWidth: 'none', objectFit: 'fill', filter: videoFilterFx };
   })();
   const personHalf = (
     <div
@@ -1664,7 +1954,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         Prévia {previewLabel}{previewMode === 'split' ? ' · dividida' : previewMode === 'broll' ? ' · B-roll' : ''}
       </span>
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
-      {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={segments} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
+      {cbox && <StageLayers box={cbox} cur={cur} media={media} texts={textLayers} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
+        onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
+      {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={capSegments} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
     </div>
   );
   const showFormatPreview = framingMode === 'manual' || aspectSel !== 'original';
@@ -1693,12 +1985,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   })();
 
   // Dados usados pela prévia ao vivo (lidos pelo laço do player).
-  const liveWindows = fx.videoMotion === 'dynamic' ? (zoomMoments || []).map((z) => [z.start, z.end, z.scale]) : [];
+  const liveWindows = fx.videoMotion !== 'none' ? (zoomMoments || []).map((z) => [z.start, z.end, z.scale, z.effect || defaultMomentEffect(fx.videoMotion)]) : [];
   liveRef.current = {
     skip: previewCuts ? skipRanges : [],
     fx,
     dur,
     windows: liveWindows,
+    keys: transformKeys,
     audio: { audioMute, audioVolume, gains },
     sfxTimes: [
       ...liveWindows.map(([a]) => Math.max(0, a - 0.3)),
@@ -1863,7 +2156,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}`} style={{ '--main-share': showFormatPreview ? (mainAr / (mainAr + fmtAr)).toFixed(4) : 1, '--fmt-share': showFormatPreview ? (fmtAr / (mainAr + fmtAr)).toFixed(4) : 1, containerType: 'inline-size', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(124,58,237,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
             <div className="rf-tl-main" style={{ flex: '0 0 auto', minWidth: 0 }}>
               <div style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${mainAr.toFixed(4)}), calc((100cqw - ${showFormatPreview ? 16 : 0}px) * var(--main-share)))`, aspectRatio: `${mainAr}`, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
-                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilter }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim({ w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
+                <video ref={videoRef} src={sourceUrl(sourceId)} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim({ w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
                 {vbox && lookCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...lookCss.tint }} />}
                 {vbox && headline.on && headline.text.trim() && (!headline.seconds || cur < headline.seconds) && (
                   <HeadlineOverlay h={headline} box={vbox} />
@@ -1889,7 +2182,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     </span>
                   </div>
                 )}
-                {cap.captions && <CaptionOverlay videoRef={videoRef} segments={segments} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
+                {vbox && !showFormatPreview && <StageLayers box={vbox} cur={cur} media={media} texts={textLayers} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
+                  onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
+                {cap.captions && <CaptionOverlay videoRef={videoRef} segments={capSegments} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
                 {framingMode === 'manual' && (
                   <div
                     ref={framingBoxRef}
@@ -2399,7 +2694,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
           {tab === 'efeitos' && (
             <div style={{ display: 'grid', gap: 12, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
-              <CapRow label="Movimento (zoom)">
+              {transformBlock}
+              {fxBlock}
+              <CapRow label="Movimento nos momentos-chave">
                 <Sel value={fx.videoMotion} opts={catalog?.videoMotions} onChange={(v) => setFx((f) => ({ ...f, videoMotion: v }))} />
               </CapRow>
               {fx.videoMotion !== 'none' && (
@@ -2411,20 +2708,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </div>
                 </CapRow>
               )}
-              {fx.videoMotion === 'dynamic' && (
-                <CapRow label={`Momentos de zoom (${(zoomMoments || []).length}) — faixa ZOOM na timeline`}>
+              {fx.videoMotion !== 'none' && (
+                <CapRow label={`Momentos de movimento (${(zoomMoments || []).length}) — faixa ZOOM na timeline (o efeito só acontece neles)`}>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <button onClick={addZoomAtPlayhead} style={toolBtn(false)}>+ Zoom no playhead ({fmtDuration(cur)})</button>
+                    <button onClick={addZoomAtPlayhead} style={toolBtn(false)}>+ Momento no playhead ({fmtDuration(cur)})</button>
                     <button onClick={() => { setZoomMoments(autoZoomMoments()); setSelZoom(null); }} style={toolBtn(false)}>
                       <Icon name="undo" size={13} strokeWidth={2} /> Recalcular automático
                     </button>
                   </div>
                 </CapRow>
               )}
-              {fx.videoMotion === 'dynamic' && selZoomItem && (
+              {fx.videoMotion !== 'none' && selZoomItem && (
                 <div style={{ border: `1px solid ${C.orange}`, borderRadius: 10, padding: 10, background: 'rgba(255,107,53,0.06)', display: 'grid', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700 }}>
-                    Zoom em {fmtDuration(selZoomItem.start)} → {fmtDuration(selZoomItem.end)}
+                    Movimento em {fmtDuration(selZoomItem.start)} → {fmtDuration(selZoomItem.end)}
                     <button onClick={() => { setZoomMoments((l) => l.filter((z) => z.key !== selZoomItem.key)); setSelZoom(null); }} style={{ ...miniBtn(false, false), marginLeft: 'auto', color: C.red }}>Remover</button>
                   </div>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: C.muted }}>
@@ -2435,6 +2732,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       style={{ flex: 1 }} />
                     <span style={{ width: 44, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Number(selZoomItem.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}×</span>
                   </label>
+                  <CapRow label="Efeito deste momento">
+                    <Sel value={selZoomItem.effect || defaultMomentEffect(fx.videoMotion)} opts={Object.entries(MOMENT_EFFECTS).map(([id, label]) => ({ id, label }))}
+                      onChange={(v) => { setZoomMoments((l) => l.map((z) => (z.key === selZoomItem.key ? { ...z, effect: v } : z))); seek(selZoomItem.start + 0.01); }} />
+                  </CapRow>
                 </div>
               )}
               <CapRow label="Efeitos sonoros (whoosh)">
@@ -2574,6 +2875,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </div>
           )}
 
+          {tab === 'texto' && textBlock}
+
           {tab === 'cor' && (
             <div style={{ display: 'grid', gap: 12, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
               <CapRow label="Look (estilo de cor)">
@@ -2636,7 +2939,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     {capRows.length === 0 && <div style={{ fontSize: 12, color: C.faint, padding: 14, textAlign: 'center' }}>{capQuery ? 'Nada encontrado.' : 'Sem falas para legendar.'}</div>}
                     {capRows.map(({ s: seg, si }) => {
                       const gone = segRemoved(seg);
-                      const kr = keptRange(seg) || [seg.start, seg.end];
+                      const kr = capRangeOf(seg); // quando a legenda aparece (pode ter sido movida)
                       const on = si === sel;
                       const live = si === activeIndex;
                       const text = (gone ? seg.words : seg.words.filter((w) => !w.removed)).map((w) => w.word).join(' ');
@@ -2828,6 +3131,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                             <input type="range" min="0" max="1.5" step="0.05" value={m.volume} onChange={(e) => updateMedia(m.key, { volume: Number(e.target.value) })} style={{ flex: 1 }} />
                             <span style={{ width: 42, textAlign: 'right' }}>{Math.round(m.volume * 100)}%</span>
                           </label>
+                        ) : null}
+                        {isAudio ? (
+                          <>
+                            {[['fadeIn', 'Entrada suave'], ['fadeOut', 'Saída suave']].map(([k, label]) => (
+                              <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted, marginTop: 6 }}>
+                                <span style={{ width: 58 }}>{label}</span>
+                                <input type="range" min="0" max="5" step="0.1" value={m[k] || 0} onChange={(e) => updateMedia(m.key, { [k]: Number(e.target.value) })} style={{ flex: 1 }} />
+                                <span style={{ width: 42, textAlign: 'right' }}>{Number(m[k] || 0).toFixed(1)}s</span>
+                              </label>
+                            ))}
+                          </>
                         ) : (
                           <>
                             <div style={{ display: 'flex', gap: 6, marginBottom: m.mode === 'pip' ? 8 : 0 }}>
@@ -2842,6 +3156,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                                 <span style={{ width: 42, textAlign: 'right' }}>{Math.round(m.scale * 100)}%</span>
                               </label>
                             )}
+                            {m.mode === 'pip' && [['px', 'Posição X'], ['py', 'Posição Y']].map(([k, label]) => (
+                              <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted, marginTop: 6 }}>
+                                <span style={{ width: 58 }}>{label}</span>
+                                <input type="range" min="0" max="1" step="0.01" value={m[k]} onChange={(e) => updateMedia(m.key, { [k]: Number(e.target.value) })} style={{ flex: 1 }} />
+                                <span style={{ width: 42, textAlign: 'right' }}>{Math.round(m[k] * 100)}%</span>
+                              </label>
+                            ))}
+                            {m.mode === 'pip' && <div style={{ fontSize: 10.5, color: C.faint, marginTop: 4 }}>Ou arraste a mídia direto no vídeo e puxe o canto para mudar o tamanho.</div>}
                             {catalog?.layerAnimations && (
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 8 }}>
                                 <CapRow label="Entrada"><Sel value={m.animIn || 'none'} opts={catalog.layerAnimations} onChange={(v) => updateMedia(m.key, { animIn: v })} /></CapRow>
@@ -2938,8 +3260,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {showChapLane && <Rotulo h={LANE.capitulos} gap={4} nome="CAPÍTULOS" dica="clique p/ ir" />}
             <Rotulo h={LANE.legenda} gap={6} nome="LEGENDA" dica="clique na palavra" />
             <Rotulo h={LANE.video} gap={4} nome="VÍDEO" dica={cuts.length ? null : 'arraste ou use o botão'} />
+            {transformKeys.length > 0 && <Rotulo h={LANE.kf} gap={4} nome="QUADROS" dica="◆ Transformar" />}
             {showZoomLane && <Rotulo h={LANE.zoom} gap={4} nome="ZOOM" dica="momentos-chave" />}
             {showBrollLane && <Rotulo h={LANE.broll} gap={4} nome="B-ROLL" dica="clique p/ ajustar" />}
+            {textLayers.length > 0 && <Rotulo h={LANE.txt} gap={4} nome="TEXTOS" dica="aba Texto" />}
+            {fxMoments.length > 0 && <Rotulo h={LANE.vfx} gap={4} nome="EFEITOS" dica="aba Efeitos" />}
             <Rotulo h={LANE.audio} gap={4} nome="ÁUDIO" dica={gains.length ? null : 'use a aba Áudio'} />
             <Rotulo h={LANE.pausas} gap={4} nome="PAUSAS" dica={pauses.length ? 'clique p/ manter' : null} />
             {media.length > 0 && Array.from({ length: mediaRows }, (_, r) => mediaRows - 1 - r).map((l) => (
@@ -2949,7 +3274,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div ref={trackRef} onClick={onTrackClick} onScroll={onTrackScroll} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
-            <div style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + 4 + LANE.video + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
+            <div style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
             <div style={{ position: 'relative', height: LANE.ruler, borderBottom: `1px solid ${C.border}`, cursor: 'crosshair' }}>
               {Array.from({ length: Math.ceil(dur) + 1 }).map((_, s) => (
                 <div key={s} style={{ position: 'absolute', left: s * pps, top: 0, height: 20, borderLeft: `1px solid ${s % 5 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}` }}>
@@ -2969,7 +3294,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               </div>
             )}
             <div style={{ position: 'relative', height: legH, marginTop: 6 }}>
-              {segments.map((s, si) => {
+              {segments.map((s0, si) => {
+                const s = capSegments[si] || s0; // no tempo da legenda (pode ter sido movida)
                 const left = s.start * pps;
                 const fullW = Math.max(10, (Math.max(s.end, s.start + 0.2) - s.start) * pps - 2);
                 const gone = segRemoved(s);
@@ -2978,8 +3304,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 const kr = keptRange(s);
                 const hid = !gone && segHidden(s);
                 return (
-                  <div key={si} onClick={(e) => { e.stopPropagation(); selectCaption(si, e); if (isMobile) setMTool('legenda'); }}
-                    title={`${s.words.map((x) => x.word).join(' ')}${hid ? ' (legenda oculta)' : ''} — Ctrl/Shift+clique seleciona vários`}
+                  <div key={si} onMouseDown={(e) => startCapMove(si, e)} onClick={(e) => { e.stopPropagation(); if (capClickBlockRef.current) return; selectCaption(si, e); if (isMobile) setMTool('legenda'); }}
+                    title={`${s.words.map((x) => x.word).join(' ')}${hid ? ' (legenda oculta)' : ''} — arraste para mover · pontas mudam quando aparece · Ctrl/Shift+clique seleciona vários`}
                     style={{ opacity: hid ? 0.45 : 1, ...(isMobile ? {
                       // celular: blocos âmbar como no CapCut; o selecionado ganha borda branca
                       position: 'absolute', left, width: fullW, top: 4, height: legH - 8, borderRadius: 6, overflow: 'hidden', cursor: 'pointer',
@@ -3023,8 +3349,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     {/* alças de trim (só no bloco principal selecionado) */}
                     {isSel && si === sel && !gone && (
                       <>
-                        <div onMouseDown={(e) => startDrag(si, 'left', e)} onClick={(e) => e.stopPropagation()} style={handleStyle('left')} />
-                        <div onMouseDown={(e) => startDrag(si, 'right', e)} onClick={(e) => e.stopPropagation()} style={handleStyle('right')} />
+                        <div onMouseDown={(e) => { capMoveRef.current = null; startDrag(si, 'left', e); }} onClick={(e) => e.stopPropagation()} style={handleStyle('left')} />
+                        <div onMouseDown={(e) => { capMoveRef.current = null; startDrag(si, 'right', e); }} onClick={(e) => e.stopPropagation()} style={handleStyle('right')} />
                       </>
                     )}
                   </div>
@@ -3082,7 +3408,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               )}
             </div>
 
-            {/* Faixa ZOOM: momentos-chave do punch-in (editáveis) */}
+            {/* Faixa dos quadros-chave (Transformar): ◆ clique seleciona, arraste move, Delete apaga */}
+            {transformKeys.length > 0 && (
+              <div style={{ position: 'relative', height: LANE.kf, marginTop: 4 }}>
+                {transformKeys.length > 1 && (
+                  <div style={{ position: 'absolute', left: transformKeys[0].t * pps, width: (transformKeys[transformKeys.length - 1].t - transformKeys[0].t) * pps, top: LANE.kf / 2 - 1, height: 2, background: 'rgba(34,211,238,0.45)' }} />
+                )}
+                {transformKeys.map((k) => {
+                  const on = selKind === 'keyframe' && selKey === k.t;
+                  return (
+                    <div key={k.t} onMouseDown={(e) => startKeyDrag(k, e)} onClick={(e) => { e.stopPropagation(); setSelKind('keyframe'); setSelKey(k.t); setTab('efeitos'); seek(k.t); }}
+                      title={`Quadro-chave em ${fmtDuration(k.t)} · escala ${Math.round(k.scale * 100)}% · X ${Math.round(k.x * 100)} · Y ${Math.round(k.y * 100)} · ${Math.round(k.rot)}° — arraste para mover, Delete apaga`}
+                      style={{ position: 'absolute', left: k.t * pps - 7, top: LANE.kf / 2 - 7, width: 14, height: 14, transform: 'rotate(45deg)', borderRadius: 2, cursor: 'grab',
+                        background: on ? '#fff' : '#22D3EE', border: `2px solid ${on ? '#22D3EE' : 'rgba(0,0,0,0.5)'}`, boxShadow: on ? '0 0 0 3px rgba(34,211,238,0.35)' : 'none' }} />
+                  );
+                })}
+              </div>
+            )}
+            {/* Faixa ZOOM: momentos-chave do movimento (editáveis) */}
             {showZoomLane && (
               <div style={{ position: 'relative', height: LANE.zoom, marginTop: 4 }}>
                 {(zoomMoments || []).map((z) => {
@@ -3145,6 +3488,44 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               </div>
             )}
 
+            {/* Faixa TEXTOS: textos livres (arraste para mover, pontas mudam o tempo) */}
+            {textLayers.length > 0 && (
+              <div style={{ position: 'relative', height: LANE.txt, marginTop: 4 }}>
+                {textLayers.map((l) => {
+                  const on = selKind === 'text' && selText === l.key;
+                  return (
+                    <div key={l.key} title={`${l.text} — arraste para mover, pontas mudam o tempo`}
+                      onMouseDown={(e) => { setSelText(l.key); setSelKind('text'); startRangeDrag(setTextLayers, l, 'move', e); }}
+                      onClick={(e) => { e.stopPropagation(); setSelText(l.key); setSelKind('text'); setTab('texto'); seek(l.start + 0.05); }}
+                      style={{ position: 'absolute', left: l.start * pps, width: Math.max(16, (l.end - l.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                        border: `1px solid ${on ? '#fff' : '#E8A020'}`, background: on ? 'rgba(232,160,32,0.6)' : 'rgba(232,160,32,0.3)', fontSize: 10, fontWeight: 700, color: C.text }}>
+                      <Icon name="type" size={10} strokeWidth={2.4} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.text.split('\n')[0]}</span>
+                      <div onMouseDown={(e) => startRangeDrag(setTextLayers, l, 'left', e)} style={handleStyle('left')} />
+                      <div onMouseDown={(e) => startRangeDrag(setTextLayers, l, 'right', e)} style={handleStyle('right')} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {/* Faixa EFEITOS: efeitos de vídeo só nesses trechos */}
+            {fxMoments.length > 0 && (
+              <div style={{ position: 'relative', height: LANE.vfx, marginTop: 4 }}>
+                {fxMoments.map((m) => {
+                  const on = selKind === 'vfx' && selFx === m.key;
+                  return (
+                    <div key={m.key} title={`${VIDEO_FX[m.effect]} — arraste para mover, pontas mudam a duração`}
+                      onMouseDown={(e) => { setSelFx(m.key); setSelKind('vfx'); startRangeDrag(setFxMoments, m, 'move', e); }}
+                      onClick={(e) => { e.stopPropagation(); setSelFx(m.key); setSelKind('vfx'); setTab('efeitos'); seek(m.start + 0.05); }}
+                      style={{ position: 'absolute', left: m.start * pps, width: Math.max(16, (m.end - m.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                        border: `1px solid ${on ? '#fff' : '#A855F7'}`, background: on ? 'rgba(168,85,247,0.6)' : 'rgba(168,85,247,0.3)', fontSize: 10, fontWeight: 700, color: C.text }}>
+                      <Icon name="sparkles" size={10} strokeWidth={2.4} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{VIDEO_FX[m.effect]}</span>
+                      <div onMouseDown={(e) => startRangeDrag(setFxMoments, m, 'left', e)} style={handleStyle('left')} />
+                      <div onMouseDown={(e) => startRangeDrag(setFxMoments, m, 'right', e)} style={handleStyle('right')} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             {/* Faixa de áudio: forma de onda da fala original */}
             <div style={{ position: 'relative', height: LANE.audio, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'rgba(59,130,246,0.08)' }}>
               {wave && (
@@ -3501,6 +3882,85 @@ function RenderError({ err, onDisable, onClose }) {
   );
 }
 
+/**
+ * Mídias (imagens/vídeos/logos) e textos livres por cima do vídeo, no tempo atual.
+ * Editável: arraste para posicionar (PiP e textos) e puxe o canto da mídia para mudar o
+ * tamanho — as mesmas frações (px/py/scale, x/y) que o servidor usa no render.
+ */
+function StageLayers({ box, cur, media, texts, editable, selMedia, selText, onMedia, onText }) {
+  const [aspect, setAspect] = useState({}); // altura/largura de cada mídia (da prévia)
+  const dragRef = useRef(null);
+  useEffect(() => {
+    function move(e) {
+      const d = dragRef.current;
+      if (!d) return;
+      const dx = e.clientX - d.x0;
+      const dy = e.clientY - d.y0;
+      if (d.kind === 'text') {
+        onText(d.key, { x: +Math.max(0, Math.min(1, d.ox + dx / box.w)).toFixed(3), y: +Math.max(0, Math.min(1, d.oy + dy / box.h)).toFixed(3) });
+      } else if (d.kind === 'resize') {
+        onMedia(d.key, { scale: +Math.max(0.15, Math.min(0.95, (d.w0 + dx) / box.w)).toFixed(3) });
+      } else {
+        const freeX = Math.max(1, box.w - d.w0);
+        const freeY = Math.max(1, box.h - d.h0);
+        onMedia(d.key, { px: +Math.max(0, Math.min(1, (d.l0 + dx) / freeX)).toFixed(3), py: +Math.max(0, Math.min(1, (d.t0 + dy) / freeY)).toFixed(3) });
+      }
+    }
+    function up() { dragRef.current = null; document.body.style.userSelect = ''; }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  }, [box, onMedia, onText]);
+  if (!box || box.h < 10) return null;
+  const visible = (media || [])
+    .filter((m) => m.kind !== 'audio' && m.previewUrl && cur >= m.start && cur < m.start + m.duration)
+    .sort((a, b) => (a.layer || 0) - (b.layer || 0));
+  const liveTexts = (texts || []).filter((l) => cur >= l.start && cur < l.end);
+  if (!visible.length && !liveTexts.length) return null;
+  const start = (e, d) => { if (!editable) return; e.preventDefault(); e.stopPropagation(); dragRef.current = { ...d, x0: e.clientX, y0: e.clientY }; document.body.style.userSelect = 'none'; };
+  return (
+    <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', pointerEvents: 'none', zIndex: 3 }}>
+      {visible.map((m) => {
+        const el = (style) => (m.kind === 'video'
+          ? <video src={m.previewUrl} muted playsInline style={style} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setAspect((a) => ({ ...a, [m.key]: v.videoHeight / v.videoWidth })); v.currentTime = Math.max(0, cur - m.start + (m.offset || 0)); }} />
+          : <img src={m.previewUrl} alt="" draggable={false} style={style} onLoad={(e) => { const i = e.currentTarget; if (i.naturalWidth) setAspect((a) => ({ ...a, [m.key]: i.naturalHeight / i.naturalWidth })); }} />);
+        if (m.mode !== 'pip') return <div key={m.key} style={{ position: 'absolute', inset: 0, opacity: m.opacity ?? 1 }}>{el({ width: '100%', height: '100%', objectFit: 'cover', display: 'block' })}</div>;
+        const w = box.w * (m.scale || 0.4);
+        const h = w * (aspect[m.key] || 0.5625);
+        const left = (box.w - w) * (m.px ?? 0.62);
+        const top = (box.h - h) * (m.py ?? 0.06);
+        const on = editable && selMedia === m.key;
+        return (
+          <div key={m.key} onPointerDown={(e) => start(e, { kind: 'move', key: m.key, l0: left, t0: top, w0: w, h0: h })}
+            title={editable ? 'Arraste para posicionar · puxe o canto para mudar o tamanho' : undefined}
+            style={{ position: 'absolute', left, top, width: w, height: h, opacity: m.opacity ?? 1, pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: on ? '2px solid #22D3EE' : editable ? '1px dashed rgba(255,255,255,0.6)' : 'none' }}>
+            {el({ width: '100%', height: '100%', objectFit: 'contain', display: 'block' })}
+            {editable && (
+              <div onPointerDown={(e) => start(e, { kind: 'resize', key: m.key, w0: w })}
+                style={{ position: 'absolute', right: -6, bottom: -6, width: 12, height: 12, borderRadius: 3, background: '#22D3EE', border: '2px solid #fff', cursor: 'nwse-resize' }} />
+            )}
+          </div>
+        );
+      })}
+      {liveTexts.map((l) => {
+        const f = fontById(l.font);
+        const px = l.size * box.h;
+        const on = editable && selText === l.key;
+        return (
+          <div key={l.key} onPointerDown={(e) => start(e, { kind: 'text', key: l.key, ox: l.x, oy: l.y })}
+            style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, transform: 'translate(-50%, -50%)', whiteSpace: 'pre', textAlign: 'center', lineHeight: 1.15,
+              fontFamily: `'${f.family}'`, fontWeight: f.bold === false ? 400 : 700, fontSize: px, color: l.color,
+              background: l.box === 'box' ? l.boxColor : 'transparent', padding: l.box === 'box' ? `${px * 0.12}px ${px * 0.28}px` : 0,
+              WebkitTextStroke: l.box === 'outline' ? `${Math.max(1, px * 0.07)}px ${l.boxColor}` : undefined, paintOrder: 'stroke fill',
+              pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: on ? '2px dashed #E8A020' : 'none', outlineOffset: 4 }}>
+            {l.text}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Primeira camada livre (sem outra mídia no mesmo intervalo de tempo). */
 function freeLayer(list, start, duration) {
   const end = start + duration;
@@ -3523,7 +3983,7 @@ function videoParts(splits, dur) {
 }
 // Altura de cada faixa. A coluna de nomes e as faixas leem daqui, para não
 // desalinharem quando uma mudar.
-const LANE = { ruler: 22, capitulos: 28, legenda: 36, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };
+const LANE = { kf: 20, txt: 24, vfx: 22, ruler: 22, capitulos: 28, legenda: 36, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };
 
 /** Nome de uma faixa, na coluna fixa à esquerda da timeline. */
 function Rotulo({ h, gap, nome, dica }) {
@@ -3629,6 +4089,7 @@ const SHEET_TITLE = { speed: 'Velocidade', capList: 'Editar legendas', capStyle:
 
 const TABS = [
   { id: 'enquadramento', label: 'Enquadramento', icon: 'crop' },
+  { id: 'texto', label: 'Texto', icon: 'type' },
   { id: 'broll', label: 'B-roll', icon: 'image' },
   { id: 'audio', label: 'Áudio', icon: 'mic' },
   { id: 'legenda', label: 'Legenda', icon: 'captions' },

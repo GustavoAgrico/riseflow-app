@@ -2,6 +2,7 @@ import path from 'node:path';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
+import { MOMENT_EFFECTS, defaultMomentEffect, cleanKeys, keysChangeAnything } from '../../../shared/transform.js';
 
 const log = makeLogger('motion');
 
@@ -24,24 +25,27 @@ export const MOTION_LABELS = {
  * Momentos do zoom "punch-in": só nos MOMENTOS-CHAVE da fala (ênfase, pausa antes,
  * números, perguntas…), não o vídeo inteiro. Também usados pelos SFX (whoosh).
  * `custom` = momentos definidos/ajustados pelo usuário na timeline (já na timeline final).
- * @returns {Array<[number, number, number|null]>} [início, fim, zoom próprio ou null]
+ * Cada momento pode ter um efeito próprio (punch-in, zoom in/out, Ken Burns, pulse);
+ * sem efeito, vale `effect` (o efeito geral escolhido).
+ * @returns {Array<[number, number, number|null, string]>} [início, fim, zoom próprio ou null, efeito]
  */
-export function dynamicZoomWindows(segments, meta, custom) {
+export function dynamicZoomWindows(segments, meta, custom, effect = 'punch') {
   const dur = Math.max(0.5, meta.duration || 1);
+  const fx = (m) => (Object.hasOwn(MOMENT_EFFECTS, m?.effect) ? m.effect : effect);
   if (Array.isArray(custom)) {
     return custom
-      .map((m) => [Math.max(0, Number(m.start) || 0), Math.min(dur, Number(m.end) || 0), Number.isFinite(Number(m.scale)) ? Number(m.scale) : null])
+      .map((m) => [Math.max(0, Number(m.start) || 0), Math.min(dur, Number(m.end) || 0), Number.isFinite(Number(m.scale)) ? Number(m.scale) : null, fx(m)])
       .filter(([a, b]) => b - a > 0.15)
       .sort((x, y) => x[0] - y[0])
       // Sem sobreposição: dois zooms colados somariam o fator (zoom exagerado).
       .reduce((acc, w) => {
         const prev = acc[acc.length - 1];
         const a = prev ? Math.max(w[0], prev[1]) : w[0];
-        if (w[1] - a > 0.15) acc.push([a, w[1], w[2]]);
+        if (w[1] - a > 0.15) acc.push([a, w[1], w[2], w[3]]);
         return acc;
       }, []);
   }
-  return keyZoomMoments(segments, dur).map((m) => [m.start, m.end, null]);
+  return keyZoomMoments(segments, dur).map((m) => [m.start, m.end, null, effect]);
 }
 
 /**
@@ -49,23 +53,93 @@ export function dynamicZoomWindows(segments, meta, custom) {
  * um zoom rápido que dá ritmo e ênfase. Puro/exportado para teste.
  * @returns {string|null} filtro zoompan, ou null se não houver momentos.
  */
-export function dynamicZoomVf(segments, meta, intensity = 'medio', custom) {
+export function dynamicZoomVf(segments, meta, intensity = 'medio', custom, effect = 'punch') {
+  return momentsZoomVf(dynamicZoomWindows(segments, meta, custom, effect), meta, intensity);
+}
+
+/**
+ * Movimento SÓ nos momentos: fora deles o quadro fica normal. Cada janela aplica o seu
+ * efeito no progresso p dela (mesma conta da prévia, shared/transform.js):
+ * punch = k · zoom-in = k·p · zoom-out = k·(1−p) · Ken Burns = k·p + pan · pulse = respiração.
+ * Puro/exportado para teste. @returns {string|null}
+ */
+export function momentsZoomVf(windows, meta, intensity = 'medio') {
+  if (!windows?.length) return null;
   const W = meta.width || 1080;
   const H = meta.height || 1920;
   const fps = Math.max(1, Math.round(meta.fps || 30));
   const zmax = MOTION_INTENSITY[intensity] || MOTION_INTENSITY.medio;
-  const windows = dynamicZoomWindows(segments, meta, custom);
-  if (!windows.length) return null;
-
-  const t = `on/${fps}`;
-  const terms = windows.map(([a, b, z]) => {
+  const T = `on/${fps}`;
+  const zTerms = [];
+  const panX = [];
+  const panY = [];
+  for (const [a, b, z, effect] of windows) {
     const k = (Math.min(1.6, Math.max(1.01, z || zmax)) - 1).toFixed(4);
-    return `${k}*between(${t}\\,${a.toFixed(2)}\\,${b.toFixed(2)})`;
-  });
-  const z = `1+${terms.join('+')}`;
-  const x = 'iw/2-(iw/zoom/2)';
-  const y = 'ih/2-(ih/zoom/2)';
+    const inW = `between(${T}\\,${a.toFixed(2)}\\,${b.toFixed(2)})`;
+    const p = `((${T}-${a.toFixed(3)})/${Math.max(0.01, b - a).toFixed(3)})`;
+    let dz;
+    switch (effect) {
+      case 'zoom-in': dz = `${k}*${p}`; break;
+      case 'zoom-out': dz = `${k}*(1-${p})`; break;
+      case 'ken-burns': dz = `${k}*${p}`; break;
+      case 'pulse': dz = `${k}*0.6*(0.5-0.5*cos(2*PI*${p}))`; break;
+      default: dz = k; // punch
+    }
+    zTerms.push(effect === 'zoom-in' || effect === 'zoom-out' || effect === 'ken-burns' || effect === 'pulse' ? `${inW}*${dz}` : `${dz}*${inW}`);
+    if (effect === 'ken-burns') {
+      // anda na diagonal enquanto amplia (do canto de cima até o de baixo)
+      panX.push(`${inW}*((iw-iw/zoom)*${p}-(iw/2-iw/zoom/2))`);
+      panY.push(`${inW}*((ih-ih/zoom)*${p}-(ih/2-ih/zoom/2))`);
+    }
+  }
+  const z = `1+${zTerms.join('+')}`;
+  const x = `iw/2-(iw/zoom/2)${panX.length ? `+${panX.join('+')}` : ''}`;
+  const y = `ih/2-(ih/zoom/2)${panY.length ? `+${panY.join('+')}` : ''}`;
   return `zoompan=z='${z}':d=1:x='${x}':y='${y}':s=${W}x${H}:fps=${fps}`;
+}
+
+/** Expressão de interpolação linear de uma propriedade entre os quadros-chave (tempo T). */
+function keyExpr(keys, prop, T) {
+  const v = (k) => Number(k[prop]).toFixed(4);
+  if (keys.length === 1) return v(keys[0]);
+  let expr = v(keys[keys.length - 1]);
+  for (let i = keys.length - 2; i >= 0; i--) {
+    const a = keys[i];
+    const b = keys[i + 1];
+    const q = `clip((${T}-${a.t.toFixed(3)})/${Math.max(0.001, b.t - a.t).toFixed(3)}\\,0\\,1)`;
+    expr = `if(lt(${T}\\,${b.t.toFixed(3)})\\,${v(a)}+(${v(b)}-${v(a)})*${q}\\,${expr})`;
+  }
+  return expr;
+}
+
+/**
+ * Transformação manual por quadros-chave (como o "Transformar" do CapCut): escala,
+ * posição X/Y (fração da tela) e giro, interpolados entre os quadros. Mantém o tamanho
+ * do vídeo. Escala abaixo de 100% abre espaço com preto em volta (o vídeo fica menor).
+ * Puro/exportado para teste. @returns {string|null}
+ */
+export function keyframesVf(rawKeys, meta) {
+  const keys = cleanKeys(rawKeys);
+  if (!keysChangeAnything(keys)) return null;
+  const W = meta.width || 1080;
+  const H = meta.height || 1920;
+  const fps = Math.max(1, Math.round(meta.fps || 30));
+  const parts = [];
+  if (keys.some((k) => Math.abs(k.rot) > 1e-3)) {
+    parts.push(`rotate=a='(${keyExpr(keys, 'rot', 't')})*PI/180':c=black`);
+  }
+  // zoompan só amplia (zoom ≥ 1): para encolher, o quadro ganha uma moldura preta do
+  // tamanho certo (pad 2×) e o zoom passa a valer o dobro.
+  const shrink = keys.some((k) => k.scale < 1);
+  const f = shrink ? 2 : 1;
+  if (shrink) parts.push(`pad=iw*2:ih*2:iw/2:ih/2:black`);
+  const T = `on/${fps}`;
+  const S = `(${f}*(${keyExpr(keys, 'scale', T)}))`;
+  const X = `(${keyExpr(keys, 'x', T)})`;
+  const Y = `(${keyExpr(keys, 'y', T)})`;
+  // a janela visível tem iw/zoom de largura; mover o vídeo +X da tela = janela −X
+  parts.push(`zoompan=z='${S}':d=1:x='iw/2-iw/zoom/2-${X}*iw/zoom':y='ih/2-ih/zoom/2-${Y}*ih/zoom':s=${W}x${H}:fps=${fps}`);
+  return parts.join(',');
 }
 
 /**
@@ -112,31 +186,31 @@ export function motionVf(kind, meta, intensity = 'medio') {
 }
 
 /**
- * Aplica o efeito de movimento (zoom/pan) ao vídeo, preservando resolução e áudio.
- * @returns {Promise<{output:string, motion:string}>}
+ * Aplica os quadros-chave (Transformar) e o movimento nos momentos-chave, numa passada
+ * só. O movimento nunca vale para o vídeo inteiro: só nos momentos (os da timeline, ou
+ * os escolhidos automaticamente nas frases de ênfase).
+ * @returns {Promise<{output:string, motion:string, moments:number, keyframes:number}>}
  */
 export async function applyMotion(input, work, meta, options, onProgress, segments) {
-  const kind = options.videoMotion || 'none';
-  if (!MOTIONS.includes(kind) || kind === 'none') return { output: input, motion: 'none' };
-  // Zoom dinâmico depende dos tempos das frases; sem transcrição suficiente, cai para zoom-in.
-  let vf;
-  let effective = kind;
-  if (kind === 'dynamic') {
-    vf = dynamicZoomVf(segments, meta, options.motionIntensity, options.zoomMoments);
-    // O usuário tirou todos os zooms na timeline → sem movimento (não inventa um zoom-in).
-    if (!vf && Array.isArray(options.zoomMoments)) return { output: input, motion: 'none' };
-    if (!vf) { vf = motionVf('zoom-in', meta, options.motionIntensity); effective = 'zoom-in'; }
-  } else {
-    vf = motionVf(kind, meta, options.motionIntensity);
+  const kind = MOTIONS.includes(options.videoMotion) ? options.videoMotion : 'none';
+  const parts = [];
+  const kVf = keyframesVf(options.transformKeys, meta);
+  if (kVf) parts.push(kVf);
+  let moments = 0;
+  if (kind !== 'none') {
+    const windows = dynamicZoomWindows(segments, meta, options.zoomMoments, defaultMomentEffect(kind));
+    const mVf = momentsZoomVf(windows, meta, options.motionIntensity);
+    if (mVf) { parts.push(mVf); moments = windows.length; }
   }
-  if (!vf) return { output: input, motion: 'none' };
+  const keyframes = kVf ? cleanKeys(options.transformKeys).length : 0;
+  if (!parts.length) return { output: input, motion: 'none', moments: 0, keyframes: 0 };
 
   const output = path.join(work, 'motion.mp4');
-  const args = ['-i', input, '-vf', vf, ...x264Fast()];
+  const args = ['-i', input, '-vf', parts.join(','), ...x264Fast()];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push('-movflags', '+faststart', '-y', output);
 
   await runFfmpeg(args, { label: 'motion', totalDuration: meta.duration, onProgress });
-  log.ok(`efeito de movimento: ${effective}${effective !== kind ? ` (fallback de ${kind})` : ''} (${options.motionIntensity || 'medio'})`);
-  return { output, motion: effective };
+  log.ok(`movimento: ${moments ? `${kind} em ${moments} momento(s)` : 'sem momentos'}${keyframes ? ` · ${keyframes} quadro(s)-chave` : ''} (${options.motionIntensity || 'medio'})`);
+  return { output, motion: moments ? kind : 'none', moments, keyframes };
 }
