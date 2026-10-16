@@ -410,8 +410,12 @@ export async function runPipeline(job, onUpdate = () => {}) {
     preFrameInput = input;
     const r = await applyManualFrame(input, work, meta, options, st.onProgress);
     input = r.output;
-    if (r.applied) meta = { ...meta, ...(await probeSummary(input)) };
-    else preFrameInput = null;
+    if (r.applied) {
+      meta = { ...meta, ...(await probeSummary(input)) };
+      // o rastreador do formato (9:16…) olha o vídeo já ampliado — senão o recorte
+      // seguiria o rosto no lugar errado
+      trackInput = input;
+    } else preFrameInput = null;
     report.frame = { applied: r.applied };
     st.record(report.frame);
     st.onProgress(1);

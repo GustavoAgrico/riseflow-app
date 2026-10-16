@@ -154,6 +154,10 @@ export default function CreateWizard({
   }
 
   const tasks = aiTasks({ options, mode, caps });
+  // Zoom e enquadramento (antes do editor): automático no rosto, ou o ponto que eu escolher.
+  const framingManual = Number.isFinite(Number(options.personFocusX));
+  const zoomVal = Math.min(2.5, Math.max(1, Number(options.personZoom) || 1));
+  const setZoom = (z) => set({ personZoom: +Math.min(2.5, Math.max(1, z)).toFixed(2) });
   const toggle = (t) => {
     if (t.off) return;
     if (t.mode) onMode(t.mode(!t.on));
@@ -261,7 +265,8 @@ export default function CreateWizard({
               ))}
             </div>
             <div className="rf-ai-side" style={{ position: 'sticky', top: 16, display: 'grid', gap: 14 }}>
-              <CaptionPreview options={{ ...options, aspect: previewAspect }} videoUrl={videoUrl} />
+              <CaptionPreview options={{ ...options, aspect: previewAspect }} videoUrl={videoUrl}
+                onFocus={framingManual && mode !== 'clips' ? (x, y) => set({ personFocusX: x, personFocusY: y }) : null} />
               {options.captions !== false && (
                 <div>
                   <div style={{ fontSize: 12, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>ESTILO DA LEGENDA</div>
@@ -270,6 +275,38 @@ export default function CreateWizard({
               )}
             </div>
           </div>
+
+          {mode !== 'clips' && (
+            <div style={{ marginTop: 18, padding: '14px 16px', borderRadius: 14, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)' }}>
+              <div style={{ fontSize: 12, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 4 }}>ENQUADRAMENTO E ZOOM</div>
+              <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 10, lineHeight: 1.45 }}>Aproxime e posicione você no quadro — vale para o vídeo inteiro.</div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                {[[false, 'Automático (rosto)'], [true, 'Ajustar eu mesmo']].map(([manual, label]) => {
+                  const on = framingManual === manual;
+                  return (
+                    <button key={label} type="button"
+                      onClick={() => (manual ? set({ personFocusX: Number.isFinite(Number(options.personFocusX)) ? options.personFocusX : 0.5, personFocusY: Number.isFinite(Number(options.personFocusY)) ? options.personFocusY : 0.4 }) : set({ personFocusX: undefined, personFocusY: undefined }))}
+                      style={{ flex: 1, border: on ? `1.5px solid ${C.orange}` : `1px solid ${C.border}`, borderRadius: 10, padding: '9px 10px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                        background: on ? 'rgba(255,107,53,0.14)' : 'rgba(255,255,255,0.03)', color: on ? C.orangeSoft || C.orange : C.muted }}>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 13, color: C.muted, width: 40 }}>Zoom</span>
+                <button type="button" onClick={() => setZoom(zoomVal - 0.05)} aria-label="Menos zoom" style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.25)', color: C.text, cursor: 'pointer', fontSize: 16 }}>−</button>
+                <input type="range" min="1" max="2.5" step="0.05" value={zoomVal} onChange={(e) => setZoom(Number(e.target.value))} style={{ flex: 1 }} aria-label="Zoom" />
+                <button type="button" onClick={() => setZoom(zoomVal + 0.05)} aria-label="Mais zoom" style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.25)', color: C.text, cursor: 'pointer', fontSize: 16 }}>+</button>
+                <span style={{ fontSize: 13, color: C.text, width: 46, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{zoomVal.toFixed(2)}×</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: C.faint, marginTop: 8, lineHeight: 1.45 }}>
+                {framingManual
+                  ? <>Arraste o vídeo na <b>prévia</b> para posicionar o rosto (a linha azul aparece quando fica centralizado).</>
+                  : <>Com zoom, a IA aproxima no seu rosto. Para escolher o ponto, use <b>Ajustar eu mesmo</b>.</>}
+              </div>
+            </div>
+          )}
 
           {brands.length > 0 && (
             <div style={{ marginTop: 18 }}>
