@@ -7,6 +7,8 @@ import { CAPTION_FONTS, CAPTION_TEMPLATE_LABELS, CAPTION_ANIMATIONS, CAPTION_BAC
 import { CAPTION_COLOR_LIST, HIGHLIGHT_STYLES } from '../../../shared/captionStyle.js';
 import { CLIP_GOALS } from '../pipeline/clipSelect.js';
 import { CAPTION_LANGUAGES } from '../pipeline/translate.js';
+import { MOMENT_EFFECTS } from '../../../shared/transform.js';
+import { TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, VIDEO_FX } from '../../../shared/textLayers.js';
 import { SFX_LIBRARY } from '../pipeline/sfx.js';
 import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
@@ -35,6 +37,12 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'phrase', label: 'Frase (várias palavras)' },
     ],
     captionLanguages: Object.entries(CAPTION_LANGUAGES).map(([id, label]) => ({ id, label })),
+    momentEffects: Object.entries(MOMENT_EFFECTS).map(([id, label]) => ({ id, label })),
+    videoFx: Object.entries(VIDEO_FX).map(([id, label]) => ({ id, label })),
+    textTemplates: Object.entries(TEXT_TEMPLATES).map(([id, t]) => ({ id, ...t })),
+    textAnimsIn: Object.entries(TEXT_ANIMS_IN).map(([id, label]) => ({ id, label })),
+    textAnimsOut: Object.entries(TEXT_ANIMS_OUT).map(([id, label]) => ({ id, label })),
+    textBoxes: Object.entries(TEXT_BOXES).map(([id, label]) => ({ id, label })),
     sfxTypes: [{ id: 'none', label: 'Nenhum' }, ...Object.entries(SFX_LIBRARY).map(([id, x]) => ({ id, label: x.label }))],
     transitions: Object.entries(TRANSITIONS).map(([id, label]) => ({ id, label })),
     transitionTargets: Object.entries(TRANSITION_TARGETS).map(([id, label]) => ({ id, label })),
@@ -51,11 +59,11 @@ optionsRouter.get('/options', (_req, res) => {
     captionHighlightStyles: [{ id: 'auto', label: 'Do estilo' }, ...HIGHLIGHT_STYLES],
     videoMotions: [
       { id: 'none', label: 'Sem movimento' },
-      { id: 'dynamic', label: 'Zoom dinâmico (punch-ins) ✨' },
-      { id: 'zoom-in', label: 'Zoom in (aproxima)' },
-      { id: 'zoom-out', label: 'Zoom out (afasta)' },
-      { id: 'ken-burns', label: 'Ken Burns (zoom + pan)' },
-      { id: 'pulse', label: 'Pulse (respiração sutil)' },
+      { id: 'dynamic', label: 'Punch-in nos momentos-chave ✨' },
+      { id: 'zoom-in', label: 'Zoom in nos momentos-chave' },
+      { id: 'zoom-out', label: 'Zoom out nos momentos-chave' },
+      { id: 'ken-burns', label: 'Ken Burns nos momentos-chave' },
+      { id: 'pulse', label: 'Pulse nos momentos-chave' },
     ],
     motionIntensities: [
       { id: 'suave', label: 'Suave' },

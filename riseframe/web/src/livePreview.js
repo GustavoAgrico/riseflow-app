@@ -2,35 +2,26 @@
 // Espelha as fórmulas do servidor (pipeline/motion.js, color.js, sfx.js) de forma
 // aproximada, só no navegador — o render final continua sendo feito pelo FFmpeg.
 
+import { momentEffectAt, defaultMomentEffect } from '../../shared/transform.js';
+
 /** Intensidade → zoom máximo (igual ao servidor). */
 export const MOTION_Z = { suave: 1.06, medio: 1.12, forte: 1.2 };
 
 const NONE = { scale: 1, ox: 50, oy: 50 };
 
-/** Zoom no instante t (segundos) do vídeo. ox/oy = origem do zoom em %. */
+/**
+ * Zoom no instante t (segundos) do vídeo. ox/oy = origem do zoom em %.
+ * O movimento só existe nos momentos (windows = [início, fim, zoom próprio|null,
+ * efeito|undefined]); fora deles o quadro fica normal — igual ao render.
+ */
 export function motionAt(kind, intensity, t, dur, windows) {
+  if (!kind || kind === 'none') return NONE;
   const z = MOTION_Z[intensity] || MOTION_Z.medio;
-  const p = Math.max(0, Math.min(1, t / Math.max(0.5, dur)));
-  switch (kind) {
-    case 'dynamic': {
-      // windows = momentos-chave [início, fim, zoom próprio | null]
-      const hit = (windows || []).find(([a, b]) => t >= a && t < b);
-      return hit ? { scale: hit[2] || z, ox: 50, oy: 50 } : NONE;
-    }
-    case 'zoom-in':
-      return { scale: 1 + (z - 1) * p, ox: 50, oy: 50 };
-    case 'zoom-out':
-      return { scale: z - (z - 1) * p, ox: 50, oy: 50 };
-    case 'ken-burns':
-      return { scale: 1 + (z - 1) * p, ox: p * 100, oy: p * 100 };
-    case 'pulse': {
-      const amp = (z - 1) * 0.6;
-      const period = Math.max(0.5, dur / 2);
-      return { scale: 1 + amp * (0.5 - 0.5 * Math.cos((2 * Math.PI * t) / period)), ox: 50, oy: 50 };
-    }
-    default:
-      return NONE;
-  }
+  const hit = (windows || []).find(([a, b]) => t >= a && t < b);
+  if (!hit) return NONE;
+  const [a, b, zs, eff] = hit;
+  const { dz, pan } = momentEffectAt(eff || defaultMomentEffect(kind), (t - a) / Math.max(0.01, b - a), (zs || z) - 1);
+  return { scale: 1 + dz, ox: pan == null ? 50 : pan * 100, oy: pan == null ? 50 : pan * 100 };
 }
 
 /**

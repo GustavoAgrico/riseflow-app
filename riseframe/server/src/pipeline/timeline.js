@@ -124,7 +124,12 @@ export function remapTranscript(transcript, keep, perSegment = 4) {
       const ns = remapTime(w.start, keep);
       const ne = Math.max(ns + 0.05, remapTime(w.end, keep));
       // seg: bloco de origem (as frases não atravessam blocos); hidden: legenda oculta.
-      kept.push({ start: ns, end: ne, word: w.word, seg: si, ...(w.hidden ? { hidden: true } : {}), ...posOf(w), ...emphasisOf(w) });
+      // cs/ce: tempo em que a legenda aparece, quando o usuário a moveu na timeline
+      // (a fala continua no tempo da palavra; só a legenda usa estes).
+      const cap = Number.isFinite(Number(w.cs)) && Number.isFinite(Number(w.ce))
+        ? { cs: +remapTime(Number(w.cs), keep).toFixed(3), ce: +remapTime(Number(w.ce), keep).toFixed(3) }
+        : {};
+      kept.push({ start: ns, end: ne, word: w.word, seg: si, ...cap, ...(w.hidden ? { hidden: true } : {}), ...posOf(w), ...emphasisOf(w) });
     }
   });
 

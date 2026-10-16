@@ -259,9 +259,15 @@ export async function applyUserMedia(input, work, meta, options, onProgress = ()
     const start = clamp(m.start, 0, Math.max(0, dur - 0.05), 0);
     const vol = clamp(m.volume, 0, 2, 0.35);
     const ms = Math.round(start * 1000);
+    // A música toca pela duração escolhida na timeline, com entrada/saída suave (fade).
+    const len = clamp(m.duration, 0.2, Math.max(0.2, dur - start), Math.max(0.2, dur - start));
+    const fi = clamp(m.fadeIn, 0, len / 2, 0);
+    const fo = clamp(m.fadeOut, 0, len / 2, 0);
     // adelay atrasa a música até o start; volume ajusta o nível de fundo.
     musParts.push(
-      `[${inIdx}:a]asetpts=PTS-STARTPTS,volume=${vol.toFixed(3)}` +
+      `[${inIdx}:a]atrim=0:${len.toFixed(3)},asetpts=PTS-STARTPTS,volume=${vol.toFixed(3)}` +
+        (fi > 0.01 ? `,afade=t=in:st=0:d=${fi.toFixed(2)}` : '') +
+        (fo > 0.01 ? `,afade=t=out:st=${(len - fo).toFixed(3)}:d=${fo.toFixed(2)}` : '') +
         (ms > 0 ? `,adelay=${ms}|${ms}` : '') +
         `[am${i}]`,
     );

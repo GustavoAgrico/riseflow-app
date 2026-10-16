@@ -19,6 +19,8 @@ import { burnCaptions, captionSfxEvents } from './captions.js';
 import { translateTranscript } from './translate.js';
 import { applySoundEffects } from './sfx.js';
 import { transitionVf, cutJoins } from './transitions.js';
+import { applyVideoFx } from './videofx.js';
+import { burnTexts } from './texts.js';
 import { applyWatermark } from './watermark.js';
 import { colorFilter, hasColorAdjust } from './color.js';
 import { convertAspect, finalRender, outputTarget } from './render.js';
@@ -59,12 +61,14 @@ function buildPlan(mode, options) {
       { key: 'voicefx', label: 'Aplicando o modificador de voz', weight: 6, enabled: voiceActive(options, 'fx') },
       { key: 'cut', label: 'Aplicando cortes na timeline', weight: 20, enabled: hasRemoval },
       { key: 'analyze', label: 'Analisando temas', weight: 3, enabled: true },
-      { key: 'motion', label: 'Aplicando movimento (zoom)', weight: 12, enabled: Boolean(options.videoMotion) && options.videoMotion !== 'none' },
+      { key: 'motion', label: 'Aplicando movimento (zoom)', weight: 12, enabled: (Boolean(options.videoMotion) && options.videoMotion !== 'none') || (Array.isArray(options.transformKeys) && options.transformKeys.length > 0) },
       { key: 'frame', label: 'Reenquadrando o vídeo', weight: 8, enabled: (Number(options.personZoom) || 1) > 1.001 },
       { key: 'aspect', label: QUALITY_STAGE[options.quality] || 'Ajustando ao formato', weight: QUALITY_STAGE[options.quality] ? 12 : 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) || Boolean(QUALITY_STAGE[options.quality]) },
       { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
+      { key: 'vfx', label: 'Aplicando efeitos de vídeo', weight: 8, enabled: Array.isArray(options.fxMoments) && options.fxMoments.length > 0 },
       { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: Array.isArray(options.userMedia) && options.userMedia.length > 0 },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
+      { key: 'texts', label: 'Colocando os textos', weight: 8, enabled: Array.isArray(options.textLayers) && options.textLayers.length > 0 },
       { key: 'headline', label: 'Colocando o título (headline)', weight: 6, enabled: Boolean(options.headline?.text) },
       { key: 'watermark', label: 'Aplicando o seu logo', weight: 6, enabled: Boolean(options.watermark?.file) },
       { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true || (Array.isArray(options.sfxMoments) && options.sfxMoments.length > 0) },
@@ -84,17 +88,26 @@ function buildPlan(mode, options) {
 
 /**
  * Só o que aparece na legenda: tira as palavras com legenda oculta (hidden — a fala
- * continua no vídeo) e os segmentos que ficaram vazios.
+ * continua no vídeo) e os segmentos que ficaram vazios. Palavras com cs/ce (legenda
+ * movida/esticada na timeline, como no CapCut) aparecem nesse tempo, não no da fala.
  */
 export function visibleCaptions(transcript) {
   const segments = [];
   for (const seg of transcript?.segments || []) {
     const src = seg.words?.length ? seg.words : null;
     if (!src) { segments.push(seg); continue; }
-    const words = src.filter((w) => !w.hidden);
+    const shown = src.filter((w) => !w.hidden);
+    const moved = shown.some((w) => Number.isFinite(Number(w.cs)) && Number.isFinite(Number(w.ce)));
+    const words = !moved ? shown : shown
+      .map((w) => {
+        if (!Number.isFinite(Number(w.cs)) || !Number.isFinite(Number(w.ce))) return w;
+        const { cs, ce, ...rest } = w;
+        return { ...rest, start: Number(cs), end: Math.max(Number(cs) + 0.05, Number(ce)) };
+      })
+      .sort((a, b) => a.start - b.start);
     if (!words.length) continue;
-    if (words.length === src.length) { segments.push(seg); continue; }
-    segments.push({ ...seg, start: words[0].start, end: words[words.length - 1].end, text: words.map((w) => w.word).join(' '), words });
+    if (!moved && words.length === src.length) { segments.push(seg); continue; }
+    segments.push({ ...seg, start: words[0].start, end: Math.max(words[words.length - 1].end, moved ? words[words.length - 1].end : seg.end), text: words.map((w) => w.word).join(' '), words });
   }
   return { ...transcript, segments };
 }
@@ -397,6 +410,11 @@ export async function runPipeline(job, onUpdate = () => {}) {
       };
       if (Array.isArray(options.brollPlan)) options.brollPlan = options.brollPlan.map(remapRange).filter(Boolean);
       if (Array.isArray(options.zoomMoments)) options.zoomMoments = options.zoomMoments.map(remapRange).filter(Boolean);
+      // Efeitos de vídeo e textos livres também foram colocados na timeline original.
+      if (Array.isArray(options.fxMoments)) options.fxMoments = options.fxMoments.map(remapRange).filter(Boolean);
+      if (Array.isArray(options.textLayers)) options.textLayers = options.textLayers.map(remapRange).filter(Boolean);
+      // Quadros-chave do Transformar (tempo original) → mesma posição no vídeo cortado.
+      if (Array.isArray(options.transformKeys)) options.transformKeys = options.transformKeys.map((k) => ({ ...k, t: +remapTime(Number(k.t), keep).toFixed(3) }));
       if (Array.isArray(options.sfxMoments)) options.sfxMoments = options.sfxMoments.map((m) => ({ ...m, t: +remapTime(Number(m.t), keep).toFixed(3) }));
       // Minhas mídias também foram posicionadas na timeline original.
       if (Array.isArray(options.userMedia)) options.userMedia = remapUserMedia(options.userMedia, keep);
@@ -436,7 +454,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     const r = await applyMotion(input, work, meta, options, st.onProgress, transcript.segments);
     input = r.output;
     trackInput = r.output;
-    report.motion = { effect: r.motion, intensity: options.motionIntensity || 'medio' };
+    report.motion = { effect: r.motion, intensity: options.motionIntensity || 'medio', moments: r.moments, keyframes: r.keyframes };
     st.record(report.motion);
     st.onProgress(1);
   }
@@ -512,6 +530,18 @@ export async function runPipeline(job, onUpdate = () => {}) {
   const transitionAtCuts = () => ['cuts', 'both'].includes(options.transitionAt);
   const transitionAtBroll = () => (options.transitionAt || 'broll') !== 'cuts';
 
+  // 5z. Efeitos de vídeo nos momentos (P&B, retrô, desfoque…) — no vídeo e no B-roll,
+  // ANTES das mídias por cima (logo, PiP), das legendas e dos textos: nenhum deles é
+  // pintado nem desfocado (como os efeitos do CapCut, que valem para o que está embaixo).
+  if (has('vfx')) {
+    const st = enter('vfx');
+    const r = await applyVideoFx(input, work, meta, options.fxMoments, st.onProgress);
+    if (r.applied) input = r.output;
+    report.videoFx = { count: r.count, effects: options.fxMoments.map((m) => m.effect) };
+    st.record(report.videoFx);
+    st.onProgress(1);
+  }
+
   // 6-. Mídias do usuário (imagens/vídeos/músicas próprias) — por baixo das legendas.
   if (has('usermedia')) {
     const st = enter('usermedia');
@@ -581,6 +611,16 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.record(report.captions);
   }
 
+  // 6-b. Textos livres (modelos de texto da timeline), por cima das legendas.
+  if (has('texts')) {
+    const st = enter('texts');
+    const r = await burnTexts(input, work, meta, options.textLayers, st.onProgress);
+    input = r.output;
+    report.texts = { count: r.count };
+    st.record(report.texts);
+    st.onProgress(1);
+  }
+
   // 6a. Logo do Brand Kit num canto (depois do formato final e das legendas).
   // 6a. Headline: título fixo no topo (ou meio/embaixo), do começo até N s ou o vídeo todo.
   if (has('headline')) {
@@ -613,7 +653,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       if (has('broll') && brollType !== 'none') {
         for (const m of brollMomentsFinal()) events.push({ t: m.start, type: brollType });
       }
-      if (report.motion?.effect === 'dynamic' && zoomType !== 'none') {
+      if (report.motion?.moments && zoomType !== 'none') {
         for (const [a] of dynamicZoomWindows(transcript.segments, meta, options.zoomMoments)) events.push({ t: a, type: zoomType });
       }
       if (cutType !== 'none') for (const t of joins) events.push({ t, type: cutType });

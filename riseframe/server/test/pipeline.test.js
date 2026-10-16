@@ -204,3 +204,38 @@ test('pipeline com efeitos do CapCut: transição + SFX nos cortes, SFX manual e
   const out = await probeSummary(path.join(config.paths.outputs, `${jobId}.mp4`));
   assert.ok(out.duration > 2 && out.hasAudio, 'vídeo final com áudio');
 });
+
+test('pipeline: efeito de vídeo num momento, texto livre e música com fade', async () => {
+  await ensureDirs();
+  const jobId = 'test_tx_' + Date.now();
+  const work = path.join(config.paths.work, jobId);
+  await fs.mkdir(work, { recursive: true });
+  const input = path.join(work, 'in.mp4');
+  await makeClip(input);
+  const song = path.join(work, 'song.wav');
+  spawnSync(ffmpegPath, ['-hide_banner', '-y', '-f', 'lavfi', '-i', 'sine=f=440:d=10', song], { stdio: 'ignore' });
+
+  const report = await runPipeline({
+    id: jobId,
+    inputPath: input,
+    workDir: work,
+    outputsDir: config.paths.outputs,
+    options: {
+      cutSilence: false,
+      captions: false,
+      colorLook: 'none',
+      broll: false,
+      aspect: 'original',
+      fxMoments: [{ start: 1, end: 3, effect: 'bw' }],
+      textLayers: [{ text: 'CAPÍTULO 1', start: 0.5, end: 3, font: 'montserrat', size: 0.06, color: '#FFFFFF', box: 'box', boxColor: '#111111', x: 0.5, y: 0.2, animIn: 'pop', animOut: 'fade' }],
+      userMedia: [{ kind: 'audio', file: song, start: 0, duration: 6, volume: 0.4, fadeIn: 1, fadeOut: 1.5 }],
+      musicDucking: 'off',
+    },
+  });
+
+  assert.deepEqual(report.videoFx, { count: 1, effects: ['bw'] });
+  assert.equal(report.texts.count, 1);
+  assert.equal(report.userMedia.audio, 1);
+  const out = await probeSummary(path.join(config.paths.outputs, `${jobId}.mp4`));
+  assert.ok(out.duration > 5 && out.hasAudio);
+});
