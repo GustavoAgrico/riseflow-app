@@ -47,7 +47,9 @@ export function groupIntoPhrases(words, opts = {}) {
     // Palavras com posição manual diferente nunca dividem a mesma legenda.
     const posKey = (x) => (x && x.px != null ? `${x.px},${x.py}` : '');
     const movedApart = next && posKey(next) !== posKey(w);
-    if (endsSentence || bucket.length >= maxWords || dur >= maxDur || gap >= pauseGap || movedApart) flush();
+    // Nem palavras de blocos diferentes que o usuário separou na timeline.
+    const otherBlock = next && w.seg !== undefined && next.seg !== w.seg;
+    if (endsSentence || bucket.length >= maxWords || dur >= maxDur || gap >= pauseGap || movedApart || otherBlock) flush();
   }
   flush();
   return segments;

@@ -6,6 +6,10 @@ import { VOICE_NOISE, VOICE_PRESETS, VOICE_EFFECTS } from '../pipeline/voice.js'
 import { CAPTION_FONTS, CAPTION_TEMPLATE_LABELS, CAPTION_ANIMATIONS, CAPTION_BACKGROUNDS, CAPTION_POSITIONS } from '../pipeline/captions.js';
 import { CAPTION_COLOR_LIST, HIGHLIGHT_STYLES } from '../../../shared/captionStyle.js';
 import { CLIP_GOALS } from '../pipeline/clipSelect.js';
+import { CAPTION_LANGUAGES } from '../pipeline/translate.js';
+import { SFX_LIBRARY } from '../pipeline/sfx.js';
+import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
+import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
 
 export const optionsRouter = Router();
 
@@ -29,6 +33,18 @@ optionsRouter.get('/options', (_req, res) => {
       { id: 'auto', label: 'Automático (do estilo)' },
       { id: 'word', label: 'Palavra por palavra' },
       { id: 'phrase', label: 'Frase (várias palavras)' },
+    ],
+    captionLanguages: Object.entries(CAPTION_LANGUAGES).map(([id, label]) => ({ id, label })),
+    sfxTypes: [{ id: 'none', label: 'Nenhum' }, ...Object.entries(SFX_LIBRARY).map(([id, x]) => ({ id, label: x.label }))],
+    transitions: Object.entries(TRANSITIONS).map(([id, label]) => ({ id, label })),
+    transitionTargets: Object.entries(TRANSITION_TARGETS).map(([id, label]) => ({ id, label })),
+    layerAnimations: Object.entries(LAYER_ANIMATIONS).map(([id, label]) => ({ id, label })),
+    blendModes: Object.entries(BLEND_MODES).map(([id, x]) => ({ id, label: x.label })),
+    musicDuckings: [
+      { id: 'off', label: 'Desligado' },
+      { id: 'suave', label: 'Suave' },
+      { id: 'medio', label: 'Médio' },
+      { id: 'forte', label: 'Forte' },
     ],
     captionColors: CAPTION_COLOR_LIST,
     clipGoals: Object.entries(CLIP_GOALS).map(([id, label]) => ({ id, label })),
@@ -115,6 +131,13 @@ optionsRouter.get('/options', (_req, res) => {
       captionLines: 2,
       captionMaxChars: 0,
       captionHighlightStyle: 'auto',
+      captionLanguage: '',
+      musicDucking: 'medio',
+      sfxBrollType: 'whoosh',
+      sfxZoomType: 'whoosh',
+      sfxCutType: 'none',
+      transition: 'none',
+      transitionAt: 'broll',
       colorLook: 'auto',
       videoMotion: 'none',
       motionIntensity: 'medio',

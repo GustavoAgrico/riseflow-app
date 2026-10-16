@@ -165,3 +165,42 @@ test('timeline: silêncios que a timeline não mostrou também saem (menos as pa
   await fs.rm(work, { recursive: true, force: true });
   for (const s of ['_a', '_b', '_c']) await fs.rm(path.join(config.paths.outputs, `${base}${s}.mp4`), { force: true });
 });
+
+test('pipeline com efeitos do CapCut: transição + SFX nos cortes, SFX manual e camada animada', async () => {
+  await ensureDirs();
+  const jobId = 'test_fx_' + Date.now();
+  const work = path.join(config.paths.work, jobId);
+  await fs.mkdir(work, { recursive: true });
+  const input = path.join(work, 'in.mp4');
+  await makeClip(input);
+  const img = path.join(work, 'layer.png');
+  spawnSync(ffmpegPath, ['-hide_banner', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=200x150', '-frames:v', '1', img], { stdio: 'ignore' });
+
+  const report = await runPipeline({
+    id: jobId,
+    inputPath: input,
+    workDir: work,
+    outputsDir: config.paths.outputs,
+    options: {
+      cutSilence: true,
+      captions: true,
+      colorLook: 'none',
+      broll: false,
+      aspect: 'original',
+      soundEffects: true,
+      sfxCutType: 'shutter',
+      sfxMoments: [{ t: 0.5, type: 'ding' }],
+      transition: 'flash',
+      transitionAt: 'cuts',
+      userMedia: [{ kind: 'image', file: img, start: 0.5, duration: 2, mode: 'pip', scale: 0.4, px: 0.5, py: 0.3, opacity: 1, animIn: 'pop', animOut: 'fade' }],
+    },
+  });
+
+  assert.ok(report.cut.kept > 1, 'o silêncio gera cortes');
+  assert.deepEqual(report.transition, { type: 'flash', at: 'cuts' });
+  assert.ok(report.sfx.byType.shutter >= 1, 'obturador nos cortes');
+  assert.equal(report.sfx.byType.ding, 1, 'SFX colocado à mão');
+  assert.equal(report.userMedia.applied, true);
+  const out = await probeSummary(path.join(config.paths.outputs, `${jobId}.mp4`));
+  assert.ok(out.duration > 2 && out.hasAudio, 'vídeo final com áudio');
+});

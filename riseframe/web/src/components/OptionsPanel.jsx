@@ -171,6 +171,24 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
             <Segmented value={options.sfxIntensity || 'medio'} options={catalog.motionIntensities} onChange={(v) => set({ sfxIntensity: v })} />
           </Row>
         )}
+        {options.soundEffects === true && catalog.sfxTypes && (
+          <>
+            <Row label="Som nas entradas de B-roll" hint="Toca quando cada imagem de apoio entra">
+              <Select value={options.sfxBrollType || 'whoosh'} options={catalog.sfxTypes} onChange={(v) => set({ sfxBrollType: v })} />
+            </Row>
+            <Row label="Som nos zooms" hint="Toca em cada punch-in do zoom dinâmico">
+              <Select value={options.sfxZoomType || 'whoosh'} options={catalog.sfxTypes} onChange={(v) => set({ sfxZoomType: v })} />
+            </Row>
+            <Row label="Som nos cortes" hint="Toca em cada corte de silêncio (ex.: obturador de câmera com o flash branco)">
+              <Select value={options.sfxCutType || 'none'} options={catalog.sfxTypes} onChange={(v) => set({ sfxCutType: v })} />
+            </Row>
+          </>
+        )}
+        {catalog.musicDuckings && (
+          <Row label="Ducking da música" hint="Sua música de fundo abaixa sozinha enquanto você fala e volta nas pausas">
+            <Segmented value={options.musicDucking || 'medio'} options={catalog.musicDuckings} onChange={(v) => set({ musicDucking: v })} />
+          </Row>
+        )}
       </Section>
 
       {/* ── Legendas ── */}
@@ -212,6 +230,11 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
                 <Select value={options.captionPosition || 'auto'} options={catalog.captionPositions} onChange={(v) => set({ captionPosition: v })} />
               </Row>
             )}
+            {catalog.captionLanguages && (
+              <Row label="Idioma da legenda" hint="Traduz a legenda por IA (precisa da chave da Anthropic nas Configurações)">
+                <Select value={options.captionLanguage || ''} options={catalog.captionLanguages} onChange={(v) => set({ captionLanguage: v })} />
+              </Row>
+            )}
             <Row label="Destacar palavra falada" hint="Desligado: legenda normal, todas as palavras iguais. Ligado: realça a palavra que está sendo dita">
               <Toggle on={options.captionHighlight === true} onChange={(v) => set({ captionHighlight: v })} />
             </Row>
@@ -246,6 +269,16 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
         <Row label="Color grade cinematográfico" hint={options.colorLook === 'auto' ? 'A IA analisa o vídeo e calcula a correção + o look' : 'O diferencial de acabamento do Riseframe'}>
           <Select value={options.colorLook} options={catalog.colorLooks} onChange={(v) => set({ colorLook: v })} />
         </Row>
+        {catalog.transitions && (
+          <Row label="Transição" hint="Flash branco, esmaecimento preto, brilho ou blur rápido no momento do corte">
+            <Select value={options.transition || 'none'} options={catalog.transitions} onChange={(v) => set({ transition: v })} />
+          </Row>
+        )}
+        {catalog.transitionTargets && options.transition && options.transition !== 'none' && (
+          <Row label="Onde aplicar a transição" hint="Nos cortes de silêncio, nas entradas/saídas de B-roll ou nos dois">
+            <Segmented value={options.transitionAt || 'broll'} options={catalog.transitionTargets} onChange={(v) => set({ transitionAt: v })} />
+          </Row>
+        )}
         <Row label="Movimento no vídeo (zoom)" hint="Zoom dinâmico (punch-ins a cada frase — cara de viral), ou aproxima/afasta/Ken Burns ao longo do vídeo">
           <Select value={options.videoMotion || 'none'} options={catalog.videoMotions} onChange={(v) => set({ videoMotion: v })} />
         </Row>

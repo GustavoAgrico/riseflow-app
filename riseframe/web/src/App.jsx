@@ -39,6 +39,10 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   const [error, setError] = useState(null);
   // Tempo total do envio ao vídeo pronto (medido aqui, do clique em criar/exportar).
   const startedAtRef = useRef(0);
+  // Render disparado pela timeline: o editor fica montado (escondido) durante o
+  // processamento; se o job falhar, volta para ele com as edições e o erro.
+  const [editorRender, setEditorRender] = useState(false);
+  const [editorError, setEditorError] = useState(null); // { message, at }
 
   const [sourceId, setSourceId] = useState(null);
   const [transcriptData, setTranscriptData] = useState(null);
@@ -120,11 +124,12 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     refreshBilling();
   }
 
-  function watchRender(created) {
+  function watchRender(created, fromEditor = false) {
     refreshBilling();
     setJob(created);
+    setEditorRender(fromEditor);
     setPhase('processing');
-    subscribeJob(created.id, (u) => {
+    const stop = subscribeJob(created.id, (u) => {
       if (u.status === 'done' && startedAtRef.current) u = { ...u, totalSec: Math.round((Date.now() - startedAtRef.current) / 1000) };
       setJob(u);
       if (u.status === 'done') {
@@ -147,7 +152,13 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
           totalSec: u.totalSec || null, // do envio ao vídeo pronto
         });
       }
-      if (u.status === 'error') fail(u.error);
+      if (u.status === 'error') {
+        if (!fromEditor) return fail(u.error);
+        stop();
+        refreshBilling();
+        setEditorError({ message: u.error || 'o render falhou', at: Date.now() });
+        setPhase('editing');
+      }
     });
   }
 
@@ -216,6 +227,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     setSourceId(sid);
     setTranscriptData(tr);
     setDurationSec(doneJob?.report?.input?.duration || 0);
+    setEditorError(null);
     setPhase('editing');
   }
 
@@ -279,15 +291,18 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     } else reset();
   }
 
+  // Só sai da timeline depois que o servidor aceitou o render: se ele recusar (plano,
+  // saldo, rede…), o erro sobe para o TimelineEditor, que continua montado com as edições.
   async function generateFromEdits(editedTranscript, extra = {}) {
-    setPhase('processing');
     startedAtRef.current = Date.now();
     try {
       // extra traz os cortes de silêncio escolhidos na timeline (manualSilence + silenceCuts).
       const created = await renderEdited(sourceId, editedTranscript, await withBrand({ ...options, ...extra }));
-      watchRender(created);
+      setEditorError(null);
+      watchRender(created, true);
     } catch (e) {
-      fail(e.message);
+      refreshBilling();
+      throw e;
     }
   }
 
@@ -295,6 +310,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     setFile(null);
     setJob(null);
     setError(null);
+    setEditorError(null);
     setUploadPct(0);
     setSourceId(null);
     setTranscriptData(null);
@@ -377,9 +393,12 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
         <Processing job={job} title="Preparando o editor" subtitle="Transcrevendo a fala — depois você corta o vídeo editando o texto." />
       )}
 
-      {phase === 'editing' && transcriptData && (
-        <div className="rf-anim">
+      {/* Continua montado (escondido) enquanto o render da timeline processa. */}
+      {transcriptData && (phase === 'editing' || (phase === 'processing' && editorRender)) && (
+        <div className="rf-anim" style={phase === 'editing' ? undefined : { display: 'none' }}>
           <TimelineEditor
+            hidden={phase !== 'editing'}
+            jobError={editorError}
             transcript={transcriptData}
             durationSec={durationSec}
             sourceId={sourceId}

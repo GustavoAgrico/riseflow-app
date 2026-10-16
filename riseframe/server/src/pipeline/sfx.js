@@ -96,46 +96,95 @@ export function tickTrackWav(times, durationSec, { rate = 44100, gain = 0.5, sam
   return buf;
 }
 
-/** Gera os SFX base sinteticamente com o FFmpeg — sem assets externos. */
-async function synthSfx(work, types) {
-  const pop = path.join(work, 'sfx_pop.wav');
-  const whoosh = path.join(work, 'sfx_whoosh.wav');
-  if (types.includes('pop')) {
+/**
+ * Biblioteca de efeitos sonoros — os mais usados em edição de Reels/Shorts (riser,
+ * obturador, clique, digitação...). Todos SINTETIZADOS pelo FFmpeg: sem assets de
+ * terceiros, sem risco de direitos autorais.
+ * - base: qual nível de LEVELS usar; gain: ajuste fino sobre ele.
+ * - lead: segundos ANTES do momento em que o som começa (o riser "chega" no ponto).
+ * - src/af: entrada lavfi e cadeia de filtros que geram o som.
+ */
+export const SFX_LIBRARY = {
+  whoosh: {
+    label: 'Whoosh (passagem)', base: 'whoosh', gain: 1, lead: 0.3,
+    // Ruído marrom (grave, macio) com subida longa e queda rápida, passando de um lado
+    // para o outro no estéreo e com um pouco de ar — soa como "passagem", não chiado.
+    src: 'anoisesrc=d=0.65:c=brown:a=0.9:r=44100',
+    af: ['highpass=f=120', 'lowpass=f=2600', 'equalizer=f=900:t=q:w=1:g=4',
+      'afade=t=in:st=0:d=0.42:curve=qsin', 'afade=t=out:st=0.42:d=0.23:curve=exp',
+      'aecho=0.8:0.6:35:0.25', 'volume=1.6', 'aformat=channel_layouts=stereo', 'apulsator=hz=1.3:amount=0.7'],
+  },
+  swoosh: {
+    label: 'Swoosh (rápido)', base: 'whoosh', gain: 0.8, lead: 0.15,
+    src: 'anoisesrc=d=0.32:c=pink:a=0.9:r=44100',
+    af: ['highpass=f=700', 'lowpass=f=7000', 'afade=t=in:st=0:d=0.18:curve=qsin',
+      'afade=t=out:st=0.18:d=0.14:curve=exp', 'volume=1.4', 'aformat=channel_layouts=stereo', 'apulsator=hz=3:amount=0.8'],
+  },
+  riser: {
+    label: 'Riser metálico (subida)', base: 'whoosh', gain: 0.75, lead: 1.5,
+    // Tom com glissando para cima + ruído, com flanger para o brilho "metálico".
+    src: "aevalsrc='0.35*sin(2*PI*(180*t+260*t*t))+0.2*sin(2*PI*(360*t+520*t*t))+0.12*(random(0)*2-1)':d=1.6:s=44100",
+    af: ['highpass=f=150', 'afade=t=in:st=0:d=1.35:curve=exp', 'afade=t=out:st=1.45:d=0.15',
+      'flanger=delay=2:depth=4:speed=0.6', 'aecho=0.8:0.5:40:0.3', 'aformat=channel_layouts=stereo'],
+  },
+  shutter: {
+    label: 'Obturador de câmera', base: 'pop', gain: 1.1, lead: 0,
+    // Dois estalos secos (abre/fecha), como uma câmera fotográfica.
+    src: "aevalsrc='(random(0)*2-1)*(exp(-t*90)+0.75*gte(t,0.09)*exp(-(t-0.09)*70))':d=0.3:s=44100",
+    af: ['highpass=f=1500', 'lowpass=f=9000', 'volume=1.3', 'aformat=channel_layouts=stereo'],
+  },
+  click: {
+    label: 'Clique de mouse', base: 'pop', gain: 1, lead: 0,
+    src: "aevalsrc='(random(0)*2-1)*exp(-t*420)+0.5*sin(2*PI*2400*t)*exp(-t*320)':d=0.06:s=44100",
+    af: ['highpass=f=900', 'aformat=channel_layouts=stereo'],
+  },
+  typing: {
+    label: 'Digitação (teclado)', base: 'pop', gain: 1.2, lead: 0,
+    // Sequência irregular de teclas por ~1,2 s.
+    src: "aevalsrc='(random(0)*2-1)*exp(-mod(t+0.03*sin(t*29),0.105)*260)*(0.55+0.45*sin(t*37))':d=1.2:s=44100",
+    af: ['highpass=f=1200', 'lowpass=f=8000', 'afade=t=out:st=1.05:d=0.15', 'aformat=channel_layouts=stereo'],
+  },
+  pop: {
+    label: 'Pop', base: 'pop', gain: 1, lead: 0,
     // Pop: blip curto (clique suave).
-    await runFfmpeg(
-      ['-f', 'lavfi', '-i', 'sine=frequency=1000:duration=0.06:sample_rate=44100',
-        '-af', 'afade=t=out:st=0.008:d=0.05,volume=0.8', '-ac', '2', '-y', pop],
-      { label: 'sfx-pop' },
-    );
+    src: 'sine=frequency=1000:duration=0.06:sample_rate=44100',
+    af: ['afade=t=out:st=0.008:d=0.05', 'volume=0.8'],
+  },
+  ding: {
+    label: 'Ding (notificação)', base: 'pop', gain: 0.7, lead: 0,
+    src: "aevalsrc='0.5*sin(2*PI*1320*t)*exp(-t*4)+0.25*sin(2*PI*2640*t)*exp(-t*6)':d=1.1:s=44100",
+    af: ['aformat=channel_layouts=stereo'],
+  },
+};
+
+const isType = (type) => Object.hasOwn(SFX_LIBRARY, type);
+
+/** Gera (uma vez por tipo) o arquivo de cada SFX da biblioteca usado. */
+async function synthSfx(work, types) {
+  const files = {};
+  for (const type of new Set(types)) {
+    if (!isType(type)) continue;
+    const s = SFX_LIBRARY[type];
+    const file = path.join(work, `sfx_${type}.wav`);
+    await runFfmpeg(['-f', 'lavfi', '-i', s.src, '-af', s.af.join(','), '-ac', '2', '-y', file], { label: `sfx-${type}` });
+    files[type] = file;
   }
-  if (!types.includes('whoosh')) return { pop, whoosh };
-  // Whoosh: ruído marrom (grave, macio) com subida longa e queda rápida, passando de
-  // um lado para o outro no estéreo e com um pouco de ar — soa como "passagem", não chiado.
-  await runFfmpeg(
-    ['-f', 'lavfi', '-i', 'anoisesrc=d=0.65:c=brown:a=0.9:r=44100',
-      '-af', [
-        'highpass=f=120', 'lowpass=f=2600', 'equalizer=f=900:t=q:w=1:g=4',
-        'afade=t=in:st=0:d=0.42:curve=qsin', 'afade=t=out:st=0.42:d=0.23:curve=exp',
-        'aecho=0.8:0.6:35:0.25', 'volume=1.6',
-        'aformat=channel_layouts=stereo', 'apulsator=hz=1.3:amount=0.7',
-      ].join(','),
-      '-ac', '2', '-y', whoosh],
-    { label: 'sfx-whoosh' },
-  );
-  return { pop, whoosh };
+  return files;
 }
 
 /**
  * Monta o filter_complex que mixa os SFX no áudio original nos tempos dos eventos.
  * Puro/exportado para teste. Retorna { filter, order } onde `order` são os tipos
  * de SFX na ordem dos inputs extras (input 0 = vídeo original).
- * @param {Array<{t:number,type:'pop'|'whoosh'}>} events
+ * `t` é o MOMENTO do efeito; o início do som já desconta o `lead` do tipo.
+ * @param {Array<{t:number,type:string}>} events
  */
 export function buildSfxMix(events, opts = {}) {
-  const vol = LEVELS[opts.intensity] || LEVELS.medio;
+  const lv = LEVELS[opts.intensity] || LEVELS.medio;
   const list = (events || [])
-    .filter((e) => e && Number.isFinite(e.t) && e.t >= 0 && (e.type === 'pop' || e.type === 'whoosh'))
-    .sort((a, b) => a.t - b.t)
+    .filter((e) => e && Number.isFinite(e.t) && e.t >= 0 && isType(e.type))
+    .map((e) => ({ ...e, at: Math.max(0, e.t - SFX_LIBRARY[e.type].lead) }))
+    .sort((a, b) => a.at - b.at)
     .slice(0, opts.max ?? 80);
   // Os cliques (tick) chegam prontos numa faixa só (opts.tickTrack), como mais uma entrada.
   if (!list.length && !opts.tickTrack) return null;
@@ -143,14 +192,16 @@ export function buildSfxMix(events, opts = {}) {
   const parts = [];
   const order = [];
   list.forEach((e, i) => {
-    const ms = Math.round(e.t * 1000);
+    const s = SFX_LIBRARY[e.type];
+    const vol = +(lv[s.base] * s.gain).toFixed(3);
+    const ms = Math.round(e.at * 1000);
     const idx = i + 1; // input 0 é o vídeo original
-    parts.push(`[${idx}:a]adelay=${ms}|${ms},volume=${vol[e.type]}[e${i}]`);
+    parts.push(`[${idx}:a]adelay=${ms}|${ms},volume=${vol}[e${i}]`);
     order.push(e.type);
   });
   const labels = list.map((_, i) => `[e${i}]`);
   if (opts.tickTrack) {
-    parts.push(`[${list.length + 1}:a]aformat=channel_layouts=stereo,volume=${vol.tick}[ticks]`);
+    parts.push(`[${list.length + 1}:a]aformat=channel_layouts=stereo,volume=${lv.tick}[ticks]`);
     labels.push('[ticks]');
     order.push('ticks');
   }
@@ -161,7 +212,7 @@ export function buildSfxMix(events, opts = {}) {
 
 /**
  * Aplica os efeitos sonoros ao vídeo (mantém o vídeo, remixa só o áudio).
- * @param {Array<{t:number,type:'pop'|'whoosh'}>} events tempos (na timeline final)
+ * @param {Array<{t:number,type:string}>} events momentos (na timeline final); 'tick' = tecla por palavra
  * @returns {Promise<{output:string, applied:boolean, count:number}>}
  */
 export async function applySoundEffects(input, work, meta, events, options, onProgress) {
@@ -179,10 +230,10 @@ export async function applySoundEffects(input, work, meta, events, options, onPr
   const mix = buildSfxMix(events, { intensity: options.sfxIntensity, tickTrack: !!tickPath });
   if (!mix) return { output: input, applied: false, count: 0 };
 
-  const { pop, whoosh } = await synthSfx(work, mix.order);
+  const files = await synthSfx(work, mix.order);
   const output = path.join(work, 'sfx.mp4');
   const args = ['-i', input];
-  for (const type of mix.order) args.push('-i', type === 'ticks' ? tickPath : type === 'pop' ? pop : whoosh);
+  for (const type of mix.order) args.push('-i', type === 'ticks' ? tickPath : files[type]);
   args.push(
     '-filter_complex', mix.filter,
     '-map', '0:v', '-map', '[aout]',
@@ -191,6 +242,9 @@ export async function applySoundEffects(input, work, meta, events, options, onPr
 
   await runFfmpeg(args, { label: 'sfx', totalDuration: meta.duration, onProgress });
   const count = mix.order.filter((t) => t !== 'ticks').length + ticks.length;
-  log.ok(`efeitos sonoros mixados (${count}: ${mix.order.filter((t) => t === 'pop').length} pops, ${mix.order.filter((t) => t === 'whoosh').length} whooshes, ${ticks.length} teclas)`);
-  return { output, applied: true, count };
+  const byType = {};
+  for (const t of mix.order) if (t !== 'ticks') byType[t] = (byType[t] || 0) + 1;
+  if (ticks.length) byType.tick = ticks.length;
+  log.ok(`efeitos sonoros mixados (${count}: ${Object.entries(byType).map(([t, n]) => `${n} ${t}`).join(', ')})`);
+  return { output, applied: true, count, byType };
 }

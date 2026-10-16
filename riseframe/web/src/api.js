@@ -412,8 +412,16 @@ export async function renderEdited(sourceId, editedTranscript, options) {
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ sourceId, editedTranscript, options }),
   });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    // Leva o código (PLAN_REQUIRED, PAYMENT_REQUIRED…) e os recursos travados para o
+    // editor oferecer a saída certa sem perder a timeline.
+    const err = new Error(data.error || `erro ${r.status}`);
+    err.status = r.status;
+    err.code = data.code || null;
+    err.locked = Array.isArray(data.locked) ? data.locked : [];
+    throw err;
+  }
   return data;
 }
 

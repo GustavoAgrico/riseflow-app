@@ -9,11 +9,14 @@ export const openPlans = () => window.dispatchEvent(new CustomEvent('rf:open-pla
 
 const linkBtn = { background: 'none', border: 'none', color: C.orangeSoft, fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: '6px 0', fontFamily: 'inherit' };
 
+// Rótulo curto do botão que desliga cada recurso travado (quando quem usa oferece onDisable).
+const DISABLE_SHORT = { ai: 'Desligar', captionStyle: 'Usar simples', image: 'Remover' };
+
 /**
  * "Custa N créditos · você tem M" antes de enviar/renderizar, e aviso quando algum
  * recurso ligado não está no plano. Some quando não há cobrança.
  */
-export default function CostLine({ mode, options, style, sourceId }) {
+export default function CostLine({ mode, options, style, sourceId, onDisable }) {
   const { billing } = useAuth();
   if (!billing || billing.unlimited) return null;
   // Edição grátis de teste: todos os recursos, sem gastar créditos.
@@ -48,6 +51,9 @@ export default function CostLine({ mode, options, style, sourceId }) {
             {locked.map((i) => (
               <div key={i.id}>
                 {i.label}: plano {cheapestPlanFor(i.id, billing.plans) || 'superior'} ou acima.
+                {onDisable && DISABLE_SHORT[i.id] && (
+                  <button onClick={() => onDisable(i.id)} style={{ ...linkBtn, fontSize: 12, padding: 0, marginLeft: 8 }}>{DISABLE_SHORT[i.id]}</button>
+                )}
               </div>
             ))}
             <div style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>Desligue o recurso ou mude de plano.</div>

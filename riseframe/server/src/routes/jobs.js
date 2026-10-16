@@ -31,6 +31,13 @@ import { isCaptionColor, HIGHLIGHT_IDS, isFontStyle } from '../../../shared/capt
 import { VOICE_NOISE, VOICE_PRESETS, VOICE_EFFECTS, previewVoice } from '../pipeline/voice.js';
 
 const CAPTION_TEMPLATE_IDS = Object.keys(CAPTION_TEMPLATES);
+import { CAPTION_LANGUAGES } from '../pipeline/translate.js';
+import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
+import { SFX_LIBRARY } from '../pipeline/sfx.js';
+import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
+
+/** Tipo de SFX válido da biblioteca, 'none' ou o padrão. */
+const sfxType = (v, def) => (v === 'none' || Object.hasOwn(SFX_LIBRARY, v) ? v : def);
 
 /** Opções do job com as chaves salvas do usuário (Pexels/Anthropic) — o servidor manda. */
 /**
@@ -404,6 +411,14 @@ function sanitizeUserMedia(raw) {
       scale: clampNum(m.scale, 0.15, 0.95, 0.4),
       opacity: clampNum(m.opacity, 0.1, 1, 1),
       volume: clampNum(m.volume, 0, 2, 0.35),
+      // Animação de entrada/saída e mesclagem da camada (ver overlay.js).
+      animIn: Object.hasOwn(LAYER_ANIMATIONS, m.animIn) ? m.animIn : 'none',
+      animOut: Object.hasOwn(LAYER_ANIMATIONS, m.animOut) ? m.animOut : 'none',
+      animDur: clampNum(m.animDur, 0.15, 2, 0.4),
+      blend: Object.hasOwn(BLEND_MODES, m.blend) ? m.blend : 'normal',
+      // Camada (0 = mais embaixo) e ponto de início no arquivo (aparar/dividir).
+      layer: Math.round(clampNum(m.layer, 0, 20, 0)),
+      offset: clampNum(m.offset, 0, 100000, 0),
     };
     out.push(item);
     if (out.length >= 40) break; // teto de segurança
@@ -627,6 +642,24 @@ export function parseOptions(raw) {
         opacity: clampNum(o.watermark.opacity, 0.15, 1, 0.85),
       }
       : null,
+    // Ducking: a música própria abaixa sozinha enquanto há fala ('off' desliga).
+    musicDucking: ['off', 'suave', 'medio', 'forte'].includes(o.musicDucking) ? o.musicDucking : 'medio',
+    // Tradução das legendas ('' = idioma original da fala).
+    captionLanguage: Object.hasOwn(CAPTION_LANGUAGES, o.captionLanguage) ? o.captionLanguage : '',
+    // Biblioteca de SFX: qual som entra em cada gatilho automático.
+    sfxBrollType: sfxType(o.sfxBrollType, 'whoosh'),
+    sfxZoomType: sfxType(o.sfxZoomType, 'whoosh'),
+    sfxCutType: sfxType(o.sfxCutType, 'none'),
+    // Efeitos colocados à mão na timeline (tempo original; o servidor remapeia após os cortes).
+    sfxMoments: Array.isArray(o.sfxMoments)
+      ? o.sfxMoments
+          .filter((m) => m && Number.isFinite(Number(m.t)) && Number(m.t) >= 0 && Object.hasOwn(SFX_LIBRARY, m.type))
+          .slice(0, 60)
+          .map((m) => ({ t: Number(m.t), type: m.type }))
+      : [],
+    // Transições (flash/esmaecer/brilho/blur) nos cortes e/ou nas entradas de B-roll.
+    transition: Object.hasOwn(TRANSITIONS, o.transition) ? o.transition : 'none',
+    transitionAt: Object.hasOwn(TRANSITION_TARGETS, o.transitionAt) ? o.transitionAt : 'broll',
   };
 }
 
