@@ -46,7 +46,7 @@ function wordOut(w) {
   };
 }
 
-export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, onSettings, busy }) {
+export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, onSettings, busy, hidden = false, jobError = null }) {
   const { billing } = useAuth();
   const caps = catalog?.capabilities || {};
   const cap0 = options || {};
@@ -235,6 +235,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [brollPasteHint, setBrollPasteHint] = useState(null); // índice do momento esperando a imagem do Google
   const [brollBusy, setBrollBusy] = useState(false);
   const [brollErr, setBrollErr] = useState('');
+  // Envio do render: o editor continua montado até o servidor aceitar, então um erro
+  // (ex.: 403 PLAN_REQUIRED) aparece aqui sem perder nada da timeline.
+  const [sending, setSending] = useState(false);
+  const [renderErr, setRenderErr] = useState(null); // { message, code, locked: [] }
+  // Recursos desligados aqui (sobrepõem as opções do início, ex.: autoClean: false).
+  const [renderOff, setRenderOff] = useState({});
   const brollUploadRef = useRef(null); // input file para "usar minha mídia" num momento
   const brollTargetIdx = useRef(null);
   const framingBoxRef = useRef(null);
@@ -1274,20 +1280,55 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     });
   }
 
-  function generate() {
-    markAutosaveSubmitted(sourceId);
+  // Desliga, só neste render, um recurso que o plano não libera.
+  function disableFeature(id) {
+    if (id === 'ai') setRenderOff((o) => ({ ...o, autoClean: false }));
+    if (id === 'captionStyle') setCapField({ captionTemplate: 'clean' });
+    if (id === 'image') {
+      setBrollOn(false);
+      setBrollReview(null);
+      setRenderOff((o) => ({ ...o, broll: false }));
+    }
+    setRenderErr((e) => {
+      if (!e) return e;
+      const locked = (e.locked || []).filter((x) => x !== id);
+      return e.code === 'PLAN_REQUIRED' && !locked.length ? null : { ...e, locked };
+    });
+  }
+
+  // Escondido enquanto o render processa: para a reprodução.
+  useEffect(() => {
+    if (hidden) videoRef.current?.pause();
+  }, [hidden]);
+
+  // O job aceito falhou no meio do processamento: o App volta para cá e o erro
+  // aparece no mesmo aviso dos erros de envio.
+  const renderErrRef = useRef(null);
+  useEffect(() => {
+    if (!jobError) return;
+    setRenderErr({ message: jobError.message, code: null, locked: [] });
+    requestAnimationFrame(() => renderErrRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  }, [jobError]);
+
+  async function generate() {
+    if (sending) return;
     // Cortes de silêncio escolhidos: uma pequena folga interna evita cortar o
     // ataque/finalização das palavras vizinhas.
     const silenceCuts = pausesCut
       .map((p) => ({ start: p.start + Math.min(0.03, p.dur / 4), end: p.end - Math.min(0.03, p.dur / 4) }))
       .filter((c) => c.end - c.start > 0.02);
-    onGenerate(
+    setRenderErr(null);
+    setSending(true);
+    try {
+      await onGenerate(
       {
         provider: transcript.provider,
         language: transcript.language,
         segments: segments.map((s) => ({ start: s.start, end: s.end, words: s.words.map(wordOut) })),
       },
       {
+        // Recursos desligados aqui (ex.: limpeza por IA fora do plano).
+        ...renderOff,
         manualSilence: true,
         silenceCuts,
         // pausas que o usuário escolheu manter (os outros silêncios que o servidor achar saem)
@@ -1352,7 +1393,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         brollLayout: brollLayoutSel,
         imageSource,
       },
-    );
+      );
+      markAutosaveSubmitted(sourceId);
+    } catch (e) {
+      setRenderErr({ message: e.message, code: e.code || null, locked: e.locked || [] });
+    } finally {
+      // Em caso de sucesso o App mostra o progresso e este editor fica escondido.
+      setSending(false);
+    }
   }
 
   // Capítulos automáticos (faixa colorida da timeline): Intro, Conteúdo principal e
@@ -1441,9 +1489,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Atalhos de teclado (fora de campos de texto): espaço, setas, S/Ctrl+B dividem a
   // faixa selecionada, Delete exclui o selecionado.
   const keysRef = useRef({});
-  keysRef.current = { togglePlay, seek, cur, goCaption, splitSelected, deleteSelected, undo, redo };
+  keysRef.current = { togglePlay, seek, cur, goCaption, splitSelected, deleteSelected, undo, redo, hidden };
   useEffect(() => {
     function onKey(e) {
+      if (keysRef.current.hidden) return; // escondido durante o render
       const t = e.target;
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       const k = keysRef.current;
@@ -3289,11 +3338,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <CostLine
           mode="render"
           sourceId={sourceId}
-          options={{ ...options, ...cap, ...(!brollOn ? { broll: false } : brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}) }}
+          options={{ ...options, ...renderOff, ...cap, ...(!brollOn ? { broll: false } : brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}) }}
+          onDisable={disableFeature}
           style={{ marginTop: 18 }}
         />
-        <PrimaryButton onClick={generate} disabled={busy || allGone} style={{ width: '100%', marginTop: 12 }}>
-          {allGone ? 'Você cortou tudo — reinclua algo' : busy ? 'Gerando…' : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Icon name="clapper" size={18} strokeWidth={1.9} /> Renderizar vídeo final</span>)}
+        {renderErr && <div ref={renderErrRef}><RenderError err={renderErr} onDisable={disableFeature} onClose={() => setRenderErr(null)} /></div>}
+        <PrimaryButton onClick={generate} disabled={busy || sending || allGone} style={{ width: '100%', marginTop: 12 }}>
+          {allGone ? 'Você cortou tudo — reinclua algo' : busy || sending ? 'Gerando…' : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Icon name="clapper" size={18} strokeWidth={1.9} /> Renderizar vídeo final</span>)}
         </PrimaryButton>
         </div>
       </div>
@@ -3410,6 +3461,44 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   );
   // No celular o editor ocupa a tela toda (fora do layout da página, que tem barra e menu).
   return isMobile && typeof document !== 'undefined' ? createPortal(editorCard, document.body) : editorCard;
+}
+
+// Ação para desligar cada recurso que o plano pode travar (ids de shared/credits.js).
+export const DISABLE_LABEL = {
+  ai: 'Desligar limpeza por IA',
+  captionStyle: 'Usar legenda simples',
+  image: 'Remover B-roll',
+};
+
+/** Erro do envio do render, dentro do editor: mensagem do servidor + como resolver. */
+function RenderError({ err, onDisable, onClose }) {
+  const fixes = (err.locked || []).filter((id) => DISABLE_LABEL[id]);
+  const showPlans = err.code === 'PLAN_REQUIRED' || err.code === 'PAYMENT_REQUIRED';
+  const btn = { fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', borderRadius: 8, padding: '6px 11px' };
+  return (
+    <div role="alert" style={{ display: 'flex', alignItems: 'flex-start', gap: 9, marginTop: 12, padding: '11px 13px', borderRadius: 10, background: 'rgba(240,82,107,0.1)', border: `1px solid ${C.red}55`, color: '#FCA5B4', fontSize: 13, lineHeight: 1.5 }}>
+      <Icon name={err.code === 'PLAN_REQUIRED' ? 'lock' : 'alert'} size={15} strokeWidth={2} style={{ marginTop: 2, flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div><b>Não foi possível renderizar.</b> {err.message}</div>
+        <div style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>Suas edições na timeline continuam aqui.</div>
+        {(fixes.length > 0 || showPlans) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 9 }}>
+            {fixes.map((id) => (
+              <button key={id} onClick={() => onDisable(id)} style={{ ...btn, background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}`, color: C.text }}>
+                {DISABLE_LABEL[id]}
+              </button>
+            ))}
+            {showPlans && (
+              <button onClick={openPlans} style={{ ...btn, background: 'none', border: 'none', color: C.orangeSoft, padding: '6px 2px' }}>Ver planos →</button>
+            )}
+          </div>
+        )}
+      </div>
+      <button onClick={onClose} aria-label="Fechar aviso" style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: '0 2px', fontSize: 17, lineHeight: 1, fontFamily: 'inherit', flexShrink: 0 }}>
+        ×
+      </button>
+    </div>
+  );
 }
 
 /** Primeira camada livre (sem outra mídia no mesmo intervalo de tempo). */
