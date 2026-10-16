@@ -85,6 +85,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     motionIntensity: cap0.motionIntensity || 'medio',
     soundEffects: cap0.soundEffects === true,
     sfxIntensity: cap0.sfxIntensity || 'medio',
+    sfxBrollType: cap0.sfxBrollType || 'whoosh',
+    sfxZoomType: cap0.sfxZoomType || 'whoosh',
+    sfxCutType: cap0.sfxCutType || 'none',
+    transition: cap0.transition || 'none',
+    transitionAt: cap0.transitionAt || 'broll',
   });
   // Tratamento e modificadores da voz (aba Áudio) + prévia ouvível.
   const [voice, setVoice] = useState(() => voiceOf(cap0));
@@ -101,6 +106,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setVoicePrev((p) => ({ ...p, busy: false, err: e.message }));
     }
   }
+  // Efeitos sonoros colocados à mão no playhead (tempo original).
+  const [sfxMoments, setSfxMoments] = useState([]);
+  const [sfxPick, setSfxPick] = useState('shutter');
   // Zoom nos MOMENTOS-CHAVE (faixa ZOOM da timeline). null = ainda não calculado.
   const [zoomMoments, setZoomMoments] = useState(null);
   const [selZoom, setSelZoom] = useState(null);
@@ -919,6 +927,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             px: 0.62,
             py: 0.06,
             opacity: 1,
+            animIn: 'none', // animação de entrada/saída da camada
+            animOut: 'none',
+            blend: 'normal', // modo de mesclagem (só tela cheia)
           },
         ]);
       }
@@ -1155,7 +1166,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           px: +Number(m.px).toFixed(3),
           py: +Number(m.py).toFixed(3),
           opacity: +Number(m.opacity).toFixed(2),
+          animIn: m.animIn || 'none',
+          animOut: m.animOut || 'none',
+          blend: m.blend || 'normal',
         })),
+        // Efeitos sonoros colocados à mão (tempo original; o servidor remapeia após os cortes).
+        sfxMoments: sfxMoments.map((m) => ({ t: +m.t.toFixed(2), type: m.type })),
         // B-roll revisado: trava o que entra em cada momento (e liga o B-roll).
         ...(!brollOn ? { broll: false, brollPlan: [] } : brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}),
         headline: headline.on && headline.text.trim() ? { text: headline.text.trim(), seconds: headline.seconds, style: headline.style, color: headline.color, position: headline.position } : null,
@@ -2212,6 +2228,35 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </div>
                 </CapRow>
               )}
+              {fx.soundEffects && catalog?.sfxTypes && (
+                <>
+                  <CapRow label="Som nas entradas de B-roll"><Sel value={fx.sfxBrollType} opts={catalog.sfxTypes} onChange={(v) => setFx((f) => ({ ...f, sfxBrollType: v }))} /></CapRow>
+                  <CapRow label="Som nos zooms"><Sel value={fx.sfxZoomType} opts={catalog.sfxTypes} onChange={(v) => setFx((f) => ({ ...f, sfxZoomType: v }))} /></CapRow>
+                  <CapRow label="Som nos cortes"><Sel value={fx.sfxCutType} opts={catalog.sfxTypes} onChange={(v) => setFx((f) => ({ ...f, sfxCutType: v }))} /></CapRow>
+                </>
+              )}
+              {catalog?.sfxTypes && (
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <span style={{ fontSize: 11, color: C.faint, fontWeight: 600 }}>Efeito sonoro no ponto atual ({cur.toFixed(1)}s)</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ flex: 1 }}><Sel value={sfxPick} opts={catalog.sfxTypes.filter((o) => o.id !== 'none')} onChange={setSfxPick} /></div>
+                    <button onClick={() => setSfxMoments((l) => [...l, { key: `s${Date.now()}`, t: cur, type: sfxPick }].sort((a, b) => a.t - b.t))} style={{ ...framingTab(false), flex: 'none' }}>+ Adicionar</button>
+                  </div>
+                  {sfxMoments.map((m) => (
+                    <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: C.muted }}>
+                      <span style={{ width: 48, fontVariantNumeric: 'tabular-nums' }}>{m.t.toFixed(1)}s</span>
+                      <span style={{ flex: 1 }}>{catalog.sfxTypes.find((o) => o.id === m.type)?.label || m.type}</span>
+                      <button onClick={() => setSfxMoments((l) => l.filter((x) => x.key !== m.key))} title="Remover" style={{ ...zoomBtn, width: 22, height: 22, color: C.red }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {catalog?.transitions && (
+                <CapRow label="Transição"><Sel value={fx.transition} opts={catalog.transitions} onChange={(v) => setFx((f) => ({ ...f, transition: v }))} /></CapRow>
+              )}
+              {catalog?.transitionTargets && fx.transition !== 'none' && (
+                <CapRow label="Onde aplicar a transição"><Sel value={fx.transitionAt} opts={catalog.transitionTargets} onChange={(v) => setFx((f) => ({ ...f, transitionAt: v }))} /></CapRow>
+              )}
               <div style={{ fontSize: 11.5, color: C.faint }}>
                 <b>Prévia:</b> ao escolher um movimento, o player ao lado mostra o efeito na hora; dê play para ver no ritmo da fala e ouvir os whooshes. O <b>zoom nos momentos-chave</b> só aproxima nos pontos de ênfase (pausa antes, números, perguntas, palavras fortes) — não o vídeo inteiro. Na faixa <b>ZOOM</b> da timeline: clique para ajustar, arraste para mover, puxe as pontas para mudar a duração. Os whooshes tocam nesses zooms e nas entradas de B-roll.
               </div>
@@ -2572,6 +2617,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                                 <input type="range" min="0.15" max="0.9" step="0.05" value={m.scale} onChange={(e) => updateMedia(m.key, { scale: Number(e.target.value) })} style={{ flex: 1 }} />
                                 <span style={{ width: 42, textAlign: 'right' }}>{Math.round(m.scale * 100)}%</span>
                               </label>
+                            )}
+                            {catalog?.layerAnimations && (
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 8 }}>
+                                <CapRow label="Entrada"><Sel value={m.animIn || 'none'} opts={catalog.layerAnimations} onChange={(v) => updateMedia(m.key, { animIn: v })} /></CapRow>
+                                <CapRow label="Saída"><Sel value={m.animOut || 'none'} opts={catalog.layerAnimations} onChange={(v) => updateMedia(m.key, { animOut: v })} /></CapRow>
+                              </div>
+                            )}
+                            {catalog?.blendModes && m.mode !== 'pip' && (
+                              <div style={{ marginTop: 6 }}>
+                                <CapRow label="Mesclagem"><Sel value={m.blend || 'normal'} opts={catalog.blendModes} onChange={(v) => updateMedia(m.key, { blend: v })} /></CapRow>
+                              </div>
                             )}
                           </>
                         )}

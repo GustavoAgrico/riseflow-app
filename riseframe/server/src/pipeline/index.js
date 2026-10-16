@@ -16,7 +16,9 @@ import { markFillers } from './cleanup.js';
 import { classifyNarrative } from './narrative.js';
 import { cleanupWithLLM } from './cleanupLLM.js';
 import { burnCaptions, captionSfxEvents } from './captions.js';
+import { translateTranscript } from './translate.js';
 import { applySoundEffects } from './sfx.js';
+import { transitionVf, cutJoins } from './transitions.js';
 import { applyWatermark } from './watermark.js';
 import { colorFilter, hasColorAdjust } from './color.js';
 import { convertAspect, finalRender, outputTarget } from './render.js';
@@ -65,7 +67,7 @@ function buildPlan(mode, options) {
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'headline', label: 'Colocando o título (headline)', weight: 6, enabled: Boolean(options.headline?.text) },
       { key: 'watermark', label: 'Aplicando o seu logo', weight: 6, enabled: Boolean(options.watermark?.file) },
-      { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true },
+      { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true || (Array.isArray(options.sfxMoments) && options.sfxMoments.length > 0) },
       { key: 'color', label: 'Analisando as cores', weight: 3, enabled: (options.colorLook || 'teal-orange') !== 'none' || hasColorAdjust(options.colorAdjust) },
       { key: 'render', label: 'Renderização final', weight: 18, enabled: true },
     ].filter((s) => s.enabled);
@@ -254,6 +256,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
+  // Fronteiras dos cortes na timeline final (para as transições nos cortes).
+  let joins = [];
+
   // 3. Cortes na timeline: silêncio (auto/render, se ligado) + palavras removidas (render)
   if (has('cut')) {
     const st = enter('cut');
@@ -360,6 +365,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
       };
       if (Array.isArray(options.brollPlan)) options.brollPlan = options.brollPlan.map(remapRange).filter(Boolean);
       if (Array.isArray(options.zoomMoments)) options.zoomMoments = options.zoomMoments.map(remapRange).filter(Boolean);
+      if (Array.isArray(options.sfxMoments)) options.sfxMoments = options.sfxMoments.map((m) => ({ ...m, t: +remapTime(Number(m.t), keep).toFixed(3) }));
+      joins = cutJoins(keep);
       meta = { ...meta, ...(await probeSummary(input)) };
       report.cut = { removedSeconds: Math.round(removedSeconds * 10) / 10, kept: keep.length, keep };
       cutKeep = keep;
@@ -463,6 +470,14 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
+  // Momentos de B-roll já na timeline final (plano travado na revisão ou o da análise).
+  const brollMomentsFinal = () => {
+    const plan = Array.isArray(options.brollPlan) && options.brollPlan.length ? options.brollPlan.filter((p) => !p.remove) : null;
+    return plan || analysis.brollMoments || [];
+  };
+  const transitionAtCuts = () => ['cuts', 'both'].includes(options.transitionAt);
+  const transitionAtBroll = () => (options.transitionAt || 'broll') !== 'cuts';
+
   // 6-. Mídias do usuário (imagens/vídeos/músicas próprias) — por baixo das legendas.
   if (has('usermedia')) {
     const st = enter('usermedia');
@@ -510,9 +525,25 @@ export async function runPipeline(job, onUpdate = () => {}) {
       centerWindows: options.captionBrollCenter !== false ? brollWindows : [],
     };
     captionStyle = style;
-    const r = await burnCaptions(input, work, meta, transcript, style, st.onProgress);
+    // Tradução opcional: só muda o texto queimado; a transcrição do editor segue no original.
+    let captionTranscript = transcript;
+    let translation = null;
+    if (options.captionLanguage) {
+      try {
+        captionTranscript = await translateTranscript(transcript, options.captionLanguage, {
+          anthropicKey: options.anthropicKey || config.analyze.anthropicKey,
+          model: config.analyze.model,
+          anthropicWorkspaceId: config.analyze.anthropicWorkspaceId,
+        });
+        translation = { language: options.captionLanguage };
+      } catch (err) {
+        log.warn(`tradução das legendas falhou (${err.message}); mantendo o idioma original`);
+        translation = { language: options.captionLanguage, skipped: err.message };
+      }
+    }
+    const r = await burnCaptions(input, work, meta, captionTranscript, style, st.onProgress);
     input = r.output;
-    report.captions = { segments: r.count, template: style.template, color: style.color };
+    report.captions = { segments: r.count, template: style.template, color: style.color, ...(translation ? { translation } : {}) };
     st.record(report.captions);
   }
 
@@ -534,22 +565,29 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
-  // 6b. Efeitos sonoros: whoosh nas entradas de B-roll e nos punch-ins do zoom
-  // dinâmico. (Sem "bip" nas legendas: a cada frase ficava repetitivo e cansativo.)
+  // 6b. Efeitos sonoros: o tipo escolhido (biblioteca de SFX) nas entradas de B-roll,
+  // nos punch-ins do zoom dinâmico e nas transições dos cortes, mais os efeitos
+  // colocados à mão na timeline. (Sem "bip" nas legendas: a cada frase cansava.)
   if (has('sfx')) {
     const st = enter('sfx');
     const events = [];
-    if (has('broll')) {
-      const plan = Array.isArray(options.brollPlan) && options.brollPlan.length ? options.brollPlan.filter((p) => !p.remove) : null;
-      for (const m of plan || analysis.brollMoments || []) events.push({ t: Math.max(0, m.start - 0.3), type: 'whoosh' });
-    }
-    if (report.motion?.effect === 'dynamic') {
-      for (const [a] of dynamicZoomWindows(transcript.segments, meta, options.zoomMoments)) events.push({ t: Math.max(0, a - 0.3), type: 'whoosh' });
+    const pick = (v, def) => (v === undefined || v === null || v === '' ? def : v);
+    if (options.soundEffects === true) {
+      const brollType = pick(options.sfxBrollType, 'whoosh');
+      const zoomType = pick(options.sfxZoomType, 'whoosh');
+      const cutType = pick(options.sfxCutType, 'none');
+      if (has('broll') && brollType !== 'none') {
+        for (const m of brollMomentsFinal()) events.push({ t: m.start, type: brollType });
+      }
+      if (report.motion?.effect === 'dynamic' && zoomType !== 'none') {
+        for (const [a] of dynamicZoomWindows(transcript.segments, meta, options.zoomMoments)) events.push({ t: a, type: zoomType });
+      }
+      if (cutType !== 'none') for (const t of joins) events.push({ t, type: cutType });
     }
     // Sons da legenda: tecla a cada palavra (estilo Premium) e nas palavras com ênfase.
-    if (captionStyle) events.push(...captionSfxEvents(transcript.segments, captionStyle));
-    // Dois whooshes quase juntos viram ruído: mantém um a cada 0,8 s no mínimo (as
-    // teclas ficam todas — são curtinhas e marcam cada palavra).
+    if (options.soundEffects === true && captionStyle) events.push(...captionSfxEvents(transcript.segments, captionStyle));
+    // Dois efeitos automáticos quase juntos viram ruído: mantém um a cada 0,8 s no mínimo
+    // (as teclas ficam todas — são curtinhas e marcam cada palavra).
     events.sort((x, y) => x.t - y.t);
     const kept = [];
     for (const e of events) {
@@ -559,9 +597,11 @@ export async function runPipeline(job, onUpdate = () => {}) {
     }
     events.length = 0;
     events.push(...kept);
+    // Efeitos colocados à mão na timeline entram sempre, do jeito que foram colocados.
+    for (const m of options.sfxMoments || []) events.push({ t: m.t, type: m.type });
     const r = await applySoundEffects(input, work, meta, events, options, st.onProgress);
     if (r.applied) input = r.output;
-    report.sfx = { count: r.count };
+    report.sfx = { count: r.count, byType: r.byType || {} };
     st.record(report.sfx);
     st.onProgress(1);
   }
@@ -602,7 +642,14 @@ export async function runPipeline(job, onUpdate = () => {}) {
   // 8. Render final
   {
     const st = enter('render');
-    const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf, reframe: aspectReframe, coverFile: options.cover?.intro ? coverFile : null }, st.onProgress);
+    // Transições (cortes e/ou B-roll) entram na mesma passada da cor.
+    const points = [];
+    if (transitionAtCuts()) points.push(...joins);
+    if (transitionAtBroll() && has('broll')) for (const m of brollMomentsFinal()) points.push(m.start, m.end);
+    const tVf = transitionVf(options.transition, points, meta.duration);
+    if (tVf) report.transition = { type: options.transition, at: options.transitionAt || 'broll' };
+    const vf = [colorVf, tVf].filter(Boolean).join(',') || null;
+    const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf: vf, reframe: aspectReframe, coverFile: options.cover?.intro ? coverFile : null }, st.onProgress);
     const outMeta = await probeSummary(r.output).catch(() => ({}));
     report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe, width: outMeta.width || null, height: outMeta.height || null, speed: options.speed && options.speed !== 1 ? options.speed : undefined, duration: outMeta.duration || null };
     st.record({ aspect: r.aspect });

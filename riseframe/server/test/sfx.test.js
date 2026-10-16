@@ -13,7 +13,8 @@ test('buildSfxMix: posiciona cada SFX no tempo certo e mixa mantendo o original'
   assert.ok(r);
   // ordenado por tempo: whoosh(0.5s) vira input 1, pop(1s) vira input 2
   assert.deepEqual(r.order, ['whoosh', 'pop']);
-  assert.ok(r.filter.includes('[1:a]adelay=500|500'), 'whoosh em 500ms');
+  // o whoosh começa 0,3 s antes do momento para "chegar" nele
+  assert.ok(r.filter.includes('[1:a]adelay=200|200'), 'whoosh começa em 200ms');
   assert.ok(r.filter.includes('[2:a]adelay=1000|1000'), 'pop em 1000ms');
   // original + 2 eventos = 3 inputs no amix, sem normalizar (mantém volume original)
   assert.ok(r.filter.includes('amix=inputs=3:normalize=0'), 'amix com 3 entradas');
@@ -60,4 +61,11 @@ test('teclas gravadas: carrega os WAVs de assets/sfx e usa no lugar do som sint�
   let pk = 0;
   for (let i = 0; i < 4410; i++) pk = Math.max(pk, Math.abs(wav.readInt16LE(44 + (Math.round(0.2 * 44100) + i) * 2)));
   assert.ok(pk > 32767 * 0.3, 'a tecla aparece com força');
+});
+
+test('buildSfxMix: biblioteca — riser começa antes do momento, tipos desconhecidos saem', () => {
+  const r = buildSfxMix([{ t: 3, type: 'riser' }, { t: 2, type: 'shutter' }, { t: 1, type: 'nao-existe' }]);
+  assert.deepEqual(r.order, ['riser', 'shutter']); // riser começa em 1,5 s, antes do shutter (2 s)
+  assert.ok(r.filter.includes('[1:a]adelay=1500|1500'));
+  assert.ok(r.filter.includes('[2:a]adelay=2000|2000'));
 });
