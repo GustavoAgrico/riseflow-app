@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { faceCropGeometry } from './broll.js';
+import { averageSubjectCenter } from './reframe.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('frame');
@@ -17,10 +18,16 @@ export async function applyManualFrame(input, work, meta, options, onProgress) {
 
   const W = meta.width || 1080;
   const H = meta.height || 1920;
-  const focus = {
-    x: Number.isFinite(Number(options.personFocusX)) ? Number(options.personFocusX) : 0.5,
-    y: Number.isFinite(Number(options.personFocusY)) ? Number(options.personFocusY) : 0.4,
-  };
+  // Ponto escolhido pelo usuário; sem ele ("Automático (rosto)"), o centro do rosto
+  // achado pelo rastreador — senão, o meio um pouco acima (onde costuma ficar o rosto).
+  let focus = Number.isFinite(Number(options.personFocusX))
+    ? { x: Number(options.personFocusX), y: Number.isFinite(Number(options.personFocusY)) ? Number(options.personFocusY) : 0.4 }
+    : null;
+  if (!focus) {
+    const face = await averageSubjectCenter(input).catch(() => null);
+    focus = face ? { x: face.x, y: face.y } : { x: 0.5, y: 0.4 };
+    if (face) log.info(`zoom no rosto (${face.source}): foco (${face.x.toFixed(2)}, ${face.y.toFixed(2)})`);
+  }
   const g = faceCropGeometry(W, H, W, H, focus, zoom);
   const out = path.join(work, 'frame.mp4');
   const args = ['-i', input, '-vf', `scale=${g.scaledW}:${g.scaledH}:flags=bicubic,crop=${W}:${H}:${g.cropX}:${g.cropY},setsar=1`];

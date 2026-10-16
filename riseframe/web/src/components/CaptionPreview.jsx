@@ -156,12 +156,14 @@ const RATIOS = { '9:16': 9 / 16, '1:1': 1, '16:9': 16 / 9, '4:5': 4 / 5 };
  * movimento/zoom, efeitos sonoros (whoosh nos punch-ins) e a legenda no estilo escolhido
  * (frases de exemplo; o texto real vem da transcrição, na edição).
  */
-export default function CaptionPreview({ options, videoUrl }) {
+export default function CaptionPreview({ options, videoUrl, onFocus = null }) {
   const wrapRef = useRef(null);
   const videoRef = useRef(null);
   const motionRef = useRef(null);
   const [availW, setAvailW] = useState(320);
   const [natural, setNatural] = useState(null); // proporção do vídeo (formato "original")
+  const [dims, setDims] = useState(null); // tamanho do vídeo (para o zoom/enquadramento)
+  const [guides, setGuides] = useState(null); // linhas de centralização enquanto arrasta
   const [muted, setMuted] = useState(true); // o navegador só deixa tocar sozinho sem som
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);
@@ -223,6 +225,39 @@ export default function CaptionPreview({ options, videoUrl }) {
     return () => cancelAnimationFrame(id);
   }, [videoUrl, motion, options.motionIntensity, options.soundEffects, options.sfxIntensity]);
 
+  // Zoom e enquadramento (a mesma conta do servidor: amplia no ponto escolhido e depois
+  // o formato recorta pelo centro): o vídeo é posicionado e ampliado dentro da prévia.
+  const zoomK = Math.min(2.5, Math.max(1, Number(options.personZoom) || 1));
+  const fx0 = Number.isFinite(Number(options.personFocusX)) ? Number(options.personFocusX) : 0.5;
+  const fy0 = Number.isFinite(Number(options.personFocusY)) ? Number(options.personFocusY) : 0.4;
+  const frame = (() => {
+    if (!dims || !w || !h) return null;
+    const half = 0.5 / zoomK;
+    const cx = Math.min(1 - half, Math.max(half, fx0));
+    const cy = Math.min(1 - half, Math.max(half, fy0));
+    const k = Math.max(w / (dims.w / zoomK), h / (dims.h / zoomK));
+    const dispW = dims.w * k;
+    const dispH = dims.h * k;
+    const left = Math.min(0, Math.max(w - dispW, w / 2 - cx * dispW));
+    const top = Math.min(0, Math.max(h - dispH, h / 2 - cy * dispH));
+    return { dispW, dispH, left, top };
+  })();
+  function startPan(e) {
+    if (!onFocus || !frame) return;
+    e.preventDefault();
+    const start = { x: e.clientX, y: e.clientY, fx: fx0, fy: fy0 };
+    const move = (ev) => {
+      // arrastar o vídeo para a direita mostra mais da esquerda (como mover a foto)
+      const sx = snapCenter(Math.min(1, Math.max(0, start.fx - (ev.clientX - start.x) / frame.dispW)), frame.dispW);
+      const sy = snapCenter(Math.min(1, Math.max(0, start.fy - (ev.clientY - start.y) / frame.dispH)), frame.dispH);
+      setGuides({ x: sx.on, y: sy.on });
+      onFocus(+sx.v.toFixed(3), +sy.v.toFixed(3));
+    };
+    const up = () => { setGuides(null); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
   function togglePlay() {
     const v = videoRef.current;
     if (!v) return;
@@ -259,10 +294,17 @@ export default function CaptionPreview({ options, videoUrl }) {
                   onClick={togglePlay}
                   onPlay={() => setPlaying(true)}
                   onPause={() => setPlaying(false)}
-                  onLoadedMetadata={(e) => { const v = e.currentTarget; v.playbackRate = speed; setDur(v.duration || 0); if (v.videoWidth && v.videoHeight) setNatural(v.videoWidth / v.videoHeight); }}
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', filter, cursor: 'pointer' }}
+                  onLoadedMetadata={(e) => { const v = e.currentTarget; v.playbackRate = speed; setDur(v.duration || 0); if (v.videoWidth && v.videoHeight) { setNatural(v.videoWidth / v.videoHeight); setDims({ w: v.videoWidth, h: v.videoHeight }); } }}
+                  style={frame ? { position: 'absolute', left: frame.left, top: frame.top, width: frame.dispW, height: frame.dispH, maxWidth: 'none', objectFit: 'fill', display: 'block', filter, cursor: 'pointer' } : { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', filter, cursor: 'pointer' }}
                 />
               </div>
+              {onFocus && frame && (
+                <div title="Arraste o vídeo para posicionar" onPointerDown={startPan}
+                  style={{ position: 'absolute', inset: 0, cursor: 'grab', touchAction: 'none', boxShadow: `inset 0 0 0 2px ${C.orange}`, borderRadius: 14 }}>
+                  <span style={{ position: 'absolute', left: 8, top: 8, fontSize: 10.5, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '3px 8px', borderRadius: 6 }}>arraste o vídeo para posicionar</span>
+                </div>
+              )}
+              {guides && <SnapGuides x={guides.x} y={guides.y} />}
               {lookCss.tint && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', ...lookCss.tint }} />}
               {adj.tint && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', ...adj.tint }} />}
             </>

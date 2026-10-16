@@ -172,9 +172,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   // Enquadramento no rosto (tela dividida): 'auto' detecta o rosto no servidor;
   // 'manual' usa o foco (arrastável) + zoom escolhidos aqui.
-  const [framingMode, setFramingMode] = useState('manual');
-  const [focus, setFocus] = useState({ x: 0.5, y: 0.4 });
-  const [zoom, setZoom] = useState(1);
+  // Zoom/enquadramento escolhidos antes (no Criar vídeo) continuam valendo aqui.
+  const hasFocus0 = Number.isFinite(Number(options?.personFocusX));
+  const [framingMode, setFramingMode] = useState(!hasFocus0 && Number(options?.personZoom) > 1 ? 'auto' : 'manual');
+  const [focus, setFocus] = useState(hasFocus0 ? { x: Number(options.personFocusX), y: Number.isFinite(Number(options.personFocusY)) ? Number(options.personFocusY) : 0.4 } : { x: 0.5, y: 0.4 });
+  const [zoom, setZoom] = useState(Math.min(2.5, Math.max(1, Number(options?.personZoom) || 1)));
   // Formato do vídeo final e como ele entra no formato (igual ao servidor):
   // auto = segue o rosto · manual = ponto escolhido · fit = inteiro com fundo desfocado.
   const [aspectSel, setAspectSel] = useState(['original', '9:16', '1:1', '16:9'].includes(options?.aspect) ? options.aspect : 'original');
