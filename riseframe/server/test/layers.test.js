@@ -43,3 +43,10 @@ test('várias camadas encadeiam até [vout]', () => {
   assert.match(parts[1], /\[v0\]$/);
   assert.match(parts[3], /^\[v0\]\[m1\]overlay=.*\[vout\]$/);
 });
+
+test('posição livre (cx/cy): centro da camada em qualquer lugar, maior que a tela', () => {
+  const [chain, ov] = visualLayerParts([item({ cx: 0.25, cy: 0.9, scale: 1.5 })], ctx);
+  assert.match(chain, /scale=1920:-2/, 'escala 150% da largura');
+  assert.ok(ov.includes("x='round(320.000-w/2)'"), ov);
+  assert.ok(ov.includes("y='round(648.000-h/2)'"), ov);
+});

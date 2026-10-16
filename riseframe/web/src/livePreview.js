@@ -97,6 +97,30 @@ function brownNoise(ac, seconds) {
   return buf;
 }
 
+// Sons da biblioteca: o servidor gera o mesmo arquivo usado no render; aqui só toca.
+const sfxBuffers = new Map(); // url → Promise<AudioBuffer>
+const SFX_GAIN = { suave: 0.55, medio: 0.8, forte: 1 };
+/** Toca o som `url` (prévia), no volume da intensidade. Baixa e guarda na 1ª vez. */
+export function playSfxUrl(url, intensity = 'medio') {
+  try {
+    const ac = ctx();
+    if (!ac || !url) return;
+    if (!sfxBuffers.has(url)) {
+      sfxBuffers.set(url, fetch(url).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status))))).then((b) => ac.decodeAudioData(b)).catch((e) => { sfxBuffers.delete(url); throw e; }));
+    }
+    sfxBuffers.get(url).then((buf) => {
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      const g = ac.createGain();
+      g.gain.value = SFX_GAIN[intensity] || SFX_GAIN.medio;
+      src.connect(g).connect(ac.destination);
+      src.start();
+    }).catch(() => {});
+  } catch {
+    /* sem áudio no navegador */
+  }
+}
+
 /** Toca um whoosh no volume escolhido (suave | medio | forte). */
 export function playWhoosh(intensity = 'medio') {
   try {

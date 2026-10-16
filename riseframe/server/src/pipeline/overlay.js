@@ -118,8 +118,8 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     let w0 = W;
     let h0 = H;
     if (m.mode === 'pip') {
-      const scale = clamp(m.scale, 0.15, 0.95, 0.4);
-      w0 = Math.round((W * scale) / 2) * 2;
+      const scale = clamp(m.scale, 0.05, 3, 0.4);
+      w0 = Math.max(2, Math.round((W * scale) / 2) * 2);
       h0 = m._aspect ? Math.round((w0 * m._aspect) / 2) * 2 : null;
       chain = `[${m._inIdx}:v]scale=${w0}:-2,setsar=1`;
     } else {
@@ -151,7 +151,12 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     // zoom/pop a camada cresce a partir do centro desse retângulo.
     let x;
     let y;
-    if (m.mode === 'pip') {
+    if (m.mode === 'pip' && Number.isFinite(Number(m.cx)) && Number.isFinite(Number(m.cy))) {
+      // Posição livre (arrastada no editor): centro da camada em fração da tela — pode
+      // ficar em qualquer lugar, até parcialmente fora do quadro.
+      x = `${f3(clamp(m.cx, -1, 2, 0.5) * W)}-w/2`;
+      y = `${f3(clamp(m.cy, -1, 2, 0.5) * H)}-h/2`;
+    } else if (m.mode === 'pip') {
       const px = f3(clamp(m.px, 0, 1, 0.62));
       const py = f3(clamp(m.py, 0, 1, 0.06));
       x = S ? `(${W}-${w0})*${px}+(${w0}-w)/2` : `(W-w)*${px}`;

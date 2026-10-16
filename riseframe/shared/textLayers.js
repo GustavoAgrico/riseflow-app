@@ -33,6 +33,16 @@ export const VIDEO_FX = {
   film: 'Moldura de filme',
   blur: 'Desfoque',
   glow: 'Brilho',
+  vhs: 'VHS',
+  glitch: 'Glitch',
+  shake: 'Tremor',
+  strobe: 'Flash (estroboscópio)',
+  negative: 'Negativo',
+  mirror: 'Espelho',
+  pixel: 'Pixelado',
+  cold: 'Frio',
+  warm: 'Quente',
+  saturated: 'Cores vivas',
 };
 /** Aproximação do efeito na prévia do editor (CSS). O render usa FFmpeg. */
 export const VIDEO_FX_CSS = {
@@ -44,6 +54,16 @@ export const VIDEO_FX_CSS = {
   film: 'contrast(1.08)',
   blur: 'blur(6px)',
   glow: 'brightness(1.12) saturate(1.35)',
+  vhs: 'saturate(1.3) contrast(1.1)',
+  glitch: 'hue-rotate(25deg) contrast(1.2)',
+  shake: '',
+  strobe: '',
+  negative: 'invert(1)',
+  mirror: '',
+  pixel: '',
+  cold: 'hue-rotate(-12deg) saturate(0.9) brightness(1.03)',
+  warm: 'sepia(0.25) saturate(1.15)',
+  saturated: 'saturate(1.9) contrast(1.08)',
 };
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;

@@ -337,3 +337,24 @@ export function __resetCloud() {
   dirty.clear();
   Object.assign(state, { enabled: false, ok: false, error: null, restoredAt: null, savedAt: null, files: {} });
 }
+
+// ── Objetos avulsos (projetos dos usuários) ──
+// Usados para guardar os projetos do editor no servidor online (sem disco permanente).
+// Sem nuvem ativa, não fazem nada (null/[]): quem chama cai no disco local.
+export async function cloudPutObject(name, buf) {
+  if (!state.enabled || !state.ok) return false;
+  await upload(name, buf);
+  return true;
+}
+export async function cloudGetObject(name) {
+  if (!state.enabled || !state.ok) return null;
+  return download(name);
+}
+export async function cloudListObjects(prefix) {
+  if (!state.enabled || !state.ok) return [];
+  return list(prefix);
+}
+export async function cloudDeleteObjects(names) {
+  if (!state.enabled || !state.ok || !names.length) return;
+  await removeRemote(names);
+}

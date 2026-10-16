@@ -22,8 +22,13 @@ test('tela dividida com B-roll: a legenda vai para o meio só durante o B-roll',
   assert.ok(ev.some(([t]) => Math.abs(t - 2) < 0.01), 'um cartão começa junto com o B-roll');
 });
 
-test('posição escolhida pelo usuário vence a centralização', () => {
-  const ass = buildAss(segments, meta, { template: 'clean', posX: 0.5, posY: 0.2, centerWindows: [{ start: 0, end: 99 }] });
+test('posição geral cede ao meio no B-roll; frase movida à mão vence a centralização', () => {
+  // posição geral (todas as legendas): durante o B-roll em tela dividida, a legenda vai para o meio
+  const geral = buildAss(segments, meta, { template: 'clean', posX: 0.5, posY: 0.2, centerWindows: [{ start: 0, end: 99 }] });
+  for (const [, y] of events(geral)) assert.ok(y > 700, `no meio durante o B-roll: ${y}`);
+  // frase arrastada para um lugar específico: fica onde o usuário pôs
+  const movidas = segments.map((s) => ({ ...s, words: (s.words || []).map((w) => ({ ...w, px: 0.5, py: 0.2 })) }));
+  const ass = buildAss(movidas, meta, { template: 'clean', centerWindows: [{ start: 0, end: 99 }] });
   for (const [, y] of events(ass)) assert.ok(y < 600, `fica onde o usuário pôs: ${y}`);
 });
 

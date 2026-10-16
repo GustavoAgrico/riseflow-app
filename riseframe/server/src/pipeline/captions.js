@@ -190,7 +190,11 @@ export function buildAss(segments, meta, style = {}) {
   const margin = style.marginV != null ? style.marginV : Math.round(h * safe.marginV);
   const globalPos = posOf({ px: style.posX, py: style.posY });
   const manual = (p) => {
-    const q = p && p.px != null ? p : globalPos;
+    const own = p && p.px != null;
+    // A posição geral (todas as legendas) cede ao MEIO da tela dividida durante o B-roll;
+    // fora dele vale a posição escolhida. Frase movida à mão fica onde foi posta.
+    if (!own && inCenterWin(p)) return null;
+    const q = own ? p : globalPos;
     if (q.px == null) return null;
     return { x: Math.min(0.94, Math.max(0.06, q.px)) * w, y: Math.min(0.96, Math.max(0.04, q.py)) * h };
   };

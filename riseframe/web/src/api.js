@@ -579,3 +579,61 @@ export async function searchBroll(query, source, orientation) {
   if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
   return data; // { source, query, candidates }
 }
+
+// ── Projetos salvos na conta (a cada 30 s) e arquivos do projeto como no CapCut ──
+async function jsonReq(method, url, body) {
+  const r = await fetch(url, { method, headers: authHeaders(body ? { 'Content-Type': 'application/json' } : {}), body: body ? JSON.stringify(body) : undefined });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(data.error || `erro ${r.status}`), { status: r.status });
+  return data;
+}
+export const saveProject = (id, state, meta) => jsonReq('PUT', `${BASE}/projects/${id}`, { state, meta });
+export const loadProject = (id) => jsonReq('GET', `${BASE}/projects/${id}`).catch((e) => (e.status === 404 ? null : Promise.reject(e)));
+export const listProjects = () => jsonReq('GET', `${BASE}/projects`).then((d) => d.projects || []);
+export const deleteProject = (id) => jsonReq('DELETE', `${BASE}/projects/${id}`);
+
+/** Caminho do arquivo no computador (só no app de PC; no site, ''). */
+export const localPathOf = (file) => {
+  try {
+    return (typeof window !== 'undefined' && window.electron?.getPathForFile?.(file)) || '';
+  } catch {
+    return '';
+  }
+};
+/** Mídia do projeto: no app de PC aponta para o arquivo original; no site, envia uma cópia. */
+export async function addProjectMedia(file, onProgress) {
+  const p = localPathOf(file);
+  if (p) {
+    try {
+      return await jsonReq('POST', `${BASE}/media/link`, { path: p });
+    } catch {
+      /* servidor sem modo PC: envia a cópia */
+    }
+  }
+  return uploadMedia(file, onProgress);
+}
+export const mediaFileUrl = (id, v = '') => `${BASE}/media/${id}/file${v ? `?v=${v}` : ''}`;
+export const mediaStatus = (id) => jsonReq('GET', `${BASE}/media/${id}/status`);
+export const sourceStatus = (id) => jsonReq('GET', `${BASE}/jobs/${id}/source/status`);
+
+/** Localizar o arquivo de novo (mesmo id): caminho no app de PC, senão envia o arquivo. */
+async function relink(url, file) {
+  const p = localPathOf(file);
+  if (p) {
+    try {
+      return await jsonReq('POST', url, { path: p });
+    } catch (e) {
+      if (e.status && e.status !== 400) throw e;
+    }
+  }
+  const form = new FormData();
+  form.append('file', file);
+  const r = await fetch(url, { method: 'POST', headers: authHeaders(), body: form });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data;
+}
+export const relinkMedia = (id, file) => relink(`${BASE}/media/${id}/relink`, file);
+export const relinkSource = (id, file) => relink(`${BASE}/jobs/${id}/source/relink`, file);
+
+export const sfxUrl = (type) => `${BASE}/sfx/${type}`;

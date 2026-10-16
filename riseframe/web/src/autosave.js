@@ -80,3 +80,7 @@ export function clearAutosave(id) {
     /* sem armazenamento */
   }
 }
+
+/** Estado do editor → JSON puro (Sets e Maps viram listas) e volta — para salvar na conta. */
+export const packState = (state) => JSON.parse(JSON.stringify(state, replacer));
+export const unpackState = (obj) => (obj ? JSON.parse(JSON.stringify(obj), reviver) : obj);

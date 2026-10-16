@@ -19,6 +19,23 @@ export function workDirFor(jobId) {
 export async function cleanupOldOutputs() {
   if (!config.outputTtlHours) return;
   const cutoff = Date.now() - config.outputTtlHours * 3600 * 1000;
+  // O que algum projeto salvo usa não expira: vídeo de origem, job e mídias do projeto.
+  const keep = new Set();
+  try {
+    const { referencedFiles } = await import('./projects.js');
+    const { queue } = await import('./queue.js');
+    for (const id of referencedFiles()) {
+      keep.add(id);
+      const job = queue.get(id);
+      if (job?.inputPath) keep.add(path.parse(job.inputPath).name);
+    }
+  } catch {
+    /* sem projetos: limpeza normal */
+  }
+  const kept = (name) => {
+    const base = name.replace(/\.(running\.)?json$/, '');
+    return keep.has(base) || keep.has(path.parse(name).name);
+  };
   for (const dir of [config.paths.outputs, config.paths.uploads, config.paths.jobs, config.paths.cache]) {
     let entries = [];
     try {
@@ -28,6 +45,7 @@ export async function cleanupOldOutputs() {
     }
     for (const name of entries) {
       if (name.startsWith('.') || name === '_demo.mp4') continue; // preserva o vídeo de exemplo
+      if (kept(name)) continue; // usado por um projeto salvo
       const full = path.join(dir, name);
       try {
         const st = await fs.stat(full);

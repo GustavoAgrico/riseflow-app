@@ -7,6 +7,7 @@ import { config, capabilities, APP_VERSION } from './config.js';
 import { ensureDirs, startCleanupTimer, formatBytes } from './storage.js';
 import { ensureDemoSample } from './demo.js';
 import { jobsRouter } from './routes/jobs.js';
+import { projectsRouter } from './routes/projects.js';
 import { queue } from './queue.js';
 import { optionsRouter } from './routes/options.js';
 import { authRouter } from './routes/auth.js';
@@ -60,6 +61,8 @@ app.set('trust proxy', 1);
 // CORS: '*' vira `origin: true` (reflete qualquer origem); senão, a lista explícita.
 const corsOrigin = config.corsOrigin.includes('*') ? true : config.corsOrigin;
 app.use(cors({ origin: corsOrigin }));
+// Projetos do editor: corpo JSON maior (transcrição longa) — antes do limite geral.
+app.use('/api', (req, res, next) => (req.method === 'PUT' && req.path.startsWith('/projects/') ? projectsRouter(req, res, next) : next()));
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (_req, res) => {
@@ -108,6 +111,7 @@ app.use('/api', billingRouter);
 app.use('/api', publicRouter);
 app.use('/api', optionsRouter);
 app.use('/api', jobsRouter);
+app.use('/api', projectsRouter);
 
 // Em produção, serve o build do frontend (mesma origem).
 const distDir = path.resolve(__dirname, '..', '..', 'web', 'dist');

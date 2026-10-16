@@ -9,11 +9,23 @@ import { CLIP_GOALS } from '../pipeline/clipSelect.js';
 import { CAPTION_LANGUAGES } from '../pipeline/translate.js';
 import { MOMENT_EFFECTS } from '../../../shared/transform.js';
 import { TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, VIDEO_FX } from '../../../shared/textLayers.js';
-import { SFX_LIBRARY } from '../pipeline/sfx.js';
+import { SFX_LIBRARY, sfxPreviewFile } from '../pipeline/sfx.js';
+import { config as appConfig } from '../config.js';
 import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
 
 export const optionsRouter = Router();
+
+/** Som de um efeito sonoro, para ouvir na prévia do editor (o mesmo arquivo do render). */
+optionsRouter.get('/sfx/:type', async (req, res) => {
+  try {
+    const file = await sfxPreviewFile(req.params.type, appConfig.paths.cache);
+    if (!file) return res.status(404).json({ error: 'efeito sonoro desconhecido' });
+    res.type('audio/wav').set('Cache-Control', 'public, max-age=86400').sendFile(file);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 /** Catálogo de escolhas para a UI montar os controles. */
 optionsRouter.get('/options', (_req, res) => {
@@ -43,7 +55,8 @@ optionsRouter.get('/options', (_req, res) => {
     textAnimsIn: Object.entries(TEXT_ANIMS_IN).map(([id, label]) => ({ id, label })),
     textAnimsOut: Object.entries(TEXT_ANIMS_OUT).map(([id, label]) => ({ id, label })),
     textBoxes: Object.entries(TEXT_BOXES).map(([id, label]) => ({ id, label })),
-    sfxTypes: [{ id: 'none', label: 'Nenhum' }, ...Object.entries(SFX_LIBRARY).map(([id, x]) => ({ id, label: x.label }))],
+    // lead: segundos antes do momento em que o som começa (o riser "chega" no ponto)
+    sfxTypes: [{ id: 'none', label: 'Nenhum' }, ...Object.entries(SFX_LIBRARY).map(([id, x]) => ({ id, label: x.label, lead: x.lead || 0 }))],
     transitions: Object.entries(TRANSITIONS).map(([id, label]) => ({ id, label })),
     transitionTargets: Object.entries(TRANSITION_TARGETS).map(([id, label]) => ({ id, label })),
     layerAnimations: Object.entries(LAYER_ANIMATIONS).map(([id, label]) => ({ id, label })),

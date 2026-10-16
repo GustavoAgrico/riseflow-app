@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v124';
+export const APP_VERSION = 'v127';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -55,6 +55,8 @@ export const config = {
   maxUploadBytes: num(process.env.MAX_UPLOAD_GB, 0) * 1024 ** 3,
   outputTtlHours: num(process.env.OUTPUT_TTL_HOURS, 24),
   apiToken: process.env.API_TOKEN || '',
+  // App de PC (servidor local, um usuário): mídias podem apontar para o arquivo original.
+  desktop: process.env.RISEFRAME_DESKTOP === '1',
 
   transcribe: {
     provider: process.env.TRANSCRIBE_PROVIDER || 'whisper-local',

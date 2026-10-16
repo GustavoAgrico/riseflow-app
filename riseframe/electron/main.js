@@ -155,6 +155,9 @@ async function startServer() {
     ACCOUNT_SERVER: accountServer(),
     BILLING_MODE: 'off', // a cobrança é feita na conta do site, não aqui
     CLOUD_SYNC: 'off', // dados do app local NUNCA vão para a nuvem do site
+    // App de PC: as mídias do projeto podem apontar para o arquivo original no computador
+    // (como no CapCut) — se ele for apagado/movido, a mídia fica offline e pede para localizar.
+    RISEFRAME_DESKTOP: '1',
     TRANSCRIBE_PROVIDER: keys.TRANSCRIBE_PROVIDER || (keys.DEEPGRAM_API_KEY ? 'deepgram' : keys.GROQ_API_KEY ? 'groq' : 'whisper-local'),
   };
 
