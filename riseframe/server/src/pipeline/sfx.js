@@ -150,6 +150,46 @@ export const SFX_LIBRARY = {
     src: 'sine=frequency=1000:duration=0.06:sample_rate=44100',
     af: ['afade=t=out:st=0.008:d=0.05', 'volume=0.8'],
   },
+  impact: {
+    label: 'Impacto (boom)', base: 'whoosh', gain: 0.55, lead: 0,
+    src: "aevalsrc='sin(2*PI*(55-25*t)*t)*exp(-t*4)+0.3*(random(0)*2-1)*exp(-t*20)':d=1.2:s=44100",
+    af: ['lowpass=f=600', 'aformat=channel_layouts=stereo'],
+  },
+  kick: {
+    label: 'Batida (bumbo)', base: 'pop', gain: 0.8, lead: 0,
+    src: "aevalsrc='sin(2*PI*(120*exp(-t*18)+45)*t)*exp(-t*9)':d=0.4:s=44100",
+    af: ['lowpass=f=900', 'aformat=channel_layouts=stereo'],
+  },
+  glitch: {
+    label: 'Glitch (digital)', base: 'pop', gain: 0.5, lead: 0,
+    src: "aevalsrc='(random(0)*2-1)*lt(mod(t,0.06),0.03)*0.8+0.4*sin(2*PI*880*t)*lt(mod(t,0.09),0.02)':d=0.45:s=44100",
+    af: ['highpass=f=300', 'aformat=channel_layouts=stereo'],
+  },
+  bling: {
+    label: 'Brilho (bling)', base: 'pop', gain: 0.9, lead: 0,
+    src: "aevalsrc='0.4*sin(2*PI*1760*t)*exp(-t*5)+0.3*sin(2*PI*2637*t)*exp(-t*6)*gte(t,0.08)+0.25*sin(2*PI*3520*t)*exp(-t*7)*gte(t,0.16)':d=1:s=44100",
+    af: ['aecho=0.8:0.5:60:0.25', 'volume=3', 'aformat=channel_layouts=stereo'],
+  },
+  bubble: {
+    label: 'Bolha (pop na água)', base: 'pop', gain: 1.3, lead: 0,
+    src: "aevalsrc='sin(2*PI*(300+1400*t)*t)*exp(-t*25)':d=0.15:s=44100",
+    af: ['aformat=channel_layouts=stereo'],
+  },
+  cash: {
+    label: 'Dinheiro (caixa registradora)', base: 'pop', gain: 0.9, lead: 0,
+    src: "aevalsrc='0.4*sin(2*PI*2093*t)*exp(-t*3)+0.3*sin(2*PI*2637*t)*exp(-t*3.5)+0.6*(random(0)*2-1)*exp(-t*120)':d=1:s=44100",
+    af: ['aformat=channel_layouts=stereo'],
+  },
+  error: {
+    label: 'Erro (buzzer)', base: 'pop', gain: 0.8, lead: 0,
+    src: "aevalsrc='0.35*(gt(sin(2*PI*180*t),0)*2-1)*(lt(t,0.18)+between(t,0.25,0.43))':d=0.45:s=44100",
+    af: ['lowpass=f=2200', 'aformat=channel_layouts=stereo'],
+  },
+  drone: {
+    label: 'Suspense (tensão)', base: 'whoosh', gain: 0.8, lead: 0,
+    src: "aevalsrc='0.25*sin(2*PI*65*t)+0.15*sin(2*PI*98*t)+0.08*sin(2*PI*131*t+sin(2*PI*0.5*t))':d=2.5:s=44100",
+    af: ['afade=t=in:st=0:d=1', 'afade=t=out:st=1.9:d=0.6', 'aformat=channel_layouts=stereo'],
+  },
   ding: {
     label: 'Ding (notificação)', base: 'pop', gain: 0.7, lead: 0,
     src: "aevalsrc='0.5*sin(2*PI*1320*t)*exp(-t*4)+0.25*sin(2*PI*2640*t)*exp(-t*6)':d=1.1:s=44100",
@@ -170,6 +210,22 @@ async function synthSfx(work, types) {
     files[type] = file;
   }
   return files;
+}
+
+/** Arquivo do som (gerado uma vez em cache) para ouvir na prévia do editor. */
+export async function sfxPreviewFile(type, cacheDir) {
+  if (!isType(type)) return null;
+  const file = path.join(cacheDir, `sfx-preview-${type}.wav`);
+  try {
+    await fs.access(file);
+    return file;
+  } catch {
+    /* ainda não gerado */
+  }
+  await fs.mkdir(cacheDir, { recursive: true });
+  const s = SFX_LIBRARY[type];
+  await runFfmpeg(['-f', 'lavfi', '-i', s.src, '-af', s.af.join(','), '-ac', '2', '-y', file], { label: `sfx-preview-${type}` });
+  return file;
 }
 
 /**

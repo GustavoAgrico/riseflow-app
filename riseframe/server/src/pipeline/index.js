@@ -414,6 +414,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       if (Array.isArray(options.fxMoments)) options.fxMoments = options.fxMoments.map(remapRange).filter(Boolean);
       if (Array.isArray(options.textLayers)) options.textLayers = options.textLayers.map(remapRange).filter(Boolean);
       // Quadros-chave do Transformar (tempo original) → mesma posição no vídeo cortado.
+      if (Array.isArray(options.transitions)) options.transitions = options.transitions.map((tr) => ({ ...tr, t: +remapTime(Number(tr.t), keep).toFixed(3) }));
       if (Array.isArray(options.transformKeys)) options.transformKeys = options.transformKeys.map((k) => ({ ...k, t: +remapTime(Number(k.t), keep).toFixed(3) }));
       if (Array.isArray(options.sfxMoments)) options.sfxMoments = options.sfxMoments.map((m) => ({ ...m, t: +remapTime(Number(m.t), keep).toFixed(3) }));
       // Minhas mídias também foram posicionadas na timeline original.
@@ -722,7 +723,13 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (transitionAtBroll() && has('broll')) for (const m of brollMomentsFinal()) points.push(m.start, m.end);
     const tVf = transitionVf(options.transition, points, meta.duration);
     if (tVf) report.transition = { type: options.transition, at: options.transitionAt || 'broll' };
-    const vf = [colorVf, tVf].filter(Boolean).join(',') || null;
+    // Transições manuais (como no CapCut): cada uma num ponto escolhido, com o seu tipo.
+    const manual = Array.isArray(options.transitions) ? options.transitions : [];
+    const byType = {};
+    for (const tr of manual) (byType[tr.type] ||= []).push(tr.t);
+    const mVf = Object.entries(byType).map(([type, pts]) => transitionVf(type, pts, meta.duration)).filter(Boolean);
+    if (manual.length) report.transitions = manual.length;
+    const vf = [colorVf, tVf, ...mVf].filter(Boolean).join(',') || null;
     const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf: vf, reframe: aspectReframe, coverFile: options.cover?.intro ? coverFile : null }, st.onProgress);
     const outMeta = await probeSummary(r.output).catch(() => ({}));
     report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe, width: outMeta.width || null, height: outMeta.height || null, speed: options.speed && options.speed !== 1 ? options.speed : undefined, duration: outMeta.duration || null };

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from './theme.js';
-import { getOptions, getHealth, getSettings, createJob, transcribe, generateClips, renderEdited, subscribeJob, sampleFile, getJob, editClip } from './api.js';
+import { getOptions, getHealth, getSettings, createJob, transcribe, generateClips, renderEdited, subscribeJob, sampleFile, getJob, editClip, loadProject } from './api.js';
 import { PrimaryButton, Card, Spinner } from './components/ui.jsx';
 import Icon, { Logo } from './components/Icon.jsx';
 import OptionsPanel, { Row, Toggle, Select, Swatches } from './components/OptionsPanel.jsx';
@@ -240,7 +240,15 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
       // O próprio projeto primeiro (um vídeo editado na timeline guarda as palavras
       // cortadas, ênfases e posições); senão, a transcrição do vídeo original.
       let j = await getJob(entry.id).catch(() => null);
-      if (!j?.report?.editorTranscript?.segments?.length) j = await getJob(entry.sourceId);
+      if (!j?.report?.editorTranscript?.segments?.length) j = await getJob(entry.sourceId).catch(() => null);
+      // O servidor não tem mais o job (limpeza/reinício): abre pelo projeto salvo na conta,
+      // que guarda a transcrição e todas as edições.
+      if (!j?.report) {
+        const doc = await loadProject(entry.sourceId).catch(() => null);
+        const segs = doc?.state?.segments;
+        if (!segs?.length) throw new Error('o vídeo de origem não está mais disponível');
+        j = { filename: doc.meta?.title || entry.title, report: { sourceId: entry.sourceId, editorTranscript: { segments: segs, language: doc.meta?.language, provider: doc.meta?.provider }, input: { duration: doc.meta?.duration || 0 } } };
+      }
       const tr = j?.report?.editorTranscript || j?.report?.transcript;
       if (!tr?.segments?.length) {
         throw new Error('este vídeo não tem transcrição guardada');
@@ -402,6 +410,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
             transcript={transcriptData}
             durationSec={durationSec}
             sourceId={sourceId}
+            projectTitle={job?.filename || file?.name || ''}
             catalog={catalog}
             options={options}
             onGenerate={generateFromEdits}

@@ -437,8 +437,9 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
 
   // Posição manual (arrastada): da palavra (modo palavra) ou da frase; senão a geral.
   const wpos = (w) => (w && w.px != null && w.py != null ? { x: w.px, y: w.py } : null);
+  // A posição geral cede ao meio da tela dividida enquanto o B-roll está na tela (igual ao render).
   const pos = (look.mode === 'word' ? wpos(words[wi]) : wpos(words[0]))
-    || (options.captionX != null && options.captionY != null ? { x: options.captionX, y: options.captionY } : null);
+    || (!inBroll && options.captionX != null && options.captionY != null ? { x: options.captionX, y: options.captionY } : null);
 
   // Arrastar a legenda na prévia (aba Legenda): devolve o ponto (0–1) do centro do texto.
   const startDrag = (e) => {

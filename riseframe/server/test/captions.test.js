@@ -246,3 +246,18 @@ test('fontes novas, cor livre e tipos de destaque', () => {
   assert.ok(lines({ template: 'hollow', color: 'yellow' }).some((l) => l.includes('\\1a&HFF&')), 'vazado: letras só com contorno');
   assert.ok(lines({ template: 'shadow3d', color: 'magenta' }).some((l) => l.includes('\\4c&H00FB40E0')), 'sombra 3D na cor');
 });
+
+test('tela dividida: só no B-roll a legenda vai para o meio; fora dele vale a posição geral', () => {
+  const meta = { width: 1080, height: 1920 };
+  const seg = (start, word, extra = {}) => ({ start, end: start + 0.8, text: word, words: [{ start, end: start + 0.8, word, ...extra }] });
+  const ys = (ass) => [...ass.matchAll(/Dialogue: [^\n]*\pos\((\d+),(\d+)\)[^\n]*/g)].map((m) => [m[0].match(/,(\d:\d\d:\d\d\.\d\d),/)[1], Number(m[2])]);
+  const ass = buildAss([seg(1, 'antes'), seg(2.5, 'durante'), seg(3.2, 'movida', { px: 0.5, py: 0.8 }), seg(5, 'depois')], meta, {
+    template: 'clean', color: 'white', posX: 0.5, posY: 0.15, centerWindows: [{ start: 2, end: 4 }],
+  });
+  const at = (t) => ys(ass).filter(([s]) => s === t).map(([, y]) => y);
+  const near = (arr, y) => arr.length && arr.every((v) => Math.abs(v - y) < 140);
+  assert.ok(near(at('0:00:01.00'), 1920 * 0.15), `antes do B-roll: posição geral (${at('0:00:01.00')})`);
+  assert.ok(near(at('0:00:02.50'), 960), `durante o B-roll: meio (${at('0:00:02.50')})`);
+  assert.ok(near(at('0:00:03.20'), 1920 * 0.8), `frase movida à mão: fica onde foi posta (${at('0:00:03.20')})`);
+  assert.ok(near(at('0:00:05.00'), 1920 * 0.15), `depois do B-roll: volta para a posição geral (${at('0:00:05.00')})`);
+});

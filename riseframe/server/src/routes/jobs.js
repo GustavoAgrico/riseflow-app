@@ -11,7 +11,7 @@ import { getSettings } from '../auth/settings.js';
 import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod, trialCovers, useFreeEdit, refundFreeEdit, holdRemote, releaseRemote } from '../auth/billing.js';
 import { remoteAccount, remoteCheck, remoteCharge, holdRemoteCharge, settleRemoteCharge, sendAccountError } from '../account.js';
 import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../../shared/credits.js';
-import { registerMedia, resolveMedia } from '../mediaStore.js';
+import { registerMedia, resolveMedia, relinkMedia, mediaStatus } from '../mediaStore.js';
 import { formatBytes, freeDiskBytes } from '../storage.js';
 import { startUpload, uploadStatus, receiveChunk, fromChunkedUpload } from '../chunkedUpload.js';
 import { saveCustomFont, listCustomFonts, resolveCustomFont, deleteCustomFont } from '../customFonts.js';
@@ -410,7 +410,9 @@ function sanitizeUserMedia(raw) {
       mode: ['cover', 'pip'].includes(m.mode) ? m.mode : 'cover',
       px: clampNum(m.px, 0, 1, 0.62),
       py: clampNum(m.py, 0, 1, 0.06),
-      scale: clampNum(m.scale, 0.15, 0.95, 0.4),
+      scale: clampNum(m.scale, 0.05, 3, 0.4),
+      // Posição livre (centro em fração da tela), quando a mídia foi arrastada no editor.
+      ...(Number.isFinite(Number(m.cx)) && Number.isFinite(Number(m.cy)) ? { cx: clampNum(m.cx, -1, 2, 0.5), cy: clampNum(m.cy, -1, 2, 0.5) } : {}),
       opacity: clampNum(m.opacity, 0.1, 1, 1),
       volume: clampNum(m.volume, 0, 2, 0.35),
       // Animação de entrada/saída e mesclagem da camada (ver overlay.js).
@@ -671,6 +673,13 @@ export function parseOptions(raw) {
     // Transições (flash/esmaecer/brilho/blur) nos cortes e/ou nas entradas de B-roll.
     transition: Object.hasOwn(TRANSITIONS, o.transition) ? o.transition : 'none',
     transitionAt: Object.hasOwn(TRANSITION_TARGETS, o.transitionAt) ? o.transitionAt : 'broll',
+    // Transições manuais: cada uma num ponto (tempo original) com o seu tipo.
+    transitions: Array.isArray(o.transitions)
+      ? o.transitions
+          .filter((x) => x && Number.isFinite(Number(x.t)) && Number(x.t) >= 0 && Object.hasOwn(TRANSITIONS, x.type) && x.type !== 'none')
+          .slice(0, 80)
+          .map((x) => ({ t: Number(x.t), type: x.type }))
+      : [],
   };
 }
 
@@ -866,6 +875,83 @@ jobsRouter.post('/media', requireAuth, requireVerified, uploadMedia.single('file
     durationSec,
   });
   res.status(201).json(pub);
+});
+
+// ── Arquivos do projeto como no CapCut: no app de PC a mídia aponta para o ARQUIVO
+// ORIGINAL (sem cópia que expira); se ele sumir, fica offline e o editor pede para
+// localizar. No site, o mesmo vale para uploads que o servidor perdeu.
+async function probeDuration(file, kind) {
+  if (kind === 'image') return null;
+  try {
+    const meta = await probeSummary(file);
+    return Number.isFinite(meta.duration) ? Math.round(meta.duration * 100) / 100 : null;
+  } catch {
+    return null;
+  }
+}
+/** Caminho de arquivo do computador (só no app de PC): absoluto, existe e é mídia. */
+function desktopPath(p) {
+  if (!config.desktop || typeof p !== 'string' || !p || !path.isAbsolute(p)) return null;
+  try {
+    if (!fs.statSync(p).isFile()) return null;
+  } catch {
+    return null;
+  }
+  return path.resolve(p);
+}
+
+// POST /api/media/link  { path } → registra a mídia apontando para o arquivo original (app de PC)
+jobsRouter.post('/media/link', requireAuth, async (req, res) => {
+  const file = desktopPath(req.body?.path);
+  if (!file) return res.status(400).json({ error: 'arquivo não encontrado no computador' });
+  const kind = mediaKind(path.extname(file).toLowerCase());
+  if (!kind) return res.status(400).json({ error: 'formato de mídia não suportado' });
+  const pub = registerMedia({ id: nanoid(), filePath: file, kind, originalname: path.basename(file), durationSec: await probeDuration(file, kind), linked: true });
+  res.status(201).json(pub);
+});
+
+// GET /api/media/:id/status → { status: ok | offline | missing, ... }
+jobsRouter.get('/media/:id/status', (req, res) => res.json(mediaStatus(req.params.id)));
+
+// GET /api/media/:id/file → o arquivo (prévia no editor depois de reabrir o projeto)
+jobsRouter.get('/media/:id/file', (req, res) => {
+  const m = resolveMedia(req.params.id);
+  if (!m) return res.status(410).json({ error: 'arquivo offline' });
+  res.sendFile(m.path);
+});
+
+// POST /api/media/:id/relink  ({ path } no app de PC | multipart "file") → mesmo id, arquivo novo
+jobsRouter.post('/media/:id/relink', requireAuth, uploadMedia.single('file'), async (req, res) => {
+  const st = mediaStatus(req.params.id);
+  if (st.status === 'missing') return res.status(404).json({ error: 'mídia não encontrada neste projeto' });
+  let file = null;
+  let linked = false;
+  if (req.file) file = req.file.path;
+  else if ((file = desktopPath(req.body?.path))) linked = true;
+  if (!file) return res.status(400).json({ error: 'escolha o arquivo' });
+  const kind = mediaKind(path.extname(file).toLowerCase());
+  if (!kind || kind !== st.kind) return res.status(400).json({ error: `escolha um arquivo do mesmo tipo (${st.kind === 'image' ? 'imagem' : st.kind === 'video' ? 'vídeo' : 'áudio'})` });
+  res.json(relinkMedia(req.params.id, { filePath: file, linked, durationSec: await probeDuration(file, kind) }));
+});
+
+// POST /api/jobs/:id/source/relink  ({ path } no app de PC | multipart "file") → o vídeo de
+// origem do projeto voltou (o original foi movido/apagado ou o servidor perdeu o upload).
+jobsRouter.post('/jobs/:id/source/relink', requireAuth, upload.single('file'), (req, res) => {
+  const job = queue.get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'projeto não encontrado neste servidor' });
+  const file = req.file ? req.file.path : desktopPath(req.body?.path);
+  if (!file) return res.status(400).json({ error: 'escolha o vídeo do projeto' });
+  if (!MEDIA_VIDEO.has(path.extname(file).toLowerCase())) return res.status(400).json({ error: 'escolha um arquivo de vídeo' });
+  job.inputPath = file;
+  queue._persist(job);
+  res.json({ ok: true });
+});
+
+// GET /api/jobs/:id/source/status → o vídeo de origem está disponível?
+jobsRouter.get('/jobs/:id/source/status', (req, res) => {
+  const job = queue.get(req.params.id);
+  if (!job) return res.json({ status: 'missing' });
+  res.json({ status: job.inputPath && fs.existsSync(job.inputPath) ? 'ok' : 'offline', filename: job.filename || null });
 });
 
 // (removido) GET /api/jobs — não expomos a listagem global de jobs: ela vazava os
