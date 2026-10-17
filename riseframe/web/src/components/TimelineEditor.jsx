@@ -244,7 +244,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [pps, setPps] = useState(64); // zoom da timeline (pixels por segundo)
   const ppsRef = useRef(64); // o arrasto da legenda lê o zoom atual
   ppsRef.current = pps;
-  const zoomTl = (dir) => setPps((p) => Math.max(PPS_MIN, Math.min(PPS_MAX, Math.round(p * (dir > 0 ? 1.4 : 1 / 1.4)))));
+  // Zoom mínimo = o vídeo inteiro cabe na largura da timeline (como o "ajustar" do CapCut).
+  const [trackW, setTrackW] = useState(0);
+  const fitPpsRef = useRef(PPS_MIN);
+  const zoomTl = (dir) => setPps((p) => Math.max(fitPpsRef.current, Math.min(PPS_MAX, +(p * (dir > 0 ? 1.4 : 1 / 1.4)).toFixed(2))));
 
   // Enquadramento no rosto (tela dividida): 'auto' detecta o rosto no servidor;
   // 'manual' usa o foco (arrastável) + zoom escolhidos aqui.
@@ -1030,7 +1033,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const p0 = pinchRef.current;
     if (!p0 || e.touches.length !== 2) return;
     const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-    setPps(Math.max(PPS_MIN, Math.min(PPS_MAX, Math.round(p0.pps * (d / p0.d)))));
+    setPps(Math.max(fitPpsRef.current, Math.min(PPS_MAX, +(p0.pps * (d / p0.d)).toFixed(2))));
   }
   function onTrackTouchEnd() { pinchRef.current = null; }
 
@@ -1150,6 +1153,63 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
 
   function startDrag(si, edge, e) { e.stopPropagation(); e.preventDefault(); setSel(si); dragRef.current = { si, edge }; document.body.style.userSelect = 'none'; }
+
+  // Um bloco de fala mostra vários cartões no vídeo. Clicar num cartão separa o bloco em
+  // legendas independentes (uma por cartão) e seleciona só o cartão clicado.
+  function cardSplits(si) {
+    const d = capSegments[si];
+    if (!d) return null;
+    const ws = d.words.map((w, i) => ({ ...w, _i: i })).filter((w) => !w.removed);
+    if (!ws.length) return null;
+    const cards = layoutCaption(ws, { lines: cap.captionLines === 1 ? 1 : 2, maxChars: cap.captionMaxChars > 0 ? cap.captionMaxChars : 18, segEnd: d.end });
+    return cards.length > 1 ? cards : null;
+  }
+  function splitIntoCards(si) {
+    const cards = cardSplits(si);
+    if (!cards) return 0;
+    const s = segments[si];
+    const d = capSegments[si];
+    const cutIdx = cards.slice(1).map((c) => c.words[0]._i);
+    const bounds = [d.start, ...cards.slice(1).map((c) => +Math.max(d.start, c.words[0].start).toFixed(3)), d.end];
+    const pieces = [];
+    let from = 0;
+    [...cutIdx, s.words.length].forEach((to, k) => {
+      const words = s.words.slice(from, to);
+      from = to;
+      if (!words.length) return;
+      pieces.push({ ...s, start: words[0].start, end: words[words.length - 1].end, words, capStart: bounds[k], capEnd: bounds[k + 1] });
+    });
+    if (pieces.length < 2) return 0;
+    setSegments((prev) => [...prev.slice(0, si), ...pieces, ...prev.slice(si + 1)]);
+    return pieces.length - 1;
+  }
+  function pickCard(si, ci, card, e) {
+    e.stopPropagation();
+    if (capClickBlockRef.current) return;
+    const n = splitIntoCards(si);
+    const shift = (i) => (i > si ? i + n : i);
+    const idx = si + (n ? ci : 0);
+    setSelKind('caption');
+    setEditText(null);
+    if (e.ctrlKey || e.metaKey) {
+      setSelSet((prev) => {
+        const next = new Set([...prev].map(shift));
+        if (next.has(idx) && next.size > 1) next.delete(idx); else next.add(idx);
+        return next;
+      });
+      setSel(idx);
+    } else if (e.shiftKey) {
+      const anchor = shift(sel);
+      const [a, b] = [Math.min(anchor, idx), Math.max(anchor, idx)];
+      setSelSet(new Set(Array.from({ length: b - a + 1 }, (_, i) => a + i)));
+      setSel(anchor);
+    } else {
+      setSelSet(new Set([idx]));
+      setSel(idx);
+      seek(card.start + 0.01);
+    }
+    if (isMobile) setMTool('legenda');
+  }
 
   // Divide a legenda exatamente no playhead (como o Ctrl+B do CapCut): cada metade fica
   // com o seu tempo de exibição, de ponta a ponta até o ponto do corte.
@@ -2390,6 +2450,51 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     ...sfxMoments.map((m) => ({ at: m.t - leadOf(m.type), type: m.type })),
   ];
 
+  // Largura visível da timeline → zoom que mostra o vídeo inteiro; abre já assim.
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => setTrackW(el.clientWidth));
+    ro.observe(el);
+    setTrackW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const fitPps = trackW > 0 && dur > 0 ? Math.max(1, Math.min(PPS_MIN, +((trackW - 60) / dur).toFixed(2))) : PPS_MIN;
+  fitPpsRef.current = isMobile ? PPS_MIN : fitPps;
+  const fittedRef = useRef(false);
+  useEffect(() => {
+    if (fittedRef.current || isMobile || !trackW || !(dur > 1)) return;
+    fittedRef.current = true;
+    setPps(Math.max(fitPps, Math.min(PPS_MAX, +((trackW - 60) / dur).toFixed(2))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackW, dur, isMobile]);
+  const fitAll = () => setPps(Math.max(fitPps, Math.min(PPS_MAX, +((trackW - 60) / dur).toFixed(2))));
+
+  // Computador: o player tem a altura que sobra na janela depois da timeline (tudo cabe
+  // na tela, sem espaço vazio). Player G continua grande (rola a página).
+  const gridRef = useRef(null);
+  const bottomRef = useRef(null);
+  useEffect(() => {
+    const g = gridRef.current;
+    const b = bottomRef.current;
+    if (!g || !b) return undefined;
+    function fit() {
+      if (isMobile || stage === 'l' || window.innerWidth <= 860) { g.style.removeProperty('--rf-stage-h'); return; }
+      // só a timeline (barra + faixas + zoom); o resumo e a edição de palavras ficam abaixo
+      const tr = b.querySelector('.rf-tl-track');
+      const tlH = tr ? tr.getBoundingClientRect().bottom - b.getBoundingClientRect().top + 52 : b.offsetHeight;
+      const top = g.getBoundingClientRect().top + window.scrollY;
+      const free = window.innerHeight - top - tlH - 10 - 82 - 16;
+      const h = Math.max(stage === 's' ? 160 : 220, Math.min(900, free * (stage === 's' ? 0.78 : 1)));
+      g.style.setProperty('--rf-stage-h', `${Math.round(h)}px`);
+    }
+    fit();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
+    ro?.observe(b.querySelector('.rf-tl-track') || b);
+    window.addEventListener('resize', fit);
+    return () => { ro?.disconnect(); window.removeEventListener('resize', fit); };
+  }, [isMobile, stage]);
+
   // Pontos onde os blocos encaixam (ímã): playhead, começo/fim, marcadores, cortes e as
   // pontas de tudo que está na timeline.
   snapRef.current = {
@@ -2633,7 +2738,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
       </div>
 
-      <div className={`rf-tl-grid rf-stage-${stage}`} style={{ display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start', ...(isMobile && sheet ? { '--rf-stage-h': 'max(140px, calc(100dvh - var(--rf-sheet-h) - 118px - env(safe-area-inset-top)))' } : isMobile ? { '--rf-stage-h': `max(200px, calc(100dvh - ${(stage === 's' ? 470 : stage === 'l' ? 330 : 400) + (showZoomLane ? 28 : 0) + (showBrollLane ? 30 : 0) + (media.length ? 34 : 0)}px - env(safe-area-inset-bottom)))` } : {}) }}>
+      <div ref={gridRef} className={`rf-tl-grid rf-stage-${stage}`} style={{ display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start', ...(isMobile && sheet ? { '--rf-stage-h': 'max(140px, calc(100dvh - var(--rf-sheet-h) - 118px - env(safe-area-inset-top)))' } : isMobile ? { '--rf-stage-h': `max(200px, calc(100dvh - ${(stage === 's' ? 470 : stage === 'l' ? 330 : 400) + (showZoomLane ? 28 : 0) + (showBrollLane ? 30 : 0) + (media.length ? 34 : 0)}px - env(safe-area-inset-bottom)))` } : {}) }}>
         {/* Ferramentas (como num editor): cada uma abre o painel de ajustes à direita */}
         <nav className="rf-tl-nav" style={{ display: 'grid', gap: 4, padding: 8, borderRadius: 16, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.025)', alignSelf: 'start' }}>
           {TABS.map((t) => {
@@ -3701,7 +3806,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           )}
 
         {/* Timeline logo abaixo do vídeo (como num editor), ao lado do painel de ajustes */}
-        <div className="rf-tl-bottom" style={{ minWidth: 0, ...(isMobile ? {} : { background: PR.panel, border: `1px solid ${PR.line}`, borderRadius: 12, padding: '8px 10px 10px', boxShadow: '0 10px 30px -18px rgba(0,0,0,0.8)' }) }}>
+        <div ref={bottomRef} className="rf-tl-bottom" style={{ minWidth: 0, ...(isMobile ? {} : { background: PR.panel, border: `1px solid ${PR.line}`, borderRadius: 12, padding: '8px 10px 10px', boxShadow: '0 10px 30px -18px rgba(0,0,0,0.8)' }) }}>
         {/* Barra de ferramentas da timeline */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 8, flexWrap: 'wrap' }}>
           {!isMobile && (
@@ -3760,9 +3865,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {/* Zoom da timeline (aproxima/afasta os blocos) */}
           <div style={{ display: isMobile ? 'flex' : 'none', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
             <span className="rf-tl-hide-sm" style={{ fontSize: 11.5, color: C.faint }}>Zoom</span>
-            <button onClick={() => zoomTl(-1)} disabled={pps <= PPS_MIN} style={toolBtn(pps <= PPS_MIN)} title="Afastar">−</button>
+            <button onClick={() => zoomTl(-1)} disabled={pps <= fitPps} style={toolBtn(pps <= fitPps)} title="Afastar">−</button>
             <button onClick={() => zoomTl(1)} disabled={pps >= PPS_MAX} style={toolBtn(pps >= PPS_MAX)} title="Aproximar">+</button>
-            <button onClick={() => setPps(64)} style={toolBtn(false)} title="Zoom padrão">Ajustar</button>
+            <button onClick={fitAll} style={toolBtn(false)} title="Ver o vídeo inteiro">Ajustar</button>
           </div>
         </div>
 
@@ -3771,7 +3876,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {/* celular: cursor fixo no meio, a timeline corre por baixo */}
           {isMobile && <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 2, marginLeft: -1, background: '#fff', zIndex: 5, pointerEvents: 'none', boxShadow: '0 0 6px rgba(0,0,0,0.6)' }} />}
           {!isMobile && (
-            <div style={{ width: 42, flexShrink: 0, borderRight: `1px solid ${PR.line}`, background: PR.tools, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '8px 0' }}>
+            <div style={{ position: 'relative', width: 42, flexShrink: 0, borderRight: `1px solid ${PR.line}`, background: PR.tools }}>
+            {/* as ferramentas rolam dentro da altura das faixas (não deixam a timeline mais alta) */}
+            <div className="rf-tl-tools" style={{ position: 'absolute', inset: 0, overflowY: 'auto', scrollbarWidth: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '6px 0' }}>
               <ToolIcon title="Desfazer (Ctrl+Z)" disabled={!canUndo} onClick={undo}><Icon name="undo" size={15} strokeWidth={2} /></ToolIcon>
               <ToolIcon title="Refazer (Ctrl+Shift+Z)" disabled={!canRedo} onClick={redo}><Icon name="undo" size={15} strokeWidth={2} style={{ transform: 'scaleX(-1)' }} /></ToolIcon>
               <span style={{ width: 22, height: 1, background: PR.line, margin: '3px 0' }} />
@@ -3794,7 +3901,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <ToolIcon title="Minhas mídias (logo, imagens, vídeos, músicas)" active={tab === 'midias'} onClick={() => setTab('midias')}><Icon name="image" size={15} strokeWidth={2} /></ToolIcon>
               <ToolIcon title="Efeitos e transições" active={tab === 'efeitos'} onClick={() => setTab('efeitos')}><Icon name="sparkles" size={15} strokeWidth={2} /></ToolIcon>
               <span style={{ width: 22, height: 1, background: PR.line, margin: '3px 0' }} />
-              <ToolIcon title="Ajustar o zoom da timeline" onClick={() => setPps(64)}><Icon name="search" size={15} strokeWidth={2} /></ToolIcon>
+              <ToolIcon title="Ver o vídeo inteiro na timeline" onClick={fitAll}><Icon name="search" size={15} strokeWidth={2} /></ToolIcon>
+            </div>
             </div>
           )}
           <div className="rf-tl-labels" style={{ width: 150, flexShrink: 0, borderRight: `1px solid ${PR.line}`, background: PR.heads, paddingBottom: 6 }}>
@@ -3893,7 +4001,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     capCards(s, gone).map((card, ci) => {
                       const on = isActive && cur >= card.start && cur < card.end;
                       return (
-                        <div key={ci} style={{
+                        <div key={ci} onClick={(e) => pickCard(si, ci, card, e)} style={{
                           position: 'absolute', left: (card.start - s.start) * pps, width: Math.max(4, (card.end - card.start) * pps - 3), top: 0, bottom: 0,
                           borderRadius: 5, overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px',
                           background: gone ? 'rgba(240,82,107,0.28)' : on ? '#D0603F' : '#A9472F', color: gone ? C.red : '#fff',
@@ -4233,10 +4341,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
         {!isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
-            <button onClick={() => zoomTl(-1)} disabled={pps <= PPS_MIN} title="Afastar" style={{ ...zoomBarBtn, opacity: pps <= PPS_MIN ? 0.35 : 1 }}>−</button>
-            <input type="range" min={PPS_MIN} max={PPS_MAX} step={1} value={pps} onChange={(e) => setPps(Number(e.target.value))} aria-label="Zoom da timeline" style={{ flex: 1, accentColor: PR.blue, height: 4 }} />
+            <button onClick={() => zoomTl(-1)} disabled={pps <= fitPps} title="Afastar" style={{ ...zoomBarBtn, opacity: pps <= fitPps ? 0.35 : 1 }}>−</button>
+            <button onClick={fitAll} title="Ver o vídeo inteiro" style={{ ...zoomBarBtn, width: 'auto', padding: '0 8px', fontSize: 11 }}>Vídeo inteiro</button>
+            <input type="range" min={fitPps} max={PPS_MAX} step={0.5} value={pps} onChange={(e) => setPps(Number(e.target.value))} aria-label="Zoom da timeline" style={{ flex: 1, accentColor: PR.blue, height: 4 }} />
             <button onClick={() => zoomTl(1)} disabled={pps >= PPS_MAX} title="Aproximar" style={{ ...zoomBarBtn, opacity: pps >= PPS_MAX ? 0.35 : 1 }}>+</button>
-            <span style={{ fontSize: 10.5, color: PR.dim, minWidth: 64, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round((pps / 64) * 100)}%</span>
+            <span style={{ fontSize: 10.5, color: PR.dim, minWidth: 64, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pps <= fitPps + 0.01 ? 'inteiro' : `${Math.round((pps / fitPps) * 100)}%`}</span>
           </div>
         )}
         <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>👁 esconde a faixa (some da prévia e do vídeo final) · 🔒 trava a faixa · M (no A1) deixa o áudio mudo · tecla <b>M</b> põe marcador · <b>N</b> liga/desliga o ímã · <b>Ctrl+D</b> duplica · <b>Ctrl+C / Ctrl+V</b> copia e cola no playhead. Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> (arraste sobre ele para cortar um trecho)· <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
@@ -4389,6 +4498,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         .rf-m .rf-tl-bottom > :not(.rf-tl-track){ display: none !important; }
         .rf-m .rf-tl-track{ border: none !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
         .rf-m .rf-tl-labels{ display: none !important; }
+        .rf-tl-tools::-webkit-scrollbar{ display: none; }
         .rf-ptool:not(:disabled):hover{ background: rgba(255,255,255,0.09) !important; color: #fff !important; }
         .rf-m .rf-tl-track > div::-webkit-scrollbar{ display: none; }
         .rf-m .rf-tl-adjust{ position: fixed !important; left: 0; right: 0; bottom: 0; top: auto !important; z-index: 1010; height: var(--rf-sheet-h); max-height: var(--rf-sheet-h) !important; overflow-y: auto !important; overflow-x: hidden !important; padding: 0 14px calc(18px + env(safe-area-inset-bottom)) !important; background: #1c1c22; border-radius: 20px 20px 0 0; box-shadow: 0 -24px 60px rgba(0,0,0,0.65); animation: rf-sheet-in .22s ease-out; }
@@ -4431,7 +4541,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           .rf-tl-card:not(.rf-m) .rf-tl-navsep{ display: none; }
           .rf-tl-card:not(.rf-m) .rf-tl-navexp{ display: none !important; }
           .rf-tl-card:not(.rf-m) .rf-tl-adjust{ grid-column: 2; grid-row: 2; position: static !important; top: auto; align-self: stretch !important; margin-top: -10px;
-            max-height: calc(var(--rf-stage-h) + 70px) !important; overflow-y: auto; padding: 12px 12px 12px !important; border: 1px solid rgba(255,255,255,0.08); border-top: none; border-radius: 0 0 10px 10px; background: #18191E; }
+            height: 0; min-height: calc(100% + 10px); max-height: none !important; overflow-y: auto; padding: 12px 12px 12px !important; border: 1px solid rgba(255,255,255,0.08); border-top: none; border-radius: 0 0 10px 10px; background: #18191E; }
           .rf-tl-card:not(.rf-m) .rf-tl-bottom{ grid-column: 1 / span 2; grid-row: 3; }
           .rf-tl-card:not(.rf-m) .rf-tl-pv{ border-radius: 10px !important; background: #0E0F12 !important; border-color: rgba(255,255,255,0.08) !important; }
         }
