@@ -4,7 +4,7 @@ import {
   ChevronRight, Menu, X, Search, Sparkles, Film, Captions, Wand2, Image as ImageIcon, AudioLines, Upload,
   Scissors, Play, SkipBack, SkipForward, Download as DownloadIcon, Check,
 } from 'lucide-react';
-import { Logo } from '../components/Icon.jsx';
+import { BrandLockup } from '../components/Icon.jsx';
 import BeforeAfter from '../components/BeforeAfter.jsx';
 import { getPublicInfo } from '../api.js';
 import { detectPlatform, PLATFORMS } from './Download.jsx';
@@ -83,7 +83,7 @@ function Navbar({ onEnter, onLogin, hasDemo }) {
   return (
     <motion.nav initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: 'easeOut' }} className="ra-nav">
       <div className="ra-wrap ra-nav-row">
-        <a href="/" aria-label="Riseframe" className="ra-logo"><Logo size={34} variant="mark" /></a>
+        <a href="/" aria-label="Riseframe — início" className="ra-logo"><BrandLockup size={36} /></a>
         <div className="ra-nav-links">
           {NAV.map(([l, h], i) => (
             <motion.a key={l} href={h} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.05, duration: 0.5 }} className="ra-nav-link">{l}</motion.a>
@@ -547,7 +547,7 @@ function Footer({ info }) {
         Não usamos seus vídeos para treinar IA. Para gerar legendas, o áudio passa por um serviço de transcrição; as imagens de apoio vêm de bancos como Pexels.
       </p>
       <div className="ra-footer-row">
-        <span className="ra-footer-brand"><Logo size={22} variant="mark" /> Riseframe · Editor de vídeo com IA</span>
+        <span className="ra-footer-brand"><BrandLockup size={30} /></span>
         <div className="ra-footer-links">
           <a href="/termos">Termos de uso</a>
           <a href="/privacidade">Privacidade</a>
@@ -850,6 +850,7 @@ const CSS = `
 .ra-nav{ position: relative; z-index: 20; }
 .ra-nav-row{ display: flex; align-items: center; justify-content: space-between; height: 76px; }
 .ra-logo{ display: inline-flex; }
+@media (max-width: 420px){ .ra-logo .rf-lockup-tag{ display: none; } }
 .ra-nav-links{ display: none; gap: 32px; }
 .ra-nav-link{ color: rgba(255,255,255,0.7); font-size: 14px; font-weight: 500; transition: color .2s; background: none; border: none; cursor: pointer; padding: 0; }
 .ra-nav-link:hover{ color: #fff; }

@@ -384,3 +384,20 @@ export function Wordmark({ size = 18, style }) {
     </span>
   );
 }
+
+/** Logo completo (como na marca): moldura + "Riseframe" + "Seus vídeos, no próximo nível". */
+export function BrandLockup({ size = 34, tagline = true, className = '' }) {
+  return (
+    <span className={`rf-lockup ${className}`} style={{ display: 'inline-flex', alignItems: 'center', gap: Math.round(size * 0.32) }}>
+      <Logo size={size} variant="mark" />
+      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left', lineHeight: 1 }}>
+        <Wordmark size={Math.round(size * 0.68)} />
+        {tagline && (
+          <span className="rf-lockup-tag" style={{ marginTop: Math.round(size * 0.12), fontSize: Math.max(8, size * 0.24), fontWeight: 600, letterSpacing: '0.2em', color: 'rgba(205,205,215,0.75)', whiteSpace: 'nowrap', fontFamily: "'Inter', system-ui, sans-serif" }}>
+            SEUS VÍDEOS, NO PRÓXIMO NÍVEL
+          </span>
+        )}
+      </span>
+    </span>
+  );
+}
