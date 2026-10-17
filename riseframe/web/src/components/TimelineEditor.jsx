@@ -4791,9 +4791,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {/* celular: cursor fixo no meio, a timeline corre por baixo */}
           {isMobile && <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 2, marginLeft: -1, background: '#fff', zIndex: 5, pointerEvents: 'none', boxShadow: '0 0 6px rgba(0,0,0,0.6)' }} />}
           {!isMobile && (
-            <div style={{ position: 'relative', width: 42, flexShrink: 0, borderRight: `1px solid ${PR.line}`, background: PR.tools }}>
+            <div style={{ position: 'relative', width: 52, flexShrink: 0, borderRight: `1px solid ${PR.line}`, background: PR.tools }}>
             {/* as ferramentas rolam dentro da altura das faixas (não deixam a timeline mais alta) */}
-            <div className="rf-tl-tools" style={{ position: 'absolute', inset: 0, overflowY: 'auto', scrollbarWidth: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '6px 0' }}>
+            <div className="rf-tl-tools" style={{ position: 'absolute', inset: 0, overflowY: 'auto', scrollbarWidth: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '8px 0' }}>
               {/* Ferramentas (como no Premiere): escolha a ferramenta, depois aja na timeline */}
               <ToolIcon title="Seleção (V) — clique para selecionar, arraste para mover" active={!razorTool && !rangeTool} onClick={() => pickTool('select')}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 8-6 1.6L10 19z" /></svg>
@@ -5353,6 +5353,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {trechoBlock}
         </div>
 
+        <div className="rf-tl-cost">
         <CostLine
           mode="render"
           sourceId={sourceId}
@@ -5360,6 +5361,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           onDisable={disableFeature}
           style={{ marginTop: 18 }}
         />
+        </div>
         {renderErr && <div ref={renderErrRef}><RenderError err={renderErr} onDisable={disableFeature} onClose={() => setRenderErr(null)} /></div>}
 <div className="rf-tl-below">
         <PrimaryButton onClick={generate} disabled={busy || sending || allGone} style={{ width: '100%', marginTop: 12 }}>
@@ -5491,7 +5493,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           .rf-tl-card:not(.rf-m) .rf-tl-zoom{ margin-top: 5px !important; gap: 6px !important; }
           .rf-tl-card:not(.rf-m) .rf-tl-zoom button{ height: 20px !important; min-width: 20px; font-size: 11px !important; }
           .rf-tl-card:not(.rf-m) .rf-tl-adjust{ height: auto !important; min-height: 0 !important; align-self: stretch !important; }
-          .rf-tl-card:not(.rf-m) .rf-tl-bottom{ min-height: 0; overflow-y: auto; overflow-x: hidden; align-self: stretch; padding: 6px 8px 8px !important; scrollbar-width: thin; }
+          .rf-tl-card:not(.rf-m) .rf-tl-bottom{ min-height: 0; overflow-y: auto; overflow-x: hidden; align-self: stretch; padding: 6px 8px 8px !important; scrollbar-width: thin; display: flex; flex-direction: column; }
+          /* a timeline desce até o fim da janela (sem espaço vazio embaixo), como no Premiere */
+          .rf-tl-card:not(.rf-m) .rf-tl-bottom > .rf-tl-track{ flex: 1 0 auto; }
+          .rf-tl-card:not(.rf-m) .rf-tl-cost > *{ margin-top: 6px !important; }
           .rf-tl-card:not(.rf-m) .rf-tlbar{ gap: 6px !important; margin-bottom: 6px !important; }
           .rf-tl-card:not(.rf-m) .rf-tlbar button{ padding: 4px 9px !important; font-size: 11.5px !important; border-radius: 7px !important; gap: 5px !important; }
           .rf-tl-card:not(.rf-m) .rf-tc{ font-size: 17px !important; }
@@ -5519,9 +5524,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           .rf-tl-card:not(.rf-m) .rf-tl-stats{ display: inline; }
           .rf-tl-card:not(.rf-m) .rf-only-app{ display: block; }
         }
-        .rf-tsep{ width: 22px; height: 1px; background: rgba(255,255,255,0.08); margin: 3px 0; flex-shrink: 0; }
+        .rf-ptool svg{ width: 21px; height: 21px; }
+        .rf-ptool .rf-tkey{ font-size: 15px; }
+        .rf-tsep{ width: 30px; height: 1px; background: rgba(255,255,255,0.08); margin: 3px 0; flex-shrink: 0; }
         .rf-tkey{ font: 800 12px inherit; font-family: inherit; line-height: 1; }
-        .rf-keys{ position: absolute; left: 50px; top: 6px; z-index: 40; width: 300px; max-height: calc(100% - 12px); overflow-y: auto; padding: 10px 12px; border-radius: 10px;
+        .rf-keys{ position: absolute; left: 60px; top: 6px; z-index: 40; width: 300px; max-height: calc(100% - 12px); overflow-y: auto; padding: 10px 12px; border-radius: 10px;
           background: #1C1D23; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 18px 40px -12px rgba(0,0,0,0.8); font-size: 11.5px; color: #D6D8DE; }
         .rf-keys kbd{ min-width: 64px; display: inline-block; text-align: center; padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); font: 700 10.5px inherit; font-family: inherit; color: #fff; }
         .rf-lane-rs{ position: absolute; left: 0; right: 0; bottom: 0; height: 5px; cursor: row-resize; z-index: 2; }
@@ -5877,7 +5884,7 @@ const zoomBarBtn = { width: 24, height: 24, borderRadius: 6, border: `1px solid 
 function ToolIcon({ title, onClick, disabled, active, children }) {
   return (
     <button className="rf-ptool" title={title} aria-label={title} onClick={onClick} disabled={disabled}
-      style={{ width: 30, height: 30, borderRadius: 7, border: 'none', padding: 0, display: 'grid', placeItems: 'center', fontFamily: 'inherit',
+      style={{ width: 38, height: 38, flexShrink: 0, borderRadius: 7, border: 'none', padding: 0, display: 'grid', placeItems: 'center', fontFamily: 'inherit',
         background: active ? PR.blue : 'transparent', color: disabled ? 'rgba(255,255,255,0.22)' : active ? '#fff' : '#C9CCD3', cursor: disabled ? 'default' : 'pointer' }}>
       {children}
     </button>
