@@ -370,14 +370,17 @@ function periodicity(x, a, b, fs) {
  * palavra) e quanto é ruído largo (tosse: rajada de ar sem tom, com muito agudo). Puro.
  * @returns {{dur:number, voicedFrac:number, hiRatio:number}}
  */
-export function soundFeatures(x, fs = 16000) {
+export function soundFeatures(x, fs = 16000, { context = 0 } = {}) {
+  // `context` s no começo: só para medir o ataque (o som de verdade começa depois)
   const lo = biquad(biquad(biquad(x, 'high', 70, fs), 'low', 900, fs), 'low', 900, fs);
   const hi = biquad(biquad(x, 'high', 2500, fs), 'high', 2500, fs);
   const N = Math.round(fs * 0.04);
   const H = Math.round(fs * 0.01);
-  const frames = [];
-  for (let a = 0; a + N <= x.length; a += H) frames.push({ a, lo: rmsDb(lo, a, a + N), hi: rmsDb(hi, a, a + N) });
-  if (!frames.length) return { dur: x.length / fs, voicedFrac: 1, hiRatio: -60 };
+  const all = [];
+  for (let a = 0; a + N <= x.length; a += H) all.push({ a, lo: rmsDb(lo, a, a + N), hi: rmsDb(hi, a, a + N), full: rmsDb(x, a, a + N) });
+  const c0 = Math.round(context * fs);
+  const frames = all.filter((f) => f.a >= c0);
+  if (!frames.length) return { dur: x.length / fs, voicedFrac: 1, hiRatio: -60, attack: 0, onsetVoiced: 1, onsetHi: -60, voicedFull: 1, burstSec: 0 };
   // quadros fortes NA FAIXA DA VOZ (até 10 dB do mais forte): numa palavra são as
   // vogais (o "s"/"ch" fica quase todo no agudo); numa tosse, a própria rajada de ar
   const top = Math.max(...frames.map((f) => f.lo));
@@ -389,7 +392,38 @@ export function soundFeatures(x, fs = 16000) {
     ratios.push(f.hi - f.lo);
   }
   ratios.sort((p, q) => p - q);
-  return { dur: x.length / fs, voicedFrac: voiced / loud.length, hiRatio: ratios[Math.floor(ratios.length / 2)] };
+  // Começo do som: a tosse "explode" (sobe muito rápido, larga e sem tom) e depois pode
+  // ter um rabicho com voz ("cof-hum"); a palavra começa já na vogal ou numa consoante
+  // que vira vogal logo em seguida.
+  // (medidas pelo volume TOTAL: a rajada de ar da tosse é forte no agudo, e o rabicho com
+  // voz pode dominar só a faixa grave)
+  const topFull = Math.max(...frames.map((f) => f.full));
+  const loudFull = frames.filter((f) => f.full >= topFull - 10);
+  const oi = frames.indexOf(loudFull[0]);
+  const ai = all.indexOf(loudFull[0]);
+  const before = all.slice(Math.max(0, ai - 12), ai).map((f) => f.full);
+  const attack = before.length ? frames[oi].full - Math.min(...before) : 0;
+  const per = (f) => periodicity(lo, f.a, f.a + N, fs);
+  const voicedFull = loudFull.filter((f) => per(f) >= 0.6).length / loudFull.length;
+  // rajada de ar no começo: quadros seguidos fortes, sem tom e LARGOS (grave e agudo juntos —
+  // o "s"/"ch" de uma palavra fica quase todo no agudo)
+  let noisyRun = 0;
+  for (let i = oi; i < frames.length; i++) {
+    const f = frames[i];
+    const tilt = f.hi - f.lo;
+    if (f.full < topFull - 14 || per(f) >= 0.6 || tilt < -16 || tilt > 16) break;
+    noisyRun++;
+  }
+  return {
+    dur: x.length / fs,
+    voicedFrac: voiced / loud.length,
+    hiRatio: ratios[Math.floor(ratios.length / 2)],
+    attack,
+    onsetVoiced: per(frames[oi]),
+    onsetHi: frames[oi].hi - frames[oi].lo,
+    voicedFull,
+    burstSec: noisyRun * (H / fs),
+  };
 }
 
 /**
@@ -400,7 +434,39 @@ export function soundFeatures(x, fs = 16000) {
 export function isNonSpeech(f) {
   if (!f || f.dur > 1.6) return false;
   if (f.voicedFrac < 0.15) return true; // sem tom de voz nenhum: tosse seca, pigarro, batida
-  return f.voicedFrac < 0.25 && f.hiRatio > -6; // rajada larga com pouca voz (tosse)
+  if (f.voicedFrac < 0.25 && f.hiRatio > -6) return true; // rajada larga com pouca voz (tosse)
+  // tosse com rabicho de voz ("cof-hum"): começa numa explosão de ar sem tom e larga
+  return (f.burstSec ?? 0) >= 0.05 && (f.attack ?? 0) >= 12 && (f.voicedFull ?? 1) < 0.85;
+}
+
+/**
+ * Divide um som comprido em rajadas (crise de tosse: "cof… cof… cof"): onde o volume cai
+ * bem abaixo do pico do trecho por ≥ 50 ms. Puro.
+ */
+export function splitBursts(r, env, { dip = 14, minGap = 0.05, minBurst = 0.05 } = {}) {
+  if (!env) return [r];
+  const a = frameAt(env, r.start);
+  const b = frameAt(env, r.end);
+  let peak = -Infinity;
+  for (let i = a; i <= b; i++) peak = Math.max(peak, env.db[i]);
+  const thr = peak - dip;
+  const gapF = Math.max(1, Math.round(minGap / env.hop));
+  const out = [];
+  let s = -1;
+  let quiet = 0;
+  for (let i = a; i <= b + 1; i++) {
+    const on = i <= b && env.db[i] > thr;
+    if (on) {
+      if (s < 0) s = i;
+      quiet = 0;
+    } else if (s >= 0 && ++quiet >= gapF || (s >= 0 && i > b)) {
+      const e = i - quiet + 1;
+      if ((e - s) * env.hop >= minBurst) out.push({ start: +(s * env.hop).toFixed(3), end: +(e * env.hop).toFixed(3) });
+      s = -1;
+      quiet = 0;
+    }
+  }
+  return out.length ? out : [r];
 }
 
 /**
@@ -697,12 +763,16 @@ export async function findNoises(input, words, env, venv, { duration = Infinity,
   const runs = [];
   for (const g of gaps) {
     for (const r of voicedRuns([g], venv, { minRun: 0.05 })) {
-      if (r.end - r.start > 1.6 || r.start - g.start < edge || g.end - r.end < edge) continue;
-      runs.push({ ...r, gap: g });
+      if (r.end - r.start > 8 || r.start - g.start < edge || g.end - r.end < edge) continue;
+      // som comprido (crise de tosse): cada rajada é medida sozinha
+      const parts = r.end - r.start > 0.7 ? splitBursts(r, env) : [r];
+      for (const p of parts) if (p.end - p.start <= 1.6) runs.push({ ...p, gap: g });
     }
   }
   const found = [];
   const list = runs.slice(0, max);
+  // um pouco antes do som (dentro do vão) para medir o ataque da rajada
+  const preOf = (r) => Math.max(0.03, Math.min(0.15, r.start - r.gap.start));
   if (list.length > 30) {
     // Vídeo longo: lê o áudio em blocos de `chunk` s (uma leitura por bloco) em vez de
     // uma por trecho — antes só os primeiros 400 trechos eram olhados e as tosses do fim
@@ -718,14 +788,15 @@ export async function findNoises(input, words, env, venv, { duration = Infinity,
       const a = Math.max(0, k * chunk - 1);
       const x = await readPcm(input, a, chunk + 4, RATE);
       for (const r of rs) {
+        const pre = preOf(r);
         let seg = null;
         if (x) {
-          const i0 = Math.max(0, Math.round((r.start - 0.03 - a) * RATE));
+          const i0 = Math.max(0, Math.round((r.start - pre - a) * RATE));
           const i1 = Math.min(x.length, Math.round((r.end + 0.03 - a) * RATE));
           if (i1 - i0 > RATE * 0.04) seg = x.subarray(i0, i1);
         }
-        if (!seg) seg = await readPcm(input, r.start - 0.03, r.end - r.start + 0.06);
-        if (seg && isNonSpeech(soundFeatures(seg))) found.push(r);
+        if (!seg) seg = await readPcm(input, r.start - pre, r.end - r.start + pre + 0.03);
+        if (seg && isNonSpeech(soundFeatures(seg, RATE, { context: pre - 0.03 }))) found.push(r);
       }
     }
   } else {
@@ -733,8 +804,9 @@ export async function findNoises(input, words, env, venv, { duration = Infinity,
     const worker = async () => {
       while (next < list.length) {
         const r = list[next++];
-        const x = await readPcm(input, r.start - 0.03, r.end - r.start + 0.06);
-        if (x && isNonSpeech(soundFeatures(x))) found.push(r);
+        const pre = preOf(r);
+        const x = await readPcm(input, r.start - pre, r.end - r.start + pre + 0.03);
+        if (x && isNonSpeech(soundFeatures(x, 16000, { context: pre - 0.03 }))) found.push(r);
       }
     };
     await Promise.all(Array.from({ length: concurrency }, worker));
@@ -784,7 +856,7 @@ export async function audioAnalysis(input) {
   return { env, venv, track };
 }
 
-export async function preciseRemovals(input, { pauses = [], transcript, hasAudio = true, breaths = false, coughs = false, duration = Infinity, strength = 'forte', audio = null } = {}) {
+export async function preciseRemovals(input, { pauses = [], transcript, hasAudio = true, breaths = false, coughs = false, duration = Infinity, strength = 'forte', audio = null, noises: knownNoises = null } = {}) {
   // `audio`: análise já pronta (a prévia do editor reaproveita a do vídeo original)
   const { env, venv, track } = hasAudio ? audio || (await audioAnalysis(input)) : { env: null, venv: null, track: null };
   const voicing = makeVoicing(track, env);
@@ -793,7 +865,9 @@ export async function preciseRemovals(input, { pauses = [], transcript, hasAudio
   // (protege só o trecho com som de cada palavra: o Whisper estica palavras por cima da pausa)
   const words = trimWordsToSound(all.filter((w) => !ghosts.has(w)), env, venv);
   // Tosses e ruídos: não seguram o corte da pausa (protectVoice) e saem mesmo fora dela.
-  const noises = coughs ? await findNoises(input, words, env, venv, { duration }).catch(() => []) : [];
+  const noises = !coughs ? []
+    : knownNoises ? knownNoises.filter((n) => !words.some((w) => w.start < n.end && w.end > n.start))
+      : await findNoises(input, words, env, venv, { duration }).catch(() => []);
   // Ordem: palavras da transcrição → voz forte no áudio (menos tosse/pigarro) → fala
   // baixinha (tom de voz) → bordas pelo som real (a inspiração antes da frase sai com
   // "respirações"; o ataque da palavra fica).
@@ -811,4 +885,21 @@ export async function preciseRemovals(input, { pauses = [], transcript, hasAudio
     return true;
   };
   return { pauses: safePauses, removed, noises, words, quietBetween };
+}
+
+/**
+ * Tosses/ruídos do vídeo inteiro com TODAS as palavras da transcrição (as removidas também):
+ * serve de cache para a prévia do editor — apagar palavras só aumenta os vãos, e o que cai
+ * dentro de uma palavra removida já sai junto com ela.
+ */
+export async function detectNoises(input, transcript, { audio = null, duration = Infinity } = {}) {
+  const { env, venv } = audio || (await audioAnalysis(input));
+  if (!env || !venv) return [];
+  const all = (transcript?.segments || []).flatMap((s) => s.words || [])
+    .filter((w) => Number.isFinite(w.start) && Number.isFinite(w.end))
+    .map((w) => ({ ...w, removed: false }))
+    .sort((a, b) => a.start - b.start);
+  const ghosts = new Set(phantomWords(all, env));
+  const words = trimWordsToSound(all.filter((w) => !ghosts.has(w)), env, venv);
+  return findNoises(input, words, env, venv, { duration });
 }

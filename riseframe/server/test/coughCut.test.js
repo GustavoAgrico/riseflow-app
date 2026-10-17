@@ -6,7 +6,7 @@ import path from 'node:path';
 import { runFfmpeg } from '../src/pipeline/ffmpeg.js';
 import {
   readPcm, soundFeatures, isNonSpeech, preciseRemovals, wordGapRanges,
-  removedWordRanges, dropSlivers, phantomWords, envelopeFrom,
+  removedWordRanges, dropSlivers, phantomWords, envelopeFrom, splitBursts,
 } from '../src/pipeline/cutRefine.js';
 
 const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'rf-tosse-'));
@@ -133,4 +133,57 @@ test('vídeo longo: tosses do fim também saem (lê o áudio em blocos, sem teto
   assert.ok(r.noises.length >= N - 2, `${r.noises.length} tosses de ${N}`);
   const last = (N - 1) * U + 1.7;
   assert.ok(r.noises.some((x) => x.start <= last && x.end >= last), 'a última tosse foi achada');
+});
+
+// Tosse "de verdade": rajada de ar com ataque instantâneo (envelope por amostra)
+const BURST = "aevalsrc='(random(0)*2-1)*0.9*min(1,t/0.008)*exp(-t/0.09)':s=16000";
+
+test('tosse com rabicho de voz ("cof-hum") é ruído; palavras com consoante no começo, não', async () => {
+  const f = async (name, args) => soundFeatures(await readPcm(await wav(name, args), 0, 2));
+  const tail = await f('cofhum.wav', ['-f', 'lavfi', '-i', `${BURST}:d=0.2`, '-f', 'lavfi', '-i', `aevalsrc='0.5*${VOWEL}*sin(PI*t/0.3)':s=16000:d=0.3`,
+    '-filter_complex', '[0]highpass=f=150,lowpass=f=5000[c];[c][1]concat=n=2:v=0:a=1,adelay=60']);
+  assert.equal(isNonSpeech(tail), true, `cof-hum: ${JSON.stringify(tail)}`);
+  const words = {
+    ta: ['-f', 'lavfi', '-i', 'anoisesrc=color=white:amplitude=0.3:duration=0.015:seed=4:sample_rate=16000', '-f', 'lavfi', '-i', `aevalsrc='${VOWEL}*min(1,t/0.02)':s=16000:d=0.3`, '-filter_complex', '[0]highpass=f=2000[c];[c][1]concat=n=2:v=0:a=1,adelay=40'],
+    xis: ['-f', 'lavfi', '-i', 'anoisesrc=color=white:amplitude=0.6:duration=0.12:seed=7:sample_rate=16000', '-f', 'lavfi', '-i', `aevalsrc='${VOWEL}*min(1,t/0.03)':s=16000:d=0.25`, '-filter_complex', '[0]highpass=f=3000[c];[c][1]concat=n=2:v=0:a=1,adelay=40'],
+    rato: ['-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.35:duration=0.08:seed=8:sample_rate=16000', '-f', 'lavfi', '-i', `aevalsrc='${VOWEL}*min(1,t/0.02)':s=16000:d=0.3`, '-filter_complex', '[0]highpass=f=900,lowpass=f=3500[c];[c][1]concat=n=2:v=0:a=1,adelay=40'],
+  };
+  for (const [k, args] of Object.entries(words)) {
+    const ft = await f(`${k}.wav`, args);
+    assert.equal(isNonSpeech(ft), false, `${k} é palavra: ${JSON.stringify(ft)}`);
+  }
+});
+
+test('crise de tosse comprida: cada rajada é medida sozinha', () => {
+  // 2,4 s: três "cof" (0,5 s) separados por vales de 0,25 s que não chegam ao silêncio
+  const db = new Float32Array(400).fill(-60);
+  for (const [a, b] of [[50, 100], [125, 175], [200, 250]]) for (let i = a; i < b; i++) db[i] = -12;
+  for (const [a, b] of [[100, 125], [175, 200]]) for (let i = a; i < b; i++) db[i] = -34;
+  const parts = splitBursts({ start: 0.5, end: 2.5 }, envelopeFrom(db));
+  assert.equal(parts.length, 3, JSON.stringify(parts));
+  assert.ok(Math.abs(parts[0].start - 0.5) < 0.02 && Math.abs(parts[2].end - 2.5) < 0.02);
+  // som contínuo continua um pedaço só
+  assert.equal(splitBursts({ start: 0.5, end: 1.0 }, envelopeFrom(new Float32Array(200).fill(-12))).length, 1);
+});
+
+test('tosse com rabicho entre as frases sai do vídeo (e a fala fica)', async () => {
+  const file = await wav('frase_cofhum.wav', [
+    '-f', 'lavfi', '-i', `aevalsrc='${VOWEL}*between(t,0,1.2)':s=16000:d=1.9`,
+    '-f', 'lavfi', '-i', `${BURST}:d=0.2`,
+    '-f', 'lavfi', '-i', `aevalsrc='0.5*${VOWEL}*sin(PI*t/0.3)':s=16000:d=0.3`,
+    '-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono:d=0.6',
+    '-f', 'lavfi', '-i', `aevalsrc='${VOWEL}*between(t,0,1.2)':s=16000:d=1.2`,
+    '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.003:sample_rate=16000:d=6',
+    '-filter_complex', '[1]highpass=f=150,lowpass=f=5000[b];[0][b][2][3][4]concat=n=5:v=0:a=1[s];[s][5]amix=inputs=2:duration=first:normalize=0',
+  ]);
+  const transcript = { segments: [{ words: [
+    { start: 0, end: 0.6, word: 'hoje' }, { start: 0.6, end: 1.2, word: 'vamos' },
+    { start: 3.0, end: 3.6, word: 'falar' }, { start: 3.6, end: 4.2, word: 'disso' },
+  ] }] };
+  const pauses = wordGapRanges(transcript, { minGap: 0.45, duration: 4.2 });
+  const r = await preciseRemovals(file, { pauses, transcript, breaths: true, coughs: true, duration: 4.2 });
+  assert.ok(r.noises.some((n) => n.start <= 1.95 && n.end >= 2.3), `cof-hum achado: ${JSON.stringify(r.noises)}`);
+  const cut = [...r.pauses, ...r.removed];
+  for (const t of [1.95, 2.1, 2.3]) assert.ok(cut.some((x) => x.start <= t && x.end >= t), `${t}s deveria sair`);
+  for (const t of [1.15, 3.05]) assert.ok(!cut.some((x) => x.start <= t && x.end >= t), `${t}s é fala`);
 });
