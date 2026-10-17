@@ -987,7 +987,7 @@ jobsRouter.post('/transcribe/remote', requireAuth, requireVerified, uploadMedia.
   const drop = () => fs.unlink(file, () => {});
   if (remoteAccount() || ['whisper-local', 'mock'].includes(config.transcribe.provider)) {
     drop();
-    return res.status(503).json({ error: 'este servidor não faz transcrição remota' });
+    return res.status(501).json({ error: 'este servidor não faz transcrição remota' });
   }
   let work = null;
   try {
@@ -1013,6 +1013,59 @@ jobsRouter.post('/transcribe/remote', requireAuth, requireVerified, uploadMedia.
   }
 });
 
+// ── App de PC sem chaves: a conta do site faz por ele (só texto/consulta vai; o vídeo
+// fica no computador). Limites diários por conta para não haver abuso.
+const remoteUse = new Map(); // `${tipo}:${userId}` → { day, n }
+function remoteQuota(kind, userId, max) {
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `${kind}:${userId}`;
+  const used = remoteUse.get(key);
+  const n = used && used.day === day ? used.n : 0;
+  if (n >= max) return false;
+  remoteUse.set(key, { day, n: n + 1 });
+  return true;
+}
+// POST /api/remote/llm { system, user, maxTokens, json } → { text } — IA deste servidor
+jobsRouter.post('/remote/llm', requireAuth, requireVerified, async (req, res) => {
+  if (remoteAccount()) return res.status(501).json({ error: 'este servidor não responde pela conta' });
+  const system = String(req.body?.system || '');
+  const user = String(req.body?.user || '');
+  if (!user || system.length > 30_000 || user.length > 80_000) return res.status(400).json({ error: 'texto vazio ou grande demais' });
+  if (!remoteQuota('llm', req.user.id, Number(process.env.REMOTE_LLM_DAILY) || 600)) return res.status(429).json({ error: 'limite diário de IA pelo app atingido — tente amanhã' });
+  try {
+    const { askText, llmConfig } = await import('../pipeline/llm.js');
+    const cfg = llmConfig({});
+    if (!cfg.anthropicKey && !cfg.groqKey) return res.status(501).json({ error: 'IA indisponível no servidor' });
+    const out = await askText(system, user, cfg, { maxTokens: Math.min(4000, Number(req.body?.maxTokens) || 3000), json: req.body?.json !== false });
+    res.json({ text: out.text, provider: out.provider });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'falha na IA' });
+  }
+});
+// POST /api/remote/broll-search { query, source, orientation, targetH, limit, lang } → { candidates }
+jobsRouter.post('/remote/broll-search', requireAuth, requireVerified, async (req, res) => {
+  if (remoteAccount()) return res.status(501).json({ error: 'este servidor não responde pela conta' });
+  const query = String(req.body?.query || '').trim().slice(0, 120);
+  if (!query) return res.status(400).json({ error: 'busca vazia' });
+  if (!remoteQuota('broll', req.user.id, Number(process.env.REMOTE_BROLL_DAILY) || 1500)) return res.status(429).json({ error: 'limite diário de buscas de B-roll pelo app atingido' });
+  try {
+    const apiKey = config.broll.pexelsKey;
+    const pixabayKey = config.broll.pixabayKey;
+    const google = googleConfig();
+    const source = resolveSource(String(req.body?.source || 'mix'), { apiKey, pixabayKey, googleReady: googleReady(google) });
+    const candidates = await brollCandidates(query, {
+      source, apiKey, pixabayKey, google, noRemote: true, unrestricted: google.unrestricted,
+      orientation: req.body?.orientation === 'landscape' ? 'landscape' : 'portrait',
+      targetH: Math.min(2160, Number(req.body?.targetH) || 1280),
+      limit: Math.max(1, Math.min(12, Number(req.body?.limit) || 6)),
+      lang: String(req.body?.lang || '').slice(0, 5),
+    });
+    res.json({ candidates });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'falha na busca' });
+  }
+});
+
 // POST /api/cleanup/remote { text } → um bloco da correção da fala pela IA deste servidor,
 // para o app de PC sem chave de IA (só o texto numerado vem). Limite diário por conta.
 const remoteCleanups = new Map(); // userId → { day, n }
@@ -1020,7 +1073,7 @@ const REMOTE_CLEANUP_DAILY = Number(process.env.REMOTE_CLEANUP_DAILY) || 400;
 jobsRouter.post('/cleanup/remote', requireAuth, requireVerified, async (req, res) => {
   const text = String(req.body?.text || '');
   if (!text || text.length > 40_000) return res.status(400).json({ error: 'texto vazio ou grande demais' });
-  if (remoteAccount()) return res.status(503).json({ error: 'este servidor não faz correção remota' });
+  if (remoteAccount()) return res.status(501).json({ error: 'este servidor não faz correção remota' });
   const day = new Date().toISOString().slice(0, 10);
   const used = remoteCleanups.get(req.user.id);
   const n = used && used.day === day ? used.n : 0;
@@ -1034,7 +1087,7 @@ jobsRouter.post('/cleanup/remote', requireAuth, requireVerified, async (req, res
     });
     res.json({ text: out });
   } catch (err) {
-    res.status(502).json({ error: err.message || 'falha na IA' });
+    res.status(500).json({ error: err.message || 'falha na IA' });
   }
 });
 

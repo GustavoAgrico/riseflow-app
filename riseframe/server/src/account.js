@@ -30,10 +30,11 @@ const OFFLINE_GRACE_MS = 3 * 24 * 3600 * 1000; // sem internet: vale o último l
 const WAKE_RETRIES = [4000, 8000, 15000, 20000];
 const isWaking = (status) => status === 502 || status === 503 || status === 504;
 const WAKE_MSG = 'O servidor da sua conta está fora do ar ou acordando agora (pode levar 1 minuto). Tente de novo em instantes.';
-async function fetchWaking(url, init) {
+export async function fetchWaking(url, init = {}) {
+  const { timeoutMs = TIMEOUT_MS, ...rest } = init;
   let r;
   for (let i = 0; ; i++) {
-    r = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    r = await fetch(url, { ...rest, signal: AbortSignal.timeout(timeoutMs) });
     if (!isWaking(r.status) || i >= WAKE_RETRIES.length) return r;
     log.warn(`servidor da conta respondeu ${r.status}; tentando de novo em ${WAKE_RETRIES[i] / 1000}s`);
     await r.arrayBuffer().catch(() => {});
@@ -109,6 +110,7 @@ export async function remoteUser(token) {
     const { user } = await accountFetch('/auth/me', { token });
     if (!user?.id) return null;
     const entry = { user, at: Date.now() };
+    lastToken = token;
     cache.set(key, entry);
     writeDiskCache(key, entry);
     adoptLocalSettings(user);
@@ -167,11 +169,12 @@ const pendingRefunds = new Map(); // jobId → { token, chargeId }
 // Token da conta de quem criou cada job (só em memória): a transcrição pela conta do
 // site usa ele quando o app de PC não tem chave de transcrição nem Whisper local.
 const jobTokens = new Map();
+let lastToken = ''; // último login usado neste app (o app de PC é de uma pessoa só)
 export function rememberJobToken(jobId, req) {
   const t = bearer(req);
-  if (t) jobTokens.set(jobId, t);
+  if (t) { jobTokens.set(jobId, t); lastToken = t; }
 }
-export const jobAccountToken = (jobId) => jobTokens.get(jobId) || '';
+export const jobAccountToken = (jobId) => (jobId && jobTokens.get(jobId)) || lastToken;
 
 export function holdRemoteCharge(jobId, req, chargeId) {
   if (chargeId) pendingRefunds.set(jobId, { token: bearer(req), chargeId });

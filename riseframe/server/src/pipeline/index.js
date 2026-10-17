@@ -28,7 +28,7 @@ import { convertAspect, finalRender, outputTarget } from './render.js';
 import { burnHeadline, makeCover } from './headline.js';
 import { generateClips } from './clips.js';
 import { selectStory, markStory } from './shortVideo.js';
-import { llmConfig } from './llm.js';
+import { llmConfig, remoteLlm } from './llm.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('pipeline');
@@ -441,7 +441,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
   let analysis = { themes: [], brollMoments: [] };
   {
     const st = enter('analyze');
-    analysis = await analyze(transcript, meta, options);
+    analysis = await analyze(transcript, meta, { ...options, _jobId: job.id });
     report.themes = analysis.themes;
     if (analysis.niche) report.niche = analysis.niche;
     // Classificação narrativa (heurística): marca gancho/desenvolvimento/clímax/CTA.
@@ -606,6 +606,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
           anthropicKey: options.anthropicKey || config.analyze.anthropicKey,
           model: config.analyze.model,
           anthropicWorkspaceId: config.analyze.anthropicWorkspaceId,
+          // app de PC sem chave: a IA da conta do site traduz
+          ...(!(options.anthropicKey || config.analyze.anthropicKey) ? remoteLlm(job.id) : {}),
         });
         translation = { language: options.captionLanguage };
       } catch (err) {

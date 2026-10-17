@@ -3,7 +3,7 @@ import { makeLogger } from '../../logger.js';
 import { transcribeMock } from './mock.js';
 import { markNoiseTags } from '../cleanup.js';
 import fsp from 'node:fs/promises';
-import { jobAccountToken } from '../../account.js';
+import { jobAccountToken, fetchWaking } from '../../account.js';
 import {
   transcribeOpenAI,
   transcribeDeepgram,
@@ -38,11 +38,12 @@ async function transcribeCloud(input, work, token, onProgress) {
   onProgress?.(0.15);
   const form = new FormData();
   form.append('audio', new Blob([await fsp.readFile(audio)], { type: 'audio/mpeg' }), 'audio.mp3');
-  const res = await fetch(`${config.account.server}/api/transcribe/remote`, {
+  // o site no plano grátis dorme: tenta de novo enquanto ele acorda (502/503/504)
+  const res = await fetchWaking(`${config.account.server}/api/transcribe/remote`, {
     method: 'POST',
     headers: { authorization: `Bearer ${token}` },
     body: form,
-    signal: AbortSignal.timeout(20 * 60_000),
+    timeoutMs: 20 * 60_000,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `o servidor da conta respondeu ${res.status}`);
