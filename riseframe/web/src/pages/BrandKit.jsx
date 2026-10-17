@@ -89,7 +89,7 @@ export default function BrandKit({ onNewVideo }) {
   const corner = { tl: { left: m, top: m }, tr: { right: m, top: m }, bl: { left: m, bottom: m }, br: { right: m, bottom: m } }[b.logoPosition] || { right: m, top: m };
 
   return (
-    <div className="rf-page" style={{ maxWidth: 1180, margin: 0, padding: '36px 32px 90px' }}>
+    <div className="rf-page" style={{ maxWidth: 1180, margin: '0 auto', width: '100%', padding: '36px 32px 90px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginBottom: 22, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: 'clamp(24px,4vw,34px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 4px' }}>Brand Kit</h1>

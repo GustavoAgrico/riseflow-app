@@ -34,7 +34,7 @@ export default function Templates({ onUse, onNewVideo }) {
   const [cat, setCat] = useState('todos');
   const shown = cat === 'todos' ? TEMPLATES : TEMPLATES.filter((t) => t.cat === cat);
   return (
-    <div className="rf-page" style={{ maxWidth: 1180, margin: 0, padding: '36px 32px 90px', position: 'relative' }}>
+    <div className="rf-page" style={{ maxWidth: 1180, margin: '0 auto', width: '100%', padding: '36px 32px 90px', position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginBottom: 22, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: 'clamp(24px,4vw,34px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 4px' }}>Templates</h1>

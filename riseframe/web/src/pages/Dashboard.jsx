@@ -36,7 +36,7 @@ export default function Dashboard({ user, onNewVideo, onLibrary, onTemplates, on
   const shown = (tab === 'recentes' ? all.filter((j) => j.at >= Date.now() - 7 * 864e5) : tab === 'cortes' ? all.filter((j) => j.mode === 'clips') : all).slice(0, 8);
 
   return (
-    <div className="rf-page" style={{ maxWidth: 1180, margin: 0, padding: '36px 32px 90px', position: 'relative' }}>
+    <div className="rf-page" style={{ maxWidth: 1180, margin: '0 auto', width: '100%', padding: '36px 32px 90px', position: 'relative' }}>
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
         <div style={{ position: 'absolute', top: '-12%', right: '2%', width: 460, height: 460, borderRadius: '50%', background: C.purple, filter: 'blur(190px)', opacity: 0.12 }} />
         <div style={{ position: 'absolute', top: '20%', left: '-6%', width: 340, height: 340, borderRadius: '50%', background: C.orange, filter: 'blur(180px)', opacity: 0.08 }} />
