@@ -1,14 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
 import Icon, { Logo, Wordmark } from '../components/Icon.jsx';
-import { MeshBg, GhostBtn, GradBtn } from './Landing.jsx';
+import { MeshBg, GhostBtn, GradBtn } from '../components/LandingUi.jsx';
 import { getDownloads, getPublicInfo } from '../api.js';
 
 // Página de download do app de PC/Mac (/download), no estilo das páginas de app dos
 // grandes editores: botão do sistema detectado, outras versões, recursos, passo a passo,
 // planos mensais (o app só funciona com plano ativo), requisitos e dúvidas.
 
-const PLATFORMS = {
+export const PLATFORMS = {
   win: { label: 'Windows', sub: 'Windows 10 e 11 (64 bits)', os: 'win' },
   winPortable: { label: 'Windows portátil', sub: 'Sem instalar — roda direto do arquivo', os: 'win' },
   macArm: { label: 'Mac (Apple M)', sub: 'Chips M1, M2, M3, M4…', os: 'mac' },
@@ -16,7 +16,7 @@ const PLATFORMS = {
 };
 
 /** Sistema do visitante → id da plataforma sugerida ('mobile' no celular). */
-function detectPlatform() {
+export function detectPlatform() {
   if (typeof navigator === 'undefined') return 'win';
   const ua = navigator.userAgent || '';
   if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua) && !/Macintosh/.test(ua)) return 'mobile';
@@ -36,7 +36,7 @@ function detectPlatform() {
 
 const mb = (bytes) => (bytes ? `${Math.round(bytes / 1e6)} MB` : '');
 
-function OsIcon({ os, size = 18, color = 'currentColor' }) {
+export function OsIcon({ os, size = 18, color = 'currentColor' }) {
   if (os === 'mac') {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill={color} aria-hidden="true">

@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { C, GRAD, FONT_DISPLAY } from './theme.js';
 import Icon, { Logo, Wordmark } from './components/Icon.jsx';
 import { Spinner } from './components/ui.jsx';
 import { useAuth } from './AuthContext.jsx';
-import Landing from './pages/Landing.jsx';
+// Página inicial em pedaço separado (animações): quem já está logado não baixa.
+const Landing = lazy(() => import('./pages/Landing.jsx'));
 import Download from './pages/Download.jsx';
 import Legal from './pages/Legal.jsx';
 import Auth from './pages/Auth.jsx';
@@ -354,7 +355,11 @@ export default function Root() {
       );
     }
     if (publicRoute === 'landing') {
-      return <Landing onEnter={() => setPublicRoute('register')} onLogin={() => setPublicRoute('login')} />;
+      return (
+        <Suspense fallback={<div style={{ minHeight: '100vh', background: '#0c0c0c' }} />}>
+          <Landing onEnter={() => setPublicRoute('register')} onLogin={() => setPublicRoute('login')} />
+        </Suspense>
+      );
     }
     return <Auth initialMode={publicRoute === 'register' ? 'register' : 'login'} onDone={() => setView('dashboard')} onHome={() => setPublicRoute('landing')} connectingApp={Boolean(deviceCode)} />;
   }
