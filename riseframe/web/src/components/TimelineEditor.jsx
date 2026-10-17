@@ -155,6 +155,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Transições manuais (como no CapCut): cada uma num ponto, com o seu tipo — tempo original.
   const [transitions, setTransitions] = useState([]);
   const [selTrans, setSelTrans] = useState(null);
+  // Ímã (encaixe) da timeline, marcadores (tecla M) e a linha amarela de quando encaixa.
+  const [snapOn, setSnapOn] = useState(() => { try { return localStorage.getItem('rf_snap') !== '0'; } catch { return true; } });
+  const [markers, setMarkers] = useState([]);
+  const [selMarker, setSelMarker] = useState(null);
+  const [snapLine, setSnapLine] = useState(null);
+  const snapRef = useRef({ on: true, pts: [], pps: 64 });
+  const clipRef = useRef(null); // copiar/colar
+  // Velocidade por trecho e congelar quadro (tempo original), como no CapCut.
+  const [speedRanges, setSpeedRanges] = useState([]);
+  const [freezes, setFreezes] = useState([]);
+  const [selSpeed, setSelSpeed] = useState(null);
+  const [selFreeze, setSelFreeze] = useState(null);
+  const [freezeDur, setFreezeDur] = useState(2);
   const [transPick, setTransPick] = useState('flash');
   const [selZoom, setSelZoom] = useState(null);
   const [selBroll, setSelBroll] = useState(null); // momento de B-roll selecionado (índice)
@@ -348,7 +361,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const histState = {
     segments, cuts, keptPauses, gains, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs,
-    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock,
+    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes,
   };
   const histSet = {
     segments: setSegments, cuts: setCuts, keptPauses: setKeptPauses, gains: setGains, media: setMedia,
@@ -357,7 +370,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths,
     cutCoughs: setCutCoughs, aspectSel: setAspectSel, quality: setQuality, reframeMode: setReframeMode,
     splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom,
-    vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, fxMoments: setFxMoments, transitions: setTransitions, laneHide: setLaneHide, laneLock: setLaneLock,
+    vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, fxMoments: setFxMoments, transitions: setTransitions, laneHide: setLaneHide, laneLock: setLaneLock, markers: setMarkers, speedRanges: setSpeedRanges, freezes: setFreezes,
   };
   const histRef = useRef({ past: [], future: [], prev: null, skip: false, at: 0 });
   const [, setHistTick] = useState(0);
@@ -701,6 +714,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   useEffect(() => {
     let id;
     let lastT = null;
+    let frzTimer = null;
     const loop = () => {
       const v = videoRef.current;
       const L = liveRef.current;
@@ -750,6 +764,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         }
         const vol = Math.max(0, Math.min(1, volumeAt(t, L.audio)));
         if (Math.abs(v.volume - vol) > 0.01) v.volume = vol;
+        // Velocidade do trecho e congelar quadro (como fica no vídeo final).
+        if (!v.paused && L.speedRanges) {
+          const sr = L.speedRanges.find((r) => t >= r.start && t < r.end);
+          const want = (L.gSpeed || 1) * (sr ? sr.speed : 1);
+          if (Math.abs(v.playbackRate - want) > 0.001) v.playbackRate = want;
+          if (lastT != null && t > lastT && t - lastT < 0.6 && !frzTimer) {
+            const fz = L.freezes.find((f) => f.t > lastT && f.t <= t);
+            if (fz) { v.pause(); frzTimer = setTimeout(() => { frzTimer = null; v.play().catch(() => {}); }, fz.dur * 1000); }
+          }
+        }
         // Sons nos mesmos pontos do render: os automáticos (se ligados) e os colocados à mão,
         // cada um com o som REAL da biblioteca (o mesmo arquivo do render).
         if (!v.paused && lastT != null && t > lastT && t - lastT < 0.6) {
@@ -830,16 +854,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const timed = d.kind !== 'image'; // vídeo/música: aparar a esquerda avança no arquivo
       const srcLeft = timed && d.srcDuration ? Math.max(0.3, d.srcDuration - d.off0) : Infinity;
       if (d.mode === 'move') {
-        const start = Math.max(0, Math.min(d.start0 + dt, dur - Math.min(d.dur0, dur)));
+        let start = Math.max(0, Math.min(d.start0 + dt, dur - Math.min(d.dur0, dur)));
+        const sn = snapSpan(snapRef.current, start, d.dur0, d.key);
+        start = Math.max(0, Math.min(sn.start, dur - Math.min(d.dur0, dur)));
+        setSnapLine(sn.line);
         // Arrastar para cima/baixo troca de camada (cima = por cima no vídeo).
         const layer = Math.max(0, Math.min(d.maxLayer + 1, d.layer0 + Math.round((d.y0 - e.clientY) / LANE.midias)));
         updateMedia(d.key, { start: +start.toFixed(2), layer });
       } else if (d.mode === 'right') {
-        const duration = Math.max(0.3, Math.min(d.dur0 + dt, srcLeft, dur - d.start0));
+        const sn = snapPoint(snapRef.current, d.start0 + d.dur0 + dt, d.key);
+        setSnapLine(sn.line);
+        const duration = Math.max(0.3, Math.min(sn.t - d.start0, srcLeft, dur - d.start0));
         updateMedia(d.key, { duration: +duration.toFixed(2) });
       } else { // left
         const minStart = timed ? d.start0 - d.off0 : 0; // não volta antes do início do arquivo
-        const start = Math.max(0, minStart, Math.min(d.start0 + dt, d.start0 + d.dur0 - 0.3));
+        const sn = snapPoint(snapRef.current, d.start0 + dt, d.key);
+        setSnapLine(sn.line);
+        const start = Math.max(0, minStart, Math.min(sn.t, d.start0 + d.dur0 - 0.3));
         const duration = d.start0 + d.dur0 - start;
         const patch = { start: +start.toFixed(2), duration: +duration.toFixed(2) };
         if (timed) patch.offset = +Math.max(0, d.off0 + (start - d.start0)).toFixed(2);
@@ -850,6 +881,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const d = mediaDragRef.current;
       if (d) {
         mediaDragRef.current = null;
+        setSnapLine(null);
         document.body.style.userSelect = '';
         // Soltou numa camada ocupada no mesmo tempo: abre uma camada nova logo acima
         // (se subiu) ou abaixo (se desceu) da alvo. Depois renumera sem buracos.
@@ -875,15 +907,21 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       d.setList((list) => list.map((r) => {
         if (r.key !== d.key) return r;
         if (d.mode === 'move') {
-          const start = Math.max(0, Math.min(d.start0 + dt, dur - (d.end0 - d.start0)));
-          return { ...r, start: +start.toFixed(2), end: +(start + (d.end0 - d.start0)).toFixed(2) };
+          const len = d.end0 - d.start0;
+          const sn = snapSpan(snapRef.current, Math.max(0, Math.min(d.start0 + dt, dur - len)), len, d.key);
+          d.line = sn.line;
+          const start = Math.max(0, Math.min(sn.start, dur - len));
+          return { ...r, start: +start.toFixed(2), end: +(start + len).toFixed(2) };
         }
-        if (d.mode === 'right') return { ...r, end: +Math.min(dur, Math.max(d.start0 + 0.4, d.end0 + dt)).toFixed(2) };
-        return { ...r, start: +Math.max(0, Math.min(d.end0 - 0.4, d.start0 + dt)).toFixed(2) };
+        const sn = snapPoint(snapRef.current, (d.mode === 'right' ? d.end0 : d.start0) + dt, d.key);
+        d.line = sn.line;
+        if (d.mode === 'right') return { ...r, end: +Math.min(dur, Math.max(d.start0 + 0.4, sn.t)).toFixed(2) };
+        return { ...r, start: +Math.max(0, Math.min(d.end0 - 0.4, sn.t)).toFixed(2) };
       }));
+      setSnapLine(d.line ?? null);
     }
     function up() {
-      if (rangeDragRef.current) { rangeDragRef.current = null; document.body.style.userSelect = ''; }
+      if (rangeDragRef.current) { rangeDragRef.current = null; document.body.style.userSelect = ''; setSnapLine(null); }
     }
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
@@ -1312,7 +1350,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const canDeleteSel = (selKind === 'caption' && selCaptions.length > 0) || (selKind === 'video' && !!selVideo)
     || (selKind === 'media' && !!selMediaItem) || (selKind === 'zoom' && !!selZoomItem)
     || (selKind === 'broll' && !!brollReview?.moments[selBroll]) || (selKind === 'gain' && !!selGain)
-    || (selKind === 'keyframe' && selKey != null) || (selKind === 'text' && !!selText) || (selKind === 'vfx' && !!selFx) || (selKind === 'trans' && !!selTrans);
+    || (selKind === 'keyframe' && selKey != null) || (selKind === 'text' && !!selText) || (selKind === 'vfx' && !!selFx) || (selKind === 'trans' && !!selTrans) || (selKind === 'marker' && !!selMarker) || (selKind === 'speed' && !!selSpeed) || (selKind === 'freeze' && !!selFreeze);
   /** Excluir: legenda some (a fala fica); vídeo vira corte; os demais itens saem da faixa. */
   function deleteSelected() {
     if (!canDeleteSel) return;
@@ -1328,6 +1366,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     else if (selKind === 'text') { setTextLayers((l) => l.filter((x) => x.key !== selText)); setSelText(null); }
     else if (selKind === 'vfx') { setFxMoments((l) => l.filter((x) => x.key !== selFx)); setSelFx(null); }
     else if (selKind === 'trans') { setTransitions((l) => l.filter((x) => x.key !== selTrans)); setSelTrans(null); }
+    else if (selKind === 'marker') { setMarkers((l) => l.filter((x) => x.key !== selMarker)); setSelMarker(null); }
+    else if (selKind === 'speed') { setSpeedRanges((l) => l.filter((x) => x.key !== selSpeed)); setSelSpeed(null); }
+    else if (selKind === 'freeze') { setFreezes((l) => l.filter((x) => x.key !== selFreeze)); setSelFreeze(null); }
   }
   /** Sobe/desce a camada da mídia (troca de lugar com quem estiver na camada vizinha). */
   function moveLayer(key, delta) {
@@ -1341,7 +1382,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     });
   }
   const mediaRows = media.reduce((mx, m) => Math.max(mx, (m.layer || 0) + 1), 1);
-  const SEL_LABEL = { trans: 'transição', text: 'texto', vfx: 'efeito', keyframe: 'quadro-chave', caption: 'legenda', video: 'vídeo', media: 'camada', zoom: 'zoom', broll: 'B-roll', gain: 'volume' };
+  const SEL_LABEL = { speed: 'velocidade', freeze: 'congelamento', marker: 'marcador', trans: 'transição', text: 'texto', vfx: 'efeito', keyframe: 'quadro-chave', caption: 'legenda', video: 'vídeo', media: 'camada', zoom: 'zoom', broll: 'B-roll', gain: 'volume' };
 
 
   function toggleSeg(si) { setSegments((prev) => prev.map((s, i) => { if (i !== si) return s; const gone = segRemoved(s); return { ...s, words: s.words.map((w) => ({ ...w, removed: !gone })) }; })); }
@@ -1384,7 +1425,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [fixText, setFixText] = useState(null); // texto em edição no trecho selecionado
   useEffect(() => setFixText(null), [sel]);
 
-  async function onPickMedia(e) {
+  async function onPickMedia(e, extra = null) {
     const files = Array.from(e.target.files || []);
     e.target.value = ''; // permite reenviar o mesmo arquivo
     if (!files.length) return;
@@ -1418,6 +1459,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             blend: 'normal', // modo de mesclagem (só tela cheia)
             offset: 0, // ponto de início no arquivo (aparar/dividir)
             layer: freeLayer(prev, cur, info.kind === 'audio' ? Math.min(srcDur, dur) : Math.min(info.kind === 'image' ? 4 : srcDur, 8)),
+            ...(extra || {}),
           },
         ]);
       }
@@ -1425,6 +1467,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setMediaErr(err.message || 'falha ao enviar a mídia');
     } finally {
       setMediaBusy(false);
+    }
+  }
+  // Sticker (como no CapCut): o emoji vira uma imagem PNG e entra como camada livre no playhead.
+  async function addSticker(st) {
+    try {
+      const c = document.createElement('canvas');
+      c.width = 512; c.height = 512;
+      const g = c.getContext('2d');
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = '380px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+      g.fillText(st.ch, 256, 286);
+      const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+      if (!blob) throw new Error('não deu para criar o sticker');
+      const file = new File([blob], `sticker-${st.id}.png`, { type: 'image/png' });
+      await onPickMedia({ target: { files: [file], value: '' } }, { mode: 'pip', scale: 0.28, cx: 0.5, cy: 0.42, duration: 2.5, animIn: 'pop', animOut: 'fade' });
+    } catch (err) {
+      setMediaErr(err.message || 'falha ao criar o sticker');
     }
   }
   const updateMedia = (key, patch) => setMedia((prev) => prev.map((m) => (m.key === key ? { ...m, ...patch } : m)));
@@ -1699,6 +1759,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           ...(m.cx != null ? { cx: +Number(m.cx).toFixed(3), cy: +Number(m.cy ?? 0.5).toFixed(3) } : {}),
           ...(m.kind === 'audio' ? { fadeIn: +Number(m.fadeIn || 0).toFixed(2), fadeOut: +Number(m.fadeOut || 0).toFixed(2) } : {}),
         })),
+        // Velocidade por trecho e congelar quadro (tempo original; o servidor remapeia).
+        speedRanges: speedRanges.map((r) => ({ start: +r.start.toFixed(3), end: +r.end.toFixed(3), speed: r.speed })),
+        freezes: freezes.map((f) => ({ t: +f.t.toFixed(3), dur: f.dur })),
         // Transições manuais (cada uma no seu ponto) — as automáticas ficam desligadas.
         transition: 'none',
         transitions: transitions.map((tr) => ({ t: +tr.t.toFixed(3), type: tr.type })),
@@ -1926,6 +1989,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const fxNow = visFx.find((m) => cur >= m.start && cur < m.end);
   const videoFilterFx = [videoFilter, fxNow ? VIDEO_FX_CSS[fxNow.effect] : ''].filter(Boolean).join(' ') || undefined;
 
+  // Quanto a velocidade dos trechos e os congelamentos mudam a duração (aproximado).
+  const retimeDelta = speedRanges.reduce((acc, r) => acc + (r.end - r.start) * (1 / r.speed - 1), 0) + freezes.reduce((acc, f) => acc + f.dur, 0) * speed;
   const allGone = stats.removed >= stats.total;
   const showZoomLane = fx.videoMotion !== 'none';
   const showChapLane = chapters.length > 0 && !isMobile;
@@ -1991,7 +2056,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Atalhos de teclado (fora de campos de texto): espaço, setas, S/Ctrl+B dividem a
   // faixa selecionada, Delete exclui o selecionado.
   const keysRef = useRef({});
-  keysRef.current = { togglePlay, seek, cur, goCaption, splitSelected, deleteSelected, undo, redo, hidden };
+  keysRef.current = { togglePlay, seek, cur, goCaption, splitSelected, deleteSelected, undo, redo, hidden, copySel, pasteAtPlayhead, duplicateSel, toggleMarker, toggleSnap };
   useEffect(() => {
     function onKey(e) {
       if (keysRef.current.hidden) return; // escondido durante o render
@@ -2001,6 +2066,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) k.redo(); else k.undo(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); k.redo(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); k.splitSelected(); return; }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'c' || e.key === 'C')) { if (k.copySel()) e.preventDefault(); return; }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'v' || e.key === 'V')) { if (k.pasteAtPlayhead()) e.preventDefault(); return; }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); k.duplicateSel(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'Space') { e.preventDefault(); k.togglePlay(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); k.seek(k.cur - (e.shiftKey ? 5 : 1)); }
@@ -2008,6 +2076,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       else if (e.key === 'ArrowUp') { e.preventDefault(); k.goCaption(-1); }
       else if (e.key === 'ArrowDown') { e.preventDefault(); k.goCaption(1); }
       else if (e.key === 's' || e.key === 'S') { k.splitSelected(); }
+      else if (e.key === 'm' || e.key === 'M') { k.toggleMarker(); }
+      else if (e.key === 'n' || e.key === 'N') { k.toggleSnap(); }
       else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); k.deleteSelected(); }
     }
     window.addEventListener('keydown', onKey);
@@ -2212,10 +2282,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     function move(e) {
       const d = transDragRef.current;
       if (!d) return;
-      const t = +Math.max(0, Math.min(dur, d.t0 + (e.clientX - d.x0) / pps)).toFixed(3);
+      const sn = snapPoint(snapRef.current, d.t0 + (e.clientX - d.x0) / pps, d.key);
+      setSnapLine(sn.line);
+      const t = +Math.max(0, Math.min(dur, sn.t)).toFixed(3);
       setTransitions((l) => l.map((x) => (x.key === d.key ? { ...x, t } : x)));
     }
-    function up() { transDragRef.current = null; }
+    function up() { if (transDragRef.current) setSnapLine(null); transDragRef.current = null; }
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
@@ -2233,6 +2305,60 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const add = cutPoints.filter((t) => !transitions.some((x) => Math.abs(x.t - t) < 0.3)).map((t, i) => ({ key: `tr${Date.now()}_${i}`, t: +t.toFixed(3), type: transPick }));
     if (add.length) setTransitions((l) => [...l, ...add].sort((a, b) => a.t - b.t));
   }
+  // ── Velocidade do trecho + congelar quadro ──
+  const selSpeedItem = speedRanges.find((x) => x.key === selSpeed) || null;
+  const speedTarget = selKind === 'speed' && selSpeedItem ? selSpeedItem : selKind === 'video' && selVideo ? selVideo : null;
+  const speedNow = selSpeedItem && speedTarget === selSpeedItem ? selSpeedItem.speed
+    : (speedTarget && speedRanges.find((r) => Math.abs(r.start - speedTarget.start) < 0.02 && Math.abs(r.end - speedTarget.end) < 0.02)?.speed) || 1;
+  function setRangeSpeed(k) {
+    if (!speedTarget) return;
+    const a = speedTarget.start;
+    const b = speedTarget.end;
+    const keep = speedRanges.filter((r) => r.key !== selSpeed && (r.end <= a + 0.01 || r.start >= b - 0.01));
+    if (Math.abs(k - 1) < 0.001) { setSpeedRanges(keep); setSelSpeed(null); if (selKind === 'speed') setSelKind('video'); return; }
+    const key = selKind === 'speed' && selSpeed ? selSpeed : `sp${Date.now()}`;
+    setSpeedRanges([...keep, { key, start: +a.toFixed(3), end: +b.toFixed(3), speed: k }].sort((x, y) => x.start - y.start));
+    setSelSpeed(key);
+    setSelKind('speed');
+  }
+  function addFreeze() {
+    if (freezes.some((f) => Math.abs(f.t - cur) < 0.1)) return;
+    const f = { key: `fz${Date.now()}`, t: +cur.toFixed(3), dur: freezeDur };
+    setFreezes((l) => [...l, f].sort((x, y) => x.t - y.t));
+    setSelFreeze(f.key);
+    setSelKind('freeze');
+  }
+  const selFreezeItem = freezes.find((x) => x.key === selFreeze) || null;
+  const speedBlock = (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 10, display: 'grid', gap: 8 }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Velocidade do trecho</span>
+      {speedTarget ? (
+        <>
+          <span style={{ fontSize: 11, color: C.faint }}>{fmtDuration(speedTarget.start)} → {fmtDuration(speedTarget.end)} · fica com {fmtDuration((speedTarget.end - speedTarget.start) / speedNow)}</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+            {RANGE_SPEEDS.map((k) => (
+              <button key={k} onClick={() => setRangeSpeed(k)} style={{ ...miniBtn(Math.abs(k - speedNow) < 0.001, false), minWidth: 44 }}>{k}×</button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <span style={{ fontSize: 11, color: C.faint }}>Clique num pedaço da faixa V1 (divida com <b>S</b> no ponto onde começa e onde termina) para acelerar ou deixar em câmera lenta só ali.</span>
+      )}
+      <div style={{ height: 1, background: C.border, margin: '2px 0' }} />
+      <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Congelar quadro {freezes.length ? `· ${freezes.length}` : ''}</span>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div style={{ flex: 1 }}><Sel value={String(selFreezeItem ? selFreezeItem.dur : freezeDur)} opts={FREEZE_DURS.map((d) => ({ id: String(d), label: `${d} s parado` }))}
+          onChange={(v) => { const d = Number(v); if (selFreezeItem && selKind === 'freeze') setFreezes((l) => l.map((x) => (x.key === selFreezeItem.key ? { ...x, dur: d } : x))); else setFreezeDur(d); }} /></div>
+        <button onClick={addFreeze} style={{ ...framingTab(false), flex: 'none' }}>❄ No playhead</button>
+      </div>
+      {selKind === 'freeze' && selFreezeItem && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ flex: 1, fontSize: 11, color: C.faint }}>Congela em {fmtDuration(selFreezeItem.t)} por {selFreezeItem.dur} s (o vídeo fica mais longo)</span>
+          <button onClick={() => { setFreezes((l) => l.filter((x) => x.key !== selFreezeItem.key)); setSelFreeze(null); }} style={{ ...miniBtn(false, false), color: C.red }}>Remover</button>
+        </div>
+      )}
+    </div>
+  );
   const selTransItem = transitions.find((x) => x.key === selTrans) || null;
   const transOpts = (catalog?.transitions || []).filter((o) => o.id !== 'none');
   const transBlock = (
@@ -2264,6 +2390,83 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     ...sfxMoments.map((m) => ({ at: m.t - leadOf(m.type), type: m.type })),
   ];
 
+  // Pontos onde os blocos encaixam (ímã): playhead, começo/fim, marcadores, cortes e as
+  // pontas de tudo que está na timeline.
+  snapRef.current = {
+    on: snapOn,
+    pps,
+    pts: [
+      { t: cur, key: '·playhead' }, { t: 0 }, { t: dur },
+      ...markers.map((m) => ({ t: m.t, key: m.key })),
+      ...transitions.map((x) => ({ t: x.t, key: x.key })),
+      ...cuts.flatMap((c) => [{ t: c.start }, { t: c.end }]),
+      ...[...media.map((m) => ({ key: m.key, start: m.start, end: m.start + m.duration })), ...textLayers, ...fxMoments, ...(zoomMoments || []), ...(brollReview?.moments || []), ...gains]
+        .flatMap((r) => [{ t: Number(r.start), key: r.key }, { t: Number(r.end), key: r.key }]),
+      ...capSegments.flatMap((sg) => [{ t: sg.start }, { t: sg.end }]),
+    ].filter((p) => Number.isFinite(p.t)),
+  };
+  function toggleSnap() {
+    setSnapOn((v) => { try { localStorage.setItem('rf_snap', v ? '0' : '1'); } catch { /* ignora */ } return !v; });
+  }
+  // Marcador no playhead (M): se já houver um ali, tira.
+  function toggleMarker() {
+    const near = markers.find((m) => Math.abs(m.t - cur) < 0.08);
+    if (near) { setMarkers((l) => l.filter((x) => x.key !== near.key)); if (selMarker === near.key) setSelMarker(null); return; }
+    const mk = { key: `mk${Date.now()}`, t: +cur.toFixed(3) };
+    setMarkers((l) => [...l, mk].sort((a, b) => a.t - b.t));
+  }
+  // Copiar / colar / duplicar (como no CapCut): mídias, textos, efeitos e transições.
+  function selClip() {
+    if (selKind === 'media') { const it = media.find((x) => x.key === selMedia); return it && { kind: 'media', item: it }; }
+    if (selKind === 'text') { const it = textLayers.find((x) => x.key === selText); return it && { kind: 'text', item: it }; }
+    if (selKind === 'vfx') { const it = fxMoments.find((x) => x.key === selFx); return it && { kind: 'vfx', item: it }; }
+    if (selKind === 'trans') { const it = transitions.find((x) => x.key === selTrans); return it && { kind: 'trans', item: it }; }
+    return null;
+  }
+  function copySel() {
+    const c = selClip();
+    if (c) clipRef.current = c;
+    return !!c;
+  }
+  function pasteClip(c, at) {
+    if (!c) return false;
+    const key = `${c.kind}${Date.now()}${Math.floor(Math.random() * 1e4)}`;
+    const it = c.item;
+    if (c.kind === 'media') {
+      const start = +Math.max(0, Math.min(at, dur - 0.3)).toFixed(2);
+      const duration = +Math.min(Number(it.duration), dur - start).toFixed(2);
+      setMedia((l) => {
+        const lay = it.layer || 0;
+        const clash = l.some((x) => (x.layer || 0) === lay && x.start < start + duration && x.start + x.duration > start);
+        const top = l.reduce((mx, x) => Math.max(mx, x.layer || 0), 0);
+        return normalizeLayers([...l, { ...it, key, start, duration, layer: clash ? top + 1 : lay }]);
+      });
+      setSelMedia(key);
+      setSelKind('media');
+    } else if (c.kind === 'text' || c.kind === 'vfx') {
+      const len = it.end - it.start;
+      const start = +Math.max(0, Math.min(at, dur - 0.3)).toFixed(2);
+      const next = { ...it, key, start, end: +Math.min(dur, start + len).toFixed(2) };
+      if (c.kind === 'text') { setTextLayers((l) => [...l, next]); setSelText(key); setSelKind('text'); }
+      else { setFxMoments((l) => [...l, next]); setSelFx(key); setSelKind('vfx'); }
+    } else if (c.kind === 'trans') {
+      const t = +Math.max(0, Math.min(dur, at)).toFixed(3);
+      if (transitions.some((x) => Math.abs(x.t - t) < 0.3)) return false;
+      setTransitions((l) => [...l, { ...it, key, t }].sort((a, b) => a.t - b.t));
+      setSelTrans(key);
+      setSelKind('trans');
+    }
+    return true;
+  }
+  function pasteAtPlayhead() { return pasteClip(clipRef.current, cur); }
+  function duplicateSel() {
+    const c = selClip();
+    if (!c) return false;
+    const it = c.item;
+    const at = c.kind === 'media' ? it.start + it.duration : c.kind === 'trans' ? it.t + 1 : it.end;
+    return pasteClip(c, at);
+  }
+
   // Dados usados pela prévia ao vivo (lidos pelo laço do player).
   const liveWindows = fx.videoMotion !== 'none' ? (zoomMoments || []).map((z) => [z.start, z.end, z.scale, z.effect || defaultMomentEffect(fx.videoMotion)]) : [];
   liveRef.current = {
@@ -2273,6 +2476,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     windows: liveWindows,
     keys: transformKeys,
     trans: transitions,
+    speedRanges,
+    freezes,
+    gSpeed: speed,
     fxMoments: visFx,
     sfxEvents: liveSfxEvents,
     audio: { audioMute, audioVolume, gains },
@@ -2438,13 +2644,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 fontSize: 13, fontWeight: on ? 700 : 600, textAlign: 'left', whiteSpace: 'nowrap',
                 background: on ? 'linear-gradient(90deg, rgba(255,107,53,0.18), rgba(255,107,53,0.04))' : 'transparent', color: on ? C.text : C.muted,
               }}>
-                {on && <span style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 3, borderRadius: 3, background: C.orange }} />}
+                {on && <span className="rf-tl-navind" style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 3, borderRadius: 3, background: C.orange }} />}
                 <Icon name={t.icon} size={17} strokeWidth={1.9} color={on ? C.orangeSoft : 'currentColor'} /> <span className="rf-tl-navlbl">{t.label}</span>
               </button>
             );
           })}
-          <div style={{ height: 1, background: C.border, margin: '6px 4px' }} />
-          <button onClick={generate} disabled={busy || allGone} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', borderRadius: 11, border: 'none', cursor: busy || allGone ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, background: 'transparent', color: C.orangeSoft, textAlign: 'left' }}>
+          <div className="rf-tl-navsep" style={{ height: 1, background: C.border, margin: '6px 4px' }} />
+          <button className="rf-tl-navexp" onClick={generate} disabled={busy || allGone} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', borderRadius: 11, border: 'none', cursor: busy || allGone ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, background: 'transparent', color: C.orangeSoft, textAlign: 'left' }}>
             <Icon name="upload" size={17} strokeWidth={2} /> <span className="rf-tl-navlbl">Exportar</span>
           </button>
         </nav>
@@ -2573,7 +2779,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <SpeedPicker value={speed} onChange={setSpeed} big />
               <div style={{ ...mRow, justifyContent: 'space-between' }}>
                 <span>Duração final</span>
-                <span style={{ color: C.green, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(stats.keptSec / speed)}</span>
+                <span style={{ color: C.green, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration((stats.keptSec + retimeDelta) / speed)}</span>
               </div>
               <div style={{ ...mRow, display: 'block' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><Icon name="mic" size={19} strokeWidth={1.9} /> <span style={{ flex: 1 }}>Respirações</span></div>
@@ -2939,7 +3145,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Velocidade do vídeo</div>
                 <SpeedPicker value={speed} onChange={setSpeed} />
-                <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Duração final: <b style={{ color: C.text }}>{fmtDuration(stats.keptSec / speed)}</b> · a voz acelera sem mudar o tom.</div>
+                <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Duração final: <b style={{ color: C.text }}>{fmtDuration((stats.keptSec + retimeDelta) / speed)}</b> · a voz acelera sem mudar o tom.</div>
               </div>
               <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Voz</div>
@@ -3078,6 +3284,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   ))}
                 </div>
               )}
+              {speedBlock}
               {transBlock}
               <div style={{ fontSize: 11.5, color: C.faint }}>
                 <b>Prévia:</b> ao escolher um movimento, o player ao lado mostra o efeito na hora; dê play para ver no ritmo da fala e ouvir os whooshes. O <b>zoom nos momentos-chave</b> só aproxima nos pontos de ênfase (pausa antes, números, perguntas, palavras fortes) — não o vídeo inteiro. Na faixa <b>ZOOM</b> da timeline: clique para ajustar, arraste para mover, puxe as pontas para mudar a duração. Os whooshes tocam nesses zooms e nas entradas de B-roll.
@@ -3400,6 +3607,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <button onClick={() => mediaInputRef.current?.click()} disabled={mediaBusy} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: mediaBusy ? 0.6 : 1, cursor: mediaBusy ? 'wait' : 'pointer' }}>
                 <Icon name="image" size={13} strokeWidth={2} /> {mediaBusy ? 'Enviando…' : '+ Adicionar mídia'}
               </button>
+              <div style={{ fontSize: 12, fontWeight: 700, margin: '12px 0 6px' }}>Stickers <span style={{ fontWeight: 500, color: C.faint, fontSize: 11 }}>· entram no playhead, arraste no vídeo</span></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
+                {STICKERS.map((st) => (
+                  <button key={st.id} onClick={() => addSticker(st)} disabled={mediaBusy} title={st.label} aria-label={`Sticker ${st.label}`}
+                    style={{ aspectRatio: '1', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', fontSize: 20, lineHeight: 1, cursor: mediaBusy ? 'wait' : 'pointer', padding: 0 }}>{st.ch}</button>
+                ))}
+              </div>
               {mediaErr && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{mediaErr}</div>}
               {media.length > 0 && (
                 <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
@@ -3566,6 +3780,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <ToolIcon title={cutStart == null ? 'Cortar um trecho: marca o início no playhead (clique de novo no fim)' : `Fechar o corte em ${fmtDuration(cur)}`} active={cutStart != null} onClick={toggleCutRange}>
                 <span style={{ display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 800, lineHeight: 1 }}>[ ]</span>
               </ToolIcon>
+              <ToolIcon title={snapOn ? 'Ímã ligado: os blocos encaixam no playhead, marcadores e pontas (N)' : 'Ímã desligado (N)'} active={snapOn} onClick={toggleSnap}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3v8a6 6 0 0 0 12 0V3" /><path d="M6 7h4M14 7h4" /></svg>
+              </ToolIcon>
+              <ToolIcon title="Marcador no playhead (M) — clique de novo no mesmo ponto para tirar" onClick={toggleMarker}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round"><path d="M6 3h12v12l-6 6-6-6z" /></svg>
+              </ToolIcon>
+              <ToolIcon title="Duplicar o item selecionado (Ctrl+D) · Ctrl+C / Ctrl+V cola no playhead" disabled={!['media', 'text', 'vfx', 'trans'].includes(selKind)} onClick={duplicateSel}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" /></svg>
+              </ToolIcon>
               <span style={{ width: 22, height: 1, background: PR.line, margin: '3px 0' }} />
               <ToolIcon title="Texto (aba Texto)" active={tab === 'texto'} onClick={() => setTab('texto')}><Icon name="type" size={15} strokeWidth={2} /></ToolIcon>
               <ToolIcon title="Minhas mídias (logo, imagens, vídeos, músicas)" active={tab === 'midias'} onClick={() => setTab('midias')}><Icon name="image" size={15} strokeWidth={2} /></ToolIcon>
@@ -3578,17 +3801,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <div style={{ height: LANE.ruler, borderBottom: `1px solid ${PR.line}`, background: PR.ruler }} />
             {showChapLane && <TrackHead h={LANE.capitulos} gap={4} code="CH" nome="Capítulos" />}
             <TrackHead h={legH} gap={6} code="C1" nome="Legenda" hidden={cap.captions === false} onEye={() => setCap((c) => ({ ...c, captions: c.captions === false }))} locked={laneLock.leg} onLock={() => togLock('leg')} />
-            <TrackHead h={LANE.video} gap={4} code="V1" active nome="Vídeo" locked={laneLock.vid} onLock={() => togLock('vid')} />
-            {transformKeys.length > 0 && <TrackHead h={LANE.kf} gap={4} code="KF" nome="Quadros" locked={laneLock.kf} onLock={() => togLock('kf')} />}
-            {showZoomLane && <TrackHead h={LANE.zoom} gap={4} code="ZM" nome="Zoom" locked={laneLock.zoom} onLock={() => togLock('zoom')} />}
-            {showBrollLane && <TrackHead h={LANE.broll} gap={4} code="V2" nome="B-roll" hidden={!brollOn} onEye={() => setBrollOn((v) => !v)} locked={laneLock.broll} onLock={() => togLock('broll')} />}
-            {textLayers.length > 0 && <TrackHead h={LANE.txt} gap={4} code="T1" nome="Textos" hidden={laneHide.txt} onEye={() => togHide('txt')} locked={laneLock.txt} onLock={() => togLock('txt')} />}
-            {fxMoments.length > 0 && <TrackHead h={LANE.vfx} gap={4} code="FX" nome="Efeitos" hidden={laneHide.vfx} onEye={() => togHide('vfx')} locked={laneLock.vfx} onLock={() => togLock('vfx')} />}
-            <TrackHead h={LANE.audio} gap={4} code="A1" active nome="Áudio" muted={audioMute} onMute={() => setAudioMute((v) => !v)} locked={laneLock.aud} onLock={() => togLock('aud')} />
-            <TrackHead h={LANE.pausas} gap={4} code="P" nome="Pausas" locked={laneLock.pau} onLock={() => togLock('pau')} />
             {media.length > 0 && Array.from({ length: mediaRows }, (_, r) => mediaRows - 1 - r).map((l) => (
               <TrackHead key={l} h={LANE.midias} gap={l === mediaRows - 1 ? 4 : 0} code={`M${l + 1}`} nome={`Camada ${l + 1}`} hidden={laneHide[`m${l}`]} onEye={() => togHide(`m${l}`)} locked={laneLock[`m${l}`]} onLock={() => togLock(`m${l}`)} />
             ))}
+            {textLayers.length > 0 && <TrackHead h={LANE.txt} gap={4} code="T1" nome="Textos" hidden={laneHide.txt} onEye={() => togHide('txt')} locked={laneLock.txt} onLock={() => togLock('txt')} />}
+            {fxMoments.length > 0 && <TrackHead h={LANE.vfx} gap={4} code="FX" nome="Efeitos" hidden={laneHide.vfx} onEye={() => togHide('vfx')} locked={laneLock.vfx} onLock={() => togLock('vfx')} />}
+            {showBrollLane && <TrackHead h={LANE.broll} gap={4} code="V2" nome="B-roll" hidden={!brollOn} onEye={() => setBrollOn((v) => !v)} locked={laneLock.broll} onLock={() => togLock('broll')} />}
+            {showZoomLane && <TrackHead h={LANE.zoom} gap={4} code="ZM" nome="Zoom" locked={laneLock.zoom} onLock={() => togLock('zoom')} />}
+            {transformKeys.length > 0 && <TrackHead h={LANE.kf} gap={4} code="KF" nome="Quadros" locked={laneLock.kf} onLock={() => togLock('kf')} />}
+            <TrackHead h={LANE.video} gap={4} code="V1" active nome="Vídeo" locked={laneLock.vid} onLock={() => togLock('vid')} />
+            <TrackHead h={LANE.audio} gap={4} code="A1" active nome="Áudio" muted={audioMute} onMute={() => setAudioMute((v) => !v)} locked={laneLock.aud} onLock={() => togLock('aud')} />
+            <TrackHead h={LANE.pausas} gap={4} code="P" nome="Pausas" locked={laneLock.pau} onLock={() => togLock('pau')} />
           </div>
           <div ref={trackRef} onClick={onTrackClick} onScroll={onTrackScroll} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
@@ -3607,6 +3830,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   );
                 });
               })()}
+              {markers.map((mk) => {
+                const on = selKind === 'marker' && selMarker === mk.key;
+                return (
+                  <div key={mk.key} title={`Marcador em ${tcode(mk.t)} — clique para ir · Delete apaga · M no mesmo ponto tira`}
+                    onClick={(e) => { e.stopPropagation(); seek(mk.t); setSelMarker(mk.key); setSelKind('marker'); }}
+                    style={{ position: 'absolute', left: mk.t * pps - 6, top: 2, width: 12, height: 14, zIndex: 7, cursor: 'pointer', background: on ? '#fff' : '#3CC46B', clipPath: 'polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%)' }} />
+                );
+              })}
             </div>
             {showChapLane && (
               <div style={{ position: 'relative', height: LANE.capitulos, marginTop: 4 }}>
@@ -3687,6 +3918,155 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 );
               })}
             </div>
+            {/* Lane das minhas mídias — arraste para mover, pontas para redimensionar */}
+            {media.length > 0 && (
+              <div style={{ position: 'relative', height: LANE.midias * mediaRows, marginTop: 4 }}>
+                {Array.from({ length: mediaRows - 1 }, (_, r) => (
+                  <div key={r} style={{ position: 'absolute', left: 0, right: 0, top: (r + 1) * LANE.midias - 1, borderTop: `1px dashed ${C.border}`, pointerEvents: 'none' }} />
+                ))}
+                {media.map((m) => {
+                  const left = m.start * pps;
+                  const w = Math.max(16, m.duration * pps - 1);
+                  const col = m.kind === 'audio' ? C.purple : m.kind === 'video' ? C.orange : '#22D3EE';
+                  const isSelM = selKind === 'media' && selMedia === m.key;
+                  return (
+                    <div
+                      key={m.key}
+                      onMouseDown={(e) => startMediaDrag(m, 'move', e)}
+                      onClick={(e) => { e.stopPropagation(); setSelMedia(m.key); setSelKind('media'); seek(m.start); }}
+                      title={`${m.filename} — arraste para os lados (tempo) ou para cima/baixo (camada); pontas ajustam a duração`}
+                      style={{
+                        position: 'absolute', left, top: (mediaRows - 1 - (m.layer || 0)) * LANE.midias, width: w, height: 28, borderRadius: 7, overflow: 'hidden',
+                        cursor: 'grab', display: 'flex', alignItems: 'center', gap: 5, padding: '0 9px',
+                        background: m.offline ? 'rgba(240,82,107,0.18)' : `${col}2b`, border: m.offline ? `1px dashed ${C.red}` : isSelM ? '1.5px solid #fff' : `1px solid ${col}`, boxShadow: isSelM ? `0 0 0 2px ${col}66` : 'none', color: C.text, userSelect: 'none',
+                        ...(laneHide[`m${m.layer || 0}`] ? LANE_HIDDEN : null), ...lk(`m${m.layer || 0}`),
+                      }}
+                    >
+                      <span style={{ display: 'flex', flexShrink: 0, color: col }}><Icon name={m.kind === 'audio' ? 'play' : m.kind === 'video' ? 'film' : 'image'} size={11} strokeWidth={2.2} /></span>
+                      {w > 44 && <span style={{ fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.filename}</span>}
+                      <div onMouseDown={(e) => startMediaDrag(m, 'left', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
+                      <div onMouseDown={(e) => startMediaDrag(m, 'right', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {/* Faixa TEXTOS: textos livres (arraste para mover, pontas mudam o tempo) */}
+            {textLayers.length > 0 && (
+              <div style={{ position: 'relative', height: LANE.txt, marginTop: 4, ...LANE_ROW, ...(laneHide.txt ? LANE_HIDDEN : null), ...lk('txt') }}>
+                {textLayers.map((l) => {
+                  const on = selKind === 'text' && selText === l.key;
+                  return (
+                    <div key={l.key} title={`${l.text} — arraste para mover, pontas mudam o tempo`}
+                      onMouseDown={(e) => { setSelText(l.key); setSelKind('text'); startRangeDrag(setTextLayers, l, 'move', e); }}
+                      onClick={(e) => { e.stopPropagation(); setSelText(l.key); setSelKind('text'); setTab('texto'); seek(l.start + 0.05); }}
+                      style={{ position: 'absolute', left: l.start * pps, width: Math.max(16, (l.end - l.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                        border: `1px solid ${on ? '#fff' : '#E8A020'}`, background: on ? 'rgba(232,160,32,0.6)' : 'rgba(232,160,32,0.3)', fontSize: 10, fontWeight: 700, color: C.text }}>
+                      <Icon name="type" size={10} strokeWidth={2.4} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.text.split('\n')[0]}</span>
+                      <div onMouseDown={(e) => startRangeDrag(setTextLayers, l, 'left', e)} style={handleStyle('left')} />
+                      <div onMouseDown={(e) => startRangeDrag(setTextLayers, l, 'right', e)} style={handleStyle('right')} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {/* Faixa EFEITOS: efeitos de vídeo só nesses trechos */}
+            {fxMoments.length > 0 && (
+              <div style={{ position: 'relative', height: LANE.vfx, marginTop: 4, ...LANE_ROW, ...(laneHide.vfx ? LANE_HIDDEN : null), ...lk('vfx') }}>
+                {fxMoments.map((m) => {
+                  const on = selKind === 'vfx' && selFx === m.key;
+                  return (
+                    <div key={m.key} title={`${VIDEO_FX[m.effect]} — arraste para mover, pontas mudam a duração`}
+                      onMouseDown={(e) => { setSelFx(m.key); setSelKind('vfx'); startRangeDrag(setFxMoments, m, 'move', e); }}
+                      onClick={(e) => { e.stopPropagation(); setSelFx(m.key); setSelKind('vfx'); setTab('efeitos'); seek(m.start + 0.05); }}
+                      style={{ position: 'absolute', left: m.start * pps, width: Math.max(16, (m.end - m.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                        border: `1px solid ${on ? '#fff' : '#A855F7'}`, background: on ? 'rgba(168,85,247,0.6)' : 'rgba(168,85,247,0.3)', fontSize: 10, fontWeight: 700, color: C.text }}>
+                      <Icon name="sparkles" size={10} strokeWidth={2.4} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{VIDEO_FX[m.effect]}</span>
+                      <div onMouseDown={(e) => startRangeDrag(setFxMoments, m, 'left', e)} style={handleStyle('left')} />
+                      <div onMouseDown={(e) => startRangeDrag(setFxMoments, m, 'right', e)} style={handleStyle('right')} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {/* Faixa B-ROLL: momentos revisados (clique abre o ajuste; arraste move) */}
+            {showBrollLane && (
+              <div style={{ position: 'relative', height: LANE.broll, marginTop: 4, ...LANE_ROW, opacity: brollOn ? 1 : 0.35, ...lk('broll') }} title={brollOn ? undefined : 'B-roll desligado (aba B-roll)'}>
+                {brollReview.moments.map((m, i) => {
+                  const isSel = i === selBroll;
+                  const th = thumbOf(m);
+                  return (
+                    <div
+                      key={m.key || i}
+                      title={`${m.term} — clique para ajustar`}
+                      onMouseDown={(e) => { setSelBroll(i); setSelKind('broll'); startRangeDrag(setBrollMoments, m, 'move', e); }}
+                      onClick={(e) => { e.stopPropagation(); setSelBroll(i); setSelKind('broll'); setTab('broll'); seek(m.start + 0.05); }}
+                      style={{
+                        position: 'absolute', left: m.start * pps, width: Math.max(16, (m.end - m.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
+                        display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                        border: `1px solid ${isSel ? '#fff' : C.purpleSoft}`, background: m.removed ? 'rgba(255,255,255,0.05)' : isSel ? 'rgba(124,58,237,0.55)' : 'rgba(124,58,237,0.3)',
+                        opacity: m.removed ? 0.5 : 1, fontSize: 10, fontWeight: 700, color: C.text,
+                      }}
+                    >
+                      <button
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); setMoment(i, { removed: !m.removed }); }}
+                        title={m.removed ? 'Usar este B-roll' : 'Não usar este B-roll'}
+                        aria-label={m.removed ? 'Usar este B-roll' : 'Não usar este B-roll'}
+                        style={{ width: 16, height: 16, flexShrink: 0, borderRadius: '50%', border: `1.5px solid ${m.removed ? C.faint : '#fff'}`, background: m.removed ? 'transparent' : C.green, padding: 0, cursor: 'pointer' }}
+                      />
+                      {th && !badThumbs.has(th) && <img src={th} alt="" style={{ height: 20, width: 20, objectFit: 'cover', borderRadius: 3, flexShrink: 0 }} />}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: m.removed ? 'line-through' : 'none' }}>{m.term}</span>
+                      <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'left', e)} style={handleStyle('left')} />
+                      <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'right', e)} style={handleStyle('right')} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {/* Faixa ZOOM: momentos-chave do movimento (editáveis) */}
+            {showZoomLane && (
+              <div style={{ position: 'relative', height: LANE.zoom, marginTop: 4, ...LANE_ROW, ...lk('zoom') }}>
+                {(zoomMoments || []).map((z) => {
+                  const isSel = z.key === selZoom;
+                  return (
+                    <div
+                      key={z.key}
+                      title={`Zoom ${Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}× — clique para ajustar, arraste para mover`}
+                      onMouseDown={(e) => { setSelZoom(z.key); setSelKind('zoom'); startRangeDrag(setZoomMoments, z, 'move', e); }}
+                      onClick={(e) => { e.stopPropagation(); setSelZoom(z.key); setSelKind('zoom'); setTab('efeitos'); seek(z.start); }}
+                      style={{
+                        position: 'absolute', left: z.start * pps, width: Math.max(14, (z.end - z.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                        border: `1px solid ${isSel ? '#fff' : C.orange}`, background: isSel ? 'rgba(255,107,53,0.5)' : 'rgba(255,107,53,0.25)',
+                        fontSize: 10, fontWeight: 700, color: C.text,
+                      }}
+                    >
+                      <Icon name="search" size={10} strokeWidth={2.4} /> {Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}×
+                      <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'left', e)} style={handleStyle('left')} />
+                      <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'right', e)} style={handleStyle('right')} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {/* Faixa dos quadros-chave (Transformar): ◆ clique seleciona, arraste move, Delete apaga */}
+            {transformKeys.length > 0 && (
+              <div style={{ position: 'relative', height: LANE.kf, marginTop: 4, ...LANE_ROW, ...lk('kf') }}>
+                {transformKeys.length > 1 && (
+                  <div style={{ position: 'absolute', left: transformKeys[0].t * pps, width: (transformKeys[transformKeys.length - 1].t - transformKeys[0].t) * pps, top: LANE.kf / 2 - 1, height: 2, background: 'rgba(34,211,238,0.45)' }} />
+                )}
+                {transformKeys.map((k) => {
+                  const on = selKind === 'keyframe' && selKey === k.t;
+                  return (
+                    <div key={k.t} onMouseDown={(e) => startKeyDrag(k, e)} onClick={(e) => { e.stopPropagation(); setSelKind('keyframe'); setSelKey(k.t); setTab('efeitos'); seek(k.t); }}
+                      title={`Quadro-chave em ${fmtDuration(k.t)} · escala ${Math.round(k.scale * 100)}% · X ${Math.round(k.x * 100)} · Y ${Math.round(k.y * 100)} · ${Math.round(k.rot)}° — arraste para mover, Delete apaga`}
+                      style={{ position: 'absolute', left: k.t * pps - 7, top: LANE.kf / 2 - 7, width: 14, height: 14, transform: 'rotate(45deg)', borderRadius: 2, cursor: 'grab',
+                        background: on ? '#fff' : '#22D3EE', border: `2px solid ${on ? '#22D3EE' : 'rgba(0,0,0,0.5)'}`, boxShadow: on ? '0 0 0 3px rgba(34,211,238,0.35)' : 'none' }} />
+                  );
+                })}
+              </div>
+            )}
             {/* Faixa de vídeo: miniaturas + cortes desenhados arrastando */}
             <div
               onMouseDown={startCutDraw}
@@ -3694,6 +4074,30 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               style={{ position: 'relative', height: LANE.video, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${isMobile ? C.border : '#3B6FD6'}`, background: 'rgba(0,0,0,0.45)', cursor: 'crosshair', ...lk('vid') }}
             >
               <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat' }} />
+              {speedRanges.map((r) => {
+                const on = selKind === 'speed' && selSpeed === r.key;
+                return (
+                  <div key={r.key} title={`Velocidade ${r.speed}× — clique para ajustar (aba Efeitos), Delete volta ao normal`}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); setSelSpeed(r.key); setSelKind('speed'); setTab('efeitos'); }}
+                    style={{ position: 'absolute', left: r.start * pps, width: Math.max(14, (r.end - r.start) * pps), top: 0, height: 15, zIndex: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: '0 5px', overflow: 'hidden', whiteSpace: 'nowrap',
+                      background: on ? '#fff' : 'rgba(255,170,0,0.92)', color: '#1a1000', fontSize: 9.5, fontWeight: 800, borderRadius: '0 0 4px 4px' }}>
+                    {r.speed < 1 ? '🐢' : '⏩'} {r.speed}×
+                  </div>
+                );
+              })}
+              {freezes.map((f) => {
+                const on = selKind === 'freeze' && selFreeze === f.key;
+                return (
+                  <div key={f.key} title={`Congela ${f.dur} s em ${fmtDuration(f.t)} — clique para ajustar, Delete apaga`}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); setSelFreeze(f.key); setSelKind('freeze'); setTab('efeitos'); seek(f.t); }}
+                    style={{ position: 'absolute', left: f.t * pps - 1, bottom: 0, height: 16, zIndex: 3, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2, padding: '0 5px', whiteSpace: 'nowrap',
+                      background: on ? '#fff' : 'rgba(96,165,250,0.95)', color: '#04122a', fontSize: 9.5, fontWeight: 800, borderRadius: '4px 4px 0 0', borderLeft: '2px solid #fff' }}>
+                    ❄ {f.dur}s
+                  </div>
+                );
+              })}
               {cuts.map((c) => (
                 <div
                   key={c.key}
@@ -3748,125 +4152,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 <div style={{ position: 'absolute', left: drawing.start * pps, width: (drawing.end - drawing.start) * pps, top: 0, bottom: 0, background: 'rgba(240,82,107,0.3)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
               )}
             </div>
-
-            {/* Faixa dos quadros-chave (Transformar): ◆ clique seleciona, arraste move, Delete apaga */}
-            {transformKeys.length > 0 && (
-              <div style={{ position: 'relative', height: LANE.kf, marginTop: 4, ...LANE_ROW, ...lk('kf') }}>
-                {transformKeys.length > 1 && (
-                  <div style={{ position: 'absolute', left: transformKeys[0].t * pps, width: (transformKeys[transformKeys.length - 1].t - transformKeys[0].t) * pps, top: LANE.kf / 2 - 1, height: 2, background: 'rgba(34,211,238,0.45)' }} />
-                )}
-                {transformKeys.map((k) => {
-                  const on = selKind === 'keyframe' && selKey === k.t;
-                  return (
-                    <div key={k.t} onMouseDown={(e) => startKeyDrag(k, e)} onClick={(e) => { e.stopPropagation(); setSelKind('keyframe'); setSelKey(k.t); setTab('efeitos'); seek(k.t); }}
-                      title={`Quadro-chave em ${fmtDuration(k.t)} · escala ${Math.round(k.scale * 100)}% · X ${Math.round(k.x * 100)} · Y ${Math.round(k.y * 100)} · ${Math.round(k.rot)}° — arraste para mover, Delete apaga`}
-                      style={{ position: 'absolute', left: k.t * pps - 7, top: LANE.kf / 2 - 7, width: 14, height: 14, transform: 'rotate(45deg)', borderRadius: 2, cursor: 'grab',
-                        background: on ? '#fff' : '#22D3EE', border: `2px solid ${on ? '#22D3EE' : 'rgba(0,0,0,0.5)'}`, boxShadow: on ? '0 0 0 3px rgba(34,211,238,0.35)' : 'none' }} />
-                  );
-                })}
-              </div>
-            )}
-            {/* Faixa ZOOM: momentos-chave do movimento (editáveis) */}
-            {showZoomLane && (
-              <div style={{ position: 'relative', height: LANE.zoom, marginTop: 4, ...LANE_ROW, ...lk('zoom') }}>
-                {(zoomMoments || []).map((z) => {
-                  const isSel = z.key === selZoom;
-                  return (
-                    <div
-                      key={z.key}
-                      title={`Zoom ${Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}× — clique para ajustar, arraste para mover`}
-                      onMouseDown={(e) => { setSelZoom(z.key); setSelKind('zoom'); startRangeDrag(setZoomMoments, z, 'move', e); }}
-                      onClick={(e) => { e.stopPropagation(); setSelZoom(z.key); setSelKind('zoom'); setTab('efeitos'); seek(z.start); }}
-                      style={{
-                        position: 'absolute', left: z.start * pps, width: Math.max(14, (z.end - z.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
-                        border: `1px solid ${isSel ? '#fff' : C.orange}`, background: isSel ? 'rgba(255,107,53,0.5)' : 'rgba(255,107,53,0.25)',
-                        fontSize: 10, fontWeight: 700, color: C.text,
-                      }}
-                    >
-                      <Icon name="search" size={10} strokeWidth={2.4} /> {Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}×
-                      <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'left', e)} style={handleStyle('left')} />
-                      <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'right', e)} style={handleStyle('right')} />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Faixa B-ROLL: momentos revisados (clique abre o ajuste; arraste move) */}
-            {showBrollLane && (
-              <div style={{ position: 'relative', height: LANE.broll, marginTop: 4, ...LANE_ROW, opacity: brollOn ? 1 : 0.35, ...lk('broll') }} title={brollOn ? undefined : 'B-roll desligado (aba B-roll)'}>
-                {brollReview.moments.map((m, i) => {
-                  const isSel = i === selBroll;
-                  const th = thumbOf(m);
-                  return (
-                    <div
-                      key={m.key || i}
-                      title={`${m.term} — clique para ajustar`}
-                      onMouseDown={(e) => { setSelBroll(i); setSelKind('broll'); startRangeDrag(setBrollMoments, m, 'move', e); }}
-                      onClick={(e) => { e.stopPropagation(); setSelBroll(i); setSelKind('broll'); setTab('broll'); seek(m.start + 0.05); }}
-                      style={{
-                        position: 'absolute', left: m.start * pps, width: Math.max(16, (m.end - m.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
-                        display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
-                        border: `1px solid ${isSel ? '#fff' : C.purpleSoft}`, background: m.removed ? 'rgba(255,255,255,0.05)' : isSel ? 'rgba(124,58,237,0.55)' : 'rgba(124,58,237,0.3)',
-                        opacity: m.removed ? 0.5 : 1, fontSize: 10, fontWeight: 700, color: C.text,
-                      }}
-                    >
-                      <button
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => { e.stopPropagation(); setMoment(i, { removed: !m.removed }); }}
-                        title={m.removed ? 'Usar este B-roll' : 'Não usar este B-roll'}
-                        aria-label={m.removed ? 'Usar este B-roll' : 'Não usar este B-roll'}
-                        style={{ width: 16, height: 16, flexShrink: 0, borderRadius: '50%', border: `1.5px solid ${m.removed ? C.faint : '#fff'}`, background: m.removed ? 'transparent' : C.green, padding: 0, cursor: 'pointer' }}
-                      />
-                      {th && !badThumbs.has(th) && <img src={th} alt="" style={{ height: 20, width: 20, objectFit: 'cover', borderRadius: 3, flexShrink: 0 }} />}
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: m.removed ? 'line-through' : 'none' }}>{m.term}</span>
-                      <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'left', e)} style={handleStyle('left')} />
-                      <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'right', e)} style={handleStyle('right')} />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Faixa TEXTOS: textos livres (arraste para mover, pontas mudam o tempo) */}
-            {textLayers.length > 0 && (
-              <div style={{ position: 'relative', height: LANE.txt, marginTop: 4, ...LANE_ROW, ...(laneHide.txt ? LANE_HIDDEN : null), ...lk('txt') }}>
-                {textLayers.map((l) => {
-                  const on = selKind === 'text' && selText === l.key;
-                  return (
-                    <div key={l.key} title={`${l.text} — arraste para mover, pontas mudam o tempo`}
-                      onMouseDown={(e) => { setSelText(l.key); setSelKind('text'); startRangeDrag(setTextLayers, l, 'move', e); }}
-                      onClick={(e) => { e.stopPropagation(); setSelText(l.key); setSelKind('text'); setTab('texto'); seek(l.start + 0.05); }}
-                      style={{ position: 'absolute', left: l.start * pps, width: Math.max(16, (l.end - l.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
-                        border: `1px solid ${on ? '#fff' : '#E8A020'}`, background: on ? 'rgba(232,160,32,0.6)' : 'rgba(232,160,32,0.3)', fontSize: 10, fontWeight: 700, color: C.text }}>
-                      <Icon name="type" size={10} strokeWidth={2.4} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.text.split('\n')[0]}</span>
-                      <div onMouseDown={(e) => startRangeDrag(setTextLayers, l, 'left', e)} style={handleStyle('left')} />
-                      <div onMouseDown={(e) => startRangeDrag(setTextLayers, l, 'right', e)} style={handleStyle('right')} />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {/* Faixa EFEITOS: efeitos de vídeo só nesses trechos */}
-            {fxMoments.length > 0 && (
-              <div style={{ position: 'relative', height: LANE.vfx, marginTop: 4, ...LANE_ROW, ...(laneHide.vfx ? LANE_HIDDEN : null), ...lk('vfx') }}>
-                {fxMoments.map((m) => {
-                  const on = selKind === 'vfx' && selFx === m.key;
-                  return (
-                    <div key={m.key} title={`${VIDEO_FX[m.effect]} — arraste para mover, pontas mudam a duração`}
-                      onMouseDown={(e) => { setSelFx(m.key); setSelKind('vfx'); startRangeDrag(setFxMoments, m, 'move', e); }}
-                      onClick={(e) => { e.stopPropagation(); setSelFx(m.key); setSelKind('vfx'); setTab('efeitos'); seek(m.start + 0.05); }}
-                      style={{ position: 'absolute', left: m.start * pps, width: Math.max(16, (m.end - m.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
-                        border: `1px solid ${on ? '#fff' : '#A855F7'}`, background: on ? 'rgba(168,85,247,0.6)' : 'rgba(168,85,247,0.3)', fontSize: 10, fontWeight: 700, color: C.text }}>
-                      <Icon name="sparkles" size={10} strokeWidth={2.4} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{VIDEO_FX[m.effect]}</span>
-                      <div onMouseDown={(e) => startRangeDrag(setFxMoments, m, 'left', e)} style={handleStyle('left')} />
-                      <div onMouseDown={(e) => startRangeDrag(setFxMoments, m, 'right', e)} style={handleStyle('right')} />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
             {/* Faixa de áudio: forma de onda da fala original */}
             <div style={{ position: 'relative', height: LANE.audio, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${isMobile ? C.border : 'rgba(52,195,176,0.55)'}`, background: isMobile ? 'rgba(59,130,246,0.08)' : 'rgba(52,195,176,0.12)', ...(audioMute ? LANE_HIDDEN : null), ...lk('aud') }}>
               {wave && (
@@ -3899,7 +4184,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 );
               })}
             </div>
-
             {/* Lane de pausas (silêncio entre palavras) — clique alterna cortar/manter */}
             {!isMobile && <div style={{ position: 'relative', height: LANE.pausas, marginTop: 4, ...LANE_ROW, ...lk('pau') }}>
               {pauses.map((p, pi) => {
@@ -3932,38 +4216,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 );
               })}
             </div>}
-            {/* Lane das minhas mídias — arraste para mover, pontas para redimensionar */}
-            {media.length > 0 && (
-              <div style={{ position: 'relative', height: LANE.midias * mediaRows, marginTop: 4 }}>
-                {Array.from({ length: mediaRows - 1 }, (_, r) => (
-                  <div key={r} style={{ position: 'absolute', left: 0, right: 0, top: (r + 1) * LANE.midias - 1, borderTop: `1px dashed ${C.border}`, pointerEvents: 'none' }} />
-                ))}
-                {media.map((m) => {
-                  const left = m.start * pps;
-                  const w = Math.max(16, m.duration * pps - 1);
-                  const col = m.kind === 'audio' ? C.purple : m.kind === 'video' ? C.orange : '#22D3EE';
-                  const isSelM = selKind === 'media' && selMedia === m.key;
-                  return (
-                    <div
-                      key={m.key}
-                      onMouseDown={(e) => startMediaDrag(m, 'move', e)}
-                      onClick={(e) => { e.stopPropagation(); setSelMedia(m.key); setSelKind('media'); seek(m.start); }}
-                      title={`${m.filename} — arraste para os lados (tempo) ou para cima/baixo (camada); pontas ajustam a duração`}
-                      style={{
-                        position: 'absolute', left, top: (mediaRows - 1 - (m.layer || 0)) * LANE.midias, width: w, height: 28, borderRadius: 7, overflow: 'hidden',
-                        cursor: 'grab', display: 'flex', alignItems: 'center', gap: 5, padding: '0 9px',
-                        background: m.offline ? 'rgba(240,82,107,0.18)' : `${col}2b`, border: m.offline ? `1px dashed ${C.red}` : isSelM ? '1.5px solid #fff' : `1px solid ${col}`, boxShadow: isSelM ? `0 0 0 2px ${col}66` : 'none', color: C.text, userSelect: 'none',
-                        ...(laneHide[`m${m.layer || 0}`] ? LANE_HIDDEN : null), ...lk(`m${m.layer || 0}`),
-                      }}
-                    >
-                      <span style={{ display: 'flex', flexShrink: 0, color: col }}><Icon name={m.kind === 'audio' ? 'play' : m.kind === 'video' ? 'film' : 'image'} size={11} strokeWidth={2.2} /></span>
-                      {w > 44 && <span style={{ fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.filename}</span>}
-                      <div onMouseDown={(e) => startMediaDrag(m, 'left', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
-                      <div onMouseDown={(e) => startMediaDrag(m, 'right', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
-                    </div>
-                  );
-                })}
-              </div>
+            {markers.map((mk) => (
+              <div key={mk.key} style={{ position: 'absolute', left: mk.t * pps, top: LANE.ruler, bottom: 0, width: 0, borderLeft: '1px dashed rgba(60,196,107,0.45)', pointerEvents: 'none', zIndex: 5 }} />
+            ))}
+            {snapLine != null && (
+              <div style={{ position: 'absolute', left: snapLine * pps, top: 0, bottom: 0, width: 1, marginLeft: -0.5, background: '#FFD43B', boxShadow: '0 0 6px #FFD43B', pointerEvents: 'none', zIndex: 8 }} />
             )}
             {!isMobile && (
             <div style={{ position: 'absolute', left: cur * pps, top: 0, bottom: 0, width: 1.5, marginLeft: -0.75, background: PR.blue, boxShadow: `0 0 6px ${PR.blue}aa`, pointerEvents: 'none', zIndex: 6 }}>
@@ -3982,7 +4239,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <span style={{ fontSize: 10.5, color: PR.dim, minWidth: 64, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round((pps / 64) * 100)}%</span>
           </div>
         )}
-        <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>👁 esconde a faixa (some da prévia e do vídeo final) · 🔒 trava a faixa · M deixa o áudio mudo. Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> (arraste sobre ele para cortar um trecho)· <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
+        <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>👁 esconde a faixa (some da prévia e do vídeo final) · 🔒 trava a faixa · M (no A1) deixa o áudio mudo · tecla <b>M</b> põe marcador · <b>N</b> liga/desliga o ímã · <b>Ctrl+D</b> duplica · <b>Ctrl+C / Ctrl+V</b> copia e cola no playhead. Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> (arraste sobre ele para cortar um trecho)· <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
 
         {/* Resumo + trecho selecionado na timeline (editar palavras) */}
         <div style={{ marginTop: 14 }}>
@@ -3990,7 +4247,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <Chip label="Palavras" value={stats.total} color={C.text} />
             <Chip label="Cortadas" value={stats.removed} color={C.red} />
             <Chip label="Pausas cortadas" value={pausesCut.length} sub={pauseCutSec > 0.1 ? `−${fmtDuration(pauseCutSec)}` : null} color={C.orangeSoft} />
-            <Chip label={speed !== 1 ? `Duração final · ${fmtSpeed(speed)}` : 'Duração final'} value={fmtDuration(stats.keptSec / speed)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
+            <Chip label={speed !== 1 ? `Duração final · ${fmtSpeed(speed)}` : 'Duração final'} value={fmtDuration((stats.keptSec + retimeDelta) / speed)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
           </div>
 
           {selSeg && (
@@ -4158,6 +4415,25 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           .rf-tl-navlbl{ display: none; }
           .rf-tl-nav{ padding: 5px !important; }
           .rf-tl-nav > button{ justify-content: center; padding: 11px 0 !important; }
+        }
+        /* Computador (como o Premiere): monitor à esquerda, painel com abas em cima à direita,
+           timeline na largura toda embaixo. */
+        @media (min-width: 861px){
+          .rf-tl-card:not(.rf-m) .rf-tl-grid{ grid-template-columns: minmax(0, 1fr) minmax(360px, 1.05fr) !important; grid-template-rows: auto 1fr auto; gap: 10px !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-preview{ grid-column: 1; grid-row: 1 / span 2; }
+          .rf-tl-card:not(.rf-m) .rf-tl-nav{ grid-column: 2; grid-row: 1; position: static; display: flex !important; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 2px !important;
+            padding: 0 6px !important; border-radius: 10px 10px 0 0 !important; background: #1F2026 !important; border: 1px solid rgba(255,255,255,0.08) !important; border-bottom: none !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-nav::-webkit-scrollbar{ display: none; }
+          .rf-tl-card:not(.rf-m) .rf-tl-nav > button{ flex: none; padding: 11px 9px !important; gap: 0 !important; border-radius: 0 !important; background: transparent !important; font-size: 12.5px !important; justify-content: flex-start; }
+          .rf-tl-card:not(.rf-m) .rf-tl-nav > button svg{ display: none !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-navlbl{ display: inline !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-navind{ left: 8px !important; right: 8px; top: auto !important; bottom: 0 !important; width: auto !important; height: 2px; border-radius: 2px 2px 0 0 !important; background: #2D8CFF !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-navsep{ display: none; }
+          .rf-tl-card:not(.rf-m) .rf-tl-navexp{ display: none !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-adjust{ grid-column: 2; grid-row: 2; position: static !important; top: auto; align-self: stretch !important; margin-top: -10px;
+            max-height: calc(var(--rf-stage-h) + 70px) !important; overflow-y: auto; padding: 12px 12px 12px !important; border: 1px solid rgba(255,255,255,0.08); border-top: none; border-radius: 0 0 10px 10px; background: #18191E; }
+          .rf-tl-card:not(.rf-m) .rf-tl-bottom{ grid-column: 1 / span 2; grid-row: 3; }
+          .rf-tl-card:not(.rf-m) .rf-tl-pv{ border-radius: 10px !important; background: #0E0F12 !important; border-color: rgba(255,255,255,0.08) !important; }
         }
         @media (max-width: 1100px){
           /* tela estreita: mostra só a prévia do formato final (o player continua tocando o som) */
@@ -4368,6 +4644,28 @@ const LANE_ROW = { background: 'rgba(255,255,255,0.022)', borderRadius: 4 };
 const LANE_HIDDEN = { opacity: 0.28 };
 const LANE_LOCKED = { pointerEvents: 'none', filter: 'saturate(0.35)', backgroundImage: 'repeating-linear-gradient(135deg, rgba(255,255,255,0.05) 0 6px, transparent 6px 12px)' };
 const RULER_STEPS = [1, 2, 5, 10, 15, 30, 60];
+const SNAP_PX = 8;
+/** Encaixa o ponto `t` no ponto mais perto (até 8 px), sem contar o próprio bloco. Puro. */
+export function snapPoint(sn, t, ownKey) {
+  if (!sn?.on || !sn.pts?.length) return { t, line: null };
+  const tol = SNAP_PX / (sn.pps || 64);
+  let best = null;
+  for (const p of sn.pts) {
+    if (ownKey != null && p.key === ownKey) continue;
+    const d = Math.abs(p.t - t);
+    if (d <= tol && (!best || d < best.d)) best = { d, t: p.t };
+  }
+  return best ? { t: best.t, line: best.t } : { t, line: null };
+}
+/** Encaixa um bloco de `len` s pelo começo ou pelo fim (o que estiver mais perto). Puro. */
+export function snapSpan(sn, start, len, ownKey) {
+  const a = snapPoint(sn, start, ownKey);
+  const b = snapPoint(sn, start + len, ownKey);
+  const da = a.line == null ? Infinity : Math.abs(a.t - start);
+  const db = b.line == null ? Infinity : Math.abs(b.t - (start + len));
+  if (da === Infinity && db === Infinity) return { start, line: null };
+  return da <= db ? { start: a.t, line: a.line } : { start: b.t - len, line: b.line };
+}
 const TC_FPS = 30;
 /** Timecode no estilo do Premiere: HH:MM:SS:QQ (30 quadros por segundo). */
 function tcode(t) {
@@ -4497,6 +4795,13 @@ const QUALITY_OPTS = [
 ];
 
 const SPEEDS = [0.75, 1, 1.1, 1.2, 1.25, 1.5, 2];
+const RANGE_SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
+const FREEZE_DURS = [1, 1.5, 2, 3, 5];
+const STICKERS = [
+  ['fire', '🔥', 'Fogo'], ['laugh', '😂', 'Rindo'], ['heart', '❤️', 'Coração'], ['clap', '👏', 'Palmas'], ['check', '✅', 'Certo'], ['x', '❌', 'Errado'], ['star', '⭐', 'Estrela'], ['100', '💯', 'Cem'],
+  ['party', '🎉', 'Festa'], ['point', '👉', 'Apontando'], ['up', '👆', 'Para cima'], ['warn', '⚠️', 'Atenção'], ['money', '💰', 'Dinheiro'], ['rocket', '🚀', 'Foguete'], ['bulb', '💡', 'Ideia'], ['eyes', '👀', 'Olhos'],
+  ['mind', '🤯', 'Explodindo'], ['think', '🤔', 'Pensando'], ['wow', '😱', 'Uau'], ['cool', '😎', 'Óculos'], ['thumb', '👍', 'Joinha'], ['pray', '🙏', 'Mãos'], ['bell', '🔔', 'Sino'], ['arrow', '⬇️', 'Seta'],
+].map(([id, ch, label]) => ({ id, ch, label }));
 const fmtSpeed = (k) => `${String(k).replace('.', ',')}×`;
 function SpeedPicker({ value, onChange, big = false }) {
   return (

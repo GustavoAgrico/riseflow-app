@@ -26,13 +26,15 @@ const NAV = [
   { id: 'settings', label: 'Configurações', icon: 'gear' },
 ];
 
-function NavItem({ item, active, onClick }) {
+function NavItem({ item, active, onClick, mini = false }) {
   return (
     <button
       onClick={onClick}
+      title={mini ? item.label : undefined}
+      aria-label={item.label}
       style={{
-        position: 'relative', width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-        padding: '11px 14px', borderRadius: 12, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+        position: 'relative', width: '100%', display: 'flex', alignItems: 'center', gap: 12, justifyContent: mini ? 'center' : 'flex-start',
+        padding: mini ? '11px 0' : '11px 14px', borderRadius: 12, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
         textAlign: 'left', fontSize: 14, fontWeight: 600, transition: 'all .15s',
         background: item.cta
           ? GRAD
@@ -43,7 +45,7 @@ function NavItem({ item, active, onClick }) {
     >
       {active && !item.cta && <span style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 3, borderRadius: 3, background: GRAD }} />}
       <Icon name={item.icon} size={18} strokeWidth={1.9} color={item.cta ? '#fff' : active ? C.orangeSoft : 'currentColor'} />
-      {item.label}
+      {!mini && item.label}
     </button>
   );
 }
@@ -71,35 +73,69 @@ function CreditsCard({ billing, onOpen }) {
   );
 }
 
+// Menu lateral recolhível: a escolha fica guardada; no editor ele já abre recolhido.
+const SIDE_KEY = 'rf_sidebar';
+function readSidePref() {
+  try { return localStorage.getItem(SIDE_KEY) || 'auto'; } catch { return 'auto'; }
+}
+
 function Sidebar({ user, billing, view, onView, onLogout }) {
   const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
+  const [pref, setPref] = useState(readSidePref); // 'auto' | 'open' | 'mini'
+  const mini = pref === 'mini' || (pref === 'auto' && view === 'editor');
+  function toggle() {
+    const next = mini ? 'open' : 'mini';
+    setPref(next);
+    try { localStorage.setItem(SIDE_KEY, next); } catch { /* ignora */ }
+  }
+  const credit = !billing ? null : billing.unlimited ? 'Ilimitado' : !billing.plan && billing.freeEdits > 0 ? `${billing.freeEdits} grátis` : `${billing.credits.toLocaleString('pt-BR')} créditos`;
   return (
-    <aside className="rf-sidebar" style={{ width: 244, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: 'rgba(10,10,15,0.6)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', display: 'flex', flexDirection: 'column', padding: '18px 14px', position: 'sticky', top: 0, height: '100vh', boxSizing: 'border-box' }}>
-      <button onClick={() => onView('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px 16px' }}>
-        <Logo size={32} />
-        <div style={{ textAlign: 'left' }}>
-          <div style={{ fontWeight: 800, fontSize: 16, fontFamily: FONT_DISPLAY, letterSpacing: -0.4, color: C.text }}>Riseframe</div>
-          <div style={{ fontSize: 10.5, color: C.faint, letterSpacing: 0.2 }}>Editor de vídeo com IA</div>
-        </div>
-      </button>
+    <aside className="rf-sidebar" style={{ width: mini ? 72 : 244, flexShrink: 0, borderRight: `1px solid ${C.border}`, background: 'rgba(10,10,15,0.6)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', display: 'flex', flexDirection: 'column', padding: mini ? '18px 10px' : '18px 14px', position: 'sticky', top: 0, height: '100vh', boxSizing: 'border-box', transition: 'width .18s ease, padding .18s ease' }}>
+      <div style={{ display: 'flex', alignItems: 'center', flexDirection: mini ? 'column' : 'row', gap: mini ? 10 : 4, padding: mini ? '4px 0 14px' : '4px 0 16px 8px' }}>
+        <button onClick={() => onView('dashboard')} title="Início" style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', cursor: 'pointer', padding: 0, minWidth: 0, flex: mini ? 'none' : 1 }}>
+          <Logo size={32} />
+          {!mini && (
+            <div style={{ textAlign: 'left', minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 16, fontFamily: FONT_DISPLAY, letterSpacing: -0.4, color: C.text }}>Riseframe</div>
+              <div style={{ fontSize: 10.5, color: C.faint, letterSpacing: 0.2, whiteSpace: 'nowrap' }}>Editor de vídeo com IA</div>
+            </div>
+          )}
+        </button>
+        <button onClick={toggle} title={mini ? 'Abrir o menu' : 'Recolher o menu'} aria-label={mini ? 'Abrir o menu' : 'Recolher o menu'} aria-expanded={!mini} className="rf-side-toggle"
+          style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 9, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)', color: C.muted, cursor: 'pointer', display: 'grid', placeItems: 'center', padding: 0 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="3" /><path d="M9 4v16" /><path d={mini ? 'M13 10l2 2-2 2' : 'M16 10l-2 2 2 2'} />
+          </svg>
+        </button>
+      </div>
 
-      <button onClick={() => onView('editor')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', minHeight: 44, borderRadius: 12, border: 'none', background: GRAD, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 16, boxShadow: '0 10px 24px -10px rgba(255,107,53,0.65)' }}>
-        <Icon name="plus" size={17} strokeWidth={2.4} color="#fff" /> Criar vídeo
+      <button onClick={() => onView('editor')} title={mini ? 'Criar vídeo' : undefined} aria-label="Criar vídeo" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', minHeight: 44, borderRadius: 12, border: 'none', background: GRAD, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 16, boxShadow: '0 10px 24px -10px rgba(255,107,53,0.65)' }}>
+        <Icon name="plus" size={17} strokeWidth={2.4} color="#fff" />{!mini && ' Criar vídeo'}
       </button>
 
       <div style={{ display: 'grid', gap: 3 }}>
-        {NAV.map((n) => <NavItem key={n.id} item={n} active={view === n.id} onClick={() => onView(n.id)} />)}
+        {NAV.map((n) => <NavItem key={n.id} item={n} mini={mini} active={view === n.id} onClick={() => onView(n.id)} />)}
       </div>
 
       <div style={{ marginTop: 'auto', display: 'grid', gap: 12 }}>
-        <CreditsCard billing={billing} onOpen={() => onView('plans')} />
-        <InstallApp />
-        <NavItem item={{ id: 'logout', label: 'Sair', icon: 'logout' }} active={false} onClick={onLogout} />
+        {mini ? (
+          credit && !billing.unlimited && (
+            <button onClick={() => onView('plans')} title={`${credit} — ver planos`} aria-label={`${credit} — ver planos`} style={{ height: 40, borderRadius: 12, border: `1px solid ${C.border}`, background: 'linear-gradient(160deg, rgba(255,107,53,0.14), rgba(124,58,237,0.14))', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+              <Icon name="zap" size={16} strokeWidth={2.2} color={C.orangeSoft} />
+            </button>
+          )
+        ) : (
+          <>
+            <CreditsCard billing={billing} onOpen={() => onView('plans')} />
+            <InstallApp />
+          </>
+        )}
+        <NavItem item={{ id: 'logout', label: 'Sair', icon: 'logout' }} mini={mini} active={false} onClick={onLogout} />
       </div>
 
-      <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px 0', borderTop: `1px solid ${C.border}` }}>
+      <div title={mini ? `${user?.name || 'Você'} · ${user?.email || ''}` : undefined} style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: mini ? 'center' : 'flex-start', gap: 10, padding: mini ? '10px 0 0' : '10px 8px 0', borderTop: `1px solid ${C.border}` }}>
         <div style={{ width: 34, height: 34, borderRadius: '50%', background: GRAD, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 14, color: '#fff', flexShrink: 0 }}>{initial}</div>
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, display: mini ? 'none' : 'block' }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || 'Você'}</div>
           <div style={{ fontSize: 11, color: C.faint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email}</div>
         </div>
@@ -320,6 +356,7 @@ export default function Root() {
           .rf-mtabs{ display: flex !important; }
           .rf-main{ padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
         }
+        .rf-side-toggle:hover{ color: #fff !important; background: rgba(255,255,255,0.08) !important; }
       `}</style>
     </div>
   );

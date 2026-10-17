@@ -1,3 +1,4 @@
+import { retimePieces, retimeGraph, retimedDuration } from './retime.js';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast, x264Final } from './ffmpeg.js';
@@ -159,6 +160,26 @@ export async function finalRender(input, outputsDir, jobId, meta, options, onPro
   // Velocidade: no mesmo passe do render final (legendas, sons e cortes já estão no
   // vídeo, então tudo acelera junto e continua sincronizado). A voz mantém o tom.
   const speed = speedFilters(options.speed, meta.fps);
+  // Velocidade por trecho / congelar quadro: o vídeo é montado em pedaços (a velocidade
+  // geral entra multiplicada em cada um).
+  const pieces = retimePieces(options.speedRanges, options.freezes, meta.duration, speed ? speed.k : 1);
+  if (pieces) {
+    const W = target ? target.w : meta.width;
+    const H = target ? target.h : meta.height;
+    let graph = retimeGraph(pieces, { fps: meta.fps, hasAudio: meta.hasAudio, baseVf: vf });
+    let vOut = '[rtv]';
+    const inputs = ['-i', input];
+    if (options.coverFile) {
+      inputs.push('-loop', '1', '-t', '1', '-i', options.coverFile);
+      graph += `;[1:v]scale=${W}:${H},setsar=1,format=yuv420p[rfcover];[rtv][rfcover]overlay=0:0:enable='lt(t,0.4)':eof_action=pass,format=yuv420p[rfout]`;
+      vOut = '[rfout]';
+    }
+    const args = [...inputs, '-filter_complex', graph, '-map', vOut, ...(meta.hasAudio ? ['-map', '[rta]', '-c:a', 'aac', '-b:a', '192k'] : []), ...x264Final(), '-movflags', '+faststart', '-y', output];
+    await runFfmpeg(args, { label: 'render', totalDuration: retimedDuration(pieces), onProgress });
+    const st = await fs.stat(output);
+    log.ok(`render final: ${path.basename(output)} (${(st.size / 1e6).toFixed(1)} MB, ${aspect}, ${pieces.length} pedaços de velocidade/congelar)`);
+    return { output, aspect, sizeBytes: st.size, reframe };
+  }
   if (speed) vf = `${vf},${speed.vf}`;
   let args = ['-i', input, '-vf', vf, ...x264Final()];
   // Capa no começo (vira a miniatura nas redes): a imagem por cima dos primeiros 0,4 s,

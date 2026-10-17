@@ -673,6 +673,19 @@ export function parseOptions(raw) {
     // Transições (flash/esmaecer/brilho/blur) nos cortes e/ou nas entradas de B-roll.
     transition: Object.hasOwn(TRANSITIONS, o.transition) ? o.transition : 'none',
     transitionAt: Object.hasOwn(TRANSITION_TARGETS, o.transitionAt) ? o.transitionAt : 'broll',
+    // Velocidade por trecho (0,25–4×) e congelar quadro (0,2–10 s), em tempo original.
+    speedRanges: Array.isArray(o.speedRanges)
+      ? o.speedRanges
+          .filter((r) => r && Number.isFinite(Number(r.start)) && Number.isFinite(Number(r.end)) && Number(r.end) - Number(r.start) >= 0.05 && Number(r.speed) > 0)
+          .slice(0, 60)
+          .map((r) => ({ start: Math.max(0, Number(r.start)), end: Number(r.end), speed: Math.max(0.25, Math.min(4, Number(r.speed))) }))
+      : [],
+    freezes: Array.isArray(o.freezes)
+      ? o.freezes
+          .filter((f) => f && Number.isFinite(Number(f.t)) && Number(f.t) >= 0)
+          .slice(0, 30)
+          .map((f) => ({ t: Number(f.t), dur: Math.max(0.2, Math.min(10, Number(f.dur) || 2)) }))
+      : [],
     // Transições manuais: cada uma num ponto (tempo original) com o seu tipo.
     transitions: Array.isArray(o.transitions)
       ? o.transitions
