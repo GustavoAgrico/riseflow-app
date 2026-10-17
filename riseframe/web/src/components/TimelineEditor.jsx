@@ -2309,7 +2309,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const all = selCaptions.every((i) => segments[i] && segHidden(segments[i]));
     setCaptionsHidden(!all);
   }
-  keysRef.current = { togglePlay, seek, cur, goCaption, splitSelected, deleteSelected, undo, redo, hidden, copySel, pasteAtPlayhead, duplicateSel, toggleMarker, toggleSnap, markRange, selectAllRange, clearRange, toggleCapHidden, toggleRangeTool: () => setRangeTool((v) => !v) };
+  keysRef.current = { togglePlay, seek, cur, dur, goCaption, splitSelected, deleteSelected, undo, redo, hidden, copySel, pasteAtPlayhead, duplicateSel, toggleMarker, toggleSnap, markRange, selectAllRange, clearRange, toggleCapHidden, toggleRangeTool: () => setRangeTool((v) => !v) };
   useEffect(() => {
     function onKey(e) {
       if (keysRef.current.hidden) return; // escondido durante o render
@@ -2338,6 +2338,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       else if (e.key === 'r' || e.key === 'R') { k.toggleRangeTool(); }
       else if (e.key === 'h' || e.key === 'H') { k.toggleCapHidden(); }
       else if (e.key === 'Escape') { k.clearRange(); }
+      else if (e.key === 'Home') { e.preventDefault(); k.seek(0); }
+      else if (e.key === 'End') { e.preventDefault(); k.seek(k.dur); }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -2918,6 +2920,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     </div>
   );
 
+  // Proporção do monitor visível (um monitor só); comparando com o original, a coluna é livre.
+  const monAr = showFormatPreview ? (showSource ? 0 : +fmtAr.toFixed(4)) : +mainAr.toFixed(4);
+  const monArRef = useRef(monAr);
+  monArRef.current = monAr;
   // Computador: o player tem a altura que sobra na janela depois da timeline (tudo cabe
   // na tela, sem espaço vazio). Player G continua grande (rola a página).
   const gridRef = useRef(null);
@@ -2939,9 +2945,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         const app = Math.max(560, Math.round(window.innerHeight - top0 - below));
         g.style.setProperty('--rf-app-h', `${app}px`);
         const bar = g.querySelector('.rf-tl-bar');
-        const barH = bar ? bar.offsetHeight + 10 : 70;
-        const mon = Math.max(200, app - barH - 24);
-        g.style.setProperty('--rf-stage-h', `${Math.round(stage === 's' ? mon * 0.78 : mon)}px`);
+        const barH = bar ? bar.offsetHeight + 8 : 80;
+        const mon = Math.max(200, app - barH - 16);
+        const stageH = Math.round(stage === 's' ? mon * 0.78 : mon);
+        g.style.setProperty('--rf-stage-h', `${stageH}px`);
+        // a coluna do monitor fica do tamanho do vídeo (preenche, sem faixas vazias)
+        const ar = monArRef.current;
+        if (ar) {
+          const gw = g.getBoundingClientRect().width;
+          const w = Math.round(Math.max(280, Math.min(gw * 0.62, stageH * ar + 14)));
+          g.style.setProperty('--rf-mon-auto', `${w}px`);
+        } else g.style.removeProperty('--rf-mon-auto');
         return;
       }
       g.style.removeProperty('--rf-app-h');
@@ -2960,7 +2974,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     ro?.observe(b.querySelector('.rf-tl-track') || b);
     window.addEventListener('resize', fit);
     return () => { ro?.disconnect(); window.removeEventListener('resize', fit); };
-  }, [isMobile, stage]);
+  }, [isMobile, stage, monAr]);
 
   // Pontos onde os blocos encaixam (ímã): playhead, começo/fim, marcadores, cortes e as
   // pontas de tudo que está na timeline.
@@ -3520,9 +3534,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </div>
           )}
           {/* Barra do player: play, tempo, barra de progresso, prévia com cortes e tela cheia */}
-          {!isMobile && <div className="rf-tl-bar" style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, padding: '8px 12px', borderRadius: 12, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)' }}>
-            <button onClick={togglePlay} style={{ ...playBtn, width: 34, height: 34 }}><Icon name={playing ? 'pause' : 'play'} size={15} strokeWidth={2} /></button>
-            <div style={{ fontSize: 12.5, color: C.text, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{mmss(cur)} <span style={{ color: C.faint }}>/ {mmss(dur)}</span></div>
+          {!isMobile && <div className="rf-tl-bar" style={{ display: 'grid', gap: 6, marginTop: 8, padding: '8px 10px', borderRadius: 12, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)' }}>
+            {/* barra de progresso na largura toda (arrastar = ir) */}
             <div
               onPointerDown={(e) => {
                 const el = e.currentTarget;
@@ -3533,30 +3546,43 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 window.addEventListener('pointermove', move);
                 window.addEventListener('pointerup', up);
               }}
-              style={{ position: 'relative', flex: 1, height: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', minWidth: 40 }}
+              title="Arraste para ir a outro ponto do vídeo"
+              style={{ position: 'relative', height: 14, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
             >
               <div style={{ position: 'absolute', left: 0, right: 0, height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.12)' }} />
               <div style={{ position: 'absolute', left: 0, width: `${dur ? (cur / dur) * 100 : 0}%`, height: 4, borderRadius: 4, background: GRAD }} />
               <div style={{ position: 'absolute', left: `calc(${dur ? (cur / dur) * 100 : 0}% - 6px)`, width: 12, height: 12, borderRadius: '50%', background: '#fff', boxShadow: `0 0 0 3px ${C.orange}55` }} />
             </div>
-            <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} title="Velocidade do vídeo final (a prévia toca nela)" aria-label="Velocidade"
-              style={{ height: 30, flexShrink: 0, borderRadius: 8, border: `1px solid ${speed !== 1 ? C.orange : C.border}`, background: 'rgba(0,0,0,0.35)', color: speed !== 1 ? C.orangeSoft : C.text, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', padding: '0 6px', cursor: 'pointer' }}>
-              {SPEEDS.map((k) => <option key={k} value={k}>{fmtSpeed(k)}</option>)}
-            </select>
-            {showFormatPreview && (
-              <button onClick={() => setShowSource((v) => !v)} title={showSource ? 'Voltar para um monitor só (o vídeo como vai sair)' : 'Ver o vídeo original ao lado, para comparar'} style={{ ...miniBtn(showSource, false), whiteSpace: 'nowrap', flexShrink: 0 }}>
-                <Icon name="layout" size={12} strokeWidth={2.2} /> <span className="rf-tl-hide-sm">{showSource ? 'Esconder original' : 'Comparar original'}</span>
-              </button>
-            )}
-            <button onClick={() => setPreviewCuts((v) => !v)} title="Ao tocar, pular os trechos cortados (como no vídeo final)" style={{ ...miniBtn(previewCuts, false), whiteSpace: 'nowrap', flexShrink: 0 }}>
-              <Icon name="scissors" size={12} strokeWidth={2.2} /> <span className="rf-tl-hide-sm">{previewCuts ? 'Com cortes' : 'Sem cortes'}</span>
-            </button>
-            <button onClick={() => setStage((v) => (v === 'm' ? 'l' : v === 'l' ? 's' : 'm'))} title="Tamanho do player: menor deixa mais espaço para a timeline" style={{ ...miniBtn(false, false), whiteSpace: 'nowrap', flexShrink: 0 }}>
-              <Icon name="layout" size={13} strokeWidth={2} /> <span className="rf-tl-hide-sm">Player {stage === 's' ? 'P' : stage === 'l' ? 'G' : 'M'}</span>
-            </button>
-            <button onClick={() => { const el = videoRef.current?.parentElement; if (el?.requestFullscreen) el.requestFullscreen().catch(() => {}); }} title="Tela cheia" style={{ ...zoomBtn, width: 30, height: 30 }}>
-              <Icon name="maximize" size={14} strokeWidth={2} />
-            </button>
+            {/* transporte: tempo · voltar/play/avançar · velocidade e opções do monitor */}
+            <div className="rf-transport" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ flex: '1 1 0', minWidth: 0, fontSize: 12, color: PR.blue, fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title="Posição / duração">
+                {mmss(cur)} <span style={{ color: C.faint, fontWeight: 500 }}>/ {mmss(dur)}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button className="rf-tbtn rf-tb-ext" onClick={() => seek(0)} title="Ir para o começo (Home)" aria-label="Começo">{svgTransport('start')}</button>
+                <button className="rf-tbtn" onClick={() => seek(cur - 1 / 30)} title="Voltar 1 quadro" aria-label="Voltar 1 quadro">{svgTransport('back')}</button>
+                <button onClick={togglePlay} aria-label={playing ? 'Pausar' : 'Tocar'} title="Tocar / pausar (Espaço)" style={{ ...playBtn, width: 34, height: 34 }}><Icon name={playing ? 'pause' : 'play'} size={15} strokeWidth={2} /></button>
+                <button className="rf-tbtn" onClick={() => seek(cur + 1 / 30)} title="Avançar 1 quadro" aria-label="Avançar 1 quadro">{svgTransport('fwd')}</button>
+                <button className="rf-tbtn rf-tb-ext" onClick={() => seek(dur)} title="Ir para o fim (End)" aria-label="Fim">{svgTransport('end')}</button>
+              </div>
+              <div style={{ flex: '1 1 0', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', minWidth: 'max-content' }}>
+                <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} title="Velocidade do vídeo final (a prévia toca nela)" aria-label="Velocidade"
+                  style={{ height: 28, flexShrink: 0, borderRadius: 7, border: `1px solid ${speed !== 1 ? C.orange : C.border}`, background: 'rgba(0,0,0,0.35)', color: speed !== 1 ? C.orangeSoft : C.text, fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', padding: '0 4px', cursor: 'pointer' }}>
+                  {SPEEDS.map((k) => <option key={k} value={k}>{fmtSpeed(k)}</option>)}
+                </select>
+                {showFormatPreview && (
+                  <button className={`rf-tbtn${showSource ? ' on' : ''}`} onClick={() => setShowSource((v) => !v)} title={showSource ? 'Voltar para um monitor só (o vídeo como vai sair)' : 'Comparar com o vídeo original ao lado'} aria-pressed={showSource}>
+                    <Icon name="layout" size={13} strokeWidth={2.2} />
+                  </button>
+                )}
+                <button className={`rf-tbtn${previewCuts ? ' on' : ''}`} onClick={() => setPreviewCuts((v) => !v)} title={previewCuts ? 'Tocando com os cortes (como no vídeo final) — clique para tocar sem cortes' : 'Tocando sem cortes — clique para pular os trechos cortados'} aria-pressed={previewCuts}>
+                  <Icon name="scissors" size={13} strokeWidth={2.2} />
+                </button>
+                <button className="rf-tbtn" onClick={() => { const el = (singleMon ? composedRef.current : videoRef.current?.parentElement); if (el?.requestFullscreen) el.requestFullscreen().catch(() => {}); }} title="Tela cheia" aria-label="Tela cheia">
+                  <Icon name="maximize" size={13} strokeWidth={2} />
+                </button>
+              </div>
+            </div>
           </div>}
         </div>
 
@@ -5102,7 +5128,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
         </div>
         {!isMobile && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+          <div className="rf-tl-zoom" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
             <button onClick={() => zoomTl(-1)} disabled={pps <= fitPps} title="Afastar" style={{ ...zoomBarBtn, opacity: pps <= fitPps ? 0.35 : 1 }}>−</button>
             <button onClick={fitAll} title="Ver o vídeo inteiro" style={{ ...zoomBarBtn, width: 'auto', padding: '0 8px', fontSize: 11 }}>Vídeo inteiro</button>
             <input type="range" min={fitPps} max={PPS_MAX} step={0.5} value={pps} onChange={(e) => setPps(Number(e.target.value))} aria-label="Zoom da timeline" style={{ flex: 1, accentColor: PR.blue, height: 4 }} />
@@ -5328,7 +5354,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           .rf-tl-card:not(.rf-m) .rf-tl-navend{ display: flex; }
           .rf-tl-card:not(.rf-m) .rf-tl-grid{ height: var(--rf-app-h, auto); grid-template-rows: auto var(--rf-panel-h, minmax(190px, 40%)) minmax(0, 1fr) !important; gap: 8px !important; }
           .rf-tl-card:not(.rf-m) .rf-tl-preview{ grid-row: 1 / span 3 !important; align-self: stretch !important; position: relative !important; top: auto !important; display: flex; flex-direction: column; min-height: 0; }
-          .rf-tl-card:not(.rf-m) .rf-tl-preview > .rf-tl-pv{ flex: 1; min-height: 0; }
+          .rf-tl-card:not(.rf-m) .rf-tl-preview > .rf-tl-pv{ flex: 1; min-height: 0; padding: 6px !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-grid:not(.rf-custom-col){ grid-template-columns: var(--rf-mon-auto, minmax(300px, 0.62fr)) minmax(0, 1fr) !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-zoom{ margin-top: 5px !important; gap: 6px !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-zoom button{ height: 20px !important; min-width: 20px; font-size: 11px !important; }
           .rf-tl-card:not(.rf-m) .rf-tl-adjust{ height: auto !important; min-height: 0 !important; align-self: stretch !important; }
           .rf-tl-card:not(.rf-m) .rf-tl-bottom{ min-height: 0; overflow-y: auto; overflow-x: hidden; align-self: stretch; padding: 6px 8px 8px !important; scrollbar-width: thin; }
           .rf-tl-card:not(.rf-m) .rf-tlbar{ gap: 6px !important; margin-bottom: 6px !important; }
@@ -5336,9 +5365,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           .rf-tl-card:not(.rf-m) .rf-tc{ font-size: 17px !important; }
           .rf-tl-card:not(.rf-m) .rf-tl-bar{ margin-top: 8px !important; padding: 6px 10px !important; gap: 8px !important; }
           .rf-tl-card:not(.rf-m) .rf-tl-preview{ container-type: inline-size; container-name: rfmon; }
-          @container rfmon (max-width: 430px){
-            .rf-tl-bar .rf-tl-hide-sm{ display: none; }
-            .rf-tl-bar button{ padding: 5px 8px !important; }
+          @container rfmon (max-width: 460px){
+            .rf-tl-bar .rf-tb-ext{ display: none; }
+            .rf-tl-bar .rf-tbtn{ width: 26px; height: 26px; }
+          }
+          @container rfmon (max-width: 380px){
+            .rf-tl-bar .rf-transport > div:first-child{ display: none; }
           }
         }
         .rf-tl-navend{ display: none; margin-left: auto; position: sticky; right: 0; align-items: center; gap: 6px; padding-left: 10px; background: inherit; flex: none; }
@@ -5347,6 +5379,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         .rf-tl-navbtn:hover{ background: rgba(255,255,255,0.1); }
         .rf-tl-navbtn--go{ border: none; color: #fff; font-weight: 800; box-shadow: 0 6px 16px -8px rgba(255,107,53,0.8); }
         .rf-tl-navbtn--go:hover{ filter: brightness(1.08); }
+        .rf-tbtn{ width: 28px; height: 28px; flex-shrink: 0; display: grid; place-items: center; border-radius: 7px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #D6D8DE; cursor: pointer; padding: 0; }
+        .rf-tbtn:hover{ background: rgba(255,255,255,0.1); color: #fff; }
+        .rf-tbtn.on{ border-color: rgba(255,107,53,0.6); background: rgba(255,107,53,0.16); color: #FF9A6C; }
         /* divisórias arrastáveis (só no computador) */
         .rf-split{ display: none; position: absolute; z-index: 30; }
         .rf-split > span{ position: absolute; border-radius: 3px; background: rgba(255,255,255,0.14); transition: background .15s; }
@@ -5592,6 +5627,12 @@ function SyncedVideo({ m, mainRef, style, onAspect }) {
         if (!failed && m.mediaId) { setFailed(true); setSrc(mediaPreviewUrl(m.mediaId, 'h264')); }
       }} />
   );
+}
+
+/** Ícones do transporte (como os do monitor do Premiere). */
+function svgTransport(kind) {
+  const P = { start: 'M6 5v14M18 6l-9 6 9 6z', back: 'M15 6l-7 6 7 6', fwd: 'M9 6l7 6-7 6', end: 'M18 5v14M6 6l9 6-9 6z' }[kind];
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d={P} /></svg>;
 }
 
 // Prévia dos efeitos na biblioteca (ao passar o mouse), como os cards do Animation Composer.
