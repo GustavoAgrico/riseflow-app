@@ -821,7 +821,7 @@ const CSS = `
 
 /* fundo */
 .ra-bg{ position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-.ra-silk{ position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0.72; }
+.ra-silk{ position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0.48; }
 .ra-bg-video{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .ra-bg-tint{ position: absolute; inset: 0; background: #FF6A1A; mix-blend-mode: color; opacity: 0.85; }
 .ra-bg-shade{ position: absolute; inset: 0; background: radial-gradient(55% 42% at 50% 34%, rgba(12,12,12,0.82), rgba(12,12,12,0.35) 60%, rgba(12,12,12,0) 85%), linear-gradient(180deg, rgba(12,12,12,0.15), rgba(12,12,12,0) 30%, rgba(12,12,12,0.5)); }
