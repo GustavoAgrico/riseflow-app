@@ -6,17 +6,16 @@ import {
 } from 'lucide-react';
 import { Logo } from '../components/Icon.jsx';
 import BeforeAfter from '../components/BeforeAfter.jsx';
-import { getPublicInfo, apiAsset } from '../api.js';
+import { getPublicInfo } from '../api.js';
 import { detectPlatform, PLATFORMS } from './Download.jsx';
 
 // Página inicial (visitante sem login): cinematográfica, vídeo de fundo em loop, título
 // com brilho animado, barra de menu estilo macOS, o editor do Riseframe em miniatura e
 // cartões em "vidro líquido". Paleta: laranja sobre preto.
 
-// Vídeo de fundo (troque por VITE_HERO_VIDEO_URL). O laranja da marca é aplicado por cima
-// (mistura "color"), então qualquer vídeo fica no tom do site.
-const HERO_VIDEO = import.meta.env.VITE_HERO_VIDEO_URL
-  || 'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260508_064122_c4750c0e-7476-4b44-94a2-a85a65c63bf2.mp4';
+// Fundo: timeline de edição animada (canvas), que acompanha a rolagem. Para usar um vídeo seu no lugar,
+// defina VITE_HERO_VIDEO_URL no build (o laranja da marca é aplicado por cima).
+const HERO_VIDEO = import.meta.env.VITE_HERO_VIDEO_URL || '';
 
 const EASE = [0.22, 1, 0.36, 1];
 
@@ -76,10 +75,11 @@ const reveal = (delay = 0) => ({
 });
 
 // ── 1. Barra de navegação ──
-const NAV = [['Recursos', '#recursos'], ['Antes e depois', '#demo'], ['Preços', '#precos'], ['Baixar app', '/download']];
+const navItems = (hasDemo) => [['Recursos', '#recursos'], hasDemo ? ['Antes e depois', '#demo'] : ['Para quem é', '#para-quem'], ['Preços', '#precos'], ['Baixar app', '/download']];
 
-function Navbar({ onEnter, onLogin }) {
+function Navbar({ onEnter, onLogin, hasDemo }) {
   const [open, setOpen] = useState(false);
+  const NAV = navItems(hasDemo);
   return (
     <motion.nav initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: 'easeOut' }} className="ra-nav">
       <div className="ra-wrap ra-nav-row">
@@ -173,7 +173,10 @@ function MenuBar() {
   );
 }
 
-// ── 4. O editor em miniatura ──
+// ── 4. O editor em miniatura, editando sozinho ──
+// Uma "gravação" de 10 s em loop: a fala vira legenda palavra a palavra, o "é…" e a tosse
+// são cortados, a câmera aproxima nas palavras fortes e o B-roll entra em "redes". O
+// monitor, a transcrição e a timeline seguem o mesmo relógio.
 const SIDE = [
   { icon: Film, label: 'Projeto', active: true },
   { icon: Upload, label: 'Mídia', count: 4 },
@@ -183,17 +186,106 @@ const SIDE = [
   { icon: AudioLines, label: 'Áudio' },
 ];
 const STYLES = [['Destaque', '#FF6A1A'], ['Clean', '#FFFFFF'], ['Neon', '#FFD166'], ['Minimal', '#A3A3A3']];
-const TRANSCRIPT = [
-  { t: '00:00', words: [['Hoje', 0], ['eu', 0], ['vou', 0], ['te', 0], ['mostrar', 0]] },
-  { t: '00:02', words: [['é...', 1], ['o', 0], ['segredo', 2], ['que', 0], ['ninguém', 0], ['conta', 0]] },
-  { t: '00:05', words: [['sobre', 0], ['crescer', 0], ['nas', 0], ['redes', 2]] },
-  { t: '00:08', words: [['*tosse*', 1], ['Não', 0], ['é', 0], ['sorte.', 0]] },
-  { t: '00:10', words: [['É', 0], ['constância', 2], ['e', 0], ['um', 0], ['bom', 0], ['editor.', 0]] },
+const LOOP = 10.4;
+// [palavra, início, fim, tipo] — tipo: 'cut' (sai do vídeo) | 'key' (destaque + zoom)
+const SCRIPT = [
+  [['Hoje', 0.2, 0.5], ['eu', 0.5, 0.65], ['vou', 0.65, 0.85], ['te', 0.85, 1.0], ['mostrar', 1.0, 1.6]],
+  [['é…', 1.7, 2.2, 'cut']],
+  [['o', 2.25, 2.4], ['segredo', 2.4, 2.95, 'key'], ['que', 2.95, 3.15], ['ninguém', 3.15, 3.65], ['conta', 3.65, 4.15]],
+  [['sobre', 4.25, 4.55], ['crescer', 4.55, 5.0], ['nas', 5.0, 5.2], ['redes', 5.2, 5.85, 'key']],
+  [['*tosse*', 5.95, 6.45, 'cut']],
+  [['Não', 6.55, 6.8], ['é', 6.8, 6.95], ['sorte.', 6.95, 7.6]],
+  [['É', 7.75, 7.9], ['constância', 7.9, 8.65, 'key'], ['e', 8.65, 8.75], ['um', 8.75, 8.9], ['bom', 8.9, 9.15], ['editor.', 9.15, 9.8]],
 ];
+const LINES = SCRIPT.map((ws) => ({ words: ws, start: ws[0][1], end: ws[ws.length - 1][2], cut: ws[0][3] === 'cut' }));
+const CUTS = LINES.filter((l) => l.cut);
+const SPOKEN = LINES.filter((l) => !l.cut);
+const fmtT = (t) => `00:${String(Math.floor(t)).padStart(2, '0')}`;
 
-function EditorMockup({ showcase }) {
-  const [videoOk, setVideoOk] = useState(true);
-  const src = showcase?.after ? apiAsset(showcase.after) : '';
+/** Relógio do loop (≈30 qps; parado com "reduzir movimento" ou com a aba escondida). */
+function useLoopClock(paused) {
+  const [t, setT] = useState(3.2);
+  useEffect(() => {
+    if (paused) return undefined;
+    let raf = 0;
+    let last = 0;
+    const t0 = performance.now() - 3200;
+    const tick = (now) => {
+      raf = requestAnimationFrame(tick);
+      if (now - last < 33) return;
+      last = now;
+      setT(((now - t0) / 1000) % LOOP);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [paused]);
+  return t;
+}
+
+function useReducedMotion() {
+  const [r, setR] = useState(false);
+  useEffect(() => {
+    const m = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (!m) return undefined;
+    setR(m.matches);
+    const f = () => setR(m.matches);
+    m.addEventListener?.('change', f);
+    return () => m.removeEventListener?.('change', f);
+  }, []);
+  return r;
+}
+
+/** A tela do monitor: apresentador, legenda karaokê, zoom, corte e B-roll. */
+function LiveScreen({ t }) {
+  const line = SPOKEN.find((l) => t >= l.start - 0.05 && t < l.end + 0.35) || null;
+  const cut = CUTS.find((c) => t >= c.start && t < c.end + 0.15);
+  const keyOn = SPOKEN.some((l) => l.words.some(([, s, e, k]) => k === 'key' && t >= s && t < e + 0.7));
+  const broll = t >= 5.15 && t < 6.0;
+  return (
+    <div className="ra-live">
+      <div className="ra-live-scene" style={{ transform: `scale(${keyOn ? 1.14 : 1})` }}>
+        <span className="ra-bokeh" style={{ left: '12%', top: '14%', width: 70, height: 70 }} />
+        <span className="ra-bokeh" style={{ right: '8%', top: '30%', width: 48, height: 48, opacity: 0.5 }} />
+        <span className="ra-bokeh" style={{ left: '20%', bottom: '38%', width: 34, height: 34, opacity: 0.35 }} />
+        <div className="ra-presenter"><span className="ra-neck" /><span className="ra-head" /><span className="ra-body" /></div>
+      </div>
+      {broll && (
+        <div className="ra-broll">
+          <div className="ra-broll-card">
+            <div className="ra-broll-row"><span /><span /><span /></div>
+            <div className="ra-broll-hearts">♥ 12,4 mil · ▶ 380 mil</div>
+          </div>
+          <span className="ra-broll-tag">B-roll</span>
+        </div>
+      )}
+      {cut && <div className="ra-cutflash"><Scissors className="ra-i12" /> Removido: {cut.words[0][0]}</div>}
+      <div className="ra-live-cap">
+        {line && line.words.map(([w, s, e, k]) => {
+          const on = t >= s && t < e;
+          const said = t >= s;
+          return <span key={w + s} className={`${said ? 'is-said' : ''}${on ? ' is-on' : ''}${k === 'key' && said ? ' is-key' : ''}`}>{w.toUpperCase()}</span>;
+        })}
+      </div>
+      <span className="ra-live-badge"><i /> Prévia ao vivo</span>
+    </div>
+  );
+}
+
+function EditorMockup() {
+  const reduced = useReducedMotion();
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const f = () => setVisible(!document.hidden);
+    document.addEventListener('visibilitychange', f);
+    return () => document.removeEventListener('visibilitychange', f);
+  }, []);
+  const t = useLoopClock(reduced || !visible);
+  const pct = (x) => `${(x / LOOP) * 100}%`;
+  // vídeo (V1/A1): pedaços entre os cortes
+  const kept = [];
+  let from = 0;
+  for (const c of CUTS) { kept.push([from, c.start]); from = c.end; }
+  kept.push([from, LOOP]);
   return (
     <section className="ra-wrap ra-mock-sec">
       <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.1, duration: 0.9, ease: EASE }} className="ra-mock">
@@ -203,7 +295,6 @@ function EditorMockup({ showcase }) {
           <span className="ra-export"><DownloadIcon className="ra-i12" /> Exportar</span>
         </div>
         <div className="ra-mock-body">
-          {/* barra lateral */}
           <aside className="ra-side">
             <div className="ra-compose"><Sparkles className="ra-i14" /> Editar com IA</div>
             <div className="ra-side-list">
@@ -214,60 +305,50 @@ function EditorMockup({ showcase }) {
               ))}
             </div>
             <div className="ra-side-title">Estilos de legenda</div>
-            {STYLES.map(([n, c]) => (
-              <div key={n} className="ra-side-item"><span className="ra-swatch" style={{ background: c }} /><span>{n}</span></div>
+            {STYLES.map(([n, c], i) => (
+              <div key={n} className={`ra-side-item${i === 0 ? ' is-active' : ''}`}><span className="ra-swatch" style={{ background: c }} /><span>{n}</span></div>
             ))}
           </aside>
 
-          {/* monitor */}
           <div className="ra-monitor">
-            <div className="ra-screen">
-              {src && videoOk ? (
-                <>
-                  <video className="ra-screen-blur" src={src} autoPlay loop muted playsInline aria-hidden="true" />
-                  <video className="ra-screen-video" src={src} autoPlay loop muted playsInline onError={() => setVideoOk(false)} />
-                </>
-              ) : (
-                <div className="ra-screen-fallback">
-                  <div className="ra-person"><span /><i /></div>
-                  <div className="ra-cap">O SEGREDO É <b>CONSTÂNCIA</b></div>
-                </div>
-              )}
-            </div>
+            <div className="ra-screen"><LiveScreen t={t} /></div>
             <div className="ra-transport">
               <SkipBack className="ra-i14" /><span className="ra-play"><Play className="ra-i12" fill="currentColor" /></span><SkipForward className="ra-i14" />
-              <span className="ra-tc">00:42 <i>/ 02:04</i></span>
+              <span className="ra-tc">{fmtT(t)} <i>/ 00:10</i></span>
               <span className="ra-fmt">9:16 · 1080p</span>
             </div>
           </div>
 
-          {/* transcrição + resumo da IA */}
           <div className="ra-reader">
-            <div className="ra-tabs">{['Transcrição', 'Estilo', 'Legendas'].map((t, i) => <span key={t} className={i === 0 ? 'is-on' : ''}>{t}</span>)}</div>
+            <div className="ra-tabs">{['Transcrição', 'Estilo', 'Legendas'].map((x, i) => <span key={x} className={i === 0 ? 'is-on' : ''}>{x}</span>)}</div>
             <div className="ra-summary liquid-glass">
               <div className="ra-summary-head"><Sparkles className="ra-i14" style={{ color: '#FFB067' }} /> Resumo do Riseframe</div>
-              <p>23 pausas e 4 tosses removidas, 186 palavras legendadas e 3 zooms nas frases fortes. Duração: 3:12 → 2:04.</p>
+              <p>“É…” e uma tosse removidos, 24 palavras legendadas e 3 zooms nas palavras fortes. Tudo pronto para revisar.</p>
             </div>
             <div className="ra-lines">
-              {TRANSCRIPT.map((l) => (
-                <div key={l.t} className="ra-line">
-                  <span className="ra-line-t">{l.t}</span>
-                  <span>{l.words.map(([w, k], i) => <span key={i} className={k === 1 ? 'is-cut' : k === 2 ? 'is-key' : ''}>{w} </span>)}</span>
+              {LINES.map((l) => (
+                <div key={l.start} className={`ra-line${t >= l.start && t < l.end + 0.2 ? ' is-now' : ''}`}>
+                  <span className="ra-line-t">{fmtT(l.start)}</span>
+                  <span>{l.words.map(([w, s, e, k]) => (
+                    <span key={w + s} className={`${k === 'cut' ? 'is-cut' : k === 'key' ? 'is-key' : ''}${t >= s && t < e ? ' is-on' : ''}`}>{w} </span>
+                  ))}</span>
                 </div>
               ))}
             </div>
-            <div className="ra-attach"><Scissors className="ra-i12" /> 27 cortes · MP4 1080×1920</div>
+            <div className="ra-attach"><Scissors className="ra-i12" /> 2 cortes · MP4 1080×1920</div>
           </div>
 
-          {/* timeline */}
           <div className="ra-timeline">
-            {[['V1', 'v', [[0, 18], [19, 37], [38, 61], [62, 80], [81, 100]]], ['A1', 'a', [[0, 18], [19, 37], [38, 61], [62, 80], [81, 100]]], ['T1', 't', [[1, 11], [13, 25], [27, 36], [39, 52], [54, 66], [68, 79], [82, 97]]]].map(([n, k, bl]) => (
+            {[['V1', 'v', kept], ['A1', 'a', kept], ['T1', 't', SPOKEN.map((l) => [l.start, l.end])]].map(([n, k, bl]) => (
               <div key={n} className="ra-lane">
                 <span className="ra-lane-n">{n}</span>
-                <div className="ra-lane-track">{bl.map(([a, b]) => <span key={a} className={`ra-clip ra-clip-${k}`} style={{ left: `${a}%`, width: `${b - a}%` }} />)}</div>
+                <div className="ra-lane-track">
+                  {bl.map(([a, b]) => <span key={a} className={`ra-clip ra-clip-${k}`} style={{ left: pct(a), width: `calc(${pct(b - a)} - 3px)` }} />)}
+                  {k !== 't' && CUTS.map((c) => <span key={c.start} className="ra-clip ra-clip-cut" style={{ left: pct(c.start), width: pct(c.end - c.start) }} />)}
+                </div>
               </div>
             ))}
-            <motion.span className="ra-playhead" animate={{ left: ['6%', '96%'] }} transition={{ duration: 12, repeat: Infinity, ease: 'linear' }} />
+            <span className="ra-playhead" style={{ left: `calc(52px + (100% - 68px) * ${t / LOOP})` }} />
           </div>
         </div>
       </motion.div>
@@ -335,7 +416,7 @@ const USES = [
 ];
 function UseCases() {
   return (
-    <section className="ra-wrap ra-sec ra-bordered">
+    <section id="para-quem" className="ra-wrap ra-sec ra-bordered">
       <motion.div {...reveal()} style={{ marginBottom: 36 }}>
         <SectionEyebrow label="Para quem é" />
         <h2 className="ra-h2" style={{ marginTop: 18 }}>Feito para quem precisa postar<br />bem e com frequência.</h2>
@@ -478,24 +559,205 @@ function Footer({ info }) {
   );
 }
 
+/**
+ * Fundo: uma timeline de edição em perspectiva — faixas de vídeo, áudio (forma de onda),
+ * legendas e efeitos (keyframes), a régua de tempo e a agulha brilhando. Ela corre sozinha e
+ * a rolagem da página arrasta a timeline (como passar a agulha), mudando também o ângulo.
+ */
+const LANE_KINDS = ['ruler', 'v', 'fx', 'v', 'a', 't', 'v', 'a', 'fx', 't', 'v', 'a', 't', 'v', 'a', 'fx'];
+function seeded(n) {
+  let x = n * 9301 + 49297;
+  return () => { x = (x * 9301 + 49297) % 233280; return x / 233280; };
+}
+const PERIOD = 2800;
+const LANES = LANE_KINDS.map((kind, i) => {
+  const rnd = seeded(i + 3);
+  const clips = [];
+  if (kind !== 'ruler') {
+    let x = rnd() * 60;
+    while (x < PERIOD - 120) {
+      const len = kind === 't' ? 70 + rnd() * 150 : 120 + rnd() * 320;
+      const w = Math.min(len, PERIOD - x - 10);
+      clips.push([x, w, rnd()]);
+      x += w + (kind === 't' ? 14 + rnd() * 40 : 6 + rnd() * 30);
+    }
+  }
+  return { kind, clips, speed: 14 + (i % 4) * 7, scroll: 0.55 + (i % 3) * 0.18 };
+});
+
+function TimelineBackground() {
+  const ref = React.useRef(null);
+  useEffect(() => {
+    const cv = ref.current;
+    const ctx = cv?.getContext('2d');
+    if (!ctx) return undefined;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    let W = 0;
+    let H = 0;
+    let raf = 0;
+    let last = 0;
+    let vel = 0;
+    let lastY = window.scrollY;
+    const resize = () => {
+      W = window.innerWidth;
+      H = window.innerHeight;
+      cv.width = Math.round(W * dpr);
+      cv.height = Math.round(H * dpr);
+    };
+    const rr = (x, y, w, h, r) => {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    };
+    const draw = (time) => {
+      const sy = window.scrollY;
+      vel = vel * 0.88 + Math.abs(sy - lastY) * 0.12;
+      lastY = sy;
+      const prog = Math.min(sy / Math.max(1, document.documentElement.scrollHeight - H), 1);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      const D = Math.hypot(W, H);
+      const laneH = Math.max(26, Math.min(40, H / 22));
+      const gap = laneH * 0.32;
+      const bandH = LANES.length * (laneH + gap);
+      const angle = -0.24 + prog * 0.16;
+      const phX = D * 0.22; // agulha (no espaço girado), fora do centro do título
+      // brilho da agulha (fica mais forte quando a página rola)
+      const glowA = 0.14 + Math.min(vel / 60, 1) * 0.14;
+      ctx.save();
+      ctx.translate(W / 2, H * (0.6 - prog * 0.12));
+      ctx.rotate(angle);
+      const g = ctx.createRadialGradient(phX, 0, 0, phX, 0, D * 0.45);
+      g.addColorStop(0, `rgba(255,106,26,${glowA})`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(-D, -D, D * 2, D * 2);
+      const top = -bandH / 2;
+      LANES.forEach((lane, li) => {
+        const y = top + li * (laneH + gap);
+        const depth = 1 - Math.abs(li - LANES.length / 2) / (LANES.length / 2);
+        const a = 0.25 + 0.75 * depth;
+        const off = (time * lane.speed + sy * lane.scroll) % PERIOD;
+        if (lane.kind === 'ruler') {
+          ctx.fillStyle = `rgba(255,255,255,${0.22 * a})`;
+          ctx.font = '10px Inter, system-ui, sans-serif';
+          for (let x = -D / 2 - ((off % 20) + 20); x < D / 2; x += 20) {
+            const abs = Math.round((x + off) / 20);
+            const major = abs % 5 === 0;
+            ctx.fillRect(x, y + laneH - (major ? 12 : 6), 1, major ? 12 : 6);
+            if (abs % 10 === 0) {
+              const sec = ((abs / 10) % 60 + 60) % 60;
+              ctx.fillText(`00:${String(sec).padStart(2, '0')}`, x + 4, y + laneH - 14);
+            }
+          }
+          return;
+        }
+        for (let rep = -2; rep <= Math.ceil(D / PERIOD) + 1; rep++) {
+          for (const [cx, cw, r] of lane.clips) {
+            const x = cx + rep * PERIOD - off - D / 2;
+            if (x > D / 2 || x + cw < -D / 2) continue;
+            const hit = phX >= x && phX <= x + cw;
+            const hy = lane.kind === 't' ? y + laneH * 0.2 : y;
+            const hh = lane.kind === 't' ? laneH * 0.6 : laneH;
+            rr(x, hy, cw, hh, 6);
+            if (lane.kind === 'v') {
+              ctx.fillStyle = `rgba(255,255,255,${(hit ? 0.1 : 0.035) * a})`;
+              ctx.fill();
+              ctx.strokeStyle = `rgba(255,255,255,${(hit ? 0.45 : 0.18) * a})`;
+              ctx.stroke();
+              ctx.fillStyle = `rgba(255,255,255,${0.05 * a})`;
+              for (let k = x + 34; k < x + cw - 6; k += 34) ctx.fillRect(k, y + 4, 1, laneH - 8);
+            } else if (lane.kind === 'a') {
+              ctx.fillStyle = `rgba(255,138,42,${(hit ? 0.14 : 0.06) * a})`;
+              ctx.fill();
+              ctx.strokeStyle = `rgba(255,138,42,${(hit ? 0.55 : 0.25) * a})`;
+              ctx.stroke();
+              ctx.fillStyle = `rgba(255,176,103,${(hit ? 0.7 : 0.35) * a})`;
+              const mid = y + laneH / 2;
+              for (let k = x + 4; k < x + cw - 4; k += 4) {
+                const v = Math.abs(Math.sin(k * 0.13 + r * 9) * Math.cos(k * 0.031 + r * 3));
+                const h = 2 + v * (laneH * 0.7);
+                ctx.fillRect(k, mid - h / 2, 2, h);
+              }
+            } else if (lane.kind === 't') {
+              const lg = ctx.createLinearGradient(x, 0, x + cw, 0);
+              lg.addColorStop(0, `rgba(255,138,42,${(hit ? 0.75 : 0.32) * a})`);
+              lg.addColorStop(1, `rgba(194,65,12,${(hit ? 0.75 : 0.32) * a})`);
+              ctx.fillStyle = lg;
+              ctx.fill();
+            } else {
+              ctx.fillStyle = `rgba(194,65,12,${(hit ? 0.22 : 0.1) * a})`;
+              ctx.fill();
+              ctx.strokeStyle = `rgba(255,106,26,${(hit ? 0.6 : 0.28) * a})`;
+              ctx.stroke();
+              ctx.fillStyle = `rgba(255,200,150,${(hit ? 0.9 : 0.45) * a})`;
+              for (const f of [0.18, 0.55, 0.86]) {
+                const kx = x + cw * f;
+                const ky = y + laneH / 2;
+                const s2 = laneH * 0.18;
+                ctx.beginPath();
+                ctx.moveTo(kx, ky - s2); ctx.lineTo(kx + s2, ky); ctx.lineTo(kx, ky + s2); ctx.lineTo(kx - s2, ky);
+                ctx.closePath();
+                ctx.fill();
+              }
+            }
+            // corte: faísca quando a borda do clipe passa pela agulha
+            const edge = Math.abs(x - phX);
+            if (lane.kind !== 't' && edge < 26) {
+              ctx.fillStyle = `rgba(255,220,190,${(1 - edge / 26) * 0.8 * a})`;
+              ctx.fillRect(x - 1, y - 4, 2, laneH + 8);
+            }
+          }
+        }
+      });
+      // agulha
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.shadowColor = 'rgba(255,140,60,0.9)';
+      ctx.shadowBlur = 14;
+      ctx.fillRect(phX - 1, top - 10, 2, bandH + 10);
+      ctx.beginPath();
+      ctx.moveTo(phX - 7, top - 18); ctx.lineTo(phX + 7, top - 18); ctx.lineTo(phX, top - 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    };
+    const t0 = performance.now();
+    const loop = (now) => {
+      raf = requestAnimationFrame(loop);
+      if (now - last < 33) return;
+      last = now;
+      draw((now - t0) / 1000 + 8);
+    };
+    const start = () => { cancelAnimationFrame(raf); if (reduced) draw(12); else raf = requestAnimationFrame(loop); };
+    const onVis = () => (document.hidden ? cancelAnimationFrame(raf) : start());
+    const onResize = () => { resize(); if (reduced) draw(12); };
+    resize();
+    start();
+    window.addEventListener('resize', onResize);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onResize);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
+  return <canvas ref={ref} className="ra-silk" />;
+}
+
 export default function Landing({ onEnter, onLogin }) {
   const [info, setInfo] = useState(null);
-  const [bundled, setBundled] = useState(null);
   const [bgOk, setBgOk] = useState(true);
-  const showcase = info?.showcase || bundled;
+  // Antes e depois: só com a demonstração real criada pelo admin (Projetos → usar como demonstração).
+  const showcase = info?.showcase || null;
   const freeEdits = info?.freeEdits || 3;
   useEffect(() => {
     getPublicInfo().then(setInfo).catch(() => {});
-    // Demonstração que vem junto com o site: aparece na hora, sem esperar a API.
-    fetch('/demo/showcase.json')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((m) => {
-        if (!m?.ready) return;
-        const fix = (u) => (typeof u === 'string' ? u.replace('/api/showcase/', '/demo/') : u);
-        const sim = m.sim ? { ...m.sim, broll: (m.sim.broll || []).map((b) => ({ ...b, src: fix(b.src) })) } : null;
-        setBundled({ before: '/demo/antes.mp4', after: '/demo/depois.mp4', stats: m.stats, sim, bundled: true });
-      })
-      .catch(() => {});
   }, []);
 
   return (
@@ -512,24 +774,27 @@ export default function Landing({ onEnter, onLogin }) {
           </filter>
         </svg>
 
-        {/* fundo: vídeo em loop no tom laranja (ou brilhos animados se o vídeo não carregar) */}
+        {/* fundo: timeline de edição animada (ou um vídeo seu, se configurado) */}
         <div className="ra-bg" aria-hidden="true">
-          <div className="ra-aurora"><span /><span /><span /></div>
-          {bgOk && <video autoPlay loop muted playsInline className="ra-bg-video" src={HERO_VIDEO} onError={() => setBgOk(false)} />}
-          <div className="ra-bg-tint" />
+          {HERO_VIDEO && bgOk ? (
+            <>
+              <video autoPlay loop muted playsInline className="ra-bg-video" src={HERO_VIDEO} onError={() => setBgOk(false)} />
+              <div className="ra-bg-tint" />
+            </>
+          ) : <TimelineBackground />}
           <div className="ra-bg-shade" />
         </div>
         <div className="ra-guide ra-guide-l" />
         <div className="ra-guide ra-guide-r" />
 
         <div className="ra-content">
-          <Navbar onEnter={onEnter} onLogin={onLogin} />
+          <Navbar onEnter={onEnter} onLogin={onLogin} hasDemo={Boolean(showcase)} />
           <Hero onEnter={onEnter} freeEdits={freeEdits} />
           <MenuBar />
-          <EditorMockup showcase={showcase} />
+          <EditorMockup />
           <FeaturePass />
           <LogoCloud />
-          <Demo showcase={showcase} />
+          {showcase && <Demo showcase={showcase} />}
           <UseCases />
           <Pricing info={info} onEnter={onEnter} />
           <FinalCTA onEnter={onEnter} freeEdits={freeEdits} />
@@ -556,14 +821,10 @@ const CSS = `
 
 /* fundo */
 .ra-bg{ position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.ra-silk{ position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0.72; }
 .ra-bg-video{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .ra-bg-tint{ position: absolute; inset: 0; background: #FF6A1A; mix-blend-mode: color; opacity: 0.85; }
-.ra-bg-shade{ position: absolute; inset: 0; background: radial-gradient(120% 80% at 50% 0%, rgba(12,12,12,0.15), rgba(12,12,12,0.7) 70%), linear-gradient(180deg, rgba(12,12,12,0.1), rgba(12,12,12,0.55) 60%, rgba(12,12,12,0.85)); }
-.ra-aurora span{ position: absolute; border-radius: 50%; filter: blur(110px); opacity: 0.55; }
-.ra-aurora span:nth-child(1){ width: 60vw; height: 60vw; left: -10vw; top: -20vw; background: #FF6A1A; animation: raFloat 18s ease-in-out infinite; }
-.ra-aurora span:nth-child(2){ width: 50vw; height: 50vw; right: -15vw; top: 10vh; background: #9A3A0A; animation: raFloat 22s ease-in-out infinite reverse; }
-.ra-aurora span:nth-child(3){ width: 40vw; height: 40vw; left: 30vw; bottom: -20vw; background: #C2410C; opacity: 0.35; animation: raFloat 26s ease-in-out infinite; }
-@keyframes raFloat{ 0%,100%{ transform: translate(0,0) scale(1); } 50%{ transform: translate(4vw, 3vh) scale(1.12); } }
+.ra-bg-shade{ position: absolute; inset: 0; background: radial-gradient(55% 42% at 50% 34%, rgba(12,12,12,0.82), rgba(12,12,12,0.35) 60%, rgba(12,12,12,0) 85%), linear-gradient(180deg, rgba(12,12,12,0.15), rgba(12,12,12,0) 30%, rgba(12,12,12,0.5)); }
 .ra-guide{ display: none; pointer-events: none; position: fixed; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(255,255,255,0.1); z-index: 5; }
 .ra-guide-l{ transform: translateX(calc(-50% - 36rem)); } .ra-guide-r{ transform: translateX(calc(-50% + 36rem)); }
 @media (min-width: 768px){ .ra-guide{ display: block; } }
@@ -645,6 +906,37 @@ const CSS = `
 .ra-person i{ display: block; width: 120px; height: 60px; border-radius: 60px 60px 0 0; background: rgba(255,255,255,0.1); margin-top: 8px; }
 .ra-cap{ position: absolute; left: 0; right: 0; bottom: 12%; text-align: center; font-weight: 800; font-size: 17px; letter-spacing: -0.01em; text-shadow: 0 2px 8px rgba(0,0,0,0.7); padding: 0 12px; }
 .ra-cap b{ color: #FF8A2A; }
+.ra-live{ position: relative; height: 92%; aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden; background: #120a06; box-shadow: 0 24px 70px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.08); }
+.ra-live-scene{ position: absolute; inset: 0; transition: transform .45s cubic-bezier(.22,1,.36,1); transform-origin: 50% 38%; background: radial-gradient(70% 50% at 70% 20%, rgba(255,140,60,0.35), transparent 70%), radial-gradient(60% 45% at 15% 70%, rgba(194,65,12,0.35), transparent 70%), linear-gradient(170deg, #2b1a10 0%, #160d08 55%, #0b0705 100%); }
+.ra-bokeh{ position: absolute; border-radius: 50%; background: radial-gradient(circle, rgba(255,190,130,0.55), rgba(255,140,60,0) 70%); filter: blur(2px); animation: raBokeh 7s ease-in-out infinite; }
+@keyframes raBokeh{ 0%,100%{ transform: translateY(0); } 50%{ transform: translateY(-8px); } }
+.ra-presenter{ position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: 66%; height: 60%; animation: raBreath 4s ease-in-out infinite; }
+@keyframes raBreath{ 0%,100%{ transform: translateX(-50%) scale(1); } 50%{ transform: translateX(-50%) scale(1.012); } }
+.ra-head{ position: absolute; left: 50%; top: 2%; width: 34%; z-index: 1; aspect-ratio: 1 / 1.15; transform: translateX(-50%); border-radius: 48%; background: radial-gradient(60% 60% at 35% 35%, #6b4a38, #2a1b13 75%); box-shadow: 6px -4px 18px rgba(255,140,60,0.35) inset; }
+.ra-neck{ position: absolute; left: 50%; top: 30%; width: 14%; height: 12%; transform: translateX(-50%); background: #3a281d; border-radius: 0 0 8px 8px; }
+.ra-body{ position: absolute; left: 50%; bottom: 0; width: 100%; height: 64%; transform: translateX(-50%); border-radius: 46% 46% 0 0; background: linear-gradient(180deg, #2b2b33, #141418); box-shadow: 10px -6px 24px rgba(255,140,60,0.28) inset; }
+.ra-live-cap{ position: absolute; left: 6%; right: 6%; bottom: 13%; text-align: center; font-weight: 900; font-size: clamp(13px, 1.45vw, 19px); line-height: 1.15; letter-spacing: -0.01em; text-shadow: 0 2px 10px rgba(0,0,0,0.85); min-height: 2.4em; }
+.ra-live-cap span{ display: inline-block; margin: 0 0.22em; color: rgba(255,255,255,0.0); transition: color .12s, transform .15s; }
+.ra-live-cap .is-said{ color: #fff; }
+.ra-live-cap .is-on{ color: #FF8A2A; transform: scale(1.12); }
+.ra-live-cap .is-key{ color: #FF8A2A; }
+.ra-cutflash{ position: absolute; left: 50%; top: 9%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: rgba(240,82,107,0.92); color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; box-shadow: 0 8px 22px rgba(240,82,107,0.45); animation: raPop .25s ease-out; }
+@keyframes raPop{ from{ opacity: 0; transform: translate(-50%, -6px) scale(0.9); } to{ opacity: 1; transform: translate(-50%, 0) scale(1); } }
+.ra-broll{ position: absolute; inset: 0 0 46% 0; padding: 14% 10% 0; animation: raSlide .35s cubic-bezier(.22,1,.36,1); }
+@keyframes raSlide{ from{ opacity: 0; transform: translateY(-14px); } to{ opacity: 1; transform: none; } }
+.ra-broll-card{ height: 100%; border-radius: 12px; background: linear-gradient(150deg, #FF8A2A, #9A3A0A); padding: 10px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 16px 40px rgba(0,0,0,0.55); }
+.ra-broll-row{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; flex: 1; }
+.ra-broll-row span{ border-radius: 7px; background: rgba(255,255,255,0.22); }
+.ra-broll-row span:nth-child(2){ background: rgba(255,255,255,0.38); }
+.ra-broll-hearts{ font-size: 10.5px; font-weight: 700; margin-top: 8px; }
+.ra-broll-tag{ position: absolute; top: 9%; right: 10%; font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; background: rgba(0,0,0,0.6); padding: 3px 7px; border-radius: 6px; }
+.ra-live-badge{ position: absolute; left: 8px; top: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 9.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; background: rgba(0,0,0,0.55); padding: 4px 8px; border-radius: 999px; }
+.ra-live-badge i{ width: 6px; height: 6px; border-radius: 50%; background: #FF6A1A; box-shadow: 0 0 8px #FF6A1A; animation: raBlink 1.4s ease-in-out infinite; }
+@keyframes raBlink{ 50%{ opacity: 0.3; } }
+.ra-line{ transition: background .2s; border-radius: 6px; padding: 2px 4px; margin: 0 -4px; }
+.ra-line.is-now{ background: rgba(255,255,255,0.05); }
+.ra-line .is-on{ background: rgba(255,106,26,0.28); border-radius: 4px; color: #fff; }
+.ra-clip-cut{ background: repeating-linear-gradient(45deg, rgba(240,82,107,0.45) 0 3px, transparent 3px 7px); border: 1px solid rgba(240,82,107,0.6); }
 .ra-transport{ height: 44px; display: flex; align-items: center; gap: 14px; padding: 0 16px; border-top: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); font-size: 12px; }
 .ra-play{ width: 26px; height: 26px; border-radius: 50%; background: #fff; color: #000; display: grid; place-items: center; }
 .ra-tc{ font-variant-numeric: tabular-nums; color: #fff; } .ra-tc i{ font-style: normal; color: rgba(255,255,255,0.4); }
@@ -764,5 +1056,5 @@ const CSS = `
 @media (min-width: 768px){ .ra-footer{ padding-bottom: 40px; } }
 .ra-mobile-cta{ display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(12,12,12,0), rgba(12,12,12,0.92) 45%); }
 @media (max-width: 640px){ .ra-mobile-cta{ display: block; } }
-@media (prefers-reduced-motion: reduce){ .animate-shiny, .ra-aurora span{ animation: none; } }
+@media (prefers-reduced-motion: reduce){ .animate-shiny, .ra-bokeh, .ra-presenter, .ra-live-badge i{ animation: none; } }
 `;

@@ -653,7 +653,7 @@ function Shell({ children, health, embedded, compact = false, wide = false }) {
       )}
 
       {/* editor: usa a largura toda e quase sem margem (como um app de edição) */}
-      <main className={`rf-page${wide ? ' rf-page--editor' : ''}`} style={{ maxWidth: wide ? 'none' : 1000, width: '100%', minWidth: 0, margin: 0, padding: wide ? '12px 14px 12px' : '40px 32px 80px', flex: 1 }}>
+      <main className={`rf-page${wide ? ' rf-page--editor' : ''}`} style={{ maxWidth: wide ? 'none' : 1000, width: '100%', minWidth: 0, margin: wide ? 0 : '0 auto', padding: wide ? '12px 14px 12px' : '40px 32px 80px', flex: 1 }}>
         {!embedded && <div className={`rf-anim rf-hero${compact ? ' rf-hero-compact' : ''}`} style={{ position: 'relative', marginBottom: 30 }}>
           {/* halo suave atrás do título */}
           <div style={{ position: 'absolute', top: -60, left: -20, width: 280, height: 200, background: 'radial-gradient(circle, rgba(255,107,53,0.14), transparent 65%)', pointerEvents: 'none', filter: 'blur(4px)' }} />
