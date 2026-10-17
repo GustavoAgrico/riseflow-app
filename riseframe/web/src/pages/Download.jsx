@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
-import Icon, { Logo, Wordmark } from '../components/Icon.jsx';
+import Icon, { Logo, Wordmark, BrandLockup } from '../components/Icon.jsx';
 import { MeshBg, GhostBtn, GradBtn } from '../components/LandingUi.jsx';
 import { getDownloads, getPublicInfo } from '../api.js';
 
@@ -285,8 +285,7 @@ export default function Download({ onEnter, onLogin, onHome, loggedIn = false })
         <nav style={{ position: 'sticky', top: 0, zIndex: 30, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', background: 'rgba(8,8,12,0.6)', borderBottom: `1px solid ${C.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '13px 20px', maxWidth: 1180, margin: '0 auto' }}>
             <button onClick={onHome} style={{ display: 'flex', alignItems: 'center', gap: 11, background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: C.text }}>
-              <Logo size={30} variant="mark" />
-              <Wordmark size={19} />
+              <BrandLockup size={34} />
             </button>
             <div className="rf-nav-links" style={{ display: 'flex', gap: 22, marginLeft: 34 }}>
               {[['Recursos', 'dl-recursos'], ['Como começar', 'dl-passos'], ['Planos', 'dl-planos'], ['Dúvidas', 'dl-faq']].map(([l, id]) => (
@@ -492,7 +491,7 @@ export default function Download({ onEnter, onLogin, onHome, loggedIn = false })
         </section>
 
         <footer style={{ borderTop: `1px solid ${C.border}`, padding: '24px 24px 40px', textAlign: 'center', color: C.faint, fontSize: 13 }}>
-          <Logo size={22} /> <span style={{ verticalAlign: 'middle', marginLeft: 6 }}>Riseframe · Editor de vídeo com IA</span>
+          <BrandLockup size={30} />
           <div style={{ marginTop: 10, display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
             <a href="/" style={{ color: C.muted }}>Início</a>
             <a href="/termos" style={{ color: C.muted }}>Termos de uso</a>
