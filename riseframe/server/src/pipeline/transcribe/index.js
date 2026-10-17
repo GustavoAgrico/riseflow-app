@@ -2,12 +2,15 @@ import { config } from '../../config.js';
 import { makeLogger } from '../../logger.js';
 import { transcribeMock } from './mock.js';
 import { markNoiseTags } from '../cleanup.js';
+import fsp from 'node:fs/promises';
+import { jobAccountToken } from '../../account.js';
 import {
   transcribeOpenAI,
   transcribeDeepgram,
   transcribeAssemblyAI,
   transcribeWhisperLocal,
   transcribeGroq,
+  extractAudio,
 } from './providers.js';
 
 const log = makeLogger('transcribe');
@@ -19,12 +22,35 @@ const log = makeLogger('transcribe');
  * (uso local/dev) ainda cai para o mock.
  * @returns {Promise<{provider,language,text,segments}>}
  */
-export async function transcribe(input, work, meta, onProgress) {
+export async function transcribe(input, work, meta, onProgress, ctx = {}) {
   // "(tosse)", "[pigarro]" viram palavras removidas; "[Música]", "(risos)" saem do texto.
-  return markNoiseTags(await transcribeAny(input, work, meta, onProgress));
+  return markNoiseTags(await transcribeAny(input, work, meta, onProgress, ctx));
 }
 
-async function transcribeAny(input, work, meta, onProgress) {
+/**
+ * App de PC sem chave de transcrição: manda só o ÁUDIO (mp3 leve) para o servidor do site,
+ * que transcreve com a chave dele (Deepgram/Groq) — a pessoa não precisa instalar nada.
+ */
+async function transcribeCloud(input, work, token, onProgress) {
+  if (!config.account.server) throw new Error('sem servidor da conta');
+  if (!token) throw new Error('entre na sua conta para transcrever pela nuvem');
+  const audio = await extractAudio(input, work, 'mp3');
+  onProgress?.(0.15);
+  const form = new FormData();
+  form.append('audio', new Blob([await fsp.readFile(audio)], { type: 'audio/mpeg' }), 'audio.mp3');
+  const res = await fetch(`${config.account.server}/api/transcribe/remote`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}` },
+    body: form,
+    signal: AbortSignal.timeout(20 * 60_000),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `o servidor da conta respondeu ${res.status}`);
+  onProgress?.(1);
+  return { provider: `nuvem (${data.provider || 'site'})`, language: data.language || 'pt', text: data.text || '', segments: Array.isArray(data.segments) ? data.segments : [] };
+}
+
+async function transcribeAny(input, work, meta, onProgress, ctx = {}) {
   const provider = config.transcribe.provider;
   const cfg = config.transcribe;
   // Vídeo sem faixa de áudio (gravação de tela muda, por exemplo): não há fala para
@@ -32,6 +58,18 @@ async function transcribeAny(input, work, meta, onProgress) {
   if (meta && meta.hasAudio === false) {
     log.warn('vídeo sem áudio: pulando a transcrição');
     return { provider: 'none', language: 'unknown', text: '', segments: [], noAudio: true };
+  }
+  // App de PC sem chave: a nuvem (conta do site) primeiro; o Whisper local só se não der.
+  let cloudErr = null;
+  if (config.account.server && ['whisper-local', 'mock'].includes(provider)) {
+    try {
+      const t = await transcribeCloud(input, work, jobAccountToken(ctx.jobId), onProgress);
+      log.ok(`transcrição pela conta do site: ${t.segments.length} frases`);
+      return t;
+    } catch (e) {
+      cloudErr = e;
+      log.warn(`transcrição pela nuvem falhou (${e.message}); tentando o Whisper local`);
+    }
   }
   try {
     return await runProvider(provider, input, work, meta, cfg, onProgress);
@@ -58,6 +96,10 @@ async function transcribeAny(input, work, meta, onProgress) {
       // Problema na NOSSA conta (chave/saldo): o cliente não precisa ver detalhes técnicos.
       if (accountProblem) throw new Error('a transcrição automática está indisponível agora. Já avisamos o suporte — tente de novo mais tarde (seus créditos voltaram).');
       throw new Error(transcribeErrorMessage(provider, err));
+    }
+    // App de PC: legenda de exemplo não serve para nada — melhor avisar e devolver os créditos.
+    if (config.account.server) {
+      throw new Error(`não deu para transcrever a fala: ${cloudErr ? `${cloudErr.message}. ` : ''}Confira a internet e tente de novo (ou configure uma chave de transcrição em Menu → Configurar chaves). Seus créditos voltaram.`);
     }
     if (provider !== 'mock') {
       log.warn(`provedor "${provider}" falhou (${err.message}); usando mock`);

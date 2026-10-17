@@ -15,6 +15,7 @@ import { applyAudioGain, gainAf } from './gain.js';
 import { markFillers } from './cleanup.js';
 import { classifyNarrative } from './narrative.js';
 import { cleanupWithLLM } from './cleanupLLM.js';
+import { jobAccountToken } from '../account.js';
 import { burnCaptions, captionSfxEvents } from './captions.js';
 import { translateTranscript } from './translate.js';
 import { applySoundEffects } from './sfx.js';
@@ -241,7 +242,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     editorTranscript = transcript;
   } else {
     const st = enter('transcribe');
-    transcript = await transcribe(input, work, meta, st.onProgress);
+    transcript = await transcribe(input, work, meta, st.onProgress, { jobId: job.id });
     report.provider.transcribe = transcript.provider;
     if (transcript.fallbackFrom) report.provider.transcribeFallback = transcript.fallbackReason;
     st.record({ segments: transcript.segments.length, provider: transcript.provider });
@@ -271,7 +272,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     // O editor já abre com as muletas, frases refeitas e erros corrigidos riscados
     // (o usuário vê o que vai sair e pode devolver qualquer palavra com um toque).
     if (options.autoClean) {
-      const c = await cleanSpeech(transcript, options);
+      const c = await cleanSpeech(transcript, options, { jobId: job.id });
       transcript = c.transcript;
       report.autoClean = c.report;
     }
@@ -312,7 +313,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     // No render (timeline) a transcrição já vem limpa e revisada pelo usuário — rodar de
     // novo cortaria as palavras que ele devolveu.
     if (options.autoClean && mode !== 'render') {
-      const c = await cleanSpeech(transcript, options);
+      const c = await cleanSpeech(transcript, options, { jobId: job.id });
       transcript = c.transcript;
       editorTranscript = c.transcript; // timeline original com as muletas/cortes já marcados
       report.autoClean = c.report;
@@ -772,13 +773,15 @@ async function shortStory(transcript, meta, options) {
  * servidor; sem ela, o Llama da Groq): frases refeitas, erros corrigidos e falsos começos
  * sutis, preservando o que a heurística marcou. Falha da IA → fica a heurística.
  */
-export async function cleanSpeech(transcript, options = {}) {
+export async function cleanSpeech(transcript, options = {}, ctx = {}) {
   const h = markFillers(transcript, { aggressive: options.cutStrength === 'forte' });
   let cleaned = h;
   let method = 'heurística';
   let total = h.removedCount;
   const aiKey = options.anthropicKey || config.analyze.anthropicKey;
-  if (options.cleanAI !== false && (aiKey || config.analyze.groqKey)) {
+  // App de PC sem chave de IA: a correção da fala é feita pela IA da conta do site.
+  const remoteToken = !aiKey && !config.analyze.groqKey && config.account.server ? jobAccountToken(ctx.jobId) : '';
+  if (options.cleanAI !== false && (aiKey || config.analyze.groqKey || remoteToken)) {
     try {
       const ai = await cleanupWithLLM(h, {
         anthropicKey: aiKey,
@@ -786,6 +789,8 @@ export async function cleanSpeech(transcript, options = {}) {
         anthropicWorkspaceId: config.analyze.anthropicWorkspaceId,
         groqKey: config.analyze.groqKey,
         groqModel: config.analyze.groqModel,
+        remoteServer: config.account.server,
+        remoteToken,
       });
       cleaned = ai;
       method = `heurística + IA (${ai.llm})`;

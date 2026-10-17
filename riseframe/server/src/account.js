@@ -164,12 +164,22 @@ export function remoteCharge(req, { mode, options, sourceId, jobId }) {
 }
 
 const pendingRefunds = new Map(); // jobId → { token, chargeId }
+// Token da conta de quem criou cada job (só em memória): a transcrição pela conta do
+// site usa ele quando o app de PC não tem chave de transcrição nem Whisper local.
+const jobTokens = new Map();
+export function rememberJobToken(jobId, req) {
+  const t = bearer(req);
+  if (t) jobTokens.set(jobId, t);
+}
+export const jobAccountToken = (jobId) => jobTokens.get(jobId) || '';
+
 export function holdRemoteCharge(jobId, req, chargeId) {
   if (chargeId) pendingRefunds.set(jobId, { token: bearer(req), chargeId });
 }
 
 /** O job terminou: se falhou, pede a devolução ao site (com algumas tentativas). */
 export async function settleRemoteCharge(job) {
+  if (job.status === 'done' || job.status === 'error') jobTokens.delete(job.id);
   const p = pendingRefunds.get(job.id);
   if (!p || (job.status !== 'done' && job.status !== 'error')) return;
   pendingRefunds.delete(job.id);

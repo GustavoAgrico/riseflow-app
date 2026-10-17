@@ -202,13 +202,10 @@ export default function Result({ job, onReset, onEditTimeline }) {
           <div style={{ fontWeight: 700, color: '#FFB4C0', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 7 }}>
             <Icon name="alert" size={16} strokeWidth={2.2} /> Legendas de demonstração (não batem com a fala)
           </div>
-          A transcrição real (ASR) não rodou, então as legendas usam texto de exemplo
-          e a correção automática da fala fica limitada. Para legendas fiéis à fala,
-          instale o Whisper local (uma vez) na pasta do servidor:{' '}
-          <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 6px', borderRadius: 5 }}>
-            pip install -r requirements.txt
-          </code>{' '}
-          — na 1ª execução ele baixa o modelo e passa a transcrever de verdade.
+          A transcrição da fala não rodou, então as legendas usam texto de exemplo. No app de
+          PC, a transcrição usa a sua conta pela internet — atualize o app para a versão mais
+          nova, confira a conexão e gere de novo. (Servidor próprio: configure uma chave de
+          transcrição, como Deepgram ou Groq.)
           <div style={{ marginTop: 6, opacity: 0.8 }}>Motivo técnico: {r.provider.transcribeFallback}</div>
         </div>
       )}

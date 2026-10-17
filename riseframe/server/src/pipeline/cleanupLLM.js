@@ -143,8 +143,9 @@ async function askGroq(system, user, cfg) {
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       }),
     });
-    if (res.status === 429 && attempt < 3) {
-      const wait = Math.min(20, Number(res.headers.get('retry-after')) || 5 * attempt);
+    // limite por minuto da Groq: espera e tenta de novo (vídeo longo = vários blocos seguidos)
+    if (res.status === 429 && attempt < 6) {
+      const wait = Math.min(45, Number(res.headers.get('retry-after')) || 8 * attempt);
       log.warn(`Groq pediu para esperar ${wait}s`);
       await new Promise((r) => setTimeout(r, wait * 1000));
       continue;
@@ -153,6 +154,26 @@ async function askGroq(system, user, cfg) {
     const data = await res.json();
     return data.choices?.[0]?.message?.content || '';
   }
+}
+
+/** App de PC sem chave de IA: o servidor do site pergunta à IA por ele (só o texto vai). */
+async function askRemote(_system, user, cfg) {
+  const res = await fetch(`${cfg.remoteServer}/api/cleanup/remote`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${cfg.remoteToken}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ text: user }),
+    signal: AbortSignal.timeout(180_000),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `o servidor da conta respondeu ${res.status}`);
+  return String(data.text || '');
+}
+
+/** Um bloco da limpeza com a IA DESTE servidor (usado pelo app de PC via /api/cleanup/remote). */
+export async function cleanupWindowLLM(text, cfg) {
+  if (cfg.anthropicKey) return askClaude(INSTRUCTION, text, cfg);
+  if (cfg.groqKey) return askGroq(INSTRUCTION, text, cfg);
+  throw new Error('este servidor não tem IA configurada');
 }
 
 /**
@@ -164,16 +185,26 @@ async function askGroq(system, user, cfg) {
  */
 export async function cleanupWithLLM(transcript, cfg) {
   const flat = flattenWords(transcript);
-  const provider = cfg.anthropicKey ? 'claude' : cfg.groqKey ? 'groq' : '';
+  const provider = cfg.anthropicKey ? 'claude' : cfg.groqKey ? 'groq' : cfg.remoteServer && cfg.remoteToken ? 'nuvem' : '';
   if (!flat.length || !provider) return { ...transcript, segments: transcript.segments || [], removedCount: 0, llm: provider };
   if (flat.length > 20000) throw new Error(`transcrição longa demais para limpeza por IA (${flat.length} palavras)`);
-  const ask = provider === 'claude' ? askClaude : askGroq;
+  const ask = provider === 'claude' ? askClaude : provider === 'groq' ? askGroq : askRemote;
 
+  // Cada bloco é independente: se um falhar (limite da API, rede), os outros continuam valendo
+  // — antes um erro num vídeo longo jogava fora a correção do vídeo inteiro.
   const asked = new Set();
-  for (const w of windows(flat.length)) {
-    const text = await ask(INSTRUCTION, numberedText(flat, w.from, w.to), cfg);
-    for (const i of guardRemovals(parseIndices(text), w.core)) asked.add(i);
+  const wins = windows(flat.length);
+  let failed = 0;
+  for (const w of wins) {
+    try {
+      const text = await ask(INSTRUCTION, numberedText(flat, w.from, w.to), cfg);
+      for (const i of guardRemovals(parseIndices(text), w.core)) asked.add(i);
+    } catch (err) {
+      failed++;
+      log.warn(`bloco ${w.core[0]}–${w.core[1]} da limpeza por IA falhou: ${err.message}`);
+    }
   }
+  if (failed === wins.length) throw new Error('a limpeza por IA falhou em todos os blocos');
   const remove = plausibleRemovals(flat, asked);
   log.info(`${provider} marcou ${asked.size} palavras para remover; ${remove.size} conferidas como erro de fala (${flat.length} palavras)`);
 
