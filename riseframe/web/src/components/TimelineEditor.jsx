@@ -3431,6 +3431,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <button className="rf-tl-navexp" onClick={generate} disabled={busy || allGone} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', borderRadius: 11, border: 'none', cursor: busy || allGone ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, background: 'transparent', color: C.orangeSoft, textAlign: 'left' }}>
             <Icon name="upload" size={17} strokeWidth={2} /> <span className="rf-tl-navlbl">Exportar</span>
           </button>
+          {/* Tela grande: sem cabeçalho — salvar, voltar e exportar ficam na linha das abas */}
+          <div className="rf-tl-navend">
+            <span className="rf-tl-navsaved" title={cloudErr ? 'Não deu para salvar na conta agora (tenta de novo em 30 s)' : undefined}>
+              {APP_VERSION}{cloudSavedAt ? ` · salvo ${new Date(cloudSavedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : savedAt ? ' · salvo neste navegador' : ''}{cloudErr ? ' · ⚠ sem salvar' : ''}
+            </span>
+            <button onClick={onBack} disabled={busy} title="Voltar" className="rf-tl-navbtn">
+              <Icon name="arrowLeft" size={13} strokeWidth={2.2} /> Voltar
+            </button>
+            <button onClick={generate} disabled={busy || allGone} className="rf-tl-navbtn rf-tl-navbtn--go" style={{ background: busy || allGone ? 'rgba(255,255,255,0.08)' : GRAD, cursor: busy || allGone ? 'not-allowed' : 'pointer' }}>
+              <Icon name="upload" size={13} strokeWidth={2.2} /> Exportar
+            </button>
+          </div>
         </nav>
 
         <div className="rf-tl-preview">
@@ -5312,7 +5324,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         /* Tela grande: editor como app (Premiere) — ocupa a janela, sem rolar a página */
         @media (min-width: 1101px){
           .rf-tl-card:not(.rf-m){ padding: 10px 12px 10px !important; }
-          .rf-tl-card:not(.rf-m) .rf-tl-head{ margin-bottom: 10px !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-head{ display: none !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-navend{ display: flex; }
           .rf-tl-card:not(.rf-m) .rf-tl-grid{ height: var(--rf-app-h, auto); grid-template-rows: auto var(--rf-panel-h, minmax(190px, 40%)) minmax(0, 1fr) !important; gap: 8px !important; }
           .rf-tl-card:not(.rf-m) .rf-tl-preview{ grid-row: 1 / span 3 !important; align-self: stretch !important; position: relative !important; top: auto !important; display: flex; flex-direction: column; min-height: 0; }
           .rf-tl-card:not(.rf-m) .rf-tl-preview > .rf-tl-pv{ flex: 1; min-height: 0; }
@@ -5328,6 +5341,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             .rf-tl-bar button{ padding: 5px 8px !important; }
           }
         }
+        .rf-tl-navend{ display: none; margin-left: auto; position: sticky; right: 0; align-items: center; gap: 6px; padding-left: 10px; background: inherit; flex: none; }
+        .rf-tl-navsaved{ font-size: 10.5px; color: #8B9099; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+        .rf-tl-navbtn{ display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 11px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.05); color: #E8EAF0; font: 600 12px inherit; font-family: inherit; cursor: pointer; white-space: nowrap; }
+        .rf-tl-navbtn:hover{ background: rgba(255,255,255,0.1); }
+        .rf-tl-navbtn--go{ border: none; color: #fff; font-weight: 800; box-shadow: 0 6px 16px -8px rgba(255,107,53,0.8); }
+        .rf-tl-navbtn--go:hover{ filter: brightness(1.08); }
         /* divisórias arrastáveis (só no computador) */
         .rf-split{ display: none; position: absolute; z-index: 30; }
         .rf-split > span{ position: absolute; border-radius: 3px; background: rgba(255,255,255,0.14); transition: background .15s; }
