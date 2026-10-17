@@ -342,7 +342,58 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Palavras dentro de um corte da faixa de vídeo saem junto (vídeo, áudio e legenda):
   // a faixa e a prévia mostram a legenda cortada; o servidor faz o mesmo no remap.
   const capSegments = useMemo(() => segments.map((s) => dispSeg(cuts.length ? markCut(s, cuts) : s)), [segments, cuts]);
-  const width = Math.max(320, Math.round(dur * pps));
+  // Ripple (como no Premiere): o que foi excluído (cortes e falas cortadas) some da
+  // timeline e o resto encosta. Tudo continua guardado no tempo ORIGINAL do vídeo; só a
+  // posição na tela passa por X(t) e o clique volta por srcOf().
+  const [ripple, setRipple] = useState(true);
+  const gaps = useMemo(() => {
+    if (!ripple) return [];
+    const r = cuts.map((c) => [Number(c.start), Number(c.end)]);
+    const flat = [];
+    for (const sg of segments) for (const w of sg.words) if (Number.isFinite(w.start) && Number.isFinite(w.end)) flat.push(w);
+    flat.sort((a, b) => a.start - b.start);
+    let run = null;
+    for (const w of flat) {
+      if (w.removed) { if (!run) run = [w.start, w.end]; else run[1] = Math.max(run[1], w.end); } else if (run) { r.push(run); run = null; }
+    }
+    if (run) r.push(run);
+    r.sort((a, b) => a[0] - b[0]);
+    const out = [];
+    for (const [a0, b0] of r) {
+      const a = Math.max(0, a0);
+      const b = Math.min(dur, b0);
+      if (!(b - a >= 0.05)) continue;
+      const last = out[out.length - 1];
+      if (last && a <= last[1] + 0.01) last[1] = Math.max(last[1], b);
+      else out.push([a, b]);
+    }
+    return out;
+  }, [ripple, cuts, segments, dur]);
+  const progOf = (t) => {
+    let p = t;
+    for (const [a, b] of gaps) {
+      if (t >= b) p -= b - a;
+      else { if (t > a) p -= t - a; break; }
+    }
+    return p;
+  };
+  const srcOf = (p) => {
+    let t = p;
+    for (const [a, b] of gaps) { if (t >= a) t += b - a; else break; }
+    return Math.min(dur, t);
+  };
+  const X = (t) => progOf(Number(t) || 0) * pps;
+  const W = (a, b) => Math.max(0, X(b) - X(a));
+  const progDur = progOf(dur);
+  // pedaços que ficam (miniaturas e forma de onda são recortadas neles)
+  const keptPieces = useMemo(() => {
+    const out = [];
+    let t = 0;
+    for (const [a, b] of gaps) { if (a > t) out.push([t, a]); t = b; }
+    if (dur > t) out.push([t, dur]);
+    return out;
+  }, [gaps, dur]);
+  const width = Math.max(320, Math.round(progDur * pps));
 
   // ── Pausas de silêncio (gaps entre palavras mantidas). O usuário decide, na
   // timeline, quais cortar. Por padrão TODA pausa visível é cortada (o cliente
@@ -960,7 +1011,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     function move(e) {
       const d = drawRef.current;
       if (!d) return;
-      const t = Math.max(0, Math.min(dur, (e.clientX - d.left) / pps));
+      const t = Math.max(0, Math.min(dur, srcOf((e.clientX - d.left) / pps)));
       d.cur = t;
       setDrawing({ start: Math.min(d.t0, t), end: Math.max(d.t0, t) });
     }
@@ -972,8 +1023,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setDrawing(null);
       const a = Math.min(d.t0, d.cur ?? d.t0);
       const b = Math.max(d.t0, d.cur ?? d.t0);
-      // Clique seco (sem arrastar) não vira corte — seleciona o pedaço de vídeo (entre divisões).
-      if (b - a > 0.15) setCuts((l) => [...l, { key: `c${Date.now()}`, start: +a.toFixed(2), end: +b.toFixed(2) }]);
+      // Arrastar seleciona o trecho (todas as faixas; Delete exclui). Clique seco seleciona o
+      // pedaço de vídeo (entre divisões).
+      if (b - a > 0.15) { setRange({ a: +a.toFixed(2), b: +b.toFixed(2) }); setSelKind('range'); }
       else {
         setSelKind('video');
         setSelVideo(videoParts(d.splits, dur).find((p) => d.t0 >= p.start && d.t0 <= p.end) || null);
@@ -987,7 +1039,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function startCutDraw(e) {
     if (e.button !== 0) return;
     const box = e.currentTarget.getBoundingClientRect();
-    const t = Math.max(0, Math.min(dur, (e.clientX - box.left) / pps));
+    const t = Math.max(0, Math.min(dur, srcOf((e.clientX - box.left) / pps)));
     drawRef.current = { t0: t, cur: t, left: box.left, splits: vsplits };
     seek(t);
     setDrawing({ start: t, end: t });
@@ -1020,14 +1072,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const el = trackRef.current;
     const r = el.getBoundingClientRect();
     const padL = isMobile ? el.clientWidth / 2 : 0; // no celular a timeline começa no meio (cursor fixo)
-    return Math.max(0, Math.min(dur, (clientX - r.left + el.scrollLeft - padL) / pps));
+    return Math.max(0, Math.min(dur, srcOf((clientX - r.left + el.scrollLeft - padL) / pps)));
   }
 
   const progScrollRef = useRef(-1);
   useEffect(() => {
     const el = trackRef.current;
     if (!el) return;
-    const x = cur * pps;
+    const x = X(cur);
     if (isMobile) {
       // cursor fixo no centro: a timeline anda por baixo dele
       const want = Math.round(x);
@@ -1043,7 +1095,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (Math.abs(el.scrollLeft - progScrollRef.current) <= 1) return;
     const v = videoRef.current;
     if (v && !v.paused) v.pause();
-    seek(el.scrollLeft / pps);
+    seek(srcOf(el.scrollLeft / pps));
   }
   // Pinça com dois dedos: aproxima/afasta a timeline.
   const pinchRef = useRef(null);
@@ -1088,6 +1140,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const rangeClickBlockRef = useRef(false);
   const timeAtRef = useRef(null);
   timeAtRef.current = timeAtClientX;
+  // Seleção em retângulo (como no Premiere): arrastar no espaço livre das faixas desenha a
+  // caixa azul; ao soltar, o trecho que ela cobre fica selecionado em todas as faixas.
+  const contentRef = useRef(null);
+  const [marq, setMarq] = useState(null); // { x0, y0, x1, y1 } em px dentro da timeline
+  function startMarquee(e) {
+    if (e.button !== 0 || isMobile || !contentRef.current) return;
+    const r = contentRef.current.getBoundingClientRect();
+    selRangeDragRef.current = { marq: true, rect: r, x0: e.clientX, y0: e.clientY, moved: false };
+  }
   function startRangeSel(e, edge = null) {
     if (e.button !== 0 || isMobile) return;
     e.stopPropagation();
@@ -1099,8 +1160,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     function move(e) {
       const d = selRangeDragRef.current;
       if (!d) return;
-      if (!d.moved && Math.abs(e.clientX - d.x0) < 4) return;
+      if (!d.moved && Math.abs(e.clientX - d.x0) < 4 && Math.abs(e.clientY - (d.y0 ?? e.clientY)) < 4) return;
+      if (!d.moved) document.body.style.userSelect = 'none';
       d.moved = true;
+      if (d.marq) {
+        const r = d.rect;
+        const box = { x0: d.x0 - r.left, y0: d.y0 - r.top, x1: Math.max(0, Math.min(r.width, e.clientX - r.left)), y1: Math.max(0, Math.min(r.height, e.clientY - r.top)) };
+        setMarq(box);
+        const ta = timeAtRef.current(Math.min(d.x0, e.clientX));
+        const tb = timeAtRef.current(Math.max(d.x0, e.clientX));
+        if (tb - ta > 0.02) { setRange({ a: +ta.toFixed(2), b: +tb.toFixed(2) }); setSelKind('range'); }
+        return;
+      }
       const t = +timeAtRef.current(e.clientX).toFixed(2);
       if (d.edge) {
         setRange((r) => {
@@ -1118,6 +1189,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if (!d) return;
       selRangeDragRef.current = null;
       document.body.style.userSelect = '';
+      if (d.marq) setMarq(null);
       if (d.moved) { rangeClickBlockRef.current = true; setTimeout(() => { rangeClickBlockRef.current = false; }, 0); }
     }
     window.addEventListener('mousemove', move);
@@ -2581,7 +2653,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setTrackW(el.clientWidth);
     return () => ro.disconnect();
   }, []);
-  const fitPps = trackW > 0 && dur > 0 ? Math.max(1, Math.min(PPS_MIN, +((trackW - 60) / dur).toFixed(2))) : PPS_MIN;
+  const fitPps = trackW > 0 && progDur > 0 ? Math.max(1, Math.min(PPS_MIN, +((trackW - 60) / progDur).toFixed(2))) : PPS_MIN;
   fitPpsRef.current = isMobile ? PPS_MIN : fitPps;
   const fittedRef = useRef(false);
   useEffect(() => {
@@ -4140,6 +4212,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               {projectTitle && <span className="rf-tl-hide-sm" style={{ fontSize: 12, color: PR.text, fontWeight: 600, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginLeft: 6 }}>{projectTitle}</span>}
             </div>
           )}
+          {!isMobile && (ripple ? gaps.length > 0 : true) && (cuts.length > 0 || segments.some((sg) => sg.words.some((w) => w.removed))) && (
+            <button onClick={() => setRipple((v) => !v)} style={toolBtn(false)}
+              title={ripple ? 'Os trechos excluídos somem da timeline (como no Premiere). Clique para vê-los no lugar (hachurados) e trazer de volta' : 'Esconder os trechos excluídos e encostar o resto'}>
+              <Icon name={ripple ? 'eye' : 'eyeOff'} size={13} strokeWidth={2} /> {ripple ? 'Ver trechos excluídos' : 'Esconder excluídos'}
+            </button>
+          )}
           {(selKind === 'range' || selKind === 'words') && range && range.b > range.a && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 4px 3px 10px', borderRadius: 8, background: 'rgba(59,130,246,0.14)', border: '1px solid rgba(96,165,250,0.5)' }}>
               <span style={{ fontSize: 11.5, color: '#BFDBFE', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
@@ -4262,7 +4340,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div ref={trackRef} onClick={onTrackClick} onScroll={onTrackScroll} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
-            <div style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
+            <div ref={contentRef} onMouseDown={startMarquee} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
             {/* ferramenta de seleção: arrastar em qualquer faixa marca o trecho (todas as faixas) */}
             {rangeTool && !isMobile && (
               <div onMouseDown={(e) => startRangeSel(e)} title="Arraste para selecionar o trecho em todas as faixas · Delete corta vídeo, áudio e legenda · Esc sai"
@@ -4270,20 +4348,27 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             )}
             {(selKind === 'range' || selKind === 'words') && range && range.b > range.a && (
               <>
-                <div style={{ position: 'absolute', left: range.a * pps, width: Math.max(2, (range.b - range.a) * pps), top: 0, bottom: 0, zIndex: 19, pointerEvents: 'none',
-                  background: 'rgba(59,130,246,0.18)', borderLeft: '2px solid #60A5FA', borderRight: '2px solid #60A5FA', boxShadow: 'inset 0 0 0 1px rgba(96,165,250,0.35)' }} />
+                {/* como o Premiere: régua clara entre a entrada e a saída, faixas levemente destacadas */}
+                <div style={{ position: 'absolute', left: X(range.a), width: Math.max(2, W(range.a, range.b)), top: 0, height: LANE.ruler, zIndex: 4, pointerEvents: 'none', background: 'rgba(255,255,255,0.26)' }} />
+                <div style={{ position: 'absolute', left: X(range.a), width: Math.max(2, W(range.a, range.b)), top: LANE.ruler, bottom: 0, zIndex: 19, pointerEvents: 'none',
+                  background: 'rgba(255,255,255,0.07)', borderLeft: '1px solid rgba(255,255,255,0.45)', borderRight: '1px solid rgba(255,255,255,0.45)' }} />
                 {['a', 'b'].map((edge) => (
                   <div key={edge} onMouseDown={(e) => startRangeSel(e, edge)} title={edge === 'a' ? 'Arraste a entrada do trecho (I no playhead)' : 'Arraste a saída do trecho (O no playhead)'}
-                    style={{ position: 'absolute', left: range[edge] * pps - 6, top: 0, width: 12, height: LANE.ruler, zIndex: 20, cursor: 'ew-resize', background: '#60A5FA', borderRadius: edge === 'a' ? '6px 0 0 6px' : '0 6px 6px 0', opacity: 0.95 }} />
+                    style={{ position: 'absolute', left: X(range[edge]) - (edge === 'a' ? 1 : 6), top: 0, width: 7, height: LANE.ruler, zIndex: 20, cursor: 'ew-resize',
+                      borderTop: '2px solid #E5E7EB', borderBottom: '2px solid #E5E7EB', [edge === 'a' ? 'borderLeft' : 'borderRight']: '2px solid #E5E7EB', boxSizing: 'border-box' }} />
                 ))}
               </>
+            )}
+            {marq && (
+              <div style={{ position: 'absolute', left: Math.min(marq.x0, marq.x1), top: Math.min(marq.y0, marq.y1), width: Math.abs(marq.x1 - marq.x0), height: Math.max(2, Math.abs(marq.y1 - marq.y0)), zIndex: 21, pointerEvents: 'none',
+                background: 'rgba(59,130,246,0.28)', border: '1px solid rgba(96,165,250,0.9)' }} />
             )}
             <div onMouseDown={(e) => startRangeSel(e)} title={isMobile ? undefined : 'Clique para ir · arraste para selecionar um trecho em todas as faixas'}
               style={{ position: 'relative', height: LANE.ruler, borderBottom: `1px solid ${PR.line}`, cursor: 'crosshair', background: isMobile ? 'transparent' : PR.ruler }}>
               {(() => {
                 const step = RULER_STEPS.find((x) => x * pps >= 96) || 60;
                 const minor = pps >= 30 ? 1 : step / 5;
-                return Array.from({ length: Math.ceil(dur / minor) + 1 }, (_, i) => +(i * minor).toFixed(3)).map((t) => {
+                return Array.from({ length: Math.ceil(progDur / minor) + 1 }, (_, i) => +(i * minor).toFixed(3)).map((t) => {
                   const major = Math.abs(t / step - Math.round(t / step)) < 1e-6;
                   return (
                     <div key={t} style={{ position: 'absolute', left: t * pps, bottom: 0, height: major ? 12 : 5, borderLeft: `1px solid ${major ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.16)'}` }}>
@@ -4297,7 +4382,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 return (
                   <div key={mk.key} title={`Marcador em ${tcode(mk.t)} — clique para ir · Delete apaga · M no mesmo ponto tira`}
                     onClick={(e) => { e.stopPropagation(); seek(mk.t); setSelMarker(mk.key); setSelKind('marker'); }}
-                    style={{ position: 'absolute', left: mk.t * pps - 6, top: 2, width: 12, height: 14, zIndex: 7, cursor: 'pointer', background: on ? '#fff' : '#3CC46B', clipPath: 'polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%)' }} />
+                    style={{ position: 'absolute', left: X(mk.t) - 6, top: 2, width: 12, height: 14, zIndex: 7, cursor: 'pointer', background: on ? '#fff' : '#3CC46B', clipPath: 'polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%)' }} />
                 );
               })}
             </div>
@@ -4305,22 +4390,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ position: 'relative', height: LANE.capitulos, marginTop: 4 }}>
                 {chapters.map((c) => (
                   <button key={c.label} onClick={(e) => { e.stopPropagation(); seek(c.start + 0.01); }} title={`${c.label} · ${mmss(c.start)}–${mmss(c.end)}`}
-                    style={{ position: 'absolute', left: c.start * pps + 1, width: Math.max(20, (c.end - c.start) * pps - 2), top: 2, bottom: 2, borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                    style={{ position: 'absolute', left: X(c.start) + 1, width: Math.max(20, W(c.start, c.end) - 2), top: 2, bottom: 2, borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                       background: `linear-gradient(180deg, ${c.color}, ${c.color}cc)`, color: '#fff', fontSize: 11, fontWeight: 700, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', padding: '0 10px', textAlign: 'left', boxShadow: `0 4px 12px -6px ${c.color}` }}>
                     {c.label}
                   </button>
                 ))}
               </div>
             )}
-            <div style={{ position: 'relative', height: legH, marginTop: 6, ...LANE_ROW, ...(cap.captions === false ? LANE_HIDDEN : null), ...lk('leg') }} onMouseDown={startCapBand}
+            <div style={{ position: 'relative', height: legH, marginTop: 6, ...LANE_ROW, ...(cap.captions === false ? LANE_HIDDEN : null), ...lk('leg') }} onMouseDown={(e) => { e.stopPropagation(); startCapBand(e); }}
               title="Arraste no espaço vazio para selecionar várias legendas">
               {capBand && Math.abs(capBand.b - capBand.a) > 0.02 && (
-                <div style={{ position: 'absolute', left: Math.min(capBand.a, capBand.b) * pps, width: Math.abs(capBand.b - capBand.a) * pps, top: 2, bottom: 2, background: 'rgba(255,255,255,0.12)', border: '1px dashed #fff', borderRadius: 4, pointerEvents: 'none', zIndex: 3 }} />
+                <div style={{ position: 'absolute', left: X(Math.min(capBand.a, capBand.b)), width: W(Math.min(capBand.a, capBand.b), Math.max(capBand.a, capBand.b)), top: 2, bottom: 2, background: 'rgba(255,255,255,0.12)', border: '1px dashed #fff', borderRadius: 4, pointerEvents: 'none', zIndex: 3 }} />
               )}
               {segments.map((s0, si) => {
                 const s = capSegments[si] || s0; // no tempo da legenda (pode ter sido movida)
-                const left = s.start * pps;
-                const fullW = Math.max(10, (Math.max(s.end, s.start + 0.2) - s.start) * pps - 2);
+                if (ripple && W(s.start, Math.max(s.end, s.start + 0.2)) < 1) return null; // excluída: some da timeline
+                const left = X(s.start);
+                const fullW = Math.max(10, W(s.start, Math.max(s.end, s.start + 0.2)) - 2);
                 const gone = segRemoved(s);
                 const isSel = selKind === 'caption' && selCaptions.includes(si);
                 const isActive = si === activeIndex;
@@ -4342,10 +4428,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     }) }}>
                     {/* máscaras das pontas cortadas (trim) */}
                     {kr && !gone && kr[0] > s.start + 0.01 && (
-                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: (kr[0] - s.start) * pps, background: 'rgba(240,82,107,0.22)', borderRight: `1px dashed ${C.red}` }} />
+                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: W(s.start, kr[0]), background: 'rgba(240,82,107,0.22)', borderRight: `1px dashed ${C.red}` }} />
                     )}
                     {kr && !gone && kr[1] < s.end - 0.01 && (
-                      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: (s.end - kr[1]) * pps, background: 'rgba(240,82,107,0.22)', borderLeft: `1px dashed ${C.red}` }} />
+                      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: W(kr[1], s.end), background: 'rgba(240,82,107,0.22)', borderLeft: `1px dashed ${C.red}` }} />
                     )}
                     {isMobile ? (
                       <span style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textDecoration: gone ? 'line-through' : 'none' }}>
@@ -4356,12 +4442,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       const on = isActive && cur >= card.start && cur < card.end;
                       return (
                         <div key={ci} onClick={(e) => pickCard(si, ci, card, e)} style={{
-                          position: 'absolute', left: (card.start - s.start) * pps, width: Math.max(4, (card.end - card.start) * pps - 3), top: 0, bottom: 0,
+                          position: 'absolute', left: X(card.start) - X(s.start), width: Math.max(4, W(card.start, card.end) - 3), top: 0, bottom: 0,
                           borderRadius: 5, overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px',
                           background: gone ? 'rgba(240,82,107,0.28)' : on ? '#D0603F' : '#A9472F', color: gone ? C.red : '#fff',
                           border: `1px solid ${gone ? 'rgba(240,82,107,0.5)' : 'rgba(0,0,0,0.25)'}`, boxShadow: on ? '0 0 0 1px rgba(255,255,255,0.35) inset' : 'none',
                         }}>
-                          {(card.end - card.start) * pps > 26 && (
+                          {W(card.start, card.end) > 26 && (
                             <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 900, letterSpacing: -0.3, background: 'rgba(0,0,0,0.22)', borderRadius: 3, padding: '1px 3px', lineHeight: 1.1 }}>A≡</span>
                           )}
                           <span style={{ minWidth: 0, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: gone ? 'line-through' : 'none' }}>{card.text}</span>
@@ -4387,8 +4473,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <div key={r} style={{ position: 'absolute', left: 0, right: 0, top: (r + 1) * LANE.midias - 1, borderTop: `1px dashed ${C.border}`, pointerEvents: 'none' }} />
                 ))}
                 {media.map((m) => {
-                  const left = m.start * pps;
-                  const w = Math.max(16, m.duration * pps - 1);
+                  const left = X(m.start);
+                  const w = Math.max(16, W(m.start, m.start + m.duration) - 1);
                   const col = m.kind === 'audio' ? C.purple : m.kind === 'video' ? C.orange : '#22D3EE';
                   const isSelM = selKind === 'media' && selMedia === m.key;
                   return (
@@ -4422,7 +4508,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <div key={l.key} title={`${l.text} — arraste para mover, pontas mudam o tempo`}
                       onMouseDown={(e) => { setSelText(l.key); setSelKind('text'); startRangeDrag(setTextLayers, l, 'move', e); }}
                       onClick={(e) => { e.stopPropagation(); setSelText(l.key); setSelKind('text'); setTab('texto'); seek(l.start + 0.05); }}
-                      style={{ position: 'absolute', left: l.start * pps, width: Math.max(16, (l.end - l.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                      style={{ position: 'absolute', left: X(l.start), width: Math.max(16, W(l.start, l.end) - 1), top: 0, bottom: 0, borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
                         border: `1px solid ${on ? '#fff' : '#E8A020'}`, background: on ? 'rgba(232,160,32,0.6)' : 'rgba(232,160,32,0.3)', fontSize: 10, fontWeight: 700, color: C.text }}>
                       <Icon name="type" size={10} strokeWidth={2.4} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.text.split('\n')[0]}</span>
                       <div onMouseDown={(e) => startRangeDrag(setTextLayers, l, 'left', e)} style={handleStyle('left')} />
@@ -4441,7 +4527,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <div key={m.key} title={`${VIDEO_FX[m.effect]} — arraste para mover, pontas mudam a duração`}
                       onMouseDown={(e) => { setSelFx(m.key); setSelKind('vfx'); startRangeDrag(setFxMoments, m, 'move', e); }}
                       onClick={(e) => { e.stopPropagation(); setSelFx(m.key); setSelKind('vfx'); setTab('efeitos'); seek(m.start + 0.05); }}
-                      style={{ position: 'absolute', left: m.start * pps, width: Math.max(16, (m.end - m.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                      style={{ position: 'absolute', left: X(m.start), width: Math.max(16, W(m.start, m.end) - 1), top: 0, bottom: 0, borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
                         border: `1px solid ${on ? '#fff' : '#A855F7'}`, background: on ? 'rgba(168,85,247,0.6)' : 'rgba(168,85,247,0.3)', fontSize: 10, fontWeight: 700, color: C.text }}>
                       <Icon name="sparkles" size={10} strokeWidth={2.4} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{VIDEO_FX[m.effect]}</span>
                       <div onMouseDown={(e) => startRangeDrag(setFxMoments, m, 'left', e)} style={handleStyle('left')} />
@@ -4464,7 +4550,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       onMouseDown={(e) => { setSelBroll(i); setSelKind('broll'); startRangeDrag(setBrollMoments, m, 'move', e); }}
                       onClick={(e) => { e.stopPropagation(); setSelBroll(i); setSelKind('broll'); setTab('broll'); seek(m.start + 0.05); }}
                       style={{
-                        position: 'absolute', left: m.start * pps, width: Math.max(16, (m.end - m.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
+                        position: 'absolute', left: X(m.start), width: Math.max(16, W(m.start, m.end) - 1), top: 0, bottom: 0, borderRadius: 5,
                         display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
                         border: `1px solid ${isSel ? '#fff' : C.purpleSoft}`, background: m.removed ? 'rgba(255,255,255,0.05)' : isSel ? 'rgba(124,58,237,0.55)' : 'rgba(124,58,237,0.3)',
                         opacity: m.removed ? 0.5 : 1, fontSize: 10, fontWeight: 700, color: C.text,
@@ -4498,7 +4584,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       onMouseDown={(e) => { setSelZoom(z.key); setSelKind('zoom'); startRangeDrag(setZoomMoments, z, 'move', e); }}
                       onClick={(e) => { e.stopPropagation(); setSelZoom(z.key); setSelKind('zoom'); setTab('efeitos'); seek(z.start); }}
                       style={{
-                        position: 'absolute', left: z.start * pps, width: Math.max(14, (z.end - z.start) * pps - 1), top: 0, bottom: 0, borderRadius: 5,
+                        position: 'absolute', left: X(z.start), width: Math.max(14, W(z.start, z.end) - 1), top: 0, bottom: 0, borderRadius: 5,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
                         border: `1px solid ${isSel ? '#fff' : C.orange}`, background: isSel ? 'rgba(255,107,53,0.5)' : 'rgba(255,107,53,0.25)',
                         fontSize: 10, fontWeight: 700, color: C.text,
@@ -4516,14 +4602,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {transformKeys.length > 0 && (
               <div style={{ position: 'relative', height: LANE.kf, marginTop: 4, ...LANE_ROW, ...lk('kf') }}>
                 {transformKeys.length > 1 && (
-                  <div style={{ position: 'absolute', left: transformKeys[0].t * pps, width: (transformKeys[transformKeys.length - 1].t - transformKeys[0].t) * pps, top: LANE.kf / 2 - 1, height: 2, background: 'rgba(34,211,238,0.45)' }} />
+                  <div style={{ position: 'absolute', left: X(transformKeys[0].t), width: W(transformKeys[0].t, transformKeys[transformKeys.length - 1].t), top: LANE.kf / 2 - 1, height: 2, background: 'rgba(34,211,238,0.45)' }} />
                 )}
                 {transformKeys.map((k) => {
                   const on = selKind === 'keyframe' && selKey === k.t;
                   return (
                     <div key={k.t} onMouseDown={(e) => startKeyDrag(k, e)} onClick={(e) => { e.stopPropagation(); setSelKind('keyframe'); setSelKey(k.t); setTab('efeitos'); seek(k.t); }}
                       title={`Quadro-chave em ${fmtDuration(k.t)} · escala ${Math.round(k.scale * 100)}% · X ${Math.round(k.x * 100)} · Y ${Math.round(k.y * 100)} · ${Math.round(k.rot)}° — arraste para mover, Delete apaga`}
-                      style={{ position: 'absolute', left: k.t * pps - 7, top: LANE.kf / 2 - 7, width: 14, height: 14, transform: 'rotate(45deg)', borderRadius: 2, cursor: 'grab',
+                      style={{ position: 'absolute', left: X(k.t) - 7, top: LANE.kf / 2 - 7, width: 14, height: 14, transform: 'rotate(45deg)', borderRadius: 2, cursor: 'grab',
                         background: on ? '#fff' : '#22D3EE', border: `2px solid ${on ? '#22D3EE' : 'rgba(0,0,0,0.5)'}`, boxShadow: on ? '0 0 0 3px rgba(34,211,238,0.35)' : 'none' }} />
                   );
                 })}
@@ -4532,17 +4618,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {/* Faixa de vídeo: miniaturas + cortes desenhados arrastando */}
             <div
               onMouseDown={startCutDraw}
-              title="Arraste para cortar um trecho"
+              title="Arraste para selecionar um trecho (Delete exclui) · clique seleciona o pedaço"
               style={{ position: 'relative', height: LANE.video, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${isMobile ? C.border : '#3B6FD6'}`, background: 'rgba(0,0,0,0.45)', cursor: 'crosshair', ...lk('vid') }}
             >
-              <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat' }} />
+              {keptPieces.map(([a, b]) => (
+                <div key={a} style={{ position: 'absolute', top: 0, bottom: 0, left: X(a), width: W(a, b), backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: `${dur * pps}px 100%`, backgroundPosition: `${-a * pps}px 0`, backgroundRepeat: 'no-repeat', boxShadow: gaps.length ? 'inset -1px 0 0 rgba(0,0,0,0.6)' : 'none' }} />
+              ))}
               {speedRanges.map((r) => {
                 const on = selKind === 'speed' && selSpeed === r.key;
                 return (
                   <div key={r.key} title={`Velocidade ${r.speed}× — clique para ajustar (aba Efeitos), Delete volta ao normal`}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); setSelSpeed(r.key); setSelKind('speed'); setTab('efeitos'); }}
-                    style={{ position: 'absolute', left: r.start * pps, width: Math.max(14, (r.end - r.start) * pps), top: 0, height: 15, zIndex: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: '0 5px', overflow: 'hidden', whiteSpace: 'nowrap',
+                    style={{ position: 'absolute', left: X(r.start), width: Math.max(14, W(r.start, r.end)), top: 0, height: 15, zIndex: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: '0 5px', overflow: 'hidden', whiteSpace: 'nowrap',
                       background: on ? '#fff' : 'rgba(255,170,0,0.92)', color: '#1a1000', fontSize: 9.5, fontWeight: 800, borderRadius: '0 0 4px 4px' }}>
                     {r.speed < 1 ? '🐢' : '⏩'} {r.speed}×
                   </div>
@@ -4554,13 +4642,21 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <div key={f.key} title={`Congela ${f.dur} s em ${fmtDuration(f.t)} — clique para ajustar, Delete apaga`}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); setSelFreeze(f.key); setSelKind('freeze'); setTab('efeitos'); seek(f.t); }}
-                    style={{ position: 'absolute', left: f.t * pps - 1, bottom: 0, height: 16, zIndex: 3, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2, padding: '0 5px', whiteSpace: 'nowrap',
+                    style={{ position: 'absolute', left: X(f.t) - 1, bottom: 0, height: 16, zIndex: 3, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2, padding: '0 5px', whiteSpace: 'nowrap',
                       background: on ? '#fff' : 'rgba(96,165,250,0.95)', color: '#04122a', fontSize: 9.5, fontWeight: 800, borderRadius: '4px 4px 0 0', borderLeft: '2px solid #fff' }}>
                     ❄ {f.dur}s
                   </div>
                 );
               })}
-              {cuts.map((c) => (
+              {ripple && cuts.map((c) => (
+                <div key={c.key} title={`Trecho excluído (${fmtDuration(c.start)} → ${fmtDuration(c.end)}, ${(c.end - c.start).toFixed(1).replace('.', ',')} s) — × traz de volta`}
+                  onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
+                  style={{ position: 'absolute', left: X(c.start) - 1, top: 0, bottom: 0, width: 2, background: C.red, zIndex: 3 }}>
+                  <button onClick={(e) => { e.stopPropagation(); setCuts((l) => l.filter((x) => x.key !== c.key)); }} title="Trazer este trecho de volta"
+                    style={{ position: 'absolute', top: 2, left: -8, width: 18, height: 16, padding: 0, borderRadius: 4, border: 'none', background: C.red, color: '#fff', fontSize: 11, lineHeight: 1, cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
+                </div>
+              ))}
+              {!ripple && cuts.map((c) => (
                 <div
                   key={c.key}
                   title={`Corte ${fmtDuration(c.start)} → ${fmtDuration(c.end)}`}
@@ -4592,43 +4688,45 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <div key={tr.key} title={`${catalog?.transitions?.find((o) => o.id === tr.type)?.label || tr.type} em ${fmtDuration(tr.t)} — arraste para mover, Delete apaga`}
                     onMouseDown={(e) => { e.stopPropagation(); setSelTrans(tr.key); setSelKind('trans'); transDragRef.current = { key: tr.key, x0: e.clientX, t0: tr.t }; }}
                     onClick={(e) => { e.stopPropagation(); setSelTrans(tr.key); setSelKind('trans'); setTab('efeitos'); }}
-                    style={{ position: 'absolute', left: tr.t * pps - 9, top: '50%', marginTop: -9, width: 18, height: 18, borderRadius: 5, zIndex: 3, cursor: 'grab', display: 'grid', placeItems: 'center',
+                    style={{ position: 'absolute', left: X(tr.t) - 9, top: '50%', marginTop: -9, width: 18, height: 18, borderRadius: 5, zIndex: 3, cursor: 'grab', display: 'grid', placeItems: 'center',
                       background: on ? '#fff' : '#A855F7', border: `2px solid ${on ? '#A855F7' : 'rgba(0,0,0,0.5)'}`, color: on ? '#A855F7' : '#fff', fontSize: 10, fontWeight: 900, lineHeight: 1 }}>⧓</div>
                 );
               })}
               {/* pedaço selecionado + divisões (S/Ctrl+B na faixa de vídeo) */}
               {selKind === 'video' && selVideo && (
-                <div style={{ position: 'absolute', left: selVideo.start * pps, width: (selVideo.end - selVideo.start) * pps, top: 0, bottom: 0, border: '2px solid #fff', borderRadius: 4, boxShadow: `inset 0 0 0 2px ${C.orange}`, pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', left: X(selVideo.start), width: W(selVideo.start, selVideo.end), top: 0, bottom: 0, border: '2px solid #fff', borderRadius: 4, boxShadow: `inset 0 0 0 2px ${C.orange}`, pointerEvents: 'none' }} />
               )}
               {vsplits.map((t) => (
-                <div key={t} style={{ position: 'absolute', left: t * pps - 1, top: 0, bottom: 0, width: 2, background: '#fff' }}>
+                <div key={t} style={{ position: 'absolute', left: X(t) - 1, top: 0, bottom: 0, width: 2, background: '#fff' }}>
                   <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setVsplits((l) => l.filter((x) => x !== t)); setSelVideo(null); }}
                     title="Desfazer esta divisão"
                     style={{ position: 'absolute', top: 1, left: -7, width: 16, height: 14, padding: 0, borderRadius: 4, border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 10, lineHeight: 1, cursor: 'pointer', fontFamily: 'inherit' }}>×</button>
                 </div>
               ))}
               {cutStart != null && Math.abs(cur - cutStart) > 0.02 && (
-                <div style={{ position: 'absolute', left: Math.min(cutStart, cur) * pps, width: Math.abs(cur - cutStart) * pps, top: 0, bottom: 0, background: 'rgba(240,82,107,0.22)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', left: X(Math.min(cutStart, cur)), width: W(Math.min(cutStart, cur), Math.max(cutStart, cur)), top: 0, bottom: 0, background: 'rgba(240,82,107,0.22)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
               )}
               {drawing && drawing.end > drawing.start && (
-                <div style={{ position: 'absolute', left: drawing.start * pps, width: (drawing.end - drawing.start) * pps, top: 0, bottom: 0, background: 'rgba(240,82,107,0.3)', border: `1px dashed ${C.red}`, pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', left: X(drawing.start), width: W(drawing.start, drawing.end), top: 0, bottom: 0, background: 'rgba(59,130,246,0.3)', border: '1px solid #3B82F6', pointerEvents: 'none' }} />
               )}
             </div>
             {/* Faixa de áudio: forma de onda da fala original */}
             <div style={{ position: 'relative', height: LANE.audio, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${isMobile ? C.border : 'rgba(52,195,176,0.55)'}`, background: isMobile ? 'rgba(59,130,246,0.08)' : 'rgba(52,195,176,0.12)', ...(audioMute ? LANE_HIDDEN : null), ...lk('aud') }}>
               {/* cortes da faixa de vídeo também tiram o áudio daquele pedaço */}
-              {cuts.map((c) => (
+              {!ripple && cuts.map((c) => (
                 <div key={c.key} style={{ position: 'absolute', left: c.start * pps, width: Math.max(2, (c.end - c.start) * pps), top: 0, bottom: 0, zIndex: 2, pointerEvents: 'none',
                   background: 'repeating-linear-gradient(45deg, rgba(240,82,107,0.45), rgba(240,82,107,0.45) 5px, rgba(240,82,107,0.2) 5px, rgba(240,82,107,0.2) 10px)', borderLeft: `1px solid ${C.red}`, borderRight: `1px solid ${C.red}` }} />
               ))}
-              {wave && (
-                <svg width={width} height={34} viewBox={`0 0 ${peaks.length} 100`} preserveAspectRatio="none" style={{ display: 'block' }}>
-                  <path d={wave} fill={isMobile ? '#4F7BFF' : '#34C3B0'} opacity={0.85} />
-                </svg>
-              )}
+              {wave && keptPieces.map(([a, b]) => (
+                <div key={a} style={{ position: 'absolute', top: 0, left: X(a), width: W(a, b), height: 34, overflow: 'hidden' }}>
+                  <svg width={dur * pps} height={34} viewBox={`0 0 ${peaks.length} 100`} preserveAspectRatio="none" style={{ display: 'block', marginLeft: -a * pps }}>
+                    <path d={wave} fill={isMobile ? '#4F7BFF' : '#34C3B0'} opacity={0.85} />
+                  </svg>
+                </div>
+              ))}
               {gains.map((g) => {
-                const left = g.start * pps;
-                const w = Math.max(16, (g.end - g.start) * pps - 1);
+                const left = X(g.start);
+                const w = Math.max(16, W(g.start, g.end) - 1);
                 const mudo = Number(g.volume) < 0.005;
                 return (
                   <div
@@ -4655,7 +4753,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {!isMobile && <div style={{ position: 'relative', height: LANE.pausas, marginTop: 4, ...LANE_ROW, ...lk('pau') }}>
               {pauses.map((p, pi) => {
                 const cut = isPauseCut(p);
-                const w = Math.max(6, p.dur * pps - 1);
+                if (ripple && W(p.start, p.end) < 1) return null;
+                const w = Math.max(6, W(p.start, p.end) - 1);
                 // parte que sai de verdade (cortes precisos); o resto da pausa tem som de
                 // fala e fica
                 const real = cut && preciseNow
@@ -4668,7 +4767,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     onClick={(e) => { e.stopPropagation(); togglePause(p); }}
                     title={`Pausa de ${p.dur.toFixed(1)}s — ${cut ? (real && !real.length ? 'tem fala: o som fica (clique p/ manter)' : 'será cortada só onde não há voz (clique p/ manter)') : 'mantida (clique p/ cortar)'}`}
                     style={{
-                      position: 'absolute', left: p.start * pps, top: 0, width: w, height: 22, borderRadius: 6,
+                      position: 'absolute', left: X(p.start), top: 0, width: w, height: 22, borderRadius: 6,
                       cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
                       background: cut ? (real ? 'rgba(240,82,107,0.06)' : hatch) : 'rgba(255,255,255,0.05)',
                       border: `1px ${cut ? 'solid' : 'dashed'} ${cut ? 'rgba(240,82,107,0.55)' : C.border}`,
@@ -4676,7 +4775,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     }}
                   >
                     {real && real.map(([a, b]) => (
-                      <span key={a} style={{ position: 'absolute', top: 0, bottom: 0, left: (a - p.start) * pps, width: Math.max(1, (b - a) * pps), background: hatch, pointerEvents: 'none' }} />
+                      <span key={a} style={{ position: 'absolute', top: 0, bottom: 0, left: X(a) - X(p.start), width: Math.max(1, W(a, b)), background: hatch, pointerEvents: 'none' }} />
                     ))}
                     {w > 26 && (cut ? <Icon name="scissors" size={11} strokeWidth={2.2} style={{ position: 'relative' }} /> : <span style={{ fontSize: 9.5, fontWeight: 600 }}>{p.dur.toFixed(1)}s</span>)}
                   </div>
@@ -4684,13 +4783,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               })}
             </div>}
             {markers.map((mk) => (
-              <div key={mk.key} style={{ position: 'absolute', left: mk.t * pps, top: LANE.ruler, bottom: 0, width: 0, borderLeft: '1px dashed rgba(60,196,107,0.45)', pointerEvents: 'none', zIndex: 5 }} />
+              <div key={mk.key} style={{ position: 'absolute', left: X(mk.t), top: LANE.ruler, bottom: 0, width: 0, borderLeft: '1px dashed rgba(60,196,107,0.45)', pointerEvents: 'none', zIndex: 5 }} />
             ))}
             {snapLine != null && (
-              <div style={{ position: 'absolute', left: snapLine * pps, top: 0, bottom: 0, width: 1, marginLeft: -0.5, background: '#FFD43B', boxShadow: '0 0 6px #FFD43B', pointerEvents: 'none', zIndex: 8 }} />
+              <div style={{ position: 'absolute', left: X(snapLine), top: 0, bottom: 0, width: 1, marginLeft: -0.5, background: '#FFD43B', boxShadow: '0 0 6px #FFD43B', pointerEvents: 'none', zIndex: 8 }} />
             )}
             {!isMobile && (
-            <div style={{ position: 'absolute', left: cur * pps, top: 0, bottom: 0, width: 1.5, marginLeft: -0.75, background: PR.blue, boxShadow: `0 0 6px ${PR.blue}aa`, pointerEvents: 'none', zIndex: 6 }}>
+            <div style={{ position: 'absolute', left: X(cur), top: 0, bottom: 0, width: 1.5, marginLeft: -0.75, background: PR.blue, boxShadow: `0 0 6px ${PR.blue}aa`, pointerEvents: 'none', zIndex: 6 }}>
               <div style={{ position: 'absolute', top: LANE.ruler - 15, left: -6.25, width: 14, height: 15, background: PR.blue, clipPath: 'polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%)' }} />
             </div>
             )}
