@@ -27,8 +27,9 @@ for (const dir of [dataDir, logsDir]) mkdirSync(dir, { recursive: true });
 const KEYS_TEMPLATE = `# Chaves do Riseframe (este arquivo fica só no seu computador).
 # Preencha depois do "=" e salve. Depois feche e abra o Riseframe de novo.
 
-# Transcrição (legendas). Com a chave da Deepgram fica rápido e preciso.
-# Sem ela, o app tenta o Whisper local (precisa de Python + faster-whisper).
+# Transcrição (legendas) e correção da fala: SEM chave nenhuma o app usa a sua conta
+# (internet) — não precisa preencher nada. As chaves abaixo são opcionais.
+# Com a chave da Deepgram a transcrição roda direto daqui.
 DEEPGRAM_API_KEY=
 
 # Alternativa mais barata (tem plano grátis): chave da Groq em console.groq.com → API Keys.

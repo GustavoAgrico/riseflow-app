@@ -109,3 +109,28 @@ test('palavra "fantasma" (texto onde o áudio está em silêncio) é detectada',
   const ghosts = phantomWords([{ start: 0.2, end: 0.6 }, { start: 2.0, end: 2.6 }], env);
   assert.deepEqual(ghosts, [{ start: 2.0, end: 2.6 }]);
 });
+
+test('vídeo longo: tosses do fim também saem (lê o áudio em blocos, sem teto de 400)', async () => {
+  // 420 "frases" (~18 min) (1,2 s de fala + 1,4 s de vão com uma tosse no meio) — mais de 30 trechos: caminho em blocos
+  const unit = await wav('unidade.wav', [
+    '-f', 'lavfi', '-i', `aevalsrc='${VOWEL}*between(t,0,1.2)':s=16000:d=1.2`,
+    '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.5:duration=1.0:seed=1:sample_rate=16000',
+    '-filter_complex', `[1]${COUGH_AF},adelay=400,apad=whole_dur=1.4[c];[0][c]concat=n=2:v=0:a=1`,
+  ]);
+  const N = 420; // mais que o antigo teto de 400 trechos
+  const U = 2.6;
+  const long = await wav('longo.wav', [
+    '-stream_loop', String(N - 1), '-i', unit,
+    '-f', 'lavfi', '-i', `anoisesrc=color=pink:amplitude=0.003:sample_rate=16000:d=${N * U}`,
+    '-filter_complex', '[0][1]amix=inputs=2:duration=first:normalize=0',
+  ]);
+  const words = [];
+  for (let i = 0; i < N; i++) words.push({ start: +(i * U).toFixed(2), end: +(i * U + 0.6).toFixed(2), word: 'oi' }, { start: +(i * U + 0.6).toFixed(2), end: +(i * U + 1.2).toFixed(2), word: 'gente' });
+  const transcript = { segments: [{ words }] };
+  const dur = N * U;
+  const pauses = wordGapRanges(transcript, { minGap: 0.45, duration: dur });
+  const r = await preciseRemovals(long, { pauses, transcript, breaths: true, coughs: true, duration: dur });
+  assert.ok(r.noises.length >= N - 2, `${r.noises.length} tosses de ${N}`);
+  const last = (N - 1) * U + 1.7;
+  assert.ok(r.noises.some((x) => x.start <= last && x.end >= last), 'a última tosse foi achada');
+});

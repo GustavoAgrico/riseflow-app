@@ -1400,19 +1400,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   // Divide a legenda exatamente no playhead (como o Ctrl+B do CapCut): cada metade fica
   // com o seu tempo de exibição, de ponta a ponta até o ponto do corte.
-  function splitAtPlayhead() {
-    const idx = capSegments.findIndex((d) => cur > d.start + 0.05 && cur < d.end - 0.05);
+  function splitAtPlayhead(at = cur) {
+    const idx = capSegments.findIndex((d) => at > d.start + 0.05 && at < d.end - 0.05);
     if (idx < 0) return;
     const s = segments[idx];
     const d = capSegments[idx];
-    let cutAt = d.words.findIndex((w) => (w.start + w.end) / 2 > cur);
+    let cutAt = d.words.findIndex((w) => (w.start + w.end) / 2 > at);
     const live = s.words.filter((w) => !w.removed).length;
     if (live < 2) return; // uma palavra só: não há o que separar
     if (cutAt <= 0) cutAt = 1; // o playhead caiu dentro da 1ª palavra: ela fica na 1ª parte
     if (cutAt >= s.words.length) cutAt = s.words.length - 1;
     const a = s.words.slice(0, cutAt);
     const b = s.words.slice(cutAt);
-    const t = +cur.toFixed(3);
+    const t = +at.toFixed(3);
     const segA = { ...s, end: a[a.length - 1].end, words: a, capStart: d.start, capEnd: t };
     const segB = { ...s, start: b[0].start, words: b, capStart: t, capEnd: d.end };
     setSegments((prev) => [...prev.slice(0, idx), segA, segB, ...prev.slice(idx + 1)]);
@@ -2336,6 +2336,30 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Atalhos de teclado (fora de campos de texto): espaço, setas, S/Ctrl+B dividem a
   // faixa selecionada, Delete exclui o selecionado.
   const keysRef = useRef({});
+  // Ferramentas como no Premiere: V seleção, C navalha (clique corta ali), R trecho.
+  const [razorTool, setRazorTool] = useState(false);
+  const [razorT, setRazorT] = useState(null);
+  const [showKeys, setShowKeys] = useState(false);
+  function pickTool(t) { setRazorTool(t === 'razor'); setRangeTool(t === 'range'); setRazorT(null); }
+  /** Navalha / Ctrl+K: divide vídeo (V1) e legenda no ponto. */
+  function razorCut(t) {
+    const at = +Math.max(0.05, Math.min(dur - 0.05, t)).toFixed(2);
+    setVsplits((l) => (l.some((x) => Math.abs(x - at) < 0.05) ? l : [...l, at].sort((a, b) => a - b)));
+    splitAtPlayhead(at);
+  }
+  /** Pontos de edição (como no Premiere): começo, fim, divisões e bordas dos cortes. */
+  const editPoints = () => [...new Set([0, dur, ...vsplits, ...cuts.flatMap((c) => [c.start, c.end])].map((x) => +x.toFixed(2)))].sort((a, b) => a - b);
+  /** Q / W: corta do ponto de edição anterior até o playhead (Q) ou do playhead ao próximo (W). */
+  function rippleTrim(side) {
+    const pts = editPoints();
+    if (side === 'prev') {
+      const a = [...pts].reverse().find((x) => x < cur - 0.05);
+      if (a != null) cutTimeRange(a, cur);
+    } else {
+      const b = pts.find((x) => x > cur + 0.05);
+      if (b != null) cutTimeRange(cur, b);
+    }
+  }
   /** I / O: entrada e saída do trecho no playhead (como no Premiere). */
   function markRange(side) {
     const t = +cur.toFixed(2);
@@ -2353,7 +2377,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const all = selCaptions.every((i) => segments[i] && segHidden(segments[i]));
     setCaptionsHidden(!all);
   }
-  keysRef.current = { togglePlay, seek, cur, dur, goCaption, splitSelected, deleteSelected, undo, redo, hidden, copySel, pasteAtPlayhead, duplicateSel, toggleMarker, toggleSnap, markRange, selectAllRange, clearRange, toggleCapHidden, toggleRangeTool: () => setRangeTool((v) => !v) };
+  keysRef.current = { razorCut, pickTool, rippleTrim, zoomTl, fitAll: () => fitAll(), rangeOn: rangeTool, toggleKeys: () => setShowKeys((v) => !v), pause: () => videoRef.current?.pause(), play: () => videoRef.current?.play()?.catch?.(() => {}), togglePlay, seek, cur, dur, goCaption, splitSelected, deleteSelected, undo, redo, hidden, copySel, pasteAtPlayhead, duplicateSel, toggleMarker, toggleSnap, markRange, selectAllRange, clearRange, toggleCapHidden, toggleRangeTool: () => setRangeTool((v) => !v) };
   useEffect(() => {
     function onKey(e) {
       if (keysRef.current.hidden) return; // escondido durante o render
@@ -2367,6 +2391,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if ((e.metaKey || e.ctrlKey) && (e.key === 'v' || e.key === 'V')) { if (k.pasteAtPlayhead()) e.preventDefault(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); k.duplicateSel(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A')) { e.preventDefault(); k.selectAllRange(); return; }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); k.razorCut(k.cur); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'Space') { e.preventDefault(); k.togglePlay(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); k.seek(k.cur - (e.shiftKey ? 5 : 1)); }
@@ -2379,9 +2404,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); k.deleteSelected(); }
       else if (e.key === 'i' || e.key === 'I') { k.markRange('a'); }
       else if (e.key === 'o' || e.key === 'O') { k.markRange('b'); }
-      else if (e.key === 'r' || e.key === 'R') { k.toggleRangeTool(); }
+      else if (e.key === 'r' || e.key === 'R') { k.pickTool(k.rangeOn ? 'select' : 'range'); }
       else if (e.key === 'h' || e.key === 'H') { k.toggleCapHidden(); }
-      else if (e.key === 'Escape') { k.clearRange(); }
+      else if (e.key === 'Escape') { k.clearRange(); k.pickTool('select'); }
+      else if (e.key === 'v' || e.key === 'V') { k.pickTool('select'); }
+      else if (e.key === 'c' || e.key === 'C') { k.pickTool('razor'); }
+      else if (e.key === 'q' || e.key === 'Q') { k.rippleTrim('prev'); }
+      else if (e.key === 'w' || e.key === 'W') { k.rippleTrim('next'); }
+      else if (e.key === 'j' || e.key === 'J') { k.seek(k.cur - 5); }
+      else if (e.key === 'k' || e.key === 'K') { k.pause(); }
+      else if (e.key === 'l' || e.key === 'L') { k.play(); }
+      else if (e.key === '=' || e.key === '+') { k.zoomTl(1); }
+      else if (e.key === '-' || e.key === '_') { k.zoomTl(-1); }
+      else if (e.key === '\\') { k.fitAll(); }
+      else if (e.key === '?') { k.toggleKeys(); }
       else if (e.key === 'Home') { e.preventDefault(); k.seek(0); }
       else if (e.key === 'End') { e.preventDefault(); k.seek(k.dur); }
     }
@@ -3332,6 +3368,80 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       </button>
     </div>
   );
+
+  // Trecho selecionado (palavras clicáveis, juntar, editar, cortar): embaixo da timeline em
+  // telas menores; em tela grande fica no painel Legenda › Legendas (timeline mais limpa).
+  const trechoBlock = selSeg ? (
+            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 10, padding: '8px 10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.4 }}>
+                  {selCaptions.length > 1 ? `${selCaptions.length} BLOCOS SELECIONADOS` : `TRECHO ${sel + 1}/${segments.length} · ${fmtDuration(selSeg.start)}`}
+                </div>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button onClick={() => { setSelKind('caption'); setSelSet(new Set(segments.map((_, i) => i))); }} style={miniBtn(false, false)}>Selecionar todas</button>
+                  <button onClick={mergeSelected} disabled={selCaptions.length < 2 && sel >= segments.length - 1} style={miniBtn(false, selCaptions.length < 2 && sel >= segments.length - 1)}>
+                    <Icon name="arrowLeft" size={12} strokeWidth={2.2} style={{ transform: 'rotate(180deg)' }} /> Juntar
+                  </button>
+                  {selCaptions.length === 1 && (
+                    <button onClick={() => setEditText(editText == null ? selSeg.words.filter((w) => !w.removed).map((w) => w.word).join(' ') : null)} disabled={segRemoved(selSeg)} style={miniBtn(editText != null, segRemoved(selSeg))}>
+                      <Icon name="edit" size={12} strokeWidth={2.2} /> Editar texto
+                    </button>
+                  )}
+                  {(() => {
+                    const allHidden = selCaptions.every((i) => segHidden(segments[i]));
+                    return (
+                      <button onClick={() => setCaptionsHidden(!allHidden)} style={miniBtn(allHidden)} title="Esconde só o texto: a fala continua no vídeo">
+                        <Icon name={allHidden ? 'eye' : 'eyeOff'} size={12} strokeWidth={2.2} /> {allHidden ? 'Mostrar legenda' : 'Ocultar legenda'}
+                      </button>
+                    );
+                  })()}
+                  {(() => {
+                    const allCut = selCaptions.every((i) => segRemoved(segments[i]));
+                    return (
+                      <button onClick={() => setCaptionsCut(!allCut)} style={miniBtn(allCut)} title="Corta a fala destes blocos do vídeo">
+                        <Icon name={allCut ? 'undo' : 'scissors'} size={12} strokeWidth={2.2} /> {allCut ? 'Reincluir' : 'Cortar trecho'}
+                      </button>
+                    );
+                  })()}
+                </div>
+              </div>
+              {editText != null && selCaptions.length === 1 && (
+                <div style={{ display: 'grid', gap: 6, marginBottom: 10 }}>
+                  <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={2} autoFocus
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEditText(); } if (e.key === 'Escape') setEditText(null); }}
+                    style={{ width: '100%', boxSizing: 'border-box', background: '#13131B', color: C.text, border: `1px solid ${C.orange}`, borderRadius: 9, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <button onClick={saveEditText} style={miniBtn(true, false)}><Icon name="check" size={12} strokeWidth={2.2} /> Salvar texto</button>
+                    <button onClick={() => setEditText(null)} style={miniBtn(false, false)}>Cancelar</button>
+                    <span style={{ fontSize: 11, color: C.faint }}>Muda só o que aparece na legenda, no mesmo tempo da fala.</span>
+                  </div>
+                </div>
+              )}
+              <div style={{ lineHeight: 1.7, fontSize: 13 }}>
+                {selSeg.words.map((w, wi) => (
+                  <span key={wi} onClick={() => toggleWord(sel, wi)} onDoubleClick={() => editWord(sel, wi)} title={`${w.start.toFixed(1)}s — clique corta, 2 cliques edita`}
+                    style={{ display: 'inline-block', margin: '0 3px', padding: '2px 6px', borderRadius: 7, cursor: 'pointer', userSelect: 'none', textDecoration: w.removed ? 'line-through' : 'none', opacity: w.removed ? 0.42 : 1, background: w.removed ? 'rgba(240,82,107,0.14)' : 'transparent', color: w.removed ? C.red : C.text }}>
+                    {w.word}
+                  </span>
+                ))}
+              </div>
+              {fixText != null ? (
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  <input autoFocus value={fixText} onChange={(e) => setFixText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { setPhraseText(sel, fixText); setFixText(null); } if (e.key === 'Escape') setFixText(null); }}
+                    style={{ flex: '1 1 240px', minHeight: 38, padding: '0 11px', borderRadius: 9, border: `1px solid ${C.orange}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 14, fontFamily: 'inherit' }} />
+                  <button onClick={() => { setPhraseText(sel, fixText); setFixText(null); }} style={{ ...miniBtn(false, false), color: C.green, borderColor: C.green }}>Salvar</button>
+                  <button onClick={() => setFixText(null)} style={miniBtn(false, false)}>Cancelar</button>
+                </div>
+              ) : (
+                <button onClick={() => setFixText(selSeg.words.filter((w) => !w.removed).map((w) => w.word).join(' '))} disabled={segRemoved(selSeg)}
+                  style={{ ...miniBtn(false, segRemoved(selSeg)), marginTop: 8 }}>
+                  <Icon name="edit" size={12} strokeWidth={2.2} /> Corrigir o texto da legenda
+                </button>
+              )}
+              <div style={{ fontSize: 10.5, color: C.faint, marginTop: 4 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir só ela · arraste as bordas do bloco na timeline · Ctrl/Shift+clique nos blocos seleciona vários · S divide · <b>Delete</b> corta o trecho (vídeo, áudio e legenda) · <b>H</b> só oculta a legenda</div>
+            </div>
+  ) : null;
 
   // Espaçamento das letras, sombra e legenda no meio na tela dividida (aba Legenda).
   const capFxRows = (
@@ -4378,6 +4488,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     </div>
                   )}
                   {!isMobile && enfaseBlock}
+                  {!isMobile && trechoBlock && <div className="rf-only-app">{trechoBlock}</div>}
                 </div>
               ) : capPane === 'transcricao' ? (
                 transcriptPane
@@ -4574,6 +4685,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         {!isMobile && splitter('row')}
         {/* Barra de ferramentas da timeline */}
         <div className="rf-tlbar" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 8, flexWrap: 'wrap' }}>
+          <span className="rf-tl-stats" title="Palavras · cortadas · pausas cortadas · duração final">
+            <b>{stats.total}</b> palavras · <b style={{ color: '#F0526B' }}>{stats.removed}</b> cortadas · <b style={{ color: '#FF9A6C' }}>{pausesCut.length}</b> pausas · final <b style={{ color: '#2ED47A' }}>{fmtDuration((stats.keptSec + retimeDelta) / speed)}</b>
+          </span>
           {!isMobile && (
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginRight: 8 }} title="Posição do playhead (horas:minutos:segundos:quadros)">
               <span className="rf-tc" style={{ fontSize: 21, fontWeight: 600, color: PR.blue, fontVariantNumeric: 'tabular-nums', letterSpacing: 0.4 }}>{tcode(cur)}</span>
@@ -4655,38 +4769,62 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
         {/* Timeline: coluna fixa com o nome das faixas + área que rola */}
         <div className="rf-tl-track" style={{ position: 'relative', display: 'flex', border: `1px solid ${isMobile ? C.border : PR.line}`, borderRadius: isMobile ? 16 : 8, background: isMobile ? 'linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.35))' : PR.track, overflow: 'hidden', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
+          {showKeys && !isMobile && (
+            <div className="rf-keys" onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
+                <b style={{ fontSize: 12 }}>Atalhos (como no Premiere)</b>
+                <button onClick={() => setShowKeys(false)} className="rf-tbtn" style={{ marginLeft: 'auto', width: 22, height: 22 }} aria-label="Fechar">×</button>
+              </div>
+              {[
+                ['V', 'Seleção'], ['C', 'Navalha (clique corta)'], ['R', 'Seleção de trecho'], ['Ctrl+K', 'Dividir no playhead'],
+                ['S', 'Dividir o item selecionado'], ['Delete', 'Excluir (fecha o buraco)'], ['Q / W', 'Cortar até o ponto anterior / próximo'],
+                ['I / O', 'Entrada / saída do trecho'], ['Ctrl+A', 'Selecionar tudo'], ['Espaço', 'Tocar / pausar'], ['J / K / L', 'Voltar 5 s / pausar / tocar'],
+                ['← →', '1 s (Shift: 5 s)'], ['Home / End', 'Começo / fim'], ['= / −', 'Zoom da timeline'], ['\\', 'Ver o vídeo inteiro'],
+                ['M', 'Marcador'], ['N', 'Ímã'], ['H', 'Ocultar legenda'], ['Ctrl+D', 'Duplicar'], ['Ctrl+C / V', 'Copiar / colar'], ['Ctrl+Z', 'Desfazer'],
+              ].map(([k, d]) => (
+                <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '2px 0' }}>
+                  <kbd>{k}</kbd><span>{d}</span>
+                </div>
+              ))}
+            </div>
+          )}
           {/* celular: cursor fixo no meio, a timeline corre por baixo */}
           {isMobile && <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 2, marginLeft: -1, background: '#fff', zIndex: 5, pointerEvents: 'none', boxShadow: '0 0 6px rgba(0,0,0,0.6)' }} />}
           {!isMobile && (
             <div style={{ position: 'relative', width: 42, flexShrink: 0, borderRight: `1px solid ${PR.line}`, background: PR.tools }}>
             {/* as ferramentas rolam dentro da altura das faixas (não deixam a timeline mais alta) */}
             <div className="rf-tl-tools" style={{ position: 'absolute', inset: 0, overflowY: 'auto', scrollbarWidth: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '6px 0' }}>
-              <ToolIcon title="Desfazer (Ctrl+Z)" disabled={!canUndo} onClick={undo}><Icon name="undo" size={15} strokeWidth={2} /></ToolIcon>
-              <ToolIcon title="Refazer (Ctrl+Shift+Z)" disabled={!canRedo} onClick={redo}><Icon name="undo" size={15} strokeWidth={2} style={{ transform: 'scaleX(-1)' }} /></ToolIcon>
-              <span style={{ width: 22, height: 1, background: PR.line, margin: '3px 0' }} />
-              <ToolIcon title={`Dividir ${SEL_LABEL[selKind]} no playhead (S ou Ctrl+B)`} disabled={!canSplitSel} onClick={splitSelected}><Icon name="scissors" size={15} strokeWidth={2} /></ToolIcon>
-              <ToolIcon title={delTitle} disabled={!canDeleteSel} onClick={deleteSelected}><Icon name="close" size={15} strokeWidth={2.2} /></ToolIcon>
-              <ToolIcon title={rangeTool ? 'Seleção de trecho ligada: arraste na timeline para selecionar todas as faixas (R) · Delete corta' : 'Selecionar um trecho em todas as faixas (R) — ou arraste na régua · I/O marcam entrada/saída · Ctrl+A tudo'} active={rangeTool} onClick={() => setRangeTool((v) => !v)}>
+              {/* Ferramentas (como no Premiere): escolha a ferramenta, depois aja na timeline */}
+              <ToolIcon title="Seleção (V) — clique para selecionar, arraste para mover" active={!razorTool && !rangeTool} onClick={() => pickTool('select')}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 8-6 1.6L10 19z" /></svg>
+              </ToolIcon>
+              <ToolIcon title="Navalha (C) — clique na timeline para cortar ali (vídeo e legenda)" active={razorTool} onClick={() => pickTool(razorTool ? 'select' : 'razor')}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20l9-9M13 11l7-7v6l-4 4M8 4l3 3" /><circle cx="6" cy="18" r="2" /></svg>
+              </ToolIcon>
+              <ToolIcon title="Seleção de trecho (R) — arraste para marcar o trecho em todas as faixas · I/O marcam entrada/saída" active={rangeTool} onClick={() => pickTool(rangeTool ? 'select' : 'range')}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M4 4v16M20 4v16" /><rect x="7.5" y="7" width="9" height="10" rx="1.5" strokeDasharray="2.5 2" /></svg>
               </ToolIcon>
-              <ToolIcon title={cutStart == null ? 'Cortar um trecho: marca o início no playhead (clique de novo no fim)' : `Fechar o corte em ${fmtDuration(cur)}`} active={cutStart != null} onClick={toggleCutRange}>
-                <span style={{ display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 800, lineHeight: 1 }}>[ ]</span>
-              </ToolIcon>
-              <ToolIcon title={snapOn ? 'Ímã ligado: os blocos encaixam no playhead, marcadores e pontas (N)' : 'Ímã desligado (N)'} active={snapOn} onClick={toggleSnap}>
+              <span className="rf-tsep" />
+              <ToolIcon title={`Dividir no playhead (Ctrl+K · S divide ${SEL_LABEL[selKind]})`} onClick={() => razorCut(cur)}><Icon name="scissors" size={15} strokeWidth={2} /></ToolIcon>
+              <ToolIcon title={delTitle} disabled={!canDeleteSel} onClick={deleteSelected}><Icon name="trash" size={15} strokeWidth={2} /></ToolIcon>
+              <ToolIcon title="Cortar do ponto anterior até o playhead (Q)" onClick={() => rippleTrim('prev')}><span className="rf-tkey">Q</span></ToolIcon>
+              <ToolIcon title="Cortar do playhead até o próximo ponto (W)" onClick={() => rippleTrim('next')}><span className="rf-tkey">W</span></ToolIcon>
+              <span className="rf-tsep" />
+              <ToolIcon title={snapOn ? 'Ímã ligado: encaixa no playhead, marcadores e pontas (N)' : 'Ímã desligado (N)'} active={snapOn} onClick={toggleSnap}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3v8a6 6 0 0 0 12 0V3" /><path d="M6 7h4M14 7h4" /></svg>
               </ToolIcon>
-              <ToolIcon title="Marcador no playhead (M) — clique de novo no mesmo ponto para tirar" onClick={toggleMarker}>
+              <ToolIcon title="Marcador no playhead (M) — de novo no mesmo ponto tira" onClick={toggleMarker}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round"><path d="M6 3h12v12l-6 6-6-6z" /></svg>
               </ToolIcon>
               <ToolIcon title="Duplicar o item selecionado (Ctrl+D) · Ctrl+C / Ctrl+V cola no playhead" disabled={!['media', 'text', 'vfx', 'trans'].includes(selKind)} onClick={duplicateSel}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" /></svg>
               </ToolIcon>
-              <span style={{ width: 22, height: 1, background: PR.line, margin: '3px 0' }} />
-              <ToolIcon title="Texto (aba Texto)" active={tab === 'texto'} onClick={() => setTab('texto')}><Icon name="type" size={15} strokeWidth={2} /></ToolIcon>
-              <ToolIcon title="Minhas mídias (logo, imagens, vídeos, músicas)" active={tab === 'midias'} onClick={() => setTab('midias')}><Icon name="image" size={15} strokeWidth={2} /></ToolIcon>
-              <ToolIcon title="Efeitos e transições" active={tab === 'efeitos'} onClick={() => setTab('efeitos')}><Icon name="sparkles" size={15} strokeWidth={2} /></ToolIcon>
-              <span style={{ width: 22, height: 1, background: PR.line, margin: '3px 0' }} />
-              <ToolIcon title="Ver o vídeo inteiro na timeline" onClick={fitAll}><Icon name="search" size={15} strokeWidth={2} /></ToolIcon>
+              <span className="rf-tsep" />
+              <ToolIcon title="Desfazer (Ctrl+Z)" disabled={!canUndo} onClick={undo}><Icon name="undo" size={15} strokeWidth={2} /></ToolIcon>
+              <ToolIcon title="Refazer (Ctrl+Shift+Z)" disabled={!canRedo} onClick={redo}><Icon name="undo" size={15} strokeWidth={2} style={{ transform: 'scaleX(-1)' }} /></ToolIcon>
+              <span className="rf-tsep" />
+              <ToolIcon title="Ver o vídeo inteiro na timeline (\)" onClick={fitAll}><Icon name="search" size={15} strokeWidth={2} /></ToolIcon>
+              <ToolIcon title="Atalhos do teclado (?)" active={showKeys} onClick={() => setShowKeys((v) => !v)}><span className="rf-tkey">?</span></ToolIcon>
             </div>
             </div>
           )}
@@ -4711,6 +4849,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
             <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropT(null); }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
             {/* ferramenta de seleção: arrastar em qualquer faixa marca o trecho (todas as faixas) */}
+            {razorTool && !isMobile && (
+              <div onMouseMove={(e) => setRazorT(timeAtClientX(e.clientX))} onMouseLeave={() => setRazorT(null)}
+                onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                onClick={(e) => { e.stopPropagation(); razorCut(timeAtClientX(e.clientX)); }}
+                title="Navalha: clique para cortar aqui (vídeo e legenda) · V volta para a seleção"
+                style={{ position: 'absolute', left: 0, right: 0, top: LANE.ruler, bottom: 0, zIndex: 18, cursor: 'crosshair' }} />
+            )}
+            {razorTool && razorT != null && (
+              <div style={{ position: 'absolute', left: X(razorT), top: LANE.ruler, bottom: 0, width: 0, borderLeft: '1.5px dashed #FF6B35', pointerEvents: 'none', zIndex: 19 }} />
+            )}
             {rangeTool && !isMobile && (
               <div onMouseDown={(e) => startRangeSel(e)} title="Arraste para selecionar o trecho em todas as faixas · Delete corta vídeo, áudio e legenda · Esc sai"
                 style={{ position: 'absolute', left: 0, right: 0, top: LANE.ruler, bottom: 0, zIndex: 18, cursor: 'col-resize', background: 'rgba(59,130,246,0.04)' }} />
@@ -5187,13 +5335,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <span style={{ fontSize: 10.5, color: PR.dim, minWidth: 64, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pps <= fitPps + 0.01 ? 'inteiro' : `${Math.round((pps / fitPps) * 100)}%`}</span>
           </div>
         )}
-        <details className="rf-tl-help" style={{ fontSize: 10.5, color: C.faint, marginTop: 5 }}>
+        <details className="rf-tl-help rf-tl-below" style={{ fontSize: 10.5, color: C.faint, marginTop: 5 }}>
           <summary style={{ cursor: 'pointer', fontSize: 10.5, color: C.faint, fontWeight: 600 }}>Atalhos e dicas da timeline</summary>
           <div style={{ marginTop: 4, lineHeight: 1.5 }}>👁 esconde a faixa (some da prévia e do vídeo final) · 🔒 trava a faixa · M (no A1) deixa o áudio mudo · tecla <b>M</b> põe marcador · <b>N</b> liga/desliga o ímã · <b>Ctrl+D</b> duplica · <b>Ctrl+C / Ctrl+V</b> copia e cola no playhead. Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> (arraste sobre ele para cortar um trecho)· <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
         </details>
 
-        {/* Resumo + trecho selecionado na timeline (editar palavras) */}
-        <div style={{ marginTop: 8 }}>
+        {/* Resumo + trecho selecionado na timeline (editar palavras) — em tela grande vão para
+            a barra da timeline (resumo) e para o painel Legenda (trecho) */}
+        <div className="rf-tl-below" style={{ marginTop: 8 }}>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
             <Chip label="Palavras" value={stats.total} color={C.text} />
             <Chip label="Cortadas" value={stats.removed} color={C.red} />
@@ -5201,77 +5350,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <Chip label={speed !== 1 ? `Duração final · ${fmtSpeed(speed)}` : 'Duração final'} value={fmtDuration((stats.keptSec + retimeDelta) / speed)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
           </div>
 
-          {selSeg && (
-            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 10, padding: '8px 10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.4 }}>
-                  {selCaptions.length > 1 ? `${selCaptions.length} BLOCOS SELECIONADOS` : `TRECHO ${sel + 1}/${segments.length} · ${fmtDuration(selSeg.start)}`}
-                </div>
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <button onClick={() => { setSelKind('caption'); setSelSet(new Set(segments.map((_, i) => i))); }} style={miniBtn(false, false)}>Selecionar todas</button>
-                  <button onClick={mergeSelected} disabled={selCaptions.length < 2 && sel >= segments.length - 1} style={miniBtn(false, selCaptions.length < 2 && sel >= segments.length - 1)}>
-                    <Icon name="arrowLeft" size={12} strokeWidth={2.2} style={{ transform: 'rotate(180deg)' }} /> Juntar
-                  </button>
-                  {selCaptions.length === 1 && (
-                    <button onClick={() => setEditText(editText == null ? selSeg.words.filter((w) => !w.removed).map((w) => w.word).join(' ') : null)} disabled={segRemoved(selSeg)} style={miniBtn(editText != null, segRemoved(selSeg))}>
-                      <Icon name="edit" size={12} strokeWidth={2.2} /> Editar texto
-                    </button>
-                  )}
-                  {(() => {
-                    const allHidden = selCaptions.every((i) => segHidden(segments[i]));
-                    return (
-                      <button onClick={() => setCaptionsHidden(!allHidden)} style={miniBtn(allHidden)} title="Esconde só o texto: a fala continua no vídeo">
-                        <Icon name={allHidden ? 'eye' : 'eyeOff'} size={12} strokeWidth={2.2} /> {allHidden ? 'Mostrar legenda' : 'Ocultar legenda'}
-                      </button>
-                    );
-                  })()}
-                  {(() => {
-                    const allCut = selCaptions.every((i) => segRemoved(segments[i]));
-                    return (
-                      <button onClick={() => setCaptionsCut(!allCut)} style={miniBtn(allCut)} title="Corta a fala destes blocos do vídeo">
-                        <Icon name={allCut ? 'undo' : 'scissors'} size={12} strokeWidth={2.2} /> {allCut ? 'Reincluir' : 'Cortar trecho'}
-                      </button>
-                    );
-                  })()}
-                </div>
-              </div>
-              {editText != null && selCaptions.length === 1 && (
-                <div style={{ display: 'grid', gap: 6, marginBottom: 10 }}>
-                  <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={2} autoFocus
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEditText(); } if (e.key === 'Escape') setEditText(null); }}
-                    style={{ width: '100%', boxSizing: 'border-box', background: '#13131B', color: C.text, border: `1px solid ${C.orange}`, borderRadius: 9, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <button onClick={saveEditText} style={miniBtn(true, false)}><Icon name="check" size={12} strokeWidth={2.2} /> Salvar texto</button>
-                    <button onClick={() => setEditText(null)} style={miniBtn(false, false)}>Cancelar</button>
-                    <span style={{ fontSize: 11, color: C.faint }}>Muda só o que aparece na legenda, no mesmo tempo da fala.</span>
-                  </div>
-                </div>
-              )}
-              <div style={{ lineHeight: 1.7, fontSize: 13 }}>
-                {selSeg.words.map((w, wi) => (
-                  <span key={wi} onClick={() => toggleWord(sel, wi)} onDoubleClick={() => editWord(sel, wi)} title={`${w.start.toFixed(1)}s — clique corta, 2 cliques edita`}
-                    style={{ display: 'inline-block', margin: '0 3px', padding: '2px 6px', borderRadius: 7, cursor: 'pointer', userSelect: 'none', textDecoration: w.removed ? 'line-through' : 'none', opacity: w.removed ? 0.42 : 1, background: w.removed ? 'rgba(240,82,107,0.14)' : 'transparent', color: w.removed ? C.red : C.text }}>
-                    {w.word}
-                  </span>
-                ))}
-              </div>
-              {fixText != null ? (
-                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                  <input autoFocus value={fixText} onChange={(e) => setFixText(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { setPhraseText(sel, fixText); setFixText(null); } if (e.key === 'Escape') setFixText(null); }}
-                    style={{ flex: '1 1 240px', minHeight: 38, padding: '0 11px', borderRadius: 9, border: `1px solid ${C.orange}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 14, fontFamily: 'inherit' }} />
-                  <button onClick={() => { setPhraseText(sel, fixText); setFixText(null); }} style={{ ...miniBtn(false, false), color: C.green, borderColor: C.green }}>Salvar</button>
-                  <button onClick={() => setFixText(null)} style={miniBtn(false, false)}>Cancelar</button>
-                </div>
-              ) : (
-                <button onClick={() => setFixText(selSeg.words.filter((w) => !w.removed).map((w) => w.word).join(' '))} disabled={segRemoved(selSeg)}
-                  style={{ ...miniBtn(false, segRemoved(selSeg)), marginTop: 8 }}>
-                  <Icon name="edit" size={12} strokeWidth={2.2} /> Corrigir o texto da legenda
-                </button>
-              )}
-              <div style={{ fontSize: 10.5, color: C.faint, marginTop: 4 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir só ela · arraste as bordas do bloco na timeline · Ctrl/Shift+clique nos blocos seleciona vários · S divide · <b>Delete</b> corta o trecho (vídeo, áudio e legenda) · <b>H</b> só oculta a legenda</div>
-            </div>
-          )}
+          {trechoBlock}
         </div>
 
         <CostLine
@@ -5282,9 +5361,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           style={{ marginTop: 18 }}
         />
         {renderErr && <div ref={renderErrRef}><RenderError err={renderErr} onDisable={disableFeature} onClose={() => setRenderErr(null)} /></div>}
+<div className="rf-tl-below">
         <PrimaryButton onClick={generate} disabled={busy || sending || allGone} style={{ width: '100%', marginTop: 12 }}>
           {allGone ? 'Você cortou tudo — reinclua algo' : busy || sending ? 'Gerando…' : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Icon name="clapper" size={18} strokeWidth={1.9} /> Renderizar vídeo final</span>)}
         </PrimaryButton>
+        </div>
         </div>
       </div>
 
@@ -5430,6 +5511,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         .rf-tl-navbtn:hover{ background: rgba(255,255,255,0.1); }
         .rf-tl-navbtn--go{ border: none; color: #fff; font-weight: 800; box-shadow: 0 6px 16px -8px rgba(255,107,53,0.8); }
         .rf-tl-navbtn--go:hover{ filter: brightness(1.08); }
+        .rf-tl-stats{ display: none; order: 99; margin-left: auto; font-size: 11px; color: #8B9099; white-space: nowrap; }
+        .rf-tl-stats b{ color: #E8EAF0; font-weight: 700; }
+        .rf-only-app{ display: none; }
+        @media (min-width: 1101px){
+          .rf-tl-card:not(.rf-m) .rf-tl-below{ display: none !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-stats{ display: inline; }
+          .rf-tl-card:not(.rf-m) .rf-only-app{ display: block; }
+        }
+        .rf-tsep{ width: 22px; height: 1px; background: rgba(255,255,255,0.08); margin: 3px 0; flex-shrink: 0; }
+        .rf-tkey{ font: 800 12px inherit; font-family: inherit; line-height: 1; }
+        .rf-keys{ position: absolute; left: 50px; top: 6px; z-index: 40; width: 300px; max-height: calc(100% - 12px); overflow-y: auto; padding: 10px 12px; border-radius: 10px;
+          background: #1C1D23; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 18px 40px -12px rgba(0,0,0,0.8); font-size: 11.5px; color: #D6D8DE; }
+        .rf-keys kbd{ min-width: 64px; display: inline-block; text-align: center; padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); font: 700 10.5px inherit; font-family: inherit; color: #fff; }
         .rf-lane-rs{ position: absolute; left: 0; right: 0; bottom: 0; height: 5px; cursor: row-resize; z-index: 2; }
         .rf-lane-rs:hover{ background: linear-gradient(transparent, #2D8CFF); }
         .rf-tbtn{ width: 28px; height: 28px; flex-shrink: 0; display: grid; place-items: center; border-radius: 7px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #D6D8DE; cursor: pointer; padding: 0; }

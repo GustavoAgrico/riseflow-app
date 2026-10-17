@@ -9,7 +9,7 @@ import { queue } from '../queue.js';
 import { requireAuth, requireVerified } from './auth.js';
 import { getSettings } from '../auth/settings.js';
 import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod, trialCovers, useFreeEdit, refundFreeEdit, holdRemote, releaseRemote } from '../auth/billing.js';
-import { remoteAccount, remoteCheck, remoteCharge, holdRemoteCharge, settleRemoteCharge, sendAccountError } from '../account.js';
+import { remoteAccount, remoteCheck, remoteCharge, holdRemoteCharge, settleRemoteCharge, sendAccountError, rememberJobToken } from '../account.js';
 import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../../shared/credits.js';
 import { registerMedia, resolveMedia, relinkMedia, mediaStatus } from '../mediaStore.js';
 import { formatBytes, freeDiskBytes } from '../storage.js';
@@ -221,6 +221,7 @@ function chargeAndQueue(req, res, mode, jobInput, { sourceId } = {}) {
       (r) => {
         const job = queue.create({ id, mode, ...jobInput });
         holdRemoteCharge(job.id, req, r.chargeId);
+        rememberJobToken(job.id, req); // transcrição pela conta do site, se precisar
         res.status(201).json({ ...queue.public(job), creditsCharged: r.creditsCharged || 0, ...(r.freeEdit ? { freeEdit: true, freeEditsLeft: r.freeEditsLeft } : {}) });
       },
       (err) => {
@@ -972,6 +973,68 @@ jobsRouter.get('/media/:id/preview', async (req, res) => {
     res.sendFile(out);
   } catch (err) {
     res.status(500).json({ error: err.message || 'falha ao preparar a prévia' });
+  }
+});
+
+// POST /api/transcribe/remote (multipart "audio") → transcrição feita AQUI (no site, com a
+// chave de transcrição do servidor) para o app de PC que não tem chave nem Whisper local.
+// Só o áudio (leve) vem; o vídeo continua no computador da pessoa. Limite diário por conta.
+const remoteMinutes = new Map(); // userId → { day, min }
+const REMOTE_DAILY_MIN = Number(process.env.REMOTE_TRANSCRIBE_DAILY_MIN) || 300;
+jobsRouter.post('/transcribe/remote', requireAuth, requireVerified, uploadMedia.single('audio'), async (req, res) => {
+  const file = req.file?.path;
+  if (!file) return res.status(400).json({ error: 'envie o áudio (campo "audio")' });
+  const drop = () => fs.unlink(file, () => {});
+  if (remoteAccount() || ['whisper-local', 'mock'].includes(config.transcribe.provider)) {
+    drop();
+    return res.status(503).json({ error: 'este servidor não faz transcrição remota' });
+  }
+  let work = null;
+  try {
+    const meta = await probeSummary(file);
+    const minutes = (Number(meta.duration) || 0) / 60;
+    const day = new Date().toISOString().slice(0, 10);
+    const used = remoteMinutes.get(req.user.id);
+    const sofar = used && used.day === day ? used.min : 0;
+    if (sofar + minutes > REMOTE_DAILY_MIN) {
+      drop();
+      return res.status(429).json({ error: `limite diário de transcrição pelo app atingido (${REMOTE_DAILY_MIN} min). Tente amanhã ou configure uma chave de transcrição no app.` });
+    }
+    remoteMinutes.set(req.user.id, { day, min: sofar + minutes });
+    work = fs.mkdtempSync(path.join(config.paths.work, 'rtx-'));
+    const { transcribe } = await import('../pipeline/transcribe/index.js');
+    const t = await transcribe(file, work, { ...meta, hasAudio: true });
+    res.json({ provider: t.provider, language: t.language, text: t.text, segments: t.segments });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'falha na transcrição' });
+  } finally {
+    drop();
+    if (work) fs.rm(work, { recursive: true, force: true }, () => {});
+  }
+});
+
+// POST /api/cleanup/remote { text } → um bloco da correção da fala pela IA deste servidor,
+// para o app de PC sem chave de IA (só o texto numerado vem). Limite diário por conta.
+const remoteCleanups = new Map(); // userId → { day, n }
+const REMOTE_CLEANUP_DAILY = Number(process.env.REMOTE_CLEANUP_DAILY) || 400;
+jobsRouter.post('/cleanup/remote', requireAuth, requireVerified, async (req, res) => {
+  const text = String(req.body?.text || '');
+  if (!text || text.length > 40_000) return res.status(400).json({ error: 'texto vazio ou grande demais' });
+  if (remoteAccount()) return res.status(503).json({ error: 'este servidor não faz correção remota' });
+  const day = new Date().toISOString().slice(0, 10);
+  const used = remoteCleanups.get(req.user.id);
+  const n = used && used.day === day ? used.n : 0;
+  if (n >= REMOTE_CLEANUP_DAILY) return res.status(429).json({ error: 'limite diário de correção da fala pelo app atingido — tente amanhã' });
+  remoteCleanups.set(req.user.id, { day, n: n + 1 });
+  try {
+    const { cleanupWindowLLM } = await import('../pipeline/cleanupLLM.js');
+    const out = await cleanupWindowLLM(text, {
+      anthropicKey: config.analyze.anthropicKey, model: config.analyze.model, anthropicWorkspaceId: config.analyze.anthropicWorkspaceId,
+      groqKey: config.analyze.groqKey, groqModel: config.analyze.groqModel,
+    });
+    res.json({ text: out });
+  } catch (err) {
+    res.status(502).json({ error: err.message || 'falha na IA' });
   }
 });
 

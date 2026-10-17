@@ -690,7 +690,7 @@ function gapsBetween(words, duration, minGap) {
  * de fala (`isNonSpeech`) vira corte. Sons colados numa palavra ficam (podem ser o fim
  * dela). → [{start, end}] já com as bordas onde o som some.
  */
-export async function findNoises(input, words, env, venv, { duration = Infinity, max = 400, concurrency = 4 } = {}) {
+export async function findNoises(input, words, env, venv, { duration = Infinity, max = 20000, concurrency = 4, chunk = 300 } = {}) {
   if (!env || !venv) return [];
   const gaps = protectWords(gapsBetween(words, duration, 0.25), words);
   const edge = 0.02;
@@ -702,15 +702,43 @@ export async function findNoises(input, words, env, venv, { duration = Infinity,
     }
   }
   const found = [];
-  let next = 0;
-  const worker = async () => {
-    while (next < Math.min(runs.length, max)) {
-      const r = runs[next++];
-      const x = await readPcm(input, r.start - 0.03, r.end - r.start + 0.06);
-      if (x && isNonSpeech(soundFeatures(x))) found.push(r);
+  const list = runs.slice(0, max);
+  if (list.length > 30) {
+    // Vídeo longo: lê o áudio em blocos de `chunk` s (uma leitura por bloco) em vez de
+    // uma por trecho — antes só os primeiros 400 trechos eram olhados e as tosses do fim
+    // de um vídeo de 14 min passavam.
+    const RATE = 16000;
+    const groups = new Map();
+    for (const r of list) {
+      const k = Math.floor(r.start / chunk);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(r);
     }
-  };
-  await Promise.all(Array.from({ length: concurrency }, worker));
+    for (const [k, rs] of groups) {
+      const a = Math.max(0, k * chunk - 1);
+      const x = await readPcm(input, a, chunk + 4, RATE);
+      for (const r of rs) {
+        let seg = null;
+        if (x) {
+          const i0 = Math.max(0, Math.round((r.start - 0.03 - a) * RATE));
+          const i1 = Math.min(x.length, Math.round((r.end + 0.03 - a) * RATE));
+          if (i1 - i0 > RATE * 0.04) seg = x.subarray(i0, i1);
+        }
+        if (!seg) seg = await readPcm(input, r.start - 0.03, r.end - r.start + 0.06);
+        if (seg && isNonSpeech(soundFeatures(seg))) found.push(r);
+      }
+    }
+  } else {
+    let next = 0;
+    const worker = async () => {
+      while (next < list.length) {
+        const r = list[next++];
+        const x = await readPcm(input, r.start - 0.03, r.end - r.start + 0.06);
+        if (x && isNonSpeech(soundFeatures(x))) found.push(r);
+      }
+    };
+    await Promise.all(Array.from({ length: concurrency }, worker));
+  }
   // bordas: até onde o som ainda se ouve (volume total acima do ruído), dentro do vão
   const thr = speechThreshold(env);
   return found
