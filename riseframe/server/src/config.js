@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v141';
+export const APP_VERSION = 'v142';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -162,6 +162,9 @@ export const config = {
     // Custo de cada recurso. Sobrescreva com CREDIT_COSTS='{"video":20,"image":5}'.
     costs: { ...DEFAULT_COSTS, ...json(process.env.CREDIT_COSTS, {}) },
     periodDays: num(process.env.BILLING_PERIOD_DAYS, 30),
+    // App de PC/Mac: depois das edições grátis de teste, só funciona com plano mensal ativo
+    // (recarga avulsa sozinha não libera). BILLING_APP_REQUIRES_PLAN=off aceita recargas.
+    appRequiresPlan: String(process.env.BILLING_APP_REQUIRES_PLAN || 'on').toLowerCase() !== 'off',
     // Recursos de quem não tem plano ativo (o vídeo básico é sempre liberado).
     freeFeatures: json(process.env.BILLING_FREE_FEATURES, []),
     // Planos mensais: créditos renovam a cada período e não acumulam. `features` usa os

@@ -135,6 +135,12 @@ export async function getPublicInfo() {
   if (!r.ok) throw new Error('falha ao carregar informações');
   return r.json();
 }
+/** Instaladores do app de PC/Mac mais novos (GitHub Releases), por sistema. */
+export async function getDownloads() {
+  const r = await fetch(`${BASE}/public/download`);
+  if (!r.ok) throw new Error('falha ao carregar os downloads');
+  return r.json();
+}
 // Admin: demonstração antes/depois da página inicial.
 export const adminShowcase = () => billingCall('/admin/showcase');
 export const adminSetShowcase = (jobId) => billingCall('/admin/showcase', 'POST', { jobId });

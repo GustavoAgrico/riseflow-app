@@ -4,6 +4,7 @@ import Icon, { Logo } from './components/Icon.jsx';
 import { Spinner } from './components/ui.jsx';
 import { useAuth } from './AuthContext.jsx';
 import Landing from './pages/Landing.jsx';
+import Download from './pages/Download.jsx';
 import Legal from './pages/Legal.jsx';
 import Auth from './pages/Auth.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -127,6 +128,11 @@ function Sidebar({ user, billing, view, onView, onLogout }) {
         ) : (
           <>
             <CreditsCard billing={billing} onOpen={() => onView('plans')} />
+            {!inDesktopApp() && (
+              <a href="/download" style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 40, padding: '0 12px', borderRadius: 11, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, color: C.text, fontSize: 13.5, fontWeight: 600, textDecoration: 'none' }}>
+                <Icon name="download" size={16} strokeWidth={2} /> App para computador
+              </a>
+            )}
             <InstallApp />
           </>
         )}
@@ -195,6 +201,39 @@ function MobileTabBar({ view, onView }) {
   );
 }
 
+const inDesktopApp = () => typeof window !== 'undefined' && Boolean(window.electron);
+
+/** App de PC/Mac sem plano (teste grátis usado): assinar ou renovar para continuar. */
+function AppPaywall({ user, onRefresh, onLogout }) {
+  const [busy, setBusy] = useState(false);
+  async function refresh() {
+    setBusy(true);
+    try { await onRefresh?.(); } finally { setBusy(false); }
+  }
+  return (
+    <div style={{ minHeight: '100vh' }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 24px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', padding: '22px 24px', borderRadius: 18, border: `1px solid ${C.border}`, background: 'linear-gradient(135deg, rgba(255,107,53,0.14), rgba(124,58,237,0.14))' }}>
+          <Logo size={40} />
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{ fontSize: 20, fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -0.4 }}>Assine para continuar usando o app</div>
+            <div style={{ fontSize: 14, color: C.muted, marginTop: 4, lineHeight: 1.5 }}>
+              Seu teste grátis acabou (ou o plano venceu). O app de computador fica liberado enquanto o plano mensal estiver ativo — seus projetos continuam salvos.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={refresh} disabled={busy} style={{ minHeight: 40, padding: '0 16px', borderRadius: 11, border: 'none', background: GRAD, color: '#fff', fontWeight: 700, fontSize: 13.5, fontFamily: 'inherit', cursor: 'pointer' }}>
+              {busy ? 'Conferindo…' : 'Já assinei — atualizar'}
+            </button>
+            <button onClick={onLogout} style={{ minHeight: 40, padding: '0 14px', borderRadius: 11, border: `1px solid ${C.borderStrong}`, background: 'transparent', color: C.text, fontWeight: 600, fontSize: 13.5, fontFamily: 'inherit', cursor: 'pointer' }}>Sair</button>
+          </div>
+        </div>
+      </div>
+      <Plans user={user} />
+    </div>
+  );
+}
+
 // Detecta ?reset=TOKEN no link de recuperação de senha vindo do e-mail.
 function readResetToken() {
   try {
@@ -245,7 +284,8 @@ function readBillingReturn() {
 }
 
 export default function Root() {
-  const { user, ready, logout, billing } = useAuth();
+  const { user, ready, logout, billing, refreshBilling } = useAuth();
+  const [path, setPath] = useState(() => (typeof window !== 'undefined' ? window.location.pathname : '/'));
   const [resetToken] = useState(readResetToken);
   const [deviceCode, setDeviceCode] = useState(readDeviceCode);
   const [publicRoute, setPublicRoute] = useState(resetToken || deviceCode ? 'login' : 'landing');
@@ -261,12 +301,30 @@ export default function Root() {
     window.scrollTo(0, 0);
   }
 
+  // Voltar/avançar do navegador entre a página de download e o resto.
+  useEffect(() => {
+    const sync = () => setPath(window.location.pathname);
+    window.addEventListener('popstate', sync);
+    return () => window.removeEventListener('popstate', sync);
+  }, []);
+
   // Qualquer tela pode pedir a página de planos (ex.: saldo insuficiente, recurso bloqueado).
   useEffect(() => {
     const open = () => go('plans');
     window.addEventListener('rf:open-plans', open);
     return () => window.removeEventListener('rf:open-plans', open);
   }, []);
+
+  // Página de download do app de PC/Mac (pública; abre mesmo logado).
+  if (path === '/download') {
+    const leave = (route) => {
+      window.history.pushState({}, '', '/');
+      setPath('/');
+      if (route) setPublicRoute(route);
+      window.scrollTo(0, 0);
+    };
+    return <Download loggedIn={Boolean(user)} onHome={() => leave(null)} onEnter={() => leave('register')} onLogin={() => leave('login')} />;
+  }
 
   // Páginas públicas de Termos e Privacidade (abrem mesmo logado).
   const legalPage = typeof window !== 'undefined' && ['/termos', '/privacidade'].includes(window.location.pathname)
@@ -313,6 +371,11 @@ export default function Root() {
       setDeviceCode('');
     };
     return <DeviceLogin code={deviceCode} user={user} onDone={done} />;
+  }
+
+  // App de PC/Mac: acabou o teste grátis e não há plano mensal ativo → só a tela de planos.
+  if (inDesktopApp() && billing?.appAccess === false) {
+    return <AppPaywall user={user} onRefresh={refreshBilling} onLogout={logout} />;
   }
 
   return (
