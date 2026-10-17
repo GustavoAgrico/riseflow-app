@@ -415,6 +415,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
       if (Array.isArray(options.textLayers)) options.textLayers = options.textLayers.map(remapRange).filter(Boolean);
       // Quadros-chave do Transformar (tempo original) → mesma posição no vídeo cortado.
       if (Array.isArray(options.transitions)) options.transitions = options.transitions.map((tr) => ({ ...tr, t: +remapTime(Number(tr.t), keep).toFixed(3) }));
+      // Velocidade por trecho e congelar quadro: do tempo original para o vídeo cortado.
+      if (Array.isArray(options.speedRanges)) options.speedRanges = options.speedRanges.map((r) => ({ ...r, start: +remapTime(Number(r.start), keep).toFixed(3), end: +remapTime(Number(r.end), keep).toFixed(3) })).filter((r) => r.end - r.start >= 0.05);
+      if (Array.isArray(options.freezes)) options.freezes = options.freezes.map((f) => ({ ...f, t: +remapTime(Number(f.t), keep).toFixed(3) }));
       if (Array.isArray(options.transformKeys)) options.transformKeys = options.transformKeys.map((k) => ({ ...k, t: +remapTime(Number(k.t), keep).toFixed(3) }));
       if (Array.isArray(options.sfxMoments)) options.sfxMoments = options.sfxMoments.map((m) => ({ ...m, t: +remapTime(Number(m.t), keep).toFixed(3) }));
       // Minhas mídias também foram posicionadas na timeline original.
