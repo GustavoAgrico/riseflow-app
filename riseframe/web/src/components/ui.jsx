@@ -25,7 +25,7 @@ export function PrimaryButton({ children, onClick, disabled, style }) {
         transform: on && hover ? 'translateY(-2px)' : 'translateY(0)',
         boxShadow: on
           ? hover
-            ? '0 14px 34px -8px rgba(255,107,53,0.55), 0 6px 18px -6px rgba(124,58,237,0.5)'
+            ? '0 14px 34px -8px rgba(255,107,53,0.55), 0 6px 18px -6px rgba(194,65,12,0.5)'
             : '0 8px 22px -8px rgba(255,107,53,0.45)'
           : 'none',
         transition: 'transform .18s cubic-bezier(.22,1,.36,1), box-shadow .18s ease',

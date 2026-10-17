@@ -25,7 +25,7 @@ export default function ProjectCard({ job, onOpen, extra }) {
   const vertical = job.aspect === '9:16';
   return (
     <div className="rf-proj" style={{ borderRadius: 16, overflow: 'hidden', border: `1px solid ${C.border}`, background: 'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015))', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ position: 'relative', aspectRatio: '16 / 10', background: 'radial-gradient(circle at 30% 20%, rgba(255,107,53,0.25), transparent 60%), radial-gradient(circle at 80% 90%, rgba(124,58,237,0.3), transparent 55%), #101018', overflow: 'hidden' }}>
+      <div style={{ position: 'relative', aspectRatio: '16 / 10', background: 'radial-gradient(circle at 30% 20%, rgba(255,107,53,0.25), transparent 60%), radial-gradient(circle at 80% 90%, rgba(194,65,12,0.3), transparent 55%), #101018', overflow: 'hidden' }}>
         {thumbOk && (
           <video
             src={`${previewUrl(job.id)}#t=0.8`}

@@ -81,7 +81,7 @@ export default function Result({ job, onReset, onEditTimeline }) {
             style={{
               textAlign: 'center', textDecoration: 'none', background: GRAD, color: '#fff', fontWeight: 700, fontSize: 15.5, borderRadius: 14, padding: '15px',
               transform: dlHover ? 'translateY(-2px)' : 'none',
-              boxShadow: dlHover ? '0 14px 34px -8px rgba(255,107,53,0.55), 0 6px 18px -6px rgba(124,58,237,0.5)' : '0 8px 22px -8px rgba(255,107,53,0.45)',
+              boxShadow: dlHover ? '0 14px 34px -8px rgba(255,107,53,0.55), 0 6px 18px -6px rgba(194,65,12,0.5)' : '0 8px 22px -8px rgba(255,107,53,0.45)',
               transition: 'transform .18s ease, box-shadow .18s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
             }}
           >
@@ -131,7 +131,7 @@ export default function Result({ job, onReset, onEditTimeline }) {
         <div
           style={{
             marginBottom: 18,
-            background: 'linear-gradient(180deg, rgba(255,107,53,0.08), rgba(124,58,237,0.05))',
+            background: 'linear-gradient(180deg, rgba(255,107,53,0.08), rgba(194,65,12,0.05))',
             border: `1px solid ${C.border}`,
             borderRadius: 12,
             padding: '12px 14px',
@@ -171,7 +171,7 @@ export default function Result({ job, onReset, onEditTimeline }) {
               <span
                 key={t.term}
                 style={{
-                  background: 'rgba(124,58,237,0.16)',
+                  background: 'rgba(194,65,12,0.16)',
                   color: '#C4B5FD',
                   border: `1px solid ${C.purple}44`,
                   borderRadius: 20,

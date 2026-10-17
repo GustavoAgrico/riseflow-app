@@ -2859,7 +2859,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   style={{ borderRadius: 9, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)', cursor: isMobile ? 'pointer' : 'grab', overflow: 'hidden', userSelect: 'none' }}>
                   <div style={{ position: 'relative', aspectRatio: '16 / 9', overflow: 'hidden', background: '#111' }}>
                     {x.kind === 'sfx' ? (
-                      <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg, rgba(124,58,237,0.35), rgba(255,107,53,0.25))' }}>
+                      <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg, rgba(194,65,12,0.35), rgba(255,107,53,0.25))' }}>
                         <button onClick={(e) => { e.stopPropagation(); playSfx(x.id); }} aria-label={`Ouvir ${x.label}`}
                           style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center' }}><Icon name="play" size={14} strokeWidth={2.2} /></button>
                       </div>
@@ -3316,7 +3316,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           return (
             <div key={pi} style={{ padding: '10px 0', borderBottom: pi < txParas.length - 1 ? `1px solid ${C.border}` : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-                <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(124,58,237,0.35)', display: 'grid', placeItems: 'center', fontSize: 9.5, fontWeight: 800, color: '#E9D5FF' }}>{pi + 1}</span>
+                <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(194,65,12,0.35)', display: 'grid', placeItems: 'center', fontSize: 9.5, fontWeight: 800, color: '#E9D5FF' }}>{pi + 1}</span>
                 <span style={{ fontSize: 11.5, fontWeight: 700, color: C.muted }}>Trecho {pi + 1}</span>
                 <button onClick={() => { seek(p.start + 0.01); setSel(items[0].si); }} style={{ marginLeft: 'auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11, color: C.faint, fontVariantNumeric: 'tabular-nums', fontFamily: 'inherit' }}>{tcode(p.start)}</button>
               </div>
@@ -3556,7 +3556,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
       )}
       {recover && (
-        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12, padding: '10px 12px', borderRadius: 12, background: 'rgba(124,58,237,0.16)', border: '1px solid rgba(124,58,237,0.45)', fontSize: 13 }}>
+        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12, padding: '10px 12px', borderRadius: 12, background: 'rgba(194,65,12,0.16)', border: '1px solid rgba(194,65,12,0.45)', fontSize: 13 }}>
           <Icon name="undo" size={16} strokeWidth={2} />
           <span style={{ flex: 1, minWidth: 180 }}>Há edições deste projeto que não foram exportadas (salvas {new Date(recover.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}).</span>
           <button onClick={recoverEdits} style={{ height: 32, padding: '0 14px', borderRadius: 9, border: 'none', background: GRAD, color: '#fff', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' }}>Recuperar</button>
@@ -3618,7 +3618,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {/* Vídeo principal + prévia 9:16 do ajuste, LADO A LADO (mesma linha) */}
           {/* Vídeo e prévia do formato centralizados, lado a lado e com a MESMA altura:
               cada um ocupa uma fatia da largura proporcional ao seu formato. */}
-          <div onDragOver={fxDragOver} onDrop={onPreviewDrop} className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}${singleMon ? ' rf-tl-pv--one' : ''}`} style={{ '--main-share': showFormatPreview ? (mainAr / (mainAr + fmtAr)).toFixed(4) : 1, '--fmt-share': singleMon ? 1 : showFormatPreview ? (fmtAr / (mainAr + fmtAr)).toFixed(4) : 1, containerType: 'inline-size', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(124,58,237,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
+          <div onDragOver={fxDragOver} onDrop={onPreviewDrop} className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}${singleMon ? ' rf-tl-pv--one' : ''}`} style={{ '--main-share': showFormatPreview ? (mainAr / (mainAr + fmtAr)).toFixed(4) : 1, '--fmt-share': singleMon ? 1 : showFormatPreview ? (fmtAr / (mainAr + fmtAr)).toFixed(4) : 1, containerType: 'inline-size', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(194,65,12,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
             <div className="rf-tl-main" style={{ flex: '0 0 auto', minWidth: 0 }}>
               <div style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${mainAr.toFixed(4)}), calc((100cqw - ${showFormatPreview ? 16 : 0}px) * var(--main-share)))`, aspectRatio: `${mainAr}`, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
                 <video ref={videoRef} src={srcUrl} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim({ w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
@@ -3790,7 +3790,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 </div>
                 <CaptionGallery row options={cap} onApply={(p) => { setCapField(p); if (p.soundEffects) setFx((f) => ({ ...f, soundEffects: true })); }} />
               </div>
-              <div style={{ ...mRow, display: 'block', background: 'linear-gradient(180deg, rgba(124,58,237,0.16), rgba(255,255,255,0.05))' }}>
+              <div style={{ ...mRow, display: 'block', background: 'linear-gradient(180deg, rgba(194,65,12,0.16), rgba(255,255,255,0.05))' }}>
                 <button onClick={() => setAdvOpen((v) => !v)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', color: C.purpleSoft, fontSize: 15, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', padding: 0 }}>
                   <Icon name="sparkles" size={18} strokeWidth={2} /> <span style={{ flex: 1, textAlign: 'left' }}>Opções avançadas</span>
                   <Icon name="chevron" size={16} strokeWidth={2.2} style={{ transform: advOpen ? 'rotate(-90deg)' : 'rotate(90deg)', transition: 'transform .15s' }} />
@@ -4002,7 +4002,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       <div key={m.key || i} onClick={() => { setSelBroll(i); seek(m.start + 0.05); }}
                         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
                         onDrop={(e) => { e.preventDefault(); setSelBroll(i); takeBrollTransfer(i, e.dataTransfer).then((ok) => { if (!ok) setBrollErr('Não reconheci uma imagem aí. No Google, abra a imagem e arraste ela (ou copie e cole com Ctrl+V).'); }); }}
-                        style={{ background: isSel ? 'rgba(124,58,237,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isSel ? C.purpleSoft : C.border}`, borderRadius: 10, padding: 8, opacity: m.removed ? 0.55 : 1, cursor: 'pointer' }}>
+                        style={{ background: isSel ? 'rgba(194,65,12,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isSel ? C.purpleSoft : C.border}`, borderRadius: 10, padding: 8, opacity: m.removed ? 0.55 : 1, cursor: 'pointer' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                           <span style={{ fontSize: 10.5, color: C.faint, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration(m.start)}</span>
                           <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{m.term}</div>
@@ -5069,7 +5069,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       style={{
                         position: 'absolute', left: X(m.start), width: Math.max(16, W(m.start, m.end) - 1), top: 0, bottom: 0, borderRadius: 5,
                         display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
-                        border: `1px solid ${isSel ? '#fff' : C.purpleSoft}`, background: m.removed ? 'rgba(255,255,255,0.05)' : isSel ? 'rgba(124,58,237,0.55)' : 'rgba(124,58,237,0.3)',
+                        border: `1px solid ${isSel ? '#fff' : C.purpleSoft}`, background: m.removed ? 'rgba(255,255,255,0.05)' : isSel ? 'rgba(194,65,12,0.55)' : 'rgba(194,65,12,0.3)',
                         opacity: m.removed ? 0.5 : 1, fontSize: 10, fontWeight: 700, color: C.text,
                       }}
                     >
@@ -5940,12 +5940,12 @@ function wavePath(peaks) {
 function handleStyle(side) {
   return {
     position: 'absolute', top: 0, bottom: 0, [side]: 0, width: 9, cursor: 'ew-resize', zIndex: 3,
-    background: 'linear-gradient(180deg, #FF6B35, #7C3AED)', opacity: 0.9,
+    background: 'linear-gradient(180deg, #FF8A2A, #C2410C)', opacity: 0.9,
     borderRadius: side === 'left' ? '7px 0 0 7px' : '0 7px 7px 0',
     boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.35)',
   };
 }
-const playBtn = { width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, #FF6B35, #7C3AED)', color: '#fff', display: 'grid', placeItems: 'center', boxShadow: '0 6px 16px -6px rgba(255,107,53,0.6)' };
+const playBtn = { width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, #FF8A2A, #C2410C)', color: '#fff', display: 'grid', placeItems: 'center', boxShadow: '0 6px 16px -6px rgba(255,107,53,0.6)' };
 function toolBtn(disabled) {
   return { display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.05)', color: disabled ? C.faint : C.text, borderRadius: 9, padding: '7px 13px', fontSize: 12.5, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, fontFamily: 'inherit' };
 }

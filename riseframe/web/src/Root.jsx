@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { C, GRAD, FONT_DISPLAY } from './theme.js';
-import Icon, { Logo } from './components/Icon.jsx';
+import Icon, { Logo, Wordmark } from './components/Icon.jsx';
 import { Spinner } from './components/ui.jsx';
 import { useAuth } from './AuthContext.jsx';
 import Landing from './pages/Landing.jsx';
@@ -60,7 +60,7 @@ function CreditsCard({ billing, onOpen }) {
       ? `${billing.freeEdits} ${billing.freeEdits === 1 ? 'edição grátis' : 'edições grátis'}`
       : `${billing.credits.toLocaleString('pt-BR')} créditos`;
   return (
-    <div style={{ borderRadius: 14, padding: 14, background: 'linear-gradient(160deg, rgba(255,107,53,0.12), rgba(124,58,237,0.12))', border: `1px solid ${C.border}` }}>
+    <div style={{ borderRadius: 14, padding: 14, background: 'linear-gradient(160deg, rgba(255,107,53,0.12), rgba(194,65,12,0.12))', border: `1px solid ${C.border}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 700 }}>
         <Icon name="zap" size={14} strokeWidth={2.2} color={C.orangeSoft} /> {title}
       </div>
@@ -97,7 +97,7 @@ function Sidebar({ user, billing, view, onView, onLogout }) {
           <Logo size={32} />
           {!mini && (
             <div style={{ textAlign: 'left', minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 16, fontFamily: FONT_DISPLAY, letterSpacing: -0.4, color: C.text }}>Riseframe</div>
+              <div><Wordmark size={16} /></div>
               <div style={{ fontSize: 10.5, color: C.faint, letterSpacing: 0.2, whiteSpace: 'nowrap' }}>Editor de vídeo com IA</div>
             </div>
           )}
@@ -121,7 +121,7 @@ function Sidebar({ user, billing, view, onView, onLogout }) {
       <div style={{ marginTop: 'auto', display: 'grid', gap: 12 }}>
         {mini ? (
           credit && !billing.unlimited && (
-            <button onClick={() => onView('plans')} title={`${credit} — ver planos`} aria-label={`${credit} — ver planos`} style={{ height: 40, borderRadius: 12, border: `1px solid ${C.border}`, background: 'linear-gradient(160deg, rgba(255,107,53,0.14), rgba(124,58,237,0.14))', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+            <button onClick={() => onView('plans')} title={`${credit} — ver planos`} aria-label={`${credit} — ver planos`} style={{ height: 40, borderRadius: 12, border: `1px solid ${C.border}`, background: 'linear-gradient(160deg, rgba(255,107,53,0.14), rgba(194,65,12,0.14))', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
               <Icon name="zap" size={16} strokeWidth={2.2} color={C.orangeSoft} />
             </button>
           )
@@ -156,12 +156,12 @@ function MobileTopBar({ billing, onView }) {
     <header className="rf-mtop" style={{ position: 'sticky', top: 0, zIndex: 30, display: 'none', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: 'calc(10px + env(safe-area-inset-top)) 16px 10px', background: 'rgba(8,8,12,0.82)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderBottom: `1px solid ${C.border}` }}>
       <button onClick={() => onView('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', padding: 4, cursor: 'pointer' }}>
         <Logo size={28} />
-        <span style={{ fontWeight: 800, fontSize: 16, fontFamily: FONT_DISPLAY, letterSpacing: -0.4, color: C.text }}>Riseframe</span>
+        <Wordmark size={16} />
       </button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <InstallApp compact />
       {billing && (
-        <button onClick={() => onView('plans')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 12px', borderRadius: 999, background: 'rgba(124,58,237,0.14)', border: '1px solid rgba(124,58,237,0.35)', color: C.text, fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
+        <button onClick={() => onView('plans')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 12px', borderRadius: 999, background: 'rgba(194,65,12,0.14)', border: '1px solid rgba(194,65,12,0.35)', color: C.text, fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
           <Icon name="zap" size={14} strokeWidth={2.2} color={C.purpleSoft} />
           {billing.unlimited ? 'Ilimitado' : !billing.plan && billing.freeEdits > 0 ? `${billing.freeEdits} grátis` : billing.credits.toLocaleString('pt-BR')}
         </button>
@@ -213,7 +213,7 @@ function AppPaywall({ user, onRefresh, onLogout }) {
   return (
     <div style={{ minHeight: '100vh' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 24px 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', padding: '22px 24px', borderRadius: 18, border: `1px solid ${C.border}`, background: 'linear-gradient(135deg, rgba(255,107,53,0.14), rgba(124,58,237,0.14))' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', padding: '22px 24px', borderRadius: 18, border: `1px solid ${C.border}`, background: 'linear-gradient(135deg, rgba(255,107,53,0.14), rgba(194,65,12,0.14))' }}>
           <Logo size={40} />
           <div style={{ flex: 1, minWidth: 240 }}>
             <div style={{ fontSize: 20, fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -0.4 }}>Assine para continuar usando o app</div>

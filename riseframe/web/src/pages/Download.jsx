@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
-import Icon, { Logo } from '../components/Icon.jsx';
+import Icon, { Logo, Wordmark } from '../components/Icon.jsx';
 import { MeshBg, GhostBtn, GradBtn } from './Landing.jsx';
 import { getDownloads, getPublicInfo } from '../api.js';
 
@@ -54,7 +54,7 @@ function OsIcon({ os, size = 18, color = 'currentColor' }) {
 /** Janela do app desenhada em CSS: monitor com legenda, painel e timeline com as faixas. */
 function AppWindow() {
   const lanes = [
-    { label: 'V1', color: '#7C3AED', blocks: [[0, 22], [24, 41], [43, 70], [72, 100]] },
+    { label: 'V1', color: '#E2E2EA', blocks: [[0, 22], [24, 41], [43, 70], [72, 100]] },
     { label: 'A1', color: '#2ED47A', blocks: [[0, 22], [24, 41], [43, 70], [72, 100]], wave: true },
     { label: 'T1', color: '#FF6B35', blocks: [[2, 14], [16, 30], [33, 48], [50, 66], [69, 84], [86, 98]] },
   ];
@@ -90,7 +90,7 @@ function AppWindow() {
               <div key={i} style={{ height: 7, width: `${w * 100}%`, borderRadius: 4, background: i === 1 ? 'rgba(255,107,53,0.45)' : 'rgba(255,255,255,0.09)' }} />
             ))}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, marginTop: 4 }}>
-              {['#FF6B35', '#7C3AED', '#2ED47A', '#F0526B', '#FFD166', '#4CC9F0'].map((c) => (
+              {['#FF6B35', '#C2410C', '#2ED47A', '#F0526B', '#FFD166', '#4CC9F0'].map((c) => (
                 <div key={c} style={{ aspectRatio: '16 / 10', borderRadius: 5, background: `linear-gradient(135deg, ${c}55, ${c}15)`, border: `1px solid ${c}55` }} />
               ))}
             </div>
@@ -182,7 +182,7 @@ function FeatureArt({ kind }) {
   return (
     <div style={box}>
       <div style={{ width: '100%', maxWidth: 440, display: 'grid', gap: 8 }}>
-        {[['V2', '#4CC9F0', [[30, 52]]], ['V1', '#7C3AED', [[0, 28], [30, 64], [66, 100]]], ['A1', '#2ED47A', [[0, 28], [30, 64], [66, 100]]], ['T1', '#FF6B35', [[4, 20], [24, 44], [48, 62], [68, 92]]]].map(([l, c, bl]) => (
+        {[['V2', '#4CC9F0', [[30, 52]]], ['V1', '#E2E2EA', [[0, 28], [30, 64], [66, 100]]], ['A1', '#2ED47A', [[0, 28], [30, 64], [66, 100]]], ['T1', '#FF6B35', [[4, 20], [24, 44], [48, 62], [68, 92]]]].map(([l, c, bl]) => (
           <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 8, height: 30 }}>
             <span style={{ width: 22, fontSize: 11, fontWeight: 800, color: C.faint }}>{l}</span>
             <div style={{ position: 'relative', flex: 1, height: '100%', borderRadius: 6, background: 'rgba(255,255,255,0.025)' }}>
@@ -285,8 +285,8 @@ export default function Download({ onEnter, onLogin, onHome, loggedIn = false })
         <nav style={{ position: 'sticky', top: 0, zIndex: 30, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', background: 'rgba(8,8,12,0.6)', borderBottom: `1px solid ${C.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '13px 20px', maxWidth: 1180, margin: '0 auto' }}>
             <button onClick={onHome} style={{ display: 'flex', alignItems: 'center', gap: 11, background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: C.text }}>
-              <Logo size={30} />
-              <span style={{ fontWeight: 800, fontSize: 18, fontFamily: FONT_DISPLAY, letterSpacing: -0.4 }}>Riseframe</span>
+              <Logo size={30} variant="mark" />
+              <Wordmark size={19} />
             </button>
             <div className="rf-nav-links" style={{ display: 'flex', gap: 22, marginLeft: 34 }}>
               {[['Recursos', 'dl-recursos'], ['Como começar', 'dl-passos'], ['Planos', 'dl-planos'], ['Dúvidas', 'dl-faq']].map(([l, id]) => (
@@ -430,7 +430,7 @@ export default function Download({ onEnter, onLogin, onHome, loggedIn = false })
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 16 }}>
             {(info?.plans || []).map((p) => (
-              <div key={p.id} style={{ ...glass({ padding: 24 }), position: 'relative', border: p.popular ? '1px solid rgba(124,58,237,0.7)' : undefined, boxShadow: p.popular ? '0 30px 70px -30px rgba(124,58,237,0.6)' : undefined }}>
+              <div key={p.id} style={{ ...glass({ padding: 24 }), position: 'relative', border: p.popular ? '1px solid rgba(194,65,12,0.7)' : undefined, boxShadow: p.popular ? '0 30px 70px -30px rgba(194,65,12,0.6)' : undefined }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ fontWeight: 800, fontSize: 17 }}>{p.name}</div>
                   {p.popular && <span style={{ fontSize: 10.5, fontWeight: 800, color: '#fff', background: GRAD, borderRadius: 20, padding: '3px 9px' }}>MAIS POPULAR</span>}
@@ -477,7 +477,7 @@ export default function Download({ onEnter, onLogin, onHome, loggedIn = false })
 
         {/* CTA final */}
         <section style={{ maxWidth: 860, margin: '30px auto 50px', padding: '0 24px' }}>
-          <div style={glass({ padding: '48px 28px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(255,107,53,0.14), rgba(124,58,237,0.14))' })}>
+          <div style={glass({ padding: '48px 28px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(255,107,53,0.14), rgba(194,65,12,0.14))' })}>
             <h2 style={{ fontSize: 'clamp(24px,4vw,36px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 12px' }}>Seu próximo vídeo começa aqui.</h2>
             <p style={{ color: C.muted, fontSize: 16, margin: '0 0 26px' }}>Baixe o Riseframe e edite com IA no seu computador.</p>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>

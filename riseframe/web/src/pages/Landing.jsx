@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
-import Icon, { Logo } from '../components/Icon.jsx';
+import Icon, { Logo, Wordmark } from '../components/Icon.jsx';
 import BeforeAfter from '../components/BeforeAfter.jsx';
 import HeroDemo from '../components/HeroDemo.jsx';
 import { Thumb } from './Templates.jsx';
@@ -73,7 +73,7 @@ function BeforeAfterSide({ video, tag, items, bad }) {
   const [ok, setOk] = useState(true);
   return (
     <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-      <div style={{ position: 'relative', width: 104, flexShrink: 0, aspectRatio: '9 / 13', borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, background: bad ? '#15151c' : 'linear-gradient(160deg, rgba(255,107,53,0.3), rgba(124,58,237,0.3))' }}>
+      <div style={{ position: 'relative', width: 104, flexShrink: 0, aspectRatio: '9 / 13', borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, background: bad ? '#15151c' : 'linear-gradient(160deg, rgba(255,107,53,0.3), rgba(194,65,12,0.3))' }}>
         {video && ok && (
           <video src={`${apiAsset(video)}#t=2`} muted playsInline preload="metadata" onError={() => setOk(false)}
             style={{ width: '100%', height: '100%', objectFit: 'cover', filter: bad ? 'saturate(0.6) brightness(0.85)' : 'none' }} />
@@ -245,8 +245,8 @@ export default function Landing({ onEnter, onLogin }) {
         {/* NAV fixo com blur */}
         <nav style={{ position: 'sticky', top: 0, zIndex: 30, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', background: 'rgba(8,8,12,0.6)', borderBottom: `1px solid ${C.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '13px 20px', maxWidth: 1180, margin: '0 auto' }}>
-            <Logo size={30} />
-            <span style={{ fontWeight: 800, fontSize: 18, fontFamily: FONT_DISPLAY, letterSpacing: -0.4 }}>Riseframe</span>
+            <Logo size={30} variant="mark" />
+            <Wordmark size={19} />
             <div className="rf-nav-links" style={{ display: 'flex', gap: 22, marginLeft: 34 }}>
               {[['Recursos', 'recursos'], ['Templates', 'templates'], ['Antes e depois', 'demo'], ['Preços', 'precos']].map(([l, id]) => (
                 <a key={id} href={`#${id}`} style={{ color: C.muted, fontSize: 14, fontWeight: 500, textDecoration: 'none' }}>{l}</a>
@@ -375,7 +375,7 @@ export default function Landing({ onEnter, onLogin }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 18 }}>
             {STEPS.map((s) => (
               <div key={s.n} style={{ textAlign: 'center', padding: '0 12px' }}>
-                <div style={{ width: 58, height: 58, borderRadius: '50%', background: GRAD, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px', fontSize: 24, fontWeight: 800, fontFamily: FONT_DISPLAY, boxShadow: '0 10px 26px -8px rgba(124,58,237,0.6)' }}>
+                <div style={{ width: 58, height: 58, borderRadius: '50%', background: GRAD, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px', fontSize: 24, fontWeight: 800, fontFamily: FONT_DISPLAY, boxShadow: '0 10px 26px -8px rgba(194,65,12,0.6)' }}>
                   {s.n}
                 </div>
                 <h3 style={{ margin: '0 0 8px', fontSize: 19, fontWeight: 700, fontFamily: FONT_DISPLAY }}>{s.title}</h3>
@@ -425,7 +425,7 @@ export default function Landing({ onEnter, onLogin }) {
 
         {/* CTA */}
         <section style={{ maxWidth: 800, margin: '0 auto 40px', padding: '0 24px' }}>
-          <div style={glass({ padding: '48px 32px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(255,107,53,0.12), rgba(124,58,237,0.12))' })}>
+          <div style={glass({ padding: '48px 32px', textAlign: 'center', background: 'linear-gradient(135deg, rgba(255,107,53,0.12), rgba(194,65,12,0.12))' })}>
             <h2 style={{ fontSize: 'clamp(24px,4vw,34px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 14px' }}>
               Pronto para acelerar sua edição?
             </h2>

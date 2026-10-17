@@ -66,7 +66,7 @@ export default function Uploader({ file, onFile, disabled }) {
         position: 'relative',
         border: `1.5px dashed ${drag ? C.orange : active ? C.borderStrong || C.border : C.border}`,
         background: drag
-          ? 'linear-gradient(180deg, rgba(255,107,53,0.12), rgba(124,58,237,0.07))'
+          ? 'linear-gradient(180deg, rgba(255,107,53,0.12), rgba(194,65,12,0.07))'
           : 'linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012))',
         borderRadius: 20,
         padding: '46px 24px 30px',

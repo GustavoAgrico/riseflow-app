@@ -107,7 +107,7 @@ function actionPage(title, body, color = '#FF6B35') {
 .card{max-width:460px;width:100%;background:#15151c;border:1px solid #2a2a35;border-radius:16px;padding:26px}
 h1{font-size:21px;margin:0 0 14px;color:${color}}p{color:#b8b8c4;line-height:1.55;margin:0 0 10px;font-size:15px}b{color:#f4f4f6}
 .row{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}button,a.btn{flex:1;min-height:48px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;border:none;font-family:inherit;text-decoration:none;display:flex;align-items:center;justify-content:center}
-.ok{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff}.no{background:transparent;border:1px solid #3a3a48;color:#f4f4f6}.btn{background:linear-gradient(135deg,#FF6B35,#7C3AED);color:#fff}</style></head>
+.ok{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff}.no{background:transparent;border:1px solid #3a3a48;color:#f4f4f6}.btn{background:linear-gradient(135deg,#FF8A2A,#C2410C);color:#fff}</style></head>
 <body><div class="card"><h1>${esc(title)}</h1>${body}</div></body></html>`;
 }
 

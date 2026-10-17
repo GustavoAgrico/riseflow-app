@@ -45,7 +45,7 @@ export default function Dashboard({ user, onNewVideo, onLibrary, onTemplates, on
       <div style={{ position: 'relative', zIndex: 1 }}>
         {/* Boas-vindas + criar */}
         <div style={{ ...glass({ padding: 'clamp(20px, 3vw, 30px)' }), position: 'relative', overflow: 'hidden', marginBottom: 22 }}>
-          <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 100% 0%, rgba(255,107,53,0.18), transparent 45%), radial-gradient(circle at 0% 120%, rgba(124,58,237,0.2), transparent 50%)', pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 100% 0%, rgba(255,107,53,0.18), transparent 45%), radial-gradient(circle at 0% 120%, rgba(194,65,12,0.2), transparent 50%)', pointerEvents: 'none' }} />
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 260 }}>
               <h1 style={{ fontSize: 'clamp(24px, 3.6vw, 34px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 6px' }}>

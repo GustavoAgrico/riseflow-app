@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { C, glass, FONT_DISPLAY, gradientText } from '../theme.js';
-import { Logo } from '../components/Icon.jsx';
+import { Logo, Wordmark } from '../components/Icon.jsx';
 import { getPublicInfo } from '../api.js';
 
 // Termos de uso e Política de privacidade. Texto baseado no que o Riseframe faz de fato
@@ -106,7 +106,7 @@ export default function Legal({ page, onHome }) {
       <nav style={{ borderBottom: `1px solid ${C.border}`, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
         <a href="/" onClick={(e) => { e.preventDefault(); onHome(); }} style={{ display: 'flex', alignItems: 'center', gap: 10, color: C.text, textDecoration: 'none' }}>
           <Logo size={28} />
-          <span style={{ fontWeight: 800, fontSize: 17, fontFamily: FONT_DISPLAY }}>Riseframe</span>
+          <Wordmark size={17} />
         </a>
       </nav>
       <main style={{ maxWidth: 760, margin: '0 auto', padding: '40px 20px 80px' }}>

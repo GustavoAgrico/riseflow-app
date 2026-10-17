@@ -47,7 +47,7 @@ export function emailHtml(title, paragraphs, button) {
   <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#0b0b0f">
     <h2 style="margin:0 0 12px">${esc(title)}</h2>
     ${paragraphs.map((p) => `<p style="margin:0 0 14px;color:#333;line-height:1.5">${esc(p)}</p>`).join('')}
-    ${button ? `<p style="margin:8px 0 22px"><a href="${esc(button.url)}" style="display:inline-block;background:linear-gradient(135deg,#FF6B35,#7C3AED);color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:700">${esc(button.label)}</a></p>` : ''}
+    ${button ? `<p style="margin:8px 0 22px"><a href="${esc(button.url)}" style="display:inline-block;background:linear-gradient(135deg,#FF8A2A,#C2410C);color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:700">${esc(button.label)}</a></p>` : ''}
     <p style="margin:0;color:#888;font-size:12px">Riseframe · editor de vídeo com IA</p>
   </div>`;
 }
