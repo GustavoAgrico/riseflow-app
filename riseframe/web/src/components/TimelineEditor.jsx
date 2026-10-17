@@ -2878,10 +2878,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     function fit() {
       if (isMobile || stage === 'l' || window.innerWidth <= 860) { g.style.removeProperty('--rf-stage-h'); return; }
       // só a timeline (barra + faixas + zoom); o resumo e a edição de palavras ficam abaixo
-      const tr = b.querySelector('.rf-tl-track');
-      const tlH = tr ? tr.getBoundingClientRect().bottom - b.getBoundingClientRect().top + 52 : b.offsetHeight;
       const top = g.getBoundingClientRect().top + window.scrollY;
-      const free = window.innerHeight - top - tlH - 10 - 82 - 16;
+      let free;
+      if (window.innerWidth > 1100) {
+        // tela grande: o monitor fica na coluna da esquerda, de cima a baixo (só a barra do player)
+        free = window.innerHeight - top - 82 - 40;
+      } else {
+        // notebook/tablet: só a timeline (barra + faixas + zoom) fica embaixo do monitor
+        const tr = b.querySelector('.rf-tl-track');
+        const tlH = tr ? tr.getBoundingClientRect().bottom - b.getBoundingClientRect().top + 52 : b.offsetHeight;
+        free = window.innerHeight - top - tlH - 10 - 82 - 16;
+      }
       const h = Math.max(stage === 's' ? 160 : 220, Math.min(900, free * (stage === 's' ? 0.78 : 1)));
       g.style.setProperty('--rf-stage-h', `${Math.round(h)}px`);
     }
@@ -3341,7 +3348,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
       </div>
 
-      <div ref={gridRef} className={`rf-tl-grid rf-stage-${stage}`} style={{ display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start', ...(isMobile && sheet ? { '--rf-stage-h': 'max(140px, calc(100dvh - var(--rf-sheet-h) - 118px - env(safe-area-inset-top)))' } : isMobile ? { '--rf-stage-h': `max(200px, calc(100dvh - ${(stage === 's' ? 470 : stage === 'l' ? 330 : 400) + (showZoomLane ? 28 : 0) + (showBrollLane ? 30 : 0) + (media.length ? 34 : 0)}px - env(safe-area-inset-bottom)))` } : {}) }}>
+      <div ref={gridRef} className={`rf-tl-grid rf-stage-${stage}${(showFormatPreview && !showSource ? fmtAr : mainAr) < 1 ? ' rf-mon-v' : ''}`} style={{ display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start', ...(isMobile && sheet ? { '--rf-stage-h': 'max(140px, calc(100dvh - var(--rf-sheet-h) - 118px - env(safe-area-inset-top)))' } : isMobile ? { '--rf-stage-h': `max(200px, calc(100dvh - ${(stage === 's' ? 470 : stage === 'l' ? 330 : 400) + (showZoomLane ? 28 : 0) + (showBrollLane ? 30 : 0) + (media.length ? 34 : 0)}px - env(safe-area-inset-bottom)))` } : {}) }}>
         {/* Ferramentas (como num editor): cada uma abre o painel de ajustes à direita */}
         <nav className="rf-tl-nav" style={{ display: 'grid', gap: 4, padding: 8, borderRadius: 16, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.025)', alignSelf: 'start' }}>
           {TABS.map((t) => {
@@ -5205,8 +5212,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           .rf-tl-nav{ padding: 5px !important; }
           .rf-tl-nav > button{ justify-content: center; padding: 11px 0 !important; }
         }
-        /* Computador (como o Premiere): monitor à esquerda, painel com abas em cima à direita,
-           timeline na largura toda embaixo. */
+        /* Computador (como o Premiere): o monitor numa coluna à esquerda, de cima a baixo;
+           à direita o painel com abas em cima e a timeline embaixo. */
         @media (min-width: 861px){
           .rf-tl-card:not(.rf-m) .rf-tl-grid{ grid-template-columns: minmax(0, 1fr) minmax(360px, 1.05fr) !important; grid-template-rows: auto 1fr auto; gap: 10px !important; }
           .rf-tl-card:not(.rf-m) .rf-tl-preview{ grid-column: 1; grid-row: 1 / span 2; }
@@ -5224,6 +5231,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           .rf-tl-card:not(.rf-m) .rf-tl-bottom{ grid-column: 1 / span 2; grid-row: 3; }
           .rf-tl-card:not(.rf-m) .rf-tl-pv{ border-radius: 10px !important; background: #0E0F12 !important; border-color: rgba(255,255,255,0.08) !important; }
         }
+        /* Tela grande (como o Premiere): o monitor numa coluna à esquerda, de cima a baixo
+           (fica parado enquanto a página rola); à direita o painel com abas em cima e a
+           timeline embaixo. Notebook/tablet: monitor e painel em cima, timeline embaixo. */
+        @media (min-width: 1101px){
+          .rf-tl-card:not(.rf-m) .rf-tl-grid{ grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) !important; grid-template-rows: auto auto auto; }
+          .rf-tl-card:not(.rf-m) .rf-tl-grid.rf-mon-v{ grid-template-columns: minmax(300px, 0.62fr) minmax(0, 1.7fr) !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-preview{ grid-column: 1; grid-row: 1 / span 3; align-self: start; position: sticky; top: 10px; }
+          .rf-tl-card:not(.rf-m) .rf-tl-adjust{ grid-column: 2; grid-row: 2; height: clamp(260px, 42vh, 460px); min-height: 0; }
+          .rf-tl-card:not(.rf-m) .rf-tl-bottom{ grid-column: 2; grid-row: 3; min-width: 0; }
+        }
+        /* barra do player quebra a linha quando a coluna do monitor é estreita */
+        .rf-tl-bar{ flex-wrap: wrap; row-gap: 8px !important; }
         /* monitor único: o player original fica escondido (continua tocando o som e o tempo) */
         .rf-tl-pv--one .rf-tl-main{ display: none; }
         .rf-tl-pv--one .rf-tl-pv-fmt{ position: relative; }
