@@ -187,6 +187,9 @@ export async function generateClips(ctx, onProgress = () => {}) {
         shadowMode: options.captionShadow,
         shadowSize: options.captionShadowSize,
         shadowOpacity: options.captionShadowOpacity,
+        minDuration: options.captionMinDuration, // duração mínima de cada legenda (s)
+        gap: options.captionGap, // intervalo entre legendas (s)
+        noPunct: options.captionNoPunct === true, // remover pontuação
       };
       const r = await burnCaptions(input, cwork, cmeta, localTranscript, style, () => {});
       input = r.output;

@@ -5,7 +5,7 @@ import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 import { posOf } from './timeline.js';
 import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
-import { pickKeyword, emphasisOf, premiumChunks, layoutCaption, autoMaxChars } from '../../../shared/captionKeyword.js';
+import { pickKeyword, emphasisOf, premiumChunks, layoutCaption, autoMaxChars, stripPunct, timeSegments } from '../../../shared/captionKeyword.js';
 import {
   CAPTION_FONTS as FONT_DEFS, fontById, fontBold, CAPTION_COLORS, colorHex, isLightHex, isWhiteish,
   HIGHLIGHT_IDS, LINE_HEIGHT, CAPTION_TEMPLATES, CAPTION_TEMPLATE_LABELS, safeCaptionBox, resolveFontFace,
@@ -272,10 +272,17 @@ export function buildAss(segments, meta, style = {}) {
   const maxLines = style.lines === 1 ? 1 : 2;
   const maxChars = Number(style.maxChars) > 0 ? Number(style.maxChars) : autoMaxChars(w, em, upper, T.premium ? 0.86 : safe.widthFrac);
   const groups = [];
-  for (const seg of segments) {
+  // Remover pontuação, duração mínima e intervalo entre legendas (como no Premiere) —
+  // a prévia do editor faz a mesma conta (captionTiming/timeSegments).
+  const noPunct = style.noPunct === true;
+  const txt = (wd) => (noPunct ? stripPunct(wd.word) : String(wd.word ?? '').trim());
+  const capGap = mode === 'word' ? 0 : Math.min(0.5, Math.max(0, Number(style.gap) || 0));
+  const minDur = mode === 'word' ? 0 : Math.min(5, Math.max(0, Number(style.minDuration) || 0));
+  const hasWords = (sg) => (sg.words?.length ? sg.words : [{ word: sg.text }]).some((wd) => txt(wd).length > 0);
+  for (const seg of timeSegments(segments, { minDur, gap: capGap }, hasWords)) {
     const raw = seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }];
     const ws = raw
-      .map((wd) => ({ start: Number(wd.start) || 0, end: Number(wd.end) || 0, word: String(wd.word ?? '').trim(), ...posOf(wd), ...emphasisOf(wd) }))
+      .map((wd) => ({ start: Number(wd.start) || 0, end: Number(wd.end) || 0, word: txt(wd), ...posOf(wd), ...emphasisOf(wd) }))
       .filter((wd) => wd.word.length > 0);
     if (!ws.length) continue;
     if (mode === 'word') groups.push({ seg, words: ws });
@@ -290,7 +297,7 @@ export function buildAss(segments, meta, style = {}) {
       }
       runs.forEach((run, ri) => {
         const runEnd = ri + 1 < runs.length ? runs[ri + 1].words[0].start : seg.end;
-        for (const card of layoutCaption(run.words, { lines: maxLines, maxChars, segEnd: runEnd })) groups.push({ seg: { ...seg, end: card.end }, words: card.words });
+        for (const card of layoutCaption(run.words, { lines: maxLines, maxChars, segEnd: runEnd, gap: capGap })) groups.push({ seg: { ...seg, end: card.end }, words: card.words, hardEnd: capGap > 0 || minDur > 0 });
       });
     }
   }
@@ -341,7 +348,7 @@ export function buildAss(segments, meta, style = {}) {
     rect(layer, t0, t1, g.box.cx, g.box.top + H / 2, W, H, hex, { alpha: bg === 'bar' ? '73' : '00', tags: fadeOf(anim) });
   }
 
-  for (const { seg, words } of groups) {
+  for (const { seg, words, hardEnd } of groups) {
     if (mode === 'word') {
       // Uma palavra por vez, com o movimento do estilo.
       // Na caixa: texto escuro na caixa branca, ou branco na caixa colorida.
@@ -422,7 +429,8 @@ export function buildAss(segments, meta, style = {}) {
     } else {
       const kw = T.highlightKeyword ? pickKeyword(words) : -1;
       const g = geometry(words, kw, words[0]);
-      const endAll = Math.max(words[words.length - 1].end, Number(seg.end) || 0);
+      // com intervalo/duração mínima, o fim do cartão é exatamente o calculado
+      const endAll = hardEnd ? Math.max(words[words.length - 1].start + 0.05, Number(seg.end) || 0) : Math.max(words[words.length - 1].end, Number(seg.end) || 0);
       // Cor base da frase: nos estilos de palavra-chave, com destaque, caixa ou brilho a
       // frase fica branca; nos demais, na cor escolhida.
       const plainColored = !highlight && !useBox && !glowOn && !accentIsWhite && !T.highlightKeyword;
