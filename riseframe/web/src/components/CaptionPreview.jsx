@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C } from '../theme.js';
 import SnapGuides, { snapCenter } from './SnapGuides.jsx';
 import { motionAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
-import { pickKeyword, premiumChunks, layoutCaption, autoMaxChars } from '../../../shared/captionKeyword.js';
+import { pickKeyword, premiumChunks, layoutCaption, autoMaxChars, stripPunct, captionTiming, timeSegments } from '../../../shared/captionKeyword.js';
 import {
   CAPTION_TEMPLATES, CAPTION_FONTS, CAPTION_COLOR_LIST, fontById, fontBold, colorHex, isLightHex, isWhiteish, HIGHLIGHT_IDS, LINE_HEIGHT, resolveFontFace,
   SAFE_ZONE, isVerticalFrame, safeCaptionBox,
@@ -381,6 +381,15 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
     return () => cancelAnimationFrame(id);
   }, [videoRef]);
 
+  // Remover pontuação, duração mínima e intervalo entre legendas — a mesma conta do render.
+  const timedSegs = useMemo(() => {
+    const tm = captionTiming(options);
+    let segs = segments || [];
+    if (tm.noPunct) segs = segs.map((s) => (s.words?.length ? { ...s, words: s.words.map((w) => ({ ...w, word: stripPunct(w.word) })) } : s));
+    if (captionLook(options).mode === 'word') return segs;
+    return timeSegments(segs, { minDur: tm.minDur, gap: tm.gap }, (s) => wordsOf(s).length > 0);
+  }, [segments, options]);
+
   if (!box || box.h < 10) return null;
   // Guia das áreas cobertas pelos botões/textos do Instagram e TikTok (só editando, vídeo vertical).
   const guide = (
@@ -394,10 +403,10 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
   const fontPx = Math.max(4, T.size * box.h * look.scale);
 
   // Frase ativa no instante t; sem fala agora e `sample` ligado → mostra a 1ª frase como exemplo.
-  let seg = (segments || []).find((s) => t >= s.start && t < (s.end || s.start + 0.1) && wordsOf(s).length);
+  let seg = timedSegs.find((s) => t >= s.start && t < (s.end || s.start + 0.1) && wordsOf(s).length);
   let at = t;
   if (!seg && sample) {
-    seg = (segments || []).find((s) => wordsOf(s).length);
+    seg = timedSegs.find((s) => wordsOf(s).length);
     at = seg ? wordsOf(seg)[0].start : 0;
   }
   if (!seg) return guide;
@@ -426,8 +435,12 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
   const marginV = safeBox.marginV;
   if (look.mode !== 'word') {
     const maxChars = Number(options.captionMaxChars) > 0 ? Number(options.captionMaxChars) : autoMaxChars(box.w, fontPx, look.upper, T.premium ? 0.86 : safeBox.widthFrac);
-    const cards = layoutCaption(words, { lines: options.captionLines === 1 ? 1 : 2, maxChars, segEnd });
-    words = (cards.find((c, i) => at < c.end || i === cards.length - 1) || cards[0]).words;
+    const gap = captionTiming(options).gap;
+    const cards = layoutCaption(words, { lines: options.captionLines === 1 ? 1 : 2, maxChars, segEnd, gap });
+    let ci = 0;
+    while (ci + 1 < cards.length && at >= cards[ci + 1].words[0].start) ci++;
+    if (gap > 0 && ci + 1 < cards.length && at >= cards[ci].end) return guide; // intervalo entre legendas
+    words = cards[ci].words;
   }
   let wi = words.findIndex((w, i) => at >= w.start && (i + 1 >= words.length || at < words[i + 1].start));
   if (wi < 0) wi = 0;

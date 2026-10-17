@@ -537,6 +537,11 @@ export function parseOptions(raw) {
     captionShadow: ['auto', 'off', 'on'].includes(o.captionShadow) ? o.captionShadow : 'auto',
     captionShadowSize: clampNum(o.captionShadowSize, 0.3, 3, 1),
     captionShadowOpacity: clampNum(o.captionShadowOpacity, 0.1, 1, 0.6),
+    // Como o "Criar legendas" do Premiere: duração mínima na tela, intervalo entre
+    // legendas (s) e remover pontuação.
+    captionMinDuration: clampNum(o.captionMinDuration, 0, 5, 0),
+    captionGap: clampNum(o.captionGap, 0, 0.5, 0),
+    captionNoPunct: o.captionNoPunct === true || o.captionNoPunct === 'true',
     // Tela dividida com B-roll: a legenda vai para o meio (na linha entre as metades).
     captionBrollCenter: o.captionBrollCenter !== false && o.captionBrollCenter !== 'false',
     // Área segura das redes no vídeo vertical: legenda fora dos botões/descrição do Reels e TikTok.

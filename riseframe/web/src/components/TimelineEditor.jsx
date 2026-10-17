@@ -64,6 +64,19 @@ function dispSeg(s) {
   return { ...s, start: c0, end: c1, words: s.words.map((w) => ({ ...w, start: at(w.start), end: at(w.end) })) };
 }
 
+/** Marca como cortadas as palavras cujo meio cai dentro de um corte (tempo original). */
+function markCut(s, cuts) {
+  let hit = false;
+  const words = s.words.map((w) => {
+    if (w.removed) return w;
+    const mid = (w.start + w.end) / 2;
+    if (!cuts.some((c) => mid >= c.start && mid <= c.end)) return w;
+    hit = true;
+    return { ...w, removed: true, inCut: true };
+  });
+  return hit ? { ...s, words } : s;
+}
+
 // Palavra como vai para o servidor: tempos, texto, corte, posição manual e ênfase.
 // `dw` é a mesma palavra no tempo de exibição (cs/ce): só vai quando a legenda foi movida.
 function wordOut(w, dw = null) {
@@ -107,6 +120,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     captionShadowSize: Number(cap0.captionShadowSize) || 1,
     captionShadowOpacity: Number(cap0.captionShadowOpacity) || 0.6,
     captionBrollCenter: cap0.captionBrollCenter !== false,
+    captionMinDuration: Number(cap0.captionMinDuration) || 0,
+    captionGap: Number(cap0.captionGap) || 0,
+    captionNoPunct: cap0.captionNoPunct === true,
   });
   const setCapField = (patch) => setCap((c) => ({ ...c, ...patch }));
   // Posição manual da legenda (arrastar na prévia): só esta frase, só esta palavra ou todas.
@@ -240,6 +256,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [selGain, setSelGain] = useState(null);
   const [vsplits, setVsplits] = useState([]); // divisões feitas na faixa de vídeo
   const [selVideo, setSelVideo] = useState(null); // {start,end} do pedaço de vídeo selecionado
+  // Trecho selecionado em TODAS as faixas (arrastar na régua, ferramenta de seleção, I/O,
+  // Ctrl+A): Delete corta vídeo, áudio e legenda juntos.
+  const [range, setRange] = useState(null); // { a, b } em segundos
+  const [rangeTool, setRangeTool] = useState(false);
+  // Palavras selecionadas na aba Transcrição (índices na lista de palavras): Delete corta.
+  const [txSel, setTxSel] = useState(null); // { a, b }
   const [editText, setEditText] = useState(null); // texto do bloco de legenda em edição
   const [pps, setPps] = useState(64); // zoom da timeline (pixels por segundo)
   const ppsRef = useRef(64); // o arrasto da legenda lê o zoom atual
@@ -317,7 +339,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   const dur = durationSec || segments.reduce((m, s) => Math.max(m, s.end || 0), 0) || 1;
   // Os blocos no tempo em que a legenda aparece (o que a faixa, a prévia e o vídeo mostram).
-  const capSegments = useMemo(() => segments.map(dispSeg), [segments]);
+  // Palavras dentro de um corte da faixa de vídeo saem junto (vídeo, áudio e legenda):
+  // a faixa e a prévia mostram a legenda cortada; o servidor faz o mesmo no remap.
+  const capSegments = useMemo(() => segments.map((s) => dispSeg(cuts.length ? markCut(s, cuts) : s)), [segments, cuts]);
   const width = Math.max(320, Math.round(dur * pps));
 
   // ── Pausas de silêncio (gaps entre palavras mantidas). O usuário decide, na
@@ -1056,7 +1080,50 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   function seek(t) { const v = videoRef.current; const c = Math.max(0, Math.min(dur, t)); if (v) v.currentTime = c; setCur(c); }
   function togglePlay() { const v = videoRef.current; if (!v) return; if (v.paused) v.play(); else v.pause(); }
-  function onTrackClick(e) { seek(timeAtClientX(e.clientX)); }
+  function onTrackClick(e) { if (rangeClickBlockRef.current) return; seek(timeAtClientX(e.clientX)); }
+
+  // Seleção de trecho em todas as faixas: arrastar na régua (ou na timeline com a
+  // ferramenta ligada); as pontas da faixa azul também arrastam.
+  const selRangeDragRef = useRef(null);
+  const rangeClickBlockRef = useRef(false);
+  const timeAtRef = useRef(null);
+  timeAtRef.current = timeAtClientX;
+  function startRangeSel(e, edge = null) {
+    if (e.button !== 0 || isMobile) return;
+    e.stopPropagation();
+    e.preventDefault();
+    selRangeDragRef.current = { edge, x0: e.clientX, t0: timeAtClientX(e.clientX), moved: false };
+    document.body.style.userSelect = 'none';
+  }
+  useEffect(() => {
+    function move(e) {
+      const d = selRangeDragRef.current;
+      if (!d) return;
+      if (!d.moved && Math.abs(e.clientX - d.x0) < 4) return;
+      d.moved = true;
+      const t = +timeAtRef.current(e.clientX).toFixed(2);
+      if (d.edge) {
+        setRange((r) => {
+          if (!r) return r;
+          const n = { ...r, [d.edge]: t };
+          if (n.a <= n.b) return n;
+          d.edge = d.edge === 'a' ? 'b' : 'a';
+          return { a: n.b, b: n.a };
+        });
+      } else setRange({ a: +Math.min(d.t0, t).toFixed(2), b: +Math.max(d.t0, t).toFixed(2) });
+      setSelKind('range');
+    }
+    function up() {
+      const d = selRangeDragRef.current;
+      if (!d) return;
+      selRangeDragRef.current = null;
+      document.body.style.userSelect = '';
+      if (d.moved) { rangeClickBlockRef.current = true; setTimeout(() => { rangeClickBlockRef.current = false; }, 0); }
+    }
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, []);
 
   // Foco do enquadramento: mapeia o ponteiro para 0–1 sobre a área REAL do vídeo
   // (considera as barras do objectFit=contain).
@@ -1407,15 +1474,43 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     else if (selKind === 'text') splitRange(setTextLayers, selText, cur);
     else if (selKind === 'vfx') splitRange(setFxMoments, selFx, cur);
   }
-  const canDeleteSel = (selKind === 'caption' && selCaptions.length > 0) || (selKind === 'video' && !!selVideo)
+  const canDeleteSel = (selKind === 'words' && !!txSel) || (selKind === 'range' && !!range && range.b - range.a > 0.05) || (selKind === 'caption' && selCaptions.length > 0) || (selKind === 'video' && !!selVideo)
     || (selKind === 'media' && !!selMediaItem) || (selKind === 'zoom' && !!selZoomItem)
     || (selKind === 'broll' && !!brollReview?.moments[selBroll]) || (selKind === 'gain' && !!selGain)
     || (selKind === 'keyframe' && selKey != null) || (selKind === 'text' && !!selText) || (selKind === 'vfx' && !!selFx) || (selKind === 'trans' && !!selTrans) || (selKind === 'marker' && !!selMarker) || (selKind === 'speed' && !!selSpeed) || (selKind === 'freeze' && !!selFreeze);
-  /** Excluir: legenda some (a fala fica); vídeo vira corte; os demais itens saem da faixa. */
+  /** Corta um trecho do vídeo final: some o vídeo, o áudio e a legenda daquele pedaço. */
+  function cutTimeRange(a, b) {
+    const lo = Math.max(0, Math.min(a, b));
+    const hi = Math.min(dur, Math.max(a, b));
+    if (hi - lo < 0.05) return false;
+    if (hi - lo >= dur - 0.2 && !window.confirm('Isso corta o vídeo inteiro (vídeo, áudio e legenda). Continuar?')) return false;
+    setCuts((l) => [...l, { key: `c${Date.now()}`, start: +lo.toFixed(2), end: +hi.toFixed(2) }]);
+    return true;
+  }
+  /** Excluir: trecho/legenda/vídeo saem do vídeo final (vídeo, áudio e legenda juntos); os demais itens saem da faixa. */
   function deleteSelected() {
     if (!canDeleteSel) return;
-    if (selKind === 'caption') setCaptionsHidden(true);
-    else if (selKind === 'video') {
+    if (selKind === 'range') { if (cutTimeRange(range.a, range.b)) { setRange(null); setSelKind('caption'); } }
+    else if (selKind === 'words') {
+      // Palavras selecionadas na transcrição: saem do vídeo (vídeo, áudio e legenda); se todas
+      // já estavam cortadas, voltam.
+      const lo = Math.min(txSel.a, txSel.b);
+      const hi = Math.max(txSel.a, txSel.b);
+      const list = txWords.slice(lo, hi + 1);
+      const restore = list.length > 0 && list.every((x) => x.w.removed);
+      const bySeg = new Map();
+      for (const x of list) { if (!bySeg.has(x.si)) bySeg.set(x.si, new Set()); bySeg.get(x.si).add(x.wi); }
+      setSegments((prev) => prev.map((sg, si) => (bySeg.has(si) ? { ...sg, words: sg.words.map((w, wi) => (bySeg.get(si).has(wi) ? { ...w, removed: !restore } : w)) } : sg)));
+      setTxSel(null);
+      setRange(null);
+      setSelKind('caption');
+    }
+    else if (selKind === 'caption') {
+      // Legenda selecionada → corta a fala daquele bloco (vídeo, áudio e legenda). Se todos
+      // já estavam cortados, Delete restaura. Só esconder o texto: botão "Ocultar legenda" (H).
+      const all = selCaptions.every((i) => segments[i] && segRemoved(segments[i]));
+      setCaptionsCut(!all);
+    } else if (selKind === 'video') {
       setCuts((l) => [...l, { key: `c${Date.now()}`, start: +selVideo.start.toFixed(2), end: +selVideo.end.toFixed(2) }]);
       setSelVideo(null);
     } else if (selKind === 'media') { removeMedia(selMedia); setSelMedia(null); }
@@ -1442,7 +1537,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     });
   }
   const mediaRows = media.reduce((mx, m) => Math.max(mx, (m.layer || 0) + 1), 1);
-  const SEL_LABEL = { speed: 'velocidade', freeze: 'congelamento', marker: 'marcador', trans: 'transição', text: 'texto', vfx: 'efeito', keyframe: 'quadro-chave', caption: 'legenda', video: 'vídeo', media: 'camada', zoom: 'zoom', broll: 'B-roll', gain: 'volume' };
+  const delTitle = selKind === 'words' ? 'Cortar as palavras selecionadas: vídeo, áudio e legenda (Delete)' : selKind === 'range' ? 'Excluir o trecho selecionado: vídeo, áudio e legenda (Delete)'
+    : selKind === 'caption' ? 'Excluir a fala selecionada: vídeo, áudio e legenda (Delete) · H só oculta a legenda'
+      : selKind === 'video' ? 'Cortar o pedaço selecionado: vídeo, áudio e legenda (Delete)' : 'Excluir o item selecionado (Delete)';
+  const SEL_LABEL = { range: 'trecho', words: 'palavras', speed: 'velocidade', freeze: 'congelamento', marker: 'marcador', trans: 'transição', text: 'texto', vfx: 'efeito', keyframe: 'quadro-chave', caption: 'legenda', video: 'vídeo', media: 'camada', zoom: 'zoom', broll: 'B-roll', gain: 'volume' };
 
 
   function toggleSeg(si) { setSegments((prev) => prev.map((s, i) => { if (i !== si) return s; const gone = segRemoved(s); return { ...s, words: s.words.map((w) => ({ ...w, removed: !gone })) }; })); }
@@ -2075,7 +2173,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
   const capSegNow = segments[capSegments.findIndex((s) => cur >= s.start && cur < s.end)] || null;
   // ── Painel de legendas (lista estilo Premiere + propriedades da selecionada)
-  const [capPane, setCapPane] = useState('lista');
+  const [capPane, setCapPane] = useState('transcricao');
   const [capQuery, setCapQuery] = useState('');
   const [capEdit, setCapEdit] = useState(null); // índice da legenda em edição na lista
   const capListRef = useRef(null);
@@ -2097,6 +2195,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function openSheet(kind, t) {
     if (t) setTab(t);
     if (kind === 'capList') setCapPane('lista');
+    if (kind === 'capText') setCapPane('transcricao');
     if (kind === 'capStyle') setCapPane('estilo');
     if (kind === 'capEm') setCapPane('enfase');
     if (kind !== 'tab' && kind !== 'speed') setTab('legenda');
@@ -2116,7 +2215,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Atalhos de teclado (fora de campos de texto): espaço, setas, S/Ctrl+B dividem a
   // faixa selecionada, Delete exclui o selecionado.
   const keysRef = useRef({});
-  keysRef.current = { togglePlay, seek, cur, goCaption, splitSelected, deleteSelected, undo, redo, hidden, copySel, pasteAtPlayhead, duplicateSel, toggleMarker, toggleSnap };
+  /** I / O: entrada e saída do trecho no playhead (como no Premiere). */
+  function markRange(side) {
+    const t = +cur.toFixed(2);
+    setRange((r) => {
+      const base = r || { a: side === 'a' ? t : 0, b: side === 'b' ? t : dur };
+      const next = { ...base, [side]: t };
+      return next.a <= next.b ? next : { a: next.b, b: next.a };
+    });
+    setSelKind('range');
+  }
+  function selectAllRange() { setRange({ a: 0, b: +dur.toFixed(2) }); setSelKind('range'); }
+  function clearRange() { setRange(null); setTxSel(null); setRangeTool(false); if (selKind === 'range' || selKind === 'words') setSelKind('caption'); }
+  function toggleCapHidden() {
+    if (selKind !== 'caption' || !selCaptions.length) return;
+    const all = selCaptions.every((i) => segments[i] && segHidden(segments[i]));
+    setCaptionsHidden(!all);
+  }
+  keysRef.current = { togglePlay, seek, cur, goCaption, splitSelected, deleteSelected, undo, redo, hidden, copySel, pasteAtPlayhead, duplicateSel, toggleMarker, toggleSnap, markRange, selectAllRange, clearRange, toggleCapHidden, toggleRangeTool: () => setRangeTool((v) => !v) };
   useEffect(() => {
     function onKey(e) {
       if (keysRef.current.hidden) return; // escondido durante o render
@@ -2129,6 +2245,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if ((e.metaKey || e.ctrlKey) && (e.key === 'c' || e.key === 'C')) { if (k.copySel()) e.preventDefault(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'v' || e.key === 'V')) { if (k.pasteAtPlayhead()) e.preventDefault(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); k.duplicateSel(); return; }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A')) { e.preventDefault(); k.selectAllRange(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'Space') { e.preventDefault(); k.togglePlay(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); k.seek(k.cur - (e.shiftKey ? 5 : 1)); }
@@ -2139,6 +2256,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       else if (e.key === 'm' || e.key === 'M') { k.toggleMarker(); }
       else if (e.key === 'n' || e.key === 'N') { k.toggleSnap(); }
       else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); k.deleteSelected(); }
+      else if (e.key === 'i' || e.key === 'I') { k.markRange('a'); }
+      else if (e.key === 'o' || e.key === 'O') { k.markRange('b'); }
+      else if (e.key === 'r' || e.key === 'R') { k.toggleRangeTool(); }
+      else if (e.key === 'h' || e.key === 'H') { k.toggleCapHidden(); }
+      else if (e.key === 'Escape') { k.clearRange(); }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -2602,6 +2724,212 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return cards.map((c) => ({ start: Math.max(s.start, c.words[0].start), end: Math.min(Math.max(s.end, s.start + 0.2), c.end), text: c.words.map((w) => w.word).join(' ') }));
   }
 
+  // "Criar legendas" como no Premiere: layout (uma linha / duas linhas / palavra única),
+  // máximo de caracteres, duração mínima, intervalo entre legendas e remover pontuação.
+  const capLayout = cap.captionMode === 'word' ? 'word' : cap.captionMode === 'phrase' ? (cap.captionLines === 1 ? 'one' : 'two') : 'auto';
+  const CAP_LAYOUTS = [
+    { id: 'auto', label: 'Do modelo', patch: { captionMode: 'auto' } },
+    { id: 'one', label: 'Uma linha', patch: { captionMode: 'phrase', captionLines: 1 } },
+    { id: 'two', label: 'Duas linhas', patch: { captionMode: 'phrase', captionLines: 2 } },
+    { id: 'word', label: 'Palavra única', patch: { captionMode: 'word' } },
+  ];
+  const gapFrames = Math.round((cap.captionGap || 0) * 30);
+  const capCreateRows = (
+    <>
+      <CapRow label="Layout">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+          {CAP_LAYOUTS.map((o) => <button key={o.id} onClick={() => setCapField(o.patch)} style={{ ...miniBtn(capLayout === o.id, false), justifyContent: 'center', minHeight: isMobile ? 36 : undefined }}>{o.label}</button>)}
+        </div>
+      </CapRow>
+      {capLayout !== 'word' && (
+        <>
+          <CapRow label={`Máximo de caracteres por linha (${cap.captionMaxChars > 0 ? cap.captionMaxChars : 'automático'})`}>
+            <input type="range" min="7" max="42" step="1" value={cap.captionMaxChars > 0 ? cap.captionMaxChars : 7} onChange={(e) => { const v = Number(e.target.value); setCapField({ captionMaxChars: v <= 7 ? 0 : v }); }} style={{ width: '100%' }} />
+          </CapRow>
+          <CapRow label={`Duração mínima na tela (${cap.captionMinDuration > 0 ? `${String(cap.captionMinDuration).replace('.', ',')} s` : 'desligada'})`}>
+            <input type="range" min="0" max="5" step="0.5" value={cap.captionMinDuration || 0} onChange={(e) => setCapField({ captionMinDuration: Number(e.target.value) })} style={{ width: '100%' }} />
+          </CapRow>
+          <CapRow label={`Intervalo entre legendas (${gapFrames ? `${gapFrames} ${gapFrames === 1 ? 'quadro' : 'quadros'}` : 'sem intervalo'})`}>
+            <input type="range" min="0" max="15" step="1" value={gapFrames} onChange={(e) => setCapField({ captionGap: +(Number(e.target.value) / 30).toFixed(3) })} style={{ width: '100%' }} />
+          </CapRow>
+        </>
+      )}
+      <CapRow label="Remover pontuação">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Switch on={cap.captionNoPunct === true} onChange={(v) => setCapField({ captionNoPunct: v })} />
+          <span style={{ fontSize: 11.5, color: C.muted }}>{cap.captionNoPunct ? 'Sem vírgulas, pontos e aspas na legenda' : 'Pontuação como foi falada'}</span>
+        </div>
+      </CapRow>
+    </>
+  );
+
+  // ── Transcrição (como o painel Text › Transcript do Premiere): o texto do vídeo em
+  // parágrafos com o tempo de cada um. Clique numa palavra = vai até ela; arrastar sobre as
+  // palavras seleciona (Delete corta vídeo, áudio e legenda); duplo-clique edita a frase.
+  const txWords = useMemo(() => {
+    const out = [];
+    segments.forEach((sg, si) => sg.words.forEach((w, wi) => {
+      if (String(w.word ?? '').trim()) out.push({ si, wi, w, cut: !!capSegments[si]?.words[wi]?.inCut });
+    }));
+    return out;
+  }, [segments, capSegments]);
+  const txParas = useMemo(() => {
+    // parágrafo novo numa pausa longa (≥ 1,2 s) ou a cada ~6 frases / 30 s
+    const paras = [];
+    let curP = null;
+    let prevEnd = -1;
+    txWords.forEach((x, i) => {
+      const newSeg = i === 0 || txWords[i - 1].si !== x.si;
+      const brk = !curP || (newSeg && (x.w.start - prevEnd >= 1.2 || curP.segs >= 6 || x.w.start - curP.start >= 30));
+      if (brk) { curP = { start: x.w.start, from: i, to: i, segs: 1 }; paras.push(curP); } else if (newSeg) curP.segs += 1;
+      curP.to = i;
+      prevEnd = x.w.end;
+    });
+    return paras;
+  }, [txWords]);
+  const [txQuery, setTxQuery] = useState('');
+  const [txCopied, setTxCopied] = useState(false);
+  const [txEdit, setTxEdit] = useState(null); // índice da frase em edição
+  const txDragRef = useRef(null);
+  const txListRef = useRef(null);
+  useEffect(() => { setTxSel(null); }, [txWords.length]);
+  useEffect(() => {
+    const up = () => { txDragRef.current = null; };
+    window.addEventListener('mouseup', up);
+    return () => window.removeEventListener('mouseup', up);
+  }, []);
+  function txSelect(a, b) {
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    setTxSel({ a, b });
+    setRange({ a: +txWords[lo].w.start.toFixed(2), b: +txWords[hi].w.end.toFixed(2) });
+    setSelKind('words');
+  }
+  function txDown(i, e) {
+    if (e.button !== 0) return;
+    if (e.shiftKey && txSel) { txSelect(txSel.a, i); e.preventDefault(); return; }
+    txDragRef.current = { a: i, moved: false };
+  }
+  function txEnter(i) {
+    const d = txDragRef.current;
+    if (!d || i === d.a && !d.moved) return;
+    d.moved = true;
+    window.getSelection?.()?.removeAllRanges?.();
+    txSelect(d.a, i);
+  }
+  function txClick(i, e) {
+    if (e.shiftKey) return;
+    if (txDragRef.current?.moved) return;
+    const x = txWords[i];
+    setTxSel(null);
+    if (selKind === 'words') { setRange(null); setSelKind('caption'); }
+    setSel(x.si);
+    seek(x.w.start + 0.01);
+  }
+  const txActive = useMemo(() => {
+    let k = -1;
+    for (let i = 0; i < txWords.length; i++) { if (txWords[i].w.start <= cur + 0.01) k = i; else break; }
+    return k >= 0 && cur < (txWords[k + 1]?.w.start ?? Infinity) && cur <= txWords[k].w.end + 0.6 ? k : -1;
+  }, [txWords, cur]);
+  // acompanha a fala tocando (rola até o parágrafo da palavra falada)
+  useEffect(() => {
+    const box = txListRef.current;
+    if (!box || txActive < 0 || !playing) return;
+    const el = box.querySelector(`[data-tx="${txActive}"]`);
+    if (!el) return;
+    const top = el.offsetTop - box.offsetTop;
+    if (top < box.scrollTop + 10 || top > box.scrollTop + box.clientHeight - 30) box.scrollTop = Math.max(0, top - box.clientHeight / 3);
+  }, [txActive, playing]);
+  const txQ = norm(txQuery.trim());
+  const txHits = txQ ? txWords.reduce((n, x) => n + (norm(x.w.word).includes(txQ) ? 1 : 0), 0) : 0;
+  const txText = () => txParas.map((p) => `${tcode(p.start)}\n${txWords.slice(p.from, p.to + 1).filter((x) => !x.w.removed && !x.cut).map((x) => x.w.word).join(' ')}`).join('\n\n');
+  function copyTranscript() {
+    const text = txText();
+    navigator.clipboard?.writeText(text).then(() => { setTxCopied(true); setTimeout(() => setTxCopied(false), 1500); }, () => {});
+  }
+  function downloadTranscript() {
+    const blob = new Blob([txText()], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${(projectTitle || 'transcricao').replace(/[^\w\-À-ú ]+/g, '').trim() || 'transcricao'}.txt`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+  const txSelLo = txSel ? Math.min(txSel.a, txSel.b) : -1;
+  const txSelHi = txSel ? Math.max(txSel.a, txSel.b) : -1;
+  const transcriptPane = (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+          <span style={{ position: 'absolute', left: 9, top: 9, color: C.faint, display: 'flex' }}><Icon name="search" size={14} strokeWidth={2} /></span>
+          <input value={txQuery} onChange={(e) => setTxQuery(e.target.value)} placeholder="Buscar na transcrição"
+            style={{ width: '100%', boxSizing: 'border-box', height: 32, padding: '0 10px 0 30px', borderRadius: 9, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 12.5, fontFamily: 'inherit' }} />
+          {txQ && <span style={{ position: 'absolute', right: 9, top: 8, fontSize: 11, color: C.faint }}>{txHits}</span>}
+        </div>
+        <button onClick={copyTranscript} title="Copiar o texto" style={{ ...zoomBtn, width: 'auto', height: 32, padding: '0 9px', fontSize: 11.5, fontWeight: 600, color: txCopied ? C.green : C.text }}>{txCopied ? 'Copiado' : 'Copiar'}</button>
+        <button onClick={downloadTranscript} title="Baixar a transcrição (.txt)" style={{ ...zoomBtn, width: 32, height: 32 }}><Icon name="download" size={14} strokeWidth={2} /></button>
+      </div>
+      <div ref={txListRef} style={{ position: 'relative', maxHeight: isMobile ? '44dvh' : 'min(46vh, 420px)', minHeight: 140, overflowY: 'auto', borderRadius: 11, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.3)', padding: '4px 12px', userSelect: 'none' }}>
+        {txParas.length === 0 && <div style={{ fontSize: 12, color: C.faint, padding: 14, textAlign: 'center' }}>Sem fala transcrita neste vídeo.</div>}
+        {txParas.map((p, pi) => {
+          const items = txWords.slice(p.from, p.to + 1);
+          const segIds = [...new Set(items.map((x) => x.si))];
+          return (
+            <div key={pi} style={{ padding: '10px 0', borderBottom: pi < txParas.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(124,58,237,0.35)', display: 'grid', placeItems: 'center', fontSize: 9.5, fontWeight: 800, color: '#E9D5FF' }}>{pi + 1}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: C.muted }}>Trecho {pi + 1}</span>
+                <button onClick={() => { seek(p.start + 0.01); setSel(items[0].si); }} style={{ marginLeft: 'auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11, color: C.faint, fontVariantNumeric: 'tabular-nums', fontFamily: 'inherit' }}>{tcode(p.start)}</button>
+              </div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.7 }}>
+                {segIds.map((si) => (txEdit === si ? (
+                  <textarea key={`e${si}`} autoFocus rows={2} defaultValue={segments[si].words.filter((w) => !w.removed).map((w) => w.word).join(' ')}
+                    onBlur={(e) => { setPhraseText(si, e.target.value); setTxEdit(null); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } if (e.key === 'Escape') setTxEdit(null); }}
+                    style={{ display: 'block', width: '100%', boxSizing: 'border-box', margin: '4px 0', padding: '6px 8px', borderRadius: 8, border: `1px solid ${C.orange}`, background: 'rgba(0,0,0,0.5)', color: C.text, fontSize: 13.5, lineHeight: 1.5, fontFamily: 'inherit', resize: 'vertical', userSelect: 'text' }} />
+                ) : (
+                  <span key={si} onDoubleClick={() => { setTxSel(null); setTxEdit(si); }}>
+                    {items.map((x, k) => {
+                      if (x.si !== si) return null;
+                      const i = p.from + k;
+                      const gone = x.w.removed || x.cut;
+                      const selOn = i >= txSelLo && i <= txSelHi;
+                      const live = i === txActive;
+                      const hit = txQ && norm(x.w.word).includes(txQ);
+                      return (
+                        <span key={i} data-tx={i} onMouseDown={(e) => txDown(i, e)} onMouseEnter={() => txEnter(i)} onClick={(e) => txClick(i, e)}
+                          title={gone ? 'Cortada do vídeo — selecione e Delete para voltar' : undefined}
+                          style={{ cursor: 'pointer', borderRadius: 3, padding: '1px 0', color: gone ? 'rgba(240,82,107,0.75)' : live ? '#fff' : C.text,
+                            textDecoration: gone ? 'line-through' : 'none', opacity: gone ? 0.7 : 1,
+                            background: selOn ? 'rgba(59,130,246,0.45)' : live ? 'rgba(255,107,53,0.55)' : hit ? 'rgba(250,204,21,0.35)' : 'transparent' }}>
+                          {x.w.word}{' '}
+                        </span>
+                      );
+                    })}
+                  </span>
+                )))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {txSel && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11.5, color: '#BFDBFE' }}>{txSelHi - txSelLo + 1} {txSelHi === txSelLo ? 'palavra selecionada' : 'palavras selecionadas'}</span>
+          <button onClick={deleteSelected} style={{ ...miniBtn(true, false), marginLeft: 'auto' }}>
+            <Icon name="trash" size={12} strokeWidth={2} /> {txWords.slice(txSelLo, txSelHi + 1).every((x) => x.w.removed) ? 'Restaurar' : 'Cortar do vídeo'}
+          </button>
+          <button onClick={clearRange} style={miniBtn(false, false)}>Cancelar</button>
+        </div>
+      )}
+      <div className="rf-tl-hide-touch" style={{ fontSize: 10.5, color: C.faint, lineHeight: 1.5 }}>Clique numa palavra para ir · arraste sobre as palavras para selecionar (<b>Delete</b> corta vídeo, áudio e legenda) · duplo-clique edita a frase</div>
+      <button onClick={() => { if (!cap.captions) setCapField({ captions: true }); setCapPane('estilo'); }}
+        style={{ ...toolBtn(false), justifyContent: 'center', background: 'rgba(255,107,53,0.14)', border: '1px solid rgba(255,107,53,0.45)', color: C.text }}>
+        <Icon name="captions" size={14} strokeWidth={2} /> Criar legendas
+      </button>
+    </div>
+  );
+
   // Espaçamento das letras, sombra e legenda no meio na tela dividida (aba Legenda).
   const capFxRows = (
     <>
@@ -2933,15 +3261,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                         <button onClick={() => setCapField({ captionSafeZone: false })} style={{ ...miniBtn(cap.captionSafeZone === false, false), flex: 1, minHeight: 36 }}>Livre</button>
                       </div>
                     </CapRow>
-                    <CapRow label="Linhas por legenda">
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {[1, 2].map((n) => <button key={n} onClick={() => setCapField({ captionLines: n })} style={{ ...miniBtn(cap.captionLines === n, false), flex: 1, minHeight: 36 }}>{n === 1 ? '1 linha' : '2 linhas'}</button>)}
-                      </div>
-                    </CapRow>
-                    <CapRow label={`Caracteres por linha (${cap.captionMaxChars > 0 ? cap.captionMaxChars : 'automático'})`}>
-                      <input type="range" min="7" max="42" step="1" value={cap.captionMaxChars > 0 ? cap.captionMaxChars : 7} onChange={(e) => { const v = Number(e.target.value); setCapField({ captionMaxChars: v <= 7 ? 0 : v }); }} style={{ width: '100%' }} />
-                    </CapRow>
-                    <CapRow label="Modo (palavra / frase)"><Sel value={cap.captionMode} opts={catalog.captionModes} onChange={(v) => setCapField({ captionMode: v })} /></CapRow>
+                    {capCreateRows}
                     <CapRow label="Destacar palavra falada">
                       <button onClick={() => setCapField({ captionHighlight: !cap.captionHighlight })} style={{ ...miniBtn(cap.captionHighlight, false), minHeight: 36 }}>{cap.captionHighlight ? 'Ligado' : 'Desligado'}</button>
                     </CapRow>
@@ -3523,8 +3843,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   {cap.captions ? 'No vídeo' : 'Desligada'}
                 </button>
               </div>
-              {!isMobile && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, padding: 3, borderRadius: 11, background: 'rgba(255,255,255,0.05)', marginBottom: 10 }}>
-                {[{ id: 'lista', label: 'Legendas', icon: 'list' }, { id: 'estilo', label: 'Estilo', icon: 'type' }].map((o) => (
+              {!isMobile && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, padding: 3, borderRadius: 11, background: 'rgba(255,255,255,0.05)', marginBottom: 10 }}>
+                {/* na ordem do Premiere: transcrição → estilo (criar legendas) → legendas */}
+                {[{ id: 'transcricao', label: 'Transcrição', icon: 'edit' }, { id: 'estilo', label: 'Estilo', icon: 'type' }, { id: 'lista', label: 'Legendas', icon: 'list' }].map((o) => (
                   <button key={o.id} onClick={() => setCapPane(o.id)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: 'none', borderRadius: 8, padding: '7px 0', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: capPane === o.id ? 'rgba(255,255,255,0.13)' : 'transparent', color: capPane === o.id ? C.text : C.muted }}>
                     <Icon name={o.icon} size={14} strokeWidth={2} /> {o.label}
                   </button>
@@ -3618,9 +3939,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   )}
                   {!isMobile && enfaseBlock}
                 </div>
+              ) : capPane === 'transcricao' ? (
+                transcriptPane
               ) : cap.captions && catalog ? (
                 <>
                 <div style={{ display: 'grid', gap: 8 }}>
+                  {/* Criar legendas (como o diálogo do Premiere): formato dos cartões e tempo */}
+                  <div style={{ display: 'grid', gap: 8, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: 'linear-gradient(180deg, rgba(255,107,53,0.06), rgba(255,255,255,0.02))' }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700 }}>Criar legendas</div>
+                    {capCreateRows}
+                  </div>
                   <div>
                     <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>Modelo</div>
                     <CaptionGallery options={cap} onApply={(p) => { setCapField(p); if (p.soundEffects) setFx((f) => ({ ...f, soundEffects: true })); }} compact />
@@ -3633,7 +3961,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 6 }}>Estilo do texto</div>
                     <TextStyleBar options={cap} onChange={setCapField} compact />
                   </div>
-                  <CapRow label="Modo (palavra / frase)"><Sel value={cap.captionMode} opts={catalog.captionModes} onChange={(v) => setCapField({ captionMode: v })} /></CapRow>
                   <CapRow label="Destacar palavra falada">
                     <button onClick={() => setCapField({ captionHighlight: !cap.captionHighlight })} style={miniBtn(cap.captionHighlight, false)}>
                       {cap.captionHighlight ? 'Ligado' : 'Desligado (legenda normal)'}
@@ -3664,14 +3991,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <input type="range" min="0.6" max="1.4" step="0.05" value={cap.captionScale ?? 1} onChange={(e) => setCapField({ captionScale: Number(e.target.value) })} style={{ width: '100%' }} />
                   </CapRow>
                   {capFxRows}
-                  <CapRow label="Linhas por legenda">
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {[1, 2].map((n) => <button key={n} onClick={() => setCapField({ captionLines: n })} style={{ ...miniBtn(cap.captionLines === n, false), flex: 1 }}>{n === 1 ? '1 linha' : '2 linhas'}</button>)}
-                    </div>
-                  </CapRow>
-                  <CapRow label={`Caracteres por linha (${cap.captionMaxChars > 0 ? cap.captionMaxChars : 'automático'})`}>
-                    <input type="range" min="7" max="42" step="1" value={cap.captionMaxChars > 0 ? cap.captionMaxChars : 7} onChange={(e) => { const v = Number(e.target.value); setCapField({ captionMaxChars: v <= 7 ? 0 : v }); }} style={{ width: '100%' }} />
-                  </CapRow>
                   <div style={{ marginTop: 4, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
                     <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>Posição manual · arraste a legenda na prévia</div>
                     <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Pare o vídeo na frase, escolha o que mover e arraste o texto (contorno tracejado) para onde quiser.</div>
@@ -3688,6 +4007,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       </div>
                     )}
                   </div>
+                  {!isMobile && (
+                    <button onClick={() => setCapPane('lista')} style={{ ...toolBtn(false), justifyContent: 'center', marginTop: 2, background: 'rgba(255,107,53,0.14)', border: '1px solid rgba(255,107,53,0.45)', color: C.text }}>
+                      Ver as legendas <Icon name="next" size={13} strokeWidth={2} />
+                    </button>
+                  )}
                 </div>
                 </>
               ) : (
@@ -3816,6 +4140,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               {projectTitle && <span className="rf-tl-hide-sm" style={{ fontSize: 12, color: PR.text, fontWeight: 600, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginLeft: 6 }}>{projectTitle}</span>}
             </div>
           )}
+          {(selKind === 'range' || selKind === 'words') && range && range.b > range.a && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 4px 3px 10px', borderRadius: 8, background: 'rgba(59,130,246,0.14)', border: '1px solid rgba(96,165,250,0.5)' }}>
+              <span style={{ fontSize: 11.5, color: '#BFDBFE', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                Trecho {tcode(range.a)} → {tcode(range.b)} <b style={{ color: '#fff' }}>({(range.b - range.a).toFixed(1).replace('.', ',')} s)</b>
+              </span>
+              <button onClick={deleteSelected} title="Corta este trecho do vídeo final: vídeo, áudio e legenda (Delete)" style={{ ...toolBtn(false), background: 'rgba(240,82,107,0.18)', border: '1px solid rgba(240,82,107,0.55)', color: '#FECACA' }}>
+                <Icon name="trash" size={13} strokeWidth={2} /> Excluir trecho
+              </button>
+              <button onClick={clearRange} title="Limpar a seleção (Esc)" style={toolBtn(false)}>×</button>
+            </div>
+          )}
           {isMobile && <>
           <button onClick={undo} disabled={!canUndo} title="Desfazer (Ctrl+Z)" aria-label="Desfazer" style={toolBtn(!canUndo)}>
             <Icon name="undo" size={14} strokeWidth={2} /> <span className="rf-tl-hide-sm">Desfazer</span>
@@ -3828,8 +4163,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <Icon name="scissors" size={14} strokeWidth={2} /> <span className="rf-tl-hide-sm">Dividir {SEL_LABEL[selKind]}</span>
           </button>
           <button onClick={deleteSelected} disabled={!canDeleteSel} style={toolBtn(!canDeleteSel)}
-            title={selKind === 'caption' ? 'Esconde a legenda dos blocos selecionados (a fala continua) — Delete' : selKind === 'video' ? 'Corta o pedaço de vídeo selecionado — Delete' : 'Remove o item selecionado — Delete'}>
-            <Icon name="close" size={14} strokeWidth={2} /> <span className="rf-tl-hide-sm">{selKind === 'caption' ? 'Ocultar legenda' : selKind === 'video' ? 'Cortar pedaço' : 'Excluir'}</span>
+            title={delTitle}>
+            <Icon name="close" size={14} strokeWidth={2} /> <span className="rf-tl-hide-sm">{selKind === 'range' ? 'Excluir trecho' : selKind === 'video' ? 'Cortar pedaço' : 'Excluir'}</span>
           </button>
           </>}
           {selKind === 'media' && selMediaItem && (
@@ -3883,7 +4218,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <ToolIcon title="Refazer (Ctrl+Shift+Z)" disabled={!canRedo} onClick={redo}><Icon name="undo" size={15} strokeWidth={2} style={{ transform: 'scaleX(-1)' }} /></ToolIcon>
               <span style={{ width: 22, height: 1, background: PR.line, margin: '3px 0' }} />
               <ToolIcon title={`Dividir ${SEL_LABEL[selKind]} no playhead (S ou Ctrl+B)`} disabled={!canSplitSel} onClick={splitSelected}><Icon name="scissors" size={15} strokeWidth={2} /></ToolIcon>
-              <ToolIcon title={selKind === 'caption' ? 'Ocultar a legenda selecionada (Delete)' : selKind === 'video' ? 'Cortar o pedaço selecionado (Delete)' : 'Excluir o item selecionado (Delete)'} disabled={!canDeleteSel} onClick={deleteSelected}><Icon name="close" size={15} strokeWidth={2.2} /></ToolIcon>
+              <ToolIcon title={delTitle} disabled={!canDeleteSel} onClick={deleteSelected}><Icon name="close" size={15} strokeWidth={2.2} /></ToolIcon>
+              <ToolIcon title={rangeTool ? 'Seleção de trecho ligada: arraste na timeline para selecionar todas as faixas (R) · Delete corta' : 'Selecionar um trecho em todas as faixas (R) — ou arraste na régua · I/O marcam entrada/saída · Ctrl+A tudo'} active={rangeTool} onClick={() => setRangeTool((v) => !v)}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M4 4v16M20 4v16" /><rect x="7.5" y="7" width="9" height="10" rx="1.5" strokeDasharray="2.5 2" /></svg>
+              </ToolIcon>
               <ToolIcon title={cutStart == null ? 'Cortar um trecho: marca o início no playhead (clique de novo no fim)' : `Fechar o corte em ${fmtDuration(cur)}`} active={cutStart != null} onClick={toggleCutRange}>
                 <span style={{ display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 800, lineHeight: 1 }}>[ ]</span>
               </ToolIcon>
@@ -3925,7 +4263,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
             <div style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
-            <div style={{ position: 'relative', height: LANE.ruler, borderBottom: `1px solid ${PR.line}`, cursor: 'crosshair', background: isMobile ? 'transparent' : PR.ruler }}>
+            {/* ferramenta de seleção: arrastar em qualquer faixa marca o trecho (todas as faixas) */}
+            {rangeTool && !isMobile && (
+              <div onMouseDown={(e) => startRangeSel(e)} title="Arraste para selecionar o trecho em todas as faixas · Delete corta vídeo, áudio e legenda · Esc sai"
+                style={{ position: 'absolute', left: 0, right: 0, top: LANE.ruler, bottom: 0, zIndex: 18, cursor: 'col-resize', background: 'rgba(59,130,246,0.04)' }} />
+            )}
+            {(selKind === 'range' || selKind === 'words') && range && range.b > range.a && (
+              <>
+                <div style={{ position: 'absolute', left: range.a * pps, width: Math.max(2, (range.b - range.a) * pps), top: 0, bottom: 0, zIndex: 19, pointerEvents: 'none',
+                  background: 'rgba(59,130,246,0.18)', borderLeft: '2px solid #60A5FA', borderRight: '2px solid #60A5FA', boxShadow: 'inset 0 0 0 1px rgba(96,165,250,0.35)' }} />
+                {['a', 'b'].map((edge) => (
+                  <div key={edge} onMouseDown={(e) => startRangeSel(e, edge)} title={edge === 'a' ? 'Arraste a entrada do trecho (I no playhead)' : 'Arraste a saída do trecho (O no playhead)'}
+                    style={{ position: 'absolute', left: range[edge] * pps - 6, top: 0, width: 12, height: LANE.ruler, zIndex: 20, cursor: 'ew-resize', background: '#60A5FA', borderRadius: edge === 'a' ? '6px 0 0 6px' : '0 6px 6px 0', opacity: 0.95 }} />
+                ))}
+              </>
+            )}
+            <div onMouseDown={(e) => startRangeSel(e)} title={isMobile ? undefined : 'Clique para ir · arraste para selecionar um trecho em todas as faixas'}
+              style={{ position: 'relative', height: LANE.ruler, borderBottom: `1px solid ${PR.line}`, cursor: 'crosshair', background: isMobile ? 'transparent' : PR.ruler }}>
               {(() => {
                 const step = RULER_STEPS.find((x) => x * pps >= 96) || 60;
                 const minor = pps >= 30 ? 1 : step / 5;
@@ -4262,6 +4616,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </div>
             {/* Faixa de áudio: forma de onda da fala original */}
             <div style={{ position: 'relative', height: LANE.audio, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${isMobile ? C.border : 'rgba(52,195,176,0.55)'}`, background: isMobile ? 'rgba(59,130,246,0.08)' : 'rgba(52,195,176,0.12)', ...(audioMute ? LANE_HIDDEN : null), ...lk('aud') }}>
+              {/* cortes da faixa de vídeo também tiram o áudio daquele pedaço */}
+              {cuts.map((c) => (
+                <div key={c.key} style={{ position: 'absolute', left: c.start * pps, width: Math.max(2, (c.end - c.start) * pps), top: 0, bottom: 0, zIndex: 2, pointerEvents: 'none',
+                  background: 'repeating-linear-gradient(45deg, rgba(240,82,107,0.45), rgba(240,82,107,0.45) 5px, rgba(240,82,107,0.2) 5px, rgba(240,82,107,0.2) 10px)', borderLeft: `1px solid ${C.red}`, borderRight: `1px solid ${C.red}` }} />
+              ))}
               {wave && (
                 <svg width={width} height={34} viewBox={`0 0 ${peaks.length} 100`} preserveAspectRatio="none" style={{ display: 'block' }}>
                   <path d={wave} fill={isMobile ? '#4F7BFF' : '#34C3B0'} opacity={0.85} />
@@ -4427,7 +4786,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <Icon name="edit" size={12} strokeWidth={2.2} /> Corrigir o texto da legenda
                 </button>
               )}
-              <div style={{ fontSize: 11.5, color: C.faint, marginTop: 8 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir só ela · arraste as bordas do bloco na timeline · Ctrl/Shift+clique nos blocos seleciona vários · S divide · Delete oculta a legenda</div>
+              <div style={{ fontSize: 11.5, color: C.faint, marginTop: 8 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir só ela · arraste as bordas do bloco na timeline · Ctrl/Shift+clique nos blocos seleciona vários · S divide · <b>Delete</b> corta o trecho (vídeo, áudio e legenda) · <b>H</b> só oculta a legenda</div>
             </div>
           )}
         </div>
@@ -4456,8 +4815,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           )}
           {(mTool === 'legenda' ? [
             { k: 'split', icon: 'scissors', label: 'Dividir', act: splitAtPlayhead, off: !canSplit },
+            { k: 'text', icon: 'edit', label: 'Transcrição', act: () => openSheet('capText') },
             { k: 'style', icon: 'type', label: 'Estilo', act: () => openSheet('capStyle') },
-            { k: 'list', icon: 'edit', label: 'Editar legendas', act: () => openSheet('capList') },
+            { k: 'list', icon: 'list', label: 'Editar legendas', act: () => openSheet('capList') },
             { k: 'auto', icon: 'sparkles', label: 'Modelos', act: () => openSheet('capAuto') },
             { k: 'em', icon: 'star', label: 'Destacar', act: () => openSheet('capEm') },
             { k: 'merge', icon: 'merge', label: 'Juntar', act: () => mergeNext(sel), off: sel >= segments.length - 1 },
@@ -4933,7 +5293,7 @@ function SpeedPicker({ value, onChange, big = false }) {
 // Celular (estilo CapCut)
 const mIconBtn = { width: 40, height: 40, borderRadius: 12, border: 'none', background: 'none', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 };
 const mRow = { display: 'flex', alignItems: 'center', gap: 12, padding: '16px 16px', borderRadius: 16, background: 'rgba(255,255,255,0.06)', fontSize: 15.5, fontWeight: 600, color: '#fff' };
-const SHEET_TITLE = { speed: 'Velocidade', capList: 'Editar legendas', capStyle: 'Estilo da legenda', capEm: 'Destacar palavras', capAuto: 'Legendas automáticas' };
+const SHEET_TITLE = { speed: 'Velocidade', capText: 'Transcrição', capList: 'Editar legendas', capStyle: 'Estilo da legenda', capEm: 'Destacar palavras', capAuto: 'Legendas automáticas' };
 
 const TABS = [
   { id: 'enquadramento', label: 'Enquadramento', icon: 'crop' },

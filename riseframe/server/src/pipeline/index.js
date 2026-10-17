@@ -589,6 +589,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
       shadowMode: options.captionShadow, // sombra: auto (do estilo) | off | on
       shadowSize: options.captionShadowSize,
       shadowOpacity: options.captionShadowOpacity,
+      minDuration: options.captionMinDuration, // duração mínima de cada legenda (s)
+      gap: options.captionGap, // intervalo entre legendas (s)
+      noPunct: options.captionNoPunct === true, // remover pontuação
       // tela dividida com B-roll: a legenda vai para o meio (na linha entre as metades)
       centerWindows: options.captionBrollCenter !== false ? brollWindows : [],
     };

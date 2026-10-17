@@ -80,7 +80,7 @@ export function premiumChunks(words, segEnd, max = 4) {
  * o limite fica sozinha na linha. Usado no render e na prévia (mesmo resultado).
  * @returns {Array<{words:Array, end:number}>} `end` = quando o próximo cartão começa
  */
-export function layoutCaption(words, { lines = 2, maxChars = 24, segEnd } = {}) {
+export function layoutCaption(words, { lines = 2, maxChars = 24, segEnd, gap = 0 } = {}) {
   const L = lines === 1 ? 1 : 2;
   const M = Math.max(6, Math.round(maxChars) || 24);
   const cards = [];
@@ -109,10 +109,63 @@ export function layoutCaption(words, { lines = 2, maxChars = 24, segEnd } = {}) 
     }
   }
   if (card.length) cards.push(card);
-  return cards.map((ws, i) => ({
-    words: ws,
-    end: i + 1 < cards.length ? cards[i + 1][0].start : Math.max(ws[ws.length - 1].end ?? 0, Number(segEnd) || 0),
-  }));
+  const g = Math.max(0, Number(gap) || 0);
+  return cards.map((ws, i) => {
+    const last = ws[ws.length - 1];
+    if (i + 1 >= cards.length) {
+      // com intervalo, o fim da frase já vem ajustado (timeSegments): não estica até o fim da palavra
+      if (g > 0 && Number(segEnd) > 0) return { words: ws, end: Math.max((last.start ?? 0) + 0.05, Number(segEnd)) };
+      return { words: ws, end: Math.max(last.end ?? 0, Number(segEnd) || 0) };
+    }
+    const next = cards[i + 1][0].start;
+    // intervalo entre legendas: o cartão some um pouco antes do próximo (nunca antes da última palavra começar)
+    return { words: ws, end: g > 0 ? Math.max(last.start + 0.05, next - g) : next };
+  });
+}
+
+/**
+ * "Remover pontuação" (como no Premiere): tira vírgulas, pontos, aspas, reticências…
+ * Mantém o que faz parte da palavra (apóstrofo, hífen de "bem-vindo", 10,5, 3.000).
+ */
+export function stripPunct(word) {
+  return String(word ?? '')
+    .replace(/(\d)([.,])(?=\d)/g, (_, d, p) => d + (p === ',' ? '\u0001' : '\u0002'))
+    .replace(/[.,!?;:…"“”«»„()[\]{}¡¿*]/g, '')
+    .replace(/^[-–—'’]+|[-–—'’]+$/g, '')
+    .replace(/\u0001/g, ',')
+    .replace(/\u0002/g, '.')
+    .trim();
+}
+
+/** Opções de tempo da legenda (iguais no render e na prévia). */
+export function captionTiming(o = {}) {
+  return {
+    minDur: Math.min(5, Math.max(0, Number(o.captionMinDuration) || 0)),
+    gap: Math.min(0.5, Math.max(0, Number(o.captionGap) || 0)),
+    noPunct: o.captionNoPunct === true,
+  };
+}
+
+/**
+ * Duração mínima e intervalo entre legendas: cada frase fica na tela pelo menos `minDur`
+ * segundos (avançando na pausa seguinte) e termina `gap` segundos antes da próxima.
+ * `alive(seg)` diz se a frase aparece (frases sem palavras não contam).
+ */
+export function timeSegments(segments, { minDur = 0, gap = 0 } = {}, alive = () => true) {
+  if (!(minDur > 0) && !(gap > 0)) return segments;
+  const live = segments.map((s, i) => (alive(s) ? i : -1)).filter((i) => i >= 0);
+  const out = segments.slice();
+  live.forEach((i, k) => {
+    const s = segments[i];
+    const start = Number(s.start) || 0;
+    const end0 = Number(s.end) || start;
+    let end = Math.max(end0, start + minDur);
+    const nx = k + 1 < live.length ? segments[live[k + 1]] : null;
+    if (nx) end = Math.min(end, Number(nx.start) - gap);
+    end = Math.max(end, Math.min(end0, start + 0.1));
+    if (end !== end0) out[i] = { ...s, end: +end.toFixed(3) };
+  });
+  return out;
 }
 
 /**
