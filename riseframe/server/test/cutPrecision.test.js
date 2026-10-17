@@ -64,7 +64,7 @@ test('áudio real: transcrição esticando a palavra por cima da pausa → a pau
   const VOWEL = '0.3*(sin(2*PI*130*t)+0.7*sin(2*PI*260*t)+0.5*sin(2*PI*390*t)+0.3*sin(2*PI*520*t))';
   const wav = path.join(tmp, 'esticada.wav');
   await runFfmpeg(['-f', 'lavfi', '-i', `aevalsrc='${VOWEL}*(lt(t,1.2)+gte(t,2.3))':s=16000:d=3.4`,
-    '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.003:sample_rate=16000:d=3.4',
+    '-f', 'lavfi', '-i', 'anoisesrc=color=pink:amplitude=0.003:sample_rate=16000:d=3.4:seed=7',
     '-filter_complex', '[0][1]amix=inputs=2:normalize=0', '-y', wav], { label: 'teste' });
   // a transcrição diz que "agora" vai até 2.25 (a pausa real é 1.2–2.3)
   const transcript = { segments: [{ words: [{ start: 0.1, end: 0.6, word: 'vamos' }, { start: 0.6, end: 2.25, word: 'agora' }, { start: 2.3, end: 3.3, word: 'falar' }] }] };
