@@ -12,7 +12,7 @@ const icsDate = (date, time) => {
   return `${y}${m}${d}T${pad(h)}${pad(mi)}00`
 }
 const esc = s => (s || '').replace(/[\\;,\n]/g, c => c === '\n' ? '\\n' : `\\${c}`)
-const TYPE_LABELS = { schedule: 'Agendamento', task: 'Tarefa', proposal: 'Proposta' }
+const TYPE_LABELS = { schedule: 'Agendamento', task: 'Tarefa', proposal: 'Proposta', meeting: 'Reunião' }
 
 router.get('/feed/:token.ics', async (req, res) => {
   if (!isConfigured) return res.status(503).send('Supabase não configurado')
@@ -27,16 +27,18 @@ router.get('/feed/:token.ics', async (req, res) => {
   if (!setting) return res.status(404).send('Token inválido')
   const userId = setting.user_id
 
-  const [{ data: scheds }, { data: tasks }, { data: props }] = await Promise.all([
+  const [{ data: scheds }, { data: tasks }, { data: props }, { data: meets }] = await Promise.all([
     supabase.from('schedules').select('id, name, send_date, send_time, status').eq('user_id', userId).neq('status', 'cancelado'),
     supabase.from('crm_tasks').select('id, title, due_date, done').eq('user_id', userId).eq('done', false).not('due_date', 'is', null),
     supabase.from('proposals').select('id, title, valid_until, status').eq('user_id', userId),
+    supabase.from('meetings').select('*').eq('user_id', userId),
   ])
 
   const events = []
   ;(scheds ?? []).forEach(s => events.push({ id: 's' + s.id, type: 'schedule', title: s.name || 'Agendamento', date: s.send_date, time: s.send_time }))
   ;(tasks ?? []).forEach(t => events.push({ id: 't' + t.id, type: 'task', title: t.title || 'Tarefa', date: t.due_date?.split('T')[0], time: t.due_date?.split('T')[1]?.substring(0, 5) || null }))
   ;(props ?? []).forEach(p => p.valid_until && events.push({ id: 'p' + p.id, type: 'proposal', title: p.title || 'Proposta', date: p.valid_until, time: null }))
+  ;(meets ?? []).forEach(m => events.push({ id: 'm' + m.id, type: 'meeting', title: m.title || 'Reunião', date: m.date, time: m.time, duration: m.duration, location: m.location }))
 
   const lines = [
     'BEGIN:VCALENDAR',
@@ -54,10 +56,13 @@ router.get('/feed/:token.ics', async (req, res) => {
     lines.push('BEGIN:VEVENT')
     lines.push(`UID:${e.id}@riseflow`)
     lines.push(`DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`)
+    if (e.location) lines.push(`LOCATION:${esc(e.location)}`)
     if (e.time) {
       lines.push(`DTSTART:${icsDate(e.date, e.time)}`)
-      const [h, m] = e.time.split(':').map(Number)
-      lines.push(`DTEND:${icsDate(e.date, `${pad(h + 1)}:${pad(m)}`)}`)
+      const dur = e.duration || 60
+      const [h, mi] = e.time.split(':').map(Number)
+      const totalMin = h * 60 + mi + dur
+      lines.push(`DTEND:${icsDate(e.date, `${pad(Math.floor(totalMin / 60) % 24)}:${pad(totalMin % 60)}`)}`)
     } else {
       lines.push(`DTSTART;VALUE=DATE:${icsDate(e.date)}`)
       lines.push(`DTEND;VALUE=DATE:${icsDate(e.date)}`)

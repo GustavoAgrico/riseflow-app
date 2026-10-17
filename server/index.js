@@ -27,6 +27,8 @@ const legalRoutes = require('./routes/legal')
 const calendarRoutes = require('./routes/calendar')
 const pushRoutes = require('./routes/push')
 const clientsRoutes = require('./routes/clients')
+const proposalsRoutes = require('./routes/proposals')
+const meetingsRoutes = require('./routes/meetings')
 const telegram = require('./telegramClient')
 const metaClient = require('./metaClient')
 const whatsappCloud = require('./whatsappCloudClient')
@@ -278,6 +280,8 @@ app.use('/api/ai', auth, aiRoutes)
 app.use('/api/calendar', auth, calendarRoutes)
 app.use('/api/push', auth, pushRoutes)
 app.use('/api/clients', auth, clientsRoutes)
+app.use('/api/proposals', auth, proposalsRoutes)
+app.use('/api/meetings', auth, meetingsRoutes)
 
 // Páginas legais públicas (Política de Privacidade / Exclusão de dados) — exigidas
 // pela App Review da Meta. Montadas ANTES do fallback do SPA para terem URL própria.

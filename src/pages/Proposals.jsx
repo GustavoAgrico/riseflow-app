@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react'
-import { supabase } from '@/lib/supabase'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import api from '@services/api'
 import { useAuth } from '@context/AuthContext'
 import { usePeriod } from '@hooks/usePeriod'
 import { periodRange, brl } from '@lib/metrics'
 import { Layout } from '@components/Layout/Layout'
-import { FileText, Plus, Send, Check, X, Clock, Eye, Trash2, ChevronDown, Download } from 'lucide-react'
+import { FileText, Plus, Send, Check, X, Clock, Trash2, Download, Search, UserPlus } from 'lucide-react'
 import { exportCSV, exportPremiumPDF } from '@utils/exportUtils'
 import { SkeletonKPI, SkeletonTable } from '@components/ui/Skeleton'
 import { EmptyState } from '@components/ui/EmptyState'
@@ -44,26 +44,109 @@ const KPI = ({ label, value, sub, color }) => (
   </div>
 )
 
+const ClientPicker = ({ clients, value, onChange, onNewClient }) => {
+  const [query, setQuery] = useState(value || '')
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => { setQuery(value || '') }, [value])
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const filtered = clients.filter(c =>
+    c.name.toLowerCase().includes(query.toLowerCase()) ||
+    (c.phone || '').includes(query)
+  ).slice(0, 8)
+
+  const handleSelect = (c) => {
+    onChange({ client_name: c.name, client_id: c.id })
+    setQuery(c.name)
+    setOpen(false)
+  }
+
+  const handleType = (e) => {
+    setQuery(e.target.value)
+    onChange({ client_name: e.target.value, client_id: null })
+    setOpen(true)
+  }
+
+  const inputStyle = { width: '100%', background: C.bg, border: `1px solid ${C.bd}`, borderRadius: 8, padding: '8px 12px', color: C.tx, fontSize: 13, outline: 'none', fontFamily: 'inherit' }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <label style={{ fontSize: 11, color: C.mut, marginBottom: 4, display: 'block' }}>Cliente</label>
+      <div style={{ position: 'relative' }}>
+        <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.mut, pointerEvents: 'none' }} />
+        <input
+          style={{ ...inputStyle, paddingLeft: 30 }}
+          value={query}
+          onChange={handleType}
+          onFocus={() => setOpen(true)}
+          placeholder="Buscar ou digitar nome..."
+        />
+      </div>
+      {open && query.length > 0 && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, marginTop: 4, background: C.card, border: `1px solid ${C.bd}`, borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.3)', maxHeight: 220, overflowY: 'auto' }}>
+          {filtered.map(c => (
+            <div key={c.id} onClick={() => handleSelect(c)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 13, borderBottom: `1px solid ${C.bd}` }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,107,53,0.08)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              <span style={{ fontWeight: 600 }}>{c.name}</span>
+              {c.phone && <span style={{ fontSize: 11, color: C.mut }}>{c.phone}</span>}
+            </div>
+          ))}
+          {filtered.length === 0 && query.trim() && (
+            <div onClick={() => { onNewClient(query.trim()); setOpen(false) }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 12px', cursor: 'pointer', fontSize: 13, color: C.org, fontWeight: 600 }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,107,53,0.08)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              <UserPlus size={14} /> Cadastrar "{query.trim()}"
+            </div>
+          )}
+          {filtered.length > 0 && query.trim() && !filtered.some(c => c.name.toLowerCase() === query.toLowerCase()) && (
+            <div onClick={() => { onNewClient(query.trim()); setOpen(false) }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 12px', cursor: 'pointer', fontSize: 13, color: C.org, fontWeight: 600, borderTop: `1px solid ${C.bd}` }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,107,53,0.08)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              <UserPlus size={14} /> Cadastrar "{query.trim()}"
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export const Proposals = () => {
   const { ownerUserId, isDemoMode } = useAuth()
   const { period, setPeriod, options: periodOptions } = usePeriod()
   const [proposals, setProposals] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ title: '', client_name: '', value: '', valid_until: '', items: '' })
+  const [form, setForm] = useState({ title: '', client_name: '', client_id: null, value: '', valid_until: '', items: '' })
+  const [error, setError] = useState(null)
 
   useEffect(() => {
     if (isDemoMode) { setLoading(false); return }
     if (!ownerUserId) return
     ;(async () => {
       setLoading(true)
-      const [{ data: props }, { data: cls }] = await Promise.all([
-        supabase.from('proposals').select('*').eq('user_id', ownerUserId).order('created_at', { ascending: false }),
-        supabase.from('clients').select('id, name, phone').eq('user_id', ownerUserId).order('name'),
-      ])
-      setProposals(props ?? [])
-      setClients(cls ?? [])
+      try {
+        const [{ data: props }, { data: cls }] = await Promise.all([
+          api.get('/proposals'),
+          api.get('/clients'),
+        ])
+        setProposals(props ?? [])
+        setClients(cls ?? [])
+      } catch (e) {
+        console.warn('[Proposals] fetch error:', e?.message)
+      }
       setLoading(false)
     })()
   }, [ownerUserId, isDemoMode])
@@ -83,34 +166,56 @@ export const Proposals = () => {
 
   const handleSave = async () => {
     if (isDemoMode || !form.title.trim()) return
-    const payload = {
-      user_id: ownerUserId,
-      title: form.title.trim(),
-      client_name: form.client_name.trim(),
-      value: Number(form.value) || 0,
-      valid_until: form.valid_until || null,
-      items: form.items.trim() || null,
-      status: 'draft',
-    }
-    const { data, error } = await supabase.from('proposals').insert(payload).select().single()
-    if (!error && data) {
+    setSaving(true)
+    setError(null)
+    try {
+      const { data } = await api.post('/proposals', {
+        title: form.title.trim(),
+        client_name: form.client_name.trim(),
+        client_id: form.client_id,
+        value: Number(form.value) || 0,
+        valid_until: form.valid_until || null,
+        items: form.items.trim() || null,
+        status: 'draft',
+      })
       setProposals(p => [data, ...p])
-      setForm({ title: '', client_name: '', value: '', valid_until: '', items: '' })
+      setForm({ title: '', client_name: '', client_id: null, value: '', valid_until: '', items: '' })
       setShowForm(false)
+    } catch (e) {
+      const msg = e?.response?.data?.error ?? e?.message ?? 'Erro ao salvar'
+      setError(msg)
+      console.error('[Proposals] save error:', msg)
     }
+    setSaving(false)
   }
 
   const updateStatus = async (id, status) => {
     if (isDemoMode) return
-    const { error } = await supabase.from('proposals').update({ status }).eq('id', id)
-    if (!error) setProposals(p => p.map(x => x.id === id ? { ...x, status } : x))
+    try {
+      await api.patch(`/proposals/${id}`, { status })
+      setProposals(p => p.map(x => x.id === id ? { ...x, status } : x))
+    } catch (e) { console.warn('[Proposals] update error:', e?.message) }
   }
 
   const deleteProposal = async (id) => {
     if (isDemoMode) return
-    const { error } = await supabase.from('proposals').delete().eq('id', id)
-    if (!error) setProposals(p => p.filter(x => x.id !== id))
+    try {
+      await api.delete(`/proposals/${id}`)
+      setProposals(p => p.filter(x => x.id !== id))
+    } catch (e) { console.warn('[Proposals] delete error:', e?.message) }
   }
+
+  const handleNewClient = useCallback(async (name) => {
+    if (isDemoMode || !name) return
+    try {
+      const { data } = await api.post('/clients', { name, status: 'active' })
+      setClients(prev => [...prev, data])
+      setForm(f => ({ ...f, client_name: data.name, client_id: data.id }))
+    } catch (e) {
+      console.warn('[Proposals] new client error:', e?.message)
+      setForm(f => ({ ...f, client_name: name, client_id: null }))
+    }
+  }, [isDemoMode])
 
   const inputStyle = { width: '100%', background: C.bg, border: `1px solid ${C.bd}`, borderRadius: 8, padding: '8px 12px', color: C.tx, fontSize: 13, outline: 'none', fontFamily: 'inherit' }
   const td = { padding: '12px 10px', borderTop: `1px solid ${C.bd}`, textAlign: 'left', fontSize: 13 }
@@ -143,16 +248,18 @@ export const Proposals = () => {
       {showForm && (
         <div style={{ background: C.card, border: `1px solid ${C.bd}`, borderRadius: 14, padding: 20, marginBottom: 24 }}>
           <p className="rf-section-title" style={{ marginBottom: 14 }}>Nova proposta</p>
+          {error && <p style={{ margin: '0 0 12px', padding: '8px 12px', borderRadius: 8, background: '#EF444418', color: '#EF4444', fontSize: 12, fontWeight: 600 }}>{error}</p>}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={{ fontSize: 11, color: C.mut, marginBottom: 4, display: 'block' }}>Título *</label>
               <input style={inputStyle} value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Ex: Website institucional" />
             </div>
-            <div>
-              <label style={{ fontSize: 11, color: C.mut, marginBottom: 4, display: 'block' }}>Cliente</label>
-              <input style={inputStyle} value={form.client_name} onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))} placeholder="Nome do cliente" list="proposal-clients" />
-              <datalist id="proposal-clients">{clients.map(c => <option key={c.id} value={c.name} />)}</datalist>
-            </div>
+            <ClientPicker
+              clients={clients}
+              value={form.client_name}
+              onChange={({ client_name, client_id }) => setForm(f => ({ ...f, client_name, client_id }))}
+              onNewClient={handleNewClient}
+            />
             <div>
               <label style={{ fontSize: 11, color: C.mut, marginBottom: 4, display: 'block' }}>Valor (R$)</label>
               <input type="number" min={0} style={inputStyle} value={form.value} onChange={e => setForm(f => ({ ...f, value: e.target.value }))} placeholder="0" />
@@ -167,8 +274,10 @@ export const Proposals = () => {
             <textarea style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} value={form.items} onChange={e => setForm(f => ({ ...f, items: e.target.value }))} placeholder="Descreva os itens ou serviços inclusos…" />
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={handleSave} disabled={!form.title.trim()} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: C.org, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: form.title.trim() ? 1 : 0.5 }}>Salvar rascunho</button>
-            <button onClick={() => setShowForm(false)} style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${C.bd}`, background: 'transparent', color: C.mut, fontSize: 13, cursor: 'pointer' }}>Cancelar</button>
+            <button onClick={handleSave} disabled={!form.title.trim() || saving} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: C.org, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: form.title.trim() && !saving ? 1 : 0.5 }}>
+              {saving ? 'Salvando…' : 'Salvar rascunho'}
+            </button>
+            <button onClick={() => { setShowForm(false); setError(null) }} style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${C.bd}`, background: 'transparent', color: C.mut, fontSize: 13, cursor: 'pointer' }}>Cancelar</button>
           </div>
         </div>
       )}
