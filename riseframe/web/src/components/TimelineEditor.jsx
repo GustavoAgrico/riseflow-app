@@ -2868,6 +2868,56 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }, [trackW, dur, isMobile]);
   const fitAll = () => setPps(Math.max(fitPps, Math.min(PPS_MAX, +((trackW - 60) / dur).toFixed(2))));
 
+  // Painéis redimensionáveis (como no Premiere): arraste a divisória entre o monitor e o
+  // lado direito (largura) e entre as opções e a timeline (altura). Fica salvo neste
+  // navegador; clique duplo na divisória volta ao padrão.
+  const [layoutSz, setLayoutSz] = useState(() => {
+    try { const v = JSON.parse(localStorage.getItem('rf_editor_layout') || 'null'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+  });
+  const saveLayout = (patch) => setLayoutSz((cur) => {
+    const next = { ...cur, ...patch };
+    for (const k of Object.keys(next)) if (next[k] == null) delete next[k];
+    try { localStorage.setItem('rf_editor_layout', JSON.stringify(next)); } catch { /* sem armazenamento */ }
+    return next;
+  });
+  const splitRef = useRef(null);
+  function startSplit(kind, e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const g = gridRef.current;
+    const pv = g?.querySelector('.rf-tl-preview');
+    const adj = g?.querySelector('.rf-tl-adjust');
+    splitRef.current = { kind, x0: e.clientX, y0: e.clientY, w0: pv?.getBoundingClientRect().width || 400, h0: adj?.getBoundingClientRect().height || 320, gw: g?.getBoundingClientRect().width || 1200 };
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = kind === 'col' ? 'col-resize' : 'row-resize';
+  }
+  useEffect(() => {
+    function move(e) {
+      const d = splitRef.current;
+      if (!d) return;
+      if (d.kind === 'col') saveLayout({ monW: Math.round(Math.max(220, Math.min(d.gw - 420, d.w0 + e.clientX - d.x0))) });
+      else saveLayout({ panelH: Math.round(Math.max(120, Math.min(window.innerHeight * 0.8, d.h0 + e.clientY - d.y0))) });
+    }
+    function up() {
+      if (!splitRef.current) return;
+      splitRef.current = null;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      window.dispatchEvent(new Event('resize')); // o monitor e a timeline se ajustam ao novo tamanho
+    }
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, []);
+  const splitter = (kind) => (
+    <div className={`rf-split rf-split--${kind}`} onMouseDown={(e) => startSplit(kind, e)}
+      onDoubleClick={() => { saveLayout(kind === 'col' ? { monW: null } : { panelH: null }); setTimeout(() => window.dispatchEvent(new Event('resize')), 0); }}
+      title={kind === 'col' ? 'Arraste para mudar a largura do monitor · clique duplo volta ao padrão' : 'Arraste para mudar a altura do painel e da timeline · clique duplo volta ao padrão'}>
+      <span />
+    </div>
+  );
+
   // Computador: o player tem a altura que sobra na janela depois da timeline (tudo cabe
   // na tela, sem espaço vazio). Player G continua grande (rola a página).
   const gridRef = useRef(null);
@@ -3349,7 +3399,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
       </div>
 
-      <div ref={gridRef} className={`rf-tl-grid rf-stage-${stage}${(showFormatPreview && !showSource ? fmtAr : mainAr) < 1 ? ' rf-mon-v' : ''}`} style={{ display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start', ...(isMobile && sheet ? { '--rf-stage-h': 'max(140px, calc(100dvh - var(--rf-sheet-h) - 118px - env(safe-area-inset-top)))' } : isMobile ? { '--rf-stage-h': `max(200px, calc(100dvh - ${(stage === 's' ? 470 : stage === 'l' ? 330 : 400) + (showZoomLane ? 28 : 0) + (showBrollLane ? 30 : 0) + (media.length ? 34 : 0)}px - env(safe-area-inset-bottom)))` } : {}) }}>
+      <div ref={gridRef} className={`rf-tl-grid rf-stage-${stage}${(showFormatPreview && !showSource ? fmtAr : mainAr) < 1 ? ' rf-mon-v' : ''}${layoutSz.monW ? ' rf-custom-col' : ''}${layoutSz.panelH ? ' rf-custom-row' : ''}`} style={{ ...(layoutSz.monW ? { '--rf-mon-w': `${layoutSz.monW}px` } : {}), ...(layoutSz.panelH ? { '--rf-panel-h': `${layoutSz.panelH}px` } : {}), display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start', ...(isMobile && sheet ? { '--rf-stage-h': 'max(140px, calc(100dvh - var(--rf-sheet-h) - 118px - env(safe-area-inset-top)))' } : isMobile ? { '--rf-stage-h': `max(200px, calc(100dvh - ${(stage === 's' ? 470 : stage === 'l' ? 330 : 400) + (showZoomLane ? 28 : 0) + (showBrollLane ? 30 : 0) + (media.length ? 34 : 0)}px - env(safe-area-inset-bottom)))` } : {}) }}>
         {/* Ferramentas (como num editor): cada uma abre o painel de ajustes à direita */}
         <nav className="rf-tl-nav" style={{ display: 'grid', gap: 4, padding: 8, borderRadius: 16, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.025)', alignSelf: 'start' }}>
           {TABS.map((t) => {
@@ -3372,6 +3422,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </nav>
 
         <div className="rf-tl-preview">
+          {!isMobile && splitter('col')}
           {/* Vídeo principal + prévia 9:16 do ajuste, LADO A LADO (mesma linha) */}
           {/* Vídeo e prévia do formato centralizados, lado a lado e com a MESMA altura:
               cada um ocupa uma fatia da largura proporcional ao seu formato. */}
@@ -4425,7 +4476,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           )}
 
         {/* Timeline logo abaixo do vídeo (como num editor), ao lado do painel de ajustes */}
-        <div ref={bottomRef} className="rf-tl-bottom" style={{ minWidth: 0, ...(isMobile ? {} : { background: PR.panel, border: `1px solid ${PR.line}`, borderRadius: 12, padding: '8px 10px 10px', boxShadow: '0 10px 30px -18px rgba(0,0,0,0.8)' }) }}>
+        <div ref={bottomRef} className="rf-tl-bottom" style={{ minWidth: 0, position: 'relative', ...(isMobile ? {} : { background: PR.panel, border: `1px solid ${PR.line}`, borderRadius: 12, padding: '8px 10px 10px', boxShadow: '0 10px 30px -18px rgba(0,0,0,0.8)' }) }}>
+        {!isMobile && splitter('row')}
         {/* Barra de ferramentas da timeline */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 8, flexWrap: 'wrap' }}>
           {!isMobile && (
@@ -5244,6 +5296,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           .rf-tl-card:not(.rf-m) .rf-tl-preview{ grid-column: 1; grid-row: 1 / span 3; align-self: start; position: sticky; top: 10px; }
           .rf-tl-card:not(.rf-m) .rf-tl-adjust{ grid-column: 2; grid-row: 2; height: clamp(240px, 38vh, 440px); min-height: 0; }
           .rf-tl-card:not(.rf-m) .rf-tl-bottom{ grid-column: 2; grid-row: 3; min-width: 0; }
+        }
+        /* divisórias arrastáveis (só no computador) */
+        .rf-split{ display: none; position: absolute; z-index: 30; }
+        .rf-split > span{ position: absolute; border-radius: 3px; background: rgba(255,255,255,0.14); transition: background .15s; }
+        .rf-split:hover > span{ background: #2D8CFF; }
+        @media (min-width: 861px) and (max-width: 1100px){
+          .rf-tl-card:not(.rf-m) .rf-tl-preview{ position: relative; }
+        }
+        @media (min-width: 861px){
+          .rf-tl-card:not(.rf-m) .rf-split--col{ display: block; top: 0; bottom: 0; right: -10px; width: 10px; cursor: col-resize; }
+          .rf-tl-card:not(.rf-m) .rf-split--col > span{ left: 3px; top: 50%; width: 4px; height: 44px; margin-top: -22px; }
+          .rf-tl-card:not(.rf-m) .rf-tl-grid.rf-custom-col{ grid-template-columns: var(--rf-mon-w) minmax(0, 1fr) !important; }
+        }
+        @media (min-width: 1101px){
+          .rf-tl-card:not(.rf-m) .rf-split--row{ display: block; left: 0; right: 0; top: -10px; height: 10px; cursor: row-resize; }
+          .rf-tl-card:not(.rf-m) .rf-split--row > span{ top: 3px; left: 50%; width: 44px; height: 4px; margin-left: -22px; }
+          .rf-tl-card:not(.rf-m) .rf-tl-grid.rf-custom-row .rf-tl-adjust{ height: var(--rf-panel-h) !important; }
         }
         /* barra do player quebra a linha quando a coluna do monitor é estreita */
         .rf-tl-bar{ flex-wrap: wrap; row-gap: 8px !important; }
