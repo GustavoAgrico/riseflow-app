@@ -99,6 +99,15 @@ export async function analyzeWithGroq(transcript, meta, options, cfg) {
   return chatJson(transcript, meta, options, cfg, { url: 'https://api.groq.com/openai/v1/chat/completions', key: cfg.groqKey, model: cfg.groqModel || 'llama-3.3-70b-versatile', label: 'Groq' });
 }
 
+/** App de PC sem chave: a IA da conta do site analisa (só o texto vai). */
+export async function analyzeWithRemote(transcript, meta, options, cfg) {
+  const { askRemoteText } = await import('./llm.js');
+  const maxCount = options.brollMax ?? 6;
+  const text = await askRemoteText(INSTRUCTION(meta.duration, maxCount, cfg.niche, cfg.imageSource), compactTranscript(transcript), cfg, { maxTokens: 1500 });
+  log.info(`IA da conta respondeu ${text.length} chars`);
+  return normalize(parseJson(text), meta.duration, maxCount);
+}
+
 async function chatJson(transcript, meta, options, cfg, { url, key, model, label }) {
   const maxCount = options.brollMax ?? 6;
   const res = await fetch(url, {

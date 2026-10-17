@@ -158,11 +158,12 @@ async function askGroq(system, user, cfg) {
 
 /** App de PC sem chave de IA: o servidor do site pergunta à IA por ele (só o texto vai). */
 async function askRemote(_system, user, cfg) {
-  const res = await fetch(`${cfg.remoteServer}/api/cleanup/remote`, {
+  const { fetchWaking } = await import('../account.js');
+  const res = await fetchWaking(`${cfg.remoteServer}/api/cleanup/remote`, {
     method: 'POST',
     headers: { authorization: `Bearer ${cfg.remoteToken}`, 'content-type': 'application/json' },
     body: JSON.stringify({ text: user }),
-    signal: AbortSignal.timeout(180_000),
+    timeoutMs: 180_000,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `o servidor da conta respondeu ${res.status}`);

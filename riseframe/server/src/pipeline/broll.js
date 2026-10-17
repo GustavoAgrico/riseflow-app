@@ -266,6 +266,27 @@ export function extOf(url, isImage) {
  */
 export async function brollCandidates(query, opts = {}) {
   const { source, apiKey, google, pixabayKey, orientation = 'portrait', targetH = 1280, limit = 6, unrestricted = false, lang = '' } = opts;
+  // App de PC sem chaves de banco de imagens: a busca vai pela conta do site (Pexels,
+  // Pixabay, Google com as chaves do servidor). Se não der, segue com o acervo livre.
+  if (config.account.server && !opts.noRemote && source !== 'wikimedia' && !apiKey && !pixabayKey && !googleReady(google)) {
+    try {
+      const { jobAccountToken, fetchWaking } = await import('../account.js');
+      const token = jobAccountToken(opts.jobId);
+      if (token) {
+        const res = await fetchWaking(`${config.account.server}/api/remote/broll-search`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ query, source, orientation, targetH, limit, lang }),
+          timeoutMs: 60_000,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && Array.isArray(data.candidates) && data.candidates.length) return data.candidates;
+        if (!res.ok) log.warn(`busca de B-roll pela conta: ${data.error || res.status}`);
+      }
+    } catch (err) {
+      log.warn(`busca de B-roll pela conta falhou (${err.message}); usando o acervo livre`);
+    }
+  }
   // 'mix': junta VÍDEOS (Pexels, Pixabay), Google Imagens e o acervo livre (Wikimedia
   // Commons) numa lista só, intercalada (vídeo primeiro), para o usuário escolher entre todos.
   if (source === 'mix') {
