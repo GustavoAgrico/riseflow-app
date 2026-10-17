@@ -7,7 +7,7 @@ import { Thumb } from './Templates.jsx';
 import { TEMPLATES } from '../templates.js';
 import { getPublicInfo, apiAsset } from '../api.js';
 
-function MeshBg() {
+export function MeshBg() {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
       <div style={{ position: 'absolute', top: '-15%', left: '-10%', width: 520, height: 520, borderRadius: '50%', background: C.orange, filter: 'blur(160px)', opacity: 0.16 }} />
@@ -17,7 +17,7 @@ function MeshBg() {
   );
 }
 
-function GhostBtn({ children, onClick, style }) {
+export function GhostBtn({ children, onClick, style }) {
   return (
     <button
       onClick={onClick}
@@ -30,7 +30,7 @@ function GhostBtn({ children, onClick, style }) {
   );
 }
 
-function GradBtn({ children, onClick, big, style }) {
+export function GradBtn({ children, onClick, big, style }) {
   return (
     <button
       onClick={onClick}
@@ -251,6 +251,7 @@ export default function Landing({ onEnter, onLogin }) {
               {[['Recursos', 'recursos'], ['Templates', 'templates'], ['Antes e depois', 'demo'], ['Preços', 'precos']].map(([l, id]) => (
                 <a key={id} href={`#${id}`} style={{ color: C.muted, fontSize: 14, fontWeight: 500, textDecoration: 'none' }}>{l}</a>
               ))}
+              <a href="/download" style={{ color: C.text, fontSize: 14, fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="download" size={14} strokeWidth={2.2} /> Baixar app</a>
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 9, alignItems: 'center' }}>
               <GhostBtn onClick={onLogin} style={{ padding: '9px 16px', borderRadius: 999 }}>Entrar</GhostBtn>
@@ -275,7 +276,10 @@ export default function Landing({ onEnter, onLogin }) {
               </p>
               <div className="rf-hero-cta" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                 <GradBtn onClick={onEnter} big style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>Criar meu primeiro vídeo <Icon name="arrowRight" size={18} strokeWidth={2.2} /></GradBtn>
-                <span style={{ color: C.muted, fontSize: 14 }}>Teste grátis — sem cartão</span>
+                <GhostBtn onClick={() => { window.location.href = '/download'; }} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '14px 20px' }}><Icon name="download" size={17} strokeWidth={2.2} /> Baixar para computador</GhostBtn>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <span style={{ color: C.muted, fontSize: 14 }}>Teste grátis — sem cartão · Windows, Mac e navegador</span>
               </div>
               <div className="rf-trust" style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 26, alignItems: 'center' }}>
                 <span style={{ fontSize: 12, color: C.faint, fontWeight: 600 }}>Pronto para</span>
@@ -436,6 +440,7 @@ export default function Landing({ onEnter, onLogin }) {
             <a href="/termos" style={{ color: C.muted }}>Termos de uso</a>
             <a href="/privacidade" style={{ color: C.muted }}>Privacidade</a>
             <a href="#precos" style={{ color: C.muted }}>Preços</a>
+            <a href="/download" style={{ color: C.muted }}>Baixar o app</a>
             {info?.supportEmail && <a href={`mailto:${info.supportEmail}`} style={{ color: C.muted }}>Contato</a>}
           </div>
         </footer>

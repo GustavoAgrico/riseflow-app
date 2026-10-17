@@ -91,6 +91,19 @@ function activePlan(e) {
   return cfg ? { ...cfg, until: e.plan.until, left: e.plan.credits } : null;
 }
 
+/**
+ * Pode usar o app de PC/Mac? Plano mensal ativo ou ainda no teste grátis (edições grátis
+ * com todos os recursos). Acabou o teste sem plano: o app pausa até assinar.
+ */
+export function appAccess(user) {
+  if (unlimited(user) || !config.billing.appRequiresPlan) return true;
+  const e = entry(user.id);
+  return Boolean(activePlan(e)) || e.freeEdits > 0;
+}
+
+/** Já usou o teste grátis (para os renders dos vídeos de teste continuarem funcionando). */
+export const hadTrial = (user) => (entry(user.id).trialSources || []).length > 0;
+
 /** Recursos liberados para o usuário (ids de shared/credits.js). */
 export function allowedFeatures(user) {
   if (unlimited(user)) return ALL_FEATURES;
@@ -174,6 +187,9 @@ export function billingStatus(user) {
     // Renovação automática (assinatura no cartão) ligada para o plano atual?
     autoRenew: Boolean(plan && e.subscription?.active),
     autoRenewAvailable: billingEnabled() && b.autoRenew && !pixMode(),
+    // App de PC/Mac: liberado só com plano mensal ativo.
+    appAccess: appAccess(user),
+    appRequiresPlan: b.appRequiresPlan,
   };
 }
 

@@ -8,7 +8,7 @@ import { config } from '../config.js';
 import { queue } from '../queue.js';
 import { requireAuth, requireVerified } from './auth.js';
 import { getSettings } from '../auth/settings.js';
-import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod, trialCovers, useFreeEdit, refundFreeEdit, holdRemote, releaseRemote } from '../auth/billing.js';
+import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod, trialCovers, useFreeEdit, refundFreeEdit, holdRemote, releaseRemote, appAccess, hadTrial } from '../auth/billing.js';
 import { remoteAccount, remoteCheck, remoteCharge, holdRemoteCharge, settleRemoteCharge, sendAccountError, rememberJobToken } from '../account.js';
 import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../../shared/credits.js';
 import { registerMedia, resolveMedia, relinkMedia, mediaStatus } from '../mediaStore.js';
@@ -259,8 +259,22 @@ function chargeAndQueue(req, res, mode, jobInput, { sourceId } = {}) {
 const REMOTE_MODES = ['auto', 'transcribe', 'clips', 'render'];
 const validMode = (m) => (REMOTE_MODES.includes(m) ? m : null);
 
+// App de PC/Mac: teste grátis e depois só com plano mensal ativo (BILLING_APP_REQUIRES_PLAN).
+// Os vídeos do teste continuam renderizando (e usando as APIs) mesmo depois do teste.
+function requireAppPlan(req, res, next) {
+  if (appAccess(req.user)) return next();
+  const { mode, sourceId } = req.body || {};
+  const billingRoute = req.path.startsWith('/billing/');
+  if (billingRoute ? mode === 'render' && trialCovers(req.user, 'render', sourceId) : hadTrial(req.user)) return next();
+  res.status(402).json({
+    code: 'PAYMENT_REQUIRED',
+    appPlanRequired: true,
+    error: 'Seu teste grátis acabou. O app de computador é liberado com um plano mensal ativo — assine ou renove em Planos para continuar.',
+  });
+}
+
 // POST /api/billing/remote/check { mode } → { ok } | 402/403 (mesmo corpo do site)
-jobsRouter.post('/billing/remote/check', requireAuth, requireVerified, (req, res) => {
+jobsRouter.post('/billing/remote/check', requireAuth, requireVerified, requireAppPlan, (req, res) => {
   const mode = validMode(req.body?.mode);
   if (!mode) return res.status(400).json({ error: 'modo inválido' });
   const no = precheck(req.user, mode);
@@ -269,7 +283,7 @@ jobsRouter.post('/billing/remote/check', requireAuth, requireVerified, (req, res
 });
 
 // POST /api/billing/remote/charge { mode, options, sourceId, jobId } → { chargeId, creditsCharged, freeEdit, freeEditsLeft }
-jobsRouter.post('/billing/remote/charge', requireAuth, requireVerified, (req, res) => {
+jobsRouter.post('/billing/remote/charge', requireAuth, requireVerified, requireAppPlan, (req, res) => {
   const { sourceId, jobId } = req.body || {};
   const mode = validMode(req.body?.mode);
   if (!mode) return res.status(400).json({ error: 'modo inválido' });
@@ -981,7 +995,7 @@ jobsRouter.get('/media/:id/preview', async (req, res) => {
 // Só o áudio (leve) vem; o vídeo continua no computador da pessoa. Limite diário por conta.
 const remoteMinutes = new Map(); // userId → { day, min }
 const REMOTE_DAILY_MIN = Number(process.env.REMOTE_TRANSCRIBE_DAILY_MIN) || 300;
-jobsRouter.post('/transcribe/remote', requireAuth, requireVerified, uploadMedia.single('audio'), async (req, res) => {
+jobsRouter.post('/transcribe/remote', requireAuth, requireVerified, requireAppPlan, uploadMedia.single('audio'), async (req, res) => {
   const file = req.file?.path;
   if (!file) return res.status(400).json({ error: 'envie o áudio (campo "audio")' });
   const drop = () => fs.unlink(file, () => {});
@@ -1026,7 +1040,7 @@ function remoteQuota(kind, userId, max) {
   return true;
 }
 // POST /api/remote/llm { system, user, maxTokens, json } → { text } — IA deste servidor
-jobsRouter.post('/remote/llm', requireAuth, requireVerified, async (req, res) => {
+jobsRouter.post('/remote/llm', requireAuth, requireVerified, requireAppPlan, async (req, res) => {
   if (remoteAccount()) return res.status(501).json({ error: 'este servidor não responde pela conta' });
   const system = String(req.body?.system || '');
   const user = String(req.body?.user || '');
@@ -1043,7 +1057,7 @@ jobsRouter.post('/remote/llm', requireAuth, requireVerified, async (req, res) =>
   }
 });
 // POST /api/remote/broll-search { query, source, orientation, targetH, limit, lang } → { candidates }
-jobsRouter.post('/remote/broll-search', requireAuth, requireVerified, async (req, res) => {
+jobsRouter.post('/remote/broll-search', requireAuth, requireVerified, requireAppPlan, async (req, res) => {
   if (remoteAccount()) return res.status(501).json({ error: 'este servidor não responde pela conta' });
   const query = String(req.body?.query || '').trim().slice(0, 120);
   if (!query) return res.status(400).json({ error: 'busca vazia' });
@@ -1070,7 +1084,7 @@ jobsRouter.post('/remote/broll-search', requireAuth, requireVerified, async (req
 // para o app de PC sem chave de IA (só o texto numerado vem). Limite diário por conta.
 const remoteCleanups = new Map(); // userId → { day, n }
 const REMOTE_CLEANUP_DAILY = Number(process.env.REMOTE_CLEANUP_DAILY) || 400;
-jobsRouter.post('/cleanup/remote', requireAuth, requireVerified, async (req, res) => {
+jobsRouter.post('/cleanup/remote', requireAuth, requireVerified, requireAppPlan, async (req, res) => {
   const text = String(req.body?.text || '');
   if (!text || text.length > 40_000) return res.status(400).json({ error: 'texto vazio ou grande demais' });
   if (remoteAccount()) return res.status(501).json({ error: 'este servidor não faz correção remota' });

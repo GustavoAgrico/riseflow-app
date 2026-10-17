@@ -132,3 +132,40 @@ test('app de PC/Mac usa a conta do site: login, cobrança, devolução e entrar 
   // Token inválido não entra no app.
   assert.equal((await get(`${app}/settings`, 'token.falso.x')).status, 401);
 });
+
+test('app de PC/Mac: teste grátis com tudo liberado, depois só com plano mensal ativo', { timeout: 120000 }, async () => {
+  const site = await startServer('site2', { BILLING_MODE: 'on', BILLING_FREE_EDITS: '1', ADMIN_EMAILS: 'chefe@exemplo.com' });
+  const app = await startServer('app2', { BILLING_MODE: 'off', ACCOUNT_SERVER: site.replace(/\/api$/, '') });
+  const video = path.join(tmp, 'v2.mp4');
+  spawnSync(ffmpegPath, ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=160x120:r=15:d=2', '-f', 'lavfi', '-i', 'sine=d=2', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', '-shortest', '-y', video]);
+
+  const token = (await post(`${app}/auth/register`, { email: 'novo@exemplo.com', password: 'senha12345' })).body.token;
+  assert.equal((await get(`${app}/billing`, token)).body.appAccess, true, 'teste grátis: app liberado');
+  const trial = await upload(`${app}/transcribe`, token, video);
+  assert.equal(trial.status, 201, JSON.stringify(trial.body));
+  assert.equal(trial.body.freeEdit, true);
+  const src = await waitJob(app, token, trial.body.id);
+  assert.equal(src.status, 'done');
+
+  // Acabou o teste: o app pausa até assinar…
+  const b = (await get(`${app}/billing`, token)).body;
+  assert.equal(b.appAccess, false);
+  assert.equal(b.appRequiresPlan, true);
+  const no = await upload(`${app}/transcribe`, token, video);
+  assert.equal(no.status, 402);
+  assert.equal(no.body.appPlanRequired, true);
+  // …mas o vídeo do teste ainda pode ser finalizado na timeline.
+  const rend = await post(`${app}/render`, { sourceId: trial.body.id, editedTranscript: src.report.transcript, options: { captions: false, colorLook: 'none' } }, token);
+  assert.equal(rend.status, 201, JSON.stringify(rend.body));
+
+  // Recarga avulsa sozinha não libera o app; o plano mensal libera.
+  const admin = (await post(`${site}/auth/register`, { email: 'chefe@exemplo.com', password: 'senha12345' })).body.token;
+  assert.equal((await post(`${site}/billing/admin/grant`, { email: 'novo@exemplo.com', kind: 'pack', itemId: 'recarga-100' }, admin)).status, 200);
+  assert.equal((await upload(`${app}/transcribe`, token, video)).status, 402);
+  assert.equal((await post(`${site}/billing/admin/grant`, { email: 'novo@exemplo.com', kind: 'plan', itemId: 'pro' }, admin)).status, 200);
+  assert.equal((await get(`${app}/billing`, token)).body.appAccess, true);
+  const ok = await upload(`${app}/transcribe`, token, video);
+  assert.equal(ok.status, 201, JSON.stringify(ok.body));
+  assert.ok(!ok.body.freeEdit, 'cobra do plano');
+  assert.equal((await waitJob(app, token, ok.body.id)).status, 'done');
+});
