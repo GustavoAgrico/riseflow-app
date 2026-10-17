@@ -191,6 +191,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [colorLook, setColorLook] = useState(cap0.colorLook || 'auto');
   const [colorAdj, setColorAdj] = useState({ brightness: 0, contrast: 0, saturation: 0, temperature: 0, ...(cap0.colorAdjust || {}) });
   const colorCss = colorPreviewCss(colorAdj);
+  const [showSource, setShowSource] = useState(false); // comparar com o vídeo original ao lado
+  const transOverlayRef = useRef(null); // camada da transição (no monitor visível)
+  const fxOverlayRef = useRef(null); // camada dos efeitos de vídeo
   // Prévia do look escolhido (aproximada) + ajuste manual por cima.
   const lookCss = LOOK_CSS[colorLook] || LOOK_CSS.auto;
   const videoFilter = [lookCss.filter, colorCss.filter].filter(Boolean).join(' ') || undefined;
@@ -2484,19 +2487,28 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const mainAr = srcDim ? srcDim.w / srcDim.h : 9 / 16;
   const fmtAr = aspectSel === '1:1' ? 1 : aspectSel === '16:9' ? 16 / 9 : aspectSel === '9:16' ? 9 / 16 : mainAr;
   const previewLabel = aspectSel === 'original' ? 'formato original' : aspectSel;
+  const showFormatPreview = framingMode === 'manual' || aspectSel !== 'original';
+  // Um monitor só (como o Program do Premiere): mostra o vídeo como vai sair. O original
+  // aparece ao lado só quando o usuário pede para comparar.
+  const singleMon = showFormatPreview && !showSource;
   const composedPreview = (
     <div ref={composedRef} style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${fmtAr.toFixed(4)}), calc((100cqw - 16px) * var(--fmt-share)))`, aspectRatio: previewRatio, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
       {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
       <span className="rf-tl-pvlabel" style={{ position: 'absolute', top: 6, right: 6, zIndex: 3, pointerEvents: 'none', fontSize: 9.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 6, padding: '3px 6px' }}>
         Prévia {previewLabel}{previewMode === 'split' ? ' · dividida' : previewMode === 'broll' ? ' · B-roll' : ''}
       </span>
+      {/* Cor, título, efeitos e transições como saem no vídeo final (monitor único). */}
+      {singleMon && cbox && lookCss.tint && <div style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, pointerEvents: 'none', zIndex: 1, ...lookCss.tint }} />}
+      {singleMon && cbox && colorCss.tint && <div style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, pointerEvents: 'none', zIndex: 1, ...colorCss.tint }} />}
+      {singleMon && cbox && <div ref={fxOverlayRef} style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, pointerEvents: 'none', zIndex: 2, backgroundSize: 'cover' }} />}
+      {singleMon && cbox && <div ref={transOverlayRef} style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, pointerEvents: 'none', zIndex: 4, opacity: 0 }} />}
+      {singleMon && cbox && headline.on && headline.text.trim() && (!headline.seconds || cur < headline.seconds) && <HeadlineOverlay h={headline} box={cbox} />}
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
       {cbox && <StageLayers videoRef={videoRef} box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
         onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
       {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={capSegments} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
     </div>
   );
-  const showFormatPreview = framingMode === 'manual' || aspectSel !== 'original';
 
 
   // Trechos que NÃO vão para o vídeo final (cortes, pausas cortadas, palavras cortadas):
@@ -2531,8 +2543,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   // ── Transições manuais (aba Efeitos) ──
   const transDragRef = useRef(null);
-  const transOverlayRef = useRef(null);
-  const fxOverlayRef = useRef(null);
   useEffect(() => {
     function move(e) {
       const d = transDragRef.current;
@@ -3357,7 +3367,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {/* Vídeo principal + prévia 9:16 do ajuste, LADO A LADO (mesma linha) */}
           {/* Vídeo e prévia do formato centralizados, lado a lado e com a MESMA altura:
               cada um ocupa uma fatia da largura proporcional ao seu formato. */}
-          <div onDragOver={fxDragOver} onDrop={onPreviewDrop} className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}`} style={{ '--main-share': showFormatPreview ? (mainAr / (mainAr + fmtAr)).toFixed(4) : 1, '--fmt-share': showFormatPreview ? (fmtAr / (mainAr + fmtAr)).toFixed(4) : 1, containerType: 'inline-size', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(124,58,237,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
+          <div onDragOver={fxDragOver} onDrop={onPreviewDrop} className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}${singleMon ? ' rf-tl-pv--one' : ''}`} style={{ '--main-share': showFormatPreview ? (mainAr / (mainAr + fmtAr)).toFixed(4) : 1, '--fmt-share': singleMon ? 1 : showFormatPreview ? (fmtAr / (mainAr + fmtAr)).toFixed(4) : 1, containerType: 'inline-size', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(124,58,237,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
             <div className="rf-tl-main" style={{ flex: '0 0 auto', minWidth: 0 }}>
               <div style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${mainAr.toFixed(4)}), calc((100cqw - ${showFormatPreview ? 16 : 0}px) * var(--main-share)))`, aspectRatio: `${mainAr}`, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
                 <video ref={videoRef} src={srcUrl} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim({ w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
@@ -3386,8 +3396,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     </span>
                   </div>
                 )}
-                {vbox && <div ref={fxOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 2, backgroundSize: 'cover' }} />}
-                {vbox && <div ref={transOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 4, opacity: 0 }} />}
+                {vbox && !singleMon && <div ref={fxOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 2, backgroundSize: 'cover' }} />}
+                {vbox && !singleMon && <div ref={transOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 4, opacity: 0 }} />}
                 {vbox && <StageLayers videoRef={videoRef} box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
                   onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
                 {cap.captions && <CaptionOverlay videoRef={videoRef} segments={capSegments} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
@@ -3450,6 +3460,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               style={{ height: 30, flexShrink: 0, borderRadius: 8, border: `1px solid ${speed !== 1 ? C.orange : C.border}`, background: 'rgba(0,0,0,0.35)', color: speed !== 1 ? C.orangeSoft : C.text, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', padding: '0 6px', cursor: 'pointer' }}>
               {SPEEDS.map((k) => <option key={k} value={k}>{fmtSpeed(k)}</option>)}
             </select>
+            {showFormatPreview && (
+              <button onClick={() => setShowSource((v) => !v)} title={showSource ? 'Voltar para um monitor só (o vídeo como vai sair)' : 'Ver o vídeo original ao lado, para comparar'} style={{ ...miniBtn(showSource, false), whiteSpace: 'nowrap', flexShrink: 0 }}>
+                <Icon name="layout" size={12} strokeWidth={2.2} /> <span className="rf-tl-hide-sm">{showSource ? 'Esconder original' : 'Comparar original'}</span>
+              </button>
+            )}
             <button onClick={() => setPreviewCuts((v) => !v)} title="Ao tocar, pular os trechos cortados (como no vídeo final)" style={{ ...miniBtn(previewCuts, false), whiteSpace: 'nowrap', flexShrink: 0 }}>
               <Icon name="scissors" size={12} strokeWidth={2.2} /> <span className="rf-tl-hide-sm">{previewCuts ? 'Com cortes' : 'Sem cortes'}</span>
             </button>
@@ -5209,6 +5224,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           .rf-tl-card:not(.rf-m) .rf-tl-bottom{ grid-column: 1 / span 2; grid-row: 3; }
           .rf-tl-card:not(.rf-m) .rf-tl-pv{ border-radius: 10px !important; background: #0E0F12 !important; border-color: rgba(255,255,255,0.08) !important; }
         }
+        /* monitor único: o player original fica escondido (continua tocando o som e o tempo) */
+        .rf-tl-pv--one .rf-tl-main{ display: none; }
+        .rf-tl-pv--one .rf-tl-pv-fmt{ position: relative; }
         @media (max-width: 1100px){
           /* tela estreita: mostra só a prévia do formato final (o player continua tocando o som) */
           .rf-tl-pv{ grid-template-columns: minmax(0, 1fr) !important; }
