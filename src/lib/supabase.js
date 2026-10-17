@@ -7,6 +7,10 @@ if (!url || !url.startsWith('https://')) {
   console.error('[RiseFlow] VITE_SUPABASE_URL inválida ou não definida')
 }
 
+const PROXY_TOKEN_KEY = 'riseflow_proxy_token'
+const API_BASE = `${import.meta.env.VITE_API_URL || ''}/api`
+const REST_PATTERN = url ? new RegExp(`^${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/rest/v1/`) : null
+
 export const supabase = createClient(
   url ?? 'https://placeholder.supabase.co',
   key ?? 'placeholder',
@@ -19,20 +23,25 @@ export const supabase = createClient(
     },
     global: {
       fetch: async (input, init) => {
-        const res = await fetch(input, init)
-        if (res.status === 401) {
-          const body = await res.clone().text()
-          if (/issued at future|iat/i.test(body)) {
-            console.warn('[RiseFlow] Relógio do computador pode estar adiantado — JWT rejeitado pelo Supabase.')
-            if (!window.__clockSkewWarned) {
-              window.__clockSkewWarned = true
-              setTimeout(() => {
-                alert('O relógio do seu computador está adiantado.\n\nAjuste a data/hora (Configurações > Hora e idioma > Sincronizar agora) e recarregue a página.')
-              }, 100)
+        const reqUrl = typeof input === 'string' ? input : input?.url || ''
+
+        if (REST_PATTERN && REST_PATTERN.test(reqUrl)) {
+          const proxyToken = localStorage.getItem(PROXY_TOKEN_KEY)
+          if (proxyToken) {
+            const restPath = reqUrl.replace(REST_PATTERN, '')
+            const proxyUrl = `${API_BASE}/rest/v1/${restPath}`
+            const headers = { ...(init?.headers || {}) }
+            headers['Authorization'] = `Bearer ${proxyToken}`
+            delete headers['apikey']
+            try {
+              return await fetch(proxyUrl, { ...init, headers })
+            } catch {
+              // proxy indisponível — tenta direto
             }
           }
         }
-        return res
+
+        return fetch(input, init)
       },
     },
   }
