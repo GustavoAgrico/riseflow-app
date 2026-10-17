@@ -19,7 +19,7 @@ import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
 import { remuxByKeepSegments, remapTranscript, snapKeep } from '../pipeline/timeline.js';
 import { markFillers } from '../pipeline/cleanup.js';
-import { preciseRemovals, audioAnalysis } from '../pipeline/cutRefine.js';
+import { preciseRemovals, audioAnalysis, detectNoises } from '../pipeline/cutRefine.js';
 import { CLIP_GOALS } from '../pipeline/clipSelect.js';
 import { sanitizeHeadline, sanitizeCover, makeCover } from '../pipeline/headline.js';
 import { outputTarget } from '../pipeline/render.js';
@@ -1360,6 +1360,7 @@ jobsRouter.get('/jobs/:id/filmstrip', async (req, res) => {
 // por cima de voz, palavras removidas cortadas no vale do som), para a prévia do editor
 // tocar e mostrar exatamente o que vai sair — sem comer pedaço de palavra.
 const audioCache = new Map(); // id → Promise<análise do áudio> (poucos vídeos, os mais recentes)
+const noiseCache = new Map(); // id → Promise<tosses/ruídos do vídeo> (acha uma vez por vídeo)
 jobsRouter.post('/jobs/:id/precise-cuts', requireAuth, async (req, res) => {
   const job = sourceJob(req.params.id);
   if (!job) return res.status(404).json({ error: 'vídeo de origem indisponível' });
@@ -1371,6 +1372,17 @@ jobsRouter.post('/jobs/:id/precise-cuts', requireAuth, async (req, res) => {
       while (audioCache.size > 4) audioCache.delete(audioCache.keys().next().value);
     }
     const audio = await audioCache.get(job.id);
+    // Tosses: a prévia corta igual ao vídeo final (procuradas uma vez por vídeo, em segundo
+    // plano na 1ª chamada; enquanto isso a prévia segue sem elas).
+    const coughs = req.body.coughs !== false;
+    let noises = null;
+    if (coughs) {
+      if (!noiseCache.has(job.id)) {
+        noiseCache.set(job.id, detectNoises(job.inputPath, transcript, { audio, duration: Number(job.report?.input?.duration) || Infinity }).catch(() => []));
+        while (noiseCache.size > 4) noiseCache.delete(noiseCache.keys().next().value);
+      }
+      noises = await Promise.race([noiseCache.get(job.id), new Promise((r) => setTimeout(() => r(null), 25_000))]);
+    }
     const ranges = (Array.isArray(pauses) ? pauses : [])
       .slice(0, 5000)
       .map((p) => ({ start: Number(p?.start), end: Number(p?.end) }))
@@ -1379,11 +1391,12 @@ jobsRouter.post('/jobs/:id/precise-cuts', requireAuth, async (req, res) => {
       pauses: ranges,
       transcript,
       breaths: req.body.breaths !== false,
-      coughs: false, // tosses não mudam o que a prévia corta das palavras (e são lentas de achar)
+      coughs: Boolean(noises),
+      noises: noises || [],
       strength: ['forte', 'equilibrado', 'suave'].includes(req.body.strength) ? req.body.strength : 'forte',
       audio,
     });
-    res.json({ pauses: r.pauses, removed: r.removed });
+    res.json({ pauses: r.pauses, removed: r.removed, noises: r.noises, coughsPending: coughs && !noises });
   } catch (err) {
     audioCache.delete(job.id);
     res.status(500).json({ error: err.message });
