@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2, MonitorPlay, User, Plus, Square, CheckSquare, X, ChevronUp, ChevronDown, Layers, Flame, Snowflake, CloudSun, Clock, CalendarCheck } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import api from '@services/api'
 import { useAuth } from '@context/AuthContext'
 import { LeadScorePanel } from '@components/LeadScorePanel'
 import { NotesPanel } from '@components/NotesPanel'
@@ -95,21 +95,24 @@ const TasksPanel = ({ clientId, userId }) => {
 
   const load = useCallback(async () => {
     if (!clientId || !userId) return
-    const { data } = await supabase.from('crm_tasks').select('*').eq('client_id', clientId).order('done', { ascending: true }).order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: true })
-    setTasks(data || [])
+    try {
+      const { data } = await api.get('/clients/tasks', { params: { client_id: clientId } })
+      setTasks(data || [])
+    } catch { setTasks([]) }
   }, [clientId, userId])
   useEffect(() => { load() }, [load])
 
   const add = async () => {
     if (!title.trim() || busy) return
     setBusy(true)
-    const { data, error } = await supabase.from('crm_tasks').insert({ user_id: userId, client_id: clientId, title: title.trim(), due_date: due || null }).select().single()
+    try {
+      const { data } = await api.post('/clients/tasks', { client_id: clientId, title: title.trim(), due_date: due || null })
+      setTasks(t => [...t, data]); setTitle(''); setDue('')
+    } catch (e) { alert('Erro ao criar tarefa: ' + (e.response?.data?.error || e.message)) }
     setBusy(false)
-    if (error) { alert('Erro ao criar tarefa:\n' + error.message + '\n\n(Rode supabase/crm_tasks.sql se ainda não rodou.)'); return }
-    setTasks(t => [...t, data]); setTitle(''); setDue('')
   }
-  const toggle = async (t) => { setTasks(x => x.map(i => i.id === t.id ? { ...i, done: !i.done } : i)); await supabase.from('crm_tasks').update({ done: !t.done }).eq('id', t.id) }
-  const del = async (t) => { setTasks(x => x.filter(i => i.id !== t.id)); await supabase.from('crm_tasks').delete().eq('id', t.id) }
+  const toggle = async (t) => { setTasks(x => x.map(i => i.id === t.id ? { ...i, done: !i.done } : i)); api.patch(`/clients/tasks/${t.id}`, { done: !t.done }).catch(() => {}) }
+  const del = async (t) => { setTasks(x => x.filter(i => i.id !== t.id)); api.delete(`/clients/tasks/${t.id}`).catch(() => {}) }
 
   const pend = tasks.filter(t => !t.done).length
   return (
@@ -166,20 +169,10 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, o
     if (!userId || !contact.phone) { setMsgs([]); return }
     const phone = String(contact.phone).replace(/\D/g, '').slice(-10)
     ;(async () => {
-      const { data: convs } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('user_id', userId)
-        .ilike('contact_phone', `%${phone}%`)
-        .limit(1)
-      if (!convs?.length) { setMsgs([]); return }
-      const { data: rows } = await supabase
-        .from('messages')
-        .select('id, body, text, from_me, created_at, timestamp')
-        .eq('conversation_id', convs[0].id)
-        .order('created_at', { ascending: false })
-        .limit(30)
-      setMsgs((rows || []).reverse())
+      try {
+        const { data } = await api.get('/clients/conversations-messages', { params: { phone, owner: userId } })
+        setMsgs(data?.messages || [])
+      } catch { setMsgs([]) }
     })()
   }, [userId, contact.phone])
 
@@ -187,15 +180,10 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, o
     if (!userId || !contact.id) return
     const today = new Date().toISOString().slice(0, 10)
     ;(async () => {
-      const { data } = await supabase
-        .from('crm_tasks')
-        .select('id, title, due_date')
-        .eq('client_id', contact.id)
-        .eq('done', false)
-        .not('due_date', 'is', null)
-        .order('due_date', { ascending: true })
-        .limit(1)
-      setNextTask(data?.[0] || null)
+      try {
+        const { data } = await api.get('/clients/next-task', { params: { client_id: contact.id } })
+        setNextTask(data || null)
+      } catch { setNextTask(null) }
     })()
   }, [userId, contact.id])
 
@@ -444,7 +432,7 @@ export function CRM() {
   useEffect(() => {
     if (isDemoMode || !ownerUserId) return
     ;(async () => {
-      const { data } = await supabase.from('team_members').select('id,name').eq('user_id', ownerUserId).order('name', { ascending: true })
+      const { data } = await api.get('/clients/team-members', { params: { owner: ownerUserId } })
       setMembers(data || [])
     })()
   }, [ownerUserId, isDemoMode])
@@ -456,10 +444,9 @@ export function CRM() {
       if (isDemoMode) { setContacts(initContacts); return }
       if (!ownerUserId) return
       try {
-        const { data, error } = await supabase.from('clients').select('*').eq('user_id', ownerUserId).order('created_at', { ascending: false })
-        if (error) throw error
+        const { data } = await api.get('/clients', { params: { owner: ownerUserId } })
         if (on) { setContacts((data || []).map(mapRow)); console.log(`[CRM] ${(data || []).length} contatos carregados`) }
-      } catch (e) { console.warn('[CRM] erro ao carregar contatos:', e?.message ?? e); if (on) setContacts([]) }
+      } catch (e) { console.warn('[CRM] erro ao carregar contatos:', e?.response?.data?.error ?? e?.message ?? e); if (on) setContacts([]) }
     })()
     return () => { on = false }
   }, [ownerUserId, isDemoMode])
@@ -476,8 +463,8 @@ export function CRM() {
     setContacts(p => p.map(c => c.id === id ? { ...c, assignedTo: name } : c))
     if (selected?.id === id) setSelected(p => ({ ...p, assignedTo: name }))
     if (isDemoMode) return
-    try { await supabase.from('clients').update({ assigned_to: name || null }).eq('id', id) }
-    catch (e) { console.warn('[CRM] erro ao atribuir responsável:', e?.message ?? e) }
+    try { await api.patch(`/clients/${id}`, { owner: ownerUserId, assigned_to: name || null }) }
+    catch (e) { console.warn('[CRM] erro ao atribuir responsável:', e?.response?.data?.error ?? e?.message ?? e) }
   }
 
   /* Move etapa (drag/select) — atualização otimista + persiste em clients. */
@@ -486,8 +473,8 @@ export function CRM() {
     if (selected?.id === id) setSelected(p => ({ ...p, stage }))
     logger.log(user?.id, 'stage_changed', { category: 'crm', description: (contacts.find(c => c.id === id)?.name || 'Contato') + ' movido para ' + (stageAt(stages, stage).label || stage) })
     if (isDemoMode) return
-    try { await supabase.from('clients').update({ stage }).eq('id', id) }
-    catch (e) { console.warn('[CRM] erro ao mover contato:', e?.message ?? e) }
+    try { await api.patch(`/clients/${id}`, { owner: ownerUserId, stage }) }
+    catch (e) { console.warn('[CRM] erro ao mover contato:', e?.response?.data?.error ?? e?.message ?? e) }
   }
 
   /* Adiciona/remove tag de um contato — otimista + persiste + loga. */
@@ -500,8 +487,8 @@ export function CRM() {
     const nm = contacts.find(c => c.id === id)?.name || 'contato'
     logger.log(user?.id, has ? 'tag_removed' : 'tag_added', { category: 'crm', description: `${has ? 'Tag removida' : 'Tag adicionada'} "${tag}" em ${nm}` })
     if (isDemoMode) return
-    try { await supabase.from('clients').update({ tags }).eq('id', id) }
-    catch (e) { console.warn('[CRM] erro ao atualizar tags:', e?.message ?? e) }
+    try { await api.patch(`/clients/${id}`, { owner: ownerUserId, tags }) }
+    catch (e) { console.warn('[CRM] erro ao atualizar tags:', e?.response?.data?.error ?? e?.message ?? e) }
   }
 
   /* Exclui contato — remove de clients + estado local + loga. */
@@ -512,13 +499,12 @@ export function CRM() {
     logger.log(user?.id, 'contact_deleted', { category: 'crm', description: 'Lead excluído: ' + contact.name })
     if (isDemoMode) return
     try {
-      const { error } = await supabase.from('clients').delete().eq('id', contact.id)
-      if (error) throw error
+      await api.delete(`/clients/${contact.id}`, { params: { owner: ownerUserId } })
       console.log('[CRM] Lead excluído:', contact.id)
     } catch (e) {
-      console.warn('[CRM] erro ao excluir contato:', e?.message ?? e)
-      setContacts(p => [contact, ...p]) // reverte
-      alert('Erro ao excluir o lead: ' + (e?.message ?? e))
+      console.warn('[CRM] erro ao excluir contato:', e?.response?.data?.error ?? e?.message ?? e)
+      setContacts(p => [contact, ...p])
+      alert('Erro ao excluir o lead: ' + (e?.response?.data?.error ?? e?.message ?? e))
     }
   }
 
@@ -528,11 +514,18 @@ export function CRM() {
     logger.log(user?.id, 'contact_created', { category: 'contacts', description: 'Contato criado: ' + base.name })
     if (isDemoMode) { setContacts(p => [{ ...base, id: String(Date.now()), lastMsg: 'Contato criado', time: 'agora' }, ...p]); return }
     try {
-      const { data, error } = await supabase.from('clients').insert({ user_id: ownerUserId, status: 'active', ...base }).select().single()
-      if (error) throw error
+      const { data } = await api.post('/clients', { owner: ownerUserId, ...base })
       setContacts(p => [mapRow(data), ...p])
       console.log('[CRM] Contato criado e sincronizado')
-    } catch (e) { console.warn('[CRM] erro ao criar contato:', e?.message ?? e); alert('Erro ao salvar contato. Rode supabase/clients_crm.sql se ainda não rodou.') }
+    } catch (e) {
+      const msg = e?.response?.data?.error ?? e?.message ?? String(e)
+      console.warn('[CRM] erro ao criar contato:', msg)
+      if (/column.*does not exist|undefined column/i.test(msg)) {
+        alert('Erro ao salvar contato. Rode supabase/clients_crm.sql se ainda não rodou.')
+      } else {
+        alert('Erro ao salvar contato: ' + msg)
+      }
+    }
   }
 
   // ── Métricas do funil — fonte única (src/lib/metrics), mesmas regras do Dashboard/Funil ──

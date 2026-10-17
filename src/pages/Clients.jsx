@@ -6,7 +6,6 @@ import {
   Trash2, Users, Loader2, X, ChevronRight, Pencil, Download,
   CheckSquare, Square, FileDown, AlertTriangle, UserX, Upload
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
 import { api } from '@services/api'
 import { socket } from '@services/socket'
 import { useIsMobile } from '@hooks/useIsMobile'
@@ -135,15 +134,14 @@ const ClientFormModal = ({ userId, initial, onClose, onSaved }) => {
         status: 'active',
       }
       if (isEdit) {
-        const { error: sbErr } = await supabase.from('clients').update(row).eq('id', initial.id)
-        if (sbErr) throw sbErr
+        await api.patch(`/clients/${initial.id}`, { owner: userId, ...row })
       } else {
-        const { error: sbErr } = await supabase.from('clients').insert({ ...row, user_id: userId })
-        if (sbErr) throw sbErr
+        await api.post('/clients', { owner: userId, ...row })
       }
       onSaved()
     } catch (err) {
-      setError(err.message || 'Erro ao salvar cliente')
+      const msg = err?.response?.data?.error || err.message || 'Erro ao salvar cliente'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -309,12 +307,10 @@ export const Clients = () => {
     }
     if (!ownerUserId) return
     setLoading(true)
-    const { data, error } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('user_id', ownerUserId)
-      .order('created_at', { ascending: false })
-    if (!error) setClients(data ?? [])
+    try {
+      const { data } = await api.get('/clients', { params: { owner: ownerUserId } })
+      setClients(data ?? [])
+    } catch (e) { console.warn('[Clients] erro ao carregar:', e?.response?.data?.error ?? e?.message) }
     setLoading(false)
   }, [ownerUserId, isDemoMode])
 
@@ -335,7 +331,7 @@ export const Clients = () => {
   const handleDelete = async (clientId) => {
     if (isDemoMode) return
     setDeleting(clientId)
-    await supabase.from('clients').delete().eq('id', clientId)
+    await api.delete(`/clients/${clientId}`, { params: { owner: ownerUserId } })
     logger.log(user?.id, 'contact_deleted', { category: 'contacts', description: 'Contato excluído: ' + (clients.find(c => c.id === clientId)?.name || clientId) })
     setClients(prev => prev.filter(c => c.id !== clientId))
     setSelectedIds(prev => { const n = new Set(prev); n.delete(clientId); return n })
@@ -356,8 +352,12 @@ export const Clients = () => {
     if (isDemoMode || selectedIds.size === 0) return
     setBulkDeleting(true)
     const ids = [...selectedIds]
-    const { error } = await supabase.from('clients').delete().in('id', ids).eq('user_id', ownerUserId)
-    if (!error) {
+    let bulkErr = false
+    for (const id of ids) {
+      try { await api.delete(`/clients/${id}`, { params: { owner: ownerUserId } }) }
+      catch { bulkErr = true }
+    }
+    if (!bulkErr) {
       logger.log(user?.id, 'contacts_bulk_deleted', { category: 'contacts', description: `${ids.length} contato(s) excluído(s) em massa` })
       const idSet = new Set(ids)
       setClients(prev => prev.filter(c => !idSet.has(c.id)))
@@ -409,15 +409,15 @@ export const Clients = () => {
         return
       }
       // Dedup: contra o que já existe E dentro do próprio arquivo.
-      const { data: existing } = await supabase.from('clients').select('phone').eq('user_id', ownerUserId)
-      const seen = new Set((existing || []).map(c => c.phone).filter(Boolean))
+      const { data: existingData } = await api.get('/clients', { params: { owner: ownerUserId } })
+      const seen = new Set((existingData || []).map(c => c.phone).filter(Boolean))
       const toInsert = []
       for (const c of parsed) {
         if (seen.has(c.phone)) continue
         seen.add(c.phone)
         toInsert.push({
           name: c.name, phone: c.phone, email: c.email, channel: 'whatsapp',
-          tag: c.tag || 'Prospect', status: 'active', user_id: ownerUserId,
+          tag: c.tag || 'Prospect', status: 'active',
         })
       }
       const dupes = parsed.length - toInsert.length
@@ -426,10 +426,9 @@ export const Clients = () => {
         return
       }
       let inserted = 0
-      for (let i = 0; i < toInsert.length; i += 500) {
-        const { error } = await supabase.from('clients').insert(toInsert.slice(i, i + 500))
-        if (error) throw error
-        inserted += Math.min(500, toInsert.length - i)
+      for (const row of toInsert) {
+        await api.post('/clients', { owner: ownerUserId, ...row })
+        inserted++
       }
       logger.log(user?.id, 'contacts_csv_imported', { category: 'contacts', description: `${inserted} contato(s) importado(s) via CSV` })
       setImportResult({ ok: true, msg: `${inserted} importado${inserted !== 1 ? 's' : ''}${dupes ? ` · ${dupes} já existia${dupes !== 1 ? 'm' : ''}` : ''}.` })
@@ -453,16 +452,17 @@ export const Clients = () => {
         return
       }
       // 2. Insere na tabela clients (sem duplicatas por phone)
-      const { data: existing } = await supabase.from('clients').select('phone').eq('user_id', ownerUserId)
+      const { data: existing } = await api.get('/clients', { params: { owner: ownerUserId } })
       const existingPhones = new Set((existing || []).map(c => c.phone).filter(Boolean))
       const toInsert = waContacts
         .filter(c => c.name && c.phone && !existingPhones.has(c.phone))
-        .map(c => ({ name: c.name, phone: c.phone, channel: 'whatsapp', tag: 'Prospect', status: 'active', user_id: ownerUserId }))
+        .map(c => ({ name: c.name, phone: c.phone, channel: 'whatsapp', tag: 'Prospect', status: 'active' }))
       if (!toInsert.length) {
         setImportResult({ ok: true, msg: `${waContacts.length} contatos já estão importados.` })
       } else {
-        const { error } = await supabase.from('clients').insert(toInsert)
-        if (error) throw error
+        for (const row of toInsert) {
+          await api.post('/clients', { owner: ownerUserId, ...row })
+        }
         setImportResult({ ok: true, msg: `${toInsert.length} contato${toInsert.length !== 1 ? 's' : ''} importado${toInsert.length !== 1 ? 's' : ''} do WhatsApp!` })
         fetchClients()
       }

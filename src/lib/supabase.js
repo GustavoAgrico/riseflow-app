@@ -13,14 +13,27 @@ export const supabase = createClient(
   {
     auth: {
       flowType: 'pkce',
-      // false: o AuthCallback troca o código explicitamente (evita corrida com o
-      // auto-exchange e é mais robusto no Safari mobile).
       detectSessionInUrl: false,
       persistSession: true,
-      // Web Locks (navigator.locks) DÁ DEADLOCK no Safari mobile → operações de
-      // auth (getSession/exchange) travam por 30s ("Tempo esgotado"). Substitui
-      // por um lock no-op (seguro num SPA de aba única).
       lock: async (_name, _acquireTimeout, fn) => await fn(),
+    },
+    global: {
+      fetch: async (input, init) => {
+        const res = await fetch(input, init)
+        if (res.status === 401) {
+          const body = await res.clone().text()
+          if (/issued at future|iat/i.test(body)) {
+            console.warn('[RiseFlow] Relógio do computador pode estar adiantado — JWT rejeitado pelo Supabase.')
+            if (!window.__clockSkewWarned) {
+              window.__clockSkewWarned = true
+              setTimeout(() => {
+                alert('O relógio do seu computador está adiantado.\n\nAjuste a data/hora (Configurações > Hora e idioma > Sincronizar agora) e recarregue a página.')
+              }, 100)
+            }
+          }
+        }
+        return res
+      },
     },
   }
 )

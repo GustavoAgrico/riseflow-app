@@ -15,7 +15,7 @@ module.exports = function auth(req, res, next) {
   }
 
   try {
-    req.user = jwt.verify(token, JWT_SECRET)
+    req.user = jwt.verify(token, JWT_SECRET, { clockTolerance: 30 })
     next()
   } catch (err) {
     return res.status(401).json({ error: 'Token inválido ou expirado.' })
