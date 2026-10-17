@@ -202,6 +202,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // barra de ferramentas embaixo e painéis que sobem de baixo).
   const MQ_MOBILE = '(max-width: 860px)';
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(MQ_MOBILE).matches);
+  const LANE = isMobile ? LANE_M : LANE_D; // altura das faixas da timeline
   useEffect(() => {
     const mq = window.matchMedia?.(MQ_MOBILE);
     if (!mq) return undefined;
@@ -5033,11 +5034,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <span style={{ fontSize: 10.5, color: PR.dim, minWidth: 64, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pps <= fitPps + 0.01 ? 'inteiro' : `${Math.round((pps / fitPps) * 100)}%`}</span>
           </div>
         )}
-        <div style={{ fontSize: 11.5, color: C.faint, marginTop: 7 }}>👁 esconde a faixa (some da prévia e do vídeo final) · 🔒 trava a faixa · M (no A1) deixa o áudio mudo · tecla <b>M</b> põe marcador · <b>N</b> liga/desliga o ímã · <b>Ctrl+D</b> duplica · <b>Ctrl+C / Ctrl+V</b> copia e cola no playhead. Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> (arraste sobre ele para cortar um trecho)· <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
+        <details className="rf-tl-help" style={{ fontSize: 10.5, color: C.faint, marginTop: 5 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 10.5, color: C.faint, fontWeight: 600 }}>Atalhos e dicas da timeline</summary>
+          <div style={{ marginTop: 4, lineHeight: 1.5 }}>👁 esconde a faixa (some da prévia e do vídeo final) · 🔒 trava a faixa · M (no A1) deixa o áudio mudo · tecla <b>M</b> põe marcador · <b>N</b> liga/desliga o ímã · <b>Ctrl+D</b> duplica · <b>Ctrl+C / Ctrl+V</b> copia e cola no playhead. Faixas, de cima para baixo: <b>legenda</b> (blocos de fala) · <b>vídeo</b> (arraste sobre ele para cortar um trecho)· <b>áudio</b> · a faixa das <span style={{ color: C.red }}>pausas de silêncio</span> (hachuradas serão cortadas — clique para manter) · arraste as pontas dos blocos para aparar{media.length > 0 && <> · a faixa das <span style={{ color: C.purpleSoft }}>minhas mídias</span> pode ser arrastada (mover) e ter as pontas ajustadas (duração)</>}</div>
+        </details>
 
         {/* Resumo + trecho selecionado na timeline (editar palavras) */}
-        <div style={{ marginTop: 14 }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
             <Chip label="Palavras" value={stats.total} color={C.text} />
             <Chip label="Cortadas" value={stats.removed} color={C.red} />
             <Chip label="Pausas cortadas" value={pausesCut.length} sub={pauseCutSec > 0.1 ? `−${fmtDuration(pauseCutSec)}` : null} color={C.orangeSoft} />
@@ -5045,8 +5049,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
 
           {selSeg && (
-            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 10, padding: '8px 10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.4 }}>
                   {selCaptions.length > 1 ? `${selCaptions.length} BLOCOS SELECIONADOS` : `TRECHO ${sel + 1}/${segments.length} · ${fmtDuration(selSeg.start)}`}
                 </div>
@@ -5090,7 +5094,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </div>
                 </div>
               )}
-              <div style={{ lineHeight: 2 }}>
+              <div style={{ lineHeight: 1.7, fontSize: 13 }}>
                 {selSeg.words.map((w, wi) => (
                   <span key={wi} onClick={() => toggleWord(sel, wi)} onDoubleClick={() => editWord(sel, wi)} title={`${w.start.toFixed(1)}s — clique corta, 2 cliques edita`}
                     style={{ display: 'inline-block', margin: '0 3px', padding: '2px 6px', borderRadius: 7, cursor: 'pointer', userSelect: 'none', textDecoration: w.removed ? 'line-through' : 'none', opacity: w.removed ? 0.42 : 1, background: w.removed ? 'rgba(240,82,107,0.14)' : 'transparent', color: w.removed ? C.red : C.text }}>
@@ -5112,7 +5116,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <Icon name="edit" size={12} strokeWidth={2.2} /> Corrigir o texto da legenda
                 </button>
               )}
-              <div style={{ fontSize: 11.5, color: C.faint, marginTop: 8 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir só ela · arraste as bordas do bloco na timeline · Ctrl/Shift+clique nos blocos seleciona vários · S divide · <b>Delete</b> corta o trecho (vídeo, áudio e legenda) · <b>H</b> só oculta a legenda</div>
+              <div style={{ fontSize: 10.5, color: C.faint, marginTop: 4 }}>Clique numa palavra para cortá-la · duplo-clique para corrigir só ela · arraste as bordas do bloco na timeline · Ctrl/Shift+clique nos blocos seleciona vários · S divide · <b>Delete</b> corta o trecho (vídeo, áudio e legenda) · <b>H</b> só oculta a legenda</div>
             </div>
           )}
         </div>
@@ -5238,7 +5242,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           .rf-tl-card:not(.rf-m) .rf-tl-grid{ grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) !important; grid-template-rows: auto auto auto; }
           .rf-tl-card:not(.rf-m) .rf-tl-grid.rf-mon-v{ grid-template-columns: minmax(300px, 0.62fr) minmax(0, 1.7fr) !important; }
           .rf-tl-card:not(.rf-m) .rf-tl-preview{ grid-column: 1; grid-row: 1 / span 3; align-self: start; position: sticky; top: 10px; }
-          .rf-tl-card:not(.rf-m) .rf-tl-adjust{ grid-column: 2; grid-row: 2; height: clamp(260px, 42vh, 460px); min-height: 0; }
+          .rf-tl-card:not(.rf-m) .rf-tl-adjust{ grid-column: 2; grid-row: 2; height: clamp(240px, 38vh, 440px); min-height: 0; }
           .rf-tl-card:not(.rf-m) .rf-tl-bottom{ grid-column: 2; grid-row: 3; min-width: 0; }
         }
         /* barra do player quebra a linha quando a coluna do monitor é estreita */
@@ -5600,7 +5604,9 @@ function TrackHead({ h, gap, code, nome, active, hidden, onEye, locked, onLock, 
   );
 }
 
-const LANE = { kf: 20, txt: 24, vfx: 22, ruler: 26, capitulos: 28, legenda: 36, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };
+const LANE_M = { kf: 20, txt: 24, vfx: 22, ruler: 26, capitulos: 28, legenda: 36, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };
+// Computador: faixas mais altas (dá para ver melhor as legendas, o vídeo e a onda do áudio).
+const LANE_D = { ...LANE_M, ruler: 28, legenda: 44, video: 60, audio: 48, pausas: 26, midias: 34 };
 
 /** Nome de uma faixa, na coluna fixa à esquerda da timeline. */
 function Rotulo({ h, gap, nome, dica }) {
@@ -5799,10 +5805,11 @@ function CapRow({ label, children }) {
   );
 }
 function Chip({ label, value, sub, color }) {
+  // compacto: rótulo e número na mesma linha
   return (
-    <div style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 11, padding: '7px 12px' }}>
-      <div style={{ fontSize: 10, color: C.faint, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 14.5, fontWeight: 700, color, marginTop: 2 }}>{value} {sub && <span style={{ color: C.faint, fontSize: 11.5, fontWeight: 500 }}>{sub}</span>}</div>
+    <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '3px 9px' }}>
+      <span style={{ fontSize: 9.5, color: C.faint, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 700, color }}>{value}{sub && <span style={{ color: C.faint, fontSize: 10.5, fontWeight: 500 }}> {sub}</span>}</span>
     </div>
   );
 }
