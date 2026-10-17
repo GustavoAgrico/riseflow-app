@@ -128,7 +128,7 @@ export const Agenda = () => {
     if (isDemoMode) return
     setTokenLoading(true)
     try {
-      const { data } = await api.post('/api/calendar/token')
+      const { data } = await api.post('/calendar/token')
       setCalToken(data.token)
     } catch { /* ignore */ }
     setTokenLoading(false)
@@ -138,7 +138,7 @@ export const Agenda = () => {
     if (isDemoMode) return
     setTokenLoading(true)
     try {
-      const { data } = await api.post('/api/calendar/token/regenerate')
+      const { data } = await api.post('/calendar/token/regenerate')
       setCalToken(data.token)
       addToast?.({ title: 'URL renovada', type: 'system' })
     } catch { /* ignore */ }
