@@ -2927,19 +2927,31 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const b = bottomRef.current;
     if (!g || !b) return undefined;
     function fit() {
-      if (isMobile || stage === 'l' || window.innerWidth <= 860) { g.style.removeProperty('--rf-stage-h'); return; }
+      if (isMobile || window.innerWidth <= 860) { g.style.removeProperty('--rf-stage-h'); g.style.removeProperty('--rf-app-h'); return; }
+      if (window.innerWidth > 1100) {
+        // Tela grande (como o Premiere): o editor ocupa a janela inteira, sem rolar a página.
+        // O monitor preenche a coluna da esquerda; a timeline rola por dentro.
+        const top0 = g.getBoundingClientRect().top + window.scrollY;
+        // desconta o que fica abaixo da grade (borda do cartão e margem da página)
+        const card = g.closest('.rf-tl-card');
+        const page = g.closest('.rf-page');
+        const below = (card ? parseFloat(getComputedStyle(card).paddingBottom) + 2 : 12) + (page ? parseFloat(getComputedStyle(page).paddingBottom) : 0);
+        const app = Math.max(560, Math.round(window.innerHeight - top0 - below));
+        g.style.setProperty('--rf-app-h', `${app}px`);
+        const bar = g.querySelector('.rf-tl-bar');
+        const barH = bar ? bar.offsetHeight + 10 : 70;
+        const mon = Math.max(200, app - barH - 24);
+        g.style.setProperty('--rf-stage-h', `${Math.round(stage === 's' ? mon * 0.78 : mon)}px`);
+        return;
+      }
+      g.style.removeProperty('--rf-app-h');
+      if (stage === 'l') { g.style.removeProperty('--rf-stage-h'); return; }
       // só a timeline (barra + faixas + zoom); o resumo e a edição de palavras ficam abaixo
       const top = g.getBoundingClientRect().top + window.scrollY;
-      let free;
-      if (window.innerWidth > 1100) {
-        // tela grande: o monitor fica na coluna da esquerda, de cima a baixo (só a barra do player)
-        free = window.innerHeight - top - 82 - 40;
-      } else {
-        // notebook/tablet: só a timeline (barra + faixas + zoom) fica embaixo do monitor
-        const tr = b.querySelector('.rf-tl-track');
-        const tlH = tr ? tr.getBoundingClientRect().bottom - b.getBoundingClientRect().top + 52 : b.offsetHeight;
-        free = window.innerHeight - top - tlH - 10 - 82 - 16;
-      }
+      // notebook/tablet: só a timeline (barra + faixas + zoom) fica embaixo do monitor
+      const tr = b.querySelector('.rf-tl-track');
+      const tlH = tr ? tr.getBoundingClientRect().bottom - b.getBoundingClientRect().top + 52 : b.offsetHeight;
+      const free = window.innerHeight - top - tlH - 10 - 82 - 16;
       const h = Math.max(stage === 's' ? 160 : 220, Math.min(900, free * (stage === 's' ? 0.78 : 1)));
       g.style.setProperty('--rf-stage-h', `${Math.round(h)}px`);
     }
@@ -4479,10 +4491,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <div ref={bottomRef} className="rf-tl-bottom" style={{ minWidth: 0, position: 'relative', ...(isMobile ? {} : { background: PR.panel, border: `1px solid ${PR.line}`, borderRadius: 12, padding: '8px 10px 10px', boxShadow: '0 10px 30px -18px rgba(0,0,0,0.8)' }) }}>
         {!isMobile && splitter('row')}
         {/* Barra de ferramentas da timeline */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 8, flexWrap: 'wrap' }}>
+        <div className="rf-tlbar" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 8, flexWrap: 'wrap' }}>
           {!isMobile && (
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginRight: 8 }} title="Posição do playhead (horas:minutos:segundos:quadros)">
-              <span style={{ fontSize: 21, fontWeight: 600, color: PR.blue, fontVariantNumeric: 'tabular-nums', letterSpacing: 0.4 }}>{tcode(cur)}</span>
+              <span className="rf-tc" style={{ fontSize: 21, fontWeight: 600, color: PR.blue, fontVariantNumeric: 'tabular-nums', letterSpacing: 0.4 }}>{tcode(cur)}</span>
               <span style={{ fontSize: 11, color: PR.dim, fontVariantNumeric: 'tabular-nums' }}>/ {tcode(dur)}</span>
               {projectTitle && <span className="rf-tl-hide-sm" style={{ fontSize: 12, color: PR.text, fontWeight: 600, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginLeft: 6 }}>{projectTitle}</span>}
             </div>
@@ -4596,7 +4608,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </div>
             </div>
           )}
-          <div className="rf-tl-labels" style={{ width: 150, flexShrink: 0, borderRight: `1px solid ${PR.line}`, background: PR.heads, paddingBottom: 6 }}>
+          <div className="rf-tl-labels" style={{ width: isMobile ? 150 : 140, flexShrink: 0, borderRight: `1px solid ${PR.line}`, background: PR.heads, paddingBottom: 6 }}>
             <div style={{ height: LANE.ruler, borderBottom: `1px solid ${PR.line}`, background: PR.ruler }} />
             {showChapLane && <TrackHead h={LANE.capitulos} gap={4} code="CH" nome="Capítulos" />}
             <TrackHead h={legH} gap={6} code="C1" nome="Legenda" hidden={cap.captions === false} onEye={() => setCap((c) => ({ ...c, captions: c.captions === false }))} locked={laneLock.leg} onLock={() => togLock('leg')} />
@@ -5297,6 +5309,25 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           .rf-tl-card:not(.rf-m) .rf-tl-adjust{ grid-column: 2; grid-row: 2; height: clamp(240px, 38vh, 440px); min-height: 0; }
           .rf-tl-card:not(.rf-m) .rf-tl-bottom{ grid-column: 2; grid-row: 3; min-width: 0; }
         }
+        /* Tela grande: editor como app (Premiere) — ocupa a janela, sem rolar a página */
+        @media (min-width: 1101px){
+          .rf-tl-card:not(.rf-m){ padding: 10px 12px 10px !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-head{ margin-bottom: 10px !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-grid{ height: var(--rf-app-h, auto); grid-template-rows: auto var(--rf-panel-h, minmax(190px, 40%)) minmax(0, 1fr) !important; gap: 8px !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-preview{ grid-row: 1 / span 3 !important; align-self: stretch !important; position: relative !important; top: auto !important; display: flex; flex-direction: column; min-height: 0; }
+          .rf-tl-card:not(.rf-m) .rf-tl-preview > .rf-tl-pv{ flex: 1; min-height: 0; }
+          .rf-tl-card:not(.rf-m) .rf-tl-adjust{ height: auto !important; min-height: 0 !important; align-self: stretch !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-bottom{ min-height: 0; overflow-y: auto; overflow-x: hidden; align-self: stretch; padding: 6px 8px 8px !important; scrollbar-width: thin; }
+          .rf-tl-card:not(.rf-m) .rf-tlbar{ gap: 6px !important; margin-bottom: 6px !important; }
+          .rf-tl-card:not(.rf-m) .rf-tlbar button{ padding: 4px 9px !important; font-size: 11.5px !important; border-radius: 7px !important; gap: 5px !important; }
+          .rf-tl-card:not(.rf-m) .rf-tc{ font-size: 17px !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-bar{ margin-top: 8px !important; padding: 6px 10px !important; gap: 8px !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-preview{ container-type: inline-size; container-name: rfmon; }
+          @container rfmon (max-width: 430px){
+            .rf-tl-bar .rf-tl-hide-sm{ display: none; }
+            .rf-tl-bar button{ padding: 5px 8px !important; }
+          }
+        }
         /* divisórias arrastáveis (só no computador) */
         .rf-split{ display: none; position: absolute; z-index: 30; }
         .rf-split > span{ position: absolute; border-radius: 3px; background: rgba(255,255,255,0.14); transition: background .15s; }
@@ -5312,7 +5343,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         @media (min-width: 1101px){
           .rf-tl-card:not(.rf-m) .rf-split--row{ display: block; left: 0; right: 0; top: -10px; height: 10px; cursor: row-resize; }
           .rf-tl-card:not(.rf-m) .rf-split--row > span{ top: 3px; left: 50%; width: 44px; height: 4px; margin-left: -22px; }
-          .rf-tl-card:not(.rf-m) .rf-tl-grid.rf-custom-row .rf-tl-adjust{ height: var(--rf-panel-h) !important; }
+          .rf-tl-card:not(.rf-m) .rf-tl-grid.rf-custom-row .rf-tl-adjust{ height: auto !important; }
         }
         /* barra do player quebra a linha quando a coluna do monitor é estreita */
         .rf-tl-bar{ flex-wrap: wrap; row-gap: 8px !important; }
@@ -5659,10 +5690,10 @@ const svgLock = (on) => (
 
 /** Cabeçalho da faixa (como no Premiere): código (V1, A1…), nome, cadeado, olho e mudo. */
 function TrackHead({ h, gap, code, nome, active, hidden, onEye, locked, onLock, muted, onMute }) {
-  const ib = (on, color) => ({ width: 22, height: 22, borderRadius: 5, border: 'none', padding: 0, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'inherit',
+  const ib = (on, color) => ({ width: 20, height: 20, borderRadius: 5, flexShrink: 0, border: 'none', padding: 0, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'inherit',
     background: on ? `${color}2e` : 'transparent', color: on ? color : PR.dim });
   return (
-    <div style={{ height: h, marginTop: gap, padding: '0 6px', display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden', borderRadius: 4, background: 'rgba(255,255,255,0.02)' }}>
+    <div style={{ height: h, marginTop: gap, padding: '0 4px', display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', borderRadius: 4, background: 'rgba(255,255,255,0.02)' }}>
       {onLock ? <button className="rf-ptool" onClick={onLock} title={locked ? 'Destravar a faixa' : 'Travar a faixa (não deixa mexer)'} aria-pressed={!!locked} style={ib(locked, '#F5B13D')}>{svgLock(locked)}</button> : <span style={{ width: 22 }} />}
       <span style={{ flexShrink: 0, minWidth: 26, height: 18, padding: '0 4px', borderRadius: 4, display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 800, letterSpacing: 0.2,
         background: active ? PR.blue : 'rgba(255,255,255,0.08)', color: active ? '#fff' : PR.text }}>{code}</span>
@@ -5674,8 +5705,8 @@ function TrackHead({ h, gap, code, nome, active, hidden, onEye, locked, onLock, 
 }
 
 const LANE_M = { kf: 20, txt: 24, vfx: 22, ruler: 26, capitulos: 28, legenda: 36, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };
-// Computador: faixas mais altas (dá para ver melhor as legendas, o vídeo e a onda do áudio).
-const LANE_D = { ...LANE_M, ruler: 28, legenda: 44, video: 60, audio: 48, pausas: 26, midias: 34 };
+// Computador: faixas compactas como no Premiere (cabe tudo na janela, sem rolar).
+const LANE_D = { ...LANE_M, ruler: 24, capitulos: 22, legenda: 34, video: 48, audio: 38, pausas: 20, zoom: 22, broll: 26, midias: 28 };
 
 /** Nome de uma faixa, na coluna fixa à esquerda da timeline. */
 function Rotulo({ h, gap, nome, dica }) {
