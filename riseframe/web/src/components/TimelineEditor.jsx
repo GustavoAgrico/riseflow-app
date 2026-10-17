@@ -202,7 +202,51 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // barra de ferramentas embaixo e painéis que sobem de baixo).
   const MQ_MOBILE = '(max-width: 860px)';
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(MQ_MOBILE).matches);
-  const LANE = isMobile ? LANE_M : LANE_D; // altura das faixas da timeline
+  // Altura das faixas (como no Premiere): arraste a borda de baixo do nome da faixa; os
+  // botões − / + mudam todas. Fica salvo neste navegador.
+  const [laneOv, setLaneOv] = useState(() => {
+    try { const v = JSON.parse(localStorage.getItem('rf_track_heights') || 'null'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+  });
+  const saveLaneOv = (fn) => setLaneOv((cur) => {
+    const next = typeof fn === 'function' ? fn(cur) : fn;
+    try { localStorage.setItem('rf_track_heights', JSON.stringify(next)); } catch { /* sem armazenamento */ }
+    return next;
+  });
+  const LANE = isMobile ? LANE_M : { ...LANE_D, ...laneOv }; // altura das faixas da timeline
+  const laneResizeRef = useRef(null);
+  function startLaneResize(key, e) {
+    e.preventDefault();
+    e.stopPropagation();
+    laneResizeRef.current = { key, y0: e.clientY, h0: LANE[key] };
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'row-resize';
+  }
+  useEffect(() => {
+    function move(e) {
+      const d = laneResizeRef.current;
+      if (!d) return;
+      const h = Math.round(Math.max(LANE_MIN[d.key] || 16, Math.min(160, d.h0 + e.clientY - d.y0)));
+      saveLaneOv((cur) => (cur[d.key] === h ? cur : { ...cur, [d.key]: h }));
+    }
+    function up() {
+      if (!laneResizeRef.current) return;
+      laneResizeRef.current = null;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    }
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, []);
+  /** − / + : todas as faixas menores ou maiores (passo de 20%). */
+  function scaleLanes(k) {
+    saveLaneOv((cur) => {
+      const next = {};
+      for (const key of LANE_RESIZABLE) next[key] = Math.round(Math.max(LANE_MIN[key] || 16, Math.min(160, (cur[key] ?? LANE_D[key]) * k)));
+      return next;
+    });
+  }
+  const resetLane = (key) => saveLaneOv((cur) => { const n = { ...cur }; delete n[key]; return n; });
   useEffect(() => {
     const mq = window.matchMedia?.(MQ_MOBILE);
     if (!mq) return undefined;
@@ -4648,19 +4692,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           )}
           <div className="rf-tl-labels" style={{ width: isMobile ? 150 : 140, flexShrink: 0, borderRight: `1px solid ${PR.line}`, background: PR.heads, paddingBottom: 6 }}>
             <div style={{ height: LANE.ruler, borderBottom: `1px solid ${PR.line}`, background: PR.ruler }} />
-            {showChapLane && <TrackHead h={LANE.capitulos} gap={4} code="CH" nome="Capítulos" />}
-            <TrackHead h={legH} gap={6} code="C1" nome="Legenda" hidden={cap.captions === false} onEye={() => setCap((c) => ({ ...c, captions: c.captions === false }))} locked={laneLock.leg} onLock={() => togLock('leg')} />
+            {showChapLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('capitulos', e)} onResetSize={() => resetLane('capitulos')} h={LANE.capitulos} gap={4} code="CH" nome="Capítulos" />}
+            <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('legenda', e)} onResetSize={() => resetLane('legenda')} h={legH} gap={6} code="C1" nome="Legenda" hidden={cap.captions === false} onEye={() => setCap((c) => ({ ...c, captions: c.captions === false }))} locked={laneLock.leg} onLock={() => togLock('leg')} />
             {media.length > 0 && Array.from({ length: mediaRows }, (_, r) => mediaRows - 1 - r).map((l) => (
-              <TrackHead key={l} h={LANE.midias} gap={l === mediaRows - 1 ? 4 : 0} code={`M${l + 1}`} nome={`Camada ${l + 1}`} hidden={laneHide[`m${l}`]} onEye={() => togHide(`m${l}`)} locked={laneLock[`m${l}`]} onLock={() => togLock(`m${l}`)} />
+              <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('midias', e)} onResetSize={() => resetLane('midias')} key={l} h={LANE.midias} gap={l === mediaRows - 1 ? 4 : 0} code={`M${l + 1}`} nome={`Camada ${l + 1}`} hidden={laneHide[`m${l}`]} onEye={() => togHide(`m${l}`)} locked={laneLock[`m${l}`]} onLock={() => togLock(`m${l}`)} />
             ))}
-            {textLayers.length > 0 && <TrackHead h={LANE.txt} gap={4} code="T1" nome="Textos" hidden={laneHide.txt} onEye={() => togHide('txt')} locked={laneLock.txt} onLock={() => togLock('txt')} />}
-            {fxMoments.length > 0 && <TrackHead h={LANE.vfx} gap={4} code="FX" nome="Efeitos" hidden={laneHide.vfx} onEye={() => togHide('vfx')} locked={laneLock.vfx} onLock={() => togLock('vfx')} />}
-            {showBrollLane && <TrackHead h={LANE.broll} gap={4} code="V2" nome="B-roll" hidden={!brollOn} onEye={() => setBrollOn((v) => !v)} locked={laneLock.broll} onLock={() => togLock('broll')} />}
-            {showZoomLane && <TrackHead h={LANE.zoom} gap={4} code="ZM" nome="Zoom" locked={laneLock.zoom} onLock={() => togLock('zoom')} />}
-            {transformKeys.length > 0 && <TrackHead h={LANE.kf} gap={4} code="KF" nome="Quadros" locked={laneLock.kf} onLock={() => togLock('kf')} />}
-            <TrackHead h={LANE.video} gap={4} code="V1" active nome="Vídeo" locked={laneLock.vid} onLock={() => togLock('vid')} />
-            <TrackHead h={LANE.audio} gap={4} code="A1" active nome="Áudio" muted={audioMute} onMute={() => setAudioMute((v) => !v)} locked={laneLock.aud} onLock={() => togLock('aud')} />
-            <TrackHead h={LANE.pausas} gap={4} code="P" nome="Pausas" locked={laneLock.pau} onLock={() => togLock('pau')} />
+            {textLayers.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('txt', e)} onResetSize={() => resetLane('txt')} h={LANE.txt} gap={4} code="T1" nome="Textos" hidden={laneHide.txt} onEye={() => togHide('txt')} locked={laneLock.txt} onLock={() => togLock('txt')} />}
+            {fxMoments.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('vfx', e)} onResetSize={() => resetLane('vfx')} h={LANE.vfx} gap={4} code="FX" nome="Efeitos" hidden={laneHide.vfx} onEye={() => togHide('vfx')} locked={laneLock.vfx} onLock={() => togLock('vfx')} />}
+            {showBrollLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('broll', e)} onResetSize={() => resetLane('broll')} h={LANE.broll} gap={4} code="V2" nome="B-roll" hidden={!brollOn} onEye={() => setBrollOn((v) => !v)} locked={laneLock.broll} onLock={() => togLock('broll')} />}
+            {showZoomLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('zoom', e)} onResetSize={() => resetLane('zoom')} h={LANE.zoom} gap={4} code="ZM" nome="Zoom" locked={laneLock.zoom} onLock={() => togLock('zoom')} />}
+            {transformKeys.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('kf', e)} onResetSize={() => resetLane('kf')} h={LANE.kf} gap={4} code="KF" nome="Quadros" locked={laneLock.kf} onLock={() => togLock('kf')} />}
+            <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('video', e)} onResetSize={() => resetLane('video')} h={LANE.video} gap={4} code="V1" active nome="Vídeo" locked={laneLock.vid} onLock={() => togLock('vid')} />
+            <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('audio', e)} onResetSize={() => resetLane('audio')} h={LANE.audio} gap={4} code="A1" active nome="Áudio" muted={audioMute} onMute={() => setAudioMute((v) => !v)} locked={laneLock.aud} onLock={() => togLock('aud')} />
+            <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('pausas', e)} onResetSize={() => resetLane('pausas')} h={LANE.pausas} gap={4} code="P" nome="Pausas" locked={laneLock.pau} onLock={() => togLock('pau')} />
           </div>
           <div ref={trackRef} onClick={onTrackClick} onScroll={onTrackScroll} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
@@ -5043,8 +5087,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   background: 'repeating-linear-gradient(45deg, rgba(240,82,107,0.45), rgba(240,82,107,0.45) 5px, rgba(240,82,107,0.2) 5px, rgba(240,82,107,0.2) 10px)', borderLeft: `1px solid ${C.red}`, borderRight: `1px solid ${C.red}` }} />
               ))}
               {wave && keptPieces.map(([a, b]) => (
-                <div key={a} style={{ position: 'absolute', top: 0, left: X(a), width: W(a, b), height: 34, overflow: 'hidden' }}>
-                  <svg width={dur * pps} height={34} viewBox={`0 0 ${peaks.length} 100`} preserveAspectRatio="none" style={{ display: 'block', marginLeft: -a * pps }}>
+                <div key={a} style={{ position: 'absolute', top: 0, left: X(a), width: W(a, b), height: LANE.audio - 2, overflow: 'hidden' }}>
+                  <svg width={dur * pps} height={LANE.audio - 2} viewBox={`0 0 ${peaks.length} 100`} preserveAspectRatio="none" style={{ display: 'block', marginLeft: -a * pps }}>
                     <path d={wave} fill={isMobile ? '#4F7BFF' : '#34C3B0'} opacity={0.85} />
                   </svg>
                 </div>
@@ -5092,7 +5136,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     onClick={(e) => { e.stopPropagation(); togglePause(p); }}
                     title={`Pausa de ${p.dur.toFixed(1)}s — ${cut ? (real && !real.length ? 'tem fala: o som fica (clique p/ manter)' : 'será cortada só onde não há voz (clique p/ manter)') : 'mantida (clique p/ cortar)'}`}
                     style={{
-                      position: 'absolute', left: X(p.start), top: 0, width: w, height: 22, borderRadius: 6,
+                      position: 'absolute', left: X(p.start), top: 0, width: w, height: Math.max(12, LANE.pausas - 2), borderRadius: 6,
                       cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
                       background: cut ? (real ? 'rgba(240,82,107,0.06)' : hatch) : 'rgba(255,255,255,0.05)',
                       border: `1px ${cut ? 'solid' : 'dashed'} ${cut ? 'rgba(240,82,107,0.55)' : C.border}`,
@@ -5129,6 +5173,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
         {!isMobile && (
           <div className="rf-tl-zoom" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+            <span title="Altura das faixas (ou arraste a borda de baixo do nome de cada faixa)" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+              <span style={{ fontSize: 10.5, color: PR.dim, marginRight: 2 }}>Faixas</span>
+              <button onClick={() => scaleLanes(1 / 1.2)} title="Faixas mais baixas" style={zoomBarBtn}>▁</button>
+              <button onClick={() => scaleLanes(1.2)} title="Faixas mais altas" style={zoomBarBtn}>▇</button>
+              {Object.keys(laneOv).length > 0 && <button onClick={() => saveLaneOv({})} title="Altura padrão das faixas" style={{ ...zoomBarBtn, width: 'auto', padding: '0 6px', fontSize: 10.5 }}>Padrão</button>}
+            </span>
+            <span style={{ width: 1, height: 16, background: PR.line, flexShrink: 0 }} />
             <button onClick={() => zoomTl(-1)} disabled={pps <= fitPps} title="Afastar" style={{ ...zoomBarBtn, opacity: pps <= fitPps ? 0.35 : 1 }}>−</button>
             <button onClick={fitAll} title="Ver o vídeo inteiro" style={{ ...zoomBarBtn, width: 'auto', padding: '0 8px', fontSize: 11 }}>Vídeo inteiro</button>
             <input type="range" min={fitPps} max={PPS_MAX} step={0.5} value={pps} onChange={(e) => setPps(Number(e.target.value))} aria-label="Zoom da timeline" style={{ flex: 1, accentColor: PR.blue, height: 4 }} />
@@ -5379,6 +5430,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         .rf-tl-navbtn:hover{ background: rgba(255,255,255,0.1); }
         .rf-tl-navbtn--go{ border: none; color: #fff; font-weight: 800; box-shadow: 0 6px 16px -8px rgba(255,107,53,0.8); }
         .rf-tl-navbtn--go:hover{ filter: brightness(1.08); }
+        .rf-lane-rs{ position: absolute; left: 0; right: 0; bottom: 0; height: 5px; cursor: row-resize; z-index: 2; }
+        .rf-lane-rs:hover{ background: linear-gradient(transparent, #2D8CFF); }
         .rf-tbtn{ width: 28px; height: 28px; flex-shrink: 0; display: grid; place-items: center; border-radius: 7px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #D6D8DE; cursor: pointer; padding: 0; }
         .rf-tbtn:hover{ background: rgba(255,255,255,0.1); color: #fff; }
         .rf-tbtn.on{ border-color: rgba(255,107,53,0.6); background: rgba(255,107,53,0.16); color: #FF9A6C; }
@@ -5749,11 +5802,12 @@ const svgLock = (on) => (
 );
 
 /** Cabeçalho da faixa (como no Premiere): código (V1, A1…), nome, cadeado, olho e mudo. */
-function TrackHead({ h, gap, code, nome, active, hidden, onEye, locked, onLock, muted, onMute }) {
+function TrackHead({ h, gap, code, nome, active, hidden, onEye, locked, onLock, muted, onMute, onResize, onResetSize }) {
   const ib = (on, color) => ({ width: 20, height: 20, borderRadius: 5, flexShrink: 0, border: 'none', padding: 0, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'inherit',
     background: on ? `${color}2e` : 'transparent', color: on ? color : PR.dim });
   return (
-    <div style={{ height: h, marginTop: gap, padding: '0 4px', display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', borderRadius: 4, background: 'rgba(255,255,255,0.02)' }}>
+    <div style={{ position: 'relative', height: h, marginTop: gap, padding: '0 4px', display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', borderRadius: 4, background: 'rgba(255,255,255,0.02)' }}>
+      {onResize && <div className="rf-lane-rs" onMouseDown={onResize} onDoubleClick={onResetSize} title="Arraste para mudar a altura da faixa · clique duplo volta ao padrão" />}
       {onLock ? <button className="rf-ptool" onClick={onLock} title={locked ? 'Destravar a faixa' : 'Travar a faixa (não deixa mexer)'} aria-pressed={!!locked} style={ib(locked, '#F5B13D')}>{svgLock(locked)}</button> : <span style={{ width: 22 }} />}
       <span style={{ flexShrink: 0, minWidth: 26, height: 18, padding: '0 4px', borderRadius: 4, display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 800, letterSpacing: 0.2,
         background: active ? PR.blue : 'rgba(255,255,255,0.08)', color: active ? '#fff' : PR.text }}>{code}</span>
@@ -5767,6 +5821,9 @@ function TrackHead({ h, gap, code, nome, active, hidden, onEye, locked, onLock, 
 const LANE_M = { kf: 20, txt: 24, vfx: 22, ruler: 26, capitulos: 28, legenda: 36, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };
 // Computador: faixas compactas como no Premiere (cabe tudo na janela, sem rolar).
 const LANE_D = { ...LANE_M, ruler: 24, capitulos: 22, legenda: 34, video: 48, audio: 38, pausas: 20, zoom: 22, broll: 26, midias: 28 };
+
+const LANE_RESIZABLE = ['capitulos', 'legenda', 'midias', 'txt', 'vfx', 'broll', 'zoom', 'kf', 'video', 'audio', 'pausas'];
+const LANE_MIN = { legenda: 22, video: 24, audio: 20, midias: 20, broll: 20 };
 
 /** Nome de uma faixa, na coluna fixa à esquerda da timeline. */
 function Rotulo({ h, gap, nome, dica }) {
