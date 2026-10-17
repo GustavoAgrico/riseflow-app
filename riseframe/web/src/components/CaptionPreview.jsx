@@ -323,7 +323,7 @@ export default function CaptionPreview({ options, videoUrl, onFocus = null }) {
               <div onPointerDown={(e) => { const v = videoRef.current; if (!v || !dur) return; const r = e.currentTarget.getBoundingClientRect(); v.currentTime = Math.max(0, Math.min(dur, ((e.clientX - r.left) / r.width) * dur)); }}
                 style={{ flex: 1, height: 14, display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
                 <div style={{ position: 'relative', width: '100%', height: 3, borderRadius: 3, background: 'rgba(255,255,255,0.25)' }}>
-                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${dur ? (cur / dur) * 100 : 0}%`, borderRadius: 3, background: 'linear-gradient(90deg, #FF6B35, #7C3AED)' }} />
+                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${dur ? (cur / dur) * 100 : 0}%`, borderRadius: 3, background: 'linear-gradient(90deg, #FF8A2A, #C2410C)' }} />
                 </div>
               </div>
               <span style={{ fontSize: 10.5, color: '#fff', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmt(cur)}/{fmt(dur)}</span>

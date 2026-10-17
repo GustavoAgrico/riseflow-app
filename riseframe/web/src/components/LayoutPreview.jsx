@@ -18,7 +18,7 @@ function Media() {
     <svg width="34" height="34" viewBox="0 0 40 40" fill="none" aria-hidden>
       <rect x="4" y="7" width="32" height="26" rx="4" fill="rgba(255,255,255,0.92)" />
       <circle cx="14" cy="16" r="3" fill="#FF6B35" />
-      <path d="M8 30l7-8 5 5 6-7 6 10H8z" fill="#7C3AED" />
+      <path d="M8 30l7-8 5 5 6-7 6 10H8z" fill="#C2410C" />
     </svg>
   );
 }

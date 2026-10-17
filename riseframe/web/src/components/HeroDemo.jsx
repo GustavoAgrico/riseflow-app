@@ -52,7 +52,7 @@ export default function HeroDemo({ showcase, onMore, onFail }) {
         </div>
         {/* DEPOIS — na frente, com brilho */}
         <div style={{ position: 'relative', width: '64%', zIndex: 2 }}>
-          <div style={{ position: 'absolute', inset: '-12%', background: 'radial-gradient(closest-side, rgba(255,107,53,0.35), rgba(124,58,237,0.22) 55%, transparent 75%)', filter: 'blur(18px)', zIndex: -1 }} />
+          <div style={{ position: 'absolute', inset: '-12%', background: 'radial-gradient(closest-side, rgba(255,107,53,0.35), rgba(194,65,12,0.22) 55%, transparent 75%)', filter: 'blur(18px)', zIndex: -1 }} />
           <div onClick={toggleSound} style={{ borderRadius: 26, padding: 7, background: '#0b0c12', border: '1px solid rgba(255,255,255,0.16)', boxShadow: '0 40px 90px -30px rgba(255,107,53,0.55)', cursor: 'pointer' }}>
             <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', aspectRatio: '9/16', background: '#000' }}>
               <video ref={after} src={apiAsset(showcase.after)} muted={!sound} loop autoPlay playsInline preload="auto" onError={() => { setFailed(true); onFail?.(); }}

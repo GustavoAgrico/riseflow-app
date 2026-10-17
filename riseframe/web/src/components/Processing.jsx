@@ -95,7 +95,7 @@ export default function Processing({ job, title = 'A IA está editando seu víde
 
   return (
     <div style={{ ...glass({ padding: 'clamp(24px, 4vw, 40px)' }), position: 'relative', overflow: 'hidden', textAlign: 'center' }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 80% 110%, rgba(124,58,237,0.22), transparent 55%), radial-gradient(circle at 10% -10%, rgba(255,107,53,0.14), transparent 50%)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 80% 110%, rgba(194,65,12,0.22), transparent 55%), radial-gradient(circle at 10% -10%, rgba(255,107,53,0.14), transparent 50%)', pointerEvents: 'none' }} />
       <div style={{ position: 'relative' }}>
         <h2 style={{ fontSize: 'clamp(22px, 3vw, 28px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -0.6, margin: '0 0 6px' }}>{title}</h2>
         <p style={{ color: C.muted, fontSize: 14.5, margin: '0 0 26px' }}>{subtitle}</p>

@@ -10,16 +10,18 @@ export const C = {
   text: '#F4F4F8',
   muted: '#A6A6BC',
   faint: '#6E6E86',
-  orange: '#FF6B35',
-  orangeSoft: '#FF8A5C',
-  purple: '#7C3AED',
-  purpleSoft: '#9F67FF',
+  orange: '#FF6A1A',
+  orangeSoft: '#FF9147',
+  // Segunda cor da marca: laranja queimado (degradê laranja → preto). Os nomes ficaram
+  // "purple" por histórico — hoje é a ponta escura do degradê.
+  purple: '#C2410C',
+  purpleSoft: '#FFA75C',
   green: '#2ED47A',
   red: '#F0526B',
 };
 
-// Gradiente-assinatura da marca (laranja → roxo).
-export const GRAD = `linear-gradient(135deg, ${C.orange} 0%, ${C.purple} 100%)`;
+// Gradiente-assinatura da marca (laranja vivo → laranja queimado, sobre o preto).
+export const GRAD = `linear-gradient(135deg, #FF8A2A 0%, ${C.orange} 45%, ${C.purple} 100%)`;
 export const GRAD_SOFT = `linear-gradient(135deg, ${C.orangeSoft}, ${C.purpleSoft})`;
 
 /** Card em vidro premium: borda translúcida + brilho superior + sombra profunda. */
@@ -37,7 +39,8 @@ export function glass(extra = {}) {
 
 /** Texto com preenchimento em gradiente. */
 export const gradientText = {
-  background: GRAD,
+  // Mais claro que o GRAD para o texto ficar legível no fundo preto.
+  background: 'linear-gradient(135deg, #FFC27A 0%, #FF8A2A 45%, #FF5A0A 100%)',
   WebkitBackgroundClip: 'text',
   backgroundClip: 'text',
   WebkitTextFillColor: 'transparent',

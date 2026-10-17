@@ -114,7 +114,7 @@ export function sendResetEmail(to, link) {
           <h2 style="margin:0 0 12px">Recuperação de senha</h2>
           <p style="margin:0 0 16px;color:#444">Você pediu para redefinir sua senha no <strong>Riseframe</strong>. O link é válido por 30 minutos.</p>
           <p style="margin:0 0 24px">
-            <a href="${link}" style="display:inline-block;background:linear-gradient(135deg,#FF6B35,#7C3AED);color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:700">Redefinir senha</a>
+            <a href="${link}" style="display:inline-block;background:linear-gradient(135deg,#FF8A2A,#C2410C);color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:700">Redefinir senha</a>
           </p>
           <p style="margin:0;color:#888;font-size:13px">Se não foi você, ignore este e-mail.</p>
         </div>`,

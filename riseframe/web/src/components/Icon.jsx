@@ -332,31 +332,55 @@ export default function Icon({ name, size = 18, strokeWidth = 1.8, color = 'curr
 }
 
 /** Logo do Riseframe: tira de filme (frame) em tons de laranja. */
-export function Logo({ size = 36 }) {
-  const gid = 'rfLogoGrad';
+// Logo: moldura de câmera (cantos) com o play no centro. 'app' = ícone em laranja brilhante
+// (o do app); 'mark' = só a moldura e o play em laranja, sem fundo (ao lado do nome).
+let logoSeq = 0;
+export function Logo({ size = 36, variant = 'app' }) {
+  const [id] = React.useState(() => `rfl${++logoSeq}`);
+  const corners = 'M10 15V12.2Q10 10 12.2 10H15M25 10H27.8Q30 10 30 12.2V15M30 25V27.8Q30 30 27.8 30H25M15 30H12.2Q10 30 10 27.8V25';
+  const play = 'M17.4 14.6 25.6 20l-8.2 5.4Z';
+  if (variant === 'mark') {
+    return (
+      <svg width={size} height={size} viewBox="6 6 28 28" fill="none" aria-label="Riseframe">
+        <defs>
+          <linearGradient id={`${id}m`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FFA040" />
+            <stop offset="1" stopColor="#FF5A00" />
+          </linearGradient>
+        </defs>
+        <path d={corners} stroke={`url(#${id}m)`} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={play} fill={`url(#${id}m)`} stroke={`url(#${id}m)`} strokeWidth="1.6" strokeLinejoin="round" />
+      </svg>
+    );
+  }
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-label="Riseframe">
       <defs>
-        <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#FF9A5A" />
-          <stop offset="0.5" stopColor="#FF6B35" />
-          <stop offset="1" stopColor="#DD4A16" />
+        <linearGradient id={`${id}t`} x1="0" y1="0" x2="0.85" y2="1">
+          <stop offset="0" stopColor="#FFA545" />
+          <stop offset="0.5" stopColor="#FF6A0A" />
+          <stop offset="1" stopColor="#E04400" />
+        </linearGradient>
+        <linearGradient id={`${id}g`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.42" />
+          <stop offset="0.7" stopColor="#fff" stopOpacity="0" />
         </linearGradient>
       </defs>
-      {/* tile */}
-      <rect x="1.5" y="1.5" width="37" height="37" rx="11" fill={`url(#${gid})`} />
-      <rect x="1.5" y="1.5" width="37" height="37" rx="11" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
-      {/* furos de película (frame de filme) */}
-      <g fill="rgba(255,255,255,0.95)">
-        <rect x="6.5" y="9" width="3.4" height="4.4" rx="1.1" />
-        <rect x="6.5" y="17.8" width="3.4" height="4.4" rx="1.1" />
-        <rect x="6.5" y="26.6" width="3.4" height="4.4" rx="1.1" />
-        <rect x="30.1" y="9" width="3.4" height="4.4" rx="1.1" />
-        <rect x="30.1" y="17.8" width="3.4" height="4.4" rx="1.1" />
-        <rect x="30.1" y="26.6" width="3.4" height="4.4" rx="1.1" />
-      </g>
-      {/* play central (o frame) */}
-      <path d="M17 14.5 26 20l-9 5.5V14.5Z" fill="#fff" />
+      <rect x="1.5" y="1.5" width="37" height="37" rx="10" fill={`url(#${id}t)`} />
+      {/* brilho de vidro na metade de cima */}
+      <path d="M11.5 1.5h17a10 10 0 0 1 10 10v5.5Q20 22 1.5 17V11.5a10 10 0 0 1 10-10Z" fill={`url(#${id}g)`} />
+      <rect x="2" y="2" width="36" height="36" rx="9.5" stroke="rgba(255,255,255,0.35)" strokeWidth="0.8" />
+      <path d={corners} stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={play} fill="#fff" stroke="#fff" strokeWidth="1.4" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+/** Nome da marca: "Rise" em branco e "frame" prateado. */
+export function Wordmark({ size = 18, style }) {
+  return (
+    <span style={{ fontWeight: 800, fontSize: size, fontFamily: "'Sora', 'Inter', system-ui, sans-serif", letterSpacing: -0.04 * size, color: '#fff', whiteSpace: 'nowrap', ...style }}>
+      Rise<span style={{ background: 'linear-gradient(180deg, #F4F4F7 0%, #B9B9C6 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent', color: 'transparent', fontWeight: 600 }}>frame</span>
+    </span>
   );
 }

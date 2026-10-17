@@ -184,7 +184,7 @@ export default function CreateWizard({
                   className="rf-lift"
                   style={{
                     textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', color: C.text, borderRadius: 16, padding: '18px 16px 16px',
-                    background: on ? 'linear-gradient(180deg, rgba(255,107,53,0.16), rgba(124,58,237,0.08))' : 'rgba(255,255,255,0.035)',
+                    background: on ? 'linear-gradient(180deg, rgba(255,107,53,0.16), rgba(194,65,12,0.08))' : 'rgba(255,255,255,0.035)',
                     border: `1px solid ${on ? 'transparent' : C.border}`, boxShadow: on ? `0 0 0 1.5px ${C.orange}` : 'none',
                   }}
                 >

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from '../theme.js';
-import Icon, { Logo } from '../components/Icon.jsx';
+import Icon, { Logo, Wordmark } from '../components/Icon.jsx';
 import { Spinner } from '../components/ui.jsx';
 import { useAuth } from '../AuthContext.jsx';
 import { getHealth, forgotPassword, deviceStart, devicePoll } from '../api.js';
@@ -234,7 +234,7 @@ export default function Auth({ initialMode = 'login', resetToken, onDone, onHome
         <button onClick={onHome} style={{ display: 'flex', alignItems: 'center', gap: 11, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
           <Logo size={38} />
           <div style={{ textAlign: 'left' }}>
-            <div style={{ fontWeight: 800, fontSize: 19, fontFamily: FONT_DISPLAY, letterSpacing: -0.5, color: C.text }}>Riseframe</div>
+            <div><Wordmark size={19} /></div>
             <div style={{ fontSize: 11, color: C.faint, letterSpacing: 0.3 }}>Editor de vídeo com IA</div>
           </div>
         </button>
@@ -273,7 +273,7 @@ export default function Auth({ initialMode = 'login', resetToken, onDone, onHome
           {/* logo compacto — só aparece no mobile (painel de marca escondido) */}
           <button className="rf-auth-mlogo" onClick={onHome} style={{ display: 'none', alignItems: 'center', gap: 9, background: 'none', border: 'none', cursor: 'pointer', margin: '0 auto 22px', padding: 0 }}>
             <Logo size={34} />
-            <span style={{ fontWeight: 800, fontSize: 18, fontFamily: FONT_DISPLAY, letterSpacing: -0.4, color: C.text }}>Riseframe</span>
+            <Wordmark size={18} />
           </button>
 
           <div style={glass({ padding: '30px 28px' })}>
@@ -303,7 +303,7 @@ export default function Auth({ initialMode = 'login', resetToken, onDone, onHome
             {/* App de PC/Mac: entra com a conta do site pelo navegador (senha ou Google) */}
             {!isForgot && !isReset && remote && (
               <>
-                <div style={{ background: 'rgba(124,58,237,0.1)', border: `1px solid ${C.purple}44`, borderRadius: 12, padding: '10px 12px', fontSize: 12.8, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
+                <div style={{ background: 'rgba(194,65,12,0.1)', border: `1px solid ${C.purple}44`, borderRadius: 12, padding: '10px 12px', fontSize: 12.8, color: C.muted, marginBottom: 14, lineHeight: 1.45 }}>
                   Use a <b style={{ color: C.text }}>mesma conta do site</b>: seu plano e seus créditos valem aqui no computador também.
                 </div>
                 {browserWait ? (
