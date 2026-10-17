@@ -938,6 +938,43 @@ jobsRouter.get('/media/:id/file', (req, res) => {
   res.sendFile(m.path);
 });
 
+// GET /api/media/:id/preview → vídeo que o navegador consegue tocar na prévia do editor.
+// H.264/VP9/AV1 em 8 bits vai direto; HEVC (iPhone), ProRes, 10 bits, HDR, AVI/MKV… viram
+// uma cópia leve em H.264 (até 720p), gerada uma vez e guardada no cache.
+const BROWSER_CODECS = new Set(['h264', 'vp8', 'vp9', 'av1']);
+const BROWSER_EXT = new Set(['.mp4', '.m4v', '.webm', '.mov']);
+jobsRouter.get('/media/:id/preview', async (req, res) => {
+  const m = resolveMedia(req.params.id);
+  if (!m) return res.status(410).json({ error: 'arquivo offline' });
+  if (m.kind !== 'video') return res.sendFile(path.resolve(m.path));
+  try {
+    const meta = await probeSummary(m.path);
+    const ext = path.extname(m.path).toLowerCase();
+    const playable = BROWSER_CODECS.has(meta.videoCodec) && BROWSER_EXT.has(ext) && !meta.hdr && (!meta.pixFmt || meta.pixFmt === 'yuv420p' || meta.pixFmt === 'yuvj420p');
+    if (playable) {
+      res.type(MIME_BY_EXT[ext] || 'video/mp4');
+      return res.sendFile(path.resolve(m.path));
+    }
+    const st = fs.statSync(m.path);
+    const out = path.join(config.paths.cache, `mprev-${String(req.params.id).replace(/[^\w-]/g, '')}-${Math.round(st.mtimeMs)}.mp4`);
+    if (!fs.existsSync(out)) {
+      await once(out, async () => {
+        fs.mkdirSync(config.paths.cache, { recursive: true });
+        const tmp = `${out}.tmp.mp4`;
+        const h = Math.max(2, Math.min(720, meta.height || 720)) & ~1;
+        const vf = [meta.hdr ? sdrVf(meta) : null, `scale=-2:${h}`].filter(Boolean).join(',');
+        await runFfmpeg(['-y', '-i', m.path, '-vf', vf, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '27', '-pix_fmt', 'yuv420p',
+          ...(meta.hasAudio ? ['-c:a', 'aac', '-b:a', '96k'] : ['-an']), '-movflags', '+faststart', tmp], { label: 'media-preview' });
+        fs.renameSync(tmp, out);
+      });
+    }
+    res.type('video/mp4');
+    res.sendFile(out);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'falha ao preparar a prévia' });
+  }
+});
+
 // POST /api/media/:id/relink  ({ path } no app de PC | multipart "file") → mesmo id, arquivo novo
 jobsRouter.post('/media/:id/relink', requireAuth, uploadMedia.single('file'), async (req, res) => {
   const st = mediaStatus(req.params.id);

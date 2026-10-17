@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { C, GRAD, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, mediaFileUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts } from '../api.js';
+import { sourceUrl, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -601,7 +601,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     for (const m of list) {
       if (!m?.mediaId) continue;
       const st = await mediaStatus(m.mediaId).catch(() => ({ status: 'error' }));
-      if (st.status === 'ok') updateMedia(m.key, { offline: false, previewUrl: m.kind === 'audio' ? null : mediaFileUrl(m.mediaId, Date.now()) });
+      if (st.status === 'ok') updateMedia(m.key, { offline: false, previewUrl: m.kind === 'audio' ? null : m.kind === 'video' ? mediaPreviewUrl(m.mediaId, Date.now()) : mediaFileUrl(m.mediaId, Date.now()) });
       else if (st.status !== 'error') updateMedia(m.key, { offline: true, previewUrl: null });
     }
   }
@@ -622,7 +622,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         if (!/não encontrada/.test(err.message)) throw err;
         id = (await addProjectMedia(file)).id; // o registro também sumiu: entra como mídia nova
       }
-      updateMedia(m.key, { mediaId: id, offline: false, filename: file.name, previewUrl: m.kind === 'audio' ? null : mediaFileUrl(id, Date.now()) });
+      updateMedia(m.key, { mediaId: id, offline: false, filename: file.name, previewUrl: m.kind === 'audio' ? null : m.kind === 'video' ? mediaPreviewUrl(id, Date.now()) : mediaFileUrl(id, Date.now()) });
     } catch (err) {
       setRelinkErr(err.message);
     }
@@ -1672,7 +1672,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             mediaId: info.id,
             kind: info.kind,
             filename: info.filename || file.name,
-            previewUrl: info.kind === 'audio' ? null : info.linked ? mediaFileUrl(info.id) : URL.createObjectURL(file), // prévia
+            // prévia: imagem local na hora; vídeo pelo servidor (vira H.264 se o navegador não tocar o original)
+            previewUrl: info.kind === 'audio' ? null : info.kind === 'video' ? mediaPreviewUrl(info.id) : info.linked ? mediaFileUrl(info.id) : URL.createObjectURL(file),
             fadeIn: 0,
             fadeOut: 0,
             srcDuration: srcDur,
@@ -2490,7 +2491,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         Prévia {previewLabel}{previewMode === 'split' ? ' · dividida' : previewMode === 'broll' ? ' · B-roll' : ''}
       </span>
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
-      {cbox && <StageLayers box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
+      {cbox && <StageLayers videoRef={videoRef} box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
         onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
       {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={capSegments} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
     </div>
@@ -2633,6 +2634,198 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       <div style={{ fontSize: 11, color: C.faint }}>Como no CapCut: cada transição fica só onde você colocou (marcador ⧓ na faixa de vídeo — arraste para mover). Nada é aplicado sozinho.</div>
     </div>
   );
+  // ── Biblioteca de efeitos (como o Animation Composer no Premiere): grade com prévia ao
+  // passar o mouse, categorias, busca e favoritos; ARRASTE o efeito para a timeline (entra
+  // no ponto onde soltar) ou para o vídeo (entra no playhead). Clique duplo = no playhead.
+  const FX_CATS = [
+    { id: 'fav', label: 'Favoritos', icon: '★' },
+    { id: 'trans', label: 'Transições', icon: '⧓' },
+    { id: 'camera', label: 'Câmera', icon: '⤢' },
+    { id: 'cor', label: 'Cor e look', icon: '◐' },
+    { id: 'distorcao', label: 'Glitch e distorção', icon: '≋' },
+    { id: 'luz', label: 'Luz e textura', icon: '✦' },
+    { id: 'tempo', label: 'Tempo', icon: '⏱' },
+    { id: 'som', label: 'Sons', icon: '♪' },
+  ];
+  const VFX_GROUP = { bw: 'cor', retro: 'cor', nostalgic: 'cor', cold: 'cor', warm: 'cor', saturated: 'cor', negative: 'cor', vhs: 'distorcao', glitch: 'distorcao', shake: 'distorcao', strobe: 'distorcao', pixel: 'distorcao', mirror: 'distorcao', grain: 'luz', vignette: 'luz', film: 'luz', blur: 'luz', glow: 'luz' };
+  const shortLabel = (l) => String(l).replace(/\s*\(.*\)\s*$/, '');
+  const fxLibrary = [
+    ...transOpts.map((o) => ({ cat: 'trans', kind: 'trans', id: o.id, label: shortLabel(o.label), anim: `tr-${o.id}` })),
+    ...Object.entries(MOMENT_EFFECTS).map(([id, label]) => ({ cat: 'camera', kind: 'zoom', id, label: shortLabel(label), anim: `cam-${id}` })),
+    ...Object.entries(VIDEO_FX).map(([id, label]) => ({ cat: VFX_GROUP[id] || 'luz', kind: 'vfx', id, label: shortLabel(label), anim: `fx-${id}` })),
+    { cat: 'tempo', kind: 'speed', id: '0.5', label: 'Câmera lenta 0,5×', anim: 'tm-slow' },
+    { cat: 'tempo', kind: 'speed', id: '0.25', label: 'Super lenta 0,25×', anim: 'tm-slow' },
+    { cat: 'tempo', kind: 'speed', id: '2', label: 'Acelerar 2×', anim: 'tm-fast' },
+    { cat: 'tempo', kind: 'freeze', id: '1', label: 'Congelar 1 s', anim: 'tm-freeze' },
+    { cat: 'tempo', kind: 'freeze', id: '2', label: 'Congelar 2 s', anim: 'tm-freeze' },
+    ...(catalog?.sfxTypes || []).filter((o) => o.id !== 'none').map((o) => ({ cat: 'som', kind: 'sfx', id: o.id, label: shortLabel(o.label), anim: 'sfx' })),
+  ].map((x) => ({ ...x, uid: `${x.kind}:${x.id}` }));
+  const [fxCat, setFxCat] = useState('trans');
+  const [fxQuery, setFxQuery] = useState('');
+  const [fxFavs, setFxFavs] = useState(() => { try { return JSON.parse(localStorage.getItem('rf_fx_favs') || '[]'); } catch { return []; } });
+  const toggleFav = (uid) => setFxFavs((l) => {
+    const next = l.includes(uid) ? l.filter((x) => x !== uid) : [...l, uid];
+    try { localStorage.setItem('rf_fx_favs', JSON.stringify(next)); } catch { /* sem armazenamento */ }
+    return next;
+  });
+  const [dragFx, setDragFx] = useState(null); // efeito sendo arrastado
+  const [dropT, setDropT] = useState(null); // onde ele vai entrar na timeline
+  const [fxNote, setFxNote] = useState('');
+  const fxQ = norm(fxQuery.trim());
+  const fxShown = fxLibrary.filter((x) => (fxQ ? norm(x.label).includes(fxQ) : fxCat === 'fav' ? fxFavs.includes(x.uid) : x.cat === fxCat));
+  /** Coloca o efeito na timeline no instante t (tempo original do vídeo). */
+  function addEffectAt(item, t0) {
+    const t = Math.max(0, Math.min(dur - 0.2, Number(t0) || 0));
+    const end = (len) => +Math.min(dur, t + len).toFixed(2);
+    if (item.kind === 'trans') {
+      if (transitions.some((x) => Math.abs(x.t - t) < 0.3)) setTransitions((l) => l.map((x) => (Math.abs(x.t - t) < 0.3 ? { ...x, type: item.id } : x)));
+      else addTransition(t, item.id);
+    } else if (item.kind === 'zoom') {
+      const z = { key: `z${Date.now()}`, start: +t.toFixed(2), end: end(1.8), scale: null, effect: item.id };
+      setZoomMoments((l) => [...(l || []), z].sort((a, b) => a.start - b.start));
+      if (fx.videoMotion === 'none') setFx((f) => ({ ...f, videoMotion: 'dynamic' }));
+      setSelZoom(z.key);
+      setSelKind('zoom');
+    } else if (item.kind === 'vfx') {
+      const m = { key: `f${Date.now()}`, start: +t.toFixed(2), end: end(2), effect: item.id };
+      setFxMoments((l) => [...l, m].sort((a, b) => a.start - b.start));
+      setSelFx(m.key);
+      setSelKind('vfx');
+    } else if (item.kind === 'speed') {
+      const a = t;
+      const b = Math.min(dur, t + 2);
+      const r = { key: `sp${Date.now()}`, start: +a.toFixed(3), end: +b.toFixed(3), speed: Number(item.id) };
+      setSpeedRanges((l) => [...l.filter((x) => x.end <= a + 0.01 || x.start >= b - 0.01), r].sort((x, y) => x.start - y.start));
+      setSelSpeed(r.key);
+      setSelKind('speed');
+    } else if (item.kind === 'freeze') {
+      if (freezes.some((f) => Math.abs(f.t - t) < 0.1)) return;
+      const f = { key: `fz${Date.now()}`, t: +t.toFixed(3), dur: Number(item.id) };
+      setFreezes((l) => [...l, f].sort((x, y) => x.t - y.t));
+      setSelFreeze(f.key);
+      setSelKind('freeze');
+    } else if (item.kind === 'sfx') {
+      setSfxMoments((l) => [...l, { key: `s${Date.now()}`, t: +t.toFixed(3), type: item.id }].sort((a, b) => a.t - b.t));
+    }
+    setFxNote(`${item.label} em ${fmtDuration(t)}`);
+    setTimeout(() => setFxNote(''), 2200);
+  }
+  const fxDragOver = (e) => { if (!dragFx) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; };
+  function onTimelineDragOver(e) { if (!dragFx) return; fxDragOver(e); setDropT(timeAtClientX(e.clientX)); }
+  function onTimelineDrop(e) { if (!dragFx) return; e.preventDefault(); addEffectAt(dragFx, timeAtClientX(e.clientX)); setDragFx(null); setDropT(null); }
+  function onPreviewDrop(e) { if (!dragFx) return; e.preventDefault(); addEffectAt(dragFx, cur); setDragFx(null); setDropT(null); }
+  const sfxAudioRef = useRef(null);
+  function playSfx(id) {
+    try {
+      sfxAudioRef.current?.pause();
+      const a = new Audio(sfxUrl(id));
+      a.volume = 0.7;
+      sfxAudioRef.current = a;
+      a.play().catch(() => {});
+    } catch { /* sem áudio */ }
+  }
+  const thumbFrame = { backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: '12000% 100%', backgroundPosition: `${(42 / 119) * 100}% 0`, backgroundRepeat: 'no-repeat' };
+  const fxBrowser = (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden', background: 'rgba(0,0,0,0.25)' }}>
+      <style>{FX_ANIM_CSS}</style>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>
+        <span style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: 0.2 }}>Efeitos</span>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <span style={{ position: 'absolute', left: 8, top: 7, color: C.faint, display: 'flex' }}><Icon name="search" size={13} strokeWidth={2} /></span>
+          <input value={fxQuery} onChange={(e) => setFxQuery(e.target.value)} placeholder="Buscar efeito"
+            style={{ width: '100%', boxSizing: 'border-box', height: 28, padding: '0 8px 0 27px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 12, fontFamily: 'inherit' }} />
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '128px minmax(0, 1fr)', minHeight: 230 }}>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', overflowX: isMobile ? 'auto' : 'visible', borderRight: isMobile ? 'none' : `1px solid ${C.border}`, borderBottom: isMobile ? `1px solid ${C.border}` : 'none', padding: 4, gap: 2 }}>
+          {FX_CATS.map((c) => {
+            const on = !fxQ && fxCat === c.id;
+            const n = c.id === 'fav' ? fxFavs.length : fxLibrary.filter((x) => x.cat === c.id).length;
+            return (
+              <button key={c.id} onClick={() => { setFxCat(c.id); setFxQuery(''); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11.5, fontWeight: on ? 700 : 500, whiteSpace: 'nowrap', textAlign: 'left',
+                  background: on ? 'rgba(255,255,255,0.1)' : 'transparent', color: on ? C.text : C.muted }}>
+                <span style={{ width: 14, textAlign: 'center', color: c.id === 'fav' ? '#FACC15' : C.orangeSoft }}>{c.icon}</span>
+                <span style={{ flex: 1 }}>{c.label}</span>
+                <span style={{ fontSize: 10, color: C.faint }}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ padding: 8, overflowY: 'auto', maxHeight: isMobile ? 300 : 360 }}>
+          {fxShown.length === 0 && <div style={{ fontSize: 11.5, color: C.faint, padding: 16, textAlign: 'center' }}>{fxCat === 'fav' && !fxQ ? 'Clique na ★ de um efeito para guardar aqui.' : 'Nenhum efeito encontrado.'}</div>}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8 }}>
+            {fxShown.map((x) => {
+              const fav = fxFavs.includes(x.uid);
+              return (
+                <div key={x.uid} className="rf-fxc" draggable={!isMobile}
+                  onDragStart={(e) => { e.dataTransfer.setData('text/plain', x.label); e.dataTransfer.effectAllowed = 'copy'; setDragFx(x); }}
+                  onDragEnd={() => { setDragFx(null); setDropT(null); }}
+                  onDoubleClick={() => addEffectAt(x, cur)}
+                  title={`${x.label} — arraste para a timeline ou para o vídeo · clique duplo coloca no playhead (${fmtDuration(cur)})`}
+                  style={{ borderRadius: 9, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)', cursor: isMobile ? 'pointer' : 'grab', overflow: 'hidden', userSelect: 'none' }}>
+                  <div style={{ position: 'relative', aspectRatio: '16 / 9', overflow: 'hidden', background: '#111' }}>
+                    {x.kind === 'sfx' ? (
+                      <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg, rgba(124,58,237,0.35), rgba(255,107,53,0.25))' }}>
+                        <button onClick={(e) => { e.stopPropagation(); playSfx(x.id); }} aria-label={`Ouvir ${x.label}`}
+                          style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center' }}><Icon name="play" size={14} strokeWidth={2.2} /></button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className={`rf-fxi a-${x.anim}`} style={{ position: 'absolute', inset: 0, ...thumbFrame, filter: x.kind === 'vfx' ? VIDEO_FX_CSS[x.id] || undefined : undefined, transform: x.id === 'mirror' ? 'scaleX(-1)' : undefined }} />
+                        <div className={`rf-fxo o-${x.anim}`} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
+                        {x.kind === 'speed' || x.kind === 'freeze' ? <span style={{ position: 'absolute', right: 4, bottom: 3, fontSize: 10, fontWeight: 800, color: '#fff', textShadow: '0 1px 3px #000' }}>{x.kind === 'freeze' ? `❄ ${x.id}s` : `${x.id.replace('.', ',')}×`}</span> : null}
+                      </>
+                    )}
+                    <button onClick={(e) => { e.stopPropagation(); toggleFav(x.uid); }} aria-label={fav ? 'Tirar dos favoritos' : 'Favoritar'}
+                      style={{ position: 'absolute', top: 2, right: 3, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: fav ? '#FACC15' : 'rgba(255,255,255,0.55)', textShadow: '0 1px 3px #000', padding: 0 }}>{fav ? '★' : '☆'}</button>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 6px' }}>
+                    <span style={{ flex: 1, fontSize: 11, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.label}</span>
+                    <button onClick={(e) => { e.stopPropagation(); addEffectAt(x, cur); }} title={`Colocar no playhead (${fmtDuration(cur)})`}
+                      style={{ width: 20, height: 20, borderRadius: 5, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.06)', color: C.text, cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0, fontFamily: 'inherit' }}>+</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      <div style={{ padding: '6px 10px', borderTop: `1px solid ${C.border}`, fontSize: 10.5, color: fxNote ? C.green : C.faint, minHeight: 16 }}>
+        {fxNote ? `✓ ${fxNote}` : isMobile ? 'Toque no + para colocar o efeito no ponto atual do vídeo.' : 'Passe o mouse para ver o efeito · arraste para a timeline (entra onde soltar) ou para o vídeo (entra no playhead) · ★ favorita'}
+      </div>
+    </div>
+  );
+  // Ajustes do efeito selecionado na timeline (aparece depois de soltar o efeito).
+  const selFxRow = (label, range, body, onRemove) => (
+    <div style={{ border: `1px solid ${C.orange}`, borderRadius: 10, padding: 10, background: 'rgba(255,107,53,0.06)', display: 'grid', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700 }}>
+        <span style={{ flex: 1 }}>{label} <span style={{ color: C.faint, fontWeight: 500 }}>· {range}</span></span>
+        <button onClick={onRemove} style={{ ...miniBtn(false, false), color: C.red }}>Remover</button>
+      </div>
+      {body}
+    </div>
+  );
+  const fxSelPanel = selKind === 'zoom' && selZoomItem ? selFxRow('Câmera', `${fmtDuration(selZoomItem.start)} → ${fmtDuration(selZoomItem.end)}`,
+    <div style={{ display: 'grid', gap: 8 }}>
+      <Sel value={selZoomItem.effect || defaultMomentEffect(fx.videoMotion)} opts={Object.entries(MOMENT_EFFECTS).map(([id, label]) => ({ id, label }))}
+        onChange={(v) => { setZoomMoments((l) => l.map((z) => (z.key === selZoomItem.key ? { ...z, effect: v } : z))); seek(selZoomItem.start + 0.01); }} />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: C.muted }}>
+        <span style={{ width: 62 }}>Aproximar</span>
+        <input type="range" min="1.03" max="1.5" step="0.01" value={selZoomItem.scale || MOTION_Z[fx.motionIntensity] || 1.12}
+          onChange={(e) => { const v = Number(e.target.value); setZoomMoments((l) => l.map((z) => (z.key === selZoomItem.key ? { ...z, scale: v } : z))); }} style={{ flex: 1 }} />
+        <span style={{ width: 44, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Number(selZoomItem.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}×</span>
+      </label>
+    </div>,
+    () => { setZoomMoments((l) => l.filter((z) => z.key !== selZoomItem.key)); setSelZoom(null); })
+    : selKind === 'vfx' && selFxItem ? selFxRow('Efeito de vídeo', `${fmtDuration(selFxItem.start)} → ${fmtDuration(selFxItem.end)}`,
+    <Sel value={selFxItem.effect} opts={fxOpts} onChange={(v) => setFxMoments((l) => l.map((m) => (m.key === selFxItem.key ? { ...m, effect: v } : m)))} />,
+    () => { setFxMoments((l) => l.filter((m) => m.key !== selFxItem.key)); setSelFx(null); })
+    : selKind === 'trans' && selTransItem ? selFxRow('Transição', fmtDuration(selTransItem.t),
+      <Sel value={selTransItem.type} opts={transOpts} onChange={(v) => setTransitions((l) => l.map((x) => (x.key === selTransItem.key ? { ...x, type: v } : x)))} />,
+      () => { setTransitions((l) => l.filter((x) => x.key !== selTransItem.key)); setSelTrans(null); })
+      : (selKind === 'speed' || selKind === 'freeze') ? speedBlock : null;
+
   // Sons da prévia: os automáticos (se ligados) e os colocados à mão, com o adiantamento de cada som.
   const leadOf = (type) => catalog?.sfxTypes?.find((o) => o.id === type)?.lead || 0;
   const liveSfxEvents = [
@@ -3164,7 +3357,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {/* Vídeo principal + prévia 9:16 do ajuste, LADO A LADO (mesma linha) */}
           {/* Vídeo e prévia do formato centralizados, lado a lado e com a MESMA altura:
               cada um ocupa uma fatia da largura proporcional ao seu formato. */}
-          <div className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}`} style={{ '--main-share': showFormatPreview ? (mainAr / (mainAr + fmtAr)).toFixed(4) : 1, '--fmt-share': showFormatPreview ? (fmtAr / (mainAr + fmtAr)).toFixed(4) : 1, containerType: 'inline-size', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(124,58,237,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
+          <div onDragOver={fxDragOver} onDrop={onPreviewDrop} className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}`} style={{ '--main-share': showFormatPreview ? (mainAr / (mainAr + fmtAr)).toFixed(4) : 1, '--fmt-share': showFormatPreview ? (fmtAr / (mainAr + fmtAr)).toFixed(4) : 1, containerType: 'inline-size', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(124,58,237,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
             <div className="rf-tl-main" style={{ flex: '0 0 auto', minWidth: 0 }}>
               <div style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${mainAr.toFixed(4)}), calc((100cqw - ${showFormatPreview ? 16 : 0}px) * var(--main-share)))`, aspectRatio: `${mainAr}`, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
                 <video ref={videoRef} src={srcUrl} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim({ w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
@@ -3195,7 +3388,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 )}
                 {vbox && <div ref={fxOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 2, backgroundSize: 'cover' }} />}
                 {vbox && <div ref={transOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 4, opacity: 0 }} />}
-                {vbox && <StageLayers box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
+                {vbox && <StageLayers videoRef={videoRef} box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
                   onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
                 {cap.captions && <CaptionOverlay videoRef={videoRef} segments={capSegments} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
                 {framingMode === 'manual' && (
@@ -3699,6 +3892,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
           {tab === 'efeitos' && (
             <div style={{ display: 'grid', gap: 12, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+              {fxBrowser}
+              {fxSelPanel}
+              <details style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: '8px 10px' }}>
+                <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 700, color: C.muted }}>Mais opções (automáticos, quadros-chave, sons e transições em todos os cortes)</summary>
+                <div style={{ display: 'grid', gap: 12, marginTop: 10 }}>
               {transformBlock}
               {fxBlock}
               <CapRow label="Movimento nos momentos-chave">
@@ -3783,6 +3981,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               )}
               {speedBlock}
               {transBlock}
+                </div>
+              </details>
               <div style={{ fontSize: 11.5, color: C.faint }}>
                 <b>Prévia:</b> ao escolher um movimento, o player ao lado mostra o efeito na hora; dê play para ver no ritmo da fala e ouvir os whooshes. O <b>zoom nos momentos-chave</b> só aproxima nos pontos de ênfase (pausa antes, números, perguntas, palavras fortes) — não o vídeo inteiro. Na faixa <b>ZOOM</b> da timeline: clique para ajustar, arraste para mover, puxe as pontas para mudar a duração. Os whooshes tocam nesses zooms e nas entradas de B-roll.
               </div>
@@ -4340,7 +4540,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div ref={trackRef} onClick={onTrackClick} onScroll={onTrackScroll} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
-            <div ref={contentRef} onMouseDown={startMarquee} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
+            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropT(null); }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
             {/* ferramenta de seleção: arrastar em qualquer faixa marca o trecho (todas as faixas) */}
             {rangeTool && !isMobile && (
               <div onMouseDown={(e) => startRangeSel(e)} title="Arraste para selecionar o trecho em todas as faixas · Delete corta vídeo, áudio e legenda · Esc sai"
@@ -4785,6 +4985,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {markers.map((mk) => (
               <div key={mk.key} style={{ position: 'absolute', left: X(mk.t), top: LANE.ruler, bottom: 0, width: 0, borderLeft: '1px dashed rgba(60,196,107,0.45)', pointerEvents: 'none', zIndex: 5 }} />
             ))}
+            {dragFx && dropT != null && (
+              <div style={{ position: 'absolute', left: X(dropT), top: 0, bottom: 0, width: 2, marginLeft: -1, background: '#22D3EE', boxShadow: '0 0 8px #22D3EE', pointerEvents: 'none', zIndex: 22 }}>
+                <span style={{ position: 'absolute', top: 2, left: 6, whiteSpace: 'nowrap', fontSize: 10.5, fontWeight: 700, color: '#04202a', background: '#22D3EE', borderRadius: 5, padding: '1px 6px' }}>{dragFx.label} · {fmtDuration(dropT)}</span>
+              </div>
+            )}
             {snapLine != null && (
               <div style={{ position: 'absolute', left: X(snapLine), top: 0, bottom: 0, width: 1, marginLeft: -0.5, background: '#FFD43B', boxShadow: '0 0 6px #FFD43B', pointerEvents: 'none', zIndex: 8 }} />
             )}
@@ -5083,7 +5288,7 @@ function RenderError({ err, onDisable, onClose }) {
  * Editável: arraste para posicionar (PiP e textos) e puxe o canto da mídia para mudar o
  * tamanho — as mesmas frações (px/py/scale, x/y) que o servidor usa no render.
  */
-function StageLayers({ box, cur, media, texts, editable, selMedia, selText, onMedia, onText }) {
+function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, selText, onMedia, onText }) {
   const [aspect, setAspect] = useState({}); // altura/largura de cada mídia (da prévia)
   const [guides, setGuides] = useState(null); // linhas de centralização enquanto arrasta
   const dragRef = useRef(null);
@@ -5131,7 +5336,7 @@ function StageLayers({ box, cur, media, texts, editable, selMedia, selText, onMe
       {guides && <SnapGuides x={guides.x} y={guides.y} />}
       {visible.map((m) => {
         const el = (style) => (m.kind === 'video'
-          ? <video src={m.previewUrl} muted playsInline style={style} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setAspect((a) => ({ ...a, [m.key]: v.videoHeight / v.videoWidth })); v.currentTime = Math.max(0, cur - m.start + (m.offset || 0)); }} />
+          ? <SyncedVideo m={m} mainRef={videoRef} style={style} onAspect={(r) => setAspect((a) => (a[m.key] === r ? a : { ...a, [m.key]: r }))} />
           : <img src={m.previewUrl} alt="" draggable={false} style={style} onLoad={(e) => { const i = e.currentTarget; if (i.naturalWidth) setAspect((a) => ({ ...a, [m.key]: i.naturalHeight / i.naturalWidth })); }} />);
         const ar = aspect[m.key] || 0.5625;
         if (m.mode !== 'pip') {
@@ -5180,6 +5385,81 @@ function StageLayers({ box, cur, media, texts, editable, selMedia, selText, onMe
     </div>
   );
 }
+
+/**
+ * Vídeo das "Minhas mídias" na prévia, tocando JUNTO com o vídeo principal: segue o play,
+ * a pausa, o arraste do playhead e a velocidade (lê o <video> principal a cada quadro).
+ * Se o arquivo não tocar no navegador, usa a cópia H.264 do servidor.
+ */
+function SyncedVideo({ m, mainRef, style, onAspect }) {
+  const ref = useRef(null);
+  const [src, setSrc] = useState(m.previewUrl);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setSrc(m.previewUrl); setFailed(false); }, [m.previewUrl]);
+  const mRef = useRef(m);
+  mRef.current = m;
+  useEffect(() => {
+    let id;
+    const loop = () => {
+      const v = ref.current;
+      const main = mainRef?.current;
+      if (v && main && v.readyState >= 1) {
+        const mm = mRef.current;
+        const target = Math.max(0, main.currentTime - mm.start + (Number(mm.offset) || 0));
+        const vol = Math.max(0, Math.min(1, mm.volume ?? 1));
+        if (Math.abs(v.volume - vol) > 0.01) v.volume = vol;
+        const muted = main.muted || vol < 0.005;
+        if (v.muted !== muted) v.muted = muted;
+        if (main.paused || main.seeking) {
+          if (!v.paused) v.pause();
+          if (Math.abs(v.currentTime - target) > 0.04 && !v.seeking) v.currentTime = target;
+        } else {
+          if (v.playbackRate !== main.playbackRate) v.playbackRate = main.playbackRate;
+          if (Math.abs(v.currentTime - target) > 0.3 && !v.seeking) v.currentTime = target;
+          if (v.paused && !v.ended) v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+        }
+      }
+      id = requestAnimationFrame(loop);
+    };
+    id = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(id);
+  }, [mainRef]);
+  return (
+    <video ref={ref} src={src} playsInline preload="auto" style={style}
+      onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) onAspect(v.videoHeight / v.videoWidth); }}
+      onError={() => {
+        // o original não toca aqui (HEVC, ProRes…): pede a cópia leve ao servidor
+        if (!failed && m.mediaId) { setFailed(true); setSrc(mediaPreviewUrl(m.mediaId, 'h264')); }
+      }} />
+  );
+}
+
+// Prévia dos efeitos na biblioteca (ao passar o mouse), como os cards do Animation Composer.
+const FX_ANIM_CSS = `
+.rf-fxc:hover { border-color: rgba(34,211,238,0.6) !important; }
+.rf-fxc .rf-fxi, .rf-fxc .rf-fxo { animation-duration: 1.6s; animation-iteration-count: infinite; animation-play-state: paused; animation-timing-function: ease-in-out; }
+.rf-fxc:hover .rf-fxi, .rf-fxc:hover .rf-fxo { animation-play-state: running; }
+.a-cam-zoom-in { animation-name: rfZin; } @keyframes rfZin { 0% { transform: scale(1); } 75%, 100% { transform: scale(1.4); } }
+.a-cam-zoom-out { animation-name: rfZout; } @keyframes rfZout { 0% { transform: scale(1.4); } 75%, 100% { transform: scale(1); } }
+.a-cam-punch { animation-name: rfPunch; animation-timing-function: steps(1) !important; } @keyframes rfPunch { 0% { transform: scale(1); } 35% { transform: scale(1.3); } 80% { transform: scale(1); } }
+.a-cam-ken-burns { animation-name: rfKb; } @keyframes rfKb { 0% { transform: scale(1) translate(0, 0); } 100% { transform: scale(1.3) translate(-7%, -5%); } }
+.a-cam-pulse { animation-name: rfPulse; } @keyframes rfPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+.a-fx-shake { animation-name: rfShake; animation-duration: 0.4s !important; } @keyframes rfShake { 0%, 100% { transform: translate(0, 0) scale(1.08); } 25% { transform: translate(-4%, 2%) scale(1.08); } 50% { transform: translate(3%, -3%) scale(1.08); } 75% { transform: translate(-2%, -2%) scale(1.08); } }
+.a-fx-glitch { animation-name: rfGlitch; animation-duration: 0.6s !important; animation-timing-function: steps(1) !important; } @keyframes rfGlitch { 0% { transform: translate(0); } 20% { transform: translate(-5%, 0) skewX(8deg); } 40% { transform: translate(4%, 0); filter: hue-rotate(90deg) contrast(1.4); } 60% { transform: translate(0); } 80% { transform: translate(-2%, 1%); filter: hue-rotate(-60deg); } }
+.a-fx-blur { animation-name: rfBlurIn; } @keyframes rfBlurIn { 0%, 100% { filter: blur(0); } 50% { filter: blur(5px); } }
+.a-tr-blur { animation-name: rfTrBlur; } @keyframes rfTrBlur { 0%, 100% { filter: blur(0); } 50% { filter: blur(8px); } }
+.a-tr-glow { animation-name: rfTrGlow; } @keyframes rfTrGlow { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(2.2) saturate(1.4); } }
+.o-tr-flash { background: #fff; opacity: 0; animation-name: rfFlash; } @keyframes rfFlash { 0%, 30%, 70%, 100% { opacity: 0; } 50% { opacity: 1; } }
+.o-tr-dip { background: #000; opacity: 0; animation-name: rfFlash; }
+.o-fx-strobe { background: #fff; opacity: 0; animation-name: rfStrobe; animation-duration: 0.5s !important; animation-timing-function: steps(1) !important; } @keyframes rfStrobe { 0% { opacity: 0; } 50% { opacity: 0.85; } }
+.o-fx-vignette { background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.75) 100%); }
+.o-fx-film { border-top: 9px solid #000; border-bottom: 9px solid #000; box-sizing: border-box; }
+.o-fx-grain, .o-fx-vhs { background-image: url("${"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.45'/></svg>"}"); mix-blend-mode: overlay; }
+.o-fx-pixel { backdrop-filter: blur(2px); background-image: linear-gradient(rgba(0,0,0,0.25) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.25) 1px, transparent 1px); background-size: 8px 8px; }
+.a-tm-slow { animation-name: rfSlow; animation-duration: 3.2s !important; animation-timing-function: linear !important; } @keyframes rfSlow { 0% { transform: translateX(0) scale(1.15); } 100% { transform: translateX(-6%) scale(1.15); } }
+.a-tm-fast { animation-name: rfSlow; animation-duration: 0.6s !important; animation-timing-function: linear !important; }
+.o-tm-freeze { background: linear-gradient(135deg, rgba(147,197,253,0.35), transparent 60%); }
+`;
 
 // Meia duração de cada transição (igual ao servidor) e textura de grão para a prévia.
 const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25 };

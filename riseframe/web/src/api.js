@@ -613,6 +613,8 @@ export async function addProjectMedia(file, onProgress) {
   return uploadMedia(file, onProgress);
 }
 export const mediaFileUrl = (id, v = '') => `${BASE}/media/${id}/file${v ? `?v=${v}` : ''}`;
+/** Vídeo que o navegador toca (H.264 leve quando o original é HEVC/ProRes/10 bits/HDR…). */
+export const mediaPreviewUrl = (id, v = '') => `${BASE}/media/${id}/preview${v ? `?v=${v}` : ''}`;
 export const mediaStatus = (id) => jsonReq('GET', `${BASE}/media/${id}/status`);
 export const sourceStatus = (id) => jsonReq('GET', `${BASE}/jobs/${id}/source/status`);
 
