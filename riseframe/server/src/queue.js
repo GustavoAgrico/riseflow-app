@@ -110,11 +110,11 @@ class JobQueue extends EventEmitter {
    * Fila de UMA conta: os vídeos dela na fila ou processando, e os que terminaram há pouco
    * (para a tela de progresso mostrar todos que estão renderizando, não só o atual).
    */
-  mine(ownerId, { recentMs = 15 * 60_000 } = {}) {
+  mine(ownerId, { recentMs = 15 * 60_000, ownerless = false } = {}) {
     if (!ownerId) return [];
     const now = Date.now();
     return [...this.jobs.values()]
-      .filter((j) => j.ownerId === ownerId && (j.status === 'queued' || j.status === 'processing' || j.status === 'paused' || (j.finishedAt && now - j.finishedAt < recentMs)))
+      .filter((j) => this.owns(j, ownerId, ownerless) && (j.status === 'queued' || j.status === 'processing' || j.status === 'paused' || (j.finishedAt && now - j.finishedAt < recentMs)))
       .sort((a, b) => a.createdAt - b.createdAt)
       .slice(-20)
       .map((j) => {
@@ -273,6 +273,22 @@ class JobQueue extends EventEmitter {
       log.info(`${resumed} job(s) em andamento voltaram para a fila`);
       this._drain();
     }
+  }
+
+  /** É desta conta? (`ownerless`: no app de PC/Mac, os vídeos sem dono — de antes da v152 — também) */
+  owns(job, ownerId, ownerless = false) {
+    return Boolean(job && ownerId && (job.ownerId === ownerId || (ownerless && !job.ownerId)));
+  }
+
+  /** O que está na frente e NÃO é desta conta (sem nomes): processando agora + na fila. */
+  othersAhead(ownerId, ownerless = false) {
+    const active = this.active ? this.jobs.get(this.active) : null;
+    const firstMine = this.pending.findIndex((id) => this.owns(this.jobs.get(id), ownerId, ownerless));
+    const ahead = firstMine < 0 ? [] : this.pending.slice(0, firstMine);
+    return {
+      processing: Boolean(active && !this.owns(active, ownerId, ownerless)),
+      queued: ahead.filter((id) => !this.owns(this.jobs.get(id), ownerId, ownerless)).length,
+    };
   }
 
   /** Cancela: na fila/pausado sai na hora; processando, para os processos e termina. */

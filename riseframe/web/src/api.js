@@ -542,10 +542,10 @@ export async function controlJob(id, action) {
 }
 
 /** Os vídeos desta conta na fila, processando ou recém-terminados. */
-export async function getMyQueue() {
-  const r = await fetch(`${BASE}/queue/mine`, { headers: authHeaders() });
+export async function getMyQueue(hours = 0) {
+  const r = await fetch(`${BASE}/queue/mine${hours ? `?hours=${hours}` : ''}`, { headers: authHeaders() });
   if (!r.ok) throw new Error(`erro ${r.status}`);
-  return (await r.json()).jobs || [];
+  return r.json(); // { jobs, othersAhead }
 }
 
 export async function getJob(id) {

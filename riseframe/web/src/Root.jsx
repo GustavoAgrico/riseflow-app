@@ -12,6 +12,8 @@ import Dashboard from './pages/Dashboard.jsx';
 import Library from './pages/Library.jsx';
 import Settings from './pages/Settings.jsx';
 import Plans from './pages/Plans.jsx';
+import Rendering from './pages/Rendering.jsx';
+import { useRenderingCount } from './components/RenderQueue.jsx';
 import Editor from './App.jsx';
 import Templates from './pages/Templates.jsx';
 import BrandKit from './pages/BrandKit.jsx';
@@ -22,6 +24,7 @@ import InstallApp from './components/InstallApp.jsx';
 const NAV = [
   { id: 'dashboard', label: 'Início', icon: 'home' },
   { id: 'library', label: 'Meus projetos', icon: 'folder' },
+  { id: 'rendering', label: 'Renderizando', icon: 'clapper' },
   { id: 'templates', label: 'Templates', icon: 'layers' },
   { id: 'brand', label: 'Brand Kit', icon: 'brush' },
   { id: 'plans', label: 'Planos', icon: 'zap' },
@@ -48,6 +51,9 @@ function NavItem({ item, active, onClick, mini = false }) {
       {active && !item.cta && <span style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 3, borderRadius: 3, background: GRAD }} />}
       <Icon name={item.icon} size={18} strokeWidth={1.9} color={item.cta ? '#fff' : active ? C.orangeSoft : 'currentColor'} />
       {!mini && item.label}
+      {item.badge > 0 && (
+        <span style={{ position: mini ? 'absolute' : 'static', top: 4, right: 8, marginLeft: mini ? 0 : 'auto', minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, background: C.orange, color: '#fff', fontSize: 10.5, fontWeight: 800, display: 'grid', placeItems: 'center', boxShadow: '0 0 10px rgba(255,106,26,0.6)' }}>{item.badge}</span>
+      )}
     </button>
   );
 }
@@ -81,7 +87,7 @@ function readSidePref() {
   try { return localStorage.getItem(SIDE_KEY) || 'auto'; } catch { return 'auto'; }
 }
 
-function Sidebar({ user, billing, view, onView, onLogout }) {
+function Sidebar({ user, billing, view, onView, onLogout, renderingCount = 0 }) {
   const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
   const [pref, setPref] = useState(readSidePref); // 'auto' | 'open' | 'mini'
   const mini = pref === 'mini' || (pref === 'auto' && view === 'editor');
@@ -116,7 +122,7 @@ function Sidebar({ user, billing, view, onView, onLogout }) {
       </button>
 
       <div style={{ display: 'grid', gap: 3 }}>
-        {NAV.map((n) => <NavItem key={n.id} item={n} mini={mini} active={view === n.id} onClick={() => onView(n.id)} />)}
+        {NAV.map((n) => <NavItem key={n.id} item={n.id === 'rendering' ? { ...n, badge: renderingCount } : n} mini={mini} active={view === n.id} onClick={() => onView(n.id)} />)}
       </div>
 
       <div style={{ marginTop: 'auto', display: 'grid', gap: 12 }}>
@@ -152,7 +158,7 @@ function Sidebar({ user, billing, view, onView, onLogout }) {
 }
 
 // ── Celular: barra superior (marca + saldo) e abas fixas embaixo ──
-function MobileTopBar({ billing, onView }) {
+function MobileTopBar({ billing, onView, renderingCount = 0 }) {
   return (
     <header className="rf-mtop" style={{ position: 'sticky', top: 0, zIndex: 30, display: 'none', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: 'calc(10px + env(safe-area-inset-top)) 16px 10px', background: 'rgba(8,8,12,0.82)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderBottom: `1px solid ${C.border}` }}>
       <button onClick={() => onView('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', padding: 4, cursor: 'pointer' }}>
@@ -160,6 +166,11 @@ function MobileTopBar({ billing, onView }) {
         <Wordmark size={16} />
       </button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {renderingCount > 0 && (
+        <button onClick={() => onView('rendering')} aria-label={`${renderingCount} renderizando`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 36, padding: '0 11px', borderRadius: 999, background: 'rgba(255,106,26,0.14)', border: '1px solid rgba(255,106,26,0.4)', color: C.text, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
+          <Icon name="clapper" size={14} strokeWidth={2.2} color={C.orangeSoft} /> {renderingCount}
+        </button>
+      )}
       <InstallApp compact />
       {billing && (
         <button onClick={() => onView('plans')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 36, padding: '0 12px', borderRadius: 999, background: 'rgba(194,65,12,0.14)', border: '1px solid rgba(194,65,12,0.35)', color: C.text, fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
@@ -200,6 +211,11 @@ function MobileTabBar({ view, onView }) {
       })}
     </nav>
   );
+}
+
+/** Área logada: acompanha a fila da conta (contador da aba "Renderizando"). */
+function LoggedShell({ children }) {
+  return children(useRenderingCount(5000));
 }
 
 const inDesktopApp = () => typeof window !== 'undefined' && Boolean(window.electron);
@@ -383,11 +399,11 @@ export default function Root() {
     return <AppPaywall user={user} onRefresh={refreshBilling} onLogout={logout} />;
   }
 
-  return (
+  return <LoggedShell>{(renderingCount) => (
     <div className="rf-root" style={{ minHeight: '100vh', display: 'flex' }}>
-      <Sidebar user={user} billing={billing} view={view} onView={go} onLogout={logout} />
+      <Sidebar user={user} billing={billing} view={view} onView={go} onLogout={logout} renderingCount={renderingCount} />
       <div className="rf-main" style={{ flex: 1, minWidth: 0 }}>
-        <MobileTopBar billing={billing} onView={go} />
+        <MobileTopBar billing={billing} onView={go} renderingCount={renderingCount} />
         {view === 'dashboard' && (
           <Dashboard
             user={user}
@@ -400,6 +416,7 @@ export default function Root() {
             onFormat={(id) => go('editor', { format: id })}
           />
         )}
+        {view === 'rendering' && <Rendering onLibrary={() => go('library')} />}
         {view === 'library' && <Library onNewVideo={() => go('editor')} onOpen={(j) => go('editor', { reopen: j })} />}
         {view === 'templates' && <Templates onUse={(t) => go('editor', { template: t })} onNewVideo={() => go('editor')} />}
         {view === 'brand' && <BrandKit onNewVideo={() => go('editor')} />}
@@ -427,5 +444,5 @@ export default function Root() {
         .rf-side-toggle:hover{ color: #fff !important; background: rgba(255,255,255,0.08) !important; }
       `}</style>
     </div>
-  );
+  )}</LoggedShell>;
 }
