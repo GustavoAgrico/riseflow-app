@@ -1145,15 +1145,22 @@ jobsRouter.get('/jobs/:id/source/status', (req, res) => {
 // nomes de arquivo de todos os usuários. O acesso é por id (capability URL).
 
 // GET /api/queue/mine → os vídeos desta conta na fila / processando / recém-terminados
+// (?hours=12 → os terminados das últimas horas, até 24 h). No app de PC/Mac (um usuário só)
+// entram também os vídeos sem dono registrado (enviados antes desta versão).
 jobsRouter.get('/queue/mine', requireAuth, (req, res) => {
-  res.json({ jobs: queue.mine(req.user.id) });
+  const ownerless = remoteAccount();
+  const hours = Math.max(0, Math.min(24, Number(req.query.hours) || 0));
+  res.json({
+    jobs: queue.mine(req.user.id, { ownerless, ...(hours ? { recentMs: hours * 3600_000 } : {}) }),
+    othersAhead: queue.othersAhead(req.user.id, ownerless),
+  });
 });
 
 // POST /api/jobs/:id/cancel | pause | resume → só quem enviou o vídeo
 for (const action of ['cancel', 'pause', 'resume']) {
   jobsRouter.post(`/jobs/:id/${action}`, requireAuth, (req, res) => {
     const job = queue.get(req.params.id);
-    if (!job || !job.ownerId || job.ownerId !== req.user.id) return res.status(404).json({ error: 'vídeo não encontrado na sua fila' });
+    if (!queue.owns(job, req.user.id, remoteAccount())) return res.status(404).json({ error: 'vídeo não encontrado na sua fila' });
     if (!queue[action](job.id)) return res.status(409).json({ error: 'não dá para fazer isso com este vídeo agora' });
     res.json(queue.public(job));
   });

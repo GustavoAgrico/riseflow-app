@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { C, GRAD, glass, FONT_DISPLAY } from '../theme.js';
 import Icon from './Icon.jsx';
-import { getMyQueue, controlJob } from '../api.js';
+import { MyQueue, JobControls } from './RenderQueue.jsx';
 
 // Nomes amigáveis de cada etapa do servidor.
-const SHORT = {
+export const SHORT = {
   probe: 'Analisando o vídeo',
   voice: 'Tratando a voz',
   gain: 'Ajustando o volume',
@@ -80,93 +80,6 @@ function useEta(value, active) {
     left = Math.max(5, ema.current);
   }
   return { elapsed, left };
-}
-
-/** Botões Pausar/Retomar e Cancelar de um vídeo da fila. */
-function JobControls({ job, small = false, onDone }) {
-  const [busy, setBusy] = useState('');
-  if (!job?.id || !['queued', 'processing', 'paused'].includes(job.status)) return null;
-  const stopping = /Cancelando|Pausando/.test(job.stageLabel || '');
-  async function act(action) {
-    if (action === 'cancel' && !window.confirm(job.status === 'processing'
-      ? 'Cancelar este vídeo agora? O processamento para e os créditos voltam para a sua conta.'
-      : 'Cancelar este vídeo? Os créditos voltam para a sua conta.')) return;
-    setBusy(action);
-    try { await controlJob(job.id, action); onDone?.(); } catch (e) { window.alert(e.message); } finally { setBusy(''); }
-  }
-  const btn = (primary) => ({
-    display: 'inline-flex', alignItems: 'center', gap: 6, height: small ? 28 : 36, padding: small ? '0 10px' : '0 16px', borderRadius: 999,
-    border: `1px solid ${primary ? 'rgba(255,107,53,0.5)' : C.borderStrong}`, background: primary ? 'rgba(255,107,53,0.12)' : 'rgba(255,255,255,0.04)',
-    color: C.text, fontSize: small ? 11.5 : 13, fontWeight: 650, fontFamily: 'inherit', cursor: busy || stopping ? 'default' : 'pointer', opacity: busy || stopping ? 0.55 : 1, whiteSpace: 'nowrap',
-  });
-  return (
-    <div style={{ display: 'inline-flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-      {job.status === 'paused'
-        ? <button disabled={!!busy} onClick={() => act('resume')} style={btn(true)} title="Volta para a fila (recomeça do início)"><Icon name="play" size={small ? 11 : 13} strokeWidth={2.4} /> Retomar</button>
-        : <button disabled={!!busy || stopping} onClick={() => act('pause')} style={btn(false)} title={job.status === 'processing' ? 'Para agora; ao retomar, recomeça do início' : 'Sai da vez na fila até você retomar'}><Icon name="pause" size={small ? 11 : 13} strokeWidth={2.4} /> Pausar</button>}
-      <button disabled={!!busy || stopping} onClick={() => act('cancel')} style={btn(false)} title="Para e devolve os créditos"><Icon name="close" size={small ? 11 : 13} strokeWidth={2.4} /> Cancelar</button>
-    </div>
-  );
-}
-
-const MODE_LABEL = { auto: 'Edição automática', transcribe: 'Preparando para a timeline', render: 'Vídeo final', clips: 'Cortes curtos' };
-
-/** Os outros vídeos desta conta renderizando ao mesmo tempo (atualiza a cada 3 s). */
-function MyQueue({ currentId, onSelf }) {
-  const [list, setList] = useState([]);
-  const refreshRef = useRef(null);
-  const refresh = () => refreshRef.current?.();
-  useEffect(() => {
-    let alive = true;
-    let t = 0;
-    refreshRef.current = () => { clearTimeout(t); tick(); };
-    const tick = async () => {
-      try {
-        const l = await getMyQueue();
-        if (alive) {
-          setList(l);
-          onSelf?.(l.find((j) => j.id === currentId) || null);
-        }
-      } catch { /* sem a lista: a tela segue só com o vídeo atual */ }
-      if (alive) t = setTimeout(tick, 3000);
-    };
-    tick();
-    return () => { alive = false; clearTimeout(t); };
-  }, []);
-  const others = list.filter((j) => j.id !== currentId);
-  if (!others.length) return null;
-  const row = (j) => {
-    const cur = j.id === currentId;
-    const pct = j.status === 'done' ? 100 : Math.max(0, Math.min(100, j.progress || 0));
-    const state = j.status === 'paused' ? 'Pausado' : j.status === 'queued' ? `Na fila${j.queuePosition > 0 ? ` (${j.queuePosition}º)` : ''}`
-      : j.status === 'processing' ? `${pct}% · ${SHORT[j.stage] || j.stageLabel || 'Processando'}`
-        : j.status === 'done' ? 'Pronto ✓ — está em Meus projetos' : j.stage === 'canceled' ? 'Cancelado' : 'Falhou';
-    const color = j.status === 'done' ? C.green : j.stage === 'canceled' ? C.faint : j.status === 'error' ? C.red : j.status === 'processing' ? C.orangeSoft : C.muted;
-    return (
-      <div key={j.id} style={{ display: 'grid', gap: 6, padding: '10px 12px', borderRadius: 12, background: cur ? 'rgba(255,107,53,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${cur ? 'rgba(255,107,53,0.35)' : C.border}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <Icon name={j.mode === 'clips' ? 'film' : 'clapper'} size={15} strokeWidth={2} color={cur ? C.orangeSoft : C.muted} />
-          <div style={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
-            <div style={{ fontSize: 13, fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.filename || 'Vídeo'}{cur ? ' · este' : ''}</div>
-            <div style={{ fontSize: 11.5, color: C.faint }}>{MODE_LABEL[j.mode] || 'Vídeo'}</div>
-          </div>
-          <span style={{ fontSize: 12, fontWeight: 650, color, whiteSpace: 'nowrap' }}>{state}</span>
-          {!cur && <JobControls job={j} small onDone={refresh} />}
-        </div>
-        {(j.status === 'processing' || j.status === 'queued') && (
-          <div style={{ height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-            <div style={{ width: `${pct}%`, height: '100%', background: GRAD, transition: 'width .4s ease' }} />
-          </div>
-        )}
-      </div>
-    );
-  };
-  return (
-    <div style={{ marginTop: 26, textAlign: 'left' }}>
-      <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: C.faint, marginBottom: 10 }}>Seus vídeos renderizando ({list.length})</div>
-      <div style={{ display: 'grid', gap: 8 }}>{list.map(row)}</div>
-    </div>
-  );
 }
 
 /**
