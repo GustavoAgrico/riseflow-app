@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { ffmpegPath } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
+import { trackChild } from '../jobContext.js';
 
 const log = makeLogger('corte');
 
@@ -32,7 +33,7 @@ export function audioEnvelope(input, { rate = 8000, af = null } = {}) {
     let carry = null;
     const args = ['-v', 'error', '-i', input, '-vn', '-ac', '1', '-ar', String(rate)];
     if (af) args.push('-af', af);
-    const proc = spawn(ffmpegPath, [...args, '-f', 's16le', '-'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const proc = trackChild(spawn(ffmpegPath, [...args, '-f', 's16le', '-'], { stdio: ['ignore', 'pipe', 'ignore'] }));
     proc.stdout.on('data', (chunk) => {
       let buf = chunk;
       if (carry) {
@@ -191,7 +192,7 @@ export function voicingTrack(input, { maxSeconds = 2 * 3600 } = {}) {
     const bufs = [];
     let bytes = 0;
     const limit = maxSeconds * 8000 * 2;
-    const proc = spawn(ffmpegPath, ['-v', 'error', '-i', input, '-vn', '-ac', '1', '-af', 'highpass=f=70,lowpass=f=900,lowpass=f=900', '-ar', '8000', '-f', 's16le', '-'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const proc = trackChild(spawn(ffmpegPath, ['-v', 'error', '-i', input, '-vn', '-ac', '1', '-af', 'highpass=f=70,lowpass=f=900,lowpass=f=900', '-ar', '8000', '-f', 's16le', '-'], { stdio: ['ignore', 'pipe', 'ignore'] }));
     proc.stdout.on('data', (c) => {
       bytes += c.length;
       if (bytes > limit) {
@@ -308,7 +309,7 @@ export function readPcm(input, start, dur, rate = 16000) {
   return new Promise((resolve) => {
     const bufs = [];
     const args = ['-v', 'error', '-ss', Math.max(0, start).toFixed(3), '-t', Math.max(0.05, dur).toFixed(3), '-i', input, '-vn', '-ac', '1', '-ar', String(rate), '-f', 's16le', '-'];
-    const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+    const proc = trackChild(spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'ignore'] }));
     proc.stdout.on('data', (c) => bufs.push(c));
     proc.on('error', () => resolve(null));
     proc.on('close', () => {
