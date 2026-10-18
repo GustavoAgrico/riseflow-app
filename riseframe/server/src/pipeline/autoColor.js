@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
 import { makeLogger } from '../logger.js';
+import { trackChild } from '../jobContext.js';
 
 const log = makeLogger('auto-color');
 
@@ -21,7 +22,7 @@ export function sampleFrameStats(input, { size = 48, everySec = 2, maxFrames = 1
       '-frames:v', String(maxFrames),
       '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1',
     ];
-    const proc = spawn(ffmpegPath, args);
+    const proc = trackChild(spawn(ffmpegPath, args));
     const chunks = [];
     let err = '';
     proc.stdout.on('data', (d) => chunks.push(d));

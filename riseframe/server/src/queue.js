@@ -7,6 +7,7 @@ import { runPipeline } from './pipeline/index.js';
 import { config } from './config.js';
 import { workDirFor } from './storage.js';
 import { makeLogger } from './logger.js';
+import { jobContext, stopJob, releaseJob } from './jobContext.js';
 
 const log = makeLogger('queue');
 
@@ -113,7 +114,7 @@ class JobQueue extends EventEmitter {
     if (!ownerId) return [];
     const now = Date.now();
     return [...this.jobs.values()]
-      .filter((j) => j.ownerId === ownerId && (j.status === 'queued' || j.status === 'processing' || (j.finishedAt && now - j.finishedAt < recentMs)))
+      .filter((j) => j.ownerId === ownerId && (j.status === 'queued' || j.status === 'processing' || j.status === 'paused' || (j.finishedAt && now - j.finishedAt < recentMs)))
       .sort((a, b) => a.createdAt - b.createdAt)
       .slice(-20)
       .map((j) => {
@@ -124,7 +125,7 @@ class JobQueue extends EventEmitter {
 
   /** Versão serializável (sem caminhos internos de disco nem payload de edição). */
   public(job) {
-    const { inputPath, workDir, outputsDir, editedTranscript, hold, ownerId, ...rest } = job;
+    const { inputPath, workDir, outputsDir, editedTranscript, hold, ownerId, stopReason, ...rest } = job;
     const queuePosition =
       job.status === 'queued' ? this.pending.indexOf(job.id) + (this.active ? 1 : 0) : 0;
     return {
@@ -180,6 +181,7 @@ class JobQueue extends EventEmitter {
       options: Object.fromEntries(Object.entries(job.options || {}).filter(([k]) => !/key|token|secret/i.test(k))),
       editedTranscript: job.editedTranscript || null, sourceId: job.sourceId || null,
       hold: job.hold || null, createdAt: job.createdAt, attempts: job.attempts || 0, ownerId: job.ownerId || null,
+      paused: job.status === 'paused',
     };
     try {
       fsSync.writeFileSync(path.join(config.paths.jobs, `${job.id}.running.json`), JSON.stringify(snap));
@@ -197,7 +199,7 @@ class JobQueue extends EventEmitter {
     const job = this.jobs.get(id);
     if (!job) return;
     job.hold = hold;
-    if (job.status === 'queued' || job.status === 'processing') this._persistRunning(job);
+    if (job.status === 'queued' || job.status === 'processing' || job.status === 'paused') this._persistRunning(job);
   }
 
   /** Recarrega os jobs gravados cujo vídeo de origem ainda existe (chamado no boot). */
@@ -221,9 +223,10 @@ class JobQueue extends EventEmitter {
           await fs.rm(full, { force: true });
           if (!snap?.id || this.jobs.has(snap.id)) continue;
           const ok = snap.inputPath && fsSync.existsSync(snap.inputPath) && (snap.attempts || 0) < 2;
+          const paused = ok && snap.paused;
           const job = {
-            ...snap, status: ok ? 'queued' : 'error', progress: 0, stage: ok ? 'queued' : 'error',
-            stageLabel: ok ? 'Retomando depois de um reinício do servidor' : 'Falhou',
+            ...snap, status: paused ? 'paused' : ok ? 'queued' : 'error', progress: 0, stage: paused ? 'paused' : ok ? 'queued' : 'error',
+            stageLabel: paused ? 'Pausado' : ok ? 'Retomando depois de um reinício do servidor' : 'Falhou',
             workDir: workDirFor(snap.id), outputsDir: config.paths.outputs,
             report: null, error: ok ? null : 'o servidor reiniciou durante o processamento e não deu para retomar',
             startedAt: null, finishedAt: ok ? null : Date.now(), attempts: (snap.attempts || 0) + 1,
@@ -232,7 +235,7 @@ class JobQueue extends EventEmitter {
           this.emit('restored', job);
           if (ok) {
             fsSync.mkdirSync(job.workDir, { recursive: true });
-            this.pending.push(job.id);
+            if (!paused) this.pending.push(job.id);
             this._persistRunning(job);
             resumed++;
           }
@@ -272,6 +275,56 @@ class JobQueue extends EventEmitter {
     }
   }
 
+  /** Cancela: na fila/pausado sai na hora; processando, para os processos e termina. */
+  cancel(id) {
+    const job = this.jobs.get(id);
+    if (!job) return false;
+    if (job.status === 'queued' || job.status === 'paused') {
+      this.pending = this.pending.filter((x) => x !== id);
+      this._patch(job, { status: 'error', stage: 'canceled', stageLabel: 'Cancelado', error: 'cancelado por você — os créditos voltaram para a sua conta', finishedAt: Date.now() });
+      this._dropRunning(id);
+      return true;
+    }
+    if (job.status === 'processing' && this.active === id) {
+      job.stopReason = 'cancel';
+      stopJob(id);
+      this._patch(job, { stageLabel: 'Cancelando…' });
+      return true;
+    }
+    return false;
+  }
+
+  /** Pausa: na fila, sai da vez; processando, para agora (ao retomar recomeça do início). */
+  pause(id) {
+    const job = this.jobs.get(id);
+    if (!job) return false;
+    if (job.status === 'queued') {
+      this.pending = this.pending.filter((x) => x !== id);
+      this._patch(job, { status: 'paused', stage: 'paused', stageLabel: 'Pausado' });
+      this._persistRunning(job);
+      return true;
+    }
+    if (job.status === 'processing' && this.active === id) {
+      job.stopReason = 'pause';
+      stopJob(id);
+      this._patch(job, { stageLabel: 'Pausando…' });
+      return true;
+    }
+    return false;
+  }
+
+  /** Retoma um pausado: volta para o fim da fila. */
+  resume(id) {
+    const job = this.jobs.get(id);
+    if (!job || job.status !== 'paused') return false;
+    fsSync.mkdirSync(job.workDir, { recursive: true });
+    this.pending.push(id);
+    this._patch(job, { status: 'queued', progress: 0, stage: 'queued', stageLabel: 'Na fila' });
+    this._persistRunning(job);
+    this._drain();
+    return true;
+  }
+
   _patch(job, patch) {
     Object.assign(job, patch);
     this.emit('update', this.public(job));
@@ -288,8 +341,14 @@ class JobQueue extends EventEmitter {
     this._patch(job, { status: 'processing', startedAt: Date.now(), stage: 'starting', stageLabel: 'Iniciando' });
     log.info(`processando job ${id}`);
 
+    let stopped = null;
     try {
-      const report = await runPipeline(job, (patch) => this._patch(job, patch));
+      const report = await jobContext.run({ jobId: id }, () => runPipeline(job, (patch) => {
+        // Pausar/Cancelar: interrompe entre as etapas também (não só o ffmpeg em andamento)
+        if (job.stopReason) throw new Error('interrompido pelo usuário');
+        this._patch(job, patch);
+      }));
+      if (job.stopReason) throw new Error('interrompido pelo usuário');
       this._patch(job, {
         status: 'done',
         progress: 100,
@@ -301,18 +360,30 @@ class JobQueue extends EventEmitter {
       this._persist(job);
       log.ok(`job ${id} concluído em ${((job.finishedAt - job.startedAt) / 1000).toFixed(1)}s`);
     } catch (err) {
-      this._patch(job, {
-        status: 'error',
-        stage: 'error',
-        stageLabel: 'Falhou',
-        error: err.message,
-        finishedAt: Date.now(),
-      });
-      log.error(`job ${id} falhou: ${err.message}`);
+      stopped = job.stopReason || null;
+      if (stopped === 'pause') {
+        this._patch(job, { status: 'paused', progress: 0, stage: 'paused', stageLabel: 'Pausado', startedAt: null });
+        log.info(`job ${id} pausado pelo usuário`);
+      } else if (stopped === 'cancel') {
+        this._patch(job, { status: 'error', stage: 'canceled', stageLabel: 'Cancelado', error: 'cancelado por você — os créditos voltaram para a sua conta', finishedAt: Date.now() });
+        log.info(`job ${id} cancelado pelo usuário`);
+      } else {
+        this._patch(job, {
+          status: 'error',
+          stage: 'error',
+          stageLabel: 'Falhou',
+          error: err.message,
+          finishedAt: Date.now(),
+        });
+        log.error(`job ${id} falhou: ${err.message}`);
+      }
     } finally {
       // Limpa arquivos de trabalho intermediários (mantém upload e output).
       fs.rm(job.workDir, { recursive: true, force: true }).catch(() => {});
-      this._dropRunning(id);
+      delete job.stopReason;
+      releaseJob(id);
+      if (stopped === 'pause') this._persistRunning(job); // pausado: continua guardado
+      else this._dropRunning(id);
       this.active = null;
       this._drain();
     }

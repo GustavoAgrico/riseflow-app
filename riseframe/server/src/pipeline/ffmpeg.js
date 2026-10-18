@@ -4,6 +4,7 @@ import ffmpegPath from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
 import { makeLogger } from '../logger.js';
 import { config } from '../config.js';
+import { trackChild } from '../jobContext.js';
 
 const ffprobePath = ffprobeStatic.path;
 const log = makeLogger('ffmpeg');
@@ -72,7 +73,7 @@ export function hmsToSeconds(hms) {
 export function runFfmpeg(args, opts = {}) {
   const { totalDuration, onProgress, label = 'run', cwd } = opts;
   return new Promise((resolve, reject) => {
-    const proc = spawn(ffmpegPath, ['-hide_banner', '-nostdin', ...args], cwd ? { cwd } : undefined);
+    const proc = trackChild(spawn(ffmpegPath, ['-hide_banner', '-nostdin', ...args], cwd ? { cwd } : undefined));
     let stderr = '';
 
     proc.stderr.on('data', (buf) => {
@@ -107,13 +108,13 @@ export function runFfmpeg(args, opts = {}) {
 /** ffprobe → objeto JSON completo (streams + format). */
 export function probe(inputPath) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(ffprobePath, [
+    const proc = trackChild(spawn(ffprobePath, [
       '-v', 'error',
       '-show_format',
       '-show_streams',
       '-of', 'json',
       inputPath,
-    ]);
+    ]));
     let out = '';
     let err = '';
     proc.stdout.on('data', (b) => (out += b.toString()));

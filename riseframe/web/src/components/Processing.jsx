@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { C, GRAD, glass, FONT_DISPLAY } from '../theme.js';
 import Icon from './Icon.jsx';
-import { getMyQueue } from '../api.js';
+import { getMyQueue, controlJob } from '../api.js';
 
 // Nomes amigáveis de cada etapa do servidor.
 const SHORT = {
@@ -82,18 +82,51 @@ function useEta(value, active) {
   return { elapsed, left };
 }
 
+/** Botões Pausar/Retomar e Cancelar de um vídeo da fila. */
+function JobControls({ job, small = false, onDone }) {
+  const [busy, setBusy] = useState('');
+  if (!job?.id || !['queued', 'processing', 'paused'].includes(job.status)) return null;
+  const stopping = /Cancelando|Pausando/.test(job.stageLabel || '');
+  async function act(action) {
+    if (action === 'cancel' && !window.confirm(job.status === 'processing'
+      ? 'Cancelar este vídeo agora? O processamento para e os créditos voltam para a sua conta.'
+      : 'Cancelar este vídeo? Os créditos voltam para a sua conta.')) return;
+    setBusy(action);
+    try { await controlJob(job.id, action); onDone?.(); } catch (e) { window.alert(e.message); } finally { setBusy(''); }
+  }
+  const btn = (primary) => ({
+    display: 'inline-flex', alignItems: 'center', gap: 6, height: small ? 28 : 36, padding: small ? '0 10px' : '0 16px', borderRadius: 999,
+    border: `1px solid ${primary ? 'rgba(255,107,53,0.5)' : C.borderStrong}`, background: primary ? 'rgba(255,107,53,0.12)' : 'rgba(255,255,255,0.04)',
+    color: C.text, fontSize: small ? 11.5 : 13, fontWeight: 650, fontFamily: 'inherit', cursor: busy || stopping ? 'default' : 'pointer', opacity: busy || stopping ? 0.55 : 1, whiteSpace: 'nowrap',
+  });
+  return (
+    <div style={{ display: 'inline-flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+      {job.status === 'paused'
+        ? <button disabled={!!busy} onClick={() => act('resume')} style={btn(true)} title="Volta para a fila (recomeça do início)"><Icon name="play" size={small ? 11 : 13} strokeWidth={2.4} /> Retomar</button>
+        : <button disabled={!!busy || stopping} onClick={() => act('pause')} style={btn(false)} title={job.status === 'processing' ? 'Para agora; ao retomar, recomeça do início' : 'Sai da vez na fila até você retomar'}><Icon name="pause" size={small ? 11 : 13} strokeWidth={2.4} /> Pausar</button>}
+      <button disabled={!!busy || stopping} onClick={() => act('cancel')} style={btn(false)} title="Para e devolve os créditos"><Icon name="close" size={small ? 11 : 13} strokeWidth={2.4} /> Cancelar</button>
+    </div>
+  );
+}
+
 const MODE_LABEL = { auto: 'Edição automática', transcribe: 'Preparando para a timeline', render: 'Vídeo final', clips: 'Cortes curtos' };
 
 /** Os outros vídeos desta conta renderizando ao mesmo tempo (atualiza a cada 3 s). */
-function MyQueue({ currentId }) {
+function MyQueue({ currentId, onSelf }) {
   const [list, setList] = useState([]);
+  const refreshRef = useRef(null);
+  const refresh = () => refreshRef.current?.();
   useEffect(() => {
     let alive = true;
     let t = 0;
+    refreshRef.current = () => { clearTimeout(t); tick(); };
     const tick = async () => {
       try {
         const l = await getMyQueue();
-        if (alive) setList(l);
+        if (alive) {
+          setList(l);
+          onSelf?.(l.find((j) => j.id === currentId) || null);
+        }
       } catch { /* sem a lista: a tela segue só com o vídeo atual */ }
       if (alive) t = setTimeout(tick, 3000);
     };
@@ -105,10 +138,10 @@ function MyQueue({ currentId }) {
   const row = (j) => {
     const cur = j.id === currentId;
     const pct = j.status === 'done' ? 100 : Math.max(0, Math.min(100, j.progress || 0));
-    const state = j.status === 'queued' ? `Na fila${j.queuePosition > 0 ? ` (${j.queuePosition}º)` : ''}`
+    const state = j.status === 'paused' ? 'Pausado' : j.status === 'queued' ? `Na fila${j.queuePosition > 0 ? ` (${j.queuePosition}º)` : ''}`
       : j.status === 'processing' ? `${pct}% · ${SHORT[j.stage] || j.stageLabel || 'Processando'}`
-        : j.status === 'done' ? 'Pronto ✓ — está em Meus projetos' : 'Falhou';
-    const color = j.status === 'done' ? C.green : j.status === 'error' ? C.red : j.status === 'processing' ? C.orangeSoft : C.muted;
+        : j.status === 'done' ? 'Pronto ✓ — está em Meus projetos' : j.stage === 'canceled' ? 'Cancelado' : 'Falhou';
+    const color = j.status === 'done' ? C.green : j.stage === 'canceled' ? C.faint : j.status === 'error' ? C.red : j.status === 'processing' ? C.orangeSoft : C.muted;
     return (
       <div key={j.id} style={{ display: 'grid', gap: 6, padding: '10px 12px', borderRadius: 12, background: cur ? 'rgba(255,107,53,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${cur ? 'rgba(255,107,53,0.35)' : C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -118,6 +151,7 @@ function MyQueue({ currentId }) {
             <div style={{ fontSize: 11.5, color: C.faint }}>{MODE_LABEL[j.mode] || 'Vídeo'}</div>
           </div>
           <span style={{ fontSize: 12, fontWeight: 650, color, whiteSpace: 'nowrap' }}>{state}</span>
+          {!cur && <JobControls job={j} small onDone={refresh} />}
         </div>
         {(j.status === 'processing' || j.status === 'queued') && (
           <div style={{ height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
@@ -140,12 +174,17 @@ function MyQueue({ currentId }) {
  * as próximas). `job` = o job do servidor (etapas reais); sem job, use `pct` e `steps`.
  */
 export default function Processing({ job, title = 'A IA está editando seu vídeo', subtitle = 'Isso leva só alguns minutos. Pode deixar esta tela aberta.', pct, steps }) {
+  // posição na fila mais nova (a lista da conta atualiza a cada 3 s; o evento do próprio
+  // vídeo só chega quando ele muda)
+  const [live, setLive] = useState(null);
+  if (job && live && live.id === job.id && live.status === job.status && job.status === 'queued') job = { ...job, queuePosition: live.queuePosition };
   const flow = steps || (job?.steps?.length ? job.steps.map((s) => ({ key: s.key, label: SHORT[s.key] || s.label })) : []);
   const order = flow.map((s) => s.key);
   const cur = job?.stage === 'done' ? order.length : order.indexOf(job?.stage);
   const value = pct ?? (job?.progress ?? 0) / 100;
   const queued = job?.status === 'queued';
-  const { elapsed, left } = useEta(value, !queued && value < 1);
+  const paused = job?.status === 'paused';
+  const { elapsed, left } = useEta(value, !queued && !paused && value < 1);
 
   return (
     <div style={{ ...glass({ padding: 'clamp(24px, 4vw, 40px)' }), position: 'relative', overflow: 'hidden', textAlign: 'center' }}>
@@ -156,14 +195,16 @@ export default function Processing({ job, title = 'A IA está editando seu víde
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 26 }}>
           <Ring pct={value} />
         </div>
+        {job?.status === 'paused' && <div style={{ fontSize: 14, fontWeight: 600, color: C.orangeSoft, marginBottom: 10 }}>Pausado — retome quando quiser (recomeça do início).</div>}
         {queued && <div style={{ fontSize: 14, fontWeight: 600, color: C.orangeSoft, marginBottom: 10 }}>Na fila{job?.queuePosition > 0 ? ` (${job.queuePosition}º)` : ''} — {job?.queuePosition > 0 ? `${job.queuePosition} ${job.queuePosition === 1 ? 'vídeo' : 'vídeos'} na frente; ` : ''}começa assim que o anterior terminar…</div>}
-        {job?.stageLabel && !queued && <div style={{ fontSize: 14, fontWeight: 600, color: C.orangeSoft, marginBottom: 10 }}>{job.stageLabel}…</div>}
-        {!queued && elapsed >= 3 && (
+        {job?.stageLabel && !queued && !paused && <div style={{ fontSize: 14, fontWeight: 600, color: C.orangeSoft, marginBottom: 10 }}>{job.stageLabel}…</div>}
+        {!queued && !paused && elapsed >= 3 && (
           <div style={{ fontSize: 13, color: C.muted, marginBottom: 18 }}>
             {left != null ? <>Faltam <b style={{ color: C.text }}>{fmtLeft(left)}</b> · </> : 'Calculando o tempo restante… · '}
             {fmtClock(elapsed)} decorridos
           </div>
         )}
+        {job?.id && <div style={{ marginBottom: 22 }}><JobControls job={job} /></div>}
         {flow.length > 0 && (
           <div style={{ display: 'inline-grid', gap: 10, textAlign: 'left', minWidth: 'min(320px, 100%)' }}>
             {flow.map((s, i) => {
@@ -184,7 +225,7 @@ export default function Processing({ job, title = 'A IA está editando seu víde
             })}
           </div>
         )}
-        {job?.id && <MyQueue currentId={job.id} />}
+        {job?.id && <MyQueue currentId={job.id} onSelf={setLive} />}
       </div>
     </div>
   );

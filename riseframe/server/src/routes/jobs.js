@@ -1149,6 +1149,16 @@ jobsRouter.get('/queue/mine', requireAuth, (req, res) => {
   res.json({ jobs: queue.mine(req.user.id) });
 });
 
+// POST /api/jobs/:id/cancel | pause | resume → só quem enviou o vídeo
+for (const action of ['cancel', 'pause', 'resume']) {
+  jobsRouter.post(`/jobs/:id/${action}`, requireAuth, (req, res) => {
+    const job = queue.get(req.params.id);
+    if (!job || !job.ownerId || job.ownerId !== req.user.id) return res.status(404).json({ error: 'vídeo não encontrado na sua fila' });
+    if (!queue[action](job.id)) return res.status(409).json({ error: 'não dá para fazer isso com este vídeo agora' });
+    res.json(queue.public(job));
+  });
+}
+
 // GET /api/jobs/:id → status de um job
 jobsRouter.get('/jobs/:id', (req, res) => {
   const job = queue.get(req.params.id);

@@ -6,6 +6,7 @@ import { runFfmpeg } from '../ffmpeg.js';
 import { resolvePython } from '../python.js';
 import { groupIntoPhrases } from '../narrative.js';
 import { makeLogger } from '../../logger.js';
+import { trackChild } from '../../jobContext.js';
 
 const log = makeLogger('transcribe');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -335,7 +336,7 @@ export async function transcribeWhisperLocal(input, work, meta, cfg) {
     ? Number(cfg.timeoutMs)
     : Math.min(600000, Math.max(180000, Math.ceil((meta?.duration || 60) * 12) * 1000));
   const data = await new Promise((resolve, reject) => {
-    const proc = spawn(py, [script, audio, cfg.whisperModel || 'base', verbatimPrompt('')]);
+    const proc = trackChild(spawn(py, [script, audio, cfg.whisperModel || 'base', verbatimPrompt('')]));
     let out = '';
     let err = '';
     let done = false;
