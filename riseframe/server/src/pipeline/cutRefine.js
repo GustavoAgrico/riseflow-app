@@ -756,14 +756,23 @@ function gapsBetween(words, duration, minGap) {
  * de fala (`isNonSpeech`) vira corte. Sons colados numa palavra ficam (podem ser o fim
  * dela). → [{start, end}] já com as bordas onde o som some.
  */
-export async function findNoises(input, words, env, venv, { duration = Infinity, max = 20000, concurrency = 4, chunk = 300 } = {}) {
+export async function findNoises(input, words, env, venv, { duration = Infinity, max = 20000, concurrency = 4, chunk = 300, untranscribed = false } = {}) {
   if (!env || !venv) return [];
   const gaps = protectWords(gapsBetween(words, duration, 0.25), words);
   const edge = 0.02;
   const runs = [];
+  // Som SOLTO no meio da pausa (longe das palavras) que a transcrição não ouviu como
+  // palavra: com `untranscribed`, sai direto (tosse abafada, pigarro, "hum", estalo) — o
+  // usuário restaura na timeline se era para ficar.
+  const loose = [];
+  const apart = 0.1;
   for (const g of gaps) {
     for (const r of voicedRuns([g], venv, { minRun: 0.05 })) {
       if (r.end - r.start > 8 || r.start - g.start < edge || g.end - r.end < edge) continue;
+      if (untranscribed && r.start - g.start >= apart && g.end - r.end >= apart && r.end - r.start <= 3) {
+        loose.push({ ...r, gap: g, kind: 'som' });
+        continue;
+      }
       // som comprido (crise de tosse): cada rajada é medida sozinha
       const parts = r.end - r.start > 0.7 ? splitBursts(r, env) : [r];
       for (const p of parts) if (p.end - p.start <= 1.6) runs.push({ ...p, gap: g });
@@ -813,13 +822,13 @@ export async function findNoises(input, words, env, venv, { duration = Infinity,
   }
   // bordas: até onde o som ainda se ouve (volume total acima do ruído), dentro do vão
   const thr = speechThreshold(env);
-  return found
+  return [...found.map((r) => ({ ...r, kind: 'tosse' })), ...loose]
     .map((r) => {
       let s = r.start;
       while (s - env.hop > r.gap.start && env.db[frameAt(env, s - env.hop)] > thr) s -= env.hop;
       let e = r.end;
       while (e + env.hop < r.gap.end && env.db[frameAt(env, e)] > thr) e += env.hop;
-      return { start: +Math.max(r.gap.start, s - 0.02).toFixed(3), end: +Math.min(r.gap.end, e + 0.03).toFixed(3) };
+      return { start: +Math.max(r.gap.start, s - 0.02).toFixed(3), end: +Math.min(r.gap.end, e + 0.03).toFixed(3), kind: r.kind };
     })
     .sort((a, b) => a.start - b.start);
 }
@@ -856,7 +865,7 @@ export async function audioAnalysis(input) {
   return { env, venv, track };
 }
 
-export async function preciseRemovals(input, { pauses = [], transcript, hasAudio = true, breaths = false, coughs = false, duration = Infinity, strength = 'forte', audio = null, noises: knownNoises = null } = {}) {
+export async function preciseRemovals(input, { pauses = [], transcript, hasAudio = true, breaths = false, coughs = false, duration = Infinity, strength = 'forte', audio = null, noises: knownNoises = null, keepNoises = [] } = {}) {
   // `audio`: análise já pronta (a prévia do editor reaproveita a do vídeo original)
   const { env, venv, track } = hasAudio ? audio || (await audioAnalysis(input)) : { env: null, venv: null, track: null };
   const voicing = makeVoicing(track, env);
@@ -865,9 +874,11 @@ export async function preciseRemovals(input, { pauses = [], transcript, hasAudio
   // (protege só o trecho com som de cada palavra: o Whisper estica palavras por cima da pausa)
   const words = trimWordsToSound(all.filter((w) => !ghosts.has(w)), env, venv);
   // Tosses e ruídos: não seguram o corte da pausa (protectVoice) e saem mesmo fora dela.
-  const noises = !coughs ? []
+  // (trechos que o usuário restaurou na timeline ficam — e seguram a pausa como voz)
+  const restored = (n) => (keepNoises || []).some((k) => Math.min(k.end, n.end) - Math.max(k.start, n.start) >= 0.5 * (n.end - n.start));
+  const noises = (!coughs ? []
     : knownNoises ? knownNoises.filter((n) => !words.some((w) => w.start < n.end && w.end > n.start))
-      : await findNoises(input, words, env, venv, { duration }).catch(() => []);
+      : await findNoises(input, words, env, venv, { duration, untranscribed: true }).catch(() => [])).filter((n) => !restored(n));
   // Ordem: palavras da transcrição → voz forte no áudio (menos tosse/pigarro) → fala
   // baixinha (tom de voz) → bordas pelo som real (a inspiração antes da frase sai com
   // "respirações"; o ataque da palavra fica).
@@ -901,5 +912,5 @@ export async function detectNoises(input, transcript, { audio = null, duration =
     .sort((a, b) => a.start - b.start);
   const ghosts = new Set(phantomWords(all, env));
   const words = trimWordsToSound(all.filter((w) => !ghosts.has(w)), env, venv);
-  return findNoises(input, words, env, venv, { duration });
+  return findNoises(input, words, env, venv, { duration, untranscribed: true });
 }

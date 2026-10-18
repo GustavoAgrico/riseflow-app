@@ -40,7 +40,7 @@ test('tosse, pigarro e estalo não são fala; vogal (palavra) é', async () => {
   assert.equal(isNonSpeech({ dur: 2, voicedFrac: 0, hiRatio: 0 }), false);
 });
 
-test('tosse entre as frases sai do vídeo; palavra não transcrita no mesmo lugar fica', async () => {
+test('tosse entre as frases sai do vídeo; som solto não transcrito também sai e pode ser restaurado', async () => {
   // fala 0–1,2 s · (tosse OU palavra que a transcrição não ouviu) por volta de 2,05 s · fala 3,2–4,4 s
   const coughFile = await wav('frase_tosse2.wav', [
     '-f', 'lavfi', '-i', `aevalsrc='${VOWEL}*between(t,0,1.2)':s=16000:d=2`,
@@ -74,9 +74,15 @@ test('tosse entre as frases sai do vídeo; palavra não transcrita no mesmo luga
   const off = await preciseRemovals(coughFile, { pauses, transcript, breaths: true, coughs: false, duration: 4.6 });
   assert.ok(!covers(cut(off), 2.1));
 
+  // Som solto no meio da pausa que a transcrição não ouviu: sai por padrão (como a tosse)…
   const w = await preciseRemovals(wordFile, { pauses, transcript, breaths: true, coughs: true, duration: 4.6 });
-  assert.equal(w.noises.length, 0);
-  assert.ok(!covers(cut(w), 2.15), 'palavra não transcrita não pode ser cortada');
+  assert.equal(w.noises.length, 1);
+  assert.equal(w.noises[0].kind, 'som');
+  assert.ok(covers(cut(w), 2.15), 'som solto na pausa sai por padrão');
+  // …e volta quando o usuário restaura na timeline (a voz segura a pausa de novo)
+  const back = await preciseRemovals(wordFile, { pauses, transcript, breaths: true, coughs: true, duration: 4.6, keepNoises: w.noises });
+  assert.equal(back.noises.length, 0);
+  assert.ok(!covers(cut(back), 2.15), 'restaurado: o som fica');
 });
 
 test('palavras removidas seguidas viram um corte só (sem pedacinho de som no meio)', () => {
