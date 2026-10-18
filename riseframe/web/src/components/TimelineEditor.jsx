@@ -700,13 +700,34 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
 
   const isPauseCut = (p) => !keptPauses.has(pauseKey(p));
-  function togglePause(p) {
+  // Pausa com som que não é palavra (tosse, pigarro): o clique alterna
+  // cortar só o silêncio → cortar TUDO (o som junto, como um corte à mão) → manter.
+  const pauseForcedCut = (p) => cuts.find((c) => c.pause && Math.abs(c.start - p.start) < 0.02 && Math.abs(c.end - p.end) < 0.02);
+  function pauseHasSound(p) {
+    if (!preciseNow) return false;
+    const silent = preciseNow.pauses.reduce((a, q) => a + Math.max(0, Math.min(p.end, q.end) - Math.max(p.start, q.start)), 0);
+    return p.dur - silent > 0.15;
+  }
+  function setPauseKept(p, keep) {
     setKeptPauses((prev) => {
       const n = new Set(prev);
       const k = pauseKey(p);
-      if (n.has(k)) n.delete(k); else n.add(k);
+      if (keep) n.add(k); else n.delete(k);
       return n;
     });
+  }
+  function togglePause(p) {
+    const forced = pauseForcedCut(p);
+    if (forced) {
+      setCuts((l) => l.filter((x) => x.key !== forced.key));
+      setPauseKept(p, true);
+      return;
+    }
+    if (isPauseCut(p) && pauseHasSound(p)) {
+      setCuts((l) => [...l, { key: `c${Date.now()}`, start: +p.start.toFixed(2), end: +p.end.toFixed(2), pause: true }]);
+      return;
+    }
+    setPauseKept(p, isPauseCut(p));
   }
   function cutAllPauses() { setKeptPauses(new Set()); }
   function keepAllPauses() { setKeptPauses(new Set(pauses.map(pauseKey))); }
@@ -5287,20 +5308,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   ? preciseNow.pauses.filter((q) => q.end > p.start && q.start < p.end).map((q) => [Math.max(p.start, q.start), Math.min(p.end, q.end)])
                   : null;
                 const hatch = 'repeating-linear-gradient(45deg, rgba(240,82,107,0.28), rgba(240,82,107,0.28) 5px, rgba(240,82,107,0.14) 5px, rgba(240,82,107,0.14) 10px)';
+                const forced = pauseForcedCut(p);
+                const soundy = cut && !forced && pauseHasSound(p);
                 return (
                   <div
                     key={pi}
                     onClick={(e) => { e.stopPropagation(); togglePause(p); }}
-                    title={`Pausa de ${p.dur.toFixed(1)}s — ${cut ? (real && !real.length ? 'tem fala: o som fica (clique p/ manter)' : 'será cortada só onde não há voz (clique p/ manter)') : 'mantida (clique p/ cortar)'}`}
+                    title={`Pausa de ${p.dur.toFixed(1)}s — ${forced ? 'cortada INTEIRA, com o som (tosse/pigarro) — clique p/ manter'
+                      : cut ? (soundy ? 'tem som (tosse, pigarro ou fala): só o silêncio sai — clique p/ cortar tudo, com o som' : 'será cortada (clique p/ manter)')
+                        : 'mantida (clique p/ cortar)'}`}
                     style={{
                       position: 'absolute', left: X(p.start), top: 0, width: w, height: Math.max(12, LANE.pausas - 2), borderRadius: 6,
                       cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-                      background: cut ? (real ? 'rgba(240,82,107,0.06)' : hatch) : 'rgba(255,255,255,0.05)',
-                      border: `1px ${cut ? 'solid' : 'dashed'} ${cut ? 'rgba(240,82,107,0.55)' : C.border}`,
+                      background: forced ? 'rgba(240,82,107,0.55)' : cut ? (real ? 'rgba(240,82,107,0.06)' : hatch) : 'rgba(255,255,255,0.05)',
+                      border: `1px ${cut ? 'solid' : 'dashed'} ${forced ? '#fff' : soundy ? '#FFB067' : cut ? 'rgba(240,82,107,0.55)' : C.border}`,
                       color: cut ? C.red : C.faint,
                     }}
                   >
-                    {real && real.map(([a, b]) => (
+                    {!forced && real && real.map(([a, b]) => (
                       <span key={a} style={{ position: 'absolute', top: 0, bottom: 0, left: X(a) - X(p.start), width: Math.max(1, W(a, b)), background: hatch, pointerEvents: 'none' }} />
                     ))}
                     {w > 26 && (cut ? <Icon name="scissors" size={11} strokeWidth={2.2} style={{ position: 'relative' }} /> : <span style={{ fontSize: 9.5, fontWeight: 600 }}>{p.dur.toFixed(1)}s</span>)}
