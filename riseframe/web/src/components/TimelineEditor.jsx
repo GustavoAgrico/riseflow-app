@@ -448,6 +448,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // reclamou que sobrava silêncio); clicar numa pausa a preserva.
   const MIN_PAUSE = 0.22; // só mostra/oferece corte a partir daqui (mais sensível = corta mais silêncio e respiração)
   const [keptPauses, setKeptPauses] = useState(() => new Set());
+  // tosses/sons soltos nas pausas que o usuário restaurou (saem por padrão)
+  const [keptNoises, setKeptNoises] = useState([]);
   const pauseKey = (p) => p.start.toFixed(2);
 
   const flatWords = useMemo(() => {
@@ -485,12 +487,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const togHide = (id) => setLaneHide((h) => ({ ...h, [id]: !h[id] }));
   const togLock = (id) => setLaneLock((h) => ({ ...h, [id]: !h[id] }));
   const histState = {
-    segments, cuts, keptPauses, gains, media, brollReview, brollOn, zoomMoments, headline, cover,
+    segments, cuts, keptPauses, keptNoises, gains, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs,
     aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes,
   };
   const histSet = {
-    segments: setSegments, cuts: setCuts, keptPauses: setKeptPauses, gains: setGains, media: setMedia,
+    segments: setSegments, cuts: setCuts, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
     brollReview: setBrollReview, brollOn: setBrollOn, zoomMoments: setZoomMoments, headline: setHeadline,
     cover: setCover, colorLook: setColorLook, colorAdj: setColorAdj, cap: setCap, fx: setFx, voice: setVoice,
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths,
@@ -729,6 +731,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
     setPauseKept(p, isPauseCut(p));
   }
+  // Tosse/som solto na pausa: sai por padrão; o clique restaura (ou volta a cortar).
+  function toggleNoise(n) {
+    setKeptNoises((l) => {
+      const hit = l.find((k) => Math.min(k.end, n.end) - Math.max(k.start, n.start) >= 0.5 * (n.end - n.start));
+      return hit ? l.filter((k) => k !== hit) : [...l, { start: n.start, end: n.end }];
+    });
+  }
   function cutAllPauses() { setKeptPauses(new Set()); }
   function keepAllPauses() { setKeptPauses(new Set(pauses.map(pauseKey))); }
   const pausesCut = pauses.filter(isPauseCut);
@@ -742,7 +751,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     segments.flatMap((sg) => (sg.words || []).filter((w) => w.removed).map((w) => +Number(w.start).toFixed(2))),
     cutBreaths,
     cutCoughs,
-  ]), [pausesCut, segments, cutBreaths, cutCoughs]);
+    keptNoises.map((n) => +n.start.toFixed(2)),
+  ]), [pausesCut, segments, cutBreaths, cutCoughs, keptNoises]);
   const [precise, setPrecise] = useState(null); // { key, pauses, removed, noises }
   // tosses ainda sendo procuradas no servidor (1ª vez do vídeo): pergunta de novo em seguida
   const [preciseTick, setPreciseTick] = useState(0);
@@ -754,7 +764,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         const words = segments.flatMap((sg) => (sg.words || []).map((w) => ({ start: w.start, end: w.end, word: w.word, removed: !!w.removed })));
         // mesma folga interna que vai para o render (ver generate)
         const cand = pausesCut.map((p) => ({ start: p.start + Math.min(0.03, p.dur / 4), end: p.end - Math.min(0.03, p.dur / 4) })).filter((c) => c.end - c.start > 0.02);
-        const r = await preciseCuts(sourceId, { transcript: { segments: [{ start: 0, end: dur, words }] }, pauses: cand, breaths: cutBreaths, coughs: cutCoughs, strength: options?.cutStrength }, ctl.signal);
+        const r = await preciseCuts(sourceId, { transcript: { segments: [{ start: 0, end: dur, words }] }, pauses: cand, breaths: cutBreaths, coughs: cutCoughs, keepNoises: keptNoises, strength: options?.cutStrength }, ctl.signal);
         setPrecise({ key: cutKey, pauses: r.pauses || [], removed: r.removed || [], noises: r.noises || [] });
         if (r.coughsPending) setTimeout(() => setPreciseTick((t) => t + 1), 3000);
       } catch {
@@ -765,6 +775,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cutKey, sourceId, preciseTick]);
   const preciseNow = precise && precise.key === cutKey ? precise : null;
+  const noisesCut = (preciseNow?.noises || []).filter((n) => !n.kept);
   const pauseCutSec = pausesCut.reduce((a, p) => a + p.dur, 0);
 
   // ── sincroniza o vídeo ↔ timeline
@@ -2009,6 +2020,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         silenceCuts,
         // pausas que o usuário escolheu manter (os outros silêncios que o servidor achar saem)
         keptPauses: pauses.filter((p) => !isPauseCut(p)).map((p) => ({ start: +p.start.toFixed(2), end: +p.end.toFixed(2) })),
+        // tosses/sons soltos que o usuário restaurou (os outros saem)
+        keptNoises: keptNoises.map((n) => ({ start: +n.start.toFixed(3), end: +n.end.toFixed(3) })),
         // Enquadramento (tela dividida): manual envia foco; auto deixa o servidor
         // detectar o rosto. Zoom vale para os dois.
         personZoom: +Number(zoom).toFixed(2),
@@ -4711,7 +4724,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         {/* Barra de ferramentas da timeline */}
         <div className="rf-tlbar" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 8, flexWrap: 'wrap' }}>
           <span className="rf-tl-stats" title="Palavras · cortadas · pausas cortadas · duração final">
-            <b>{stats.total}</b> palavras · <b style={{ color: '#F0526B' }}>{stats.removed}</b> cortadas · <b style={{ color: '#FF9A6C' }}>{pausesCut.length}</b> pausas{cutCoughs && preciseNow?.noises?.length ? <> · <b style={{ color: '#F0526B' }}>{preciseNow.noises.length}</b> tosses/ruídos</> : null} · final <b style={{ color: '#2ED47A' }}>{fmtDuration((stats.keptSec + retimeDelta) / speed)}</b>
+            <b>{stats.total}</b> palavras · <b style={{ color: '#F0526B' }}>{stats.removed}</b> cortadas · <b style={{ color: '#FF9A6C' }}>{pausesCut.length}</b> pausas{cutCoughs && noisesCut.length ? <> · <b style={{ color: '#F0526B' }}>{noisesCut.length}</b> tosses/sons</> : null} · final <b style={{ color: '#2ED47A' }}>{fmtDuration((stats.keptSec + retimeDelta) / speed)}</b>
           </span>
           {!isMobile && (
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginRight: 8 }} title="Posição do playhead (horas:minutos:segundos:quadros)">
@@ -5295,8 +5308,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {!isMobile && <div style={{ position: 'relative', height: LANE.pausas, marginTop: 4, ...LANE_ROW, ...lk('pau') }}>
               {/* tosses/pigarros/estalos achados no áudio: saem do vídeo (como no final) */}
               {cutCoughs && (preciseNow?.noises || []).map((n) => (
-                <div key={`n${n.start}`} title={`Tosse/ruído de ${(n.end - n.start).toFixed(1)}s — sai do vídeo`}
-                  style={{ position: 'absolute', left: X(n.start), width: Math.max(4, W(n.start, n.end)), top: 2, height: Math.max(8, LANE.pausas - 6), borderRadius: 4, background: 'rgba(240,82,107,0.75)', boxShadow: '0 0 0 1px rgba(255,255,255,0.35) inset', pointerEvents: 'auto', zIndex: 2 }} />
+                <div key={`n${n.start}`} onClick={(e) => { e.stopPropagation(); toggleNoise(n); }}
+                  title={n.kept
+                    ? `Som de ${(n.end - n.start).toFixed(1)}s restaurado — fica no vídeo (clique p/ cortar de novo)`
+                    : `${n.kind === 'tosse' ? 'Tosse/ruído' : 'Som sem fala (tosse, pigarro, "hum")'} de ${(n.end - n.start).toFixed(1)}s — sai do vídeo (clique p/ restaurar)`}
+                  style={{ position: 'absolute', left: X(n.start), width: Math.max(6, W(n.start, n.end)), top: 2, height: Math.max(8, LANE.pausas - 6), borderRadius: 4, cursor: 'pointer', zIndex: 3,
+                    background: n.kept ? 'transparent' : 'rgba(240,82,107,0.8)', border: n.kept ? '1.5px dashed #FFB067' : 'none', boxShadow: n.kept ? 'none' : '0 0 0 1px rgba(255,255,255,0.35) inset' }} />
               ))}
               {pauses.map((p, pi) => {
                 const cut = isPauseCut(p);

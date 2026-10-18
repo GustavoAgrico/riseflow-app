@@ -652,6 +652,8 @@ export function parseOptions(raw) {
     // Pausas que o usuário escolheu MANTER na timeline: os outros silêncios que o detector
     // achar (a transcrição às vezes "estica" as palavras e esconde a pausa) também saem.
     keptPauses: Array.isArray(o.keptPauses) ? sanitizeSilenceCuts(o.keptPauses) : null,
+    // Tosses/sons soltos nas pausas que o usuário restaurou na timeline (ficam no vídeo).
+    keptNoises: sanitizeSilenceCuts(o.keptNoises),
     // Trechos cortados à mão na faixa de vídeo (tempo original), independentes do silêncio.
     videoCuts: sanitizeSilenceCuts(o.videoCuts),
     // clipes curtos
@@ -1393,10 +1395,14 @@ jobsRouter.post('/jobs/:id/precise-cuts', requireAuth, async (req, res) => {
       breaths: req.body.breaths !== false,
       coughs: Boolean(noises),
       noises: noises || [],
+      keepNoises: sanitizeSilenceCuts(req.body.keepNoises),
       strength: ['forte', 'equilibrado', 'suave'].includes(req.body.strength) ? req.body.strength : 'forte',
       audio,
     });
-    res.json({ pauses: r.pauses, removed: r.removed, noises: r.noises, coughsPending: coughs && !noises });
+    // todos os achados (inclusive os restaurados, marcados) para a timeline mostrar e alternar
+    const restoredList = sanitizeSilenceCuts(req.body.keepNoises);
+    const all = (noises || []).map((n) => ({ ...n, kept: restoredList.some((k) => Math.min(k.end, n.end) - Math.max(k.start, n.start) >= 0.5 * (n.end - n.start)) }));
+    res.json({ pauses: r.pauses, removed: r.removed, noises: all, coughsPending: coughs && !noises });
   } catch (err) {
     audioCache.delete(job.id);
     res.status(500).json({ error: err.message });

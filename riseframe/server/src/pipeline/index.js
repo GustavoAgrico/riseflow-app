@@ -368,6 +368,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       breaths: options.cutBreaths !== false,
       // tosse, pigarro e estalos de boca nos vãos entre as palavras
       coughs: options.cutCoughs !== false,
+      keepNoises: options.keptNoises || [],
       duration: meta.duration,
       strength: options.cutStrength,
     });
