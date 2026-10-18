@@ -533,6 +533,13 @@ export const downloadUrl = (id) => `${BASE}/jobs/${id}/download`;
 export const previewUrl = (id) => `${BASE}/jobs/${id}/preview`;
 /** URL do vídeo ORIGINAL enviado (para o editor/timeline pré-visualizar). */
 /** Job já processado — usado para reabrir a timeline a partir do histórico. */
+/** Os vídeos desta conta na fila, processando ou recém-terminados. */
+export async function getMyQueue() {
+  const r = await fetch(`${BASE}/queue/mine`, { headers: authHeaders() });
+  if (!r.ok) throw new Error(`erro ${r.status}`);
+  return (await r.json()).jobs || [];
+}
+
 export async function getJob(id) {
   const r = await fetch(`${BASE}/jobs/${id}`, { headers: authHeaders() });
   const data = await r.json().catch(() => ({}));

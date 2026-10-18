@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { C, GRAD, glass, FONT_DISPLAY } from '../theme.js';
 import Icon from './Icon.jsx';
+import { getMyQueue } from '../api.js';
 
 // Nomes amigáveis de cada etapa do servidor.
 const SHORT = {
@@ -81,6 +82,59 @@ function useEta(value, active) {
   return { elapsed, left };
 }
 
+const MODE_LABEL = { auto: 'Edição automática', transcribe: 'Preparando para a timeline', render: 'Vídeo final', clips: 'Cortes curtos' };
+
+/** Os outros vídeos desta conta renderizando ao mesmo tempo (atualiza a cada 3 s). */
+function MyQueue({ currentId }) {
+  const [list, setList] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    let t = 0;
+    const tick = async () => {
+      try {
+        const l = await getMyQueue();
+        if (alive) setList(l);
+      } catch { /* sem a lista: a tela segue só com o vídeo atual */ }
+      if (alive) t = setTimeout(tick, 3000);
+    };
+    tick();
+    return () => { alive = false; clearTimeout(t); };
+  }, []);
+  const others = list.filter((j) => j.id !== currentId);
+  if (!others.length) return null;
+  const row = (j) => {
+    const cur = j.id === currentId;
+    const pct = j.status === 'done' ? 100 : Math.max(0, Math.min(100, j.progress || 0));
+    const state = j.status === 'queued' ? `Na fila${j.queuePosition > 0 ? ` (${j.queuePosition}º)` : ''}`
+      : j.status === 'processing' ? `${pct}% · ${SHORT[j.stage] || j.stageLabel || 'Processando'}`
+        : j.status === 'done' ? 'Pronto ✓ — está em Meus projetos' : 'Falhou';
+    const color = j.status === 'done' ? C.green : j.status === 'error' ? C.red : j.status === 'processing' ? C.orangeSoft : C.muted;
+    return (
+      <div key={j.id} style={{ display: 'grid', gap: 6, padding: '10px 12px', borderRadius: 12, background: cur ? 'rgba(255,107,53,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${cur ? 'rgba(255,107,53,0.35)' : C.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <Icon name={j.mode === 'clips' ? 'film' : 'clapper'} size={15} strokeWidth={2} color={cur ? C.orangeSoft : C.muted} />
+          <div style={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
+            <div style={{ fontSize: 13, fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.filename || 'Vídeo'}{cur ? ' · este' : ''}</div>
+            <div style={{ fontSize: 11.5, color: C.faint }}>{MODE_LABEL[j.mode] || 'Vídeo'}</div>
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 650, color, whiteSpace: 'nowrap' }}>{state}</span>
+        </div>
+        {(j.status === 'processing' || j.status === 'queued') && (
+          <div style={{ height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+            <div style={{ width: `${pct}%`, height: '100%', background: GRAD, transition: 'width .4s ease' }} />
+          </div>
+        )}
+      </div>
+    );
+  };
+  return (
+    <div style={{ marginTop: 26, textAlign: 'left' }}>
+      <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: C.faint, marginBottom: 10 }}>Seus vídeos renderizando ({list.length})</div>
+      <div style={{ display: 'grid', gap: 8 }}>{list.map(row)}</div>
+    </div>
+  );
+}
+
 /**
  * Tela "A IA está editando seu vídeo": anel de progresso + etapas (feitas ✓, a atual,
  * as próximas). `job` = o job do servidor (etapas reais); sem job, use `pct` e `steps`.
@@ -102,7 +156,7 @@ export default function Processing({ job, title = 'A IA está editando seu víde
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 26 }}>
           <Ring pct={value} />
         </div>
-        {queued && <div style={{ fontSize: 14, fontWeight: 600, color: C.orangeSoft, marginBottom: 10 }}>Na fila{job?.queuePosition > 0 ? ` (${job.queuePosition}º)` : ''} — começa assim que o vídeo anterior terminar…</div>}
+        {queued && <div style={{ fontSize: 14, fontWeight: 600, color: C.orangeSoft, marginBottom: 10 }}>Na fila{job?.queuePosition > 0 ? ` (${job.queuePosition}º)` : ''} — {job?.queuePosition > 0 ? `${job.queuePosition} ${job.queuePosition === 1 ? 'vídeo' : 'vídeos'} na frente; ` : ''}começa assim que o anterior terminar…</div>}
         {job?.stageLabel && !queued && <div style={{ fontSize: 14, fontWeight: 600, color: C.orangeSoft, marginBottom: 10 }}>{job.stageLabel}…</div>}
         {!queued && elapsed >= 3 && (
           <div style={{ fontSize: 13, color: C.muted, marginBottom: 18 }}>
@@ -130,6 +184,7 @@ export default function Processing({ job, title = 'A IA está editando seu víde
             })}
           </div>
         )}
+        {job?.id && <MyQueue currentId={job.id} />}
       </div>
     </div>
   );
