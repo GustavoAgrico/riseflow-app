@@ -38,7 +38,7 @@ class JobQueue extends EventEmitter {
     }
   }
 
-  create({ id: wantedId, filename, inputPath, options, mode = 'auto', editedTranscript = null, sourceId = null }) {
+  create({ id: wantedId, filename, inputPath, options, mode = 'auto', editedTranscript = null, sourceId = null, ownerId = null }) {
     // id escolhido antes (app de PC/Mac: a cobrança no site já usa este id).
     const id = wantedId && !this.jobs.has(wantedId) ? wantedId : nanoid(12);
     const workDir = workDirFor(id);
@@ -58,6 +58,8 @@ class JobQueue extends EventEmitter {
       editedTranscript,
       // render da timeline: o job da transcrição (vídeo original) que foi editado
       sourceId,
+      // conta que enviou (para mostrar a fila dela; nunca vai para o cliente)
+      ownerId,
       report: null,
       error: null,
       createdAt: Date.now(),
@@ -103,9 +105,26 @@ class JobQueue extends EventEmitter {
       .map((j) => this.public(j));
   }
 
+  /**
+   * Fila de UMA conta: os vídeos dela na fila ou processando, e os que terminaram há pouco
+   * (para a tela de progresso mostrar todos que estão renderizando, não só o atual).
+   */
+  mine(ownerId, { recentMs = 15 * 60_000 } = {}) {
+    if (!ownerId) return [];
+    const now = Date.now();
+    return [...this.jobs.values()]
+      .filter((j) => j.ownerId === ownerId && (j.status === 'queued' || j.status === 'processing' || (j.finishedAt && now - j.finishedAt < recentMs)))
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .slice(-20)
+      .map((j) => {
+        const p = this.public(j);
+        return { id: p.id, mode: p.mode, filename: p.filename, status: p.status, progress: p.progress, stage: p.stage, stageLabel: p.stageLabel, queuePosition: p.queuePosition, createdAt: p.createdAt, finishedAt: p.finishedAt || null, error: p.error || null };
+      });
+  }
+
   /** Versão serializável (sem caminhos internos de disco nem payload de edição). */
   public(job) {
-    const { inputPath, workDir, outputsDir, editedTranscript, hold, ...rest } = job;
+    const { inputPath, workDir, outputsDir, editedTranscript, hold, ownerId, ...rest } = job;
     const queuePosition =
       job.status === 'queued' ? this.pending.indexOf(job.id) + (this.active ? 1 : 0) : 0;
     return {
@@ -160,7 +179,7 @@ class JobQueue extends EventEmitter {
       id: job.id, mode: job.mode, filename: job.filename, inputPath: job.inputPath,
       options: Object.fromEntries(Object.entries(job.options || {}).filter(([k]) => !/key|token|secret/i.test(k))),
       editedTranscript: job.editedTranscript || null, sourceId: job.sourceId || null,
-      hold: job.hold || null, createdAt: job.createdAt, attempts: job.attempts || 0,
+      hold: job.hold || null, createdAt: job.createdAt, attempts: job.attempts || 0, ownerId: job.ownerId || null,
     };
     try {
       fsSync.writeFileSync(path.join(config.paths.jobs, `${job.id}.running.json`), JSON.stringify(snap));

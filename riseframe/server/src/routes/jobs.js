@@ -219,7 +219,7 @@ function chargeAndQueue(req, res, mode, jobInput, { sourceId } = {}) {
     const id = nanoid(12);
     return remoteCharge(req, { mode, options: pricingOptions(jobInput.options), sourceId, jobId: id }).then(
       (r) => {
-        const job = queue.create({ id, mode, ...jobInput });
+        const job = queue.create({ id, mode, ...jobInput, ownerId: req.user?.id || null });
         holdRemoteCharge(job.id, req, r.chargeId);
         rememberJobToken(job.id, req); // transcrição pela conta do site, se precisar
         res.status(201).json({ ...queue.public(job), creditsCharged: r.creditsCharged || 0, ...(r.freeEdit ? { freeEdit: true, freeEditsLeft: r.freeEditsLeft } : {}) });
@@ -235,7 +235,7 @@ function chargeAndQueue(req, res, mode, jobInput, { sourceId } = {}) {
     dropUpload();
     return res.status(g.status).json(g.body);
   }
-  const job = queue.create({ mode, ...jobInput });
+  const job = queue.create({ mode, ...jobInput, ownerId: req.user?.id || null });
   // Edição grátis de teste: todos os recursos, sem gastar créditos.
   if (g.trial) {
     let freeEditsLeft = billingStatus(req.user).freeEdits;
@@ -1143,6 +1143,11 @@ jobsRouter.get('/jobs/:id/source/status', (req, res) => {
 
 // (removido) GET /api/jobs — não expomos a listagem global de jobs: ela vazava os
 // nomes de arquivo de todos os usuários. O acesso é por id (capability URL).
+
+// GET /api/queue/mine → os vídeos desta conta na fila / processando / recém-terminados
+jobsRouter.get('/queue/mine', requireAuth, (req, res) => {
+  res.json({ jobs: queue.mine(req.user.id) });
+});
 
 // GET /api/jobs/:id → status de um job
 jobsRouter.get('/jobs/:id', (req, res) => {
