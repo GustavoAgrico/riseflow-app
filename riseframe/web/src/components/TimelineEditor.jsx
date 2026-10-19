@@ -1791,7 +1791,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             start: +cur.toFixed(2), // entra no ponto atual do playhead
             duration: info.kind === 'audio' ? Math.min(srcDur, dur) : Math.min(info.kind === 'image' ? 4 : srcDur, 8),
             mode: 'cover', // cobre a tela (visual). PiP = canto.
-            volume: 0.35, // música de fundo
+            volume: info.kind === 'video' ? 1 : 0.35, // vídeo: som original · música: de fundo
             scale: 0.4, // tamanho do PiP
             px: 0.62,
             py: 0.06,
@@ -2100,6 +2100,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           blend: m.blend || 'normal',
           layer: m.layer || 0,
           offset: +Number(m.offset || 0).toFixed(2),
+          ...(m.kind === 'video' && m.muted ? { muted: true } : {}),
+          ...(m.kind !== 'audio' ? { bright: +Number(m.bright || 0).toFixed(2), contrast: +Number(m.contrast ?? 1).toFixed(2), sat: +Number(m.sat ?? 1).toFixed(2), flip: m.flip === true } : {}),
           ...(m.cx != null ? { cx: +Number(m.cx).toFixed(3), cy: +Number(m.cy ?? 0.5).toFixed(3) } : {}),
           ...(m.kind === 'audio' ? { fadeIn: +Number(m.fadeIn || 0).toFixed(2), fadeOut: +Number(m.fadeOut || 0).toFixed(2) } : {}),
         })),
@@ -4898,6 +4900,29 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                               </label>
                             ))}
                             <div style={{ fontSize: 10.5, color: C.faint, marginTop: 4 }}>Arraste a mídia direto no vídeo para posicionar (em qualquer lugar) e puxe os cantos para mudar o tamanho.</div>
+                            {m.kind === 'video' && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted, marginTop: 8 }}>
+                                <button onClick={() => updateMedia(m.key, { muted: !m.muted })} title={m.muted ? 'Ligar o som deste vídeo' : 'Tirar o som deste vídeo'}
+                                  style={{ ...framingTab(!!m.muted), flex: 'none', minWidth: 104 }}>{m.muted ? '🔇 Sem som' : '🔊 Com som'}</button>
+                                <input type="range" min="0" max="1.5" step="0.05" value={m.muted ? 0 : (m.volume ?? 1)} disabled={!!m.muted} aria-label="Volume do vídeo"
+                                  onChange={(e) => updateMedia(m.key, { volume: Number(e.target.value), muted: false })} style={{ flex: 1, opacity: m.muted ? 0.4 : 1 }} />
+                                <span style={{ width: 42, textAlign: 'right' }}>{m.muted ? '0%' : `${Math.round((m.volume ?? 1) * 100)}%`}</span>
+                              </div>
+                            )}
+                            <details style={{ marginTop: 8 }} open={!!(m.bright || (m.contrast ?? 1) !== 1 || (m.sat ?? 1) !== 1 || m.flip || (m.opacity ?? 1) < 1)}>
+                              <summary style={{ fontSize: 11.5, fontWeight: 700, color: C.text, cursor: 'pointer' }}>Ajustes de imagem</summary>
+                              {[['bright', 'Brilho', -0.5, 0.5, 0, (v) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}`], ['contrast', 'Contraste', 0.5, 2, 1, (v) => `${Math.round(v * 100)}%`], ['sat', 'Saturação', 0, 2, 1, (v) => `${Math.round(v * 100)}%`], ['opacity', 'Opacidade', 0.1, 1, 1, (v) => `${Math.round(v * 100)}%`]].map(([k, label, min, max, def, fmt]) => (
+                                <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted, marginTop: 6 }}>
+                                  <span style={{ width: 58 }}>{label}</span>
+                                  <input type="range" min={min} max={max} step="0.01" value={m[k] ?? def} onChange={(e) => updateMedia(m.key, { [k]: Number(e.target.value) })} onDoubleClick={() => updateMedia(m.key, { [k]: def })} style={{ flex: 1 }} />
+                                  <span style={{ width: 42, textAlign: 'right' }}>{fmt(m[k] ?? def)}</span>
+                                </label>
+                              ))}
+                              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                                <button onClick={() => updateMedia(m.key, { flip: !m.flip })} style={framingTab(!!m.flip)}>⇋ Espelhar</button>
+                                <button onClick={() => updateMedia(m.key, { bright: 0, contrast: 1, sat: 1, opacity: 1, flip: false })} style={framingTab(false)}>Restaurar</button>
+                              </div>
+                            </details>
                             {catalog?.layerAnimations && (
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 8 }}>
                                 <CapRow label="Entrada"><Sel value={m.animIn || 'none'} opts={catalog.layerAnimations} onChange={(v) => updateMedia(m.key, { animIn: v })} /></CapRow>
@@ -5930,6 +5955,18 @@ function RenderError({ err, onDisable, onClose }) {
  * Editável: arraste para posicionar (PiP e textos) e puxe o canto da mídia para mudar o
  * tamanho — as mesmas frações (px/py/scale, x/y) que o servidor usa no render.
  */
+/** Ajustes da camada na prévia (a mesma ideia do eq/hflip do render). */
+function layerCss(m) {
+  const b = Number(m.bright || 0);
+  const c = Number(m.contrast ?? 1);
+  const s = Number(m.sat ?? 1);
+  const f = [];
+  if (Math.abs(b) > 0.005) f.push(`brightness(${(1 + b * 1.2).toFixed(2)})`);
+  if (Math.abs(c - 1) > 0.005) f.push(`contrast(${c.toFixed(2)})`);
+  if (Math.abs(s - 1) > 0.005) f.push(`saturate(${s.toFixed(2)})`);
+  return { ...(f.length ? { filter: f.join(' ') } : {}), ...(m.flip ? { transform: 'scaleX(-1)' } : {}) };
+}
+
 function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, selText, onMedia, onText }) {
   const [aspect, setAspect] = useState({}); // altura/largura de cada mídia (da prévia)
   const [guides, setGuides] = useState(null); // linhas de centralização enquanto arrasta
@@ -5977,9 +6014,10 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
     <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', pointerEvents: 'none', zIndex: 3 }}>
       {guides && <SnapGuides x={guides.x} y={guides.y} />}
       {visible.map((m) => {
-        const el = (style) => (m.kind === 'video'
+        const adj = layerCss(m);
+        const el = (style0) => { const style = { ...style0, ...adj }; return (m.kind === 'video'
           ? <SyncedVideo m={m} mainRef={videoRef} style={style} onAspect={(r) => setAspect((a) => (a[m.key] === r ? a : { ...a, [m.key]: r }))} />
-          : <img src={m.previewUrl} alt="" draggable={false} style={style} onLoad={(e) => { const i = e.currentTarget; if (i.naturalWidth) setAspect((a) => ({ ...a, [m.key]: i.naturalHeight / i.naturalWidth })); }} />);
+          : <img src={m.previewUrl} alt="" draggable={false} style={style} onLoad={(e) => { const i = e.currentTarget; if (i.naturalWidth) setAspect((a) => ({ ...a, [m.key]: i.naturalHeight / i.naturalWidth })); }} />); };
         const ar = aspect[m.key] || 0.5625;
         if (m.mode !== 'pip') {
           // Tela cheia: ao arrastar, vira camada livre do tamanho da tela e segue o mouse.
@@ -6050,7 +6088,7 @@ function SyncedVideo({ m, mainRef, style, onAspect }) {
         const target = Math.max(0, main.currentTime - mm.start + (Number(mm.offset) || 0));
         const vol = Math.max(0, Math.min(1, mm.volume ?? 1));
         if (Math.abs(v.volume - vol) > 0.01) v.volume = vol;
-        const muted = main.muted || vol < 0.005;
+        const muted = main.muted || mm.muted === true || vol < 0.005;
         if (v.muted !== muted) v.muted = muted;
         if (main.paused || main.seeking) {
           if (!v.paused) v.pause();
