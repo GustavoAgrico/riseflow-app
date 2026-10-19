@@ -1990,7 +1990,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if (m.myMediaId) return { start: m.start, end: m.end, mediaId: m.myMediaId, kind: m.myKind, query: m.term, ...frame };
       const c = m.candidates[m.pick];
       if (!c) return { start: m.start, end: m.end, remove: true };
-      return { start: m.start, end: m.end, url: c.link, thumb: c.thumb || undefined, kind: c.kind, query: m.term, credit: c.credit || null, ...frame };
+      return { start: m.start, end: m.end, url: c.link, thumb: c.thumb || undefined, kind: c.kind, ...(c.logo ? { logo: true } : {}), query: m.term, credit: c.credit || null, ...frame };
     });
   }
 
@@ -2606,7 +2606,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Na prévia 9:16 mostra o B-roll do momento atual ou, se nenhum, o selecionado na aba.
   const brollShownIdx = brollMoment ? brollReview.moments.indexOf(brollMoment) : selBroll;
   const brollShown = brollShownIdx != null ? brollReview?.moments?.[brollShownIdx] : null;
-  const brollImgStyle = (m) => ({
+  // Logo de marca: inteiro e centralizado num fundo claro (como no render).
+  const brollImgStyle = (m) => (!m?.myThumb && m?.candidates?.[m.pick]?.logo ? {
+    width: '100%', height: '100%', objectFit: 'contain', display: 'block', boxSizing: 'border-box', padding: '17%', background: '#F5F5F7', filter: videoFilterFx,
+  } : {
     width: '100%', height: '100%', objectFit: 'cover', display: 'block',
     objectPosition: `${(m?.fx ?? 0.5) * 100}% ${(m?.fy ?? 0.5) * 100}%`,
     transform: `scale(${m?.zoom || 1})`, transformOrigin: `${(m?.fx ?? 0.5) * 100}% ${(m?.fy ?? 0.5) * 100}%`,
