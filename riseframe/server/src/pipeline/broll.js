@@ -243,7 +243,16 @@ export async function googleImageCandidates(query, google, limit = 6) {
   return out.slice(0, want);
 }
 
+/**
+ * App de PC sem chaves de banco de imagens: as buscas vão pela conta do site, que tem as
+ * chaves (Pexels, Pixabay, Google) — então qualquer fonte escolhida vale e quem decide é o site.
+ */
+export function searchesViaSite({ apiKey, pixabayKey, googleReady } = {}) {
+  return Boolean(config.account.server) && !apiKey && !pixabayKey && !googleReady;
+}
+
 export function resolveSource(wanted, { apiKey, pixabayKey, googleReady } = {}) {
+  if (searchesViaSite({ apiKey, pixabayKey, googleReady }) && ['pexels', 'pixabay', 'google', 'wikimedia', 'mix'].includes(wanted)) return wanted;
   if (wanted === 'pexels') return apiKey ? 'pexels' : 'mix';
   if (wanted === 'pixabay') return pixabayKey ? 'pixabay' : 'mix';
   if (wanted === 'google') return googleReady ? 'google' : 'mix';
@@ -286,6 +295,8 @@ export async function brollCandidates(query, opts = {}) {
     } catch (err) {
       log.warn(`busca de B-roll pela conta falhou (${err.message}); usando o acervo livre`);
     }
+    // sem a conta: aqui só há o acervo livre (a mistura sem chaves = Wikimedia)
+    if (source !== 'mix') return brollCandidates(query, { ...opts, source: 'mix', noRemote: true });
   }
   // 'mix': junta VÍDEOS (Pexels, Pixabay), Google Imagens e o acervo livre (Wikimedia
   // Commons) numa lista só, intercalada (vídeo primeiro), para o usuário escolher entre todos.

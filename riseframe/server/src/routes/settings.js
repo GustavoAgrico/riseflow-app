@@ -21,6 +21,9 @@ function payload(userId, email) {
       // Pexels ativo se o usuário tem chave OU o servidor tem chave no .env.
       broll: Boolean(s.pexelsKey || config.broll.pexelsKey),
       brollFromServer: Boolean(config.broll.pexelsKey),
+      // Outras fontes de B-roll (valem para todos, inclusive no app de computador).
+      pixabayFromServer: Boolean(config.broll.pixabayKey),
+      googleImagesFromServer: capabilities().googleImagesReady,
       // Análise por IA ativa se o usuário tem chave da Anthropic OU o servidor tem.
       ai: Boolean(s.anthropicKey || serverAnthropic),
       aiFromServer: serverAnthropic,

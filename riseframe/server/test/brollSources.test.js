@@ -99,3 +99,19 @@ test('download de B-roll: recusa arquivo acima do teto e não deixa lixo', async
   });
   fs.rmSync(dest, { force: true });
 });
+
+test('app de PC sem chaves: a fonte escolhida vai para o site (que tem as chaves)', async () => {
+  const { config } = await import('../src/config.js');
+  const before = config.account.server;
+  config.account.server = 'https://site.exemplo';
+  try {
+    assert.equal(resolveSource('pexels', {}), 'pexels');
+    assert.equal(resolveSource('pixabay', {}), 'pixabay');
+    assert.equal(resolveSource('google', {}), 'google');
+    assert.equal(resolveSource('youtube', {}), 'mix');
+    // com chave local, vale a regra local
+    assert.equal(resolveSource('google', { apiKey: 'k' }), 'mix');
+  } finally {
+    config.account.server = before;
+  }
+});

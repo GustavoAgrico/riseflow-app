@@ -126,6 +126,8 @@ export default function Settings({ onNewVideo, onLogout }) {
                 value={<StatusDot on={status.transcribeReady} offLabel={status.transcribeKey && !status.transcribeKey.ok ? 'Chave recusada' : 'Inativo'} />} />
               <Row label="B-roll · Wikimedia" hint="Acervo de licença livre, sem chave" value={<StatusDot on={status.openverse} />} />
               <Row label="B-roll · Pexels" hint="PEXELS_API_KEY — vídeos e fotos livres" value={<StatusDot on={status.brollFromServer} offLabel="Sem chave" />} />
+              <Row label="B-roll · Pixabay" hint="PIXABAY_API_KEY — mais vídeos e fotos livres (chave grátis em pixabay.com/api/docs)" value={<StatusDot on={status.pixabayFromServer} offLabel="Sem chave" />} />
+              <Row label="B-roll · Google Imagens" hint="SERPER_API_KEY (serper.dev) ou BRAVE_SEARCH_KEY" value={<StatusDot on={status.googleImagesFromServer} offLabel="Sem chave" />} />
               <Row label="IA · Anthropic (Claude)" hint="ANTHROPIC_API_KEY — B-roll mais relevante e limpeza de fala" value={<StatusDot on={status.aiFromServer} offLabel="Sem chave" />} />
               <Row label={billing.payment === 'pix-links' ? 'Pagamentos · Pix (links do banco)' : 'Pagamentos · AbacatePay'}
                 hint={billing.payment === 'pix-links' ? 'BILLING_PIX_LINKS — você confirma cada Pix na página de Planos' : 'ABACATE_PAY_API_KEY — sem ela, ninguém consegue assinar (os limites continuam valendo)'}

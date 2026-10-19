@@ -91,6 +91,17 @@ function activePlan(e) {
   return cfg ? { ...cfg, until: e.plan.until, left: e.plan.credits } : null;
 }
 
+// Depois da última edição grátis, os vídeos de teste continuam com tudo liberado por
+// alguns dias (terminar de editar, exportar de novo em 4K...). Vídeo novo já cobra.
+
+/** Em teste grátis: sem plano e com edição grátis sobrando ou usada há pouco. */
+function inTrial(e) {
+  if (activePlan(e)) return false;
+  if (e.freeEdits > 0) return true;
+  const last = Date.parse(e.trialUsedAt || '');
+  return Number.isFinite(last) && Date.now() - last < config.billing.trialGraceDays * 24 * 3600 * 1000;
+}
+
 /**
  * Pode usar o app de PC/Mac? Plano mensal ativo ou ainda no teste grátis (edições grátis
  * com todos os recursos). Acabou o teste sem plano: o app pausa até assinar.
@@ -110,8 +121,9 @@ export function allowedFeatures(user) {
   const e = entry(user.id);
   const plan = activePlan(e);
   if (plan) return plan.features;
-  // Em teste (sem plano e com edição grátis sobrando): tudo liberado.
-  return e.freeEdits > 0 ? ALL_FEATURES : config.billing.freeFeatures;
+  // Em teste (edição grátis sobrando ou os vídeos de teste ainda em edição): tudo
+  // liberado, igual ao plano mais completo (legenda estilizada, limpeza da fala por IA, 4K…).
+  return inTrial(e) ? ALL_FEATURES : config.billing.freeFeatures;
 }
 
 // ── Edições grátis (teste) ──
@@ -132,6 +144,7 @@ export function trialCovers(user, mode, sourceId) {
 export function useFreeEdit(userId, jobId) {
   const e = entry(userId);
   e.freeEdits = Math.max(0, e.freeEdits - 1);
+  e.trialUsedAt = new Date().toISOString();
   e.trialSources = [...(e.trialSources || []), jobId].slice(-30);
   persist();
   log.info(`edição grátis usada (restam ${e.freeEdits}) — job ${jobId} (user ${userId})`);
@@ -189,6 +202,9 @@ export function billingStatus(user) {
     autoRenewAvailable: billingEnabled() && b.autoRenew && !pixMode(),
     // App de PC/Mac: liberado só com plano mensal ativo.
     appAccess: appAccess(user),
+    // Teste grátis em andamento (inclui os dias para terminar os vídeos de teste): o app
+    // abre normalmente e tudo fica liberado; vídeo novo depois do teste pede o plano.
+    trialActive: !unlimited(user) && inTrial(e),
     appRequiresPlan: b.appRequiresPlan,
   };
 }

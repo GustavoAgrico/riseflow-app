@@ -170,6 +170,25 @@ const pendingRefunds = new Map(); // jobId → { token, chargeId }
 // site usa ele quando o app de PC não tem chave de transcrição nem Whisper local.
 const jobTokens = new Map();
 let lastToken = ''; // último login usado neste app (o app de PC é de uma pessoa só)
+// Recursos ligados no site (fontes de B-roll etc.) — o app de PC usa as chaves do site.
+let siteCaps = null; // { at, caps }
+let siteCapsWait = null;
+/** Capacidades do servidor da conta (guardadas por 10 min; null se o site não respondeu). */
+export async function siteCapabilities({ waitMs = 4000 } = {}) {
+  if (!remoteAccount()) return null;
+  if (siteCaps && Date.now() - siteCaps.at < 10 * 60_000) return siteCaps.caps;
+  if (!siteCapsWait) {
+    siteCapsWait = fetch(`${config.account.server}/api/health`, { signal: AbortSignal.timeout(75_000) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.capabilities) siteCaps = { at: Date.now(), caps: d.capabilities }; })
+      .catch((err) => log.warn(`capacidades do site: ${err.message}`))
+      .finally(() => { siteCapsWait = null; });
+  }
+  // o site pode estar acordando: não segura a abertura do app mais que alguns segundos
+  await Promise.race([siteCapsWait, new Promise((r) => setTimeout(r, waitMs))]);
+  return siteCaps?.caps || null;
+}
+
 export function rememberJobToken(jobId, req) {
   const t = bearer(req);
   if (t) { jobTokens.set(jobId, t); lastToken = t; }

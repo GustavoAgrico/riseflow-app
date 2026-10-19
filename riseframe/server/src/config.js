@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v155';
+export const APP_VERSION = 'v156';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -157,6 +157,9 @@ export const config = {
     // Edições grátis de teste por conta, com TODOS os recursos liberados (1 vídeo = 1
     // edição; transcrever + renderizar o mesmo vídeo na timeline conta uma vez só).
     freeEdits: num(process.env.BILLING_FREE_EDITS, 3),
+    // Dias, depois da última edição grátis, em que os vídeos de teste seguem com tudo
+    // liberado para terminar a edição (vídeo novo já pede plano/créditos).
+    trialGraceDays: num(process.env.BILLING_TRIAL_GRACE_DAYS, 7),
     // Créditos avulsos de cortesia no cadastro (além das edições grátis).
     signupCredits: num(process.env.BILLING_SIGNUP_CREDITS, 0),
     // Custo de cada recurso. Sobrescreva com CREDIT_COSTS='{"video":20,"image":5}'.

@@ -151,6 +151,9 @@ test('app de PC/Mac: teste grátis com tudo liberado, depois só com plano mensa
   const b = (await get(`${app}/billing`, token)).body;
   assert.equal(b.appAccess, false);
   assert.equal(b.appRequiresPlan, true);
+  // o app continua aberto (tudo liberado) para terminar os vídeos de teste
+  assert.equal(b.trialActive, true);
+  assert.deepEqual([...b.features].sort(), ['ai', 'captionStyle', 'clips', 'hd', 'image']);
   const no = await upload(`${app}/transcribe`, token, video);
   assert.equal(no.status, 402);
   assert.equal(no.body.appPlanRequired, true);
@@ -168,4 +171,21 @@ test('app de PC/Mac: teste grátis com tudo liberado, depois só com plano mensa
   assert.equal(ok.status, 201, JSON.stringify(ok.body));
   assert.ok(!ok.body.freeEdit, 'cobra do plano');
   assert.equal((await waitJob(app, token, ok.body.id)).status, 'done');
+});
+
+test('app de PC sem chaves: as fontes de B-roll são as ligadas no site', { timeout: 60000 }, async () => {
+  const noKeys = { PEXELS_API_KEY: '', PIXABAY_API_KEY: '', SERPER_API_KEY: '', BRAVE_SEARCH_KEY: '', BRAVE_API_KEY: '', GOOGLE_CSE_KEY: '', GOOGLE_CSE_ID: '' };
+  const site = await startServer('site-broll', { ...noKeys, BILLING_MODE: 'on', PEXELS_API_KEY: 'a'.repeat(40), PIXABAY_API_KEY: '123456-abcdef', SERPER_API_KEY: 'chave-serper' });
+  const app = await startServer('app-broll', { ...noKeys, BILLING_MODE: 'off', ACCOUNT_SERVER: site.replace(/\/api$/, '') });
+  const caps = (await get(`${app}/health`)).body.capabilities;
+  assert.equal(caps.brollReady, true, 'Pexels');
+  assert.equal(caps.pixabayReady, true, 'Pixabay');
+  assert.equal(caps.googleImagesReady, true, 'Google');
+  assert.equal(caps.brollViaSite, true);
+  // site sem chaves: o app também não mostra (só o acervo livre)
+  const bare = await startServer('site-bare', { ...noKeys, BILLING_MODE: 'on' });
+  const app2 = await startServer('app-bare', { ...noKeys, BILLING_MODE: 'off', ACCOUNT_SERVER: bare.replace(/\/api$/, '') });
+  const c2 = (await get(`${app2}/health`)).body.capabilities;
+  assert.equal(c2.brollReady, false);
+  assert.equal(c2.pixabayReady, false);
 });

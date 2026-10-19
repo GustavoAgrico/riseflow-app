@@ -29,7 +29,21 @@ test('cada vídeo gasta 1 edição; renders da timeline do mesmo vídeo são gr�
   assert.equal(billing.useFreeEdit(user.id, 'job-c'), 0);
   assert.equal(billing.trialCovers(user, 'auto'), false, 'acabaram as edições grátis');
   assert.equal(billing.trialCovers(user, 'render', 'job-c'), true, 'o último vídeo de teste ainda renderiza grátis');
-  assert.deepEqual(billing.allowedFeatures(user), config.billing.freeFeatures, 'sem teste e sem plano: recursos básicos');
+  // Os vídeos de teste continuam com tudo liberado por uns dias (terminar a edição)…
+  assert.deepEqual([...billing.allowedFeatures(user)].sort(), ['ai', 'captionStyle', 'clips', 'hd', 'image'], 'último vídeo de teste: tudo liberado');
+  assert.equal(billing.billingStatus(user).trialActive, true);
+  assert.equal(billing.appAccess(user), false, 'vídeo novo no app já pede o plano');
+  // …e depois disso, sem plano: recursos básicos.
+  const db = JSON.parse(fs.readFileSync(path.join(process.env.DATA_DIR, 'billing.json'), 'utf8'));
+  assert.ok(db.users[user.id].trialUsedAt, 'guarda quando usou a última edição grátis');
+  const grace = config.billing.trialGraceDays;
+  config.billing.trialGraceDays = 0; // passaram os dias para terminar os vídeos de teste
+  try {
+    assert.deepEqual(billing.allowedFeatures(user), config.billing.freeFeatures, 'sem teste e sem plano: recursos básicos');
+    assert.equal(billing.billingStatus(user).trialActive, false);
+  } finally {
+    config.billing.trialGraceDays = grace;
+  }
 });
 
 test('processamento que falha devolve a edição grátis', () => {

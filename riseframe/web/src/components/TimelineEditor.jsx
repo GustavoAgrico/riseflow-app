@@ -4729,7 +4729,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <ColorSwatches value={cap.captionColor} options={catalog.captionColors || []} onChange={(v) => setCapField({ captionColor: v })} size={24} />
                   </CapRow>
                   <CapRow label={`Tamanho (${Math.round((cap.captionScale ?? 1) * 100)}%)`}>
-                    <input type="range" min="0.6" max="1.4" step="0.05" value={cap.captionScale ?? 1} onChange={(e) => setCapField({ captionScale: Number(e.target.value) })} style={{ width: '100%' }} />
+                    <input type="range" min="0.3" max="1.4" step="0.05" value={cap.captionScale ?? 1} onChange={(e) => setCapField({ captionScale: Number(e.target.value) })} style={{ width: '100%' }} />
                   </CapRow>
                   {capFxRows}
                   <div style={{ marginTop: 4, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>

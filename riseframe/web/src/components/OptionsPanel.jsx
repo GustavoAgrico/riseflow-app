@@ -249,7 +249,7 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
               <ColorSwatches value={options.captionColor} options={catalog.captionColors || []} onChange={(v) => set({ captionColor: v })} />
             </div>
             <Row label="Tamanho da legenda" hint={`${Math.round((options.captionScale ?? 1) * 100)}% — palavras longas encolhem sozinhas para caber`}>
-              <input type="range" min={0.6} max={1.4} step={0.05} value={options.captionScale ?? 1} onChange={(e) => set({ captionScale: Number(e.target.value) })} style={{ minWidth: 190 }} />
+              <input type="range" min={0.3} max={1.4} step={0.05} value={options.captionScale ?? 1} onChange={(e) => set({ captionScale: Number(e.target.value) })} style={{ minWidth: 190 }} />
             </Row>
             <Row label="Linhas da legenda" hint="No máximo quantas linhas aparecem de uma vez. O resto da frase entra na sequência.">
               <Segmented value={options.captionLines === 1 ? 1 : 2} options={[{ id: 1, label: '1 linha' }, { id: 2, label: '2 linhas' }]} onChange={(v) => set({ captionLines: v })} />
