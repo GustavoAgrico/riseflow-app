@@ -148,6 +148,11 @@ export function verifyCredentials(email, password) {
   return publicUser(user);
 }
 
+/** Todas as contas (campos seguros) — para a tabela de clientes do admin. */
+export function listUsers() {
+  return load().map(publicUser);
+}
+
 /** Só os campos seguros para enviar ao cliente. */
 export function publicUser(u) {
   // Contas antigas (sem o campo) contam como confirmadas.

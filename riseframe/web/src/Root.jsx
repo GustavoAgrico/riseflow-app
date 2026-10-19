@@ -15,6 +15,7 @@ import Plans from './pages/Plans.jsx';
 import Rendering from './pages/Rendering.jsx';
 import { useRenderingCount } from './components/RenderQueue.jsx';
 import { getHealth } from './api.js';
+import SupportContact from './components/SupportContact.jsx';
 import { APP_VERSION } from './version.js';
 import Editor from './App.jsx';
 import Templates from './pages/Templates.jsx';
@@ -262,6 +263,7 @@ function AppPaywall({ user, onRefresh, onLogout }) {
               Seu teste grátis acabou (ou o plano venceu). O app de computador fica liberado enquanto o plano mensal estiver ativo — seus projetos continuam salvos.
             </div>
           </div>
+          <SupportContact compact style={{ flexBasis: '100%', order: 3 }} />
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={refresh} disabled={busy} style={{ minHeight: 40, padding: '0 16px', borderRadius: 11, border: 'none', background: GRAD, color: '#fff', fontWeight: 700, fontSize: 13.5, fontFamily: 'inherit', cursor: 'pointer' }}>
               {busy ? 'Conferindo…' : 'Já assinei — atualizar'}

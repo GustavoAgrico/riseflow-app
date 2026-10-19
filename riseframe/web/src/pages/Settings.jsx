@@ -5,6 +5,7 @@ import { adminCloudSync, adminDownloadBackup, adminTestEmail, getSettings } from
 import { useAuth } from '../AuthContext.jsx';
 import { openPlans } from '../components/CostLine.jsx';
 import DemoMaker from '../components/DemoMaker.jsx';
+import SupportContact from '../components/SupportContact.jsx';
 
 function StatusDot({ on, onLabel = 'Ativo', offLabel = 'Inativo' }) {
   return (
@@ -86,6 +87,10 @@ export default function Settings({ onNewVideo, onLogout }) {
       <h1 style={{ fontSize: 'clamp(26px,5vw,38px)', fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: -1, margin: '0 0 24px' }}>
         <span style={gradientText}>Conta</span>
       </h1>
+
+      <Section title="Ajuda">
+        <SupportContact style={{ marginTop: 8 }} />
+      </Section>
 
       <Section title="Seus dados">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>

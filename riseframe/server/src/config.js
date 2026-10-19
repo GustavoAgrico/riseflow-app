@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v159';
+export const APP_VERSION = 'v160';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -187,6 +187,13 @@ export const config = {
     // cliente paga, avisa no site ("Já paguei") e o admin confirma. 'abacatepay' = API.
     payment: String(process.env.BILLING_PAYMENT || 'pix-links').toLowerCase(),
     // Links de Pix do banco por id de plano/recarga. Sobrescreva com BILLING_PIX_LINKS='{"pro":"https://..."}'.
+    // Pix direto no site/app (QR Code + copia e cola com o valor de cada plano), sem abrir
+    // o banco. Basta a chave Pix de quem recebe (CPF/CNPJ, e-mail, +55 telefone ou aleatória).
+    pix: {
+      key: String(process.env.PIX_KEY || '').trim(),
+      name: process.env.PIX_NAME || 'RISEFRAME',
+      city: process.env.PIX_CITY || 'SAO PAULO',
+    },
     pixLinks: json(process.env.BILLING_PIX_LINKS, {
       basico: 'https://pagamentospix.apps.bb.com.br/m/#/cm49eyJvcHIiOiJQSVhRUkMiLCJpZCI6IjdlZWIzMTJiLWMwZGMtNDE5Yi04NzE4LWQ5NDIzYjE0Mzc3YiJ9',
       pro: 'https://pagamentospix.apps.bb.com.br/m/#/cm49eyJvcHIiOiJQSVhRUkMiLCJpZCI6ImVmMWUxYmQzLThiNDYtNGRkMy04OTMwLTRkNGQ0OGM4ZjdlYSJ9',

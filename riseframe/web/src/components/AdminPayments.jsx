@@ -68,7 +68,7 @@ export default function AdminPayments({ plans }) {
                 <div style={{ fontSize: 13, color: C.muted, marginTop: 3, overflowWrap: 'anywhere' }}>
                   {c.name || 'Sem nome'} · {c.contactEmail || c.email} · WhatsApp {c.phone}
                 </div>
-                <div style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>Avisou em {when(c.createdAt)}</div>
+                <div style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>Avisou em {when(c.createdAt)}{c.txid ? <> · identificador no extrato: <b style={{ color: C.text }}>{c.txid}</b></> : null}</div>
                 {c.notice?.email?.length > 0 && (
                   <div style={{ fontSize: 12, marginTop: 2, color: c.notice.email.every((m) => m.ok) ? C.green : '#FCA5B4', overflowWrap: 'anywhere' }}>
                     {c.notice.email.every((m) => m.ok)

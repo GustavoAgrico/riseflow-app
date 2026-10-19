@@ -4,6 +4,9 @@ import Icon from '../components/Icon.jsx';
 import { Spinner } from '../components/ui.jsx';
 import { useAuth } from '../AuthContext.jsx';
 import { cancelSubscription, checkContact, claimPix, sendContactCode, startCheckout, syncBilling, verifyContactCode } from '../api.js';
+import PixQr from '../components/PixQr.jsx';
+import AdminCustomers from '../components/AdminCustomers.jsx';
+import SupportContact from '../components/SupportContact.jsx';
 import AdminPayments from '../components/AdminPayments.jsx';
 
 const brl = (cents) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -292,7 +295,9 @@ export default function Plans({ user, checkOnOpen }) {
               <b style={{ color: C.text }}>Você é admin (uso ilimitado).</b> É assim que seus clientes veem esta página.{' '}
               {billing.enabled
                 ? pix
-                  ? 'Para eles, os botões levam ao Pix do banco. Confirme os pagamentos no painel abaixo.'
+                  ? billing.pixQr
+                    ? 'Para eles, o Pix aparece com QR Code e copia e cola aqui mesmo, com o valor de cada plano. Confirme os pagamentos no painel abaixo.'
+                    : 'Para eles, os botões levam ao Pix do banco. Confirme os pagamentos no painel abaixo.'
                   : 'Para eles, os botões levam ao pagamento por Pix ou cartão.'
                 : <>Os botões de assinatura ficam ativos quando a <code>ABACATE_PAY_API_KEY</code> estiver configurada no servidor (Render → Environment).</>}
             </>
@@ -303,6 +308,7 @@ export default function Plans({ user, checkOnOpen }) {
       )}
 
       {billing.admin && pix && billing.enabled && <AdminPayments plans={plans} />}
+      {billing.admin && <AdminCustomers />}
 
       {/* Planos mensais */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginBottom: 20 }}>
@@ -452,7 +458,9 @@ export default function Plans({ user, checkOnOpen }) {
               </p>
 
               <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, margin: '20px 0 8px' }}>2. Pague o Pix</div>
-              {contactOk ? (
+              {contactOk && billing.pixQr ? (
+                <PixQr kind={pick.kind} itemId={pick.id} priceCents={selected.priceCents} onShown={() => setPixOpened(true)} />
+              ) : contactOk ? (
                 <a
                   href={selected.pixLink}
                   target="_blank"
@@ -468,11 +476,14 @@ export default function Plans({ user, checkOnOpen }) {
                 </button>
               )}
               <p style={{ color: C.faint, fontSize: 12, margin: '8px 0 0' }}>
-                {contactOk
+                {contactOk && billing.pixQr
+                  ? 'Abra o app do seu banco, escolha Pix › Ler QR Code (ou Pix copia e cola) e pague. Depois, toque em "Já paguei".'
+                  : contactOk
                   ? `Abre a página do banco com o QR Code e o Pix copia e cola. Confira o valor de ${brl(selected.priceCents)} antes de pagar.`
                   : 'Preencha seus dados corretamente acima para liberar o pagamento.'}
               </p>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, margin: '20px 0 0' }}>3. Avise que pagou</div>
+              <SupportContact compact style={{ marginTop: 4 }} />
               <button
                 onClick={claim}
                 disabled={!canClaim}
@@ -533,6 +544,7 @@ export default function Plans({ user, checkOnOpen }) {
           </div>
         ))}
       </div>
+      <SupportContact style={{ marginTop: 18, textAlign: 'center' }} />
     </div>
   );
 }

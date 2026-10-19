@@ -4,7 +4,8 @@ import path from 'node:path';
 import { config } from '../config.js';
 import { makeLogger } from '../logger.js';
 import { cloudSave, onCloudReload } from '../cloudSync.js';
-import { findById, findByEmail } from './store.js';
+import { findById, findByEmail, listUsers } from './store.js';
+import { pixBrCode, pixTxid } from '../../../shared/pixBrCode.js';
 import { signLink } from './tokens.js';
 import { emailHtml, notifyAdmins, notifyUser, waLink, whatsappReady } from './notify.js';
 import { checkEmail, checkEmailCode, checkPhone, formatPhone, newEmailCode } from './contact.js';
@@ -74,7 +75,9 @@ function entry(userId) {
 const pixMode = () => config.billing.payment === 'pix-links';
 /** Link de Pix do banco para um plano/recarga (modo pix-links). */
 const pixLink = (id) => config.billing.pixLinks[id] || '';
-export const billingEnabled = () => (pixMode() ? Object.keys(config.billing.pixLinks).length > 0 : Boolean(config.billing.abacateKey));
+/** Pix gerado aqui (QR + copia e cola), sem página do banco: só precisa da chave. */
+const pixQr = () => pixMode() && Boolean(config.billing.pix.key);
+export const billingEnabled = () => (pixMode() ? Object.keys(config.billing.pixLinks).length > 0 || pixQr() : Boolean(config.billing.abacateKey));
 const isAdmin = (email) => config.billing.adminEmails.includes(String(email || '').toLowerCase());
 const isUnlimitedEmail = (email) => (config.billing.unlimitedEmails || []).includes(String(email || '').toLowerCase());
 /**
@@ -184,9 +187,11 @@ export function billingStatus(user) {
     costs: b.costs,
     periodDays: b.periodDays,
     payment: pixMode() ? 'pix-links' : 'abacatepay',
+    // QR Code do Pix gerado no próprio site/app (sem abrir o banco)
+    pixQr: pixQr(),
     plans: b.plans.map((p) => ({ ...publicPlan(p), ...(pixMode() ? { pixLink: pixLink(p.id) } : {}) })),
     // No modo Pix só aparecem as recargas que têm link do banco.
-    packs: b.packs.filter((p) => !pixMode() || pixLink(p.id)).map((p) => ({ ...publicPack(p), ...(pixMode() ? { pixLink: pixLink(p.id) } : {}) })),
+    packs: b.packs.filter((p) => !pixMode() || pixQr() || pixLink(p.id)).map((p) => ({ ...publicPack(p), ...(pixMode() ? { pixLink: pixLink(p.id) } : {}) })),
     // Avisos de "Já paguei" deste usuário ainda não confirmados pelo admin.
     claims: Object.values(load().claims)
       .filter((c) => c.userId === user.id && c.status === 'pending')
@@ -739,7 +744,7 @@ export function verifyContactCode(user, email, code) {
 
 export async function createPixClaim(user, { kind, itemId, phone, name, email }) {
   const item = itemOf(kind, itemId);
-  if (!item || !pixLink(itemId)) throw Object.assign(new Error('plano ou recarga inválido'), { status: 400 });
+  if (!item || !(pixQr() || pixLink(itemId))) throw Object.assign(new Error('plano ou recarga inválido'), { status: 400 });
   const contact = await checkContact(user, { name, email: email ?? entry(user.id).contactEmail ?? user.email, phone });
   if (!contact.ok) throw Object.assign(new Error(Object.values(contact.errors)[0]), { status: 400, errors: contact.errors });
   if (contact.emailCodeRequired) throw Object.assign(new Error('confirme seu e-mail com o código antes de avisar o pagamento'), { status: 400 });
@@ -764,12 +769,87 @@ export async function createPixClaim(user, { kind, itemId, phone, name, email })
   const claim = {
     id, userId: user.id, email: user.email, contactEmail: contact.email, name: e.name || user.name || '', phone: tel,
     kind, itemId, priceCents: item.priceCents, createdAt: new Date().toISOString(), status: 'pending',
+    ...(pixQr() ? { txid: txidFor(user, itemId) } : {}),
   };
   db.claims[id] = claim;
   persist();
   log.info(`aviso de Pix ${id}: ${itemLabel(kind, item)} (${brl(item.priceCents)}) de ${user.email}`);
   notifyClaim(claim, item);
   return claim;
+}
+
+/**
+ * Identificador do Pix deste cliente para este plano (vai no QR e aparece no extrato do
+ * banco): "RF" + plano + 6 letras da conta — dá para saber quem pagou só pelo extrato.
+ */
+export function txidFor(user, itemId) {
+  const tag = crypto.createHash('sha1').update(String(user.id)).digest('hex').slice(0, 6).toUpperCase();
+  return pixTxid(`RF${String(itemId).replace(/[^A-Za-z0-9]/g, '').slice(0, 10).toUpperCase()}${tag}`);
+}
+
+/** Pix copia e cola do plano/recarga com o valor exato. → { brCode, amountCents, txid, label } */
+export function pixCharge(user, kind, itemId) {
+  if (!pixQr()) throw Object.assign(new Error('Pix pelo site não está configurado'), { status: 400 });
+  const item = itemOf(kind, itemId);
+  if (!item) throw Object.assign(new Error('plano ou recarga inválido'), { status: 400 });
+  const txid = txidFor(user, itemId);
+  const { key, name, city } = config.billing.pix;
+  return {
+    brCode: pixBrCode({ key, name, city, amountCents: item.priceCents, txid, description: `Riseframe ${itemLabel(kind, item)}` }),
+    amountCents: item.priceCents,
+    txid,
+    label: itemLabel(kind, item),
+    receiver: name,
+  };
+}
+
+const DAY = 24 * 3600 * 1000;
+/**
+ * Tabela de clientes do admin: cada conta com o plano, quando vence, quantos dias faltam,
+ * o último pagamento confirmado e o contato. Ordem: quem vence primeiro no topo.
+ */
+export function customersTable() {
+  load();
+  const now = Date.now();
+  const claims = Object.values(db.claims || {});
+  const rows = listUsers().map((u) => {
+    const e = db.users[u.id] || {};
+    const plan = e.plan?.id ? { ...(planConfig(e.plan.id) || { name: e.plan.id }), until: e.plan.until } : null;
+    const untilMs = plan ? Date.parse(plan.until) : NaN;
+    const active = Number.isFinite(untilMs) && untilMs > now;
+    const mine = claims.filter((c) => c.userId === u.id);
+    const paid = mine.filter((c) => c.status === 'approved').sort((a, b) => Date.parse(b.decidedAt || b.createdAt) - Date.parse(a.decidedAt || a.createdAt));
+    const pending = mine.find((c) => c.status === 'pending');
+    const lastPaid = paid[0] ? { at: paid[0].decidedAt || paid[0].createdAt, priceCents: paid[0].priceCents, item: paid[0].itemId, kind: paid[0].kind } : null;
+    const trialLeft = e.freeEdits ?? config.billing.freeEdits;
+    let status = 'sem plano';
+    if (unlimited(u)) status = 'ilimitado';
+    else if (active) status = untilMs - now < 7 * DAY ? 'vence em breve' : 'ativo';
+    else if (plan) status = 'vencido';
+    else if (trialLeft > 0) status = 'teste grátis';
+    return {
+      id: u.id,
+      name: e.name || u.name || '',
+      email: u.email,
+      contactEmail: e.contactEmail && e.contactEmail !== u.email ? e.contactEmail : '',
+      phone: e.phone ? formatPhone(e.phone) : '',
+      createdAt: u.createdAt || null,
+      verified: u.verified,
+      status,
+      plan: plan ? { name: plan.name, until: plan.until } : null,
+      daysLeft: Number.isFinite(untilMs) ? Math.ceil((untilMs - now) / DAY) : null,
+      credits: (active ? e.plan.credits || 0 : 0) + (e.credits || 0),
+      freeEditsLeft: unlimited(u) ? null : trialLeft,
+      paidCount: paid.length,
+      paidTotalCents: paid.reduce((s, c) => s + (c.priceCents || 0), 0),
+      lastPaid,
+      pending: pending ? { at: pending.createdAt, item: pending.itemId, priceCents: pending.priceCents } : null,
+      autoRenew: Boolean(e.subscription?.active),
+    };
+  });
+  const rank = { 'vence em breve': 0, ativo: 1, vencido: 2, 'teste grátis': 3, 'sem plano': 4, ilimitado: 5 };
+  rows.sort((a, b) => rank[a.status] - rank[b.status] || (a.daysLeft ?? 1e9) - (b.daysLeft ?? 1e9) || String(b.createdAt).localeCompare(String(a.createdAt)));
+  return rows;
 }
 
 /**

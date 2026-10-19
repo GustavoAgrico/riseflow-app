@@ -123,6 +123,10 @@ export const adminResendNotice = (id) => billingCall(`/billing/admin/claims/${en
 export const adminRejectClaim = (id) => billingCall(`/billing/admin/claims/${encodeURIComponent(id)}/reject`, 'POST');
 export const adminGrant = (info) => billingCall('/billing/admin/grant', 'POST', info);
 export const adminSendReminders = () => billingCall('/billing/admin/reminders', 'POST');
+/** Admin: tabela de clientes (plano, vencimento, pagamentos, contato). */
+export const adminCustomers = () => billingCall('/billing/admin/customers');
+/** Pix copia e cola + QR Code com o valor do plano/recarga, gerado no servidor. */
+export const getPixQr = (kind, itemId) => billingCall('/billing/pix/qr', 'POST', { kind, itemId });
 /** Admin: sobe agora contas/planos/configurações para o Supabase e mostra o resultado. */
 export const adminCloudSync = () => billingCall('/settings/cloud/sync', 'POST');
 

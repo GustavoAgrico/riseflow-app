@@ -7,6 +7,7 @@ import {
 import { BrandLockup } from '../components/Icon.jsx';
 import BeforeAfter from '../components/BeforeAfter.jsx';
 import { getPublicInfo } from '../api.js';
+import { SUPPORT_DEFAULT, waHref } from '../components/SupportContact.jsx';
 import { detectPlatform, PLATFORMS } from './Download.jsx';
 
 // Página inicial (visitante sem login): cinematográfica, vídeo de fundo em loop, título
@@ -552,7 +553,8 @@ function Footer({ info }) {
           <a href="/termos">Termos de uso</a>
           <a href="/privacidade">Privacidade</a>
           <a href="/download">Baixar o app</a>
-          {info?.supportEmail && <a href={`mailto:${info.supportEmail}`}>Contato</a>}
+          <a href={`mailto:${info?.supportEmail || SUPPORT_DEFAULT.email}`}>{info?.supportEmail || SUPPORT_DEFAULT.email}</a>
+          <a href={waHref(info?.supportWhatsapp || SUPPORT_DEFAULT.whatsapp)} target="_blank" rel="noreferrer">WhatsApp {info?.supportWhatsapp || SUPPORT_DEFAULT.whatsapp}</a>
         </div>
       </div>
     </footer>

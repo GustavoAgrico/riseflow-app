@@ -57,6 +57,9 @@ services:
       - key: WHISPER_MODEL
         value: tiny
       # ── Chaves opcionais (configure no dashboard, não no repo) ──
+      # - key: PIX_KEY             # chave Pix de quem recebe: o QR Code de cada plano aparece no site/app
+      # - key: PIX_NAME            # nome de quem recebe (até 25 letras), ex.: RISEFRAME
+      # - key: PIX_CITY            # cidade de quem recebe, ex.: SAO PAULO
       # - key: PEXELS_API_KEY      # B-roll automático
       # - key: PIXABAY_API_KEY     # B-roll: mais vídeos e fotos livres (chave grátis)
       #   sync: false
