@@ -222,7 +222,12 @@ function LoggedShell({ children }) {
   return children(useRenderingCount(5000));
 }
 
-const verNum = (v) => Number(String(v || '').replace(/\D/g, '')) || 0;
+// 'v165' (numeração antiga = 0.165) ou 'v1.0' / 'v1.2.3' (a partir da 1.0) → número comparável
+const verNum = (v) => {
+  const s = String(v || '').trim().replace(/^v/i, '');
+  const [a = 0, b = 0, c = 0] = s.includes('.') ? s.split('.').map((x) => Number(x) || 0) : [0, Number(s.replace(/\D/g, '')) || 0];
+  return a * 1e6 + b * 1e3 + c;
+};
 
 /**
  * Site fora do servidor (ex.: riseframe.com.br na Hostinger, que é atualizado à mão):

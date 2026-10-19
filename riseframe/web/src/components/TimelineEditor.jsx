@@ -402,8 +402,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // timeline e o resto encosta. Tudo continua guardado no tempo ORIGINAL do vídeo; só a
   // posição na tela passa por X(t) e o clique volta por srcOf().
   const [ripple, setRipple] = useState(true);
-  const gaps = useMemo(() => {
-    if (!ripple) return [];
+  // tudo o que sai do vídeo final (cortes + palavras tiradas), com ou sem "fechar buracos"
+  const allGaps = useMemo(() => {
     const r = cuts.map((c) => [Number(c.start), Number(c.end)]);
     const flat = [];
     for (const sg of segments) for (const w of sg.words) if (Number.isFinite(w.start) && Number.isFinite(w.end)) flat.push(w);
@@ -424,7 +424,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       else out.push([a, b]);
     }
     return out;
-  }, [ripple, cuts, segments, dur]);
+  }, [cuts, segments, dur]);
+  const gaps = useMemo(() => (ripple ? allGaps : []), [ripple, allGaps]);
   const progOf = (t) => {
     let p = t;
     for (const [a, b] of gaps) {
@@ -1145,7 +1146,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (e.button !== 0) return;
     const box = e.currentTarget.getBoundingClientRect();
     const t = Math.max(0, Math.min(dur, srcOf((e.clientX - box.left) / pps)));
-    drawRef.current = { t0: t, cur: t, left: box.left, splits: vsplits };
+    drawRef.current = { t0: t, cur: t, left: box.left, splits: [...vsplits, ...v1Clips.map((c) => c.start)] };
     seek(t);
     setDrawing({ start: t, end: t });
     e.stopPropagation();
@@ -3124,49 +3125,113 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     else addMediaItem(it, { start: t });
     return true;
   }
+  // ── Faixa V1 como no Premiere: cada clipe do vídeo principal tem alça para MOVER (muda a
+  // ordem) e bordas para APARAR. Aparar para dentro vira um corte (na hora); mudar a ordem,
+  // inserir ou esticar além do que já estava no vídeo monta o vídeo principal de novo.
+  const [v1Job, setV1Job] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    getJob(sourceId).then((j) => { if (alive) setV1Job(j || null); }).catch(() => {});
+    return () => { alive = false; };
+  }, [sourceId]);
+  const v1Len = (c) => (c.kind === 'image' ? Math.max(0.5, +c.duration || 3) : Math.max(0.3, (+c.out || 0) - (+c.in || 0)));
+  // os clipes que formam o vídeo principal (montagem da timeline) ou o vídeo enviado inteiro
+  const v1Clips = useMemo(() => {
+    const seq = v1Job?.fromSequence && Array.isArray(v1Job.sequenceClips) ? v1Job.sequenceClips : null;
+    if (seq && !seq.length) return []; // timeline em branco: a V1 ainda não tem clipe
+    if (seq?.length) {
+      let acc = 0;
+      const list = seq.map((c, i) => {
+        const s = acc;
+        acc += v1Len(c);
+        return { ...c, i, in: +c.in || 0, out: +c.out || 0, start: Math.min(dur, s), end: Math.min(dur, acc) };
+      }).filter((c) => c.end - c.start > 0.02);
+      if (list.length) list[list.length - 1].end = dur;
+      if (list.length) return list;
+    }
+    return [{ sourceId, kind: 'video', filename: projectTitle || v1Job?.filename || 'Vídeo', in: 0, out: dur, i: 0, start: 0, end: dur, whole: true }];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [v1Job, dur, sourceId, projectTitle]);
+  // pedaços da V1: entre os limites dos clipes e as divisões (navalha), sem a parte cortada
+  const v1Pieces = useMemo(() => {
+    if (!v1Clips.length) return [];
+    const pts = [...new Set([0, dur, ...v1Clips.map((c) => c.start), ...vsplits].map((x) => +(+x).toFixed(3)))].filter((x) => x >= 0 && x <= dur).sort((a, b) => a - b);
+    const out = [];
+    for (let k = 0; k + 1 < pts.length; k++) {
+      const a = pts[k];
+      const b = pts[k + 1];
+      if (b - a < 0.05) continue;
+      let va = a;
+      let vb = b;
+      for (const [g0, g1] of allGaps) if (g0 <= va + 0.01 && g1 > va) va = g1;
+      for (let gi = allGaps.length - 1; gi >= 0; gi--) { const [g0, g1] = allGaps[gi]; if (g1 >= vb - 0.01 && g0 < vb) vb = g0; }
+      if (vb - va < 0.03) continue; // pedaço inteiro cortado
+      const clip = v1Clips.find((c) => a >= c.start - 0.01 && a < c.end - 0.01) || v1Clips[0];
+      out.push({ a, b, va, vb, clip });
+    }
+    return out;
+  }, [v1Clips, vsplits, allGaps, dur]);
+
+  /** Plano para remontar: cada pedaço vira clipe(s) da montagem com os cortes grandes já aplicados. */
+  function v1Plan({ restore = null } = {}) {
+    // pausas curtas a transcrição nova acha e corta de novo; o servidor aceita até 80 clipes
+    let minGap = 0.8;
+    let cg;
+    do { cg = allGaps.filter(([a, b]) => b - a >= minGap); minGap *= 2; } while (cg.length > 60 && minGap < 600);
+    if (restore) cg = cg.filter(([a, b]) => !(a >= restore[0] - 0.01 && b <= restore[1] + 0.01)); // trecho que volta (aparar para fora)
+    const slice = (a, b) => {
+      const res = [];
+      for (const c of v1Clips) {
+        const s0 = Math.max(a, c.start);
+        const e0 = Math.min(b, c.end);
+        if (e0 - s0 > 0.05) res.push(c.kind === 'image' ? { ...c, duration: e0 - s0 } : { ...c, in: c.in + (s0 - c.start), out: c.in + (e0 - c.start) });
+      }
+      return res;
+    };
+    const newPos = (x) => x - cg.reduce((sum, [a, b]) => sum + (x >= b ? b - a : x > a ? x - a : 0), 0);
+    const units = v1Pieces.map((p) => {
+      const ranges = [];
+      let p0 = p.a;
+      for (const [g0, g1] of cg) { if (g1 <= p.a || g0 >= p.b) continue; if (g0 > p0) ranges.push([p0, g0]); p0 = Math.max(p0, g1); }
+      if (p.b > p0) ranges.push([p0, p.b]);
+      const parts = ranges.flatMap(([x, y]) => slice(x, y));
+      return { p, parts, len: parts.reduce((s, c) => s + v1Len(c), 0) };
+    }).filter((u) => u.parts.length);
+    return { newPos, units };
+  }
+  /** Manda montar o vídeo principal com estes clipes; camadas e textos vão para mapT(tempo). */
+  async function v1Rebuild(clips, mapT) {
+    if (clips.length > 80) throw new Error('O vídeo principal ficaria com clipes demais (máximo 80). Junte alguns na aba Projeto.');
+    setV1Busy('Montando o vídeo principal…');
+    const job = await createSequence({
+      title: projectTitle || 'Timeline',
+      aspect: v1Job?.sequenceAspect && !v1Job.blankTimeline ? v1Job.sequenceAspect : 'auto',
+      options,
+      clips: clips.map((c) => (c.sourceId
+        ? { sourceId: c.sourceId, filename: c.filename, in: +c.in.toFixed(2), out: +c.out.toFixed(2) }
+        : { mediaId: c.mediaId, ...(c.kind === 'video' ? { in: +c.in.toFixed(2), out: +c.out.toFixed(2) } : { duration: +c.duration.toFixed(2) }) })),
+      ...(v1Job?.sequenceMusic?.mediaId ? { music: { mediaId: v1Job.sequenceMusic.mediaId, volume: v1Job.sequenceMusic.volume ?? 0.35 } } : {}),
+    });
+    carryStyleNow(mapT);
+    onRebuild?.(job);
+  }
+  const V1_NOTE = 'O vídeo principal é montado de novo e a fala é transcrita de novo. Os cortes grandes já feitos continuam aplicados; legenda, camadas, textos, cor e efeitos continuam.';
+
   /** Insere a mídia no vídeo principal no ponto t (tempo do vídeo atual) e remonta. */
   async function insertIntoV1(it, t) {
     if (v1Busy) return;
-    setV1Busy('Preparando…');
     try {
-      const j = await getJob(sourceId).catch(() => null);
-      const lenOf = (c) => (c.kind === 'image' ? Math.max(0.5, +c.duration || 3) : Math.max(0.3, (+c.out || 0) - (+c.in || 0)));
-      // o que forma o vídeo principal hoje: os clipes da montagem (ou nenhum, se em branco) ou o vídeo enviado
-      const base = j?.fromSequence && Array.isArray(j.sequenceClips)
-        ? j.sequenceClips.map((c) => ({ ...c, in: +c.in || 0, out: +c.out || 0 }))
-        : [{ sourceId, kind: 'video', filename: projectTitle || j?.filename || 'Vídeo', in: 0, out: dur }];
-      // cortes grandes (frases tiradas, trechos excluídos) entram já aplicados; as pausas curtas a
-      // transcrição nova acha e corta de novo (e o servidor aceita até 80 clipes)
-      let minGap = 0.8;
-      let cutGaps;
-      do { cutGaps = gaps.filter(([a, b]) => b - a >= minGap); minGap *= 2; } while (cutGaps.length > 60 && minGap < 600);
-      const keep = [];
-      let p0 = 0;
-      for (const [a, b] of cutGaps) { if (a > p0) keep.push([p0, a]); p0 = Math.max(p0, b); }
-      if (dur > p0) keep.push([p0, dur]);
-      const slice = (a, b) => {
-        const res = [];
-        let acc = 0;
-        for (const c of base) {
-          const L = lenOf(c);
-          const s0 = Math.max(a, acc);
-          const e0 = Math.min(b, acc + L);
-          if (e0 - s0 > 0.05) res.push(c.kind === 'image' ? { ...c, duration: e0 - s0 } : { ...c, in: c.in + (s0 - acc), out: c.in + (e0 - acc) });
-          acc += L;
-        }
-        return res;
-      };
-      const newPos = (x) => x - cutGaps.reduce((sum, [a, b]) => sum + (x >= b ? b - a : x > a ? x - a : 0), 0);
+      const { newPos, units } = v1Plan();
       const at = newPos(t);
       const add = it.kind === 'video'
         ? { mediaId: it.id, kind: 'video', filename: it.filename, in: 0, out: Number(it.durationSec) || 5 }
         : { mediaId: it.id, kind: 'image', filename: it.filename, duration: 3 };
-      const insLen = lenOf(add);
+      const insLen = v1Len(add);
       const out = [];
       let acc = 0;
       let placed = false;
-      for (const c of keep.flatMap(([a, b]) => slice(a, b))) {
-        const L = lenOf(c);
+      for (const c of units.flatMap((u) => u.parts)) {
+        const L = v1Len(c);
         if (!placed && at < acc + L - 0.05) {
           const off = at - acc;
           if (off <= 0.05) out.push(add, c);
@@ -3177,23 +3242,166 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         acc += L;
       }
       if (!placed) out.push(add);
-      if (out.length > 80) throw new Error('O vídeo principal ficaria com clipes demais (máximo 80). Junte alguns na aba Projeto.');
-      if (!window.confirm(`Colocar "${it.filename}" no vídeo principal (V1) em ${fmtDuration(at)}?\n\nO vídeo é montado de novo com o clipe nesse ponto e a fala é transcrita de novo. Os cortes grandes já feitos continuam aplicados; legenda, camadas, textos, cor e efeitos continuam.`)) return;
-      setV1Busy('Montando o vídeo principal…');
-      const job = await createSequence({
-        title: projectTitle || 'Timeline',
-        aspect: j?.sequenceAspect && !j.blankTimeline ? j.sequenceAspect : 'auto',
-        options,
-        clips: out.map((c) => (c.sourceId
-          ? { sourceId: c.sourceId, filename: c.filename, in: +c.in.toFixed(2), out: +c.out.toFixed(2) }
-          : { mediaId: c.mediaId, ...(c.kind === 'video' ? { in: +c.in.toFixed(2), out: +c.out.toFixed(2) } : { duration: +c.duration.toFixed(2) }) })),
-        ...(j?.sequenceMusic?.mediaId ? { music: { mediaId: j.sequenceMusic.mediaId, volume: j.sequenceMusic.volume ?? 0.35 } } : {}),
-      });
+      if (!window.confirm(`Colocar "${it.filename}" no vídeo principal (V1)${units.length ? ` em ${fmtDuration(at)}` : ''}?\n\n${V1_NOTE}`)) return;
       // camadas e textos seguem o ponto do vídeo em que estavam (depois do clipe, andam junto)
-      carryStyleNow((x) => { const n = newPos(x); return +(n >= at ? n + insLen : n).toFixed(2); });
-      onRebuild?.(job);
+      await v1Rebuild(out, (x) => { const n = newPos(x); return +(n >= at ? n + insLen : n).toFixed(2); });
     } catch (e) {
       window.alert(e.message || 'Não deu para colocar no vídeo principal.');
+    } finally {
+      setV1Busy('');
+    }
+  }
+
+  // Arrastar na V1: { kind: 'move'|'L'|'R', k (índice do pedaço), x0, dx }
+  const [v1Drag, setV1Drag] = useState(null);
+  const v1DragRef = useRef(null);
+  function startV1Drag(kind, k, e) {
+    if (e.button !== 0 || laneLock.vid) return;
+    e.stopPropagation();
+    e.preventDefault();
+    // off: onde pegou dentro do pedaço (a ordem nova segue a posição do mouse)
+    v1DragRef.current = { kind, k, x0: e.clientX, dx: 0, off: e.clientX - e.currentTarget.getBoundingClientRect().left + (kind === 'move' ? 10 : 0) };
+    setV1Drag(v1DragRef.current);
+    document.body.style.userSelect = 'none';
+  }
+  /** Para onde o pedaço arrastado vai (índice na nova ordem), pelo centro dele. */
+  function v1MoveTarget(d) {
+    const p = v1Pieces[d.k];
+    if (!p) return d.k;
+    const center = X(p.va) + (d.off ?? W(p.va, p.vb) / 2) + d.dx;
+    return v1Pieces.filter((q, i) => i !== d.k && X(q.va) + W(q.va, q.vb) / 2 < center).length;
+  }
+  /** Aparar: até onde a borda vai (em segundos) e quanto passa do que já estava no vídeo. */
+  function v1TrimInfo(d) {
+    const p = v1Pieces[d.k];
+    const v0 = d.kind === 'L' ? p.va : p.vb;
+    let v = v0 + d.dx / pps;
+    const c = p.clip;
+    // material sobrando no arquivo (só clipes da montagem, na ponta do clipe)
+    let room = 0;
+    if (!c.whole) {
+      if (d.kind === 'L' && Math.abs(p.a - c.start) < 0.02) room = c.kind === 'image' ? Math.max(0, 60 - v1Len(c)) : c.mediaId ? Math.max(0, c.in) : 0;
+      if (d.kind === 'R' && Math.abs(p.b - c.end) < 0.02) {
+        const srcDur = Number((library || []).find((x) => x.id === c.mediaId)?.durationSec) || 0;
+        room = c.kind === 'image' ? Math.max(0, 60 - v1Len(c)) : c.mediaId && srcDur ? Math.max(0, srcDur - c.out) : 0;
+      }
+    }
+    if (d.kind === 'L') v = Math.max(p.a - room, Math.min(p.vb - 0.2, v));
+    else v = Math.min(p.b + room, Math.max(p.va + 0.2, v));
+    const ext = d.kind === 'L' ? Math.max(0, p.a - v) : Math.max(0, v - p.b);
+    return { p, v, ext };
+  }
+  function v1DragMove(e) {
+    const d = v1DragRef.current;
+    if (!d) return;
+    d.dx = e.clientX - d.x0;
+    setV1Drag({ ...d });
+  }
+  function v1DragUp() {
+    const d = v1DragRef.current;
+    if (!d) return;
+    v1DragRef.current = null;
+    setV1Drag(null);
+    document.body.style.userSelect = '';
+    const p = v1Pieces[d.k];
+    if (!p) return;
+    if (d.kind === 'move') {
+      if (Math.abs(d.dx) < 4) { // clique: seleciona o pedaço
+        setSelKind('video');
+        setSelVideo({ start: p.a, end: p.b });
+        seek(p.va);
+        return;
+      }
+      const to = v1MoveTarget(d);
+      if (to === d.k) return;
+      v1Reorder(d.k, to);
+      return;
+    }
+    const { v, ext } = v1TrimInfo(d);
+    if (ext > 0.05) { v1Extend(d.kind, d.k, ext); return; }
+    v1TrimTo(d.kind, p, v);
+  }
+  const v1DragFns = useRef({});
+  v1DragFns.current = { move: v1DragMove, up: v1DragUp };
+  useEffect(() => {
+    const move = (e) => v1DragFns.current.move(e);
+    const up = (e) => v1DragFns.current.up(e);
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, []);
+
+  /** Aparar para dentro (ou voltar o que estava aparado): vira corte, na hora, sem remontar. */
+  function v1TrimTo(side, p, v) {
+    const [r0, r1] = side === 'L' ? [p.a, p.va] : [p.vb, p.b]; // ponta escondida hoje
+    const sub = (list) => list.flatMap((c) => {
+      if (c.end <= r0 + 0.001 || c.start >= r1 - 0.001) return [c];
+      const out = [];
+      if (c.start < r0) out.push({ ...c, end: +r0.toFixed(2) });
+      if (c.end > r1) out.push({ ...c, key: `${c.key}_b`, start: +r1.toFixed(2) });
+      return out;
+    });
+    const cutA = side === 'L' ? p.a : v;
+    const cutB = side === 'L' ? v : p.b;
+    setCuts((l) => [...sub(l), ...(cutB - cutA >= 0.05 ? [{ key: `c${Date.now()}`, start: +cutA.toFixed(2), end: +cutB.toFixed(2) }] : [])]);
+    // palavras tiradas na ponta que voltou aparecem de novo
+    const [b0, b1] = side === 'L' ? [v, p.va] : [p.vb, v];
+    if (b1 - b0 > 0.02) {
+      setSegments((prev) => prev.map((sg) => (sg.words.some((w) => w.removed && (w.start + w.end) / 2 >= b0 && (w.start + w.end) / 2 <= b1)
+        ? { ...sg, words: sg.words.map((w) => (w.removed && (w.start + w.end) / 2 >= b0 && (w.start + w.end) / 2 <= b1 ? { ...w, removed: false } : w)) }
+        : sg)));
+    }
+  }
+  /** Mover: o pedaço k vai para a posição `to` e o vídeo principal é montado nessa ordem. */
+  async function v1Reorder(k, to) {
+    if (v1Busy) return;
+    try {
+      const { newPos, units } = v1Plan();
+      const ui = units.findIndex((u) => u.p === v1Pieces[k]);
+      if (ui < 0) return;
+      const order = units.filter((_, i) => i !== ui);
+      order.splice(Math.min(to, order.length), 0, units[ui]);
+      const name = v1Pieces[k].clip.filename || 'clipe';
+      if (!window.confirm(`Mover "${name}" para a posição ${to + 1} do vídeo principal (V1)?\n\n${V1_NOTE}`)) return;
+      const startOf = new Map();
+      let acc = 0;
+      for (const u of order) { startOf.set(u, acc); acc += u.len; }
+      // camadas e textos andam junto com o pedaço em que estavam
+      const mapT = (x) => {
+        const u = units.find((q) => x >= q.p.a - 0.01 && x < q.p.b) || units.find((q) => x < q.p.a) || units[units.length - 1];
+        const off = Math.max(0, Math.min(u.len, newPos(x) - newPos(u.p.a)));
+        return +(startOf.get(u) + off).toFixed(2);
+      };
+      await v1Rebuild(order.flatMap((u) => u.parts), mapT);
+    } catch (e) {
+      window.alert(e.message || 'Não deu para mover o clipe.');
+    } finally {
+      setV1Busy('');
+    }
+  }
+  /** Aparar para fora além do que já estava no vídeo: pega mais do arquivo e remonta. */
+  async function v1Extend(side, k, ext) {
+    if (v1Busy) return;
+    try {
+      const p = v1Pieces[k];
+      const { newPos, units } = v1Plan({ restore: side === 'L' ? [p.a, p.va] : [p.vb, p.b] });
+      const ui = units.findIndex((u) => u.p === p);
+      if (ui < 0) return;
+      const u = units[ui];
+      const parts = [...u.parts];
+      if (side === 'L') {
+        const c = parts[0];
+        parts[0] = c.kind === 'image' ? { ...c, duration: v1Len(c) + ext } : { ...c, in: Math.max(0, c.in - ext) };
+      } else {
+        const c = parts[parts.length - 1];
+        parts[parts.length - 1] = c.kind === 'image' ? { ...c, duration: v1Len(c) + ext } : { ...c, out: c.out + ext };
+      }
+      if (!window.confirm(`Esticar "${p.clip.filename || 'clipe'}" em ${ext.toFixed(1).replace('.', ',')} s?\n\n${V1_NOTE}`)) return;
+      const out = units.flatMap((q, i) => (i === ui ? parts : q.parts));
+      const edge = newPos(side === 'L' ? p.a : p.b);
+      await v1Rebuild(out, (x) => { const n = newPos(x); return +(side === 'L' ? (n >= edge ? n + ext : n) : (n > edge ? n + ext : n)).toFixed(2); });
+    } catch (e) {
+      window.alert(e.message || 'Não deu para esticar o clipe.');
     } finally {
       setV1Busy('');
     }
@@ -5953,6 +6161,54 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       background: on ? '#fff' : '#A855F7', border: `2px solid ${on ? '#A855F7' : 'rgba(0,0,0,0.5)'}`, color: on ? '#A855F7' : '#fff', fontSize: 10, fontWeight: 900, lineHeight: 1 }}>⧓</div>
                 );
               })}
+              {/* clipes da V1: alça para mover (muda a ordem) e bordas para aparar */}
+              {!isMobile && v1Pieces.map((p, k) => {
+                const left = X(p.va);
+                const w = W(p.va, p.vb);
+                const dragging = v1Drag && v1Drag.k === k;
+                const moving = dragging && v1Drag.kind === 'move' && Math.abs(v1Drag.dx) >= 4;
+                const trim = dragging && v1Drag.kind !== 'move' ? v1TrimInfo(v1Drag) : null;
+                const showGrip = v1Pieces.length > 1 || !p.clip.whole;
+                const edgeX = trim ? (v1Drag.kind === 'L' ? left + (trim.v - p.va) * pps : left + w + (trim.v - p.vb) * pps) : 0;
+                const v0 = trim ? (v1Drag.kind === 'L' ? p.va : p.vb) : 0;
+                const longer = trim && (v1Drag.kind === 'L' ? trim.v < v0 : trim.v > v0);
+                return (
+                  <React.Fragment key={`v1p${k}-${p.a}`}>
+                    {k > 0 && <div style={{ position: 'absolute', left: left - 1, top: 0, bottom: 0, width: 2, background: 'rgba(0,0,0,0.9)', pointerEvents: 'none', zIndex: 3 }} />}
+                    {showGrip && w > 24 && (
+                      <div className="rf-v1grip" onMouseDown={(e) => startV1Drag('move', k, e)}
+                        title={`${k + 1}. ${p.clip.filename || 'clipe'} — arraste para mudar a ordem no vídeo principal · clique seleciona`}
+                        style={{ position: 'absolute', left: left + 10, width: Math.max(0, w - 20), top: 0, height: 15, zIndex: 4, cursor: moving ? 'grabbing' : 'grab', background: 'rgba(10,12,20,0.72)', color: '#E5E7EB', fontSize: 9.5, fontWeight: 700, lineHeight: '15px', padding: '0 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', borderRadius: '0 0 4px 4px', boxSizing: 'border-box' }}>
+                        ⠿ {k + 1}. {p.clip.filename || 'clipe'}
+                      </div>
+                    )}
+                    <div className="rf-v1trim l" onMouseDown={(e) => startV1Drag('L', k, e)} title="Arraste para aparar o começo deste clipe"
+                      style={{ position: 'absolute', left, width: 8, top: 15, bottom: 0, zIndex: 5, cursor: 'ew-resize' }} />
+                    <div className="rf-v1trim r" onMouseDown={(e) => startV1Drag('R', k, e)} title="Arraste para aparar o fim deste clipe"
+                      style={{ position: 'absolute', left: left + w - 8, width: 8, top: 15, bottom: 0, zIndex: 5, cursor: 'ew-resize' }} />
+                    {moving && (
+                      <div style={{ position: 'absolute', left, width: w, top: 0, bottom: 0, transform: `translateX(${v1Drag.dx}px)`, border: '2px dashed #FACC15', background: 'rgba(250,204,21,0.14)', borderRadius: 4, pointerEvents: 'none', zIndex: 6 }} />
+                    )}
+                    {trim && (
+                      <>
+                        <div style={{ position: 'absolute', left: Math.min(edgeX, v1Drag.kind === 'L' ? left : left + w), width: Math.abs(edgeX - (v1Drag.kind === 'L' ? left : left + w)), top: 0, bottom: 0, background: longer ? 'rgba(46,212,122,0.28)' : 'rgba(0,0,0,0.62)', pointerEvents: 'none', zIndex: 6 }} />
+                        <div style={{ position: 'absolute', left: edgeX - 1.5, width: 3, top: 0, bottom: 0, background: '#FACC15', boxShadow: '0 0 8px #FACC15', pointerEvents: 'none', zIndex: 7 }}>
+                          <span style={{ position: 'absolute', top: 16, [v1Drag.kind === 'L' ? 'left' : 'right']: 5, whiteSpace: 'nowrap', fontSize: 10, fontWeight: 800, color: '#1a1400', background: '#FACC15', borderRadius: 4, padding: '0 5px' }}>
+                            {longer ? '+' : '−'}{Math.abs(trim.v - v0).toFixed(1).replace('.', ',')} s{trim.ext > 0.05 ? ' · remonta' : ''}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {!isMobile && v1Drag?.kind === 'move' && Math.abs(v1Drag.dx) >= 4 && (() => {
+                const others = v1Pieces.filter((_, i) => i !== v1Drag.k);
+                if (!others.length) return null;
+                const to = v1MoveTarget(v1Drag);
+                const xi = to === 0 ? X(others[0].va) : X(others[to - 1].vb);
+                return <div style={{ position: 'absolute', left: xi - 2, width: 4, top: 0, bottom: 0, background: '#FACC15', boxShadow: '0 0 10px #FACC15', pointerEvents: 'none', zIndex: 8 }} />;
+              })()}
               {/* pedaço selecionado + divisões (S/Ctrl+B na faixa de vídeo) */}
               {selKind === 'video' && selVideo && (
                 <div style={{ position: 'absolute', left: X(selVideo.start), width: W(selVideo.start, selVideo.end), top: 0, bottom: 0, border: '2px solid #fff', borderRadius: 4, boxShadow: `inset 0 0 0 2px ${C.orange}`, pointerEvents: 'none' }} />
@@ -6189,6 +6445,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         .rf-m .rf-tl-track{ border: none !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
         .rf-m .rf-tl-labels{ display: none !important; }
         .rf-tl-tools::-webkit-scrollbar{ display: none; }
+        .rf-v1trim::after{ content: ''; position: absolute; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; background: #FACC15; opacity: 0.35; transition: opacity .12s; }
+        .rf-v1trim.l::after{ left: 1px; } .rf-v1trim.r::after{ right: 1px; }
+        .rf-v1trim:hover::after{ opacity: 1; box-shadow: 0 0 6px #FACC15; }
+        .rf-v1grip:hover{ background: rgba(250,204,21,0.22) !important; color: #fff !important; }
         .rf-ptool:not(:disabled):hover{ background: rgba(255,255,255,0.09) !important; color: #fff !important; }
         .rf-m .rf-tl-track > div::-webkit-scrollbar{ display: none; }
         .rf-m .rf-tl-adjust{ position: fixed !important; left: 0; right: 0; bottom: 0; top: auto !important; z-index: 1010; height: var(--rf-sheet-h); max-height: var(--rf-sheet-h) !important; overflow-y: auto !important; overflow-x: hidden !important; padding: 0 14px calc(18px + env(safe-area-inset-bottom)) !important; background: #1c1c22; border-radius: 20px 20px 0 0; box-shadow: 0 -24px 60px rgba(0,0,0,0.65); animation: rf-sheet-in .22s ease-out; }
