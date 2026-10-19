@@ -192,7 +192,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
   if (job.sequence && has('sequence')) {
     const st = enter('sequence');
     if (!fs.existsSync(input)) await assembleSequence({ ...job.sequence, output: input, work }, st.onProgress);
-    report.sequence = { clips: job.sequence.clips.length, music: Boolean(job.sequence.music) };
+    report.sequence = { clips: job.sequence.clips.length, music: Boolean(job.sequence.music), ...(job.sequence.blank ? { blank: true } : {}) };
   }
 
   // 1. Probe

@@ -93,7 +93,7 @@ function wordOut(w, dw = null) {
   };
 }
 
-export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, onSettings, busy, hidden = false, jobError = null, projectTitle = '', onRebuild = null }) {
+export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, onSettings, busy, hidden = false, jobError = null, projectTitle = '', onRebuild = null, initialTab = null }) {
   const { billing } = useAuth();
   const caps = catalog?.capabilities || {};
   const cap0 = options || {};
@@ -205,7 +205,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Prévia do look escolhido (aproximada) + ajuste manual por cima.
   const lookCss = LOOK_CSS[colorLook] || LOOK_CSS.auto;
   const videoFilter = [lookCss.filter, colorCss.filter].filter(Boolean).join(' ') || undefined;
-  const [tab, setTab] = useState('enquadramento');
+  const [tab, setTab] = useState(initialTab || 'enquadramento');
   // Celular: editor em tela cheia no estilo CapCut (timeline com cursor fixo no centro,
   // barra de ferramentas embaixo e painéis que sobem de baixo).
   const MQ_MOBILE = '(max-width: 860px)';
@@ -3734,15 +3734,135 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <button onClick={deleteSelected} style={{ ...miniBtn(true, false), marginLeft: 'auto' }}>
             <Icon name="trash" size={12} strokeWidth={2} /> {txWords.slice(txSelLo, txSelHi + 1).every((x) => x.w.removed) ? 'Restaurar' : 'Cortar do vídeo'}
           </button>
+          <button onClick={openCapDialog} style={miniBtn(false, false)} title="Gera a legenda só neste trecho, no estilo que escolher">
+            <Icon name="captions" size={12} strokeWidth={2} /> Criar legendas do trecho
+          </button>
           <button onClick={clearRange} style={miniBtn(false, false)}>Cancelar</button>
         </div>
       )}
       <div className="rf-tl-hide-touch" style={{ fontSize: 10.5, color: C.faint, lineHeight: 1.5 }}>Clique numa palavra para ir · arraste sobre as palavras para selecionar (<b>Delete</b> corta vídeo, áudio e legenda) · duplo-clique edita a frase</div>
-      <button onClick={() => { if (!cap.captions) setCapField({ captions: true }); setCapPane('estilo'); }}
+      <button onClick={openCapDialog}
         style={{ ...toolBtn(false), justifyContent: 'center', background: 'rgba(255,107,53,0.14)', border: '1px solid rgba(255,107,53,0.45)', color: C.text }}>
         <Icon name="captions" size={14} strokeWidth={2} /> Criar legendas
       </button>
     </div>
+  );
+
+  // ── "Criar legendas" (como no Premiere): estilo salvo + preferências + abrangência ──
+  const [capDlg, setCapDlg] = useState(null); // rascunho do diálogo ou null (fechado)
+  const [capStyleName, setCapStyleName] = useState('');
+  const capSelRangeT = () => {
+    if (txSel && txWords[txSelLo] && txWords[txSelHi]) return [txWords[txSelLo].w.start, txWords[txSelHi].w.end];
+    if (range && range.b - range.a > 0.1) return [range.a, range.b];
+    return null;
+  };
+  function openCapDialog() {
+    if (!templates) tplLoad();
+    const selR = capSelRangeT();
+    setCapDlg({
+      preset: 'current',
+      layout: capLayout === 'auto' ? 'two' : capLayout,
+      maxChars: cap.captionMaxChars > 0 ? cap.captionMaxChars : 42,
+      minDur: cap.captionMinDuration || 0,
+      gapFrames: Math.round((cap.captionGap || 0) * 30),
+      noPunct: cap.captionNoPunct === true,
+      scope: selR ? 'sel' : 'all',
+    });
+  }
+  const capStyles = (templates || []).filter((t) => t.data?.cap);
+  function createCaptionsNow() {
+    const d = capDlg;
+    const preset = capStyles.find((t) => t.id === d.preset);
+    const layoutPatch = d.layout === 'word' ? { captionMode: 'word' } : { captionMode: 'phrase', captionLines: d.layout === 'one' ? 1 : 2 };
+    setCap((c) => ({
+      ...c,
+      ...(preset ? preset.data.cap : {}),
+      ...layoutPatch,
+      captionMaxChars: d.layout === 'word' ? (preset?.data.cap.captionMaxChars ?? c.captionMaxChars) : d.maxChars,
+      captionMinDuration: d.minDur,
+      captionGap: +(d.gapFrames / 30).toFixed(3),
+      captionNoPunct: d.noPunct,
+      captions: true,
+    }));
+    // Abrangência: só o trecho selecionado mostra legenda; vídeo inteiro mostra tudo.
+    const selR = d.scope === 'sel' ? capSelRangeT() : null;
+    setSegments((prev) => prev.map((sg) => ({
+      ...sg,
+      words: sg.words.map((w) => {
+        const mid = (w.start + w.end) / 2;
+        const show = !selR || (mid >= selR[0] && mid <= selR[1]);
+        return show ? (w.hidden ? { ...w, hidden: false } : w) : { ...w, hidden: true };
+      }),
+    })));
+    setCapDlg(null);
+    setTab('legenda');
+    setCapPane('lista');
+  }
+  async function saveCaptionStyle() {
+    const name = capStyleName.trim();
+    if (!name) return;
+    try {
+      const r = await saveTemplateApi({ name, data: { cap } });
+      setTemplates(r.templates);
+      setCapStyleName('');
+      setCapDlg((d) => (d ? { ...d, preset: r.template.id } : d));
+    } catch (e) {
+      window.alert(e.message);
+    }
+  }
+  const capDialog = capDlg && createPortal(
+    <div role="dialog" aria-label="Criar legendas" onClick={(e) => { if (e.target === e.currentTarget) setCapDlg(null); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 950, background: 'rgba(5,5,10,0.6)', display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div style={{ width: 'min(460px, 100%)', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', background: '#16161F', border: `1px solid ${C.border}`, borderRadius: 16, boxShadow: '0 30px 80px -20px rgba(0,0,0,0.9)', color: C.text, padding: 18, display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <b style={{ fontSize: 16 }}>Criar legendas</b>
+          <button onClick={() => setCapDlg(null)} aria-label="Fechar" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.faint, fontSize: 20, cursor: 'pointer' }}>×</button>
+        </div>
+        <CapRow label="Estilo da legenda">
+          <Sel value={capDlg.preset} opts={[{ id: 'current', label: 'Estilo atual do vídeo' }, ...capStyles.map((t) => ({ id: t.id, label: `★ ${t.name}` }))]} onChange={(v) => setCapDlg((d) => ({ ...d, preset: v }))} />
+        </CapRow>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input value={capStyleName} onChange={(e) => setCapStyleName(e.target.value)} placeholder='Salvar o estilo atual como… (ex.: "JOAO CP")' maxLength={60}
+            style={{ flex: 1, minWidth: 0, height: 32, padding: '0 10px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 12.5, fontFamily: 'inherit' }} />
+          <button onClick={saveCaptionStyle} disabled={!capStyleName.trim()} style={{ ...miniBtn(false, !capStyleName.trim()), height: 32 }}>Salvar estilo</button>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginTop: 4 }}>Preferências (formato, tamanho, linhas)</div>
+        <CapRow label="Layout">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+            {[['one', 'Uma linha'], ['two', 'Duas linhas'], ['word', 'Palavra única']].map(([id, label]) => (
+              <button key={id} onClick={() => setCapDlg((d) => ({ ...d, layout: id }))} style={{ ...miniBtn(capDlg.layout === id, false), justifyContent: 'center' }}>{label}</button>
+            ))}
+          </div>
+        </CapRow>
+        {capDlg.layout !== 'word' && (
+          <CapRow label={`Máximo de caracteres por linha (${capDlg.maxChars})`}>
+            <input type="range" min="7" max="42" step="1" value={capDlg.maxChars} onChange={(e) => setCapDlg((d) => ({ ...d, maxChars: Number(e.target.value) }))} style={{ width: '100%' }} />
+          </CapRow>
+        )}
+        <CapRow label={`Duração mínima em segundos (${String(capDlg.minDur).replace('.', ',')})`}>
+          <input type="range" min="0" max="5" step="0.5" value={capDlg.minDur} onChange={(e) => setCapDlg((d) => ({ ...d, minDur: Number(e.target.value) }))} style={{ width: '100%' }} />
+        </CapRow>
+        <CapRow label={`Intervalo entre legendas (${capDlg.gapFrames} quadros)`}>
+          <input type="range" min="0" max="15" step="1" value={capDlg.gapFrames} onChange={(e) => setCapDlg((d) => ({ ...d, gapFrames: Number(e.target.value) }))} style={{ width: '100%' }} />
+        </CapRow>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: C.muted, cursor: 'pointer' }}>
+          <input type="checkbox" checked={capDlg.noPunct} onChange={(e) => setCapDlg((d) => ({ ...d, noPunct: e.target.checked }))} /> Remover pontuação
+        </label>
+        <CapRow label="Onde criar">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            <button onClick={() => setCapDlg((d) => ({ ...d, scope: 'all' }))} style={{ ...miniBtn(capDlg.scope === 'all', false), justifyContent: 'center' }}>Vídeo inteiro</button>
+            <button onClick={() => capSelRangeT() && setCapDlg((d) => ({ ...d, scope: 'sel' }))} disabled={!capSelRangeT()} title={capSelRangeT() ? undefined : 'Selecione palavras na transcrição (ou um trecho na timeline) antes'}
+              style={{ ...miniBtn(capDlg.scope === 'sel', !capSelRangeT()), justifyContent: 'center' }}>Só o trecho selecionado</button>
+          </div>
+        </CapRow>
+        {!segments.length && <div style={{ fontSize: 12, color: '#FCA5B4' }}>Este vídeo não tem fala transcrita — a legenda aparece quando houver fala.</div>}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+          <button onClick={() => setCapDlg(null)} style={{ height: 38, padding: '0 16px', borderRadius: 999, border: `1px solid ${C.border}`, background: 'transparent', color: C.text, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>Cancelar</button>
+          <button onClick={createCaptionsNow} style={{ height: 38, padding: '0 18px', borderRadius: 999, border: 'none', background: GRAD, color: '#fff', fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>Criar legendas</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 
   // Trecho selecionado (palavras clicáveis, juntar, editar, cortar): embaixo da timeline em
@@ -3906,6 +4026,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {tour && !isMobile && <EditorTour onClose={() => setTour(false)} />}
       {!isMobile && layoutPanel}
       {tplPanel}
+      {capDialog}
       {isMobile && (
         <div className="rf-m-top">
           <button onClick={onBack} disabled={busy} aria-label="Fechar o editor" style={mIconBtn}><Icon name="close" size={22} strokeWidth={2} /></button>

@@ -646,6 +646,8 @@ export const getMediaLibrary = () => jsonReq('GET', `${BASE}/media/library`).the
 export const removeLibraryMedia = (id) => jsonReq('DELETE', `${BASE}/media/library/${encodeURIComponent(id)}`);
 /** Timeline em branco: os clipes (mídias da conta, na ordem) viram o vídeo do editor. */
 export const createSequence = (body) => jsonReq('POST', `${BASE}/sequence`, body);
+/** Timeline em branco: abre o editor na hora (sem clipes, sem cobrar). */
+export const createBlankTimeline = (body = {}) => jsonReq('POST', `${BASE}/sequence/blank`, body);
 /** Meus modelos (estilo da legenda, mídias, textos, cor…). */
 export const listTemplatesApi = () => jsonReq('GET', `${BASE}/templates`).then((d) => d.templates || []);
 export const saveTemplateApi = (t) => jsonReq('POST', `${BASE}/templates`, t);

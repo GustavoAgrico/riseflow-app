@@ -45,14 +45,15 @@ export default function ProjectPanel({ library, onReloadLibrary, onAddLayer, sou
     let alive = true;
     getJob(sourceId).then((j) => {
       if (!alive) return;
-      const seq = Array.isArray(j?.sequenceClips) && j.sequenceClips.length ? j.sequenceClips : null;
+      // timeline montada (ou em branco: lista vazia) → os clipes dela; senão o vídeo enviado
+      const seq = j?.fromSequence && Array.isArray(j.sequenceClips) ? j.sequenceClips : null;
       const list = seq
         ? seq.map((c) => ({ ...c, key: key(), in: +c.in || 0, out: +c.out || 0, duration: +c.duration || 3 }))
         : [{ key: key(), sourceId, kind: 'video', filename: projectTitle || j?.filename || 'Vídeo enviado', in: 0, out: durationSec || j?.report?.input?.duration || 5, src: durationSec }];
       setClips(list);
       setOriginal(sig(list));
       if (j?.sequenceMusic?.mediaId) setMusic(j.sequenceMusic);
-      if (j?.sequenceAspect) setAspect(j.sequenceAspect);
+      if (j?.sequenceAspect && !j.blankTimeline) setAspect(j.sequenceAspect);
     }).catch(() => {
       if (!alive) return;
       const list = [{ key: key(), sourceId, kind: 'video', filename: projectTitle || 'Vídeo enviado', in: 0, out: durationSec || 5, src: durationSec }];
@@ -158,7 +159,12 @@ export default function ProjectPanel({ library, onReloadLibrary, onAddLayer, sou
             {[['auto', 'Formato do 1º clipe'], ['9:16', '9:16'], ['16:9', '16:9'], ['1:1', '1:1'], ['4:5', '4:5']].map(([id, l]) => <option key={id} value={id}>{l}</option>)}
           </select>
         </div>
-        {!clips ? <div style={{ fontSize: 12, color: C.faint }}>Carregando…</div> : (
+        {clips && !clips.length && (
+          <div style={{ padding: '14px 10px', borderRadius: 9, border: `1.5px dashed ${C.border}`, fontSize: 12.5, color: C.muted, textAlign: 'center', lineHeight: 1.5 }}>
+            A timeline está vazia. Toque em <b style={{ color: C.text }}>+ V1</b> nas mídias acima (ou arraste uma mídia para cá) e depois em <b style={{ color: C.text }}>Atualizar vídeo principal</b>.
+          </div>
+        )}
+        {!clips ? <div style={{ fontSize: 12, color: C.faint }}>Carregando…</div> : !clips.length ? null : (
           <div style={{ display: 'flex', gap: 3, overflowX: 'auto', padding: '2px 0', minHeight: 54 }}>
             {clips.map((c, i) => (
               <div key={c.key} draggable onDragStart={(e) => { dragKey.current = c.key; e.dataTransfer.setData('text/rf-clip', c.key); }}
