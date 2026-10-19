@@ -14,6 +14,8 @@ import Settings from './pages/Settings.jsx';
 import Plans from './pages/Plans.jsx';
 import Rendering from './pages/Rendering.jsx';
 import { useRenderingCount } from './components/RenderQueue.jsx';
+import { getHealth } from './api.js';
+import { APP_VERSION } from './version.js';
 import Editor from './App.jsx';
 import Templates from './pages/Templates.jsx';
 import BrandKit from './pages/BrandKit.jsx';
@@ -218,6 +220,28 @@ function LoggedShell({ children }) {
   return children(useRenderingCount(5000));
 }
 
+const verNum = (v) => Number(String(v || '').replace(/\D/g, '')) || 0;
+
+/**
+ * Site fora do servidor (ex.: riseframe.com.br na Hostinger, que é atualizado à mão):
+ * quando o servidor já está numa versão mais nova que estas telas, o admin vê o aviso
+ * para enviar o pacote novo — senão as mudanças não aparecem para ninguém.
+ */
+function SiteUpdateNotice({ billing }) {
+  const [serverVer, setServerVer] = useState(null);
+  useEffect(() => {
+    if (!billing?.admin || inDesktopApp()) return;
+    getHealth().then((h) => setServerVer(h?.version || null)).catch(() => {});
+  }, [billing?.admin]);
+  if (!serverVer || verNum(serverVer) <= verNum(APP_VERSION)) return null;
+  return (
+    <div role="status" style={{ margin: '12px 16px 0', padding: '10px 14px', borderRadius: 12, background: 'rgba(45,140,255,0.12)', border: '1px solid rgba(45,140,255,0.45)', fontSize: 13, color: '#CFE3FF', lineHeight: 1.5 }}>
+      <b>Este site está na {APP_VERSION}, mas o servidor já está na {serverVer}.</b> As novidades só aparecem depois de enviar o pacote novo
+      (<code>riseframe-site-hostinger.zip</code>, em GitHub › Releases) para o <code>public_html</code> da Hostinger. Só você (admin) vê este aviso.
+    </div>
+  );
+}
+
 const inDesktopApp = () => typeof window !== 'undefined' && Boolean(window.electron);
 
 /** App de PC/Mac sem plano (teste grátis usado): assinar ou renovar para continuar. */
@@ -404,6 +428,7 @@ export default function Root() {
       <Sidebar user={user} billing={billing} view={view} onView={go} onLogout={logout} renderingCount={renderingCount} />
       <div className="rf-main" style={{ flex: 1, minWidth: 0 }}>
         <MobileTopBar billing={billing} onView={go} renderingCount={renderingCount} />
+        <SiteUpdateNotice billing={billing} />
         {view === 'dashboard' && (
           <Dashboard
             user={user}
