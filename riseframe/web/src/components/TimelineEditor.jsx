@@ -16,6 +16,8 @@ import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, playSfxUrl, LOOK_
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
 import { keyAt, cleanKeys, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
 import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES } from '../../../shared/textLayers.js';
+import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
+import EditorTour, { tourSeen } from './EditorTour.jsx';
 import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById } from '../../../shared/captionStyle.js';
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 
@@ -165,6 +167,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Textos livres (modelos de texto) e efeitos de vídeo nos momentos — tempo original.
   const [textLayers, setTextLayers] = useState([]);
   const [selText, setSelText] = useState(null);
+  // Legendas adicionadas à mão (+ Legenda): não dependem da fala nem mexem nos cortes.
+  const [extraCaps, setExtraCaps] = useState([]);
+  const [selXcap, setSelXcap] = useState(null);
+  const [hasClip, setHasClip] = useState(false); // algo copiado (mostra o botão Colar)
+  const [tour, setTour] = useState(() => !tourSeen()); // guia rápido na primeira vez
   const [fxMoments, setFxMoments] = useState([]);
   const [selFx, setSelFx] = useState(null);
   const [fxPick, setFxPick] = useState('bw');
@@ -486,10 +493,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const lk = (id) => (laneLock[id] ? LANE_LOCKED : null);
   const togHide = (id) => setLaneHide((h) => ({ ...h, [id]: !h[id] }));
   const togLock = (id) => setLaneLock((h) => ({ ...h, [id]: !h[id] }));
+  // Prévia: legendas da fala + as adicionadas à mão (onde há uma à mão, ela vale).
+  const visXcaps = laneHide.xcap ? [] : extraCaps;
+  const overlaySegs = useMemo(() => mergeExtraCaptions(capSegments, visXcaps), [capSegments, visXcaps]);
   const histState = {
     segments, cuts, keptPauses, keptNoises, gains, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs,
-    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes,
+    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
   };
   const histSet = {
     segments: setSegments, cuts: setCuts, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
@@ -498,7 +508,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths,
     cutCoughs: setCutCoughs, aspectSel: setAspectSel, quality: setQuality, reframeMode: setReframeMode,
     splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom,
-    vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, fxMoments: setFxMoments, transitions: setTransitions, laneHide: setLaneHide, laneLock: setLaneLock, markers: setMarkers, speedRanges: setSpeedRanges, freezes: setFreezes,
+    vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, extraCaps: setExtraCaps, fxMoments: setFxMoments, transitions: setTransitions, laneHide: setLaneHide, laneLock: setLaneLock, markers: setMarkers, speedRanges: setSpeedRanges, freezes: setFreezes,
   };
   const histRef = useRef({ past: [], future: [], prev: null, skip: false, at: 0 });
   const [, setHistTick] = useState(0);
@@ -1617,6 +1627,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (selKind === 'gain') return within(gains.find((g) => g.key === selGain), cur);
     if (selKind === 'text') return within(textLayers.find((l) => l.key === selText), cur);
     if (selKind === 'vfx') return within(fxMoments.find((m) => m.key === selFx), cur);
+    if (selKind === 'xcap') return within(extraCaps.find((c) => c.key === selXcap), cur);
     return false;
   })();
   function splitSelected() {
@@ -1629,11 +1640,25 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     else if (selKind === 'gain') splitRange(setGains, selGain, cur);
     else if (selKind === 'text') splitRange(setTextLayers, selText, cur);
     else if (selKind === 'vfx') splitRange(setFxMoments, selFx, cur);
+    else if (selKind === 'xcap') splitXcap(selXcap, cur);
+  }
+  /** Divide uma legenda adicionada no playhead: as palavras vão para cada lado pelo tempo. */
+  function splitXcap(key, t) {
+    setExtraCaps((list) => {
+      const i = list.findIndex((c) => c.key === key);
+      const c = list[i];
+      if (!c || t <= c.start + 0.2 || t >= c.end - 0.2) return list;
+      const parts = c.text.split(/\s+/).filter(Boolean);
+      const n = Math.min(parts.length - 1, Math.max(1, Math.round(parts.length * (t - c.start) / (c.end - c.start))));
+      const a = { ...c, end: +t.toFixed(2), text: parts.length > 1 ? parts.slice(0, n).join(' ') : c.text };
+      const b = { ...c, key: `${c.key}_${Date.now()}`, start: +t.toFixed(2), text: parts.length > 1 ? parts.slice(n).join(' ') : c.text };
+      return [...list.slice(0, i), a, b, ...list.slice(i + 1)];
+    });
   }
   const canDeleteSel = (selKind === 'words' && !!txSel) || (selKind === 'range' && !!range && range.b - range.a > 0.05) || (selKind === 'caption' && selCaptions.length > 0) || (selKind === 'video' && !!selVideo)
     || (selKind === 'media' && !!selMediaItem) || (selKind === 'zoom' && !!selZoomItem)
     || (selKind === 'broll' && !!brollReview?.moments[selBroll]) || (selKind === 'gain' && !!selGain)
-    || (selKind === 'keyframe' && selKey != null) || (selKind === 'text' && !!selText) || (selKind === 'vfx' && !!selFx) || (selKind === 'trans' && !!selTrans) || (selKind === 'marker' && !!selMarker) || (selKind === 'speed' && !!selSpeed) || (selKind === 'freeze' && !!selFreeze);
+    || (selKind === 'keyframe' && selKey != null) || (selKind === 'text' && !!selText) || (selKind === 'vfx' && !!selFx) || (selKind === 'xcap' && !!selXcap) || (selKind === 'trans' && !!selTrans) || (selKind === 'marker' && !!selMarker) || (selKind === 'speed' && !!selSpeed) || (selKind === 'freeze' && !!selFreeze);
   /** Corta um trecho do vídeo final: some o vídeo, o áudio e a legenda daquele pedaço. */
   function cutTimeRange(a, b) {
     const lo = Math.max(0, Math.min(a, b));
@@ -1676,6 +1701,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     else if (selKind === 'keyframe') { setTransformKeys((l) => l.filter((k) => k.t !== selKey)); setSelKey(null); }
     else if (selKind === 'text') { setTextLayers((l) => l.filter((x) => x.key !== selText)); setSelText(null); }
     else if (selKind === 'vfx') { setFxMoments((l) => l.filter((x) => x.key !== selFx)); setSelFx(null); }
+    else if (selKind === 'xcap') { setExtraCaps((l) => l.filter((x) => x.key !== selXcap)); setSelXcap(null); }
     else if (selKind === 'trans') { setTransitions((l) => l.filter((x) => x.key !== selTrans)); setSelTrans(null); }
     else if (selKind === 'marker') { setMarkers((l) => l.filter((x) => x.key !== selMarker)); setSelMarker(null); }
     else if (selKind === 'speed') { setSpeedRanges((l) => l.filter((x) => x.key !== selSpeed)); setSelSpeed(null); }
@@ -1694,9 +1720,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
   const mediaRows = media.reduce((mx, m) => Math.max(mx, (m.layer || 0) + 1), 1);
   const delTitle = selKind === 'words' ? 'Cortar as palavras selecionadas: vídeo, áudio e legenda (Delete)' : selKind === 'range' ? 'Excluir o trecho selecionado: vídeo, áudio e legenda (Delete)'
+    : selKind === 'xcap' ? 'Apagar a legenda que você adicionou (Delete) — o vídeo não muda'
     : selKind === 'caption' ? 'Excluir a fala selecionada: vídeo, áudio e legenda (Delete) · H só oculta a legenda'
       : selKind === 'video' ? 'Cortar o pedaço selecionado: vídeo, áudio e legenda (Delete)' : 'Excluir o item selecionado (Delete)';
-  const SEL_LABEL = { range: 'trecho', words: 'palavras', speed: 'velocidade', freeze: 'congelamento', marker: 'marcador', trans: 'transição', text: 'texto', vfx: 'efeito', keyframe: 'quadro-chave', caption: 'legenda', video: 'vídeo', media: 'camada', zoom: 'zoom', broll: 'B-roll', gain: 'volume' };
+  const SEL_LABEL = { range: 'trecho', words: 'palavras', speed: 'velocidade', freeze: 'congelamento', marker: 'marcador', trans: 'transição', text: 'texto', xcap: 'legenda', vfx: 'efeito', keyframe: 'quadro-chave', caption: 'legenda', video: 'vídeo', media: 'camada', zoom: 'zoom', broll: 'B-roll', gain: 'volume' };
 
 
   function toggleSeg(si) { setSegments((prev) => prev.map((s, i) => { if (i !== si) return s; const gone = segRemoved(s); return { ...s, words: s.words.map((w) => ({ ...w, removed: !gone })) }; })); }
@@ -2085,6 +2112,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // Efeitos de vídeo nos momentos e textos livres (tempo original).
         fxMoments: visFx.map((m) => ({ start: +m.start.toFixed(2), end: +m.end.toFixed(2), effect: m.effect })),
         textLayers: visTexts.map(({ key, ...l }) => ({ ...l, start: +l.start.toFixed(2), end: +l.end.toFixed(2) })),
+        // legendas adicionadas à mão (tempo original; o servidor leva para o vídeo cortado)
+        extraCaptions: visXcaps.filter((c) => c.text.trim()).map((c) => ({ text: c.text, start: +c.start.toFixed(2), end: +c.end.toFixed(2) })),
         // Efeitos sonoros colocados à mão (tempo original; o servidor remapeia após os cortes).
         sfxMoments: sfxMoments.map((m) => ({ t: +m.t.toFixed(2), type: m.type })),
         // B-roll revisado: trava o que entra em cada momento (e liga o B-roll).
@@ -2216,6 +2245,90 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setSelKind('text');
   }
   const selTextItem = textLayers.find((l) => l.key === selText) || null;
+
+  // ── Legendas adicionadas à mão (+ Legenda) ──
+  const updateXcap = (key, patch) => setExtraCaps((l) => l.map((x) => (x.key === key ? { ...x, ...patch } : x)).sort((a, b) => a.start - b.start));
+  /** Garante que as legendas aparecem (legenda ligada e faixa visível). */
+  function showXcaps() {
+    if (cap.captions === false) setCap((x) => ({ ...x, captions: true }));
+    if (laneHide.xcap) setLaneHide((h) => ({ ...h, xcap: false }));
+  }
+  function addExtraCap() {
+    const start = +Math.max(0, Math.min(cur, dur - 0.5)).toFixed(2);
+    const c = { key: `x${Date.now()}`, text: 'Nova legenda', start, end: +Math.min(dur, start + 2).toFixed(2) };
+    setExtraCaps((l) => [...l, c].sort((a, b) => a.start - b.start));
+    setSelXcap(c.key);
+    setSelKind('xcap');
+    showXcaps();
+    setTab('legenda');
+    setCapPane('lista');
+    if (isMobile) setMTool('legenda');
+    setXcapFocus(c.key);
+  }
+  const [xcapFocus, setXcapFocus] = useState(null); // abre o campo de texto da nova legenda
+  const selXcapItem = extraCaps.find((c) => c.key === selXcap) || null;
+  /** Traz de volta uma legenda cortada: as palavras e o pedaço do vídeo daquele trecho. */
+  function restoreCaption(si) {
+    const sg = segments[si];
+    if (!sg) return;
+    setSegments((prev) => prev.map((x, i) => (i === si ? { ...x, words: x.words.map((w) => (w.removed ? { ...w, removed: false } : w)) } : x)));
+    const a = sg.start;
+    const b = sg.end;
+    setCuts((l) => l.flatMap((c) => {
+      if (c.end <= a || c.start >= b) return [c];
+      const out = [];
+      if (c.start < a - 0.05) out.push({ ...c, end: +a.toFixed(2) });
+      if (c.end > b + 0.05) out.push({ ...c, key: `${c.key}_r${Date.now()}`, start: +b.toFixed(2) });
+      return out;
+    }));
+  }
+  const xcapBlock = (
+    <div style={{ display: 'grid', gap: 8, padding: 10, borderRadius: 12, border: '1px solid rgba(255,107,53,0.35)', background: 'rgba(255,107,53,0.06)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700 }}>Suas legendas{extraCaps.length ? ` · ${extraCaps.length}` : ''}</div>
+        <button data-tour="addcap2" onClick={addExtraCap} style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', borderRadius: 9, border: 'none', background: GRAD, color: '#fff', fontWeight: 700, fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer' }}>
+          + Adicionar legenda
+        </button>
+      </div>
+      {!extraCaps.length && (
+        <div style={{ fontSize: 11.5, color: C.faint, lineHeight: 1.5 }}>
+          Escreva uma legenda que aparece no ponto atual do vídeo ({fmtDuration(cur)}), com o mesmo estilo das automáticas. Não corta nada do vídeo.
+          Também dá para copiar uma legenda da lista (Ctrl+C) e colar onde quiser (Ctrl+V).
+        </div>
+      )}
+      {extraCaps.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {extraCaps.map((c) => (
+            <button key={c.key} onClick={() => { setSelXcap(c.key); setSelKind('xcap'); seek(c.start + 0.05); }} style={{ ...miniBtn(selXcap === c.key && selKind === 'xcap', false), maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtDuration(c.start)} · {c.text}</button>
+          ))}
+        </div>
+      )}
+      {selXcapItem && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <textarea key={selXcapItem.key} autoFocus={xcapFocus === selXcapItem.key} onFocus={(e) => { if (xcapFocus === selXcapItem.key) { e.currentTarget.select(); setXcapFocus(null); } }}
+            value={selXcapItem.text} rows={2} placeholder="Escreva a legenda" onChange={(e) => updateXcap(selXcapItem.key, { text: e.target.value })}
+            style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '8px 10px', borderRadius: 9, border: `1px solid ${C.orange}`, background: 'rgba(0,0,0,0.4)', color: C.text, fontSize: 14, lineHeight: 1.4, fontFamily: 'inherit' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 11.5, color: C.muted }}>
+            {[['Começa', 'start'], ['Termina', 'end']].map(([label, k]) => (
+              <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {label}
+                <button title="0,1 s antes" onClick={() => updateXcap(selXcapItem.key, { [k]: +Math.max(k === 'end' ? selXcapItem.start + 0.2 : 0, selXcapItem[k] - 0.1).toFixed(2) })} style={{ ...zoomBtn, width: 22, height: 22 }}>−</button>
+                <b style={{ fontVariantNumeric: 'tabular-nums', color: C.text, minWidth: 40, textAlign: 'center' }}>{fmtDuration(selXcapItem[k])}</b>
+                <button title="0,1 s depois" onClick={() => updateXcap(selXcapItem.key, { [k]: +Math.min(k === 'start' ? selXcapItem.end - 0.2 : dur, selXcapItem[k] + 0.1).toFixed(2) })} style={{ ...zoomBtn, width: 22, height: 22 }}>+</button>
+              </span>
+            ))}
+            <button onClick={() => updateXcap(selXcapItem.key, { start: +Math.max(0, Math.min(cur, selXcapItem.end - 0.2)).toFixed(2) })} title="A legenda começa no ponto atual do vídeo" style={miniBtn(false, false)}>Começar aqui</button>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button onClick={copySel} style={miniBtn(false, false)} title="Copiar (Ctrl+C)">Copiar</button>
+            <button onClick={duplicateSel} style={miniBtn(false, false)} title="Duplicar logo depois (Ctrl+D)">Duplicar</button>
+            <button onClick={() => { setExtraCaps((l) => l.filter((x) => x.key !== selXcapItem.key)); setSelXcap(null); }} style={{ ...miniBtn(false, false), marginLeft: 'auto', color: C.red }}>Apagar</button>
+          </div>
+          <div style={{ fontSize: 10.5, color: C.faint }}>Arraste o bloco na faixa “Suas legendas” para mudar de lugar · as pontas mudam a duração.</div>
+        </div>
+      )}
+    </div>
+  );
   const swatch = (hex, on, onClick) => (
     <button key={hex} onClick={onClick} title={hex} style={{ width: 22, height: 22, borderRadius: 6, background: hex, border: on ? '2px solid #fff' : `1px solid ${C.border}`, cursor: 'pointer', padding: 0 }} />
   );
@@ -2627,7 +2740,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
       {cbox && <StageLayers videoRef={videoRef} box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
         onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
-      {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={capSegments} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
+      {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
     </div>
   );
 
@@ -3104,7 +3217,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       ...markers.map((m) => ({ t: m.t, key: m.key })),
       ...transitions.map((x) => ({ t: x.t, key: x.key })),
       ...cuts.flatMap((c) => [{ t: c.start }, { t: c.end }]),
-      ...[...media.map((m) => ({ key: m.key, start: m.start, end: m.start + m.duration })), ...textLayers, ...fxMoments, ...(zoomMoments || []), ...(brollReview?.moments || []), ...gains]
+      ...[...media.map((m) => ({ key: m.key, start: m.start, end: m.start + m.duration })), ...textLayers, ...extraCaps, ...fxMoments, ...(zoomMoments || []), ...(brollReview?.moments || []), ...gains]
         .flatMap((r) => [{ t: Number(r.start), key: r.key }, { t: Number(r.end), key: r.key }]),
       ...capSegments.flatMap((sg) => [{ t: sg.start }, { t: sg.end }]),
     ].filter((p) => Number.isFinite(p.t)),
@@ -3119,8 +3232,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const mk = { key: `mk${Date.now()}`, t: +cur.toFixed(3) };
     setMarkers((l) => [...l, mk].sort((a, b) => a.t - b.t));
   }
-  // Copiar / colar / duplicar (como no CapCut): mídias, textos, efeitos e transições.
+  // Copiar / colar / duplicar (como no CapCut): mídias, textos, efeitos, transições e
+  // legendas (copiar uma legenda da fala cola uma legenda sua com o mesmo texto).
   function selClip() {
+    if (selKind === 'xcap') { const it = extraCaps.find((x) => x.key === selXcap); return it && { kind: 'xcap', items: [it] }; }
+    if (selKind === 'caption') {
+      const items = selCaptions.map((i) => {
+        const d = capSegments[i];
+        const text = (segments[i]?.words || []).map((w) => String(w.word ?? '').trim()).filter(Boolean).join(' ');
+        if (!d || !text) return null;
+        const [a, b] = capRangeOf(d);
+        return { text, start: a, end: Math.max(b, a + 0.5) };
+      }).filter(Boolean);
+      return items.length ? { kind: 'xcap', items } : null;
+    }
     if (selKind === 'media') { const it = media.find((x) => x.key === selMedia); return it && { kind: 'media', item: it }; }
     if (selKind === 'text') { const it = textLayers.find((x) => x.key === selText); return it && { kind: 'text', item: it }; }
     if (selKind === 'vfx') { const it = fxMoments.find((x) => x.key === selFx); return it && { kind: 'vfx', item: it }; }
@@ -3129,13 +3254,25 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
   function copySel() {
     const c = selClip();
-    if (c) clipRef.current = c;
+    if (c) { clipRef.current = c; setHasClip(true); }
     return !!c;
   }
   function pasteClip(c, at) {
     if (!c) return false;
     const key = `${c.kind}${Date.now()}${Math.floor(Math.random() * 1e4)}`;
     const it = c.item;
+    if (c.kind === 'xcap') {
+      const base = c.items[0].start;
+      const made = c.items.map((x, i) => {
+        const start = +Math.max(0, Math.min(at + (x.start - base), dur - 0.3)).toFixed(2);
+        return { key: `${key}_${i}`, text: x.text, start, end: +Math.min(dur, start + Math.max(0.5, x.end - x.start)).toFixed(2) };
+      });
+      setExtraCaps((l) => [...l, ...made].sort((a, b) => a.start - b.start));
+      setSelXcap(made[0].key);
+      setSelKind('xcap');
+      showXcaps();
+      return true;
+    }
     if (c.kind === 'media') {
       const start = +Math.max(0, Math.min(at, dur - 0.3)).toFixed(2);
       const duration = +Math.min(Number(it.duration), dur - start).toFixed(2);
@@ -3166,6 +3303,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function duplicateSel() {
     const c = selClip();
     if (!c) return false;
+    if (c.kind === 'xcap') return pasteClip(c, c.items[c.items.length - 1].end);
     const it = c.item;
     const at = c.kind === 'media' ? it.start + it.duration : c.kind === 'trans' ? it.t + 1 : it.end;
     return pasteClip(c, at);
@@ -3565,6 +3703,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   const editorCard = (
     <div className={`rf-tl-card${isMobile ? ' rf-m' : ''}${isMobile && sheet ? ' rf-m-sheet' : ''}`} style={{ ...glass(), padding: 22 }}>
+      {tour && !isMobile && <EditorTour onClose={() => setTour(false)} />}
       {isMobile && (
         <div className="rf-m-top">
           <button onClick={onBack} disabled={busy} aria-label="Fechar o editor" style={mIconBtn}><Icon name="close" size={22} strokeWidth={2} /></button>
@@ -3608,10 +3747,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div className="rf-tl-hide-sm" style={{ fontSize: 11.5, color: C.faint }}>Corte, legende e ajuste antes de exportar · {APP_VERSION}{cloudSavedAt ? ` · projeto salvo às ${new Date(cloudSavedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : savedAt ? ' · alterações salvas neste navegador' : ''}{cloudErr ? ' · não deu para salvar na conta agora (tenta de novo em 30 s)' : ''}</div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <GhostButton onClick={() => setTour(true)} title="Guia rápido: mostra para que serve cada parte do editor" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            ? <span className="rf-tl-hide-sm">Guia rápido</span>
+          </GhostButton>
           <GhostButton onClick={onBack} disabled={busy} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Icon name="arrowLeft" size={14} strokeWidth={2} /> Voltar
           </GhostButton>
-          <button onClick={generate} disabled={busy || allGone} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none', borderRadius: 11, padding: '0 18px', minHeight: 40, background: busy || allGone ? 'rgba(255,255,255,0.08)' : GRAD, color: '#fff', fontWeight: 700, fontSize: 14, cursor: busy || allGone ? 'not-allowed' : 'pointer', fontFamily: 'inherit', boxShadow: busy || allGone ? 'none' : '0 10px 24px -10px rgba(255,107,53,0.7)' }}>
+          <button data-tour="export" onClick={generate} disabled={busy || allGone} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none', borderRadius: 11, padding: '0 18px', minHeight: 40, background: busy || allGone ? 'rgba(255,255,255,0.08)' : GRAD, color: '#fff', fontWeight: 700, fontSize: 14, cursor: busy || allGone ? 'not-allowed' : 'pointer', fontFamily: 'inherit', boxShadow: busy || allGone ? 'none' : '0 10px 24px -10px rgba(255,107,53,0.7)' }}>
             <Icon name="upload" size={15} strokeWidth={2.2} /> Exportar
           </button>
         </div>
@@ -3645,7 +3787,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <button onClick={onBack} disabled={busy} title="Voltar" className="rf-tl-navbtn">
               <Icon name="arrowLeft" size={13} strokeWidth={2.2} /> Voltar
             </button>
-            <button onClick={generate} disabled={busy || allGone} className="rf-tl-navbtn rf-tl-navbtn--go" style={{ background: busy || allGone ? 'rgba(255,255,255,0.08)' : GRAD, cursor: busy || allGone ? 'not-allowed' : 'pointer' }}>
+            <button onClick={() => setTour(true)} title="Guia rápido: mostra para que serve cada parte do editor" className="rf-tl-navbtn">
+              ? Guia
+            </button>
+            <button data-tour="export" onClick={generate} disabled={busy || allGone} className="rf-tl-navbtn rf-tl-navbtn--go" style={{ background: busy || allGone ? 'rgba(255,255,255,0.08)' : GRAD, cursor: busy || allGone ? 'not-allowed' : 'pointer' }}>
               <Icon name="upload" size={13} strokeWidth={2.2} /> Exportar
             </button>
           </div>
@@ -3689,7 +3834,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 {vbox && !singleMon && <div ref={transOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 4, opacity: 0 }} />}
                 {vbox && <StageLayers videoRef={videoRef} box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
                   onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
-                {cap.captions && <CaptionOverlay videoRef={videoRef} segments={capSegments} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
+                {cap.captions && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
                 {framingMode === 'manual' && (
                   <div
                     ref={framingBoxRef}
@@ -4443,6 +4588,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 enfaseBlock || <div style={{ fontSize: 12, color: C.faint, padding: '8px 2px' }}>Ligue a legenda e escolha uma frase na timeline para destacar palavras.</div>
               ) : capPane === 'lista' ? (
                 <div style={{ display: 'grid', gap: 10 }}>
+                  {xcapBlock}
                   {/* Lista de legendas (como o painel Captions do Premiere): nº, entrada/saída e texto */}
                   <div style={{ display: 'flex', gap: 6 }}>
                     <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
@@ -4482,6 +4628,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                               style={{ width: '100%', boxSizing: 'border-box', height: 30, padding: '0 8px', borderRadius: 7, border: `1px solid ${C.orange}`, background: 'rgba(0,0,0,0.5)', color: C.text, fontSize: 13, fontFamily: 'inherit' }} />
                           ) : (
                             <span style={{ fontSize: isMobile ? 15.5 : 13, lineHeight: 1.4, color: gone ? C.red : isMobile && !on ? C.muted : C.text, fontWeight: isMobile && on ? 600 : 400, textDecoration: gone ? 'line-through' : 'none', wordBreak: 'break-word' }}>{text}</span>
+                          )}
+                          {gone && (
+                            <button onClick={(e) => { e.stopPropagation(); restoreCaption(si); }} title="Traz de volta esta fala: vídeo, áudio e legenda"
+                              style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', height: 24, padding: '0 9px', borderRadius: 7, border: '1px solid rgba(46,212,122,0.5)', background: 'rgba(16,24,20,0.92)', color: '#7EE2A8', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
+                              Restaurar
+                            </button>
                           )}
                         </div>
                       );
@@ -4733,6 +4885,21 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               {projectTitle && <span className="rf-tl-hide-sm" style={{ fontSize: 12, color: PR.text, fontWeight: 600, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginLeft: 6 }}>{projectTitle}</span>}
             </div>
           )}
+          <button data-tour="addcap" onClick={addExtraCap} title="Adicionar uma legenda sua no ponto atual do vídeo — não corta nada"
+            style={{ ...toolBtn(false), background: 'rgba(255,107,53,0.16)', border: '1px solid rgba(255,107,53,0.55)', color: '#FFD2BF', fontWeight: 700 }}>
+            <Icon name="captions" size={13} strokeWidth={2} /> + Legenda
+          </button>
+          {['media', 'text', 'vfx', 'trans', 'xcap', 'caption'].includes(selKind) && (
+            <button onClick={copySel} style={toolBtn(false)} title={`Copiar ${SEL_LABEL[selKind]} (Ctrl+C) — depois cole no ponto que quiser`}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" /></svg>
+              <span className="rf-tl-hide-sm">Copiar</span>
+            </button>
+          )}
+          {hasClip && (
+            <button onClick={pasteAtPlayhead} style={toolBtn(false)} title="Colar no ponto atual do vídeo (Ctrl+V)">
+              <Icon name="download" size={13} strokeWidth={2} /> <span className="rf-tl-hide-sm">Colar</span>
+            </button>
+          )}
           {!isMobile && (ripple ? gaps.length > 0 : true) && (cuts.length > 0 || segments.some((sg) => sg.words.some((w) => w.removed))) && (
             <button onClick={() => setRipple((v) => !v)} style={toolBtn(false)}
               title={ripple ? 'Os trechos excluídos somem da timeline (como no Premiere). Clique para vê-los no lugar (hachurados) e trazer de volta' : 'Esconder os trechos excluídos e encostar o resto'}>
@@ -4854,7 +5021,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <ToolIcon title="Marcador no playhead (M) — de novo no mesmo ponto tira" onClick={toggleMarker}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round"><path d="M6 3h12v12l-6 6-6-6z" /></svg>
               </ToolIcon>
-              <ToolIcon title="Duplicar o item selecionado (Ctrl+D) · Ctrl+C / Ctrl+V cola no playhead" disabled={!['media', 'text', 'vfx', 'trans'].includes(selKind)} onClick={duplicateSel}>
+              <ToolIcon title="Duplicar o item selecionado (Ctrl+D) · Ctrl+C / Ctrl+V cola no playhead" disabled={!['media', 'text', 'vfx', 'trans', 'xcap', 'caption'].includes(selKind)} onClick={duplicateSel}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" /></svg>
               </ToolIcon>
               <span className="rf-tsep" />
@@ -4870,6 +5037,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <div style={{ height: LANE.ruler, borderBottom: `1px solid ${PR.line}`, background: PR.ruler }} />
             {showChapLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('capitulos', e)} onResetSize={() => resetLane('capitulos')} h={LANE.capitulos} gap={4} code="CH" nome="Capítulos" />}
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('legenda', e)} onResetSize={() => resetLane('legenda')} h={legH} gap={6} code="C1" nome="Legenda" hidden={cap.captions === false} onEye={() => setCap((c) => ({ ...c, captions: c.captions === false }))} locked={laneLock.leg} onLock={() => togLock('leg')} />
+            {extraCaps.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('xcap', e)} onResetSize={() => resetLane('xcap')} h={LANE.xcap} gap={4} code="C2" nome="Suas legendas" hidden={laneHide.xcap} onEye={() => togHide('xcap')} locked={laneLock.xcap} onLock={() => togLock('xcap')} />}
             {media.length > 0 && Array.from({ length: mediaRows }, (_, r) => mediaRows - 1 - r).map((l) => (
               <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('midias', e)} onResetSize={() => resetLane('midias')} key={l} h={LANE.midias} gap={l === mediaRows - 1 ? 4 : 0} code={`M${l + 1}`} nome={`Camada ${l + 1}`} hidden={laneHide[`m${l}`]} onEye={() => togHide(`m${l}`)} locked={laneLock[`m${l}`]} onLock={() => togLock(`m${l}`)} />
             ))}
@@ -4885,7 +5053,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div ref={trackRef} onClick={onTrackClick} onScroll={onTrackScroll} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
-            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropT(null); }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
+            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropT(null); }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
             {/* ferramenta de seleção: arrastar em qualquer faixa marca o trecho (todas as faixas) */}
             {razorTool && !isMobile && (
               <div onMouseMove={(e) => setRazorT(timeAtClientX(e.clientX))} onMouseLeave={() => setRazorT(null)}
@@ -5021,6 +5189,28 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 );
               })}
             </div>
+            {/* Faixa SUAS LEGENDAS: legendas adicionadas à mão (arraste move, pontas mudam o tempo) */}
+            {extraCaps.length > 0 && (
+              <div style={{ position: 'relative', height: LANE.xcap, marginTop: 4, ...LANE_ROW, ...(laneHide.xcap || cap.captions === false ? LANE_HIDDEN : null), ...lk('xcap') }}>
+                {extraCaps.map((c) => {
+                  const on = selKind === 'xcap' && selXcap === c.key;
+                  const pick = () => { setSelXcap(c.key); setSelKind('xcap'); };
+                  return (
+                    <div key={c.key} title={`${c.text} — arraste para mover · pontas mudam o tempo · Ctrl+C / Ctrl+V copia e cola`}
+                      onMouseDown={(e) => { pick(); startRangeDrag(setExtraCaps, c, 'move', e); }}
+                      onClick={(e) => { e.stopPropagation(); pick(); setTab('legenda'); setCapPane('lista'); if (isMobile) setMTool('legenda'); seek(c.start + 0.05); }}
+                      onDoubleClick={(e) => { e.stopPropagation(); pick(); setTab('legenda'); setCapPane('lista'); setXcapFocus(c.key); }}
+                      style={{ position: 'absolute', left: X(c.start), width: Math.max(16, W(c.start, c.end) - 1), top: 0, bottom: 0, borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                        border: `1px solid ${on ? '#fff' : '#FF8A5C'}`, background: on ? '#E0663F' : 'rgba(224,102,63,0.55)', fontSize: 10.5, fontWeight: 700, color: '#fff' }}>
+                      <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 900, background: 'rgba(0,0,0,0.22)', borderRadius: 3, padding: '1px 3px', lineHeight: 1.1 }}>A+</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.text}</span>
+                      <div onMouseDown={(e) => { pick(); startRangeDrag(setExtraCaps, c, 'left', e); }} style={handleStyle('left')} />
+                      <div onMouseDown={(e) => { pick(); startRangeDrag(setExtraCaps, c, 'right', e); }} style={handleStyle('right')} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             {/* Lane das minhas mídias — arraste para mover, pontas para redimensionar */}
             {media.length > 0 && (
               <div style={{ position: 'relative', height: LANE.midias * mediaRows, marginTop: 4 }}>
@@ -5970,11 +6160,11 @@ function TrackHead({ h, gap, code, nome, active, hidden, onEye, locked, onLock, 
   );
 }
 
-const LANE_M = { kf: 20, txt: 24, vfx: 22, ruler: 26, capitulos: 28, legenda: 36, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };
+const LANE_M = { kf: 20, txt: 24, xcap: 26, vfx: 22, ruler: 26, capitulos: 28, legenda: 36, video: 44, zoom: 24, broll: 26, audio: 34, pausas: 24, midias: 30 };
 // Computador: faixas compactas como no Premiere (cabe tudo na janela, sem rolar).
 const LANE_D = { ...LANE_M, ruler: 24, capitulos: 22, legenda: 34, video: 48, audio: 38, pausas: 20, zoom: 22, broll: 26, midias: 28 };
 
-const LANE_RESIZABLE = ['capitulos', 'legenda', 'midias', 'txt', 'vfx', 'broll', 'zoom', 'kf', 'video', 'audio', 'pausas'];
+const LANE_RESIZABLE = ['capitulos', 'legenda', 'xcap', 'midias', 'txt', 'vfx', 'broll', 'zoom', 'kf', 'video', 'audio', 'pausas'];
 const LANE_MIN = { legenda: 22, video: 24, audio: 20, midias: 20, broll: 20 };
 
 /** Nome de uma faixa, na coluna fixa à esquerda da timeline. */

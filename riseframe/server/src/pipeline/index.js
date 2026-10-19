@@ -18,6 +18,7 @@ import { cleanupWithLLM } from './cleanupLLM.js';
 import { jobAccountToken } from '../account.js';
 import { burnCaptions, captionSfxEvents } from './captions.js';
 import { translateTranscript } from './translate.js';
+import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import { applySoundEffects } from './sfx.js';
 import { transitionVf, cutJoins } from './transitions.js';
 import { applyVideoFx } from './videofx.js';
@@ -111,6 +112,12 @@ export function visibleCaptions(transcript) {
     segments.push({ ...seg, start: words[0].start, end: Math.max(words[words.length - 1].end, moved ? words[words.length - 1].end : seg.end), text: words.map((w) => w.word).join(' '), words });
   }
   return { ...transcript, segments };
+}
+
+/** Legendas da fala + as adicionadas à mão (onde há uma à mão, ela vale). */
+export function withExtraCaptions(transcript, extras) {
+  if (!Array.isArray(extras) || !extras.length) return transcript;
+  return { ...transcript, segments: mergeExtraCaptions(transcript?.segments || [], extras, { drop: true }) };
 }
 
 /**
@@ -415,6 +422,14 @@ export async function runPipeline(job, onUpdate = () => {}) {
       // Efeitos de vídeo e textos livres também foram colocados na timeline original.
       if (Array.isArray(options.fxMoments)) options.fxMoments = options.fxMoments.map(remapRange).filter(Boolean);
       if (Array.isArray(options.textLayers)) options.textLayers = options.textLayers.map(remapRange).filter(Boolean);
+      // Legendas adicionadas à mão: mesmo remap (as que caíram num corte saem).
+      if (Array.isArray(options.extraCaptions)) {
+        options.extraCaptions = options.extraCaptions.map((c) => {
+          const start = remapTime(Number(c.start), keep);
+          const end = remapTime(Number(c.end), keep);
+          return end - start >= 0.2 ? { ...c, start: +start.toFixed(3), end: +end.toFixed(3) } : null;
+        }).filter(Boolean);
+      }
       // Quadros-chave do Transformar (tempo original) → mesma posição no vídeo cortado.
       if (Array.isArray(options.transitions)) options.transitions = options.transitions.map((tr) => ({ ...tr, t: +remapTime(Number(tr.t), keep).toFixed(3) }));
       // Velocidade por trecho e congelar quadro: do tempo original para o vídeo cortado.
@@ -599,7 +614,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     };
     captionStyle = style;
     // Tradução opcional: só muda o texto queimado; a transcrição do editor segue no original.
-    let captionTranscript = visibleCaptions(transcript);
+    let captionTranscript = withExtraCaptions(visibleCaptions(transcript), options.extraCaptions);
     let translation = null;
     if (options.captionLanguage) {
       try {
