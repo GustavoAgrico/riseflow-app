@@ -21,7 +21,7 @@ function Stat({ icon, label, value, tint }) {
 
 const QUICK = ['reels', 'tiktok', 'shorts', 'youtube', 'cortes'];
 
-export default function Dashboard({ user, onNewVideo, onLibrary, onTemplates, onOpen, onFormat }) {
+export default function Dashboard({ user, onNewVideo, onBlank, onLibrary, onTemplates, onOpen, onFormat }) {
   const first = (user?.name || '').split(' ')[0];
   const all = useMemo(() => listJobs(true), []);
   // estatísticas só com vídeos exportados; a lista mostra também os rascunhos
@@ -56,6 +56,11 @@ export default function Dashboard({ user, onNewVideo, onLibrary, onTemplates, on
             <button onClick={onNewVideo} style={{ display: 'inline-flex', alignItems: 'center', gap: 9, border: 'none', borderRadius: 14, background: GRAD, color: '#fff', padding: '15px 24px', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 14px 30px -12px rgba(255,107,53,0.7)' }}>
               <Icon name="plus" size={18} strokeWidth={2.4} /> Criar vídeo
             </button>
+            {onBlank && (
+              <button onClick={onBlank} title="Abre a timeline vazia com o painel de mídias (como no Premiere)" style={{ display: 'inline-flex', alignItems: 'center', gap: 9, border: `1px solid ${C.borderStrong || C.border}`, borderRadius: 14, background: 'rgba(255,255,255,0.05)', color: C.text, padding: '15px 22px', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <Icon name="film" size={18} strokeWidth={2} /> Timeline em branco
+              </button>
+            )}
           </div>
           {/* atalhos de formato */}
           <div style={{ position: 'relative', display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 20 }}>

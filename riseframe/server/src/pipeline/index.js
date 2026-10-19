@@ -1,4 +1,6 @@
 import path from 'node:path';
+import fs from 'node:fs';
+import { assembleSequence } from './sequence.js';
 import { config } from '../config.js';
 import { probeSummary, runFfmpeg, sdrVf, x264Fast } from './ffmpeg.js';
 import { transcribe } from './transcribe/index.js';
@@ -44,9 +46,10 @@ function buildPlan(mode, options) {
   let all;
   if (mode === 'transcribe') {
     all = [
+      { key: 'sequence', label: 'Montando a timeline', weight: 45, enabled: options.sequenceBuild === true },
       { key: 'probe', label: 'Sondando o vídeo', weight: 5, enabled: true },
       { key: 'transcribe', label: 'Transcrevendo a fala', weight: 95, enabled: true },
-    ];
+    ].filter((s) => s.enabled);
   } else if (mode === 'clips') {
     all = [
       { key: 'probe', label: 'Sondando o vídeo', weight: 3, enabled: true },
@@ -184,6 +187,13 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
   // Etapas deste job (o site mostra só as que vão rodar, na ordem certa).
   emit({ steps: plan.map((s) => ({ key: s.key, label: s.label })) });
+
+  // 0. Timeline em branco: junta os clipes da trilha V1 num vídeo só (vira o vídeo do editor).
+  if (job.sequence && has('sequence')) {
+    const st = enter('sequence');
+    if (!fs.existsSync(input)) await assembleSequence({ ...job.sequence, output: input, work }, st.onProgress);
+    report.sequence = { clips: job.sequence.clips.length, music: Boolean(job.sequence.music) };
+  }
 
   // 1. Probe
   enter('probe');

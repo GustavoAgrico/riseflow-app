@@ -7,6 +7,7 @@ import OptionsPanel, { Row, Toggle, Select, Swatches } from './components/Option
 import Result from './components/Result.jsx';
 import ClipsResult from './components/ClipsResult.jsx';
 import TimelineEditor from './components/TimelineEditor.jsx';
+import SequenceBuilder from './components/SequenceBuilder.jsx';
 import CreateWizard from './components/CreateWizard.jsx';
 import Processing from './components/Processing.jsx';
 import { presetPatch } from './components/CaptionGallery.jsx';
@@ -186,22 +187,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
         watchRender(created);
       } else if (editMode === 'editor') {
         const t = await transcribe(file, options, setUploadPct);
-        refreshBilling();
-        setPhase('transcribing');
-        setJob(t);
-        subscribeJob(t.id, (u) => {
-          setJob(u);
-          if (u.status === 'done') {
-            const tr = u.report?.transcript;
-            if (!tr?.segments?.length) return fail('não foi possível obter a transcrição');
-            setSourceId(u.report.sourceId || u.id);
-            setTranscriptData(tr);
-            setDurationSec(u.report?.input?.duration || 0);
-            recordDraft(u, u.report.sourceId || u.id);
-            setPhase('editing');
-          }
-          if (u.status === 'error') fail(u.error);
-        });
+        followTranscribe(t);
       } else {
         const created = await createJob(file, opts, setUploadPct);
         watchRender(created);
@@ -209,6 +195,28 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     } catch (e) {
       fail(e.message, 'upload');
     }
+  }
+
+  /** Acompanha a transcrição (vídeo enviado ou timeline montada) e abre o editor no fim. */
+  function followTranscribe(t) {
+    refreshBilling();
+    setPhase('transcribing');
+    setJob(t);
+    subscribeJob(t.id, (u) => {
+      setJob(u);
+      if (u.status === 'done') {
+        const fromSeq = u.fromSequence || u.report?.sequence;
+        const tr = u.report?.transcript || (fromSeq ? { segments: [] } : null);
+        // timeline montada só com imagens/música: abre sem fala (legenda vazia)
+        if (!tr?.segments?.length && !fromSeq) return fail('não foi possível obter a transcrição');
+        setSourceId(u.report.sourceId || u.id);
+        setTranscriptData({ ...tr, segments: tr.segments || [] });
+        setDurationSec(u.report?.input?.duration || 0);
+        recordDraft(u, u.report.sourceId || u.id);
+        setPhase('editing');
+      }
+      if (u.status === 'error') fail(u.error);
+    });
   }
 
   // Abre a timeline a partir de um resultado já processado (qualquer modo), usando
@@ -221,9 +229,10 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   }
 
   function openTimeline(doneJob) {
-    const tr = doneJob?.report?.editorTranscript || doneJob?.report?.transcript;
+    const fromSeq = doneJob?.fromSequence || doneJob?.report?.sequence;
+    const tr = doneJob?.report?.editorTranscript || doneJob?.report?.transcript || (fromSeq ? { segments: [] } : null);
     const sid = doneJob?.report?.sourceId;
-    if (!tr?.segments?.length || !sid) return;
+    if (!sid || !(tr?.segments?.length || fromSeq)) return;
     setSourceId(sid);
     setTranscriptData(tr);
     setDurationSec(doneJob?.report?.input?.duration || 0);
@@ -250,7 +259,8 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
         j = { filename: doc.meta?.title || entry.title, report: { sourceId: entry.sourceId, editorTranscript: { segments: segs, language: doc.meta?.language, provider: doc.meta?.provider }, input: { duration: doc.meta?.duration || 0 } } };
       }
       const tr = j?.report?.editorTranscript || j?.report?.transcript;
-      if (!tr?.segments?.length) {
+      const fromSeq = j?.fromSequence || j?.report?.sequence;
+      if (!tr?.segments?.length && !fromSeq) {
         throw new Error('este vídeo não tem transcrição guardada');
       }
       openTimeline(j);
@@ -368,7 +378,11 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
         </div>
       )}
 
-      {phase === 'setup' && !(reopen && reopening) && (
+      {phase === 'setup' && intent === 'sequence' && options && (
+        <SequenceBuilder options={options} onStart={(j) => { startedAtRef.current = Date.now(); followTranscribe(j); }} onCancel={onHome} />
+      )}
+
+      {phase === 'setup' && intent !== 'sequence' && !(reopen && reopening) && (
         <CreateWizard
           catalog={catalog}
           options={options}

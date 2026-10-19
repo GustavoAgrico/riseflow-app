@@ -39,7 +39,7 @@ class JobQueue extends EventEmitter {
     }
   }
 
-  create({ id: wantedId, filename, inputPath, options, mode = 'auto', editedTranscript = null, sourceId = null, ownerId = null }) {
+  create({ id: wantedId, filename, inputPath, options, mode = 'auto', editedTranscript = null, sourceId = null, ownerId = null, sequence = null }) {
     // id escolhido antes (app de PC/Mac: a cobrança no site já usa este id).
     const id = wantedId && !this.jobs.has(wantedId) ? wantedId : nanoid(12);
     const workDir = workDirFor(id);
@@ -61,6 +61,8 @@ class JobQueue extends EventEmitter {
       sourceId,
       // conta que enviou (para mostrar a fila dela; nunca vai para o cliente)
       ownerId,
+      // timeline em branco: clipes a montar antes de transcrever (nunca vai para o cliente)
+      ...(sequence ? { sequence } : {}),
       report: null,
       error: null,
       createdAt: Date.now(),
@@ -125,11 +127,13 @@ class JobQueue extends EventEmitter {
 
   /** Versão serializável (sem caminhos internos de disco nem payload de edição). */
   public(job) {
-    const { inputPath, workDir, outputsDir, editedTranscript, hold, ownerId, stopReason, ...rest } = job;
+    // sequence: caminhos dos arquivos da timeline montada — não vão para o cliente
+    const { inputPath, workDir, outputsDir, editedTranscript, hold, ownerId, stopReason, sequence, ...rest } = job;
     const queuePosition =
       job.status === 'queued' ? this.pending.indexOf(job.id) + (this.active ? 1 : 0) : 0;
     return {
       ...rest,
+      ...(sequence ? { fromSequence: true } : {}),
       queuePosition,
       // 'clips' não tem um único arquivo — cada clipe é baixado por /clips/:index.
       downloadUrl:
