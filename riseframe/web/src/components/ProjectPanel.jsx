@@ -125,13 +125,13 @@ export default function ProjectPanel({ library, onReloadLibrary, onAddLayer, sou
           <input ref={fileRef} type="file" multiple accept="video/*,image/*,audio/*" style={{ display: 'none' }} onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
           <button onClick={() => fileRef.current?.click()} disabled={!!busy} style={{ ...btn(true), marginLeft: 'auto' }}>{busy && busy.startsWith('Enviando') ? busy : '+ Importar'}</button>
         </div>
-        <div style={{ fontSize: 11, color: C.faint }}>Arraste arquivos para cá. Em cada mídia: <b>Camada</b> põe por cima do vídeo no ponto atual · <b>V1</b> põe no vídeo principal.</div>
+        <div style={{ fontSize: 11, color: C.faint }}>Arraste arquivos para cá. Em cada mídia: <b>Camada</b> põe por cima do vídeo no ponto atual · <b>V1</b> põe no vídeo principal · ou arraste a mídia direto para a faixa V1 da timeline.</div>
         {library === null ? <div style={{ fontSize: 12, color: C.faint }}>Carregando…</div> : library.length === 0 ? (
           <div style={{ fontSize: 12, color: C.faint }}>Nenhuma mídia ainda — importe vídeos, áudios e imagens.</div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8, maxHeight: 290, overflowY: 'auto' }}>
             {library.map((it) => (
-              <div key={it.id} draggable={it.status === 'ok' && it.kind !== 'audio'} onDragStart={(e) => e.dataTransfer.setData('text/rf-media', it.id)} style={{ display: 'grid', gap: 3, opacity: it.status === 'ok' ? 1 : 0.4 }} title={it.filename}>
+              <div key={it.id} draggable={it.status === 'ok'} onDragStart={(e) => { e.dataTransfer.setData('text/rf-media', it.id); e.dataTransfer.effectAllowed = 'copy'; }} style={{ display: 'grid', gap: 3, opacity: it.status === 'ok' ? 1 : 0.4 }} title={it.filename}>
                 <div style={{ position: 'relative', aspectRatio: '16 / 10', borderRadius: 7, overflow: 'hidden', background: '#0E0E14', border: `1px solid ${C.border}` }}>
                   <MediaThumb it={it} />
                   {it.durationSec ? <span style={{ position: 'absolute', right: 3, bottom: 3, fontSize: 9.5, background: 'rgba(0,0,0,0.7)', borderRadius: 4, padding: '0 4px' }}>{fmt(it.durationSec)}</span> : null}

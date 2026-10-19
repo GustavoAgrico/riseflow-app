@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { C, GRAD, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
+import { sourceUrl, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, createSequence, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -1799,6 +1799,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   /** Coloca uma mídia (recém-enviada ou da biblioteca) na timeline, no ponto atual. */
   function addMediaItem(info, extra = null, file = null) {
         const srcDur = Number(info.durationSec) || (info.kind === 'image' ? 4 : 5);
+        const at = extra?.start != null ? Math.max(0, Math.min(dur - 0.3, Number(extra.start))) : cur; // onde soltou ou o playhead
         setMedia((prev) => [
           ...prev,
           {
@@ -1811,7 +1812,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             fadeIn: 0,
             fadeOut: 0,
             srcDuration: srcDur,
-            start: +cur.toFixed(2), // entra no ponto atual do playhead
+            start: +at.toFixed(2), // entra no ponto atual do playhead (ou onde soltou)
             duration: info.kind === 'audio' ? Math.min(srcDur, dur) : Math.min(info.kind === 'image' ? 4 : srcDur, 8),
             mode: 'cover', // cobre a tela (visual). PiP = canto.
             volume: info.kind === 'video' ? 1 : 0.35, // vídeo: som original · música: de fundo
@@ -1823,8 +1824,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             animOut: 'none',
             blend: 'normal', // modo de mesclagem (só tela cheia)
             offset: 0, // ponto de início no arquivo (aparar/dividir)
-            layer: freeLayer(prev, cur, info.kind === 'audio' ? Math.min(srcDur, dur) : Math.min(info.kind === 'image' ? 4 : srcDur, 8)),
+            layer: freeLayer(prev, at, info.kind === 'audio' ? Math.min(srcDur, dur) : Math.min(info.kind === 'image' ? 4 : srcDur, 8)),
             ...(extra || {}),
+            start: +at.toFixed(2),
           },
         ]);
   }
@@ -1913,8 +1915,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setTplMsg(`Modelo "${t.name}" aplicado.`);
   }
   /** Antes de remontar o vídeo principal: o estilo deste vídeo segue para o novo. */
-  function carryStyleNow() {
-    try { sessionStorage.setItem('rf_carry_style', JSON.stringify(templateData())); } catch { /* sem armazenamento: começa do padrão */ }
+  function carryStyleNow(mapT = null) {
+    const d = templateData();
+    // vídeo principal remontado com os tempos mudados (clipe inserido / cortes aplicados):
+    // camadas e textos acompanham o ponto do vídeo em que estavam
+    if (mapT) {
+      d.textLayers = d.textLayers.map((l) => (l.whole ? l : { ...l, start: mapT(l.start), end: mapT(l.start) + (l.end - l.start) }));
+      d.media = d.media.map((m) => (m.whole ? m : { ...m, start: mapT(m.start) }));
+    }
+    try { sessionStorage.setItem('rf_carry_style', JSON.stringify(d)); } catch { /* sem armazenamento: começa do padrão */ }
   }
   async function removeTemplate(t) {
     if (!window.confirm(`Apagar o modelo "${t.name}"?`)) return;
@@ -3072,9 +3081,123 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setTimeout(() => setFxNote(''), 2200);
   }
   const fxDragOver = (e) => { if (!dragFx) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; };
-  function onTimelineDragOver(e) { if (!dragFx) return; fxDragOver(e); setDropT(timeAtClientX(e.clientX)); }
-  function onTimelineDrop(e) { if (!dragFx) return; e.preventDefault(); addEffectAt(dragFx, timeAtClientX(e.clientX)); setDragFx(null); setDropT(null); }
-  function onPreviewDrop(e) { if (!dragFx) return; e.preventDefault(); addEffectAt(dragFx, cur); setDragFx(null); setDropT(null); }
+  function onTimelineDragOver(e) { if (onLibDragOver(e)) return; if (!dragFx) return; fxDragOver(e); setDropT(timeAtClientX(e.clientX)); }
+  function onTimelineDrop(e) { if (onLibDrop(e)) return; if (!dragFx) return; e.preventDefault(); addEffectAt(dragFx, timeAtClientX(e.clientX)); setDragFx(null); setDropT(null); }
+  function onPreviewDragOver(e) { if (isLibDrag(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; return; } fxDragOver(e); }
+  function onPreviewDrop(e) {
+    if (isLibDrag(e)) { e.preventDefault(); const it = libItemOf(e); if (it?.status === 'ok') addMediaItem(it); return; }
+    if (!dragFx) return; e.preventDefault(); addEffectAt(dragFx, cur); setDragFx(null); setDropT(null);
+  }
+
+  // ── Arrastar da biblioteca para a timeline (como no Premiere) ──
+  // Solto na faixa V1: o clipe ENTRA no vídeo principal naquele ponto (o vídeo é montado de
+  // novo, com os cortes grandes já aplicados). Solto em outra faixa ou na prévia: vira camada.
+  const [libDrop, setLibDrop] = useState(null); // { t, v1 } durante o arrasto
+  const [v1Busy, setV1Busy] = useState('');
+  const isLibDrag = (e) => Array.from(e.dataTransfer?.types || []).includes('text/rf-media');
+  const libItemOf = (e) => (library || []).find((x) => x.id === e.dataTransfer.getData('text/rf-media'));
+  const onV1Lane = (e) => !!e.target?.closest?.('[data-lane="v1"]');
+  useEffect(() => {
+    const end = () => setLibDrop(null);
+    window.addEventListener('dragend', end);
+    window.addEventListener('drop', end);
+    return () => { window.removeEventListener('dragend', end); window.removeEventListener('drop', end); };
+  }, []);
+  function onLibDragOver(e) {
+    if (!isLibDrag(e)) return false;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    const t = timeAtClientX(e.clientX);
+    const v1 = onV1Lane(e);
+    setLibDrop((d) => (d && Math.abs(d.t - t) < 0.01 && d.v1 === v1 ? d : { t, v1 }));
+    return true;
+  }
+  function onLibDrop(e) {
+    if (!isLibDrag(e)) return false;
+    e.preventDefault();
+    const it = libItemOf(e);
+    const t = timeAtClientX(e.clientX);
+    const v1 = onV1Lane(e);
+    setLibDrop(null);
+    if (!it || it.status !== 'ok') return true;
+    if (v1 && it.kind !== 'audio') insertIntoV1(it, t);
+    else addMediaItem(it, { start: t });
+    return true;
+  }
+  /** Insere a mídia no vídeo principal no ponto t (tempo do vídeo atual) e remonta. */
+  async function insertIntoV1(it, t) {
+    if (v1Busy) return;
+    setV1Busy('Preparando…');
+    try {
+      const j = await getJob(sourceId).catch(() => null);
+      const lenOf = (c) => (c.kind === 'image' ? Math.max(0.5, +c.duration || 3) : Math.max(0.3, (+c.out || 0) - (+c.in || 0)));
+      // o que forma o vídeo principal hoje: os clipes da montagem (ou nenhum, se em branco) ou o vídeo enviado
+      const base = j?.fromSequence && Array.isArray(j.sequenceClips)
+        ? j.sequenceClips.map((c) => ({ ...c, in: +c.in || 0, out: +c.out || 0 }))
+        : [{ sourceId, kind: 'video', filename: projectTitle || j?.filename || 'Vídeo', in: 0, out: dur }];
+      // cortes grandes (frases tiradas, trechos excluídos) entram já aplicados; as pausas curtas a
+      // transcrição nova acha e corta de novo (e o servidor aceita até 80 clipes)
+      let minGap = 0.8;
+      let cutGaps;
+      do { cutGaps = gaps.filter(([a, b]) => b - a >= minGap); minGap *= 2; } while (cutGaps.length > 60 && minGap < 600);
+      const keep = [];
+      let p0 = 0;
+      for (const [a, b] of cutGaps) { if (a > p0) keep.push([p0, a]); p0 = Math.max(p0, b); }
+      if (dur > p0) keep.push([p0, dur]);
+      const slice = (a, b) => {
+        const res = [];
+        let acc = 0;
+        for (const c of base) {
+          const L = lenOf(c);
+          const s0 = Math.max(a, acc);
+          const e0 = Math.min(b, acc + L);
+          if (e0 - s0 > 0.05) res.push(c.kind === 'image' ? { ...c, duration: e0 - s0 } : { ...c, in: c.in + (s0 - acc), out: c.in + (e0 - acc) });
+          acc += L;
+        }
+        return res;
+      };
+      const newPos = (x) => x - cutGaps.reduce((sum, [a, b]) => sum + (x >= b ? b - a : x > a ? x - a : 0), 0);
+      const at = newPos(t);
+      const add = it.kind === 'video'
+        ? { mediaId: it.id, kind: 'video', filename: it.filename, in: 0, out: Number(it.durationSec) || 5 }
+        : { mediaId: it.id, kind: 'image', filename: it.filename, duration: 3 };
+      const insLen = lenOf(add);
+      const out = [];
+      let acc = 0;
+      let placed = false;
+      for (const c of keep.flatMap(([a, b]) => slice(a, b))) {
+        const L = lenOf(c);
+        if (!placed && at < acc + L - 0.05) {
+          const off = at - acc;
+          if (off <= 0.05) out.push(add, c);
+          else if (c.kind === 'image') out.push({ ...c, duration: off }, add, { ...c, duration: L - off });
+          else out.push({ ...c, out: c.in + off }, add, { ...c, in: c.in + off });
+          placed = true;
+        } else out.push(c);
+        acc += L;
+      }
+      if (!placed) out.push(add);
+      if (out.length > 80) throw new Error('O vídeo principal ficaria com clipes demais (máximo 80). Junte alguns na aba Projeto.');
+      if (!window.confirm(`Colocar "${it.filename}" no vídeo principal (V1) em ${fmtDuration(at)}?\n\nO vídeo é montado de novo com o clipe nesse ponto e a fala é transcrita de novo. Os cortes grandes já feitos continuam aplicados; legenda, camadas, textos, cor e efeitos continuam.`)) return;
+      setV1Busy('Montando o vídeo principal…');
+      const job = await createSequence({
+        title: projectTitle || 'Timeline',
+        aspect: j?.sequenceAspect && !j.blankTimeline ? j.sequenceAspect : 'auto',
+        options,
+        clips: out.map((c) => (c.sourceId
+          ? { sourceId: c.sourceId, filename: c.filename, in: +c.in.toFixed(2), out: +c.out.toFixed(2) }
+          : { mediaId: c.mediaId, ...(c.kind === 'video' ? { in: +c.in.toFixed(2), out: +c.out.toFixed(2) } : { duration: +c.duration.toFixed(2) }) })),
+        ...(j?.sequenceMusic?.mediaId ? { music: { mediaId: j.sequenceMusic.mediaId, volume: j.sequenceMusic.volume ?? 0.35 } } : {}),
+      });
+      // camadas e textos seguem o ponto do vídeo em que estavam (depois do clipe, andam junto)
+      carryStyleNow((x) => { const n = newPos(x); return +(n >= at ? n + insLen : n).toFixed(2); });
+      onRebuild?.(job);
+    } catch (e) {
+      window.alert(e.message || 'Não deu para colocar no vídeo principal.');
+    } finally {
+      setV1Busy('');
+    }
+  }
   const sfxAudioRef = useRef(null);
   function playSfx(id) {
     try {
@@ -4027,6 +4150,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {!isMobile && layoutPanel}
       {tplPanel}
       {capDialog}
+      {v1Busy && createPortal(
+        <div role="status" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 960, padding: '10px 16px', borderRadius: 999, background: '#1E3A8A', color: '#fff', fontSize: 13, fontWeight: 700, boxShadow: '0 12px 30px -10px rgba(0,0,0,0.8)' }}>{v1Busy}</div>,
+        document.body,
+      )}
       {isMobile && (
         <div className="rf-m-top">
           <button onClick={onBack} disabled={busy} aria-label="Fechar o editor" style={mIconBtn}><Icon name="close" size={22} strokeWidth={2} /></button>
@@ -4133,7 +4260,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {/* Vídeo principal + prévia 9:16 do ajuste, LADO A LADO (mesma linha) */}
           {/* Vídeo e prévia do formato centralizados, lado a lado e com a MESMA altura:
               cada um ocupa uma fatia da largura proporcional ao seu formato. */}
-          <div onDragOver={fxDragOver} onDrop={onPreviewDrop} className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}${singleMon ? ' rf-tl-pv--one' : ''}`} style={{ '--main-share': showFormatPreview ? (mainAr / (mainAr + fmtAr)).toFixed(4) : 1, '--fmt-share': singleMon ? 1 : showFormatPreview ? (fmtAr / (mainAr + fmtAr)).toFixed(4) : 1, containerType: 'inline-size', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(194,65,12,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
+          <div onDragOver={onPreviewDragOver} onDrop={onPreviewDrop} className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}${singleMon ? ' rf-tl-pv--one' : ''}`} style={{ '--main-share': showFormatPreview ? (mainAr / (mainAr + fmtAr)).toFixed(4) : 1, '--fmt-share': singleMon ? 1 : showFormatPreview ? (fmtAr / (mainAr + fmtAr)).toFixed(4) : 1, containerType: 'inline-size', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(194,65,12,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
             <div className="rf-tl-main" style={{ flex: '0 0 auto', minWidth: 0 }}>
               <div style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${mainAr.toFixed(4)}), calc((100cqw - ${showFormatPreview ? 16 : 0}px) * var(--main-share)))`, aspectRatio: `${mainAr}`, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
                 <video ref={videoRef} src={srcUrl} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim({ w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
@@ -5127,7 +5254,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ marginTop: 12, border: `1px solid ${C.border}`, borderRadius: 10, padding: 9, background: 'rgba(255,255,255,0.02)' }}>
                 <button onClick={() => setLibOpen((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', background: 'none', border: 'none', color: C.text, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
                   {libOpen ? '▾' : '▸'} Sua biblioteca {library ? <span style={{ fontWeight: 500, color: C.faint }}>· {library.length} arquivo(s) guardado(s)</span> : null}
-                  <span style={{ marginLeft: 'auto', fontWeight: 500, color: C.faint, fontSize: 10.5 }}>clique para pôr no ponto atual</span>
+                  <span style={{ marginLeft: 'auto', fontWeight: 500, color: C.faint, fontSize: 10.5 }}>clique: ponto atual · arraste para a timeline (V1 = vídeo principal)</span>
                 </button>
                 {libOpen && (library === null ? (
                   <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Carregando…</div>
@@ -5136,7 +5263,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))', gap: 6, marginTop: 8, maxHeight: 220, overflowY: 'auto' }}>
                     {library.map((it) => (
-                      <div key={it.id} style={{ position: 'relative' }}>
+                      <div key={it.id} style={{ position: 'relative' }} draggable={!isMobile && it.status === 'ok'}
+                        onDragStart={(e) => { e.dataTransfer.setData('text/rf-media', it.id); e.dataTransfer.effectAllowed = 'copy'; }}>
                         <button onClick={() => it.status === 'ok' && addMediaItem(it)} disabled={it.status !== 'ok'} title={it.status === 'ok' ? `${it.filename} — colocar no ponto atual` : `${it.filename} — arquivo não encontrado`}
                           style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: `1px solid ${C.border}`, background: '#0E0E14', cursor: it.status === 'ok' ? 'pointer' : 'not-allowed', padding: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', opacity: it.status === 'ok' ? 1 : 0.4 }}>
                           <MediaThumb it={it} fit={it.kind === 'image' ? 'contain' : 'cover'} />
@@ -5440,7 +5568,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div ref={trackRef} onClick={onTrackClick} onScroll={onTrackScroll} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
-            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropT(null); }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
+            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setDropT(null); setLibDrop(null); } }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
             {/* ferramenta de seleção: arrastar em qualquer faixa marca o trecho (todas as faixas) */}
             {razorTool && !isMobile && (
               <div onMouseMove={(e) => setRazorT(timeAtClientX(e.clientX))} onMouseLeave={() => setRazorT(null)}
@@ -5749,9 +5877,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             )}
             {/* Faixa de vídeo: miniaturas + cortes desenhados arrastando */}
             <div
+              data-lane="v1"
               onMouseDown={startCutDraw}
-              title="Arraste para selecionar um trecho (Delete exclui) · clique seleciona o pedaço"
-              style={{ position: 'relative', height: LANE.video, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${isMobile ? C.border : '#3B6FD6'}`, background: 'rgba(0,0,0,0.45)', cursor: 'crosshair', ...lk('vid') }}
+              title="Arraste para selecionar um trecho (Delete exclui) · clique seleciona o pedaço · solte uma mídia da biblioteca aqui para pôr no vídeo principal"
+              style={{ position: 'relative', height: LANE.video, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${isMobile ? C.border : '#3B6FD6'}`, background: 'rgba(0,0,0,0.45)', cursor: 'crosshair', ...lk('vid'), ...(libDrop?.v1 ? { boxShadow: '0 0 0 2px #3B82F6, 0 0 18px rgba(59,130,246,0.55)' } : null) }}
             >
               {keptPieces.map(([a, b]) => (
                 <div key={a} style={{ position: 'absolute', top: 0, bottom: 0, left: X(a), width: W(a, b), backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: `${dur * pps}px 100%`, backgroundPosition: `${-a * pps}px 0`, backgroundRepeat: 'no-repeat', boxShadow: gaps.length ? 'inset -1px 0 0 rgba(0,0,0,0.6)' : 'none' }} />
@@ -5930,6 +6059,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {markers.map((mk) => (
               <div key={mk.key} style={{ position: 'absolute', left: X(mk.t), top: LANE.ruler, bottom: 0, width: 0, borderLeft: '1px dashed rgba(60,196,107,0.45)', pointerEvents: 'none', zIndex: 5 }} />
             ))}
+            {libDrop && (
+              <div style={{ position: 'absolute', left: X(libDrop.t), top: 0, bottom: 0, width: 2, marginLeft: -1, background: libDrop.v1 ? '#3B82F6' : '#22D3EE', boxShadow: `0 0 8px ${libDrop.v1 ? '#3B82F6' : '#22D3EE'}`, pointerEvents: 'none', zIndex: 22 }}>
+                <span style={{ position: 'absolute', top: 2, left: 6, whiteSpace: 'nowrap', fontSize: 10.5, fontWeight: 700, color: '#fff', background: libDrop.v1 ? '#2563EB' : '#0E7490', borderRadius: 5, padding: '1px 6px' }}>
+                  {libDrop.v1 ? 'Inserir no vídeo principal (V1)' : 'Camada'} · {fmtDuration(libDrop.t)}
+                </span>
+              </div>
+            )}
             {dragFx && dropT != null && (
               <div style={{ position: 'absolute', left: X(dropT), top: 0, bottom: 0, width: 2, marginLeft: -1, background: '#22D3EE', boxShadow: '0 0 8px #22D3EE', pointerEvents: 'none', zIndex: 22 }}>
                 <span style={{ position: 'absolute', top: 2, left: 6, whiteSpace: 'nowrap', fontSize: 10.5, fontWeight: 700, color: '#04202a', background: '#22D3EE', borderRadius: 5, padding: '1px 6px' }}>{dragFx.label} · {fmtDuration(dropT)}</span>
