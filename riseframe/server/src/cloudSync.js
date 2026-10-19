@@ -19,7 +19,7 @@ const log = makeLogger('nuvem');
  * CLOUD_SYNC=off desliga. O bucket (CLOUD_BUCKET, padrão riseframe-data) é criado
  * sozinho como PRIVADO: só o servidor, com a chave secreta, lê e grava.
  */
-export const SYNCED = ['users.json', 'billing.json', 'settings.json', 'auth_secret'];
+export const SYNCED = ['users.json', 'billing.json', 'settings.json', 'templates.json', 'auth_secret'];
 const SAVE_DELAY_MS = 1500;
 const RETRY_MS = 30_000;
 const WATCH_MS = 5 * 60_000; // logo após subir, confere se o servidor antigo gravou algo

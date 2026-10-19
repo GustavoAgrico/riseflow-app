@@ -641,6 +641,14 @@ export const mediaFileUrl = (id, v = '') => `${BASE}/media/${id}/file${v ? `?v=$
 /** Vídeo que o navegador toca (H.264 leve quando o original é HEVC/ProRes/10 bits/HDR…). */
 export const mediaPreviewUrl = (id, v = '') => `${BASE}/media/${id}/preview${v ? `?v=${v}` : ''}`;
 export const mediaStatus = (id) => jsonReq('GET', `${BASE}/media/${id}/status`);
+/** Biblioteca: tudo o que a conta já enviou (fica guardado para reusar). */
+export const getMediaLibrary = () => jsonReq('GET', `${BASE}/media/library`).then((d) => d.media || []);
+export const removeLibraryMedia = (id) => jsonReq('DELETE', `${BASE}/media/library/${encodeURIComponent(id)}`);
+/** Meus modelos (estilo da legenda, mídias, textos, cor…). */
+export const listTemplatesApi = () => jsonReq('GET', `${BASE}/templates`).then((d) => d.templates || []);
+export const saveTemplateApi = (t) => jsonReq('POST', `${BASE}/templates`, t);
+export const deleteTemplateApi = (id) => jsonReq('DELETE', `${BASE}/templates/${encodeURIComponent(id)}`).then((d) => d.templates || []);
+export const defaultTemplateApi = (id, off = false) => jsonReq('POST', `${BASE}/templates/${encodeURIComponent(id)}/default`, { off }).then((d) => d.templates || []);
 export const sourceStatus = (id) => jsonReq('GET', `${BASE}/jobs/${id}/source/status`);
 
 /** Localizar o arquivo de novo (mesmo id): caminho no app de PC, senão envia o arquivo. */

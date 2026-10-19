@@ -29,6 +29,9 @@ export async function cleanupOldOutputs() {
       const job = queue.get(id);
       if (job?.inputPath) keep.add(path.parse(job.inputPath).name);
     }
+    // biblioteca de mídias das contas: o que o usuário enviou fica guardado
+    const { libraryIds } = await import('./mediaStore.js');
+    for (const id of libraryIds()) keep.add(id);
   } catch {
     /* sem projetos: limpeza normal */
   }
