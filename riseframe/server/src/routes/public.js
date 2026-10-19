@@ -24,8 +24,9 @@ publicRouter.get('/public/info', (_req, res) => {
     retentionHours: config.outputTtlHours || 0,
     maxUploadBytes: config.maxUploadBytes || 0,
     formats: ['MP4', 'MOV', 'MKV', 'WEBM', 'AVI', 'M4V'],
-    supportEmail: process.env.SUPPORT_EMAIL || '',
-    supportWhatsapp: process.env.SUPPORT_WHATSAPP || '',
+    // Contato para dúvidas (aparece no site e no app).
+    supportEmail: process.env.SUPPORT_EMAIL || 'contato@riseframe.com.br',
+    supportWhatsapp: process.env.SUPPORT_WHATSAPP || '(11) 97421-6693',
     showcase: showcaseInfo(),
   });
 });

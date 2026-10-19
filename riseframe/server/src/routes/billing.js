@@ -3,8 +3,9 @@ import express, { Router } from 'express';
 import { requireAuth, requireVerified } from './auth.js';
 import {
   adminGrant, approveClaim, billingEnabled, billingStatus, cancelSubscription, createCheckout, createPixClaim, claimSummary, resendClaimNotice, checkContact, sendContactCode, verifyContactCode,
-  listClaims, rejectClaim, renewSubscriptions, sendReminders, syncPayments,
+  listClaims, rejectClaim, renewSubscriptions, sendReminders, syncPayments, pixCharge, customersTable,
 } from '../auth/billing.js';
+import QRCode from 'qrcode';
 import { config } from '../config.js';
 import { verifyLink } from '../auth/tokens.js';
 import { makeLogger } from '../logger.js';
@@ -95,6 +96,19 @@ billingRouter.post('/billing/pix/claim', requireAuth, requireVerified, async (re
   }
 });
 
+// POST /api/billing/pix/qr { kind, itemId } → { brCode, qr (SVG em data URL), amountCents, txid }
+// Pix copia e cola + QR Code com o valor exato, gerados aqui (sem abrir o banco).
+billingRouter.post('/billing/pix/qr', requireAuth, requireVerified, async (req, res) => {
+  try {
+    const { kind, itemId } = req.body || {};
+    const c = pixCharge(req.user, String(kind || ''), String(itemId || ''));
+    const svg = await QRCode.toString(c.brCode, { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#FFFFFF' } });
+    res.set('Cache-Control', 'no-store').json({ ...c, qr: `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}` });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 // ── Confirmar o Pix direto pelo botão do e-mail do admin ──
 // GET mostra a página com os dados e os botões; só o POST (clique) confirma ou recusa.
 // Assim, robôs que abrem links de e-mail (antivírus, Gmail) não confirmam nada sozinhos.
@@ -167,6 +181,11 @@ function requireAdmin(req, res, next) {
   if (!billingStatus(req.user).admin) return res.status(403).json({ error: 'só para administradores' });
   next();
 }
+
+// GET /api/billing/admin/customers → tabela de clientes (plano, vencimento, pagamentos, contato)
+billingRouter.get('/billing/admin/customers', requireAuth, requireAdmin, (_req, res) => {
+  res.set('Cache-Control', 'no-store').json({ customers: customersTable(), periodDays: config.billing.periodDays, at: new Date().toISOString() });
+});
 
 billingRouter.get('/billing/admin/claims', requireAuth, requireAdmin, (_req, res) => {
   res.json(listClaims());
