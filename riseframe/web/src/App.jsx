@@ -419,6 +419,8 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
       {transcriptData && (phase === 'editing' || (phase === 'processing' && editorRender)) && (
         <div className="rf-anim" style={phase === 'editing' ? undefined : { display: 'none' }}>
           <TimelineEditor
+            key={sourceId}
+            onRebuild={(j) => { startedAtRef.current = Date.now(); followTranscribe(j); }}
             hidden={phase !== 'editing'}
             jobError={editorError}
             transcript={transcriptData}
