@@ -34,6 +34,7 @@ const CAPTION_TEMPLATE_IDS = Object.keys(CAPTION_TEMPLATES);
 import { CAPTION_LANGUAGES } from '../pipeline/translate.js';
 import { MOMENT_EFFECTS, cleanKeys } from '../../../shared/transform.js';
 import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
+import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
 import { SFX_LIBRARY } from '../pipeline/sfx.js';
 import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
@@ -605,6 +606,8 @@ export function parseOptions(raw) {
     // Efeitos de vídeo nos momentos e textos livres (tempo original).
     fxMoments: cleanFxMoments(o.fxMoments),
     textLayers: cleanTextLayers(o.textLayers, Object.keys(CAPTION_FONTS)),
+    // Legendas adicionadas à mão na timeline (tempo original), no estilo das automáticas.
+    extraCaptions: cleanExtraCaptions(o.extraCaptions),
     // ── Restaurados (tinham sumido numa atualização e o servidor descartava: cortes da
     // timeline, volume, formato, força do corte de silêncio, clipes e minhas mídias).
     // Volume da fala: geral, mudo e trechos com volume próprio (tempo original).
