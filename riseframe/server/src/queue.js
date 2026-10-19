@@ -139,6 +139,7 @@ class JobQueue extends EventEmitter {
         sequenceClips: (sequence.clips || []).map(({ mediaId, sourceId, filename, kind, in: a, out, duration }) => ({ mediaId, sourceId, filename, kind, in: a, out, duration })),
         sequenceMusic: sequence.music ? { mediaId: sequence.music.mediaId, filename: sequence.music.filename, volume: sequence.music.volume } : null,
         sequenceAspect: sequence.aspect || 'auto',
+        ...(sequence.blank ? { blankTimeline: true } : {}),
       } : {}),
       queuePosition,
       // 'clips' não tem um único arquivo — cada clipe é baixado por /clips/:index.

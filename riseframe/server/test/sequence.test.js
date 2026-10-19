@@ -110,3 +110,25 @@ test('timeline em branco: mídias da conta viram o vídeo do editor', { timeout:
   const empty = await fetch(`${base}/sequence`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ clips: [] }) });
   assert.equal(empty.status, 400);
 });
+
+test('timeline em branco: abre na hora, sem cobrar e sem clipes', { timeout: 120000 }, async () => {
+  const base = await startServer();
+  const token = (await (await fetch(`${base}/auth/register`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'vazio@exemplo.com', password: 'senha12345' }) })).json()).token;
+  const auth = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+  const r = await fetch(`${base}/sequence/blank`, { method: 'POST', headers: auth, body: JSON.stringify({ title: 'Nova timeline' }) });
+  assert.equal(r.status, 201);
+  const job = await r.json();
+  assert.equal(job.blankTimeline, true);
+  assert.deepEqual(job.sequenceClips, []);
+  let done;
+  for (let i = 0; i < 200; i++) {
+    done = await (await fetch(`${base}/jobs/${job.id}`, { headers: auth })).json();
+    if (done.status === 'done' || done.status === 'error') break;
+    await new Promise((res) => setTimeout(res, 150));
+  }
+  assert.equal(done.status, 'done', done.error);
+  assert.equal(done.report.sequence.blank, true);
+  assert.equal(done.report.input.width, 1080);
+  assert.equal(done.report.input.height, 1920);
+  assert.equal(done.report.transcript.segments.length, 0, 'sem fala');
+});

@@ -13,6 +13,8 @@ const log = makeLogger('sequence');
  * Formatos diferentes no mesmo vídeo: cada clipe entra INTEIRO no quadro, com o próprio
  * clipe ampliado e desfocado preenchendo o fundo (sem tarja preta).
  */
+/** Duração do quadro vazio da timeline em branco (antes de pôr os clipes). */
+export const BLANK_SEC = 10;
 const SIZES = { '9:16': [1080, 1920], '16:9': [1920, 1080], '1:1': [1080, 1080], '4:5': [1080, 1350] };
 const even = (n) => Math.max(2, Math.round(n / 2) * 2);
 const f3 = (n) => Number(n).toFixed(3);
@@ -69,8 +71,17 @@ export function sequenceParts(clips, { W, H, fps = 30, music = null, musicIdx = 
  * Monta a sequência em `output`. clips: [{ file, kind: 'video'|'image', in, out, duration }]
  * music: { file, volume } | null. aspect: 'auto' | '9:16' | '16:9' | '1:1' | '4:5'.
  */
-export async function assembleSequence({ clips, music = null, aspect = 'auto', output, work }, onProgress = () => {}) {
+export async function assembleSequence({ clips, music = null, aspect = 'auto', output, work, blank = false }, onProgress = () => {}) {
   const list = (clips || []).filter((c) => c?.file && (c.kind === 'video' || c.kind === 'image'));
+  // Timeline em branco: um quadro preto (sem som) só para abrir o editor; os clipes entram
+  // depois pela aba Projeto (V1).
+  if (!list.length && blank) {
+    const [W, H] = frameSize(aspect === 'auto' ? '9:16' : aspect);
+    await runFfmpeg(['-f', 'lavfi', '-i', `color=c=black:s=${W}x${H}:r=30:d=${BLANK_SEC}`, ...x264Fast(), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-y', output],
+      { label: 'sequence', totalDuration: BLANK_SEC, onProgress });
+    log.ok(`timeline em branco: ${W}x${H}`);
+    return { output, duration: BLANK_SEC, width: W, height: H };
+  }
   if (!list.length) throw new Error('a timeline está vazia — coloque pelo menos um vídeo ou imagem');
   for (const c of list) {
     const m = await probeSummary(c.file).catch(() => null);

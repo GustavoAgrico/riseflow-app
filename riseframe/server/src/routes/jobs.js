@@ -784,6 +784,22 @@ jobsRouter.post('/transcribe', requireAuth, requireVerified, requireCredits('tra
   });
 });
 
+// POST /api/sequence/blank  { aspect, title } → timeline em branco: abre o editor na hora
+// (quadro vazio, sem fala), sem cobrar; os clipes entram depois pela aba Projeto.
+jobsRouter.post('/sequence/blank', requireAuth, requireVerified, (req, res) => {
+  const body = req.body || {};
+  const aspect = ['9:16', '16:9', '1:1', '4:5'].includes(body.aspect) ? body.aspect : '9:16';
+  const job = queue.create({
+    mode: 'transcribe',
+    filename: fixName(String(body.title || '').trim().slice(0, 80) || 'Timeline'),
+    inputPath: path.join(config.paths.uploads, `seq_${nanoid(12)}.mp4`),
+    options: { ...optionsForUser(req), sequenceBuild: true },
+    sequence: { clips: [], music: null, aspect, blank: true },
+    ownerId: req.user?.id || null,
+  });
+  res.status(201).json(queue.public(job));
+});
+
 // POST /api/sequence  (JSON: { clips: [{ mediaId, in, out, duration }], music, aspect, title })
 // "Timeline em branco": os clipes da trilha V1 (mídias já enviadas) viram UM vídeo que abre
 // no editor — como montar a sequência no Premiere. Cobra como um vídeo novo.

@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { C, GRAD, gradientText, glass, FONT_DISPLAY } from './theme.js';
-import { getOptions, getHealth, getSettings, createJob, transcribe, generateClips, renderEdited, subscribeJob, sampleFile, getJob, editClip, loadProject } from './api.js';
+import { getOptions, getHealth, getSettings, createJob, transcribe, generateClips, renderEdited, subscribeJob, sampleFile, getJob, editClip, loadProject, createBlankTimeline } from './api.js';
 import { PrimaryButton, Card, Spinner } from './components/ui.jsx';
 import Icon, { Logo } from './components/Icon.jsx';
 import OptionsPanel, { Row, Toggle, Select, Swatches } from './components/OptionsPanel.jsx';
 import Result from './components/Result.jsx';
 import ClipsResult from './components/ClipsResult.jsx';
 import TimelineEditor from './components/TimelineEditor.jsx';
-import SequenceBuilder from './components/SequenceBuilder.jsx';
+
 import CreateWizard from './components/CreateWizard.jsx';
 import Processing from './components/Processing.jsx';
 import { presetPatch } from './components/CaptionGallery.jsx';
@@ -197,6 +197,17 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     }
   }
 
+  // Timeline em branco: abre o editor direto (sem clipes), já na aba Projeto.
+  const [blankError, setBlankError] = useState('');
+  const [editorTab, setEditorTab] = useState(null);
+  const blankStarted = useRef(false);
+  useEffect(() => {
+    if (intent !== 'sequence' || !options || blankStarted.current) return;
+    blankStarted.current = true;
+    createBlankTimeline({ title: 'Timeline', options }).then(followTranscribe).catch((e) => setBlankError(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent, options]);
+
   /** Acompanha a transcrição (vídeo enviado ou timeline montada) e abre o editor no fim. */
   function followTranscribe(t) {
     refreshBilling();
@@ -213,6 +224,8 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
         setTranscriptData({ ...tr, segments: tr.segments || [] });
         setDurationSec(u.report?.input?.duration || 0);
         recordDraft(u, u.report.sourceId || u.id);
+        // timeline vazia (ou recém-montada): abre na aba Projeto para pôr/ajustar os clipes
+        setEditorTab(u.blankTimeline || u.report?.sequence?.blank ? 'projeto' : null);
         setPhase('editing');
       }
       if (u.status === 'error') fail(u.error);
@@ -378,8 +391,8 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
         </div>
       )}
 
-      {phase === 'setup' && intent === 'sequence' && options && (
-        <SequenceBuilder options={options} onStart={(j) => { startedAtRef.current = Date.now(); followTranscribe(j); }} onCancel={onHome} />
+      {phase === 'setup' && intent === 'sequence' && (
+        <Processing title="Abrindo a timeline em branco" subtitle={blankError || 'Um instante…'} />
       )}
 
       {phase === 'setup' && intent !== 'sequence' && !(reopen && reopening) && (
@@ -420,6 +433,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
         <div className="rf-anim" style={phase === 'editing' ? undefined : { display: 'none' }}>
           <TimelineEditor
             key={sourceId}
+            initialTab={editorTab}
             onRebuild={(j) => { startedAtRef.current = Date.now(); followTranscribe(j); }}
             hidden={phase !== 'editing'}
             jobError={editorError}
