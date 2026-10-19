@@ -568,7 +568,7 @@ export function parseOptions(raw) {
     captionHighlight: o.captionHighlight === true,
     // como a palavra falada é destacada (auto = o do estilo)
     captionHighlightStyle: HIGHLIGHT_IDS.includes(o.captionHighlightStyle) ? o.captionHighlightStyle : 'auto',
-    captionScale: clampNum(o.captionScale, 0.6, 1.6, 1),
+    captionScale: clampNum(o.captionScale, 0.3, 1.6, 1), // 30% a 160%
     // Linhas por legenda (1 ou 2) e caracteres por linha (0 = automático pelo tamanho da fonte).
     captionLines: Number(o.captionLines) === 1 ? 1 : 2,
     captionMaxChars: Number(o.captionMaxChars) > 0 ? Math.round(clampNum(o.captionMaxChars, 8, 42, 0)) : 0,

@@ -395,7 +395,7 @@ export default function Root() {
   }
 
   // App de PC/Mac: acabou o teste grátis e não há plano mensal ativo → só a tela de planos.
-  if (inDesktopApp() && billing?.appAccess === false) {
+  if (inDesktopApp() && billing?.appAccess === false && !billing?.trialActive) {
     return <AppPaywall user={user} onRefresh={refreshBilling} onLogout={logout} />;
   }
 

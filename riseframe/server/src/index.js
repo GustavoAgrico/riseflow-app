@@ -11,7 +11,8 @@ import { projectsRouter } from './routes/projects.js';
 import { queue } from './queue.js';
 import { optionsRouter } from './routes/options.js';
 import { authRouter } from './routes/auth.js';
-import { remoteAccount, accountProxy } from './account.js';
+import { remoteAccount, accountProxy, siteCapabilities } from './account.js';
+import { googleConfig, googleReady, searchesViaSite } from './pipeline/broll.js';
 import { settingsRouter } from './routes/settings.js';
 import { billingRouter } from './routes/billing.js';
 import { publicRouter } from './routes/public.js';
@@ -65,13 +66,25 @@ app.use(cors({ origin: corsOrigin }));
 app.use('/api', (req, res, next) => (req.method === 'PUT' && req.path.startsWith('/projects/') ? projectsRouter(req, res, next) : next()));
 app.use(express.json({ limit: '1mb' }));
 
-app.get('/api/health', (_req, res) => {
+/**
+ * App de PC sem chaves de banco de imagens: as buscas de B-roll vão pela conta do site,
+ * então as fontes que aparecem (Pexels, Pixabay, Google) são as ligadas no site.
+ */
+async function appCapabilities() {
+  const caps = capabilities();
+  if (!searchesViaSite({ apiKey: config.broll.pexelsKey, pixabayKey: config.broll.pixabayKey, googleReady: googleReady(googleConfig()) })) return caps;
+  const site = await siteCapabilities();
+  if (!site) return caps;
+  return { ...caps, brollReady: Boolean(site.brollReady), pixabayReady: Boolean(site.pixabayReady), googleImagesReady: Boolean(site.googleImagesReady), brollViaSite: true };
+}
+
+app.get('/api/health', async (_req, res) => {
   res.json({
     ok: true,
     service: 'riseframe',
     version: APP_VERSION,
     ffmpeg: Boolean(ffmpegPath),
-    capabilities: capabilities(),
+    capabilities: await appCapabilities(),
     cloud: cloudStatus().enabled ? (cloudStatus().ok ? 'ok' : 'erro') : 'off',
     // App de PC/Mac: a conta (login/planos) é a do site.
     account: remoteAccount() ? { remote: true, server: config.account.server } : { remote: false },
