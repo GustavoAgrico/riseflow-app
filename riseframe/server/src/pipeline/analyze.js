@@ -3,6 +3,7 @@ import { makeLogger } from '../logger.js';
 import { analyzeWithClaude, analyzeWithOpenAI, analyzeWithGroq, analyzeWithRemote } from './analyzeLLM.js';
 import { remoteLlm } from './llm.js';
 import { resolveNiche, NICHES } from './niche.js';
+import { withEntityMoments } from './entities.js';
 
 const log = makeLogger('analyze');
 
@@ -263,6 +264,8 @@ export async function analyze(transcript, meta, options) {
             ? await analyzeWithGroq(transcript, meta, options, { ...config.analyze, niche: nicheLabel, imageSource })
             : await analyzeWithRemote(transcript, meta, options, { ...remote, niche: nicheLabel, imageSource });
       if (llm?.brollMoments?.length) {
+        // nomes que a IA deixou passar (marcas da lista, nomes compostos) também entram
+        llm.brollMoments = withEntityMoments(llm.brollMoments, transcript.segments, { duration: meta.duration, max: options.brollMax ?? 6 });
         log.ok(`análise por IA (${provider}): ${llm.brollMoments.length} momentos${llm.topic ? ` · assunto: ${llm.topic}` : ''}${niche ? ` · nicho ${niche.id}` : ''}`);
         return { provider, themes: llm.themes?.length ? llm.themes : themes, brollMoments: llm.brollMoments, niche: niche?.id || null, topic: llm.topic || null };
       }
@@ -271,6 +274,8 @@ export async function analyze(transcript, meta, options) {
     }
   }
 
-  const brollMoments = options.broll ? pickBrollMoments(transcript.segments, themes, meta.duration, { ...options, niche }) : [];
+  const brollMoments = options.broll
+    ? withEntityMoments(pickBrollMoments(transcript.segments, themes, meta.duration, { ...options, niche }), transcript.segments, { duration: meta.duration, max: options.brollMax ?? 6 })
+    : [];
   return { provider: 'heuristic', themes, brollMoments, niche: niche?.id || null };
 }

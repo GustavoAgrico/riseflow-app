@@ -145,7 +145,9 @@ const BAD_LICENSE = /\b(NC|ND)\b|non-?commercial|no ?deriv|fair use/i;
  * `kind`: 'image' | 'video'.
  */
 export async function wikimediaCandidates(query, { kind = 'image', limit = 6 } = {}) {
-  const filter = kind === 'video' ? 'filetype:video' : 'filetype:bitmap';
+  // 'logo': desenhos (SVG) — o Commons devolve uma versão PNG pronta para o quadro
+  const logo = kind === 'logo';
+  const filter = kind === 'video' ? 'filetype:video' : logo ? 'filetype:drawing' : 'filetype:bitmap';
   const params = new URLSearchParams({
     action: 'query', format: 'json', formatversion: '2', origin: '*',
     generator: 'search', gsrsearch: `${query} ${filter}`, gsrnamespace: '6', gsrlimit: String(Math.max(4, limit * 2)),
@@ -163,12 +165,17 @@ export async function wikimediaCandidates(query, { kind = 'image', limit = 6 } =
     if (!lic || BAD_LICENSE.test(lic)) continue;
     const isVideo = /^video\//.test(ii.mime || '') || /\.(webm|ogv|mp4)$/i.test(ii.url);
     if ((kind === 'video') !== isVideo) continue;
-    if (!isVideo && !/^image\/(jpeg|png|webp)/.test(ii.mime || '')) continue; // sem SVG/TIFF/GIF
-    if (!isVideo && (ii.width || 0) < 640) continue; // pequena demais para o quadro
+    const svg = /^image\/svg/.test(ii.mime || '');
+    if (logo) {
+      if (!(svg || /^image\/png/.test(ii.mime || '')) || !ii.thumburl) continue;
+    } else {
+      if (!isVideo && !/^image\/(jpeg|png|webp)/.test(ii.mime || '')) continue; // sem SVG/TIFF/GIF
+      if (!isVideo && (ii.width || 0) < 640) continue; // pequena demais para o quadro
+    }
     if (isVideo && (ii.size || 0) > 60e6) continue; // original enorme (4K): demoraria a baixar e processar
     const artist = String(ii.extmetadata?.Artist?.value || '').replace(/<[^>]+>/g, '').trim().slice(0, 60);
     // Foto: a versão de 1600 px (a original pode ter 8000 px e dezenas de MB).
-    out.push({ id: `w${pg.pageid}`, link: isVideo ? ii.url : (ii.thumburl || ii.url), thumb: ii.thumburl || ii.url, kind: isVideo ? 'video' : 'image', source: 'wikimedia', credit: `${lic}${artist ? ` · ${artist}` : ''} · Wikimedia Commons` });
+    out.push({ id: `w${pg.pageid}`, link: isVideo ? ii.url : (ii.thumburl || ii.url), thumb: ii.thumburl || ii.url, kind: isVideo ? 'video' : 'image', source: 'wikimedia', credit: `${lic}${artist ? ` · ${artist}` : ''} · Wikimedia Commons`, ...(logo ? { logo: true } : {}) });
     if (out.length >= limit) break;
   }
   return out;
@@ -198,7 +205,7 @@ const isPhotoUrl = (u) => /^https:\/\/\S+$/i.test(u || '') && !/\.(svg|gif)(\?|$
  * chave; fecha em 2027), Serper (resultados do Google Imagens) e Brave Search. Em
  * português do Brasil (as buscas da IA vêm no idioma da fala). Só fotos, sem as pequenas.
  */
-export async function googleImageCandidates(query, google, limit = 6) {
+export async function googleImageCandidates(query, google, limit = 6, { minWidth = 500 } = {}) {
   const out = [];
   const want = Math.max(limit * 2, 10);
   if (google.key && google.cx) {
@@ -221,7 +228,7 @@ export async function googleImageCandidates(query, google, limit = 6) {
     if (res?.ok) {
       const d = await res.json();
       for (const it of d.images || []) {
-        if (!isPhotoUrl(it.imageUrl) || (it.imageWidth && it.imageWidth < 500)) continue;
+        if (!isPhotoUrl(it.imageUrl) || (it.imageWidth && it.imageWidth < minWidth)) continue;
         out.push({ id: `g${it.imageUrl}`, link: it.imageUrl, thumb: it.thumbnailUrl || it.imageUrl, kind: 'image', source: 'google', credit: it.domain || it.source || null });
       }
     } else if (res) log.warn(`Serper respondeu ${res.status}`);
@@ -269,6 +276,29 @@ export function extOf(url, isImage) {
 }
 
 /**
+ * Candidatos para um NOME citado (marca, pessoa, lugar…): a imagem daquilo, não uma cena
+ * genérica. Marca → logo (Google Imagens e os logos do Wikimedia Commons); pessoa/lugar →
+ * foto pelo nome. Os bancos de vídeo (Pexels/Pixabay) só completam se faltar.
+ * Google só entra quando a fonte permite (Tudo ou Google).
+ */
+async function entityCandidates(query, opts) {
+  const { source, google, limit = 6 } = opts;
+  const brand = opts.entity === 'brand';
+  const name = brand ? query.replace(/\s+logo$/i, '').trim() : query;
+  const useGoogle = (source === 'mix' || source === 'google') && googleReady(google);
+  const safe = (p) => p.catch((err) => { log.warn(`busca de "${query}": ${err.message}`); return []; });
+  const lists = await Promise.all([
+    useGoogle ? safe(googleImageCandidates(brand ? `${name} logo` : name, google, limit, { minWidth: brand ? 250 : 500 })) : [],
+    brand ? safe(wikimediaCandidates(`${name} logo`, { kind: 'logo', limit: 3 })) : safe(wikimediaCandidates(name, { kind: 'image', limit: 4 })),
+  ]);
+  const out = lists.flat().map((c) => (brand && c.kind === 'image' ? { ...c, logo: true } : c));
+  // pouco resultado: os bancos de vídeo pelo nome (ex.: "Nike" traz tênis da marca)
+  if (out.length < 2) out.push(...await brollCandidates(name, { ...opts, entity: null, noRemote: true }));
+  const seen = new Set();
+  return out.filter((c) => !seen.has(c.id) && seen.add(c.id)).slice(0, Math.max(limit, 9));
+}
+
+/**
  * Lista VÁRIOS candidatos de B-roll para uma busca (para a tela de revisão do
  * usuário escolher/trocar). Não baixa nada — só devolve links + miniaturas.
  * @returns {Promise<Array<{id:string, link:string, thumb:string, kind:'image'|'video'}>>}
@@ -285,7 +315,7 @@ export async function brollCandidates(query, opts = {}) {
         const res = await fetchWaking(`${config.account.server}/api/remote/broll-search`, {
           method: 'POST',
           headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ query, source, orientation, targetH, limit, lang }),
+          body: JSON.stringify({ query, source, orientation, targetH, limit, lang, ...(opts.entity ? { entity: opts.entity } : {}) }),
           timeoutMs: 60_000,
         });
         const data = await res.json().catch(() => ({}));
@@ -298,6 +328,7 @@ export async function brollCandidates(query, opts = {}) {
     // sem a conta: aqui só há o acervo livre (a mistura sem chaves = Wikimedia)
     if (source !== 'mix') return brollCandidates(query, { ...opts, source: 'mix', noRemote: true });
   }
+  if (opts.entity) return entityCandidates(query, opts);
   // 'mix': junta VÍDEOS (Pexels, Pixabay), Google Imagens e o acervo livre (Wikimedia
   // Commons) numa lista só, intercalada (vídeo primeiro), para o usuário escolher entre todos.
   if (source === 'mix') {
@@ -479,15 +510,17 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
           await downloadMedia(p.url, p.thumb, file, isImage);
         }
         if (!file) return null;
-        return { start, end, query: p.query || 'mídia', term: p.query || null, file, isImage, zoom: p.zoom, fx: p.fx, fy: p.fy, link: p.url || null, credit: p.credit || null };
+        return { start, end, query: p.query || 'mídia', term: p.query || null, file, isImage, zoom: p.zoom, fx: p.fx, fy: p.fy, link: p.url || null, credit: p.credit || null, logo: Boolean(p.logo && isImage) };
       }
       const m = item;
       const cands = (await brollCandidates(m.query, {
         source, apiKey, google, pixabayKey, orientation, targetH: regionH, limit: 6, unrestricted: google.unrestricted,
+        ...(m.entity ? { entity: m.entityKind || 'other' } : {}),
       })).filter((c) => !usedIds.has(c.id));
-      // Vídeo (movimento) quando houver entre os primeiros resultados; senão uma foto,
+      // Nome citado (marca/pessoa/lugar): o resultado mais certeiro, sem sortear. Cena
+      // genérica: vídeo (movimento) quando houver entre os primeiros; senão uma foto,
       // variando entre as mais relevantes.
-      const hit = cands.slice(0, 4).find((c) => c.kind === 'video') || pickVaried(cands);
+      const hit = m.entity ? cands[0] : cands.slice(0, 4).find((c) => c.kind === 'video') || pickVaried(cands);
       if (!hit || late()) {
         if (!hit) log.info(`sem B-roll para "${m.query}"`);
         return null;
@@ -496,7 +529,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
       const isImage = hit.kind !== 'video';
       const dest = path.join(work, `broll_${idx}.${extOf(hit.link, isImage)}`);
       await downloadMedia(hit.link, hit.thumb, dest, isImage);
-      return { ...m, file: dest, isImage, link: hit.link, credit: hit.credit || null, source: hit.source };
+      return { ...m, file: dest, isImage, link: hit.link, credit: hit.credit || null, source: hit.source, logo: Boolean(hit.logo && isImage) };
     } catch (err) {
       log.warn(`B-roll ${plan ? `(plano) em ${Number(item.start).toFixed(1)}s` : `"${item.query}"`} falhou: ${err.message}`);
       return null;
@@ -529,6 +562,17 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   const parts = [];
   clips.forEach((c, i) => {
     const dur = Math.max(0.6, c.end - c.start).toFixed(2);
+    if (c.logo) {
+      // Logo: inteiro e centralizado num fundo claro (cortar para preencher o quadro
+      // deixaria a marca pela metade). PNG transparente fica limpo sobre o fundo.
+      parts.push(`color=c=0xF5F5F7:s=${regionW}x${regionH}:r=30:d=${dur}[lbg${i}]`);
+      parts.push(`[${i + 1}:v]scale=${even(regionW * 0.66)}:${even(regionH * 0.4)}:force_original_aspect_ratio=decrease,format=rgba[lfg${i}]`);
+      parts.push(
+        `[lbg${i}][lfg${i}]overlay=x=(W-w)/2:y=(H-h)/2:shortest=1,setsar=1,format=yuv420p,` +
+          `trim=0:${dur},setpts=PTS-STARTPTS+${c.start.toFixed(3)}/TB[b${i}]`,
+      );
+      return;
+    }
     parts.push(
       `[${i + 1}:v]${brollFrameVf(regionW, regionH, c)},setsar=1,` +
         `trim=0:${dur},setpts=PTS-STARTPTS+${c.start.toFixed(3)}/TB[b${i}]`,

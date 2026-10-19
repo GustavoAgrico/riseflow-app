@@ -35,6 +35,7 @@ import { CAPTION_LANGUAGES } from '../pipeline/translate.js';
 import { MOMENT_EFFECTS, cleanKeys } from '../../../shared/transform.js';
 import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
 import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
+import { brandIn, entityQuery } from '../pipeline/entities.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
 import { SFX_LIBRARY } from '../pipeline/sfx.js';
 import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
@@ -492,6 +493,8 @@ function sanitizeBrollPlan(raw) {
     if (typeof p.thumb === 'string' && /^https:\/\/[^\s]+$/i.test(p.thumb)) item.thumb = p.thumb;
     if (typeof p.mediaId === 'string' && p.mediaId) item.mediaId = p.mediaId;
     // Ajuste do quadro do B-roll: zoom 1–2.5 e ponto de foco X/Y (0–1) dentro da imagem.
+    // Logo de marca: entra inteiro e centralizado (sem cortar para preencher).
+    if (p.logo === true) item.logo = true;
     item.zoom = clampNum(p.zoom, 1, 2.5, 1);
     item.fx = clampNum(p.fx, 0, 1, 0.5);
     item.fy = clampNum(p.fy, 0, 1, 0.5);
@@ -855,10 +858,11 @@ jobsRouter.post('/broll/plan', requireAuth, requireVerified, async (req, res) =>
     for (const m of moments) {
       const candidates = await brollCandidates(m.query, {
         source: src, apiKey, google, pixabayKey, orientation,
+        ...(m.entity ? { entity: m.entityKind || 'other' } : {}),
         targetH: meta.height || 1920,
         limit: src === 'mix' ? 9 : 8, unrestricted: google.unrestricted,
       });
-      out.push({ start: m.start, end: m.end, term: m.term || m.query, query: m.query, candidates });
+      out.push({ start: m.start, end: m.end, term: m.term || m.query, query: m.query, candidates, ...(m.entity ? { entity: m.entity, entityKind: m.entityKind } : {}) });
     }
     res.json({ source: src, moments: out });
   } catch (err) {
@@ -877,8 +881,10 @@ jobsRouter.post('/broll/search', requireAuth, requireVerified, async (req, res) 
   const pixabayKey = config.broll.pixabayKey;
   const source = resolveSource(req.body?.source, { apiKey, pixabayKey, googleReady: googleReady(google) });
   const orientation = req.body?.orientation === 'landscape' ? 'landscape' : 'portrait';
+  // Digitou uma marca ("nike", "apple"): busca o logo/a marca, não uma cena genérica.
+  const brand = brandIn(query);
   try {
-    const candidates = await brollCandidates(query, { source, apiKey, google, pixabayKey, orientation, targetH: 1280, limit: source === 'mix' ? 9 : 8, unrestricted: google.unrestricted, lang: 'pt' });
+    const candidates = await brollCandidates(brand ? entityQuery(brand, 'brand') : query, { source, apiKey, google, pixabayKey, orientation, targetH: 1280, limit: source === 'mix' ? 9 : 8, unrestricted: google.unrestricted, lang: 'pt', ...(brand ? { entity: 'brand' } : {}) });
     res.json({ source, query, candidates });
   } catch (err) {
     res.status(500).json({ error: err.message || 'falha na busca' });
@@ -1078,6 +1084,7 @@ jobsRouter.post('/remote/broll-search', requireAuth, requireVerified, requireApp
       targetH: Math.min(2160, Number(req.body?.targetH) || 1280),
       limit: Math.max(1, Math.min(12, Number(req.body?.limit) || 6)),
       lang: String(req.body?.lang || '').slice(0, 5),
+      ...(['brand', 'person', 'place', 'other'].includes(req.body?.entity) ? { entity: req.body.entity } : {}),
     });
     res.json({ candidates });
   } catch (err) {
