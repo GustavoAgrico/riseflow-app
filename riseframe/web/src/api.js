@@ -644,6 +644,8 @@ export const mediaStatus = (id) => jsonReq('GET', `${BASE}/media/${id}/status`);
 /** Biblioteca: tudo o que a conta já enviou (fica guardado para reusar). */
 export const getMediaLibrary = () => jsonReq('GET', `${BASE}/media/library`).then((d) => d.media || []);
 export const removeLibraryMedia = (id) => jsonReq('DELETE', `${BASE}/media/library/${encodeURIComponent(id)}`);
+/** Timeline em branco: os clipes (mídias da conta, na ordem) viram o vídeo do editor. */
+export const createSequence = (body) => jsonReq('POST', `${BASE}/sequence`, body);
 /** Meus modelos (estilo da legenda, mídias, textos, cor…). */
 export const listTemplatesApi = () => jsonReq('GET', `${BASE}/templates`).then((d) => d.templates || []);
 export const saveTemplateApi = (t) => jsonReq('POST', `${BASE}/templates`, t);

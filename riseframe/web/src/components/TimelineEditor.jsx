@@ -2524,7 +2524,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   // Quanto a velocidade dos trechos e os congelamentos mudam a duração (aproximado).
   const retimeDelta = speedRanges.reduce((acc, r) => acc + (r.end - r.start) * (1 / r.speed - 1), 0) + freezes.reduce((acc, f) => acc + f.dur, 0) * speed;
-  const allGone = stats.removed >= stats.total;
+  const allGone = stats.total > 0 && stats.removed >= stats.total; // timeline sem fala (só imagens/música) pode exportar
   const showZoomLane = fx.videoMotion !== 'none';
   const showChapLane = chapters.length > 0 && !isMobile;
   const legH = isMobile ? 44 : LANE.legenda;

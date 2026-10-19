@@ -784,6 +784,42 @@ jobsRouter.post('/transcribe', requireAuth, requireVerified, requireCredits('tra
   });
 });
 
+// POST /api/sequence  (JSON: { clips: [{ mediaId, in, out, duration }], music, aspect, title })
+// "Timeline em branco": os clipes da trilha V1 (mídias já enviadas) viram UM vídeo que abre
+// no editor — como montar a sequência no Premiere. Cobra como um vídeo novo.
+jobsRouter.post('/sequence', requireAuth, requireVerified, requireCredits('transcribe'), (req, res) => {
+  const body = req.body || {};
+  const raw = Array.isArray(body.clips) ? body.clips.slice(0, 80) : [];
+  const clips = [];
+  for (const c of raw) {
+    const m = resolveMedia(String(c?.mediaId || ''));
+    if (!m || (m.ownerId && m.ownerId !== req.user.id) || !['video', 'image'].includes(m.kind)) continue;
+    clips.push({
+      file: m.path,
+      kind: m.kind,
+      in: clampNum(c.in, 0, 100000, 0),
+      out: clampNum(c.out, 0, 100000, 0),
+      duration: clampNum(c.duration, 0.5, 60, 3),
+    });
+  }
+  if (!clips.length) return res.status(400).json({ error: 'coloque pelo menos um vídeo ou imagem na timeline' });
+  const total = clips.reduce((s, c) => s + (c.kind === 'image' ? c.duration : Math.max(0.3, (c.out > c.in ? c.out : c.in + 5) - c.in)), 0);
+  if (total > 3 * 3600) return res.status(400).json({ error: 'a timeline passou de 3 horas' });
+  let music = null;
+  if (body.music?.mediaId) {
+    const m = resolveMedia(String(body.music.mediaId));
+    if (m && m.kind === 'audio' && (!m.ownerId || m.ownerId === req.user.id)) music = { file: m.path, volume: clampNum(body.music.volume, 0, 2, 0.35) };
+  }
+  const aspect = ['9:16', '16:9', '1:1', '4:5'].includes(body.aspect) ? body.aspect : 'auto';
+  const options = { ...optionsForUser(req), sequenceBuild: true };
+  chargeAndQueue(req, res, 'transcribe', {
+    filename: fixName(String(body.title || '').trim().slice(0, 80) || 'Timeline'),
+    inputPath: path.join(config.paths.uploads, `seq_${nanoid(12)}.mp4`),
+    options,
+    sequence: { clips, music, aspect },
+  });
+});
+
 // POST /api/clips  (multipart: file) → gera vários clipes curtos do vídeo longo
 jobsRouter.post('/clips', requireAuth, requireVerified, requireCredits('clips'), checkUploadSize, upload.single('file'), fromChunkedUpload, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
@@ -804,7 +840,8 @@ jobsRouter.post('/render', requireAuth, requireVerified, (req, res) => {
   if (!fs.existsSync(source.inputPath)) {
     return res.status(410).json({ error: 'o vídeo de origem expirou; reenvie' });
   }
-  if (!editedTranscript?.segments?.length) {
+  // Timeline montada só com imagens/música (sem fala): a transcrição pode vir vazia.
+  if (!Array.isArray(editedTranscript?.segments) || (!editedTranscript.segments.length && !source.sequence)) {
     return res.status(400).json({ error: 'editedTranscript inválido' });
   }
   chargeAndQueue(req, res, 'render', {

@@ -27,6 +27,7 @@ import InstallApp from './components/InstallApp.jsx';
 const NAV = [
   { id: 'dashboard', label: 'Início', icon: 'home' },
   { id: 'library', label: 'Meus projetos', icon: 'folder' },
+  { id: 'timeline', label: 'Timeline em branco', icon: 'film' },
   { id: 'rendering', label: 'Renderizando', icon: 'clapper' },
   { id: 'templates', label: 'Templates', icon: 'layers' },
   { id: 'brand', label: 'Brand Kit', icon: 'brush' },
@@ -339,6 +340,8 @@ export default function Root() {
   const [editorIntent, setEditorIntent] = useState(null);
 
   function go(next, intent = null) {
+    // "Timeline em branco": o editor abre direto na montagem (sem enviar vídeo antes)
+    if (next === 'timeline') { next = 'editor'; intent = 'sequence'; }
     setEditorIntent(next === 'editor' ? intent : null);
     setView(next);
     window.scrollTo(0, 0);
@@ -435,6 +438,7 @@ export default function Root() {
           <Dashboard
             user={user}
             onNewVideo={() => go('editor')}
+            onBlank={() => go('timeline')}
             onEditVideo={() => go('editor', 'editor')}
             onBroll={() => go('editor', 'broll')}
             onLibrary={() => go('library')}
@@ -457,6 +461,7 @@ export default function Root() {
             template={editorIntent?.template || (editorIntent?.format ? { id: editorIntent.format, format: editorIntent.format } : null)}
             reopen={editorIntent?.reopen || null}
             onSettings={() => go('settings')}
+            onHome={() => go('dashboard')}
           />
         )}
       </div>
