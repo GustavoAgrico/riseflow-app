@@ -98,6 +98,14 @@ test('timeline em branco: mídias da conta viram o vídeo do editor', { timeout:
   assert.equal(done.report.sequence.clips, 2);
   assert.ok(Math.abs(done.report.input.duration - 3) < 0.25);
   assert.equal(done.report.input.width, 1080);
+  // aba Projeto: a montagem aparece (sem caminhos) e o próprio vídeo do editor entra de novo, reordenado
+  assert.deepEqual(done.sequenceClips.map((c) => [c.kind, c.mediaId]), [['video', a], ['image', b]]);
+  assert.ok(!JSON.stringify(done).includes(tmp), 'nenhum caminho de arquivo vai para o cliente');
+  const re = await fetch(`${base}/sequence`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ clips: [{ mediaId: b, duration: 1 }, { sourceId: done.id, in: 0, out: 1 }] }) });
+  assert.equal(re.status, 201, await re.clone().text());
+  const rj = await re.json();
+  assert.deepEqual(rj.sequenceClips.map((c) => c.kind), ['image', 'video']);
+  assert.equal(rj.sequenceClips[1].sourceId, done.id);
   // timeline vazia não é aceita
   const empty = await fetch(`${base}/sequence`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ clips: [] }) });
   assert.equal(empty.status, 400);

@@ -18,6 +18,7 @@ import { keyAt, cleanKeys, MOMENT_EFFECTS, defaultMomentEffect } from '../../../
 import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
+import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
 import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById } from '../../../shared/captionStyle.js';
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 
@@ -92,7 +93,7 @@ function wordOut(w, dw = null) {
   };
 }
 
-export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, onSettings, busy, hidden = false, jobError = null, projectTitle = '' }) {
+export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, onSettings, busy, hidden = false, jobError = null, projectTitle = '', onRebuild = null }) {
   const { billing } = useAuth();
   const caps = catalog?.capabilities || {};
   const cap0 = options || {};
@@ -637,9 +638,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       try {
         const doc = await loadProject(sourceId);
         if (alive && !doc?.state && !loadAutosave(sourceId)?.state) {
-          // vídeo novo: entra o modelo marcado como padrão ("usar sempre nos vídeos novos")
-          const def = (await listTemplatesApi().catch(() => [])).find((t) => t.isDefault);
-          if (alive && def) { setTemplates(null); applyTemplate(def); }
+          let carried = null;
+          try { carried = JSON.parse(sessionStorage.getItem('rf_carry_style') || 'null'); sessionStorage.removeItem('rf_carry_style'); } catch { /* ignora */ }
+          if (carried) applyTemplate({ name: 'do vídeo anterior', data: carried }); // vídeo principal remontado: mantém o estilo
+          else {
+            // vídeo novo: entra o modelo marcado como padrão ("usar sempre nos vídeos novos")
+            const def = (await listTemplatesApi().catch(() => [])).find((t) => t.isDefault);
+            if (alive && def) { setTemplates(null); applyTemplate(def); }
+          }
         }
         if (!alive || !doc?.state) return;
         const local = loadAutosave(sourceId);
@@ -1826,6 +1832,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // ── Biblioteca: tudo o que a conta já enviou fica guardado para usar de novo ──
   const [library, setLibrary] = useState(null);
   const [libOpen, setLibOpen] = useState(true);
+  const [stickersOpen, setStickersOpen] = useState(false); // stickers recolhidos (abre no ▸)
   const libLoadedRef = useRef(false);
   async function loadLibrary() {
     try {
@@ -1836,7 +1843,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
   }
   useEffect(() => {
-    if (tab === 'midias' && !libLoadedRef.current) loadLibrary();
+    if ((tab === 'midias' || tab === 'projeto') && !libLoadedRef.current) loadLibrary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
   async function forgetLibraryItem(id) {
@@ -1904,6 +1911,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setTimeout(() => checkMedia(d.media), 0);
     }
     setTplMsg(`Modelo "${t.name}" aplicado.`);
+  }
+  /** Antes de remontar o vídeo principal: o estilo deste vídeo segue para o novo. */
+  function carryStyleNow() {
+    try { sessionStorage.setItem('rf_carry_style', JSON.stringify(templateData())); } catch { /* sem armazenamento: começa do padrão */ }
   }
   async function removeTemplate(t) {
     if (!window.confirm(`Apagar o modelo "${t.name}"?`)) return;
@@ -4964,6 +4975,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           )}
 
           {/* Minhas mídias: coloque suas imagens/vídeos/músicas na timeline */}
+          {tab === 'projeto' && (
+            <ProjectPanel library={library} onReloadLibrary={loadLibrary} onAddLayer={(it) => addMediaItem(it)} sourceId={sourceId} durationSec={dur}
+              projectTitle={projectTitle} options={options} carryStyle={carryStyleNow} onRebuild={onRebuild} />
+          )}
           {tab === 'midias' && (
             <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -4977,13 +4992,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <button onClick={() => mediaInputRef.current?.click()} disabled={mediaBusy} style={{ ...framingTab(false), width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6, opacity: mediaBusy ? 0.6 : 1, cursor: mediaBusy ? 'wait' : 'pointer' }}>
                 <Icon name="image" size={13} strokeWidth={2} /> {mediaBusy ? 'Enviando…' : '+ Adicionar mídia'}
               </button>
-              <div style={{ fontSize: 12, fontWeight: 700, margin: '12px 0 6px' }}>Stickers <span style={{ fontWeight: 500, color: C.faint, fontSize: 11 }}>· entram no playhead, arraste no vídeo</span></div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
+              <button onClick={() => setStickersOpen((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', background: 'none', border: 'none', color: C.text, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, margin: '12px 0 6px', fontFamily: 'inherit' }}>
+                {stickersOpen ? '▾' : '▸'} Stickers <span style={{ fontWeight: 500, color: C.faint, fontSize: 11 }}>· {STICKERS.length} · entram no playhead, arraste no vídeo</span>
+              </button>
+              {stickersOpen && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {STICKERS.map((st) => (
                   <button key={st.id} onClick={() => addSticker(st)} disabled={mediaBusy} title={st.label} aria-label={`Sticker ${st.label}`}
-                    style={{ aspectRatio: '1', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', fontSize: 20, lineHeight: 1, cursor: mediaBusy ? 'wait' : 'pointer', padding: 0 }}>{st.ch}</button>
+                    style={{ width: 34, height: 34, fontSize: 18, borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', lineHeight: 1, cursor: mediaBusy ? 'wait' : 'pointer', padding: 0 }}>{st.ch}</button>
                 ))}
-              </div>
+              </div>}
               {mediaErr && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{mediaErr}</div>}
               {/* Biblioteca: o que você já enviou fica guardado — clique para usar de novo */}
               <div style={{ marginTop: 12, border: `1px solid ${C.border}`, borderRadius: 10, padding: 9, background: 'rgba(255,255,255,0.02)' }}>
@@ -5001,8 +5018,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       <div key={it.id} style={{ position: 'relative' }}>
                         <button onClick={() => it.status === 'ok' && addMediaItem(it)} disabled={it.status !== 'ok'} title={it.status === 'ok' ? `${it.filename} — colocar no ponto atual` : `${it.filename} — arquivo não encontrado`}
                           style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: `1px solid ${C.border}`, background: '#0E0E14', cursor: it.status === 'ok' ? 'pointer' : 'not-allowed', padding: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', opacity: it.status === 'ok' ? 1 : 0.4 }}>
-                          {it.kind === 'image' ? <img src={mediaFileUrl(it.id)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                            : <Icon name={it.kind === 'video' ? 'film' : 'play'} size={20} strokeWidth={1.8} color={it.kind === 'video' ? C.orange : C.purple} />}
+                          <MediaThumb it={it} fit={it.kind === 'image' ? 'contain' : 'cover'} />
                         </button>
                         <div style={{ fontSize: 9.5, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>{it.filename}</div>
                         <button onClick={() => forgetLibraryItem(it.id)} title="Tirar da biblioteca" aria-label="Tirar da biblioteca"
@@ -6543,6 +6559,7 @@ const mRow = { display: 'flex', alignItems: 'center', gap: 12, padding: '16px 16
 const SHEET_TITLE = { speed: 'Velocidade', capText: 'Transcrição', capList: 'Editar legendas', capStyle: 'Estilo da legenda', capEm: 'Destacar palavras', capAuto: 'Legendas automáticas' };
 
 const TABS = [
+  { id: 'projeto', label: 'Projeto', icon: 'folder' },
   { id: 'enquadramento', label: 'Enquadramento', icon: 'crop' },
   { id: 'texto', label: 'Texto', icon: 'type' },
   { id: 'broll', label: 'B-roll', icon: 'image' },

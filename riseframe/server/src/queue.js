@@ -133,7 +133,13 @@ class JobQueue extends EventEmitter {
       job.status === 'queued' ? this.pending.indexOf(job.id) + (this.active ? 1 : 0) : 0;
     return {
       ...rest,
-      ...(sequence ? { fromSequence: true } : {}),
+      // a montagem (sem caminhos de arquivo): a aba Projeto do editor mostra e reordena
+      ...(sequence ? {
+        fromSequence: true,
+        sequenceClips: (sequence.clips || []).map(({ mediaId, sourceId, filename, kind, in: a, out, duration }) => ({ mediaId, sourceId, filename, kind, in: a, out, duration })),
+        sequenceMusic: sequence.music ? { mediaId: sequence.music.mediaId, filename: sequence.music.filename, volume: sequence.music.volume } : null,
+        sequenceAspect: sequence.aspect || 'auto',
+      } : {}),
       queuePosition,
       // 'clips' não tem um único arquivo — cada clipe é baixado por /clips/:index.
       downloadUrl:

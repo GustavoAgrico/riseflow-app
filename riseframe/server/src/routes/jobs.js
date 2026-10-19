@@ -792,10 +792,19 @@ jobsRouter.post('/sequence', requireAuth, requireVerified, requireCredits('trans
   const raw = Array.isArray(body.clips) ? body.clips.slice(0, 80) : [];
   const clips = [];
   for (const c of raw) {
+    // o vídeo que já está no editor (enviado antes) também pode entrar na sequência
+    if (c?.sourceId) {
+      const src = queue.get(String(c.sourceId));
+      if (!src || (src.ownerId && src.ownerId !== req.user.id) || !src.inputPath || !fs.existsSync(src.inputPath)) continue;
+      clips.push({ file: src.inputPath, kind: 'video', sourceId: src.id, filename: String(c.filename || src.filename || 'vídeo').slice(0, 120), in: clampNum(c.in, 0, 100000, 0), out: clampNum(c.out, 0, 100000, 0), duration: 3 });
+      continue;
+    }
     const m = resolveMedia(String(c?.mediaId || ''));
     if (!m || (m.ownerId && m.ownerId !== req.user.id) || !['video', 'image'].includes(m.kind)) continue;
     clips.push({
       file: m.path,
+      mediaId: m.id,
+      filename: m.originalname || '',
       kind: m.kind,
       in: clampNum(c.in, 0, 100000, 0),
       out: clampNum(c.out, 0, 100000, 0),
@@ -808,7 +817,7 @@ jobsRouter.post('/sequence', requireAuth, requireVerified, requireCredits('trans
   let music = null;
   if (body.music?.mediaId) {
     const m = resolveMedia(String(body.music.mediaId));
-    if (m && m.kind === 'audio' && (!m.ownerId || m.ownerId === req.user.id)) music = { file: m.path, volume: clampNum(body.music.volume, 0, 2, 0.35) };
+    if (m && m.kind === 'audio' && (!m.ownerId || m.ownerId === req.user.id)) music = { file: m.path, mediaId: m.id, filename: m.originalname || '', volume: clampNum(body.music.volume, 0, 2, 0.35) };
   }
   const aspect = ['9:16', '16:9', '1:1', '4:5'].includes(body.aspect) ? body.aspect : 'auto';
   const options = { ...optionsForUser(req), sequenceBuild: true };
