@@ -125,6 +125,7 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     } else {
       chain = `[${m._inIdx}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`;
     }
+    chain += layerAdjustVf(m);
     chain += `,setpts=PTS-STARTPTS+${f3(m.start)}/TB`;
 
     // Transparência: opacidade fixa (no modo normal) + fades com alpha.
@@ -198,6 +199,34 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     vlast = out;
   });
   return parts;
+}
+
+/**
+ * Ajustes da camada (imagem/vídeo): brilho (-0,5…0,5), contraste (0,5…2), saturação
+ * (0…2) e espelhar. → trecho do filtro (vazio quando não há ajuste). Puro/exportado.
+ */
+export function layerAdjustVf(m = {}) {
+  const b = clamp(m.bright, -0.5, 0.5, 0);
+  const c = clamp(m.contrast, 0.5, 2, 1);
+  const sat = clamp(m.sat, 0, 2, 1);
+  let vf = '';
+  if (Math.abs(b) > 0.005 || Math.abs(c - 1) > 0.005 || Math.abs(sat - 1) > 0.005) {
+    vf += `,eq=brightness=${f3(b * 0.6)}:contrast=${f3(c)}:saturation=${f3(sat)}`;
+  }
+  if (m.flip === true) vf += ',hflip';
+  return vf;
+}
+
+/**
+ * Som dos vídeos adicionados (como no CapCut): entra junto, no volume escolhido, sem
+ * abaixar sob a voz. `mixed` = rótulo do áudio já pronto (voz + músicas) ou null.
+ * → partes do filtro terminando em [aout].
+ */
+export function videoSoundParts(vidLabels, { mixed, dur }) {
+  const tail = `alimiter=limit=0.95,atrim=0:${dur.toFixed(3)}[aout]`;
+  const all = [mixed, ...vidLabels].filter(Boolean);
+  if (all.length === 1) return [`${all[0]}atrim=0:${dur.toFixed(3)}[aout]`];
+  return [`${all.join('')}amix=inputs=${all.length}:normalize=0:dropout_transition=0,${tail}`];
 }
 
 /**
@@ -279,10 +308,35 @@ export async function applyUserMedia(input, work, meta, options, onProgress = ()
     musLabels.push(`[am${i}]`);
   });
 
-  const wantAudioRebuild = music.length > 0;
-  if (wantAudioRebuild) {
+  // Som dos vídeos adicionados (desligável em cada vídeo): só os que têm faixa de áudio.
+  const vidParts = [];
+  const vidLabels = [];
+  for (const m of vis) {
+    if (m.kind !== 'video' || m.muted === true) continue;
+    const vol = clamp(m.volume, 0, 2, 1);
+    if (vol < 0.01) continue;
+    try {
+      if (!(await probeSummary(m.file)).hasAudio) continue;
+    } catch { continue; }
+    const ms = Math.round(m.start * 1000);
+    vidParts.push(
+      `[${m._inIdx}:a]atrim=0:${m.d.toFixed(3)},asetpts=PTS-STARTPTS,volume=${vol.toFixed(3)}` +
+        (ms > 0 ? `,adelay=${ms}|${ms}` : '') + `[av${vidLabels.length}]`,
+    );
+    vidLabels.push(`[av${vidLabels.length}]`);
+  }
+
+  const wantAudioRebuild = music.length > 0 || vidLabels.length > 0;
+  if (music.length) {
     parts.push(...musParts);
-    parts.push(...musicMixParts(musLabels, { hasAudio: meta.hasAudio, dur, ducking: options.musicDucking }));
+    const mix = musicMixParts(musLabels, { hasAudio: meta.hasAudio, dur, ducking: options.musicDucking });
+    // com som de vídeo, a mistura (voz + música) vira uma entrada da mistura final
+    if (vidLabels.length) mix[mix.length - 1] = mix[mix.length - 1].replace(/\[aout\]$/, '[amx]');
+    parts.push(...mix);
+  }
+  if (vidLabels.length) {
+    parts.push(...vidParts);
+    parts.push(...videoSoundParts(vidLabels, { mixed: music.length ? '[amx]' : meta.hasAudio ? '[0:a]' : null, dur }));
   }
 
   if (!vis.length && !wantAudioRebuild) return { output: input, applied: false, visual: 0, audio: 0 };
@@ -310,6 +364,6 @@ export async function applyUserMedia(input, work, meta, options, onProgress = ()
   args.push(...x264Fast(), '-movflags', '+faststart', '-t', dur.toFixed(3), '-y', output);
 
   await runFfmpeg(args, { label: 'usermedia', totalDuration: dur, onProgress });
-  log.ok(`mídias do usuário aplicadas: ${vis.length} visuais, ${music.length} música(s)`);
+  log.ok(`mídias do usuário aplicadas: ${vis.length} visuais, ${music.length} música(s)${vidLabels.length ? `, som de ${vidLabels.length} vídeo(s)` : ''}`);
   return { output, applied: true, visual: vis.length, audio: music.length };
 }

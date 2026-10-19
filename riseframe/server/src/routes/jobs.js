@@ -443,6 +443,12 @@ function sanitizeUserMedia(raw) {
       fadeIn: clampNum(m.fadeIn, 0, 10, 0),
       fadeOut: clampNum(m.fadeOut, 0, 10, 0),
       offset: clampNum(m.offset, 0, 100000, 0),
+      // Vídeo: som ligado/desligado. Imagem/vídeo: brilho, contraste, saturação, espelhar.
+      muted: m.muted === true,
+      bright: clampNum(m.bright, -0.5, 0.5, 0),
+      contrast: clampNum(m.contrast, 0.5, 2, 1),
+      sat: clampNum(m.sat, 0, 2, 1),
+      flip: m.flip === true,
     };
     out.push(item);
     if (out.length >= 40) break; // teto de segurança
