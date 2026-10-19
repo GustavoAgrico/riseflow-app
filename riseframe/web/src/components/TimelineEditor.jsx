@@ -3146,6 +3146,51 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     window.addEventListener('mouseup', up);
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
   }, []);
+  // Ajuste manual do layout (botão Layout): tamanhos prontos e +/− para o vídeo e a timeline.
+  const [layoutOpen, setLayoutOpen] = useState(false);
+  function layoutPreset(id) {
+    const g = gridRef.current;
+    const gw = g?.getBoundingClientRect().width || 1200;
+    const gh = g?.getBoundingClientRect().height || window.innerHeight * 0.8;
+    const adj = g?.querySelector('.rf-tl-adjust')?.getBoundingClientRect().height || 320;
+    const pv = g?.querySelector('.rf-tl-preview')?.getBoundingClientRect().width || 400;
+    const W = (v) => Math.round(Math.max(220, Math.min(gw - 420, v)));
+    const H = (v) => Math.round(Math.max(120, Math.min(window.innerHeight * 0.8, v)));
+    if (id === 'reset') saveLayout({ monW: null, panelH: null });
+    else if (id === 'video') saveLayout({ monW: W(gw * 0.58), panelH: null });
+    else if (id === 'timeline') saveLayout({ panelH: H(gh * 0.22) });
+    else if (id === 'opcoes') saveLayout({ panelH: H(gh * 0.62) });
+    else if (id === 'vid+') saveLayout({ monW: W(pv + 60) });
+    else if (id === 'vid-') saveLayout({ monW: W(pv - 60) });
+    else if (id === 'tl+') saveLayout({ panelH: H(adj - 50) });
+    else if (id === 'tl-') saveLayout({ panelH: H(adj + 50) });
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
+  }
+  const layoutPanel = layoutOpen && createPortal(
+    <div role="dialog" aria-label="Ajustar o layout" style={{ position: 'fixed', top: 64, right: 24, zIndex: 900, width: 300, padding: 14, borderRadius: 14, background: '#16161F', border: `1px solid ${C.border}`, boxShadow: '0 24px 60px -20px rgba(0,0,0,0.9)', color: C.text, display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <b style={{ fontSize: 13.5 }}>Ajustar o layout</b>
+        <button onClick={() => setLayoutOpen(false)} aria-label="Fechar" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.faint, fontSize: 18, cursor: 'pointer' }}>×</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        {[['video', 'Vídeo grande'], ['timeline', 'Timeline grande'], ['opcoes', 'Opções grandes'], ['reset', 'Padrão']].map(([id, label]) => (
+          <button key={id} onClick={() => layoutPreset(id)} style={{ ...miniBtn(false, false), height: 34 }}>{label}</button>
+        ))}
+      </div>
+      {[['Largura do vídeo', 'vid-', 'vid+'], ['Altura da timeline', 'tl-', 'tl+']].map(([label, minus, plus]) => (
+        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: C.muted }}>
+          <span style={{ flex: 1 }}>{label}</span>
+          <button onClick={() => layoutPreset(minus)} title="Diminuir" style={{ ...zoomBtn, width: 30, height: 30 }}>−</button>
+          <button onClick={() => layoutPreset(plus)} title="Aumentar" style={{ ...zoomBtn, width: 30, height: 30 }}>+</button>
+        </div>
+      ))}
+      <div style={{ fontSize: 11.5, color: C.faint, lineHeight: 1.5 }}>
+        Ou arraste as <b style={{ color: '#7DB6FF' }}>divisórias azuis</b> entre o vídeo, as opções e a timeline. A altura de cada faixa da timeline muda arrastando a borda de baixo do nome dela. Fica salvo neste computador.
+      </div>
+    </div>,
+    document.body,
+  );
+
   const splitter = (kind) => (
     <div className={`rf-split rf-split--${kind}`} onMouseDown={(e) => startSplit(kind, e)}
       onDoubleClick={() => { saveLayout(kind === 'col' ? { monW: null } : { panelH: null }); setTimeout(() => window.dispatchEvent(new Event('resize')), 0); }}
@@ -3707,6 +3752,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const editorCard = (
     <div className={`rf-tl-card${isMobile ? ' rf-m' : ''}${isMobile && sheet ? ' rf-m-sheet' : ''}`} style={{ ...glass(), padding: 22 }}>
       {tour && !isMobile && <EditorTour onClose={() => setTour(false)} />}
+      {!isMobile && layoutPanel}
       {isMobile && (
         <div className="rf-m-top">
           <button onClick={onBack} disabled={busy} aria-label="Fechar o editor" style={mIconBtn}><Icon name="close" size={22} strokeWidth={2} /></button>
@@ -3762,7 +3808,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
       </div>
 
-      <div ref={gridRef} className={`rf-tl-grid rf-stage-${stage}${(showFormatPreview && !showSource ? fmtAr : mainAr) < 1 ? ' rf-mon-v' : ''}${layoutSz.monW ? ' rf-custom-col' : ''}${layoutSz.panelH ? ' rf-custom-row' : ''}`} style={{ ...(layoutSz.monW ? { '--rf-mon-w': `${layoutSz.monW}px` } : {}), ...(layoutSz.panelH ? { '--rf-panel-h': `${layoutSz.panelH}px` } : {}), display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start', ...(isMobile && sheet ? { '--rf-stage-h': 'max(140px, calc(100dvh - var(--rf-sheet-h) - 118px - env(safe-area-inset-top)))' } : isMobile ? { '--rf-stage-h': `max(200px, calc(100dvh - ${(stage === 's' ? 470 : stage === 'l' ? 330 : 400) + (showZoomLane ? 28 : 0) + (showBrollLane ? 30 : 0) + (media.length ? 34 : 0)}px - env(safe-area-inset-bottom)))` } : {}) }}>
+      <div ref={gridRef} className={`rf-tl-grid rf-stage-${stage}${(showFormatPreview && !showSource ? fmtAr : mainAr) < 1 ? ' rf-mon-v' : ''}${layoutSz.monW ? ' rf-custom-col' : ''}${layoutSz.panelH ? ' rf-custom-row' : ''}${layoutOpen ? ' rf-show-splits' : ''}`} style={{ ...(layoutSz.monW ? { '--rf-mon-w': `${layoutSz.monW}px` } : {}), ...(layoutSz.panelH ? { '--rf-panel-h': `${layoutSz.panelH}px` } : {}), display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start', ...(isMobile && sheet ? { '--rf-stage-h': 'max(140px, calc(100dvh - var(--rf-sheet-h) - 118px - env(safe-area-inset-top)))' } : isMobile ? { '--rf-stage-h': `max(200px, calc(100dvh - ${(stage === 's' ? 470 : stage === 'l' ? 330 : 400) + (showZoomLane ? 28 : 0) + (showBrollLane ? 30 : 0) + (media.length ? 34 : 0)}px - env(safe-area-inset-bottom)))` } : {}) }}>
         {/* Ferramentas (como num editor): cada uma abre o painel de ajustes à direita */}
         <nav className="rf-tl-nav" style={{ display: 'grid', gap: 4, padding: 8, borderRadius: 16, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.025)', alignSelf: 'start' }}>
           {TABS.map((t) => {
@@ -3789,6 +3835,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </span>
             <button onClick={onBack} disabled={busy} title="Voltar" className="rf-tl-navbtn">
               <Icon name="arrowLeft" size={13} strokeWidth={2.2} /> Voltar
+            </button>
+            <button onClick={() => setLayoutOpen((v) => !v)} title="Ajustar o tamanho do vídeo, das opções e da timeline" className="rf-tl-navbtn" style={layoutOpen ? { borderColor: '#2D8CFF', color: '#7DB6FF' } : undefined}>
+              ▦ Layout
             </button>
             <button onClick={() => setTour(true)} title="Guia rápido: mostra para que serve cada parte do editor" className="rf-tl-navbtn">
               ? Guia
@@ -5782,19 +5831,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         .rf-tbtn.on{ border-color: rgba(255,107,53,0.6); background: rgba(255,107,53,0.16); color: #FF9A6C; }
         /* divisórias arrastáveis (só no computador) */
         .rf-split{ display: none; position: absolute; z-index: 30; }
-        .rf-split > span{ position: absolute; border-radius: 3px; background: rgba(255,255,255,0.14); transition: background .15s; }
-        .rf-split:hover > span{ background: #2D8CFF; }
+        .rf-split > span{ position: absolute; border-radius: 3px; background: rgba(125,182,255,0.45); transition: background .15s, box-shadow .15s; }
+        .rf-split:hover > span, .rf-show-splits .rf-split > span{ background: #2D8CFF; box-shadow: 0 0 0 3px rgba(45,140,255,0.25); }
         @media (min-width: 861px) and (max-width: 1100px){
           .rf-tl-card:not(.rf-m) .rf-tl-preview{ position: relative; }
         }
         @media (min-width: 861px){
           .rf-tl-card:not(.rf-m) .rf-split--col{ display: block; top: 0; bottom: 0; right: -10px; width: 10px; cursor: col-resize; }
-          .rf-tl-card:not(.rf-m) .rf-split--col > span{ left: 3px; top: 50%; width: 4px; height: 44px; margin-top: -22px; }
+          .rf-tl-card:not(.rf-m) .rf-split--col > span{ left: 3px; top: 50%; width: 4px; height: 80px; margin-top: -40px; }
           .rf-tl-card:not(.rf-m) .rf-tl-grid.rf-custom-col{ grid-template-columns: var(--rf-mon-w) minmax(0, 1fr) !important; }
         }
         @media (min-width: 1101px){
           .rf-tl-card:not(.rf-m) .rf-split--row{ display: block; left: 0; right: 0; top: -10px; height: 10px; cursor: row-resize; }
-          .rf-tl-card:not(.rf-m) .rf-split--row > span{ top: 3px; left: 50%; width: 44px; height: 4px; margin-left: -22px; }
+          .rf-tl-card:not(.rf-m) .rf-split--row > span{ top: 3px; left: 50%; width: 80px; height: 4px; margin-left: -40px; }
           .rf-tl-card:not(.rf-m) .rf-tl-grid.rf-custom-row .rf-tl-adjust{ height: auto !important; }
         }
         /* barra do player quebra a linha quando a coluna do monitor é estreita */
