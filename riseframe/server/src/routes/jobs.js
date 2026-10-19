@@ -11,7 +11,7 @@ import { getSettings } from '../auth/settings.js';
 import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod, trialCovers, useFreeEdit, refundFreeEdit, holdRemote, releaseRemote, appAccess, hadTrial } from '../auth/billing.js';
 import { remoteAccount, remoteCheck, remoteCharge, holdRemoteCharge, settleRemoteCharge, sendAccountError, rememberJobToken } from '../account.js';
 import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../../shared/credits.js';
-import { registerMedia, resolveMedia, relinkMedia, mediaStatus } from '../mediaStore.js';
+import { registerMedia, resolveMedia, relinkMedia, mediaStatus, listLibrary, removeFromLibrary } from '../mediaStore.js';
 import { formatBytes, freeDiskBytes } from '../storage.js';
 import { startUpload, uploadStatus, receiveChunk, fromChunkedUpload } from '../chunkedUpload.js';
 import { saveCustomFont, listCustomFonts, resolveCustomFont, deleteCustomFont } from '../customFonts.js';
@@ -923,8 +923,20 @@ jobsRouter.post('/media', requireAuth, requireVerified, uploadMedia.single('file
     kind,
     originalname: fixName(req.file.originalname),
     durationSec,
+    ownerId: req.user?.id,
   });
   res.status(201).json(pub);
+});
+
+// GET /api/media/library → mídias que a conta já enviou (ficam guardadas para reusar)
+jobsRouter.get('/media/library', requireAuth, (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ media: listLibrary(req.user.id) });
+});
+
+// DELETE /api/media/library/:id → tira da biblioteca (projetos que usam continuam valendo)
+jobsRouter.delete('/media/library/:id', requireAuth, (req, res) => {
+  if (!removeFromLibrary(req.params.id, req.user.id)) return res.status(404).json({ error: 'mídia não encontrada' });
+  res.json({ ok: true });
 });
 
 // ── Arquivos do projeto como no CapCut: no app de PC a mídia aponta para o ARQUIVO
@@ -956,7 +968,7 @@ jobsRouter.post('/media/link', requireAuth, async (req, res) => {
   if (!file) return res.status(400).json({ error: 'arquivo não encontrado no computador' });
   const kind = mediaKind(path.extname(file).toLowerCase());
   if (!kind) return res.status(400).json({ error: 'formato de mídia não suportado' });
-  const pub = registerMedia({ id: nanoid(), filePath: file, kind, originalname: path.basename(file), durationSec: await probeDuration(file, kind), linked: true });
+  const pub = registerMedia({ id: nanoid(), filePath: file, kind, originalname: path.basename(file), durationSec: await probeDuration(file, kind), linked: true, ownerId: req.user?.id });
   res.status(201).json(pub);
 });
 

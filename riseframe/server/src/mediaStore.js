@@ -45,12 +45,53 @@ function referenced() {
   return refCache.set;
 }
 
+/**
+ * Biblioteca: o que cada conta envia fica guardado (não expira) para usar de novo em
+ * outros vídeos sem subir outra vez. Limite por conta: as mais antigas que nenhum projeto
+ * usa voltam a expirar normalmente.
+ */
+const LIBRARY_MAX = Math.max(10, Number(process.env.MEDIA_LIBRARY_MAX) || 300);
+const inLibrary = (m) => Boolean(m.ownerId) && m.library !== false;
+
+/** Ids das mídias da biblioteca (a limpeza de arquivos antigos preserva esses uploads). */
+export function libraryIds() {
+  const out = new Set();
+  for (const m of store.values()) if (inLibrary(m)) out.add(m.id);
+  return out;
+}
+
+/** Mídias da biblioteca da conta (mais novas primeiro), sem caminho de arquivo. */
+export function listLibrary(ownerId) {
+  if (!ownerId) return [];
+  return [...store.values()]
+    .filter((m) => m.ownerId === ownerId && inLibrary(m))
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map((m) => ({ ...publicMedia(m.id), createdAt: new Date(m.createdAt).toISOString(), status: resolveMedia(m.id) ? 'ok' : 'offline' }));
+}
+
+/** Tira da biblioteca (o arquivo enviado só é apagado se nenhum projeto usa). */
+export function removeFromLibrary(id, ownerId) {
+  const m = store.get(id);
+  if (!m || m.ownerId !== ownerId) return false;
+  m.library = false;
+  m.createdAt = Math.min(m.createdAt, Date.now() - TTL_MS - 1); // expira na próxima limpeza
+  persist();
+  prune();
+  return true;
+}
+
+function capLibrary(ownerId) {
+  const mine = [...store.values()].filter((m) => m.ownerId === ownerId && inLibrary(m)).sort((a, b) => b.createdAt - a.createdAt);
+  for (const m of mine.slice(LIBRARY_MAX)) if (!referenced().has(m.id)) m.library = false;
+}
+
 /** Tira do registro as mídias expiradas que nenhum projeto usa (arquivo sumido não conta: fica offline). */
 function prune() {
   const now = Date.now();
   let changed = false;
   for (const [id, m] of store) {
     if (m.linked) continue; // original no computador do usuário: nunca expira
+    if (inLibrary(m)) continue; // biblioteca da conta: fica guardada
     if (now - m.createdAt > TTL_MS && !referenced().has(id)) {
       store.delete(id);
       changed = true;
@@ -60,7 +101,7 @@ function prune() {
 }
 
 /** Registra uma mídia recém-enviada (ou ligada ao original). Retorna a entrada pública. */
-export function registerMedia({ id, filePath, kind, originalname, durationSec, linked = false }) {
+export function registerMedia({ id, filePath, kind, originalname, durationSec, linked = false, ownerId = null }) {
   store.set(id, {
     id,
     path: filePath,
@@ -69,7 +110,9 @@ export function registerMedia({ id, filePath, kind, originalname, durationSec, l
     durationSec: Number.isFinite(durationSec) ? durationSec : null,
     createdAt: Date.now(),
     linked: Boolean(linked),
+    ...(ownerId ? { ownerId: String(ownerId) } : {}),
   });
+  if (ownerId) capLibrary(String(ownerId));
   persist();
   return publicMedia(id);
 }

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { config } from './config.js';
 import { cloudPutObject, cloudGetObject, cloudListObjects, cloudDeleteObjects } from './cloudSync.js';
 import { makeLogger } from './logger.js';
+import { templateMediaIds } from './userTemplates.js';
 
 const log = makeLogger('projetos');
 
@@ -100,6 +101,7 @@ export function referencedFiles() {
   try {
     users = fs.readdirSync(root);
   } catch {
+    for (const id of templateMediaIds()) keep.add(id);
     return keep;
   }
   for (const u of users) {
@@ -120,5 +122,7 @@ export function referencedFiles() {
       }
     }
   }
+  // mídias usadas nos "Meus modelos" também não expiram
+  for (const id of templateMediaIds()) keep.add(id);
   return keep;
 }

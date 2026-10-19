@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { C, GRAD, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { sourceUrl, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts } from '../api.js';
+import { sourceUrl, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -636,6 +636,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     (async () => {
       try {
         const doc = await loadProject(sourceId);
+        if (alive && !doc?.state && !loadAutosave(sourceId)?.state) {
+          // vídeo novo: entra o modelo marcado como padrão ("usar sempre nos vídeos novos")
+          const def = (await listTemplatesApi().catch(() => [])).find((t) => t.isDefault);
+          if (alive && def) { setTemplates(null); applyTemplate(def); }
+        }
         if (!alive || !doc?.state) return;
         const local = loadAutosave(sourceId);
         if (local?.state && local.at > doc.savedAt + 1000) return; // este navegador tem algo mais novo: mantém o aviso
@@ -1775,6 +1780,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     try {
       for (const file of files) {
         const info = await addProjectMedia(file);
+        addMediaItem(info, extra, file);
+      }
+      libLoadedRef.current = false; // a biblioteca ganhou o arquivo novo
+      if (libOpen) loadLibrary();
+    } catch (err) {
+      setMediaErr(err.message || 'falha ao enviar a mídia');
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+  /** Coloca uma mídia (recém-enviada ou da biblioteca) na timeline, no ponto atual. */
+  function addMediaItem(info, extra = null, file = null) {
         const srcDur = Number(info.durationSec) || (info.kind === 'image' ? 4 : 5);
         setMedia((prev) => [
           ...prev,
@@ -1782,9 +1799,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             key: `${info.id}-${prev.length}-${Date.now()}`,
             mediaId: info.id,
             kind: info.kind,
-            filename: info.filename || file.name,
+            filename: info.filename || file?.name || 'mídia',
             // prévia: imagem local na hora; vídeo pelo servidor (vira H.264 se o navegador não tocar o original)
-            previewUrl: info.kind === 'audio' ? null : info.kind === 'video' ? mediaPreviewUrl(info.id) : info.linked ? mediaFileUrl(info.id) : URL.createObjectURL(file),
+            previewUrl: info.kind === 'audio' ? null : info.kind === 'video' ? mediaPreviewUrl(info.id) : info.linked || !file ? mediaFileUrl(info.id) : URL.createObjectURL(file),
             fadeIn: 0,
             fadeOut: 0,
             srcDuration: srcDur,
@@ -1804,12 +1821,96 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             ...(extra || {}),
           },
         ]);
-      }
-    } catch (err) {
-      setMediaErr(err.message || 'falha ao enviar a mídia');
-    } finally {
-      setMediaBusy(false);
+  }
+
+  // ── Biblioteca: tudo o que a conta já enviou fica guardado para usar de novo ──
+  const [library, setLibrary] = useState(null);
+  const [libOpen, setLibOpen] = useState(true);
+  const libLoadedRef = useRef(false);
+  async function loadLibrary() {
+    try {
+      setLibrary(await getMediaLibrary());
+      libLoadedRef.current = true;
+    } catch {
+      setLibrary((l) => l || []);
     }
+  }
+  useEffect(() => {
+    if (tab === 'midias' && !libLoadedRef.current) loadLibrary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+  async function forgetLibraryItem(id) {
+    if (!window.confirm('Tirar esta mídia da biblioteca? Os vídeos que já usam continuam iguais.')) return;
+    setLibrary((l) => (l || []).filter((x) => x.id !== id));
+    removeLibraryMedia(id).catch(() => loadLibrary());
+  }
+
+  // ── Meus modelos: o jeito de editar que você sempre usa (legenda, logo, textos, cor…) ──
+  const [tplOpen, setTplOpen] = useState(false);
+  const [templates, setTemplates] = useState(null);
+  const [tplName, setTplName] = useState('');
+  const [tplDefault, setTplDefault] = useState(false);
+  const [tplMsg, setTplMsg] = useState('');
+  const tplLoad = () => listTemplatesApi().then(setTemplates).catch((e) => { setTemplates((t) => t || []); setTplMsg(e.message); });
+  useEffect(() => { if (tplOpen && !templates) tplLoad(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [tplOpen]);
+  /** O "estilo" do vídeo atual. Mídias que cobrem quase o vídeo todo (ex.: logo) viram "o vídeo inteiro". */
+  function templateData() {
+    return {
+      cap, colorLook, colorAdj, fx, voice, audioVolume, aspectSel, quality,
+      textLayers: textLayers.map(({ key, ...l }) => ({ ...l, whole: l.end - l.start >= dur * 0.8 || undefined })),
+      media: media.filter((m) => m.mediaId).map(({ previewUrl, offline, ...m }) => ({ ...m, whole: m.duration >= dur * 0.8 || undefined })),
+    };
+  }
+  async function saveTemplateNow() {
+    const name = tplName.trim();
+    if (!name) { setTplMsg('Dê um nome ao modelo (ex.: "Meu padrão Reels").'); return; }
+    try {
+      const r = await saveTemplateApi({ name, data: templateData(), ...(tplDefault ? { isDefault: true } : {}) });
+      setTemplates(r.templates);
+      setTplName('');
+      setTplMsg(`Modelo "${r.template.name}" salvo.${r.template.isDefault ? ' Ele entra sozinho nos vídeos novos.' : ''}`);
+    } catch (e) {
+      setTplMsg(e.message);
+    }
+  }
+  /** Aplica um modelo neste vídeo: troca o estilo e acrescenta as mídias e textos dele. */
+  function applyTemplate(t) {
+    const d = t?.data || {};
+    const fit = (x) => {
+      if (x.whole) return { start: 0, end: dur };
+      const start = Math.max(0, Math.min(Number(x.start) || 0, Math.max(0, dur - 0.5)));
+      return { start, end: Math.min(dur, start + Math.max(0.5, (Number(x.end) || start + 3) - (Number(x.start) || 0))) };
+    };
+    if (d.cap) setCap((c) => ({ ...c, ...d.cap }));
+    if (d.colorLook !== undefined) setColorLook(d.colorLook);
+    if (d.colorAdj) setColorAdj(d.colorAdj);
+    if (d.fx) setFx((f) => ({ ...f, ...d.fx }));
+    if (d.voice) setVoice((v) => ({ ...v, ...d.voice }));
+    if (d.audioVolume !== undefined) setAudioVolume(d.audioVolume);
+    if (d.aspectSel) setAspectSel(d.aspectSel);
+    if (d.quality !== undefined) setQuality(d.quality);
+    if (Array.isArray(d.textLayers) && d.textLayers.length) {
+      setTextLayers((l) => [...l, ...d.textLayers.map(({ whole, ...x }, i) => { const r = fit({ ...x, whole }); return { ...x, key: `t${Date.now()}${i}`, start: +r.start.toFixed(2), end: +r.end.toFixed(2) }; })]);
+    }
+    if (Array.isArray(d.media) && d.media.length) {
+      const now = Date.now();
+      setMedia((prev) => normalizeLayers([...prev, ...d.media.filter((m) => !prev.some((p) => p.mediaId === m.mediaId)).map(({ whole, ...m }, i) => {
+        const r = fit({ start: m.start, end: Number(m.start) + Number(m.duration), whole });
+        return {
+          ...m, key: `${m.mediaId}-tpl${now}${i}`, start: +r.start.toFixed(2), duration: +(r.end - r.start).toFixed(2),
+          previewUrl: m.kind === 'audio' ? null : m.kind === 'video' ? mediaPreviewUrl(m.mediaId) : mediaFileUrl(m.mediaId),
+        };
+      })]));
+      setTimeout(() => checkMedia(d.media), 0);
+    }
+    setTplMsg(`Modelo "${t.name}" aplicado.`);
+  }
+  async function removeTemplate(t) {
+    if (!window.confirm(`Apagar o modelo "${t.name}"?`)) return;
+    try { setTemplates(await deleteTemplateApi(t.id)); } catch (e) { setTplMsg(e.message); }
+  }
+  async function toggleDefault(t) {
+    try { setTemplates(await defaultTemplateApi(t.id, t.isDefault)); } catch (e) { setTplMsg(e.message); }
   }
   // Sticker (como no CapCut): o emoji vira uma imagem PNG e entra como camada livre no playhead.
   async function addSticker(st) {
@@ -3193,6 +3294,44 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     document.body,
   );
 
+  const tplPanel = tplOpen && createPortal(
+    <div role="dialog" aria-label="Meus modelos" style={{ position: 'fixed', top: 64, right: 24, zIndex: 900, width: 340, maxHeight: 'calc(100vh - 90px)', overflowY: 'auto', padding: 14, borderRadius: 14, background: '#16161F', border: `1px solid ${C.border}`, boxShadow: '0 24px 60px -20px rgba(0,0,0,0.9)', color: C.text, display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <b style={{ fontSize: 13.5 }}>Meus modelos</b>
+        <button onClick={() => setTplOpen(false)} aria-label="Fechar" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.faint, fontSize: 18, cursor: 'pointer' }}>×</button>
+      </div>
+      <div style={{ fontSize: 11.5, color: C.faint, lineHeight: 1.5 }}>Salva o jeito que você sempre edita: estilo da legenda, mídias (ex.: seu logo), textos, cor, efeitos e voz. Depois é só aplicar em outro vídeo.</div>
+      <div style={{ display: 'grid', gap: 6, padding: 10, borderRadius: 10, border: '1px solid rgba(255,107,53,0.35)', background: 'rgba(255,107,53,0.06)' }}>
+        <input value={tplName} onChange={(e) => setTplName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveTemplateNow(); }} placeholder='Nome (ex.: "Meu padrão Reels")' maxLength={60}
+          style={{ height: 34, padding: '0 10px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 13, fontFamily: 'inherit' }} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.muted, cursor: 'pointer' }}>
+          <input type="checkbox" checked={tplDefault} onChange={(e) => setTplDefault(e.target.checked)} /> Usar sempre nos vídeos novos
+        </label>
+        <button onClick={saveTemplateNow} style={{ height: 34, borderRadius: 9, border: 'none', background: GRAD, color: '#fff', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' }}>Salvar este vídeo como modelo</button>
+      </div>
+      {tplMsg && <div style={{ fontSize: 12, color: /salvo|aplicado/.test(tplMsg) ? '#7EE2A8' : '#FCA5B4' }}>{tplMsg}</div>}
+      {templates === null ? <div style={{ fontSize: 12, color: C.faint }}>Carregando…</div> : templates.length === 0 ? (
+        <div style={{ fontSize: 12, color: C.faint }}>Nenhum modelo ainda.</div>
+      ) : templates.map((t) => (
+        <div key={t.id} style={{ display: 'grid', gap: 6, padding: 10, borderRadius: 10, border: `1px solid ${t.isDefault ? 'rgba(251,191,36,0.5)' : C.border}`, background: 'rgba(255,255,255,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <b style={{ fontSize: 13, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</b>
+            {t.isDefault && <span style={{ fontSize: 10.5, color: '#FBBF24', fontWeight: 700 }}>★ padrão</span>}
+          </div>
+          <div style={{ fontSize: 11, color: C.faint }}>
+            {[t.data?.cap ? 'legenda' : null, t.data?.media?.length ? `${t.data.media.length} mídia(s)` : null, t.data?.textLayers?.length ? `${t.data.textLayers.length} texto(s)` : null, t.data?.colorLook && t.data.colorLook !== 'auto' ? 'cor' : null].filter(Boolean).join(' · ') || 'estilo'}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => applyTemplate(t)} style={{ ...miniBtn(true, false), flex: 1, height: 30 }}>Aplicar</button>
+            <button onClick={() => toggleDefault(t)} title={t.isDefault ? 'Deixar de usar nos vídeos novos' : 'Usar sempre nos vídeos novos'} style={{ ...miniBtn(false, false), height: 30 }}>{t.isDefault ? '☆ Tirar padrão' : '★ Padrão'}</button>
+            <button onClick={() => removeTemplate(t)} style={{ ...miniBtn(false, false), height: 30, color: C.red }}>Apagar</button>
+          </div>
+        </div>
+      ))}
+    </div>,
+    document.body,
+  );
+
   const splitter = (kind) => (
     <div className={`rf-split rf-split--${kind}`} onMouseDown={(e) => startSplit(kind, e)}
       onDoubleClick={() => { saveLayout(kind === 'col' ? { monW: null } : { panelH: null }); setTimeout(() => window.dispatchEvent(new Event('resize')), 0); }}
@@ -3755,6 +3894,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     <div className={`rf-tl-card${isMobile ? ' rf-m' : ''}${isMobile && sheet ? ' rf-m-sheet' : ''}`} style={{ ...glass(), padding: 22 }}>
       {tour && !isMobile && <EditorTour onClose={() => setTour(false)} />}
       {!isMobile && layoutPanel}
+      {tplPanel}
       {isMobile && (
         <div className="rf-m-top">
           <button onClick={onBack} disabled={busy} aria-label="Fechar o editor" style={mIconBtn}><Icon name="close" size={22} strokeWidth={2} /></button>
@@ -3798,6 +3938,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div className="rf-tl-hide-sm" style={{ fontSize: 11.5, color: C.faint }}>Corte, legende e ajuste antes de exportar · {APP_VERSION}{cloudSavedAt ? ` · projeto salvo às ${new Date(cloudSavedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : savedAt ? ' · alterações salvas neste navegador' : ''}{cloudErr ? ' · não deu para salvar na conta agora (tenta de novo em 30 s)' : ''}</div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <GhostButton onClick={() => setTplOpen((v) => !v)} title="Meus modelos" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            ★ <span className="rf-tl-hide-sm">Modelos</span>
+          </GhostButton>
           <GhostButton onClick={() => setTour(true)} title="Guia rápido: mostra para que serve cada parte do editor" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             ? <span className="rf-tl-hide-sm">Guia rápido</span>
           </GhostButton>
@@ -3836,13 +3979,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               {APP_VERSION}{cloudSavedAt ? ` · salvo ${new Date(cloudSavedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : savedAt ? ' · salvo neste navegador' : ''}{cloudErr ? ' · ⚠ sem salvar' : ''}
             </span>
             <button onClick={onBack} disabled={busy} title="Voltar" className="rf-tl-navbtn">
-              <Icon name="arrowLeft" size={13} strokeWidth={2.2} /> Voltar
+              <Icon name="arrowLeft" size={13} strokeWidth={2.2} /> <span className="rf-navlbl2">Voltar</span>
+            </button>
+            <button onClick={() => { setTplOpen((v) => !v); setLayoutOpen(false); }} title="Meus modelos: salve e aplique o seu jeito de editar (legenda, logo, textos, cor…)" className="rf-tl-navbtn" style={tplOpen ? { borderColor: '#FF8A5C', color: '#FFD2BF' } : undefined}>
+              ★ <span className="rf-navlbl2">Modelos</span>
             </button>
             <button onClick={() => setLayoutOpen((v) => !v)} title="Ajustar o tamanho do vídeo, das opções e da timeline" className="rf-tl-navbtn" style={layoutOpen ? { borderColor: '#2D8CFF', color: '#7DB6FF' } : undefined}>
-              ▦ Layout
+              ▦ <span className="rf-navlbl2">Layout</span>
             </button>
             <button onClick={() => setTour(true)} title="Guia rápido: mostra para que serve cada parte do editor" className="rf-tl-navbtn">
-              ? Guia
+              ? <span className="rf-navlbl2">Guia</span>
             </button>
             <button data-tour="export" onClick={generate} disabled={busy || allGone} className="rf-tl-navbtn rf-tl-navbtn--go" style={{ background: busy || allGone ? 'rgba(255,255,255,0.08)' : GRAD, cursor: busy || allGone ? 'not-allowed' : 'pointer' }}>
               <Icon name="upload" size={13} strokeWidth={2.2} /> Exportar
@@ -4839,6 +4985,33 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 ))}
               </div>
               {mediaErr && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{mediaErr}</div>}
+              {/* Biblioteca: o que você já enviou fica guardado — clique para usar de novo */}
+              <div style={{ marginTop: 12, border: `1px solid ${C.border}`, borderRadius: 10, padding: 9, background: 'rgba(255,255,255,0.02)' }}>
+                <button onClick={() => setLibOpen((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', background: 'none', border: 'none', color: C.text, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
+                  {libOpen ? '▾' : '▸'} Sua biblioteca {library ? <span style={{ fontWeight: 500, color: C.faint }}>· {library.length} arquivo(s) guardado(s)</span> : null}
+                  <span style={{ marginLeft: 'auto', fontWeight: 500, color: C.faint, fontSize: 10.5 }}>clique para pôr no ponto atual</span>
+                </button>
+                {libOpen && (library === null ? (
+                  <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Carregando…</div>
+                ) : library.length === 0 ? (
+                  <div style={{ fontSize: 11, color: C.faint, marginTop: 6, lineHeight: 1.5 }}>Tudo o que você enviar (logo, vinheta, música, fotos) fica guardado aqui para usar em outros vídeos sem subir de novo.</div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))', gap: 6, marginTop: 8, maxHeight: 220, overflowY: 'auto' }}>
+                    {library.map((it) => (
+                      <div key={it.id} style={{ position: 'relative' }}>
+                        <button onClick={() => it.status === 'ok' && addMediaItem(it)} disabled={it.status !== 'ok'} title={it.status === 'ok' ? `${it.filename} — colocar no ponto atual` : `${it.filename} — arquivo não encontrado`}
+                          style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: `1px solid ${C.border}`, background: '#0E0E14', cursor: it.status === 'ok' ? 'pointer' : 'not-allowed', padding: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', opacity: it.status === 'ok' ? 1 : 0.4 }}>
+                          {it.kind === 'image' ? <img src={mediaFileUrl(it.id)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                            : <Icon name={it.kind === 'video' ? 'film' : 'play'} size={20} strokeWidth={1.8} color={it.kind === 'video' ? C.orange : C.purple} />}
+                        </button>
+                        <div style={{ fontSize: 9.5, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>{it.filename}</div>
+                        <button onClick={() => forgetLibraryItem(it.id)} title="Tirar da biblioteca" aria-label="Tirar da biblioteca"
+                          style={{ position: 'absolute', top: 3, right: 3, width: 18, height: 18, borderRadius: 5, border: 'none', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 11, lineHeight: 1, cursor: 'pointer', padding: 0 }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
               {media.length > 0 && (
                 <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
                   {media.map((m) => {
@@ -5830,6 +6003,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         }
         .rf-tl-navend{ display: none; margin-left: auto; position: sticky; right: 0; align-items: center; gap: 6px; padding-left: 10px; background: inherit; flex: none; }
         .rf-tl-navsaved{ font-size: 10.5px; color: #8B9099; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+        /* janela mais estreita: os botões viram só ícone (o nome aparece ao parar o mouse) e as abas continuam visíveis */
+        @media (max-width: 1799px){ .rf-tl-navsaved{ display: none; } }
+        @media (max-width: 1699px){ .rf-navlbl2{ display: none; } }
         .rf-tl-navbtn{ display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 11px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.05); color: #E8EAF0; font: 600 12px inherit; font-family: inherit; cursor: pointer; white-space: nowrap; }
         .rf-tl-navbtn:hover{ background: rgba(255,255,255,0.1); }
         .rf-tl-navbtn--go{ border: none; color: #fff; font-weight: 800; box-shadow: 0 6px 16px -8px rgba(255,107,53,0.8); }
