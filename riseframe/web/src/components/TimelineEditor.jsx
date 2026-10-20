@@ -14,7 +14,7 @@ import CaptionGallery, { FontPicker, ColorSwatches, TextStyleBar } from './Capti
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, playSfxUrl, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
-import { keyAt, cleanKeys, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
+import { keyAt, cleanKeys, keysChangeAnything, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
 import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
@@ -22,6 +22,7 @@ import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
 import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById } from '../../../shared/captionStyle.js';
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 import { captionCues, toSrt, toVtt, toTxt, skipMapper } from '../../../shared/captionExport.js';
+import { layerAt, upsertKey, shiftKf } from '../../../shared/layerKeys.js';
 
 // Tempo no formato do player: 00:12
 // Timecode como no Premiere (mm:ss:quadros, 30 fps): 00:56:23
@@ -309,6 +310,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const dragRef = useRef(null); // { si, edge: 'left'|'right' }
   const mediaDragRef = useRef(null); // { key, mode: 'move'|'left'|'right', x0, start0, dur0 }
   const [cur, setCur] = useState(0);
+  const curRef = useRef(0); // o playhead atual para funções chamadas fora do render (arrastar na prévia)
+  curRef.current = cur;
   const [playing, setPlaying] = useState(false);
   const [sel, setSel] = useState(0);
   // Seleção na timeline: qual faixa está ativa (Dividir/Excluir agem nela) e o que está selecionado.
@@ -1064,6 +1067,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         const duration = d.start0 + d.dur0 - start;
         const patch = { start: +start.toFixed(2), duration: +duration.toFixed(2) };
         if (timed) patch.offset = +Math.max(0, d.off0 + (start - d.start0)).toFixed(2);
+        if (d.kf0) patch.kf = shiftKf(d.kf0, start - d.start0);
         updateMedia(d.key, patch);
       }
     }
@@ -1174,7 +1178,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setSelKind('media');
     mediaDragRef.current = {
       key: m.key, mode, x0: e.clientX, y0: e.clientY, start0: m.start, dur0: m.duration, kind: m.kind,
-      srcDuration: m.srcDuration, off0: Number(m.offset) || 0, layer0: m.layer || 0,
+      srcDuration: m.srcDuration, off0: Number(m.offset) || 0, layer0: m.layer || 0, kf0: m.kf || null,
       maxLayer: media.reduce((mx, x) => Math.max(mx, x.layer || 0), 0),
     };
     document.body.style.userSelect = 'none';
@@ -1658,6 +1662,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         ...m, key: `${m.key}_${Date.now()}`, start: +t.toFixed(2), duration: +(m.duration - cutAt).toFixed(2), animIn: 'none',
         // vídeo/música: a segunda parte continua do ponto do arquivo onde a primeira parou
         offset: m.kind === 'image' ? 0 : +((Number(m.offset) || 0) + cutAt).toFixed(2),
+        ...(m.kf ? { kf: shiftKf(m.kf, cutAt) } : {}),
       };
       return [...list.slice(0, i), a, b, ...list.slice(i + 1)];
     });
@@ -1990,6 +1995,30 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
   }
   const updateMedia = (key, patch) => setMedia((prev) => prev.map((m) => (m.key === key ? { ...m, ...patch } : m)));
+  /**
+   * Muda propriedades de uma camada como no Premiere: a que tem quadros-chave (cronômetro
+   * ligado) ganha/atualiza um quadro no playhead; as outras mudam o valor fixo.
+   */
+  function patchLayer(key, patch) {
+    setMedia((prev) => prev.map((m) => {
+      if (m.key !== key) return m;
+      const kf = m.kf;
+      if (!kf) return { ...m, ...patch };
+      const rel = +Math.max(0, Math.min(m.duration, curRef.current - m.start)).toFixed(3);
+      const now = layerAt(m, curRef.current);
+      const nk = { ...kf };
+      const rest = { ...patch };
+      if (kf.pos?.length && ('cx' in patch || 'cy' in patch)) {
+        nk.pos = upsertKey(kf.pos, rel, [+(patch.cx ?? now.cx).toFixed(4), +(patch.cy ?? now.cy).toFixed(4)]);
+        delete rest.cx; delete rest.cy; delete rest.mode;
+      }
+      for (const p of ['scale', 'rot', 'opacity']) {
+        if (kf[p]?.length && p in patch) { nk[p] = upsertKey(kf[p], rel, +Number(patch[p]).toFixed(4)); delete rest[p]; }
+      }
+      if (nk.pos || nk.scale) delete rest.mode;
+      return { ...m, ...rest, kf: nk };
+    }));
+  }
   const removeMedia = (key) => setMedia((prev) => prev.filter((m) => m.key !== key));
 
   // Transcrição atual (edições da timeline) — usada para planejar o B-roll.
@@ -2266,6 +2295,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           ...(m.cx != null ? { cx: +Number(m.cx).toFixed(3), cy: +Number(m.cy ?? 0.5).toFixed(3) } : {}),
           ...(m.kind !== 'audio' && Math.abs(Number(m.rot) || 0) > 0.05 ? { rot: +Number(m.rot).toFixed(1) } : {}),
           ...(m.kind !== 'audio' && m.crop ? { crop: m.crop } : {}),
+          ...(m.kind !== 'audio' && m.kf ? { kf: m.kf } : {}),
           ...(m.kind === 'audio' ? { fadeIn: +Number(m.fadeIn || 0).toFixed(2), fadeOut: +Number(m.fadeOut || 0).toFixed(2) } : {}),
         })),
         // Velocidade por trecho e congelar quadro (tempo original; o servidor remapeia).
@@ -2580,6 +2610,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     );
   };
   const propTarget = selKind === 'media' && selMediaItem ? 'media' : selKind === 'text' && selTextItem ? 'text' : 'main';
+  // Vídeo principal: Transformar com quadros-chave (os mesmos da aba Enquadramento). Sem o
+  // cronômetro ligado, o valor é fixo no vídeo todo (um quadro só).
+  const [v1KfOn, setV1KfOn] = useState(false);
+  const v1Anim = v1KfOn || transformKeys.length > 1;
+  const setV1 = (prop, v) => { if (v1Anim) setKeyValue(prop, v); else setTransformKeys(cleanKeys([{ t: 0, ...K, [prop]: v }])); };
+  const v1Kf = {
+    on: v1Anim,
+    here: !!keyHere,
+    onToggle: () => {
+      if (!v1Anim) { setV1KfOn(true); if (!keyHere) toggleKeyHere(); return; }
+      if (transformKeys.length > 1 && !window.confirm('Desligar a animação apaga os quadros-chave do vídeo principal. Ele fica parado no valor de agora. Continuar?')) return;
+      setTransformKeys(keysChangeAnything([K]) ? cleanKeys([{ t: 0, ...K }]) : []);
+      setV1KfOn(false);
+    },
+    onKey: toggleKeyHere,
+    onPrev: prevKey ? () => seek(prevKey.t) : null,
+    onNext: nextKey ? () => seek(nextKey.t) : null,
+  };
   const propsBlock = (() => {
     const head = (title, sub) => (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 2px 4px' }}>
@@ -2590,11 +2638,46 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (propTarget === 'media') {
       const m = selMediaItem;
       const visual = m.kind !== 'audio';
-      const up = (patch) => updateMedia(m.key, patch);
+      const up = (patch) => patchLayer(m.key, patch);
       // mexer na posição/tamanho de uma camada em tela cheia a deixa livre (como arrastar na prévia)
-      const free = (patch) => up(m.mode === 'pip' ? patch : { mode: 'pip', scale: 1, cx: 0.5, cy: 0.5, ...patch });
-      const cx = m.cx ?? 0.5;
-      const cy = m.cy ?? 0.5;
+      const free = (patch) => up(m.mode === 'pip' || m.kf?.pos || m.kf?.scale ? patch : { mode: 'pip', scale: 1, cx: 0.5, cy: 0.5, ...patch });
+      const now = layerAt(m, cur); // valores deste instante (com os quadros-chave)
+      const cx = now.cx ?? 0.5;
+      const cy = now.cy ?? 0.5;
+      const rel = Math.max(0, Math.min(m.duration, cur - m.start));
+      const valOf = { pos: [cx, cy], scale: now.mode === 'pip' ? now.scale : 1, rot: now.rot || 0, opacity: now.opacity ?? 1 };
+      const setTrack = (prop, list, extra = null) => setMedia((all) => all.map((x) => {
+        if (x.key !== m.key) return x;
+        const k = { ...(x.kf || {}) };
+        if (list?.length) k[prop] = list; else delete k[prop];
+        return { ...x, ...(extra || {}), kf: Object.keys(k).length ? k : undefined };
+      }));
+      const kfFor = (prop) => {
+        const tr = m.kf?.[prop] || [];
+        const on = tr.length > 0;
+        const here = tr.some((k) => Math.abs(k.t - rel) < 0.04);
+        const prev = [...tr].reverse().find((k) => k.t < rel - 0.04);
+        const next = tr.find((k) => k.t > rel + 0.04);
+        return {
+          on,
+          here,
+          onToggle: () => {
+            if (!on) {
+              // liga: o 1º quadro no playhead com o valor de agora; posição/escala deixam a camada livre
+              const freeUp = (prop === 'pos' || prop === 'scale') && m.mode !== 'pip' ? { mode: 'pip', scale: 1, cx: 0.5, cy: 0.5 } : null;
+              const v = freeUp ? (prop === 'pos' ? [0.5, 0.5] : 1) : valOf[prop];
+              setTrack(prop, [{ t: +rel.toFixed(3), v }], freeUp);
+              return;
+            }
+            if (tr.length > 1 && !window.confirm('Desligar a animação apaga os quadros-chave desta propriedade. Ela fica parada no valor de agora. Continuar?')) return;
+            const v = valOf[prop];
+            setTrack(prop, null, prop === 'pos' ? { cx: +v[0].toFixed(4), cy: +v[1].toFixed(4) } : { [prop]: +Number(v).toFixed(4) });
+          },
+          onKey: () => setTrack(prop, here ? tr.filter((k) => Math.abs(k.t - rel) >= 0.04) : upsertKey(tr, rel, valOf[prop])),
+          onPrev: prev ? () => seek(m.start + prev.t) : null,
+          onNext: next ? () => seek(m.start + next.t) : null,
+        };
+      };
       const crop = { ...noCrop, ...(m.crop || {}) };
       return (
         <div style={{ display: 'grid', gap: 10 }}>
@@ -2605,21 +2688,29 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 <button onClick={() => up({ mode: 'cover', cx: undefined, cy: undefined })} style={miniBtn(m.mode !== 'pip', false)} title="Cobre a tela inteira (Fill)"><Icon name="maximize" size={12} strokeWidth={2} /> Preencher</button>
                 <button onClick={() => { const ar = Number(m.ar) || 0.5625; const fit = Math.min(1, (FH / FW) / ar); up({ mode: 'pip', scale: +fit.toFixed(3), cx: 0.5, cy: 0.5 }); }} style={miniBtn(false, false)} title="Cabe inteira na tela (Fit)"><Icon name="crop" size={12} strokeWidth={2} /> Ajustar</button>
               </div>
-              <PropRow label="Posição">
+              <PropRow label="Posição" kf={kfFor('pos')}>
                 <span style={{ display: 'inline-flex', gap: 10 }}>
-                  <ScrubNum value={cx * FW} step={2} suffix=" X" onChange={(v) => free({ cx: +(v / FW).toFixed(4) })} />
-                  <ScrubNum value={cy * FH} step={2} suffix=" Y" onChange={(v) => free({ cy: +(v / FH).toFixed(4) })} />
+                  <ScrubNum value={cx * FW} step={2} suffix=" X" onChange={(v) => free({ cx: +(v / FW).toFixed(4), cy: +cy.toFixed(4) })} />
+                  <ScrubNum value={cy * FH} step={2} suffix=" Y" onChange={(v) => free({ cx: +cx.toFixed(4), cy: +(v / FH).toFixed(4) })} />
                 </span>
               </PropRow>
-              <PropRow label="Escala">
-                <ScrubNum value={(m.mode === 'pip' ? m.scale : 1) * 100} step={0.5} min={5} max={300} decimals={1} suffix=" %" onChange={(v) => free({ scale: +(v / 100).toFixed(3) })} />
+              <PropRow label="Escala" kf={kfFor('scale')}>
+                <ScrubNum value={valOf.scale * 100} step={0.5} min={5} max={300} decimals={1} suffix=" %" onChange={(v) => free({ scale: +(v / 100).toFixed(3) })} />
               </PropRow>
-              <PropRow label="Rotação">
-                <ScrubNum value={m.rot || 0} step={0.5} min={-180} max={180} decimals={1} suffix=" °" onChange={(v) => up({ rot: +v.toFixed(1) })} />
+              <PropRow label="Rotação" kf={kfFor('rot')}>
+                <ScrubNum value={valOf.rot} step={0.5} min={-180} max={180} decimals={1} suffix=" °" onChange={(v) => up({ rot: +v.toFixed(1) })} />
               </PropRow>
-              <PropRow label="Opacidade">
-                <ScrubNum value={(m.opacity ?? 1) * 100} step={0.5} min={10} max={100} decimals={0} suffix=" %" onChange={(v) => up({ opacity: +(v / 100).toFixed(3) })} />
+              <PropRow label="Opacidade" kf={kfFor('opacity')}>
+                <ScrubNum value={valOf.opacity * 100} step={0.5} min={10} max={100} decimals={0} suffix=" %" onChange={(v) => up({ opacity: +(v / 100).toFixed(3) })} />
               </PropRow>
+              {m.kf && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={Object.values(m.kf).some((tr) => tr.some((k) => k.ease))}
+                    onChange={(e) => setMedia((all) => all.map((x) => (x.key !== m.key || !x.kf ? x : { ...x, kf: Object.fromEntries(Object.entries(x.kf).map(([p, tr]) => [p, tr.map((k) => ({ t: k.t, v: k.v, ...(e.target.checked ? { ease: true } : {}) }))])) })))} />
+                  Movimento suave entre os quadros (entrada e saída suaves)
+                </label>
+              )}
+              {m.kf && <div style={{ fontSize: 11, color: C.faint }}>Com o cronômetro ligado, mudar um valor (ou arrastar na prévia) grava um ◆ no playhead. Os ◆ aparecem no bloco da camada na timeline.</div>}
             </PropSection>
           )}
           {visual && (
@@ -2667,7 +2758,22 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return (
       <div style={{ display: 'grid', gap: 10 }}>
         {head('Propriedades', 'Vídeo principal (V1) — selecione uma camada ou texto na timeline para ver as dela')}
-        <PropSection title="Transformar" onReset={() => { setZoom(1); setFocus({ x: 0.5, y: 0.4 }); }}>
+        <PropSection title="Transformar" onReset={() => { setTransformKeys([]); setV1KfOn(false); }}>
+          <PropRow label="Posição" kf={v1Kf}>
+            <span style={{ display: 'inline-flex', gap: 10 }}>
+              <ScrubNum value={(0.5 + K.x) * FW} step={2} suffix=" X" onChange={(v) => setV1('x', +Math.max(-1, Math.min(1, v / FW - 0.5)).toFixed(4))} />
+              <ScrubNum value={(0.5 + K.y) * FH} step={2} suffix=" Y" onChange={(v) => setV1('y', +Math.max(-1, Math.min(1, v / FH - 0.5)).toFixed(4))} />
+            </span>
+          </PropRow>
+          <PropRow label="Escala" kf={v1Kf}>
+            <ScrubNum value={K.scale * 100} step={0.5} min={50} max={300} decimals={1} suffix=" %" onChange={(v) => setV1('scale', +(v / 100).toFixed(4))} />
+          </PropRow>
+          <PropRow label="Rotação" kf={v1Kf}>
+            <ScrubNum value={K.rot} step={0.5} min={-180} max={180} decimals={1} suffix=" °" onChange={(v) => setV1('rot', +v.toFixed(1))} />
+          </PropRow>
+          {v1Anim && <div style={{ fontSize: 11, color: C.faint }}>Animando: mudar um valor grava um ◆ no playhead (faixa QUADROS na timeline). {transformKeys.length} quadro(s)-chave.</div>}
+        </PropSection>
+        <PropSection title="Enquadramento (zoom no rosto)" onReset={() => { setZoom(1); setFocus({ x: 0.5, y: 0.4 }); }}>
           <PropRow label="Posição (foco)">
             <span style={{ display: 'inline-flex', gap: 10 }}>
               <ScrubNum value={focus.x * 100} step={0.5} min={0} max={100} decimals={1} suffix=" % X" onChange={(v) => { setFramingMode('manual'); setFocus((f) => ({ ...f, x: +(v / 100).toFixed(3) })); }} />
@@ -3118,10 +3224,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
       {cbox && aspectSel === 'original' && cropBars(cbox)}
       {cbox && <StageLayers part="media" z={2} videoRef={videoRef} box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
-        onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
+        onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
       {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
       {cbox && <StageLayers part="texts" z={3} videoRef={videoRef} box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
-        onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
+        onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
     </div>
   );
 
@@ -4838,10 +4944,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 {vbox && !singleMon && <div ref={transOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 4, opacity: 0 }} />}
                 {vbox && cropBars(vbox)}
                 {vbox && <StageLayers part="media" z={2} videoRef={videoRef} box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
-                  onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
+                  onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
                 {cap.captions && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
                 {vbox && <StageLayers part="texts" z={3} videoRef={videoRef} box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
-                  onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
+                  onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
                 {framingMode === 'manual' && (
                   <div
                     ref={framingBoxRef}
@@ -6304,6 +6410,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     >
                       <span style={{ display: 'flex', flexShrink: 0, color: col }}><Icon name={m.kind === 'audio' ? 'play' : m.kind === 'video' ? 'film' : 'image'} size={11} strokeWidth={2.2} /></span>
                       {w > 44 && <span style={{ fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.filename}</span>}
+                      {m.kf && [...new Set(Object.values(m.kf).flatMap((tr) => tr.map((k) => k.t)))].filter((t) => t <= m.duration + 0.01).map((t) => (
+                        <span key={t} title={`Quadro-chave em ${fmtDuration(m.start + t)} (clique para ir)`} onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => { e.stopPropagation(); setSelMedia(m.key); setSelKind('media'); seek(m.start + t); }}
+                          style={{ position: 'absolute', left: X(m.start + t) - left - 4, bottom: 2, width: 8, height: 8, transform: 'rotate(45deg)', background: '#FACC15', border: '1px solid #1a1400', cursor: 'pointer', zIndex: 2 }} />
+                      ))}
                       <div onMouseDown={(e) => startMediaDrag(m, 'left', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
                       <div onMouseDown={(e) => startMediaDrag(m, 'right', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
                     </div>
@@ -7067,6 +7178,7 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
   if (!box || box.h < 10) return null;
   const visible = (part === 'texts' ? [] : media || [])
     .filter((m) => m.kind !== 'audio' && m.previewUrl && cur >= m.start && cur < m.start + m.duration)
+    .map((m) => layerAt(m, cur)) // quadros-chave: posição/escala/giro/opacidade deste instante
     .sort((a, b) => (a.layer || 0) - (b.layer || 0));
   const liveTexts = (part === 'media' ? [] : texts || []).filter((l) => cur >= l.start && cur < l.end);
   if (!visible.length && !liveTexts.length) return null;
@@ -7524,11 +7636,31 @@ function PropSection({ title, onReset, children }) {
     </div>
   );
 }
-function PropRow({ label, children }) {
+const kfNav = (off) => ({ width: 22, height: 22, padding: 0, border: 'none', background: 'none', color: C.muted, fontSize: 11, cursor: off ? 'default' : 'pointer', opacity: off ? 0.3 : 1, fontFamily: 'inherit' });
+/**
+ * Linha do painel Propriedades. Com `kf`, igual ao Premiere: o cronômetro liga/desliga a
+ * animação; ◀ ◆ ▶ vão ao quadro anterior, põem/tiram o quadro no playhead e vão ao próximo.
+ */
+function PropRow({ label, children, kf = null }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 22 }}>
-      <span style={{ fontSize: 12.5, color: C.muted, flex: '0 0 110px' }}>{label}</span>
-      <span style={{ fontSize: 12.5 }}>{children}</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 24 }}>
+      {kf ? (
+        <button onClick={kf.onToggle} aria-pressed={kf.on} aria-label={`Animar ${label}`}
+          title={kf.on ? 'Desligar a animação (apaga os quadros-chave desta propriedade)' : 'Animar: liga os quadros-chave desta propriedade (como o cronômetro do Premiere)'}
+          style={{ width: 22, height: 22, padding: 0, border: 'none', borderRadius: 5, background: kf.on ? 'rgba(45,140,255,0.18)' : 'none', cursor: 'pointer', color: kf.on ? '#4DA3FF' : C.faint, display: 'grid', placeItems: 'center', flex: 'none' }}>
+          <Icon name="clock" size={13} strokeWidth={2.2} />
+        </button>
+      ) : <span style={{ width: 22, flex: 'none' }} />}
+      <span style={{ fontSize: 12.5, color: C.muted, flex: '0 0 96px' }}>{label}</span>
+      <span style={{ fontSize: 12.5, minWidth: 0 }}>{children}</span>
+      {kf?.on && (
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', flex: 'none' }}>
+          <button onClick={kf.onPrev || undefined} disabled={!kf.onPrev} title="Quadro-chave anterior" aria-label="Quadro-chave anterior" style={kfNav(!kf.onPrev)}>◀</button>
+          <button onClick={kf.onKey} title={kf.here ? 'Tirar o quadro-chave do playhead' : 'Pôr um quadro-chave no playhead'} aria-label={kf.here ? 'Tirar quadro-chave' : 'Pôr quadro-chave'}
+            style={{ ...kfNav(false), fontSize: 14, color: kf.here ? '#FACC15' : C.muted }}>{kf.here ? '◆' : '◇'}</button>
+          <button onClick={kf.onNext || undefined} disabled={!kf.onNext} title="Próximo quadro-chave" aria-label="Próximo quadro-chave" style={kfNav(!kf.onNext)}>▶</button>
+        </span>
+      )}
     </div>
   );
 }

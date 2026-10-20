@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { runFfmpeg, x264Fast, probeSummary } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
+import { cleanLayerKf, kfExpr, kfMax } from '../../../shared/layerKeys.js';
 
 const log = makeLogger('usermedia');
 
@@ -103,7 +104,11 @@ function scaleFactor(anim, p) {
 export function visualLayerParts(vis, { W, H, fps, dur }) {
   const parts = [];
   let vlast = '[0:v]';
-  vis.forEach((m, i) => {
+  vis.forEach((m0, i) => {
+    // Quadros-chave (Propriedades): posição/escala animadas deixam a camada livre (PiP).
+    const kf = cleanLayerKf(m0.kf);
+    const m = kf && (kf.pos || kf.scale) && m0.mode !== 'pip'
+      ? { ...m0, mode: 'pip', scale: 1, cx: m0.cx ?? 0.5, cy: m0.cy ?? 0.5 } : m0;
     const out = i === vis.length - 1 ? '[vout]' : `[v${i}]`;
     const animIn = LAYER_ANIMATIONS[m.animIn] ? m.animIn : 'none';
     const animOut = LAYER_ANIMATIONS[m.animOut] ? m.animOut : 'none';
@@ -126,8 +131,10 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     let chain;
     let w0 = W;
     let h0 = H;
+    // com a escala animada, a base é a MAIOR escala (a camada só diminui: não perde nitidez)
+    const scaleBase = kf?.scale ? kfMax(kf.scale) : clamp(m.scale, 0.05, 3, 0.4);
     if (m.mode === 'pip') {
-      const scale = clamp(m.scale, 0.05, 3, 0.4);
+      const scale = scaleBase;
       w0 = Math.max(2, Math.round((W * scale) / 2) * 2);
       h0 = aspect ? Math.round((w0 * aspect) / 2) * 2 : null;
       chain = `${src}scale=${w0}:-2,setsar=1`;
@@ -149,26 +156,37 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     const fades = [];
     if (animIn === 'fade') fades.push(`fade=t=in:st=${f3(m.start)}:d=${f3(a)}:alpha=1`);
     if (animOut === 'fade') fades.push(`fade=t=out:st=${f3(m.end - a)}:d=${f3(a)}:alpha=1`);
-    if (fades.length || (op < 0.999 && blend === 'normal')) {
+    if (fades.length || (op < 0.999 && blend === 'normal') || kf?.opacity) {
       if (!rgba) chain += ',format=rgba';
       rgba = true;
-      if (op < 0.999 && blend === 'normal') chain += `,colorchannelmixer=aa=${f3(op)}`;
+      if (kf?.opacity) {
+        // opacidade animada: o alfa de cada pixel × o valor no tempo (T = tempo do vídeo)
+        chain += `,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(${kfExpr(kf.opacity, { tv: 'T', start: m.start })})'`;
+      } else if (op < 0.999 && blend === 'normal') chain += `,colorchannelmixer=aa=${f3(op)}`;
       if (fades.length) chain += `,${fades.join(',')}`;
     }
     // Giro (Rotation): os cantos ficam transparentes; no PiP a caixa cresce para caber.
     const rot = clamp(m.rot, -180, 180, 0);
-    if (Math.abs(rot) > 0.05) {
+    const rotating = Boolean(kf?.rot) || Math.abs(rot) > 0.05;
+    if (kf?.rot) {
+      // giro animado: caixa fixa do tamanho da diagonal (cabe em qualquer ângulo)
+      const box = m.mode === 'pip' ? `:ow='hypot(iw,ih)':oh='hypot(iw,ih)'` : '';
+      chain += `${rgba ? '' : ',format=rgba'},rotate=a='(${kfExpr(kf.rot, { start: m.start })})*PI/180'${box}:c=black@0`;
+    } else if (Math.abs(rot) > 0.05) {
       const rad = f3((rot * Math.PI) / 180);
-      chain += `${rgba ? '' : ',format=rgba'},rotate=${rad}${m.mode === 'pip' ? `:ow=rotw(${rad}):oh=roth(${rad})` : ''}:c=none`;
+      chain += `${rgba ? '' : ',format=rgba'},rotate=${rad}${m.mode === 'pip' ? `:ow=rotw(${rad}):oh=roth(${rad})` : ''}:c=black@0`;
     }
 
     // Escala animada (zoom/pop), por quadro.
     const sIn = scaleFactor(animIn, pi);
     const sOut = scaleFactor(animOut, po);
-    const S = [sIn, sOut].filter(Boolean).join('*');
+    const sKf = kf?.scale ? `(${kfExpr(kf.scale, { start: m.start })})/${f3(scaleBase)}` : null;
+    const S = [sIn, sOut, sKf].filter(Boolean).join('*');
     if (S) {
+      // girando (caixa maior que a base) ou com escala animada: parte do tamanho que chega
+      const base = rotating || sKf ? 'iw' : w0;
       const hExpr = m.mode === 'pip' ? '-2' : `'max(2,round(${H}*${S}/2)*2)'`;
-      chain += `,scale=w='max(2,round(${w0}*${S}/2)*2)':h=${hExpr}:eval=frame`;
+      chain += `,scale=w='max(2,round(${base}*${S}/2)*2)':h=${hExpr}:eval=frame`;
     }
     parts.push(`${chain}[m${i}]`);
 
@@ -176,7 +194,11 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     // zoom/pop a camada cresce a partir do centro desse retângulo.
     let x;
     let y;
-    if (m.mode === 'pip' && Number.isFinite(Number(m.cx)) && Number.isFinite(Number(m.cy))) {
+    if (kf?.pos) {
+      // posição animada: o centro anda pelos quadros-chave
+      x = `(${kfExpr(kf.pos, { start: m.start, idx: 0 })})*${W}-w/2`;
+      y = `(${kfExpr(kf.pos, { start: m.start, idx: 1 })})*${H}-h/2`;
+    } else if (m.mode === 'pip' && Number.isFinite(Number(m.cx)) && Number.isFinite(Number(m.cy))) {
       // Posição livre (arrastada no editor): centro da camada em fração da tela — pode
       // ficar em qualquer lugar, até parcialmente fora do quadro.
       x = `${f3(clamp(m.cx, -1, 2, 0.5) * W)}-w/2`;
