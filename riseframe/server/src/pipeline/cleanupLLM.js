@@ -1,5 +1,5 @@
 import { makeLogger } from '../logger.js';
-import { isFiller } from './cleanup.js';
+import { isFiller, canon } from './cleanup.js';
 
 const log = makeLogger('cleanup-ai');
 
@@ -25,6 +25,7 @@ Devolva os ÍNDICES das palavras que devem SAIR do vídeo:
    Ex.: "hoje eu vou mostrar três ⏸ hoje eu vou te mostrar as três dicas" → saem "hoje eu vou mostrar três".
 4. ERROS CORRIGIDOS: palavra, nome ou número errado que a pessoa corrige logo em seguida — sai o errado e a correção ("custa 50, digo, 60 reais" → saem "50," e "digo,").
 5. Frases abandonadas no meio que não se completam e são substituídas por outra.
+6. FRASE REGRAVADA: a pessoa fala a mesma frase (ou quase a mesma) duas ou mais vezes seguidas porque errou o final, gaguejou ou não gostou → saem TODAS as versões anteriores, fica só a ÚLTIMA completa (mesmo que mude uma ou duas palavras: "pra"/"para", "tá"/"está").
 NUNCA tire: palavras que fazem parte da frase final; repetições de ênfase ("muito, muito importante"); paralelismos e listas de propósito ("eu quero que você cresça, eu quero que você lucre"); conectivos com sentido ("então", "porque", "mas"); nada que mude o que a pessoa quis dizer. O texto que sobrar precisa ficar natural e completo. Na dúvida, MANTENHA.
 Responda APENAS com JSON: {"remove":[índices]}`;
 
@@ -65,24 +66,26 @@ export function windows(n, size = 600, ctx = 40) {
 }
 
 /**
- * Proteções contra exageros da IA numa janela: se ela tirar mais de 30% das palavras,
- * ou um trecho seguido de mais de 30 palavras, aquilo é descartado (melhor deixar uma
- * muleta do que sumir com uma parte da fala). Puro.
+ * Proteções contra exageros da IA numa janela: um trecho seguido de mais de 60 palavras
+ * é descartado (melhor deixar uma muleta do que sumir com uma parte da fala). Se ela
+ * tirar mais de 30% das palavras, a janela fica `strict`: em vez de jogar tudo fora
+ * (gravação com muitas regravações perdia TODA a limpeza), só passa o que for repetição
+ * clara (ver plausibleRemovals). Puro.
  */
 export function guardRemovals(indices, [a, b]) {
   const set = new Set(indices.filter((i) => i >= a && i < b));
-  if (set.size > 0.3 * (b - a) + 2) return new Set();
   const sorted = [...set].sort((x, y) => x - y);
   let runStart = 0;
   for (let k = 1; k <= sorted.length; k++) {
     if (k < sorted.length && sorted[k] === sorted[k - 1] + 1) continue;
-    if (k - runStart > 30) for (let r = runStart; r < k; r++) set.delete(sorted[r]);
+    if (k - runStart > 60) for (let r = runStart; r < k; r++) set.delete(sorted[r]);
     runStart = k;
   }
+  set.strict = set.size > 0.3 * (b - a) + 2;
   return set;
 }
 
-const normWord = (w) => String(w ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+const normWord = (w) => canon(w); // "pra"/"para", "tá"/"está"… contam como a mesma palavra
 // muletas de vício que a IA pode tirar soltas
 const VICE = new Set(['ne', 'tipo', 'sabe', 'entendeu', 'ta', 'assim']);
 // marcadores de correção ("50, digo, 60")
@@ -95,7 +98,7 @@ const MARKERS = new Set(['digo', 'melhor', 'alias', 'perdao', 'desculpa', 'descu
  * sem nenhum desses sinais é descartado (a IA às vezes erra o índice ou "resume" a fala,
  * e aí cortava palavras de verdade). Puro.
  */
-export function plausibleRemovals(flat, set) {
+export function plausibleRemovals(flat, set, strict = null) {
   const n = flat.map((f) => normWord(f.word));
   const sorted = [...set].sort((a, b) => a - b);
   const keep = new Set();
@@ -105,13 +108,15 @@ export function plausibleRemovals(flat, set) {
     const run = sorted.slice(k, j + 1);
     const after = [];
     for (let q = run[run.length - 1] + 1; q < Math.min(n.length, run[run.length - 1] + 1 + run.length + 8); q++) after.push(n[q]);
+    // janela em que a IA tirou demais: só repetição clara (quase tudo reaparece logo depois)
+    const need = strict && run.some((i) => strict.has(i)) ? 0.8 : 0.5;
     const reappears = (x) => x && (after.includes(x) || after.some((a) => a.length > x.length && x.length >= 2 && a.startsWith(x)));
     const content = run.filter((i) => !isFiller(flat[i].word, true) && !VICE.has(n[i]) && !MARKERS.has(n[i]));
     const repeated = content.filter((i) => reappears(n[i])).length;
     const ok =
       content.length === 0 || // só muletas
       run.some((i) => MARKERS.has(n[i])) || // correção com marcador
-      (reappears(n[run[0]]) && repeated >= Math.ceil(content.length * 0.5)); // frase refeita / repetição
+      (reappears(n[run[0]]) && repeated >= Math.ceil(content.length * need)); // frase refeita / repetição
     if (ok) for (const i of run) keep.add(i);
     k = j + 1;
   }
@@ -194,19 +199,21 @@ export async function cleanupWithLLM(transcript, cfg) {
   // Cada bloco é independente: se um falhar (limite da API, rede), os outros continuam valendo
   // — antes um erro num vídeo longo jogava fora a correção do vídeo inteiro.
   const asked = new Set();
+  const strict = new Set(); // índices de janelas em que a IA tirou demais
   const wins = windows(flat.length);
   let failed = 0;
   for (const w of wins) {
     try {
       const text = await ask(INSTRUCTION, numberedText(flat, w.from, w.to), cfg);
-      for (const i of guardRemovals(parseIndices(text), w.core)) asked.add(i);
+      const got = guardRemovals(parseIndices(text), w.core);
+      for (const i of got) { asked.add(i); if (got.strict) strict.add(i); }
     } catch (err) {
       failed++;
       log.warn(`bloco ${w.core[0]}–${w.core[1]} da limpeza por IA falhou: ${err.message}`);
     }
   }
   if (failed === wins.length) throw new Error('a limpeza por IA falhou em todos os blocos');
-  const remove = plausibleRemovals(flat, asked);
+  const remove = plausibleRemovals(flat, asked, strict);
   log.info(`${provider} marcou ${asked.size} palavras para remover; ${remove.size} conferidas como erro de fala (${flat.length} palavras)`);
 
   // Aplica as marcações numa cópia da transcrição (não muta a original).

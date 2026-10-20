@@ -33,6 +33,20 @@ function norm(word) {
     .replace(/[^a-z0-9]/g, '');
 }
 
+// Formas da MESMA palavra que a transcrição escreve diferente de uma vez para outra
+// ("pra"/"para", "tá"/"está", "cê"/"você", "3"/"três"): só para achar repetições.
+const SAME_WORD = {
+  pra: 'para', pro: 'para', pras: 'para', pros: 'para', ta: 'esta', tava: 'estava', tavam: 'estavam', to: 'estou',
+  ce: 'voce', vc: 'voce', ces: 'voces', vcs: 'voces', oce: 'voce',
+  um: '1', uma: '1', dois: '2', duas: '2', tres: '3', quatro: '4', cinco: '5', seis: '6', sete: '7', oito: '8',
+  nove: '9', dez: '10', cem: '100', mil: '1000',
+};
+/** Palavra normalizada na forma canônica (compara repetições). */
+export function canon(word) {
+  const n = norm(word);
+  return SAME_WORD[n] || n;
+}
+
 /** 3+ vezes o mesmo caractere → alongamento/hesitação (aaa, ééé, hmmm). */
 function isElongated(n) {
   return /^([a-z])\1{2,}$/.test(n);
@@ -113,7 +127,7 @@ export function markFillers(transcript, opts = {}) {
     for (const seg of segments) for (const w of seg.words) {
       if (w.removed) continue;
       const n = norm(w.word);
-      if (n) out.push({ w, n });
+      if (n) out.push({ w, n, c: SAME_WORD[n] || n });
     }
     return out;
   };
@@ -152,7 +166,7 @@ export function markFillers(transcript, opts = {}) {
     let list = kept();
     for (let i = 0; i + 2 < list.length; i++) {
       if (list[i].w.removed) continue;
-      if (list[i].n === list[i + 2].n && midIsConnector(list[i + 1].n)) {
+      if (list[i].c === list[i + 2].c && midIsConnector(list[i + 1].n)) {
         list[i].w.removed = true;
         list[i + 1].w.removed = true;
         removedCount += 2;
@@ -180,7 +194,7 @@ export function markFillers(transcript, opts = {}) {
       while (i + 2 * n <= list.length) {
         let equal = true;
         for (let k = 0; k < n; k++) {
-          if (list[i + k].n !== list[i + n + k].n) { equal = false; break; }
+          if (list[i + k].c !== list[i + n + k].c) { equal = false; break; }
         }
         // Repetição de UMA palavra que é ênfase intencional → mantém as duas.
         if (equal && n === 1 && EMPHATIC.has(list[i].n)) equal = false;
@@ -210,32 +224,53 @@ export function markFillers(transcript, opts = {}) {
 const ENDS_CLAUSE = /[.,!?;:…]["')\]]*$/;
 
 /**
- * Frases refeitas. Para cada palavra i, procura adiante (até 20 palavras / 12 s) um
- * recomeço j em que as palavras voltam a se repetir (ao menos 2 iguais seguidas). O
- * trecho [i, j) é uma tentativa abandonada se TODA palavra dele reaparece no recomeço
- * (ou é um pedaço de palavra do recomeço — "super-" → "supermercado" — ou uma muleta).
- * Uma palavra nova no trecho (ex.: "eu quero que você cresça, eu quero que você lucre")
- * indica paralelismo de propósito → fica. Marca e devolve quantas palavras saíram.
+ * Frases refeitas. Para cada palavra i, procura adiante um recomeço j em que as palavras
+ * voltam a se repetir (ao menos 2 iguais seguidas; 3 quando a tentativa é longa — até
+ * 40 palavras / 25 s, uma frase inteira regravada). O trecho [i, j) é uma tentativa
+ * abandonada se TODA palavra dele reaparece no recomeço (ou é um pedaço de palavra do
+ * recomeço — "super-" → "supermercado" — ou uma muleta). Uma palavra nova no trecho
+ * (ex.: "eu quero que você cresça, eu quero que você lucre") indica paralelismo de
+ * propósito → fica (numa frase longa, ≥ 10 palavras, aceita 1 trocada a cada 10). E a
+ * ÚLTIMA palavra da tentativa pode ser nova quando a pessoa
+ * travou ali ("hoje eu vou falar… hoje eu vou mostrar": reticências, palavra cortada ou
+ * pausa longa sem pontuação) — é onde o erro acontece. Marca e devolve quantas saíram.
  */
 export function markRetakes(list) {
   let removed = 0;
+  const C = (x) => x.c ?? x.n;
+  const raw = (x) => String(x.w.word ?? '').trim();
   for (let i = 0; i < list.length; i++) {
     if (list[i].w.removed) continue;
-    for (let j = i + 2; j < list.length - 1 && j - i <= 20; j++) {
-      if (Number(list[j].w.start) - Number(list[i].w.start) > 12) break;
-      if (list[j].n !== list[i].n || list[j + 1].n !== list[i + 1].n) continue;
+    for (let j = i + 2; j < list.length - 1 && j - i <= 40; j++) {
+      if (Number(list[j].w.start) - Number(list[i].w.start) > 25) break;
+      if (C(list[j]) !== C(list[i]) || C(list[j + 1]) !== C(list[i + 1])) continue;
       const span = j - i;
+      // tentativa longa: o recomeço precisa repetir 3 palavras (2 iguais por acaso é comum)
+      if (span > 20 && !(list[j + 2] && list[i + 2] && C(list[j + 2]) === C(list[i + 2]))) continue;
       const redo = new Set();
-      for (let k = j; k < Math.min(list.length, j + span + 4); k++) redo.add(list[k].n);
+      for (let k = j; k < Math.min(list.length, j + span + 4); k++) redo.add(C(list[k]));
       const covered = (x) => {
-        if (redo.has(x.n) || isFiller(x.w.word, true) || /-$/.test(String(x.w.word))) return true;
+        if (redo.has(C(x)) || isFiller(x.w.word, true) || /-$/.test(raw(x))) return true;
         if (x.n.length < 2) return false;
-        for (const r of redo) if (r.length > x.n.length && r.startsWith(x.n)) return true;
+        for (let k = j; k < Math.min(list.length, j + span + 4); k++) if (list[k].n.length > x.n.length && list[k].n.startsWith(x.n)) return true;
         return false;
       };
-      let ok = true;
-      for (let k = i; k < j && ok; k++) ok = covered(list[k]);
-      if (!ok) continue;
+      // frase longa regravada quase igual: aceita 1 palavra trocada a cada 10, se o recomeço
+      // repete as 3 primeiras ("…uma coisa muito simples" → "…uma coisa simples agora")
+      const three = list[j + 2] && list[i + 2] && C(list[j + 2]) === C(list[i + 2]);
+      const allow = span >= 10 && three ? Math.floor(span / 10) : 0;
+      let miss = 0;
+      let lastMiss = false;
+      for (let k = i; k < j; k++) if (!covered(list[k])) { miss++; if (k === j - 1) lastMiss = true; }
+      if (miss > allow && !(miss === allow + 1 && lastMiss)) continue;
+      if (miss === allow + 1) {
+        // só a última palavra é nova: vale se a pessoa travou ali
+        const last = list[j - 1];
+        const stuck = /(…|\.\.\.|-)$/.test(raw(last));
+        const pause = Number(list[j].w.start) - Number(last.w.end);
+        const bare = !/[.,!?;:]["')\]]*$/.test(raw(last));
+        if (!(span >= 3 && (stuck || (pause >= 0.7 && bare)))) continue;
+      }
       for (let k = i; k < j; k++) {
         if (!list[k].w.removed) {
           list[k].w.removed = true;

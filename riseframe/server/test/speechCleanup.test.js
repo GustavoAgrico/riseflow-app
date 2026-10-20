@@ -75,11 +75,15 @@ test('limpeza por IA: janelas cobrem o vídeo inteiro e protegem contra exageros
   const w = windows(1300, 600, 40);
   assert.deepEqual(w.map((x) => x.core), [[0, 600], [600, 1200], [1200, 1300]]);
   assert.deepEqual([w[1].from, w[1].to], [560, 1240]);
-  // mais de 30% da janela → descarta tudo
-  assert.equal(guardRemovals(Array.from({ length: 50 }, (_, i) => i), [0, 100]).size, 0);
-  // bloco seguido de 31 palavras sai; o resto fica
-  const g = guardRemovals([...Array.from({ length: 31 }, (_, i) => 100 + i), 5, 7], [0, 1000]);
+  // mais de 30% da janela → não joga fora: fica "strict" (só passa repetição clara)
+  const many = guardRemovals(Array.from({ length: 50 }, (_, i) => i), [0, 100]);
+  assert.equal(many.size, 50);
+  assert.equal(many.strict, true);
+  assert.equal(guardRemovals([1, 2], [0, 100]).strict, false);
+  // bloco seguido de 61 palavras sai (31 já pode: frase inteira regravada); o resto fica
+  const g = guardRemovals([...Array.from({ length: 61 }, (_, i) => 100 + i), 5, 7], [0, 1000]);
   assert.deepEqual([...g].sort((a, b) => a - b), [5, 7]);
+  assert.equal(guardRemovals(Array.from({ length: 31 }, (_, i) => 100 + i), [0, 1000]).size, 31);
   // índices fora do miolo são ignorados
   assert.deepEqual([...guardRemovals([1, 650], [600, 1200])], [650]);
   const flat = [{ word: 'oi', start: 0, end: 0.3 }, { word: 'gente', start: 1.2, end: 1.5 }];
@@ -115,4 +119,39 @@ test('transcrição ao pé da letra: exemplo de fala natural para o Whisper', ()
   assert.match(verbatimPrompt('pt'), /eu, eu/);
   assert.match(verbatimPrompt('en'), /uh/);
   assert.equal(verbatimPrompt('es'), '');
+});
+
+/** Palavras com pausa escolhida depois de cada uma: [['palavra', pausaDepois], ...]. */
+function timed(list) {
+  let t = 0;
+  const words = list.map(([word, gap = 0.05]) => {
+    const w = { start: +t.toFixed(2), end: +(t + 0.3).toFixed(2), word };
+    t += 0.3 + gap;
+    return w;
+  });
+  return { segments: [{ start: 0, end: t, text: '', words }] };
+}
+
+test('repetição com a mesma palavra escrita diferente ("pra"/"para", "tá"/"está", "3"/"três")', () => {
+  assert.equal(clean('vou pra casa vou para casa agora'), 'vou para casa agora');
+  assert.equal(clean('isso tá certo isso está certo sim', false), 'isso está certo sim');
+  assert.equal(clean('são 3 dicas são três dicas hoje'), 'são três dicas hoje');
+});
+
+test('frase inteira regravada (longa) sai; fica a última versão', () => {
+  const take = 'se você quer vender mais no instagram sem gastar com anúncio e sem depender do algoritmo você precisa entender uma coisa muito simples';
+  assert.equal(take.split(' ').length > 20, true);
+  assert.equal(clean(`${take} se você quer vender mais no instagram sem gastar com anúncio e sem depender do algoritmo você precisa entender uma coisa simples agora`),
+    'se você quer vender mais no instagram sem gastar com anúncio e sem depender do algoritmo você precisa entender uma coisa simples agora');
+});
+
+test('tentativa que travou na última palavra (reticências ou pausa longa) sai', () => {
+  assert.equal(clean('hoje eu vou falar… hoje eu vou mostrar três dicas'), 'hoje eu vou mostrar três dicas');
+  const r = markFillers(timed([['hoje'], ['eu'], ['vou'], ['falar', 0.9], ['hoje'], ['eu'], ['vou'], ['mostrar'], ['três'], ['dicas']]), { aggressive: false });
+  assert.equal(keptText(r), 'hoje eu vou mostrar três dicas');
+  // com vírgula/ponto e pausa curta é paralelismo: fica tudo
+  for (const t of ['Eu quero que você cresça. Eu quero que você lucre.', 'eu quero que você cresça, eu quero que você lucre']) assert.equal(clean(t), t);
+  // pausa curta sem travar: não é retomada
+  const p = markFillers(timed([['hoje'], ['eu'], ['vou'], ['falar', 0.2], ['hoje'], ['eu'], ['vou'], ['mostrar']]), { aggressive: false });
+  assert.equal(keptText(p), 'hoje eu vou falar hoje eu vou mostrar');
 });
