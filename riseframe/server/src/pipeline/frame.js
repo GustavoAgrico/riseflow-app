@@ -77,3 +77,43 @@ export async function applyVideoCrop(input, work, meta, crop, onProgress) {
   return { output: out, applied: true };
 }
 
+/** Trechos vazios (Excluir no vídeo, como o "lift" do Premiere): [{start,end}] limpos. Puro. */
+export function cleanBlanks(raw) {
+  if (!Array.isArray(raw)) return [];
+  const list = raw
+    .map((b) => ({ start: Math.max(0, Number(b?.start)), end: Number(b?.end) }))
+    .filter((b) => Number.isFinite(b.start) && Number.isFinite(b.end) && b.end - b.start >= 0.05)
+    .sort((a, b) => a.start - b.start)
+    .slice(0, 100);
+  const out = [];
+  for (const b of list) {
+    const last = out[out.length - 1];
+    if (last && b.start <= last.end + 0.01) last.end = Math.max(last.end, b.end);
+    else out.push({ start: +b.start.toFixed(3), end: +b.end.toFixed(3) });
+  }
+  return out;
+}
+
+/** Expressão "dentro de algum trecho" para o enable= do FFmpeg. Puro. */
+export function blanksEnable(blanks) {
+  return blanks.map((b) => `between(t,${b.start.toFixed(3)},${b.end.toFixed(3)})`).join('+');
+}
+
+/**
+ * Trechos vazios do vídeo principal: a imagem fica preta e o som some, sem mudar a
+ * duração (o espaço continua lá, como no Premiere; camadas e legendas seguem por cima).
+ * Roda no tempo original, antes dos cortes.
+ */
+export async function applyVideoBlanks(input, work, meta, blanks, onProgress) {
+  const list = cleanBlanks(blanks);
+  if (!list.length) return { output: input, applied: false };
+  const en = blanksEnable(list);
+  const out = path.join(work, 'blanks.mp4');
+  const args = ['-i', input, '-vf', `drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill:enable='${en}'`];
+  if (meta.hasAudio) args.push('-af', `volume=0:enable='${en}'`, '-c:a', 'aac', '-b:a', '192k');
+  args.push(...x264Fast(), '-movflags', '+faststart', '-y', out);
+  await runFfmpeg(args, { label: 'blank', totalDuration: meta.duration, onProgress });
+  log.ok(`trechos vazios: ${list.length}`);
+  return { output: out, applied: true };
+}
+

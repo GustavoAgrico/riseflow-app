@@ -37,7 +37,7 @@ import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
 import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
 import { brandIn, entityQuery } from '../pipeline/entities.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
-import { cleanCrop } from '../pipeline/frame.js';
+import { cleanCrop, cleanBlanks } from '../pipeline/frame.js';
 import { cleanLayerKf } from '../../../shared/layerKeys.js';
 import { SFX_LIBRARY } from '../pipeline/sfx.js';
 import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
@@ -639,6 +639,8 @@ export function parseOptions(raw) {
     audioVolume: clampNum(o.audioVolume, 0, 4, 1),
     // Recorte (Crop) do vídeo principal: quanto sai de cada lado (fração).
     ...(cleanCrop(o.videoCrop) ? { videoCrop: cleanCrop(o.videoCrop) } : {}),
+    // Espaços vazios no vídeo principal (Excluir sem fechar o buraco), tempo original.
+    ...(cleanBlanks(o.videoBlanks).length ? { videoBlanks: cleanBlanks(o.videoBlanks) } : {}),
     audioGains: Array.isArray(o.audioGains)
       ? o.audioGains
           .filter((g) => g && Number(g.end) > Number(g.start))
@@ -817,6 +819,8 @@ jobsRouter.post('/sequence', requireAuth, requireVerified, requireCredits('trans
   const raw = Array.isArray(body.clips) ? body.clips.slice(0, 80) : [];
   const clips = [];
   for (const c of raw) {
+    // espaço vazio (preto, sem som) — o que sobrou de um "Excluir" no vídeo principal
+    if (c?.blank === true) { clips.push({ kind: 'blank', filename: 'Vazio', duration: clampNum(c.duration, 0.2, 600, 1) }); continue; }
     // o vídeo que já está no editor (enviado antes) também pode entrar na sequência
     if (c?.sourceId) {
       const src = queue.get(String(c.sourceId));
@@ -837,7 +841,8 @@ jobsRouter.post('/sequence', requireAuth, requireVerified, requireCredits('trans
     });
   }
   if (!clips.length) return res.status(400).json({ error: 'coloque pelo menos um vídeo ou imagem na timeline' });
-  const total = clips.reduce((s, c) => s + (c.kind === 'image' ? c.duration : Math.max(0.3, (c.out > c.in ? c.out : c.in + 5) - c.in)), 0);
+  if (!clips.some((c) => c.kind !== 'blank')) return res.status(400).json({ error: 'coloque pelo menos um vídeo ou imagem na timeline' });
+  const total = clips.reduce((s, c) => s + (c.kind !== 'video' ? c.duration : Math.max(0.3, (c.out > c.in ? c.out : c.in + 5) - c.in)), 0);
   if (total > 3 * 3600) return res.status(400).json({ error: 'a timeline passou de 3 horas' });
   let music = null;
   if (body.music?.mediaId) {

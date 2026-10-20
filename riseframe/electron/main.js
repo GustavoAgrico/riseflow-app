@@ -301,7 +301,19 @@ app.on('activate', () => {
 
 // Abas do editor (Projeto, Enquadramento, Texto…): o editor manda quais existem e quais
 // estão ocultas; o menu Ver › Abas do editor mostra/oculta cada uma (como Janela no Premiere).
-let editorTabs = { all: [], hidden: [] };
+let editorTabs = { all: [], hidden: [], format: 'original' };
+const OUTPUT_FORMATS = [['original', 'Original (como foi gravado)'], ['9:16', '9:16 — Reels, Shorts, TikTok'], ['1:1', '1:1 — Feed quadrado'], ['16:9', '16:9 — YouTube']];
+/** Menu Exportar: abre a janela de exportação do editor e escolhe o formato de saída. */
+function exportMenu() {
+  const on = editorTabs.all.length > 0;
+  const send = (cmd) => mainWindow?.webContents.send('editor-command', cmd);
+  return [
+    { label: 'Exportar vídeo…', accelerator: 'CmdOrCtrl+M', enabled: on, click: () => send('export') },
+    { type: 'separator' },
+    { label: 'Formato de saída', enabled: false },
+    ...OUTPUT_FORMATS.map(([id, label]) => ({ label, type: 'radio', enabled: on, checked: editorTabs.format === id, click: () => send(`format:${id}`) })),
+  ];
+}
 function editorTabsMenu() {
   if (!editorTabs.all.length) return [{ label: 'Abra um vídeo no editor para escolher as abas', enabled: false }];
   return [
@@ -316,7 +328,8 @@ function editorTabsMenu() {
 ipcMain.on('editor-tabs-state', (_e, state) => {
   const all = Array.isArray(state?.all) ? state.all.filter((t) => t && typeof t.id === 'string' && typeof t.label === 'string').slice(0, 40) : [];
   const hidden = Array.isArray(state?.hidden) ? state.hidden.filter((id) => typeof id === 'string') : [];
-  editorTabs = { all: all.map(({ id, label }) => ({ id, label: label.slice(0, 60) })), hidden };
+  const format = typeof state?.format === 'string' ? state.format.slice(0, 12) : 'original';
+  editorTabs = { all: all.map(({ id, label }) => ({ id, label: label.slice(0, 60) })), hidden, format };
   buildMenu();
 });
 
@@ -359,6 +372,7 @@ function buildMenu() {
         { role: 'togglefullscreen' },
       ],
     },
+    { label: 'Exportar', submenu: exportMenu() },
     {
       label: 'Ajuda',
       submenu: [

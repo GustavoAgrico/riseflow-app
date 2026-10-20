@@ -9,7 +9,7 @@ import { silenceRemovalRanges } from './silence.js';
 import { preciseRemovals, wordGapRanges, dropSlivers } from './cutRefine.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, unmapTime } from './timeline.js';
 import { insertBroll } from './broll.js';
-import { applyManualFrame, applyVideoCrop, cleanCrop } from './frame.js';
+import { applyManualFrame, applyVideoCrop, cleanCrop, applyVideoBlanks, cleanBlanks } from './frame.js';
 import { applyUserMedia } from './overlay.js';
 import { applyMotion, dynamicZoomWindows } from './motion.js';
 import { enhanceVoice, voiceActive, voiceSettings } from './voice.js';
@@ -64,6 +64,7 @@ function buildPlan(mode, options) {
       { key: 'probe', label: 'Sondando o vídeo', weight: 2, enabled: true },
       { key: 'voice', label: 'Tratando a voz (ruído e equalização)', weight: 10, enabled: voiceActive(options, 'clean') },
       { key: 'gain', label: 'Ajustando o volume', weight: 6, enabled: Boolean(gainAf(options)) },
+      { key: 'blank', label: 'Deixando os espaços vazios', weight: 5, enabled: cleanBlanks(options.videoBlanks).length > 0 },
       { key: 'transcribe', label: 'Transcrevendo a fala', weight: 15, enabled: mode !== 'render' },
       { key: 'voicefx', label: 'Aplicando o modificador de voz', weight: 6, enabled: voiceActive(options, 'fx') },
       { key: 'cut', label: 'Aplicando cortes na timeline', weight: 20, enabled: hasRemoval },
@@ -245,6 +246,15 @@ export async function runPipeline(job, onUpdate = () => {}) {
       trackInput = r.output;
       report.gain = { mute: options.audioMute === true, volume: Number(options.audioVolume ?? 1), ranges: (options.audioGains || []).length };
     }
+    st.onProgress(1);
+  }
+
+  // 1c. Espaços vazios (Excluir no vídeo): preto e sem som, sem mudar a duração.
+  if (has('blank')) {
+    const st = enter('blank');
+    const r = await applyVideoBlanks(input, work, meta, options.videoBlanks, st.onProgress);
+    if (r.applied) { input = r.output; trackInput = r.output; }
+    report.blanks = { count: cleanBlanks(options.videoBlanks).length };
     st.onProgress(1);
   }
 

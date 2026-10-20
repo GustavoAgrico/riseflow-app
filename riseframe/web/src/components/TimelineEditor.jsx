@@ -321,6 +321,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [selGain, setSelGain] = useState(null);
   const [vsplits, setVsplits] = useState([]); // divisões feitas na faixa de vídeo
   const [selVideo, setSelVideo] = useState(null); // {start,end} do pedaço de vídeo selecionado
+  // Espaços vazios no vídeo principal (Excluir sem fechar o buraco, como o "lift" do
+  // Premiere): preto e sem som, sem mudar a duração; dá para soltar uma mídia ali.
+  const [blanks, setBlanks] = useState([]);
+  // Arquivos DESTE projeto (importados aqui ou usados na timeline): a biblioteca mostra só
+  // eles por padrão; "Todos" mostra tudo o que você já enviou.
+  const [projMediaIds, setProjMediaIds] = useState([]);
+  const [libScope, setLibScope] = useState('projeto');
+  const markProjectMedia = (id) => { if (id) setProjMediaIds((l) => (l.includes(id) ? l : [...l, id])); };
+  const [selBlank, setSelBlank] = useState(null);
   // Trecho selecionado em TODAS as faixas (arrastar na régua, ferramenta de seleção, I/O,
   // Ctrl+A): Delete corta vídeo, áudio e legenda juntos.
   const [range, setRange] = useState(null); // { a, b } em segundos
@@ -508,12 +517,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const visXcaps = laneHide.xcap ? [] : extraCaps;
   const overlaySegs = useMemo(() => mergeExtraCaptions(capSegments, visXcaps), [capSegments, visXcaps]);
   const histState = {
-    segments, cuts, keptPauses, keptNoises, gains, videoCrop, media, brollReview, brollOn, zoomMoments, headline, cover,
+    segments, cuts, keptPauses, keptNoises, gains, videoCrop, blanks, projMediaIds, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs,
     aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
   };
   const histSet = {
-    segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
+    segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, blanks: setBlanks, projMediaIds: setProjMediaIds, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
     brollReview: setBrollReview, brollOn: setBrollOn, zoomMoments: setZoomMoments, headline: setHeadline,
     cover: setCover, colorLook: setColorLook, colorAdj: setColorAdj, cap: setCap, fx: setFx, voice: setVoice,
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths,
@@ -650,7 +659,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         if (alive && !doc?.state && !loadAutosave(sourceId)?.state) {
           let carried = null;
           try { carried = JSON.parse(sessionStorage.getItem('rf_carry_style') || 'null'); sessionStorage.removeItem('rf_carry_style'); } catch { /* ignora */ }
-          if (carried) applyTemplate({ name: 'do vídeo anterior', data: carried }); // vídeo principal remontado: mantém o estilo
+          if (carried) {
+            applyTemplate({ name: 'do vídeo anterior', data: carried }); // vídeo principal remontado: mantém o estilo
+            if (Array.isArray(carried.projMediaIds)) setProjMediaIds(carried.projMediaIds); // e os arquivos do projeto
+          }
           else {
             // vídeo novo: entra o modelo marcado como padrão ("usar sempre nos vídeos novos")
             const def = (await listTemplatesApi().catch(() => [])).find((t) => t.isDefault);
@@ -1292,6 +1304,27 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function seek(t) { const v = videoRef.current; const c = Math.max(0, Math.min(dur, t)); if (v) v.currentTime = c; setCur(c); }
   function togglePlay() { const v = videoRef.current; if (!v) return; if (v.paused) v.play(); else v.pause(); }
   function onTrackClick(e) { if (rangeClickBlockRef.current) return; seek(timeAtClientX(e.clientX)); }
+  /** Arrastar o ponteiro azul (na régua ou pela cabeça dele), como no Premiere. */
+  function startScrub(e) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    videoRef.current?.pause();
+    seek(timeAtClientX(e.clientX));
+    const move = (ev) => seek(capDragFns.current.timeAtClientX(ev.clientX));
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      rangeClickBlockRef.current = true;
+      setTimeout(() => { rangeClickBlockRef.current = false; }, 0);
+    };
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'grabbing';
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  }
 
   // Seleção de trecho em todas as faixas: arrastar na régua (ou na timeline com a
   // ferramenta ligada); as pontas da faixa azul também arrastam.
@@ -1728,7 +1761,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       return [...list.slice(0, i), a, b, ...list.slice(i + 1)];
     });
   }
-  const canDeleteSel = (selKind === 'words' && !!txSel) || (selKind === 'range' && !!range && range.b - range.a > 0.05) || (selKind === 'caption' && selCaptions.length > 0) || (selKind === 'video' && !!selVideo)
+  const canDeleteSel = (selKind === 'blank' && !!selBlank) || (selKind === 'words' && !!txSel) || (selKind === 'range' && !!range && range.b - range.a > 0.05) || (selKind === 'caption' && selCaptions.length > 0) || (selKind === 'video' && !!selVideo)
     || (selKind === 'media' && !!selMediaItem) || (selKind === 'zoom' && !!selZoomItem)
     || (selKind === 'broll' && !!brollReview?.moments[selBroll]) || (selKind === 'gain' && !!selGain)
     || (selKind === 'keyframe' && selKey != null) || (selKind === 'text' && !!selText) || (selKind === 'vfx' && !!selFx) || (selKind === 'xcap' && !!selXcap) || (selKind === 'trans' && !!selTrans) || (selKind === 'marker' && !!selMarker) || (selKind === 'speed' && !!selSpeed) || (selKind === 'freeze' && !!selFreeze);
@@ -1742,9 +1775,40 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return true;
   }
   /** Excluir: trecho/legenda/vídeo saem do vídeo final (vídeo, áudio e legenda juntos); os demais itens saem da faixa. */
-  function deleteSelected() {
+  /** Deixa [a, b] vazio no vídeo principal (preto e mudo) — junta com vazios vizinhos. */
+  function addBlank(a, b) {
+    const lo = +Math.max(0, Math.min(a, b)).toFixed(2);
+    const hi = +Math.min(dur, Math.max(a, b)).toFixed(2);
+    if (hi - lo < 0.05) return;
+    setBlanks((list) => {
+      const all = [...list, { key: `b${Date.now()}`, start: lo, end: hi }].sort((x, y) => x.start - y.start);
+      const out = [];
+      for (const x of all) {
+        const last = out[out.length - 1];
+        if (last && x.start <= last.end + 0.01) last.end = Math.max(last.end, x.end);
+        else out.push({ ...x });
+      }
+      return out;
+    });
+  }
+  /**
+   * Excluir (Delete), como no Premiere: no vídeo/trecho deixa o espaço VAZIO (dá para pôr
+   * outra mídia ali); com Shift (ripple) corta e fecha o buraco. Na legenda, só a legenda
+   * some — o vídeo continua. Palavras da transcrição continuam cortando a fala.
+   */
+  function deleteSelected(ripple = false) {
     if (!canDeleteSel) return;
-    if (selKind === 'range') { if (cutTimeRange(range.a, range.b)) { setRange(null); setSelKind('caption'); } }
+    if (selKind === 'range') {
+      if (ripple) { if (cutTimeRange(range.a, range.b)) { setRange(null); setSelKind('caption'); } }
+      else { addBlank(range.a, range.b); setRange(null); setSelKind('caption'); }
+    }
+    else if (selKind === 'blank') {
+      // espaço vazio selecionado: Delete fecha o buraco (vira corte)
+      const b = blanks.find((x) => x.key === selBlank);
+      if (b) { setBlanks((l) => l.filter((x) => x.key !== b.key)); setCuts((l) => [...l, { key: `c${Date.now()}`, start: b.start, end: b.end }]); }
+      setSelBlank(null);
+      setSelKind('caption');
+    }
     else if (selKind === 'words') {
       // Palavras selecionadas na transcrição: saem do vídeo (vídeo, áudio e legenda); se todas
       // já estavam cortadas, voltam.
@@ -1760,12 +1824,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setSelKind('caption');
     }
     else if (selKind === 'caption') {
-      // Legenda selecionada → corta a fala daquele bloco (vídeo, áudio e legenda). Se todos
-      // já estavam cortados, Delete restaura. Só esconder o texto: botão "Ocultar legenda" (H).
-      const all = selCaptions.every((i) => segments[i] && segRemoved(segments[i]));
-      setCaptionsCut(!all);
+      // Legenda selecionada → só a LEGENDA sai (o vídeo e a fala continuam), como apagar um
+      // texto na faixa de legenda do Premiere. Se já estavam apagadas, Delete traz de volta.
+      const all = selCaptions.every((i) => segments[i] && segHidden(segments[i]));
+      setCaptionsHidden(!all);
     } else if (selKind === 'video') {
-      setCuts((l) => [...l, { key: `c${Date.now()}`, start: +selVideo.start.toFixed(2), end: +selVideo.end.toFixed(2) }]);
+      if (ripple) setCuts((l) => [...l, { key: `c${Date.now()}`, start: +selVideo.start.toFixed(2), end: +selVideo.end.toFixed(2) }]);
+      else addBlank(selVideo.start, selVideo.end);
       setSelVideo(null);
     } else if (selKind === 'media') { removeMedia(selMedia); setSelMedia(null); }
     else if (selKind === 'zoom') { setZoomMoments((l) => l.filter((z) => z.key !== selZoom)); setSelZoom(null); }
@@ -1792,11 +1857,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     });
   }
   const mediaRows = media.reduce((mx, m) => Math.max(mx, (m.layer || 0) + 1), 1);
-  const delTitle = selKind === 'words' ? 'Cortar as palavras selecionadas: vídeo, áudio e legenda (Delete)' : selKind === 'range' ? 'Excluir o trecho selecionado: vídeo, áudio e legenda (Delete)'
+  const delTitle = selKind === 'words' ? 'Cortar as palavras selecionadas: vídeo, áudio e legenda (Delete)' : selKind === 'range' ? 'Excluir o trecho: fica um espaço vazio (Delete) · Shift+Delete fecha o espaço'
     : selKind === 'xcap' ? 'Apagar a legenda que você adicionou (Delete) — o vídeo não muda'
-    : selKind === 'caption' ? 'Excluir a fala selecionada: vídeo, áudio e legenda (Delete) · H só oculta a legenda'
-      : selKind === 'video' ? 'Cortar o pedaço selecionado: vídeo, áudio e legenda (Delete)' : 'Excluir o item selecionado (Delete)';
-  const SEL_LABEL = { range: 'trecho', words: 'palavras', speed: 'velocidade', freeze: 'congelamento', marker: 'marcador', trans: 'transição', text: 'texto', xcap: 'legenda', vfx: 'efeito', keyframe: 'quadro-chave', caption: 'legenda', video: 'vídeo', media: 'camada', zoom: 'zoom', broll: 'B-roll', gain: 'volume' };
+    : selKind === 'caption' ? 'Apagar só a legenda selecionada — o vídeo continua (Delete)'
+      : selKind === 'video' ? 'Excluir o pedaço: fica um espaço vazio (Delete) · Shift+Delete fecha o espaço'
+      : selKind === 'blank' ? 'Fechar o espaço vazio (Delete)' : 'Excluir o item selecionado (Delete)';
+  const SEL_LABEL = { blank: 'espaço vazio', range: 'trecho', words: 'palavras', speed: 'velocidade', freeze: 'congelamento', marker: 'marcador', trans: 'transição', text: 'texto', xcap: 'legenda', vfx: 'efeito', keyframe: 'quadro-chave', caption: 'legenda', video: 'vídeo', media: 'camada', zoom: 'zoom', broll: 'B-roll', gain: 'volume' };
 
 
   function toggleSeg(si) { setSegments((prev) => prev.map((s, i) => { if (i !== si) return s; const gone = segRemoved(s); return { ...s, words: s.words.map((w) => ({ ...w, removed: !gone })) }; })); }
@@ -1848,6 +1914,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     try {
       for (const file of files) {
         const info = await addProjectMedia(file);
+        markProjectMedia(info?.id);
         addMediaItem(info, extra, file);
       }
       libLoadedRef.current = false; // a biblioteca ganhou o arquivo novo
@@ -1982,7 +2049,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
   /** Antes de remontar o vídeo principal: o estilo deste vídeo segue para o novo. */
   function carryStyleNow(mapT = null) {
-    const d = templateData();
+    const d = { ...templateData(), projMediaIds: [...projIdSet] };
     // vídeo principal remontado com os tempos mudados (clipe inserido / cortes aplicados):
     // camadas e textos acompanham o ponto do vídeo em que estavam
     if (mapT) {
@@ -2294,6 +2361,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         speed,
         audioVolume: +Number(audioVolume).toFixed(2),
         ...(videoCrop.l + videoCrop.t + videoCrop.r + videoCrop.b > 0.001 ? { videoCrop } : {}),
+        ...(blanks.length ? { videoBlanks: blanks.map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2) })) } : {}),
         audioGains: gains.map((g) => ({ start: +g.start.toFixed(2), end: +g.end.toFixed(2), volume: +Number(g.volume).toFixed(2) })),
         // Minhas mídias colocadas na timeline (imagens/vídeos/músicas próprias).
         userMedia: visMedia.map((m) => ({
@@ -2632,6 +2700,148 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     );
   };
   const propTarget = selKind === 'media' && selMediaItem ? 'media' : selKind === 'text' && selTextItem ? 'text' : 'main';
+  // ── Janela Exportar (como o Export do Premiere): formato, qualidade, legenda e o resumo da
+  // saída antes de gerar. Abre pelo botão Exportar, Ctrl+M ou o menu do app.
+  const [exportOpen, setExportOpen] = useState(false);
+  function openExport() { if (!busy && !allGone) setExportOpen(true); }
+  const openExportRef = useRef(openExport);
+  openExportRef.current = openExport;
+  useEffect(() => window.electron?.onEditorCommand?.((cmd) => {
+    if (cmd === 'export') openExportRef.current();
+    else if (typeof cmd === 'string' && cmd.startsWith('format:')) setAspectSel(cmd.slice(7));
+  }), []);
+  // função (não constante): usa valores calculados mais abaixo no render
+  const exportDialog = () => exportOpen && createPortal((() => {
+    const src = vdim || { w: 1080, h: 1920 };
+    const AR = { '9:16': [9, 16], '16:9': [16, 9], '1:1': [1, 1], '4:5': [4, 5] }[aspectSel];
+    let [ow, oh] = AR ? (AR[0] <= AR[1] ? [1080, Math.round((1080 * AR[1]) / AR[0])] : [Math.round((1080 * AR[0]) / AR[1]), 1080]) : [src.w, src.h];
+    if (hdAllowed && quality !== 'original') { const k = Number(quality) / Math.min(ow, oh); ow = Math.round((ow * k) / 2) * 2; oh = Math.round((oh * k) / 2) * 2; }
+    const secs = Math.max(0, (stats.keptSec + retimeDelta) / speed);
+    const mbps = Math.min(ow, oh) >= 2000 ? 35 : Math.min(ow, oh) >= 1000 ? 10 : 5;
+    const sizeMb = ((mbps + 0.192) * secs) / 8;
+    const row = (k, v) => (
+      <div style={{ display: 'flex', gap: 10, fontSize: 12.5, lineHeight: 1.5 }}><span style={{ color: C.faint, flex: '0 0 74px' }}>{k}</span><span style={{ color: C.text }}>{v}</span></div>
+    );
+    return (
+      <div role="dialog" aria-label="Exportar" onMouseDown={(e) => { if (e.target === e.currentTarget) setExportOpen(false); }}
+        style={{ position: 'fixed', inset: 0, zIndex: 950, background: 'rgba(5,5,10,0.65)', display: 'grid', placeItems: 'center', padding: 16 }}>
+        <div style={{ width: 'min(920px, 100%)', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', background: '#16161F', border: `1px solid ${C.border}`, borderRadius: 16, boxShadow: '0 30px 80px -20px rgba(0,0,0,0.9)', color: C.text, padding: 18, display: 'grid', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Icon name="upload" size={18} strokeWidth={2} />
+            <b style={{ fontSize: 17 }}>Exportar</b>
+            <span style={{ fontSize: 12.5, color: C.faint, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectTitle || 'Vídeo'}</span>
+            <button onClick={() => setExportOpen(false)} aria-label="Fechar" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.faint, fontSize: 22, cursor: 'pointer' }}>×</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, alignItems: 'start' }}>
+            <div style={{ display: 'grid', gap: 0 }}>
+              {exportSettingsJsx()}
+              <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Legenda</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: C.muted, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={cap.captions !== false} onChange={(e) => setCap((c) => ({ ...c, captions: e.target.checked }))} /> Legenda no vídeo (queimada)
+                </label>
+                <div style={{ fontSize: 11, color: C.faint }}>Depois de pronto, a legenda também sai em arquivo (.srt, .vtt, .txt) na tela do resultado.</div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gap: 10, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Saída</div>
+              {row('Vídeo', `H.264 · ${ow}×${oh} · 30 fps`)}
+              {row('Áudio', 'AAC · 192 kbps · 48 kHz · estéreo')}
+              {row('Formato', aspectSel === 'original' ? 'Original (como foi gravado)' : aspectSel)}
+              {row('Qualidade', hdAllowed && quality !== 'original' ? QUALITY_OPTS.find((q) => q.id === quality)?.label : 'Original')}
+              {row('Duração', fmtDuration(secs))}
+              {row('Tamanho', `≈ ${sizeMb >= 1000 ? `${(sizeMb / 1000).toFixed(1).replace('.', ',')} GB` : `${Math.max(1, Math.round(sizeMb))} MB`}`)}
+              {row('Legenda', cap.captions !== false ? 'no vídeo + arquivo .srt' : 'só em arquivo (.srt)')}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
+                <button onClick={() => setExportOpen(false)} style={{ height: 40, padding: '0 16px', borderRadius: 999, border: `1px solid ${C.border}`, background: 'transparent', color: C.text, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>Cancelar</button>
+                <button onClick={() => { setExportOpen(false); generate(); }} disabled={busy || allGone}
+                  style={{ height: 40, padding: '0 22px', borderRadius: 999, border: 'none', background: GRAD, color: '#fff', fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <Icon name="upload" size={15} strokeWidth={2.2} /> Exportar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  })(), document.body);
+  /** Formato do vídeo + qualidade da exportação (janela Exportar). */
+  function exportSettingsJsx() {
+    return (
+      <>
+
+            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="crop" size={15} strokeWidth={2} /></span>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Formato do vídeo</div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6, marginBottom: 10 }}>
+                {FORMATS.map((o) => {
+                  const on = aspectSel === o.id;
+                  return (
+                    <button key={o.id} onClick={() => setAspectSel(o.id)} title={o.hint}
+                      style={{ ...framingTab(on), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '8px 4px' }}>
+                      <span style={{ width: o.w, height: o.h, borderRadius: 3, border: `1.5px solid ${on ? C.orange : C.muted}` }} />
+                      <span style={{ fontSize: 11.5 }}>{o.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {aspectSel !== 'original' && (
+                <>
+                  <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.3, marginBottom: 6 }}>COMO O VÍDEO ENTRA NO FORMATO</div>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {REFRAME_MODES.map((o) => (
+                      <button key={o.id} onClick={() => { setReframeMode(o.id); if (o.id === 'manual') setFramingMode('manual'); }}
+                        style={{ ...framingTab(reframeMode === o.id), textAlign: 'left', padding: '8px 10px' }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700 }}>{o.label}</div>
+                        <div style={{ fontSize: 11, color: C.muted, fontWeight: 500, marginTop: 2 }}>{o.hint}</div>
+                      </button>
+                    ))}
+                  </div>
+                  {reframeMode === 'manual' && <div style={{ fontSize: 11, color: C.faint, marginTop: 8 }}>Arraste o vídeo na <b>prévia</b> (ou o ponto laranja no player) para escolher o que fica no quadro.</div>}
+                  {reframeMode === 'split' && (
+                    <div style={{ marginTop: 8 }}>
+                      <button onClick={() => setSplitSwap((v) => !v)} style={{ ...framingTab(false), width: '100%', padding: '7px 10px', fontSize: 12, fontWeight: 700 }}>
+                        Trocar de lugar · {splitSwap ? 'pessoa da direita em cima' : 'pessoa da esquerda em cima'}
+                      </button>
+                      <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Precisa de duas pessoas lado a lado no vídeo. Com uma pessoa só, o quadro segue o rosto. Se a IA errar, use <b>Posição que eu escolher</b>.</div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="sparkles" size={15} strokeWidth={2} /></span>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Qualidade da exportação</div>
+                {!hdAllowed && <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, letterSpacing: 0.4, color: '#fff', background: GRAD, borderRadius: 20, padding: '2px 8px' }}>PREMIUM</span>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
+                {QUALITY_OPTS.map((o) => {
+                  const on = (hdAllowed ? quality : 'original') === o.id;
+                  const locked = o.id !== 'original' && !hdAllowed;
+                  return (
+                    <button key={o.id} onClick={() => (locked ? openPlans() : setQuality(o.id))} title={locked ? 'Disponível no plano Premium' : o.hint}
+                      style={{ ...framingTab(on), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px', opacity: locked ? 0.55 : 1 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{locked && <Icon name="lock" size={11} strokeWidth={2.4} />}{o.label}</span>
+                      <span style={{ fontSize: 10, color: C.faint, fontWeight: 600 }}>{o.sub}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: C.faint, marginTop: 8, lineHeight: 1.45 }}>
+                {hdAllowed
+                  ? quality === 'original'
+                    ? 'Mantém a resolução do formato escolhido. Escolha 720p, 1080p ou 4K para ampliar com redução de ruído e nitidez.'
+                    : `O vídeo sai em ${QUALITY_OPTS.find((q) => q.id === quality)?.label}, ampliado com redução de ruído e nitidez${quality === '2160' ? ' (4K demora mais e gera arquivo maior)' : ''}. Não inventa detalhes que a gravação não tem.`
+                  : <>720p, 1080p e 4K são do plano <b style={{ color: C.text }}>Premium</b>. <button onClick={openPlans} style={{ background: 'none', border: 'none', color: C.orangeSoft, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit', fontSize: 11 }}>Ver planos</button></>}
+              </div>
+            </div>
+      </>
+    );
+  }
   // Vídeo principal: Transformar com quadros-chave (os mesmos da aba Enquadramento). Sem o
   // cronômetro ligado, o valor é fixo no vídeo todo (um quadro só).
   const [v1KfOn, setV1KfOn] = useState(false);
@@ -2945,11 +3155,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const capRows = useMemo(() => {
     const q = norm(capQuery.trim());
     // legenda cortada (palavras tiradas ou dentro de um corte) só aparece com "Ver trechos excluídos"
-    const rows = segments.map((s, si) => ({ s: capSegments[si] || s, si })).filter(({ s }) => !ripple || !segRemoved(s));
+    const rows = segments.map((s, si) => ({ s: capSegments[si] || s, si })).filter(({ s }) => !ripple || !(segRemoved(s) || segHidden(s)));
     return q ? rows.filter(({ s }) => norm(s.words.filter((w) => !w.removed || !ripple).map((w) => w.word).join(' ')).includes(q)) : rows;
   }, [segments, capSegments, capQuery, ripple]);
   // quantas legendas/palavras estão cortadas (para o botão de ver/esconder)
-  const cutCaptionCount = useMemo(() => capSegments.filter((sg) => segRemoved(sg)).length, [capSegments]);
+  const cutCaptionCount = useMemo(() => capSegments.filter((sg) => segRemoved(sg) || segHidden(sg)).length, [capSegments]);
   const cutWordCount = useMemo(() => capSegments.reduce((n, sg) => n + sg.words.filter((w) => w.removed).length, 0), [capSegments]);
   const showCutBtn = (n, label) => (n > 0 ? (
     <button onClick={() => setRipple((v) => !v)} title={ripple ? 'Mostrar o que foi cortado (para trazer de volta)' : 'Esconder o que foi cortado'}
@@ -3031,7 +3241,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const all = selCaptions.every((i) => segments[i] && segHidden(segments[i]));
     setCaptionsHidden(!all);
   }
-  keysRef.current = { razorCut, pickTool, rippleTrim, zoomTl, fitAll: () => fitAll(), rangeOn: rangeTool, toggleKeys: () => setShowKeys((v) => !v), pause: () => videoRef.current?.pause(), play: () => videoRef.current?.play()?.catch?.(() => {}), togglePlay, seek, cur, dur, goCaption, splitSelected, deleteSelected, undo, redo, hidden, copySel, pasteAtPlayhead, duplicateSel, toggleMarker, toggleSnap, markRange, selectAllRange, clearRange, toggleCapHidden, toggleRangeTool: () => setRangeTool((v) => !v) };
+  keysRef.current = { razorCut, pickTool, rippleTrim, zoomTl, fitAll: () => fitAll(), rangeOn: rangeTool, toggleKeys: () => setShowKeys((v) => !v), pause: () => videoRef.current?.pause(), play: () => videoRef.current?.play()?.catch?.(() => {}), togglePlay, seek, cur, dur, goCaption, splitSelected, deleteSelected, undo, redo, hidden, copySel, pasteAtPlayhead, duplicateSel, toggleMarker, toggleSnap, markRange, selectAllRange, clearRange, toggleCapHidden, toggleRangeTool: () => setRangeTool((v) => !v), openExport: () => openExportRef.current() };
   useEffect(() => {
     function onKey(e) {
       if (keysRef.current.hidden) return; // escondido durante o render
@@ -3046,6 +3256,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if ((e.metaKey || e.ctrlKey) && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); k.duplicateSel(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A')) { e.preventDefault(); k.selectAllRange(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); k.razorCut(k.cur); return; }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'm' || e.key === 'M')) { e.preventDefault(); k.openExport(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'Space') { e.preventDefault(); k.togglePlay(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); k.seek(k.cur - (e.shiftKey ? 5 : 1)); }
@@ -3055,7 +3266,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       else if (e.key === 's' || e.key === 'S') { k.splitSelected(); }
       else if (e.key === 'm' || e.key === 'M') { k.toggleMarker(); }
       else if (e.key === 'n' || e.key === 'N') { k.toggleSnap(); }
-      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); k.deleteSelected(); }
+      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); k.deleteSelected(e.shiftKey); }
       else if (e.key === 'i' || e.key === 'I') { k.markRange('a'); }
       else if (e.key === 'o' || e.key === 'O') { k.markRange('b'); }
       else if (e.key === 'r' || e.key === 'R') { k.pickTool(k.rangeOn ? 'select' : 'range'); }
@@ -3245,6 +3456,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {singleMon && cbox && headline.on && headline.text.trim() && (!headline.seconds || cur < headline.seconds) && <HeadlineOverlay h={headline} box={cbox} />}
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
       {cbox && aspectSel === 'original' && cropBars(cbox)}
+      {cbox && blanks.some((b) => cur >= b.start && cur < b.end) && <div aria-hidden="true" style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, background: '#000', zIndex: 1, pointerEvents: 'none' }} />}
       {cbox && <StageLayers part="media" z={2} videoRef={videoRef} box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
         onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
       {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
@@ -3550,7 +3762,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     getJob(sourceId).then((j) => { if (alive) setV1Job(j || null); }).catch(() => {});
     return () => { alive = false; };
   }, [sourceId]);
-  const v1Len = (c) => (c.kind === 'image' ? Math.max(0.5, +c.duration || 3) : Math.max(0.3, (+c.out || 0) - (+c.in || 0)));
+  const v1Len = (c) => (c.kind === 'blank' ? Math.max(0.2, +c.duration || 1) : c.kind === 'image' ? Math.max(0.5, +c.duration || 3) : Math.max(0.3, (+c.out || 0) - (+c.in || 0)));
   // os clipes que formam o vídeo principal (montagem da timeline) ou o vídeo enviado inteiro
   const v1Clips = useMemo(() => {
     const seq = v1Job?.fromSequence && Array.isArray(v1Job.sequenceClips) ? v1Job.sequenceClips : null;
@@ -3568,6 +3780,22 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return [{ sourceId, kind: 'video', filename: projectTitle || v1Job?.filename || 'Vídeo', in: 0, out: dur, i: 0, start: 0, end: dur, whole: true }];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [v1Job, dur, sourceId, projectTitle]);
+  const projIdSet = useMemo(() => new Set([
+    ...projMediaIds,
+    ...media.map((m) => m.mediaId),
+    ...v1Clips.map((c) => c.mediaId),
+    v1Job?.sequenceMusic?.mediaId,
+    ...(brollReview?.moments || []).map((m) => m.myMediaId),
+  ].filter(Boolean)), [projMediaIds, media, v1Clips, v1Job, brollReview]);
+  const libShown = library && libScope === 'projeto' ? library.filter((it) => projIdSet.has(it.id)) : library;
+  const libScopeBar = library && (
+    <div style={{ display: 'inline-flex', gap: 2, padding: 2, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: `1px solid ${C.border}` }}>
+      {[['projeto', `Deste projeto (${library.filter((it) => projIdSet.has(it.id)).length})`], ['todos', `Todos (${library.length})`]].map(([id, label]) => (
+        <button key={id} onClick={() => setLibScope(id)} aria-pressed={libScope === id}
+          style={{ height: 24, padding: '0 9px', borderRadius: 6, border: 'none', background: libScope === id ? 'rgba(255,255,255,0.14)' : 'transparent', color: libScope === id ? C.text : C.muted, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>{label}</button>
+      ))}
+    </div>
+  );
   // pedaços da V1: entre os limites dos clipes e as divisões (navalha), sem a parte cortada
   const v1Pieces = useMemo(() => {
     if (!v1Clips.length) return [];
@@ -3595,14 +3823,30 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     let cg;
     do { cg = allGaps.filter(([a, b]) => b - a >= minGap); minGap *= 2; } while (cg.length > 60 && minGap < 600);
     if (restore) cg = cg.filter(([a, b]) => !(a >= restore[0] - 0.01 && b <= restore[1] + 0.01)); // trecho que volta (aparar para fora)
-    const slice = (a, b) => {
+    const slice0 = (a, b) => {
       const res = [];
       for (const c of v1Clips) {
         const s0 = Math.max(a, c.start);
         const e0 = Math.min(b, c.end);
-        if (e0 - s0 > 0.05) res.push(c.kind === 'image' ? { ...c, duration: e0 - s0 } : { ...c, in: c.in + (s0 - c.start), out: c.in + (e0 - c.start) });
+        if (e0 - s0 > 0.05) res.push(c.kind !== 'video' ? { ...c, duration: e0 - s0 } : { ...c, in: c.in + (s0 - c.start), out: c.in + (e0 - c.start) });
       }
       return res;
+    };
+    // os espaços vazios do editor viram clipes "vazio" (preto, sem som) na montagem
+    const slice = (a, b) => {
+      const res = [];
+      let p0 = a;
+      for (const bl of blanks) {
+        if (bl.end <= a || bl.start >= b) continue;
+        const s0 = Math.max(a, bl.start);
+        const e0 = Math.min(b, bl.end);
+        if (s0 > p0) res.push(...slice0(p0, s0));
+        if (e0 - s0 > 0.05) res.push({ kind: 'blank', filename: 'Vazio', duration: e0 - s0 });
+        p0 = Math.max(p0, e0);
+      }
+      if (b > p0) res.push(...slice0(p0, b));
+      // vazios seguidos viram um só
+      return res.reduce((acc, c) => { const l = acc[acc.length - 1]; if (c.kind === 'blank' && l?.kind === 'blank') l.duration += c.duration; else acc.push({ ...c }); return acc; }, []);
     };
     const newPos = (x) => x - cg.reduce((sum, [a, b]) => sum + (x >= b ? b - a : x > a ? x - a : 0), 0);
     const units = v1Pieces.map((p) => {
@@ -3623,7 +3867,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       title: projectTitle || 'Timeline',
       aspect: v1Job?.sequenceAspect && !v1Job.blankTimeline ? v1Job.sequenceAspect : 'auto',
       options,
-      clips: clips.map((c) => (c.sourceId
+      clips: clips.map((c) => (c.kind === 'blank' ? { blank: true, duration: +c.duration.toFixed(2) } : c.sourceId
         ? { sourceId: c.sourceId, filename: c.filename, in: +c.in.toFixed(2), out: +c.out.toFixed(2) }
         : { mediaId: c.mediaId, ...(c.kind === 'video' ? { in: +c.in.toFixed(2), out: +c.out.toFixed(2) } : { duration: +c.duration.toFixed(2) }) })),
       ...(v1Job?.sequenceMusic?.mediaId ? { music: { mediaId: v1Job.sequenceMusic.mediaId, volume: v1Job.sequenceMusic.volume ?? 0.35 } } : {}),
@@ -3646,11 +3890,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const out = [];
       let acc = 0;
       let placed = false;
+      let gap = null; // { at, len } quando a mídia ocupa um espaço vazio
       for (const c of units.flatMap((u) => u.parts)) {
         const L = v1Len(c);
         if (!placed && at < acc + L - 0.05) {
           const off = at - acc;
-          if (off <= 0.05) out.push(add, c);
+          if (c.kind === 'blank') {
+            // solto num espaço vazio: a mídia entra no começo dele e ocupa o lugar (o que
+            // sobrar do vazio continua depois dela)
+            out.push(add);
+            if (L - insLen > 0.05) out.push({ ...c, duration: L - insLen });
+            gap = { at: acc, len: L };
+          } else if (off <= 0.05) out.push(add, c);
           else if (c.kind === 'image') out.push({ ...c, duration: off }, add, { ...c, duration: L - off });
           else out.push({ ...c, out: c.in + off }, add, { ...c, in: c.in + off });
           placed = true;
@@ -3658,9 +3909,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         acc += L;
       }
       if (!placed) out.push(add);
-      if (!window.confirm(`Colocar "${it.filename}" no vídeo principal (V1)${units.length ? ` em ${fmtDuration(at)}` : ''}?\n\n${V1_NOTE}`)) return;
+      const where = gap ? 'no espaço vazio' : units.length ? `em ${fmtDuration(at)}` : '';
+      if (!window.confirm(`Colocar "${it.filename}" no vídeo principal (V1)${where ? ` ${where}` : ''}?\n\n${V1_NOTE}`)) return;
       // camadas e textos seguem o ponto do vídeo em que estavam (depois do clipe, andam junto)
-      await v1Rebuild(out, (x) => { const n = newPos(x); return +(n >= at ? n + insLen : n).toFixed(2); });
+      const shift = gap ? Math.max(0, insLen - gap.len) : insLen;
+      const from = gap ? gap.at + gap.len : at;
+      await v1Rebuild(out, (x) => { const n = newPos(x); return +(n >= from - 0.001 ? n + shift : n).toFixed(2); });
     } catch (e) {
       window.alert(e.message || 'Não deu para colocar no vídeo principal.');
     } finally {
@@ -3807,10 +4061,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const parts = [...u.parts];
       if (side === 'L') {
         const c = parts[0];
-        parts[0] = c.kind === 'image' ? { ...c, duration: v1Len(c) + ext } : { ...c, in: Math.max(0, c.in - ext) };
+        parts[0] = c.kind !== 'video' ? { ...c, duration: v1Len(c) + ext } : { ...c, in: Math.max(0, c.in - ext) };
       } else {
         const c = parts[parts.length - 1];
-        parts[parts.length - 1] = c.kind === 'image' ? { ...c, duration: v1Len(c) + ext } : { ...c, out: c.out + ext };
+        parts[parts.length - 1] = c.kind !== 'video' ? { ...c, duration: v1Len(c) + ext } : { ...c, out: c.out + ext };
       }
       if (!window.confirm(`Esticar "${p.clip.filename || 'clipe'}" em ${ext.toFixed(1).replace('.', ',')} s?\n\n${V1_NOTE}`)) return;
       const out = units.flatMap((q, i) => (i === ui ? parts : q.parts));
@@ -4270,7 +4524,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     gSpeed: speed,
     fxMoments: visFx,
     sfxEvents: liveSfxEvents,
-    audio: { audioMute, audioVolume, gains },
+    audio: { audioMute, audioVolume, gains: [...gains, ...blanks.map((b) => ({ start: b.start, end: b.end, volume: 0 }))] },
     sfxTimes: [
       ...liveWindows.map(([a]) => Math.max(0, a - 0.3)),
       ...((brollReview?.moments || []).filter((m) => !m.removed).map((m) => Math.max(0, Number(m.start) - 0.3))),
@@ -4482,7 +4736,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {txSel && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11.5, color: '#BFDBFE' }}>{txSelHi - txSelLo + 1} {txSelHi === txSelLo ? 'palavra selecionada' : 'palavras selecionadas'}</span>
-          <button onClick={deleteSelected} style={{ ...miniBtn(true, false), marginLeft: 'auto' }}>
+          <button onClick={() => deleteSelected(false)} style={{ ...miniBtn(true, false), marginLeft: 'auto' }}>
             <Icon name="trash" size={12} strokeWidth={2} /> {txWords.slice(txSelLo, txSelHi + 1).every((x) => x.w.removed) ? 'Restaurar' : 'Cortar do vídeo'}
           </button>
           <button onClick={openCapDialog} style={miniBtn(false, false)} title="Gera a legenda só neste trecho, no estilo que escolher">
@@ -4511,10 +4765,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
   useEffect(() => {
     try { localStorage.setItem('rf_hidden_tabs', JSON.stringify(hiddenTabs)); } catch { /* sem armazenamento */ }
-    window.electron?.setEditorTabs?.({ all: TABS.map(({ id, label }) => ({ id, label })), hidden: hiddenTabs });
+    window.electron?.setEditorTabs?.({ all: TABS.map(({ id, label }) => ({ id, label })), hidden: hiddenTabs, format: aspectSel });
     if (hiddenTabs.includes(tab)) setTab(TABS.find((t) => !hiddenTabs.includes(t.id))?.id || 'enquadramento');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hiddenTabs]);
+  }, [hiddenTabs, aspectSel]);
   useEffect(() => window.electron?.onEditorTabToggle?.((id) => toggleTabShown(id)), []);
   const tabsMenuEl = tabsMenu && createPortal(
     <div onMouseDown={(e) => { if (e.target === e.currentTarget) setTabsMenu(null); }} style={{ position: 'fixed', inset: 0, zIndex: 940 }}>
@@ -4818,6 +5072,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {tplPanel}
       {capDialog}
       {tabsMenuEl}
+      {exportDialog()}
       {v1Busy && createPortal(
         <div role="status" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 960, padding: '10px 16px', borderRadius: 999, background: '#1E3A8A', color: '#fff', fontSize: 13, fontWeight: 700, boxShadow: '0 12px 30px -10px rgba(0,0,0,0.8)' }}>{v1Busy}</div>,
         document.body,
@@ -4825,10 +5080,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {isMobile && (
         <div className="rf-m-top">
           <button onClick={onBack} disabled={busy} aria-label="Fechar o editor" style={mIconBtn}><Icon name="close" size={22} strokeWidth={2} /></button>
-          <button onClick={() => openSheet('tab', 'enquadramento')} style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.08)', color: C.text, fontSize: 13.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>
+          <button onClick={openExport} style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 12px', borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.08)', color: C.text, fontSize: 13.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>
             {aspectSel === 'original' ? 'Original' : aspectSel} <Icon name="chevron" size={13} strokeWidth={2.2} style={{ transform: 'rotate(90deg)' }} />
           </button>
-          <button onClick={generate} disabled={busy || allGone} style={{ height: 36, padding: '0 16px', borderRadius: 10, border: 'none', background: busy || allGone ? 'rgba(255,255,255,0.1)' : GRAD, color: '#fff', fontWeight: 700, fontSize: 14.5, fontFamily: 'inherit', cursor: 'pointer' }}>
+          <button onClick={openExport} disabled={busy || allGone} style={{ height: 36, padding: '0 16px', borderRadius: 10, border: 'none', background: busy || allGone ? 'rgba(255,255,255,0.1)' : GRAD, color: '#fff', fontWeight: 700, fontSize: 14.5, fontFamily: 'inherit', cursor: 'pointer' }}>
             {busy ? 'Gerando…' : 'Exportar'}
           </button>
         </div>
@@ -4874,7 +5129,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <GhostButton onClick={onBack} disabled={busy} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Icon name="arrowLeft" size={14} strokeWidth={2} /> Voltar
           </GhostButton>
-          <button data-tour="export" onClick={generate} disabled={busy || allGone} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none', borderRadius: 11, padding: '0 18px', minHeight: 40, background: busy || allGone ? 'rgba(255,255,255,0.08)' : GRAD, color: '#fff', fontWeight: 700, fontSize: 14, cursor: busy || allGone ? 'not-allowed' : 'pointer', fontFamily: 'inherit', boxShadow: busy || allGone ? 'none' : '0 10px 24px -10px rgba(255,107,53,0.7)' }}>
+          <button data-tour="export" onClick={openExport} disabled={busy || allGone} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none', borderRadius: 11, padding: '0 18px', minHeight: 40, background: busy || allGone ? 'rgba(255,255,255,0.08)' : GRAD, color: '#fff', fontWeight: 700, fontSize: 14, cursor: busy || allGone ? 'not-allowed' : 'pointer', fontFamily: 'inherit', boxShadow: busy || allGone ? 'none' : '0 10px 24px -10px rgba(255,107,53,0.7)' }}>
             <Icon name="upload" size={15} strokeWidth={2.2} /> Exportar
           </button>
         </div>
@@ -4902,7 +5157,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <Icon name="layout" size={17} strokeWidth={1.9} /> <span className="rf-tl-navlbl">{hiddenTabs.length ? `+${hiddenTabs.length}` : '⋯'}</span>
           </button>
           <div className="rf-tl-navsep" style={{ height: 1, background: C.border, margin: '6px 4px' }} />
-          <button className="rf-tl-navexp" onClick={generate} disabled={busy || allGone} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', borderRadius: 11, border: 'none', cursor: busy || allGone ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, background: 'transparent', color: C.orangeSoft, textAlign: 'left' }}>
+          <button className="rf-tl-navexp" onClick={openExport} disabled={busy || allGone} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', borderRadius: 11, border: 'none', cursor: busy || allGone ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, background: 'transparent', color: C.orangeSoft, textAlign: 'left' }}>
             <Icon name="upload" size={17} strokeWidth={2} /> <span className="rf-tl-navlbl">Exportar</span>
           </button>
           {/* Tela grande: sem cabeçalho — salvar, voltar e exportar ficam na linha das abas */}
@@ -4919,10 +5174,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <button onClick={() => setLayoutOpen((v) => !v)} title="Ajustar o tamanho do vídeo, das opções e da timeline" className="rf-tl-navbtn" style={layoutOpen ? { borderColor: '#2D8CFF', color: '#7DB6FF' } : undefined}>
               ▦ <span className="rf-navlbl2">Layout</span>
             </button>
+            <button onClick={() => setShowKeys((v) => !v)} title="Atalhos do teclado" className="rf-tl-navbtn" style={showKeys ? { borderColor: '#2D8CFF', color: '#7DB6FF' } : undefined}>
+              ⌨ Atalhos
+            </button>
             <button onClick={() => setTour(true)} title="Guia rápido: mostra para que serve cada parte do editor" className="rf-tl-navbtn">
               ? <span className="rf-navlbl2">Guia</span>
             </button>
-            <button data-tour="export" onClick={generate} disabled={busy || allGone} className="rf-tl-navbtn rf-tl-navbtn--go" style={{ background: busy || allGone ? 'rgba(255,255,255,0.08)' : GRAD, cursor: busy || allGone ? 'not-allowed' : 'pointer' }}>
+            <button data-tour="export" onClick={openExport} disabled={busy || allGone} className="rf-tl-navbtn rf-tl-navbtn--go" style={{ background: busy || allGone ? 'rgba(255,255,255,0.08)' : GRAD, cursor: busy || allGone ? 'not-allowed' : 'pointer' }}>
               <Icon name="upload" size={13} strokeWidth={2.2} /> Exportar
             </button>
           </div>
@@ -4965,6 +5223,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 {vbox && !singleMon && <div ref={fxOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 2, backgroundSize: 'cover' }} />}
                 {vbox && !singleMon && <div ref={transOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 4, opacity: 0 }} />}
                 {vbox && cropBars(vbox)}
+                {vbox && blanks.some((b) => cur >= b.start && cur < b.end) && <div aria-hidden="true" style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, background: '#000', zIndex: 1, pointerEvents: 'none' }} />}
                 {vbox && <StageLayers part="media" z={2} videoRef={videoRef} box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
                   onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
                 {cap.captions && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
@@ -5136,76 +5395,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           ) : (<>
 
           {/* Enquadramento na tela dividida */}
+          {/* Controle de efeitos (como no Premiere): movimento, recorte, opacidade e áudio do item
+              selecionado. Formato e qualidade ficam na janela de Exportar. */}
           {tab === 'enquadramento' && (
-            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="crop" size={15} strokeWidth={2} /></span>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>Formato do vídeo</div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6, marginBottom: 10 }}>
-                {FORMATS.map((o) => {
-                  const on = aspectSel === o.id;
-                  return (
-                    <button key={o.id} onClick={() => setAspectSel(o.id)} title={o.hint}
-                      style={{ ...framingTab(on), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '8px 4px' }}>
-                      <span style={{ width: o.w, height: o.h, borderRadius: 3, border: `1.5px solid ${on ? C.orange : C.muted}` }} />
-                      <span style={{ fontSize: 11.5 }}>{o.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {aspectSel !== 'original' && (
-                <>
-                  <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, letterSpacing: 0.3, marginBottom: 6 }}>COMO O VÍDEO ENTRA NO FORMATO</div>
-                  <div style={{ display: 'grid', gap: 6 }}>
-                    {REFRAME_MODES.map((o) => (
-                      <button key={o.id} onClick={() => { setReframeMode(o.id); if (o.id === 'manual') setFramingMode('manual'); }}
-                        style={{ ...framingTab(reframeMode === o.id), textAlign: 'left', padding: '8px 10px' }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 700 }}>{o.label}</div>
-                        <div style={{ fontSize: 11, color: C.muted, fontWeight: 500, marginTop: 2 }}>{o.hint}</div>
-                      </button>
-                    ))}
-                  </div>
-                  {reframeMode === 'manual' && <div style={{ fontSize: 11, color: C.faint, marginTop: 8 }}>Arraste o vídeo na <b>prévia</b> (ou o ponto laranja no player) para escolher o que fica no quadro.</div>}
-                  {reframeMode === 'split' && (
-                    <div style={{ marginTop: 8 }}>
-                      <button onClick={() => setSplitSwap((v) => !v)} style={{ ...framingTab(false), width: '100%', padding: '7px 10px', fontSize: 12, fontWeight: 700 }}>
-                        Trocar de lugar · {splitSwap ? 'pessoa da direita em cima' : 'pessoa da esquerda em cima'}
-                      </button>
-                      <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Precisa de duas pessoas lado a lado no vídeo. Com uma pessoa só, o quadro segue o rosto. Se a IA errar, use <b>Posição que eu escolher</b>.</div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-          {tab === 'enquadramento' && (
-            <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="sparkles" size={15} strokeWidth={2} /></span>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>Qualidade da exportação</div>
-                {!hdAllowed && <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, letterSpacing: 0.4, color: '#fff', background: GRAD, borderRadius: 20, padding: '2px 8px' }}>PREMIUM</span>}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
-                {QUALITY_OPTS.map((o) => {
-                  const on = (hdAllowed ? quality : 'original') === o.id;
-                  const locked = o.id !== 'original' && !hdAllowed;
-                  return (
-                    <button key={o.id} onClick={() => (locked ? openPlans() : setQuality(o.id))} title={locked ? 'Disponível no plano Premium' : o.hint}
-                      style={{ ...framingTab(on), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px', opacity: locked ? 0.55 : 1 }}>
-                      <span style={{ fontSize: 13, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{locked && <Icon name="lock" size={11} strokeWidth={2.4} />}{o.label}</span>
-                      <span style={{ fontSize: 10, color: C.faint, fontWeight: 600 }}>{o.sub}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{ fontSize: 11, color: C.faint, marginTop: 8, lineHeight: 1.45 }}>
-                {hdAllowed
-                  ? quality === 'original'
-                    ? 'Mantém a resolução do formato escolhido. Escolha 720p, 1080p ou 4K para ampliar com redução de ruído e nitidez.'
-                    : `O vídeo sai em ${QUALITY_OPTS.find((q) => q.id === quality)?.label}, ampliado com redução de ruído e nitidez${quality === '2160' ? ' (4K demora mais e gera arquivo maior)' : ''}. Não inventa detalhes que a gravação não tem.`
-                  : <>720p, 1080p e 4K são do plano <b style={{ color: C.text }}>Premium</b>. <button onClick={openPlans} style={{ background: 'none', border: 'none', color: C.orangeSoft, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit', fontSize: 11 }}>Ver planos</button></>}
-              </div>
+            <div style={{ display: 'grid', gap: 12, marginBottom: 12 }}>
+              {propsBlock}
+              <button onClick={() => setExportOpen(true)} style={{ ...framingTab(false), padding: '9px 12px', textAlign: 'left', fontSize: 12.5 }}>
+                Formato do vídeo ({aspectSel === 'original' ? 'Original' : aspectSel}) e qualidade de exportação: na janela <b>Exportar</b> →
+              </button>
             </div>
           )}
           {tab === 'enquadramento' && (
@@ -5904,7 +6101,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
           {/* Minhas mídias: coloque suas imagens/vídeos/músicas na timeline */}
           {tab === 'projeto' && (
-            <ProjectPanel library={library} onReloadLibrary={loadLibrary} onAddLayer={(it) => addMediaItem(it)} sourceId={sourceId} durationSec={dur}
+            <ProjectPanel library={libShown} libraryAll={library} scopeBar={libScopeBar} libScope={libScope} onImported={markProjectMedia} onReloadLibrary={loadLibrary} onAddLayer={(it) => addMediaItem(it)} sourceId={sourceId} durationSec={dur}
               projectTitle={projectTitle} options={options} carryStyle={carryStyleNow} onRebuild={onRebuild} />
           )}
           {tab === 'midias' && (
@@ -5936,13 +6133,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   {libOpen ? '▾' : '▸'} Sua biblioteca {library ? <span style={{ fontWeight: 500, color: C.faint }}>· {library.length} arquivo(s) guardado(s)</span> : null}
                   <span style={{ marginLeft: 'auto', fontWeight: 500, color: C.faint, fontSize: 10.5 }}>clique: ponto atual · arraste para a timeline (V1 = vídeo principal)</span>
                 </button>
+                {libOpen && library && <div style={{ marginTop: 8 }}>{libScopeBar}</div>}
                 {libOpen && (library === null ? (
                   <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Carregando…</div>
+                ) : libScope === 'projeto' && library.length > 0 && !libShown.length ? (
+                  <div style={{ fontSize: 11, color: C.faint, marginTop: 6, lineHeight: 1.5 }}>Nenhum arquivo deste projeto ainda. Envie aqui ou veja em <b>Todos</b> os que você já mandou.</div>
                 ) : library.length === 0 ? (
                   <div style={{ fontSize: 11, color: C.faint, marginTop: 6, lineHeight: 1.5 }}>Tudo o que você enviar (logo, vinheta, música, fotos) fica guardado aqui para usar em outros vídeos sem subir de novo.</div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))', gap: 6, marginTop: 8, maxHeight: 220, overflowY: 'auto' }}>
-                    {library.map((it) => (
+                    {libShown.map((it) => (
                       <div key={it.id} style={{ position: 'relative' }} draggable={!isMobile && it.status === 'ok'}
                         onDragStart={(e) => { e.dataTransfer.setData('text/rf-media', it.id); e.dataTransfer.effectAllowed = 'copy'; }}>
                         <button onClick={() => it.status === 'ok' && addMediaItem(it)} disabled={it.status !== 'ok'} title={it.status === 'ok' ? `${it.filename} — colocar no ponto atual` : `${it.filename} — arquivo não encontrado`}
@@ -6106,8 +6306,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <span style={{ fontSize: 11.5, color: '#BFDBFE', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                 Trecho {tcode(range.a)} → {tcode(range.b)} <b style={{ color: '#fff' }}>({(range.b - range.a).toFixed(1).replace('.', ',')} s)</b>
               </span>
-              <button onClick={deleteSelected} title="Corta este trecho do vídeo final: vídeo, áudio e legenda (Delete)" style={{ ...toolBtn(false), background: 'rgba(240,82,107,0.18)', border: '1px solid rgba(240,82,107,0.55)', color: '#FECACA' }}>
-                <Icon name="trash" size={13} strokeWidth={2} /> Excluir trecho
+              <button onClick={() => deleteSelected(false)} title="Tira o vídeo deste trecho e deixa o espaço vazio (Delete) — dá para pôr outra mídia ali" style={{ ...toolBtn(false), background: 'rgba(240,82,107,0.18)', border: '1px solid rgba(240,82,107,0.55)', color: '#FECACA' }}>
+                <Icon name="trash" size={13} strokeWidth={2} /> Excluir (deixar vazio)
+              </button>
+              <button onClick={() => deleteSelected(true)} title="Corta o trecho e fecha o buraco: vídeo, áudio e legenda (Shift+Delete)" style={toolBtn(false)}>
+                Excluir e fechar
               </button>
               <button onClick={clearRange} title="Limpar a seleção (Esc)" style={toolBtn(false)}>×</button>
             </div>
@@ -6123,7 +6326,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <button onClick={splitSelected} disabled={!canSplitSel} title={`Dividir ${SEL_LABEL[selKind]} no playhead (S ou Ctrl+B)`} style={toolBtn(!canSplitSel)}>
             <Icon name="scissors" size={14} strokeWidth={2} /> <span className="rf-tl-hide-sm">Dividir {SEL_LABEL[selKind]}</span>
           </button>
-          <button onClick={deleteSelected} disabled={!canDeleteSel} style={toolBtn(!canDeleteSel)}
+          <button onClick={() => deleteSelected(false)} disabled={!canDeleteSel} style={toolBtn(!canDeleteSel)}
             title={delTitle}>
             <Icon name="close" size={14} strokeWidth={2} /> <span className="rf-tl-hide-sm">{selKind === 'range' ? 'Excluir trecho' : selKind === 'video' ? 'Cortar pedaço' : 'Excluir'}</span>
           </button>
@@ -6172,12 +6375,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {showKeys && !isMobile && (
             <div className="rf-keys" onClick={(e) => e.stopPropagation()}>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
-                <b style={{ fontSize: 12 }}>Atalhos (como no Premiere)</b>
+                <b style={{ fontSize: 12 }}>Atalhos</b>
                 <button onClick={() => setShowKeys(false)} className="rf-tbtn" style={{ marginLeft: 'auto', width: 22, height: 22 }} aria-label="Fechar">×</button>
               </div>
               {[
                 ['V', 'Seleção'], ['C', 'Navalha (clique corta)'], ['R', 'Seleção de trecho'], ['Ctrl+K', 'Dividir no playhead'],
-                ['S', 'Dividir o item selecionado'], ['Delete', 'Excluir (fecha o buraco)'], ['Q / W', 'Cortar até o ponto anterior / próximo'],
+                ['S', 'Dividir o item selecionado'], ['Delete', 'Excluir (no vídeo, deixa o espaço vazio)'], ['Shift+Delete', 'Excluir e fechar o espaço'], ['Q / W', 'Cortar até o ponto anterior / próximo'],
                 ['I / O', 'Entrada / saída do trecho'], ['Ctrl+A', 'Selecionar tudo'], ['Espaço', 'Tocar / pausar'], ['J / K / L', 'Voltar 5 s / pausar / tocar'],
                 ['← →', '1 s (Shift: 5 s)'], ['Home / End', 'Começo / fim'], ['= / −', 'Zoom da timeline'], ['\\', 'Ver o vídeo inteiro'],
                 ['M', 'Marcador'], ['N', 'Ímã'], ['H', 'Ocultar legenda'], ['Ctrl+D', 'Duplicar'], ['Ctrl+C / V', 'Copiar / colar'], ['Ctrl+Z', 'Desfazer'],
@@ -6206,7 +6409,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               </ToolIcon>
               <span className="rf-tsep" />
               <ToolIcon title={`Dividir no playhead (Ctrl+K · S divide ${SEL_LABEL[selKind]})`} onClick={() => razorCut(cur)}><Icon name="scissors" size={15} strokeWidth={2} /></ToolIcon>
-              <ToolIcon title={delTitle} disabled={!canDeleteSel} onClick={deleteSelected}><Icon name="trash" size={15} strokeWidth={2} /></ToolIcon>
+              <ToolIcon title={delTitle} disabled={!canDeleteSel} onClick={() => deleteSelected(false)}><Icon name="trash" size={15} strokeWidth={2} /></ToolIcon>
               <ToolIcon title="Cortar do ponto anterior até o playhead (Q)" onClick={() => rippleTrim('prev')}><span className="rf-tkey">Q</span></ToolIcon>
               <ToolIcon title="Cortar do playhead até o próximo ponto (W)" onClick={() => rippleTrim('next')}><span className="rf-tkey">W</span></ToolIcon>
               <span className="rf-tsep" />
@@ -6224,7 +6427,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <ToolIcon title="Refazer (Ctrl+Shift+Z)" disabled={!canRedo} onClick={redo}><Icon name="undo" size={15} strokeWidth={2} style={{ transform: 'scaleX(-1)' }} /></ToolIcon>
               <span className="rf-tsep" />
               <ToolIcon title="Ver o vídeo inteiro na timeline (\)" onClick={fitAll}><Icon name="search" size={15} strokeWidth={2} /></ToolIcon>
-              <ToolIcon title="Atalhos do teclado (?)" active={showKeys} onClick={() => setShowKeys((v) => !v)}><span className="rf-tkey">?</span></ToolIcon>
             </div>
             </div>
           )}
@@ -6281,7 +6483,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ position: 'absolute', left: Math.min(marq.x0, marq.x1), top: Math.min(marq.y0, marq.y1), width: Math.abs(marq.x1 - marq.x0), height: Math.max(2, Math.abs(marq.y1 - marq.y0)), zIndex: 21, pointerEvents: 'none',
                 background: 'rgba(59,130,246,0.28)', border: '1px solid rgba(96,165,250,0.9)' }} />
             )}
-            <div onMouseDown={(e) => startRangeSel(e)} title={isMobile ? undefined : 'Clique para ir · arraste para selecionar um trecho em todas as faixas'}
+            <div onMouseDown={(e) => (e.shiftKey || e.altKey || rangeTool ? startRangeSel(e) : startScrub(e))} title={isMobile ? undefined : 'Clique ou arraste para mover o ponteiro · Shift+arrastar seleciona um trecho em todas as faixas'}
               style={{ position: 'relative', height: LANE.ruler, borderBottom: `1px solid ${PR.line}`, cursor: 'crosshair', background: isMobile ? 'transparent' : PR.ruler }}>
               {(() => {
                 const step = RULER_STEPS.find((x) => x * pps >= 96) || 60;
@@ -6322,7 +6524,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               )}
               {segments.map((s0, si) => {
                 const s = capSegments[si] || s0; // no tempo da legenda (pode ter sido movida)
-                if (ripple && (segRemoved(s) || W(s.start, Math.max(s.end, s.start + 0.2)) < 1)) return null; // excluída: some da timeline
+                if (ripple && (segRemoved(s) || segHidden(s) || W(s.start, Math.max(s.end, s.start + 0.2)) < 1)) return null; // excluída/apagada: some da timeline
                 const left = X(s.start);
                 const fullW = Math.max(10, W(s.start, Math.max(s.end, s.start + 0.2)) - 2);
                 const gone = segRemoved(s);
@@ -6640,6 +6842,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       background: on ? '#fff' : '#A855F7', border: `2px solid ${on ? '#A855F7' : 'rgba(0,0,0,0.5)'}`, color: on ? '#A855F7' : '#fff', fontSize: 10, fontWeight: 900, lineHeight: 1 }}>⧓</div>
                 );
               })}
+              {/* espaços vazios (Excluir sem fechar): preto; solte uma mídia aqui para ocupar */}
+              {blanks.map((b) => {
+                const on = selKind === 'blank' && selBlank === b.key;
+                const w = W(b.start, b.end);
+                return (
+                  <div key={b.key} onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); setSelBlank(b.key); setSelKind('blank'); seek(b.start); }}
+                    title="Espaço vazio — arraste uma mídia da biblioteca para cá para ocupar · Delete fecha o espaço"
+                    style={{ position: 'absolute', left: X(b.start), width: w, top: 0, bottom: 0, zIndex: 5, cursor: 'pointer', background: 'repeating-linear-gradient(135deg, #0b0b0f, #0b0b0f 6px, #16161d 6px, #16161d 12px)',
+                      border: on ? '2px solid #fff' : '1px dashed rgba(255,255,255,0.35)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    {w > 70 && <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '0 6px' }}>{w > 190 ? 'Vazio · solte uma mídia aqui' : 'Vazio'}</span>}
+                  </div>
+                );
+              })}
               {/* clipes da V1: alça para mover (muda a ordem) e bordas para aparar */}
               {!isMobile && v1Pieces.map((p, k) => {
                 const left = X(p.va);
@@ -6811,7 +7027,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             )}
             {!isMobile && (
             <div style={{ position: 'absolute', left: X(cur), top: 0, bottom: 0, width: 1.5, marginLeft: -0.75, background: PR.blue, boxShadow: `0 0 6px ${PR.blue}aa`, pointerEvents: 'none', zIndex: 6 }}>
-              <div style={{ position: 'absolute', top: LANE.ruler - 15, left: -6.25, width: 14, height: 15, background: PR.blue, clipPath: 'polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%)' }} />
+              <div onMouseDown={startScrub} title="Arraste para mover o ponteiro"
+                style={{ position: 'absolute', top: LANE.ruler - 15, left: -6.25, width: 14, height: 15, background: PR.blue, clipPath: 'polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%)', pointerEvents: 'auto', cursor: 'grab' }} />
             </div>
             )}
             </div>
@@ -6863,7 +7080,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
         {renderErr && <div ref={renderErrRef}><RenderError err={renderErr} onDisable={disableFeature} onClose={() => setRenderErr(null)} /></div>}
 <div className="rf-tl-below">
-        <PrimaryButton onClick={generate} disabled={busy || sending || allGone} style={{ width: '100%', marginTop: 12 }}>
+        <PrimaryButton onClick={openExport} disabled={busy || sending || allGone} style={{ width: '100%', marginTop: 12 }}>
           {allGone ? 'Você cortou tudo — reinclua algo' : busy || sending ? 'Gerando…' : (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Icon name="clapper" size={18} strokeWidth={1.9} /> Renderizar vídeo final</span>)}
         </PrimaryButton>
         </div>
@@ -6892,7 +7109,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             { k: 'cap', icon: 'captions', label: 'Legendas', act: () => setMTool('legenda') },
             { k: 'split', icon: 'scissors', label: 'Dividir', act: splitAtPlayhead, off: !canSplit },
             { k: 'speed', icon: 'clock', label: speed !== 1 ? `Velocidade ${fmtSpeed(speed)}` : 'Velocidade', act: () => openSheet('speed') },
-            ...shownTabs.filter((t) => t.id !== 'legenda').map((t) => ({ k: t.id, icon: t.icon, label: t.id === 'enquadramento' ? 'Formato' : t.id === 'midias' ? 'Mídias' : t.id === 'capa' ? 'Capa' : t.label, act: () => openSheet('tab', t.id) })),
+            ...shownTabs.filter((t) => t.id !== 'legenda').map((t) => ({ k: t.id, icon: t.icon, label: t.id === 'enquadramento' ? 'Efeitos' : t.id === 'midias' ? 'Mídias' : t.id === 'capa' ? 'Capa' : t.label, act: () => openSheet('tab', t.id) })),
             { k: 'pauses', icon: 'scissors', label: pausesCut.length === pauses.length && pauses.length ? 'Manter pausas' : 'Remover pausas', act: () => (pausesCut.length === pauses.length ? keepAllPauses() : cutAllPauses()), off: !pauses.length },
           ]).map((t) => (
             <button key={t.k} onClick={t.act} disabled={t.off} className="rf-m-tool" style={{ opacity: t.off ? 0.38 : 1 }}>
@@ -7566,7 +7783,7 @@ const SHEET_TITLE = { speed: 'Velocidade', capText: 'Transcrição', capList: 'E
 const TABS = [
   { id: 'projeto', label: 'Projeto', icon: 'folder' },
   { id: 'propriedades', label: 'Propriedades', icon: 'layers' },
-  { id: 'enquadramento', label: 'Enquadramento', icon: 'crop' },
+  { id: 'enquadramento', label: 'Controle de efeitos', icon: 'crop' },
   { id: 'texto', label: 'Texto', icon: 'type' },
   { id: 'graficos', label: 'Gráficos', icon: 'sparkles' },
   { id: 'broll', label: 'B-roll', icon: 'image' },
