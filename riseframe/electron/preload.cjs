@@ -15,6 +15,12 @@ contextBridge.exposeInMainWorld('electron', {
   getVersion: () => ipcRenderer.invoke('get-version'),
   // Menu Ver › Abas do editor: o editor informa as abas e recebe os cliques do menu
   setEditorTabs: (state) => ipcRenderer.send('editor-tabs-state', state),
+  // Menu Exportar: 'export' abre a janela de exportação; 'format:9:16' muda o formato
+  onEditorCommand: (cb) => {
+    const h = (_e, cmd) => cb(cmd);
+    ipcRenderer.on('editor-command', h);
+    return () => ipcRenderer.removeListener('editor-command', h);
+  },
   onEditorTabToggle: (cb) => {
     const h = (_e, id) => cb(id);
     ipcRenderer.on('editor-tab-toggle', h);

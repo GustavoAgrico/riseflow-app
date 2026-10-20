@@ -28,7 +28,7 @@ export function MediaThumb({ it, at = 0.5, fit = 'cover' }) {
  * vídeo principal — arraste para mudar a ordem, apare, tire ou acrescente. "Atualizar
  * vídeo principal" monta de novo e reabre o editor mantendo o estilo.
  */
-export default function ProjectPanel({ library, onReloadLibrary, onAddLayer, sourceId, durationSec, projectTitle, options, carryStyle, onRebuild }) {
+export default function ProjectPanel({ library, libraryAll = library, scopeBar = null, libScope = 'todos', onImported, onReloadLibrary, onAddLayer, sourceId, durationSec, projectTitle, options, carryStyle, onRebuild }) {
   const [clips, setClips] = useState(null);
   const [original, setOriginal] = useState('');
   const [music, setMusic] = useState(null);
@@ -64,7 +64,7 @@ export default function ProjectPanel({ library, onReloadLibrary, onAddLayer, sou
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceId]);
 
-  const srcOf = (c) => c.src || (library || []).find((x) => x.id === c.mediaId)?.durationSec || c.out || 5;
+  const srcOf = (c) => c.src || (libraryAll || []).find((x) => x.id === c.mediaId)?.durationSec || c.out || 5;
   const changed = clips && (sig(clips) !== original);
   const total = useMemo(() => (clips || []).reduce((s, c) => s + clipLen(c), 0), [clips]);
   const selClip = (clips || []).find((c) => c.key === sel) || null;
@@ -81,7 +81,7 @@ export default function ProjectPanel({ library, onReloadLibrary, onAddLayer, sou
     const list = Array.from(files || []);
     for (let i = 0; i < list.length; i++) {
       setBusy(`Enviando ${i + 1} de ${list.length}…`);
-      try { await addProjectMedia(list[i]); } catch (e) { setError(`${list[i].name}: ${e.message}`); }
+      try { const info = await addProjectMedia(list[i]); onImported?.(info?.id); } catch (e) { setError(`${list[i].name}: ${e.message}`); }
     }
     setBusy('');
     onReloadLibrary?.();
@@ -97,7 +97,7 @@ export default function ProjectPanel({ library, onReloadLibrary, onAddLayer, sou
         title: projectTitle || 'Timeline',
         aspect,
         options,
-        clips: clips.map((c) => (c.sourceId
+        clips: clips.map((c) => (c.kind === 'blank' ? { blank: true, duration: +c.duration.toFixed(2) } : c.sourceId
           ? { sourceId: c.sourceId, filename: c.filename, in: +c.in.toFixed(2), out: +c.out.toFixed(2) }
           : { mediaId: c.mediaId, ...(c.kind === 'video' ? { in: +c.in.toFixed(2), out: +c.out.toFixed(2) } : { duration: +c.duration.toFixed(2) }) })),
         ...(music?.mediaId ? { music: { mediaId: music.mediaId, volume: music.volume ?? 0.35 } } : {}),
@@ -121,13 +121,13 @@ export default function ProjectPanel({ library, onReloadLibrary, onAddLayer, sou
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ color: C.orangeSoft, display: 'flex' }}><Icon name="folder" size={15} strokeWidth={2} /></span>
           <b style={{ fontSize: 13 }}>Mídias do projeto</b>
-          <span style={{ fontSize: 11.5, color: C.faint }}>{library ? `${library.length} item(ns)` : ''}</span>
+          {scopeBar}
           <input ref={fileRef} type="file" multiple accept="video/*,image/*,audio/*" style={{ display: 'none' }} onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
           <button onClick={() => fileRef.current?.click()} disabled={!!busy} style={{ ...btn(true), marginLeft: 'auto' }}>{busy && busy.startsWith('Enviando') ? busy : '+ Importar'}</button>
         </div>
         <div style={{ fontSize: 11, color: C.faint }}>Arraste arquivos para cá. Em cada mídia: <b>Camada</b> põe por cima do vídeo no ponto atual · <b>V1</b> põe no vídeo principal · ou arraste a mídia direto para a faixa V1 da timeline.</div>
         {library === null ? <div style={{ fontSize: 12, color: C.faint }}>Carregando…</div> : library.length === 0 ? (
-          <div style={{ fontSize: 12, color: C.faint }}>Nenhuma mídia ainda — importe vídeos, áudios e imagens.</div>
+          <div style={{ fontSize: 12, color: C.faint }}>{libScope === 'projeto' && libraryAll?.length ? 'Nenhum arquivo deste projeto ainda — importe aqui ou veja em Todos os que você já enviou.' : 'Nenhuma mídia ainda — importe vídeos, áudios e imagens.'}</div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8, maxHeight: 290, overflowY: 'auto' }}>
             {library.map((it) => (
@@ -150,7 +150,7 @@ export default function ProjectPanel({ library, onReloadLibrary, onAddLayer, sou
       {/* Vídeo principal (V1): os clipes na ordem */}
       <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${changed ? C.orange : C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8 }}
         onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { const id = e.dataTransfer.getData('text/rf-media'); const it = (library || []).find((x) => x.id === id); if (it) { e.preventDefault(); addToV1(it); } }}>
+        onDrop={(e) => { const id = e.dataTransfer.getData('text/rf-media'); const it = (libraryAll || []).find((x) => x.id === id); if (it) { e.preventDefault(); addToV1(it); } }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ background: '#2D8CFF', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 800 }}>V1</span>
           <b style={{ fontSize: 13 }}>Vídeo principal</b>
@@ -179,7 +179,7 @@ export default function ProjectPanel({ library, onReloadLibrary, onAddLayer, sou
                 }}
                 onClick={() => setSel(c.key)} title={`${i + 1}. ${c.filename || ''} — arraste para mudar a ordem`}
                 style={{ flex: 'none', width: Math.max(64, clipLen(c) * pps), height: 52, position: 'relative', borderRadius: 7, overflow: 'hidden', cursor: 'grab', border: sel === c.key ? '2px solid #fff' : '1px solid rgba(0,0,0,0.3)', background: c.kind === 'video' ? '#3B5BDB' : '#0E7490' }}>
-                <div style={{ position: 'absolute', inset: 0, opacity: 0.55 }}><MediaThumb it={c} at={c.in + 0.3} /></div>
+                <div style={{ position: 'absolute', inset: 0, opacity: 0.55 }}>{c.kind === 'blank' ? <div style={{ width: '100%', height: '100%', background: 'repeating-linear-gradient(135deg, #0b0b0f, #0b0b0f 6px, #16161d 6px, #16161d 12px)' }} /> : <MediaThumb it={c} at={c.in + 0.3} />}</div>
                 <span style={{ position: 'absolute', left: 5, top: 3, right: 5, fontSize: 10, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textShadow: '0 1px 2px #000' }}>{i + 1}. {c.filename}</span>
                 <span style={{ position: 'absolute', left: 5, bottom: 3, fontSize: 9.5, color: '#fff', textShadow: '0 1px 2px #000' }}>{fmt(clipLen(c))}</span>
               </div>
@@ -204,7 +204,7 @@ export default function ProjectPanel({ library, onReloadLibrary, onAddLayer, sou
             )) : (
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
                 <span style={{ width: 54 }}>Duração</span>
-                <input type="range" min="0.5" max="15" step="0.5" value={selClip.duration} onChange={(e) => update(selClip.key, { duration: Number(e.target.value) })} style={{ flex: 1 }} />
+                <input type="range" min="0.5" max={Math.max(15, Math.ceil(selClip.duration))} step="0.5" value={selClip.duration} onChange={(e) => update(selClip.key, { duration: Number(e.target.value) })} style={{ flex: 1 }} />
                 <span style={{ width: 36, textAlign: 'right' }}>{selClip.duration.toFixed(1)}s</span>
               </label>
             )}

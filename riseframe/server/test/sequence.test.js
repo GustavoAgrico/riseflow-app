@@ -132,3 +132,18 @@ test('timeline em branco: abre na hora, sem cobrar e sem clipes', { timeout: 120
   assert.equal(done.report.input.height, 1920);
   assert.equal(done.report.transcript.segments.length, 0, 'sem fala');
 });
+
+test('espaço vazio na montagem: preto e sem som, com a duração pedida', { timeout: 120000 }, async () => {
+  assert.equal(clipDuration({ kind: 'blank', duration: 1.5 }), 1.5);
+  const out = path.join(tmp, 'seq_blank.mp4');
+  const r = await assembleSequence({
+    clips: [{ file: vertical, kind: 'video', in: 0, out: 1 }, { kind: 'blank', duration: 1.5 }, { file: img, kind: 'image', duration: 1 }],
+    aspect: '9:16', output: out, work: path.join(tmp, 'wb'),
+  });
+  assert.equal(r.width, 1080);
+  const m = await probeSummary(out);
+  assert.ok(Math.abs(m.duration - 3.5) < 0.2, `duração ${m.duration}`);
+  // no meio do vazio a imagem é preta
+  const px = spawnSync(ffmpegPath, ['-v', 'error', '-ss', '1.7', '-i', out, '-frames:v', '1', '-vf', 'scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-']).stdout;
+  assert.ok(px[0] < 20, `brilho ${px[0]}`);
+});

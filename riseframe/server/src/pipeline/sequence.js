@@ -31,6 +31,7 @@ export function frameSize(aspect, first) {
 /** Duração de cada clipe na sequência (vídeo: saída − entrada; imagem: a escolhida). */
 export function clipDuration(c) {
   if (c.kind === 'image') return Math.max(0.5, Math.min(60, Number(c.duration) || 3));
+  if (c.kind === 'blank') return Math.max(0.2, Math.min(600, Number(c.duration) || 1)); // espaço vazio (preto, sem som)
   const a = Math.max(0, Number(c.in) || 0);
   const b = Number(c.out) > a ? Number(c.out) : a + (Number(c.duration) || 5);
   return Math.max(0.3, b - a);
@@ -72,7 +73,7 @@ export function sequenceParts(clips, { W, H, fps = 30, music = null, musicIdx = 
  * music: { file, volume } | null. aspect: 'auto' | '9:16' | '16:9' | '1:1' | '4:5'.
  */
 export async function assembleSequence({ clips, music = null, aspect = 'auto', output, work, blank = false }, onProgress = () => {}) {
-  const list = (clips || []).filter((c) => c?.file && (c.kind === 'video' || c.kind === 'image'));
+  const list = (clips || []).filter((c) => (c?.file && (c.kind === 'video' || c.kind === 'image')) || c?.kind === 'blank');
   // Timeline em branco: um quadro preto (sem som) só para abrir o editor; os clipes entram
   // depois pela aba Projeto (V1).
   if (!list.length && blank) {
@@ -84,6 +85,7 @@ export async function assembleSequence({ clips, music = null, aspect = 'auto', o
   }
   if (!list.length) throw new Error('a timeline está vazia — coloque pelo menos um vídeo ou imagem');
   for (const c of list) {
+    if (c.kind === 'blank') { c._hasAudio = false; continue; }
     const m = await probeSummary(c.file).catch(() => null);
     if (!m) throw new Error(`não deu para ler ${path.basename(c.file)}`);
     c._hasAudio = c.kind === 'video' && m.hasAudio;
@@ -94,10 +96,12 @@ export async function assembleSequence({ clips, music = null, aspect = 'auto', o
       c.out = Math.min(m.duration, Number(c.out) > c.in ? Number(c.out) : m.duration);
     }
   }
-  const [W, H] = frameSize(aspect, { width: list[0]._w, height: list[0]._h });
+  const firstVis = list.find((c) => c.kind !== 'blank');
+  const [W, H] = frameSize(aspect, firstVis ? { width: firstVis._w, height: firstVis._h } : null);
   const args = [];
   for (const c of list) {
-    if (c.kind === 'image') args.push('-loop', '1', '-framerate', '30', '-t', f3(clipDuration(c)), '-i', c.file);
+    if (c.kind === 'blank') args.push('-f', 'lavfi', '-t', f3(clipDuration(c)), '-i', `color=c=black:s=${W}x${H}:r=30`);
+    else if (c.kind === 'image') args.push('-loop', '1', '-framerate', '30', '-t', f3(clipDuration(c)), '-i', c.file);
     else args.push('-ss', f3(c.in), '-t', f3(clipDuration(c)), '-i', c.file);
   }
   const musicIdx = music?.file ? list.length : null;

@@ -25,3 +25,10 @@ test('camada: recorte deixa as bordas transparentes e giro com cantos transparen
   const [plain] = visualLayerParts([{ _inIdx: 1, start: 0, end: 2, d: 2, mode: 'cover' }], { W: 1080, H: 1920, fps: 30, dur: 2 });
   assert.doesNotMatch(plain, /rotate|pad=|rgba/);
 });
+
+test('espaços vazios do vídeo principal: limpa, junta e monta o enable do FFmpeg', async () => {
+  const { cleanBlanks, blanksEnable } = await import('../src/pipeline/frame.js');
+  assert.deepEqual(cleanBlanks([{ start: 3, end: 4 }, { start: 1, end: 2 }, { start: 1.5, end: 2.5 }, { start: 5, end: 5.01 }, null]), [{ start: 1, end: 2.5 }, { start: 3, end: 4 }]);
+  assert.equal(blanksEnable([{ start: 1, end: 2.5 }]), 'between(t,1.000,2.500)');
+  assert.deepEqual(cleanBlanks('x'), []);
+});
