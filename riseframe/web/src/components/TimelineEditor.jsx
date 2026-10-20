@@ -2575,9 +2575,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const capListRef = useRef(null);
   const capRows = useMemo(() => {
     const q = norm(capQuery.trim());
-    const rows = segments.map((s, si) => ({ s, si }));
-    return q ? rows.filter(({ s }) => norm(s.words.map((w) => w.word).join(' ')).includes(q)) : rows;
-  }, [segments, capQuery]);
+    // legenda cortada (palavras tiradas ou dentro de um corte) só aparece com "Ver trechos excluídos"
+    const rows = segments.map((s, si) => ({ s: capSegments[si] || s, si })).filter(({ s }) => !ripple || !segRemoved(s));
+    return q ? rows.filter(({ s }) => norm(s.words.filter((w) => !w.removed || !ripple).map((w) => w.word).join(' ')).includes(q)) : rows;
+  }, [segments, capSegments, capQuery, ripple]);
+  // quantas legendas/palavras estão cortadas (para o botão de ver/esconder)
+  const cutCaptionCount = useMemo(() => capSegments.filter((sg) => segRemoved(sg)).length, [capSegments]);
+  const cutWordCount = useMemo(() => capSegments.reduce((n, sg) => n + sg.words.filter((w) => w.removed).length, 0), [capSegments]);
+  const showCutBtn = (n, label) => (n > 0 ? (
+    <button onClick={() => setRipple((v) => !v)} title={ripple ? 'Mostrar o que foi cortado (para trazer de volta)' : 'Esconder o que foi cortado'}
+      style={{ ...zoomBtn, display: 'inline-flex', alignItems: 'center', gap: 5, width: 'auto', height: 32, padding: '0 9px', fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', color: ripple ? C.muted : C.text }}>
+      <Icon name={ripple ? 'eye' : 'eyeOff'} size={13} strokeWidth={2} /> {ripple ? `Ver cortados (${n}${label})` : 'Esconder cortados'}
+    </button>
+  ) : null);
   const capSel = segments[sel] || null;
   const capSelRange = capSel ? (keptRange(capSel) || [capSel.start, capSel.end]) : [0, 0];
   const capSelText = capSel ? (segRemoved(capSel) ? capSel.words : capSel.words.filter((w) => !w.removed)).map((w) => w.word).join(' ') : '';
@@ -4016,11 +4026,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
         <button onClick={copyTranscript} title="Copiar o texto" style={{ ...zoomBtn, width: 'auto', height: 32, padding: '0 9px', fontSize: 11.5, fontWeight: 600, color: txCopied ? C.green : C.text }}>{txCopied ? 'Copiado' : 'Copiar'}</button>
         <button onClick={downloadTranscript} title="Baixar a transcrição (.txt)" style={{ ...zoomBtn, width: 32, height: 32 }}><Icon name="download" size={14} strokeWidth={2} /></button>
+        {showCutBtn(cutWordCount, cutWordCount === 1 ? ' palavra' : ' palavras')}
       </div>
       <div ref={txListRef} style={{ position: 'relative', maxHeight: isMobile ? '44dvh' : 'min(46vh, 420px)', minHeight: 140, overflowY: 'auto', borderRadius: 11, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.3)', padding: '4px 12px', userSelect: 'none' }}>
         {txParas.length === 0 && <div style={{ fontSize: 12, color: C.faint, padding: 14, textAlign: 'center' }}>Sem fala transcrita neste vídeo.</div>}
         {txParas.map((p, pi) => {
           const items = txWords.slice(p.from, p.to + 1);
+          // o que foi cortado some da transcrição (volta com "Ver cortados")
+          if (ripple && items.every((x) => x.w.removed || x.cut)) return null;
           const segIds = [...new Set(items.map((x) => x.si))];
           return (
             <div key={pi} style={{ padding: '10px 0', borderBottom: pi < txParas.length - 1 ? `1px solid ${C.border}` : 'none' }}>
@@ -4041,6 +4054,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       if (x.si !== si) return null;
                       const i = p.from + k;
                       const gone = x.w.removed || x.cut;
+                      if (gone && ripple) return null;
                       const selOn = i >= txSelLo && i <= txSelHi;
                       const live = i === txActive;
                       const hit = txQ && norm(x.w.word).includes(txQ);
@@ -5269,6 +5283,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     </div>
                     <button onClick={splitAtPlayhead} disabled={!canSplit} title="Dividir a legenda no ponto atual (S)" style={{ ...zoomBtn, width: 32, height: 32, opacity: canSplit ? 1 : 0.4 }}><Icon name="scissors" size={14} strokeWidth={2} /></button>
                     <button onClick={() => mergeNext(sel)} disabled={sel >= segments.length - 1} title="Juntar com a próxima" style={{ ...zoomBtn, width: 32, height: 32, opacity: sel < segments.length - 1 ? 1 : 0.4 }}><Icon name="merge" size={14} strokeWidth={2} /></button>
+                    {showCutBtn(cutCaptionCount, cutCaptionCount === 1 ? ' legenda' : ' legendas')}
                   </div>
                   <div ref={capListRef} style={{ position: 'relative', maxHeight: isMobile ? '44dvh' : 'min(40vh, 360px)', minHeight: 120, overflowY: 'auto', borderRadius: 11, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.3)', padding: 4 }}>
                     {capRows.length === 0 && <div style={{ fontSize: 12, color: C.faint, padding: 14, textAlign: 'center' }}>{capQuery ? 'Nada encontrado.' : 'Sem falas para legendar.'}</div>}
@@ -5854,7 +5869,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               )}
               {segments.map((s0, si) => {
                 const s = capSegments[si] || s0; // no tempo da legenda (pode ter sido movida)
-                if (ripple && W(s.start, Math.max(s.end, s.start + 0.2)) < 1) return null; // excluída: some da timeline
+                if (ripple && (segRemoved(s) || W(s.start, Math.max(s.end, s.start + 0.2)) < 1)) return null; // excluída: some da timeline
                 const left = X(s.start);
                 const fullW = Math.max(10, W(s.start, Math.max(s.end, s.start + 0.2)) - 2);
                 const gone = segRemoved(s);
