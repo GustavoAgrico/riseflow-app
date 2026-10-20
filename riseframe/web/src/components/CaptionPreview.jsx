@@ -487,7 +487,7 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
     return (
       <>
       {guide}
-      <div ref={boxRef} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, pointerEvents: 'none', overflow: 'hidden', zIndex: 1 }}>
+      <div ref={boxRef} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, pointerEvents: 'none', overflow: 'hidden', zIndex: 3 }}>
         <div style={{ position: 'absolute', left: pos.x * box.w, top: pos.y * box.h, transform: 'translate(-50%, -50%)', width: box.w * 0.9, display: 'flex', justifyContent: 'center', textAlign: 'center' }}>
           {handle}
         </div>
@@ -504,7 +504,7 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
       justifyContent: inBroll ? 'center' : align === 'top' ? 'flex-start' : align === 'bottom' ? 'flex-end' : 'center',
       paddingTop: !inBroll && align === 'top' ? box.h * marginV : 0,
       paddingBottom: !inBroll && align === 'bottom' ? box.h * marginV : 0,
-      boxSizing: 'border-box', overflow: 'hidden', zIndex: 1,
+      boxSizing: 'border-box', overflow: 'hidden', zIndex: 3,
     }}>
       {handle}
     </div>
@@ -518,7 +518,7 @@ function SafeZoneGuide({ box }) {
   const area = { position: 'absolute', background: 'repeating-linear-gradient(135deg, rgba(255,80,80,0.16) 0 6px, rgba(255,80,80,0.06) 6px 12px)', border: '1px dashed rgba(255,120,120,0.55)', boxSizing: 'border-box' };
   const tag = { position: 'absolute', fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.85)', background: 'rgba(0,0,0,0.45)', borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap' };
   return (
-    <div aria-hidden="true" style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, pointerEvents: 'none', zIndex: 1 }}>
+    <div aria-hidden="true" style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, pointerEvents: 'none', zIndex: 3 }}>
       <div style={{ ...area, left: 0, right: 0, top: 0, height: box.h * z.top }} />
       <div style={{ ...area, left: 0, right: 0, bottom: 0, height: box.h * z.bottom }}>
         <span style={{ ...tag, right: 4, top: 3, maxWidth: '62%', overflow: 'hidden', textOverflow: 'ellipsis' }} title="Área coberta pelo nome e pela descrição no Reels/TikTok">área da descrição</span>

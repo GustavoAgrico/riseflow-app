@@ -2865,9 +2865,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {singleMon && cbox && <div ref={transOverlayRef} style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, pointerEvents: 'none', zIndex: 4, opacity: 0 }} />}
       {singleMon && cbox && headline.on && headline.text.trim() && (!headline.seconds || cur < headline.seconds) && <HeadlineOverlay h={headline} box={cbox} />}
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
-      {cbox && <StageLayers videoRef={videoRef} box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
+      {cbox && <StageLayers part="media" z={2} videoRef={videoRef} box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
         onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
       {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
+      {cbox && <StageLayers part="texts" z={3} videoRef={videoRef} box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
+        onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
     </div>
   );
 
@@ -4499,9 +4501,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 )}
                 {vbox && !singleMon && <div ref={fxOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 2, backgroundSize: 'cover' }} />}
                 {vbox && !singleMon && <div ref={transOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 4, opacity: 0 }} />}
-                {vbox && <StageLayers videoRef={videoRef} box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
+                {vbox && <StageLayers part="media" z={2} videoRef={videoRef} box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
                   onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
                 {cap.captions && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
+                {vbox && <StageLayers part="texts" z={3} videoRef={videoRef} box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto'} selMedia={selMedia} selText={selText}
+                  onMedia={(key, patch) => { updateMedia(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
                 {framingMode === 'manual' && (
                   <div
                     ref={framingBoxRef}
@@ -6676,7 +6680,9 @@ function layerCss(m) {
   return { ...(f.length ? { filter: f.join(' ') } : {}), ...(m.flip ? { transform: 'scaleX(-1)' } : {}) };
 }
 
-function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, selText, onMedia, onText }) {
+// Ordem igual à do vídeo final: mídias (camadas) → legenda → textos. Por isso a prévia usa
+// duas StageLayers: part="media" (zIndex 2, embaixo da legenda) e part="texts" (por cima).
+function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, selText, onMedia, onText, part = 'all', z = 3 }) {
   const [aspect, setAspect] = useState({}); // altura/largura de cada mídia (da prévia)
   const [guides, setGuides] = useState(null); // linhas de centralização enquanto arrasta
   const dragRef = useRef(null);
@@ -6713,14 +6719,14 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
   }, []);
   if (!box || box.h < 10) return null;
-  const visible = (media || [])
+  const visible = (part === 'texts' ? [] : media || [])
     .filter((m) => m.kind !== 'audio' && m.previewUrl && cur >= m.start && cur < m.start + m.duration)
     .sort((a, b) => (a.layer || 0) - (b.layer || 0));
-  const liveTexts = (texts || []).filter((l) => cur >= l.start && cur < l.end);
+  const liveTexts = (part === 'media' ? [] : texts || []).filter((l) => cur >= l.start && cur < l.end);
   if (!visible.length && !liveTexts.length) return null;
   const start = (e, d) => { if (!editable) return; e.preventDefault(); e.stopPropagation(); dragRef.current = { ...d, x0: e.clientX, y0: e.clientY }; document.body.style.userSelect = 'none'; };
   return (
-    <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', pointerEvents: 'none', zIndex: 3 }}>
+    <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', pointerEvents: 'none', zIndex: z }}>
       {guides && <SnapGuides x={guides.x} y={guides.y} />}
       {visible.map((m) => {
         const adj = layerCss(m);
