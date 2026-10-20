@@ -2845,6 +2845,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Vídeo principal: Transformar com quadros-chave (os mesmos da aba Enquadramento). Sem o
   // cronômetro ligado, o valor é fixo no vídeo todo (um quadro só).
   const [v1KfOn, setV1KfOn] = useState(false);
+  const [v1Scope, setV1Scope] = useState('piece'); // Transformar: só o pedaço ou o vídeo inteiro
   const v1Anim = v1KfOn || transformKeys.length > 1;
   const setV1 = (prop, v) => { if (v1Anim) setKeyValue(prop, v); else setTransformKeys(cleanKeys([{ t: 0, ...K, [prop]: v }])); };
   const v1Kf = {
@@ -2860,7 +2861,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     onPrev: prevKey ? () => seek(prevKey.t) : null,
     onNext: nextKey ? () => seek(nextKey.t) : null,
   };
-  const propsBlock = (() => {
+  // função (não constante): usa os pedaços da V1, calculados mais abaixo no render
+  function propsBlockFn() {
     const head = (title, sub) => (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 2px 4px' }}>
         <b style={{ fontSize: 13.5 }}>{title}</b>
@@ -2986,24 +2988,96 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
       );
     }
-    // vídeo principal (V1)
+    // vídeo principal (V1). Como no Premiere, o Transformar é do CLIPE: com o vídeo dividido
+    // (navalha ou montagem), vale só no pedaço selecionado (ou o do ponteiro). Por baixo são
+    // os mesmos quadros-chave da faixa QUADROS, com quadros de borda que seguram o resto.
+    const pieceIdx = v1Pieces.length > 1 && v1Scope === 'piece'
+      ? (selKind === 'video' && selVideo ? v1Pieces.findIndex((p) => Math.abs(p.a - selVideo.start) < 0.02) : v1Pieces.findIndex((p) => cur >= p.a && cur < p.b))
+      : -1;
+    const piece = pieceIdx >= 0 ? v1Pieces[pieceIdx] : null;
+    const G = 0.034; // ~1 quadro: a troca na borda do pedaço
+    const pick = (k) => ({ scale: k.scale, x: k.x, y: k.y, rot: k.rot });
+    let KV = K;
+    let v1KfV = v1Kf;
+    let setV1V = setV1;
+    let v1AnimV = v1Anim;
+    let resetV = () => { setTransformKeys([]); setV1KfOn(false); };
+    if (piece) {
+      const a = piece.a;
+      const b = piece.b;
+      const near = (t, x) => Math.abs(t - x) < 0.006;
+      const rest = transformKeys.filter((k) => k.t < a - G - 0.006 || k.t > b + 0.006);
+      const inner = transformKeys.filter((k) => k.t > a + 0.006 && k.t < b - G - 0.006);
+      const holdA = transformKeys.find((k) => near(k.t, a)) || null;
+      const tP = Math.min(Math.max(cur, a), b - G);
+      KV = keyAt(transformKeys, tP);
+      const writePiece = (keys) => {
+        const list = [...rest];
+        const ks = [...keys].sort((x, y) => x.t - y.t);
+        if (ks.length) {
+          if (a - G > 0.001) list.push({ t: a - G, ...keyAt(rest, a - G) });
+          list.push({ t: a, ...pick(ks[0]) });
+          list.push(...ks.filter((k) => k.t > a + 0.006 && k.t < b - G - 0.006));
+          list.push({ t: b - G, ...pick(ks[ks.length - 1]) });
+          if (b < dur - 0.001) list.push({ t: b, ...keyAt(rest, b) });
+        }
+        setTransformKeys(cleanKeys(list));
+      };
+      const real = inner.length ? inner : holdA ? [holdA] : [];
+      const anim = v1KfOn || inner.length > 0;
+      const upsert = (list, t, k) => [...list.filter((x) => Math.abs(x.t - t) >= 0.04), { t, ...k }];
+      v1AnimV = anim;
+      setV1V = (prop, v) => {
+        if (!anim) { writePiece([{ t: a, ...KV, [prop]: v }]); return; }
+        const t = +tP.toFixed(3);
+        writePiece(upsert(real.length ? real : [{ t: a, ...KV }], t, { ...KV, [prop]: v }));
+      };
+      const here = real.some((k) => Math.abs(k.t - tP) < 0.04);
+      const marks = [...real].sort((x, y) => x.t - y.t);
+      const prevK = [...marks].reverse().find((k) => k.t < tP - 0.04);
+      const nextK = marks.find((k) => k.t > tP + 0.04);
+      v1KfV = {
+        on: anim,
+        here,
+        onToggle: () => {
+          if (!anim) { setV1KfOn(true); writePiece(upsert(real.length ? real : [], +tP.toFixed(3), KV)); return; }
+          if (inner.length > 0 && !window.confirm('Desligar a animação apaga os quadros-chave deste pedaço. Ele fica parado no valor de agora. Continuar?')) return;
+          writePiece(keysChangeAnything([KV]) ? [{ t: a, ...KV }] : []);
+          setV1KfOn(false);
+        },
+        onKey: () => writePiece(here ? real.filter((k) => Math.abs(k.t - tP) >= 0.04) : upsert(real, +tP.toFixed(3), KV)),
+        onPrev: prevK ? () => seek(prevK.t) : null,
+        onNext: nextK ? () => seek(nextK.t) : null,
+      };
+      resetV = () => { writePiece([]); setV1KfOn(false); };
+    }
     return (
       <div style={{ display: 'grid', gap: 10 }}>
-        {head('Propriedades', 'Vídeo principal (V1) — selecione uma camada ou texto na timeline para ver as dela')}
-        <PropSection title="Transformar" onReset={() => { setTransformKeys([]); setV1KfOn(false); }}>
-          <PropRow label="Posição" kf={v1Kf}>
+        {head('Propriedades', piece
+          ? `Vídeo principal · pedaço ${pieceIdx + 1} (${fmtDuration(piece.a)}–${fmtDuration(piece.b)}) — o Transformar vale só nele`
+          : 'Vídeo principal (V1) — selecione uma camada ou texto na timeline para ver as dela')}
+        {v1Pieces.length > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11.5, color: C.faint }}>Transformar vale para:</span>
+            <button onClick={() => setV1Scope('piece')} style={miniBtn(v1Scope === 'piece', false)}>Só o pedaço {piece ? pieceIdx + 1 : ''}</button>
+            <button onClick={() => setV1Scope('all')} style={miniBtn(v1Scope === 'all', false)}>Vídeo inteiro</button>
+            {v1Scope === 'piece' && <span style={{ fontSize: 11, color: C.faint }}>clique num pedaço da V1 (ou mova o ponteiro) para ajustar outro</span>}
+          </div>
+        )}
+        <PropSection title="Transformar" onReset={resetV}>
+          <PropRow label="Posição" kf={v1KfV}>
             <span style={{ display: 'inline-flex', gap: 10 }}>
-              <ScrubNum value={(0.5 + K.x) * FW} step={2} suffix=" X" onChange={(v) => setV1('x', +Math.max(-1, Math.min(1, v / FW - 0.5)).toFixed(4))} />
-              <ScrubNum value={(0.5 + K.y) * FH} step={2} suffix=" Y" onChange={(v) => setV1('y', +Math.max(-1, Math.min(1, v / FH - 0.5)).toFixed(4))} />
+              <ScrubNum value={(0.5 + KV.x) * FW} step={2} suffix=" X" onChange={(v) => setV1V('x', +Math.max(-1, Math.min(1, v / FW - 0.5)).toFixed(4))} />
+              <ScrubNum value={(0.5 + KV.y) * FH} step={2} suffix=" Y" onChange={(v) => setV1V('y', +Math.max(-1, Math.min(1, v / FH - 0.5)).toFixed(4))} />
             </span>
           </PropRow>
-          <PropRow label="Escala" kf={v1Kf}>
-            <ScrubNum value={K.scale * 100} step={0.5} min={50} max={300} decimals={1} suffix=" %" onChange={(v) => setV1('scale', +(v / 100).toFixed(4))} />
+          <PropRow label="Escala" kf={v1KfV}>
+            <ScrubNum value={KV.scale * 100} step={0.5} min={50} max={300} decimals={1} suffix=" %" onChange={(v) => setV1V('scale', +(v / 100).toFixed(4))} />
           </PropRow>
-          <PropRow label="Rotação" kf={v1Kf}>
-            <ScrubNum value={K.rot} step={0.5} min={-180} max={180} decimals={1} suffix=" °" onChange={(v) => setV1('rot', +v.toFixed(1))} />
+          <PropRow label="Rotação" kf={v1KfV}>
+            <ScrubNum value={KV.rot} step={0.5} min={-180} max={180} decimals={1} suffix=" °" onChange={(v) => setV1V('rot', +v.toFixed(1))} />
           </PropRow>
-          {v1Anim && <div style={{ fontSize: 11, color: C.faint }}>Animando: mudar um valor grava um ◆ no playhead (faixa QUADROS na timeline). {transformKeys.length} quadro(s)-chave.</div>}
+          {v1AnimV && <div style={{ fontSize: 11, color: C.faint }}>Animando: mudar um valor grava um ◆ no playhead (faixa QUADROS na timeline). {transformKeys.length} quadro(s)-chave.</div>}
         </PropSection>
         <PropSection title="Enquadramento (zoom no rosto)" onReset={() => { setZoom(1); setFocus({ x: 0.5, y: 0.4 }); }}>
           <PropRow label="Posição (foco)">
@@ -3034,7 +3108,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </PropSection>
       </div>
     );
-  })();
+  }
   const textBlock = (
     <div style={{ display: 'grid', gap: 12, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
       <CapRow label={`Modelos de texto — entram no playhead (${fmtDuration(cur)})`}>
@@ -5399,7 +5473,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               selecionado. Formato e qualidade ficam na janela de Exportar. */}
           {tab === 'enquadramento' && (
             <div style={{ display: 'grid', gap: 12, marginBottom: 12 }}>
-              {propsBlock}
+              {propsBlockFn()}
               <button onClick={() => setExportOpen(true)} style={{ ...framingTab(false), padding: '9px 12px', textAlign: 'left', fontSize: 12.5 }}>
                 Formato do vídeo ({aspectSel === 'original' ? 'Original' : aspectSel}) e qualidade de exportação: na janela <b>Exportar</b> →
               </button>
@@ -5871,7 +5945,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
           {tab === 'texto' && textBlock}
           {tab === 'graficos' && graficosBlock}
-          {tab === 'propriedades' && propsBlock}
+          {tab === 'propriedades' && propsBlockFn()}
 
           {tab === 'cor' && (
             <div style={{ display: 'grid', gap: 12, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
