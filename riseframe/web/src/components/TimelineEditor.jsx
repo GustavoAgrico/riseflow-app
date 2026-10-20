@@ -3460,9 +3460,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
       )}
       {guides?.where === 'pan' && <SnapGuides x={guides.x} y={guides.y} />}
-      <div style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.55)', padding: '2px 7px', borderRadius: 6 }}>
-        {previewMode === 'video' ? (podSplit ? 'tela dividida · a IA recorta cada rosto' : fitMode ? 'vídeo inteiro · fundo desfocado' : aspectSel !== 'original' && reframeMode === 'auto' && framingMode !== 'manual' ? 'segue o rosto / quem fala (automático)' : 'vídeo · arraste/role') : 'você (arraste/role)'}
-      </div>
     </div>
   );
   const brollHalf = (() => {
@@ -3512,6 +3509,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const mainAr = srcDim ? srcDim.w / srcDim.h : 9 / 16;
   const fmtAr = aspectSel === '1:1' ? 1 : aspectSel === '16:9' ? 16 / 9 : aspectSel === '9:16' ? 9 / 16 : mainAr;
   const previewLabel = aspectSel === 'original' ? 'formato original' : aspectSel;
+  // dica de como mexer na prévia (fica fora da imagem: no texto ao passar o mouse)
+  const previewHint = previewMode === 'video' ? (podSplit ? 'Tela dividida: a IA recorta cada rosto' : fitMode ? 'Vídeo inteiro com fundo desfocado' : aspectSel !== 'original' && reframeMode === 'auto' && framingMode !== 'manual' ? 'Segue o rosto / quem fala (automático)' : 'Arraste ou role na prévia para enquadrar') : 'Você: arraste ou role na prévia para enquadrar';
   const showFormatPreview = framingMode === 'manual' || aspectSel !== 'original';
   // Um monitor só (como o Program do Premiere): mostra o vídeo como vai sair. O original
   // aparece ao lado só quando o usuário pede para comparar.
@@ -3519,9 +3518,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const composedPreview = (
     <div ref={composedRef} style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${fmtAr.toFixed(4)}), calc((100cqw - 16px) * var(--fmt-share)))`, aspectRatio: previewRatio, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
       {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
-      <span className="rf-tl-pvlabel" style={{ position: 'absolute', top: 6, right: 6, zIndex: 3, pointerEvents: 'none', fontSize: 9.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 6, padding: '3px 6px' }}>
-        Prévia {previewLabel}{previewMode === 'split' ? ' · dividida' : previewMode === 'broll' ? ' · B-roll' : ''}
-      </span>
       {/* Cor, título, efeitos e transições como saem no vídeo final (monitor único). */}
       {singleMon && cbox && lookCss.tint && <div style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, pointerEvents: 'none', zIndex: 1, ...lookCss.tint }} />}
       {singleMon && cbox && colorCss.tint && <div style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, pointerEvents: 'none', zIndex: 1, ...colorCss.tint }} />}
@@ -5362,6 +5358,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <div className="rf-transport" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div style={{ flex: '1 1 0', minWidth: 0, fontSize: 12, color: PR.blue, fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title="Posição / duração">
                 {mmss(cur)} <span style={{ color: C.faint, fontWeight: 500 }}>/ {mmss(dur)}</span>
+                {showFormatPreview && (
+                  <span className="rf-tl-pvinfo" title={`Prévia ${previewLabel} — ${previewHint}`} style={{ color: C.faint, fontWeight: 600, fontSize: 11, marginLeft: 6 }}>
+                    · {aspectSel === 'original' ? 'original' : aspectSel}{previewMode === 'split' ? ' · dividida' : previewMode === 'broll' ? ' · B-roll' : ''}
+                  </span>
+                )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <button className="rf-tbtn rf-tb-ext" onClick={() => seek(0)} title="Ir para o começo (Home)" aria-label="Começo">{svgTransport('start')}</button>
