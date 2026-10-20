@@ -139,6 +139,22 @@ export function speedFilters(speed, fps) {
   return { k: f, vf: `setpts=PTS/${f},fps=${rate}`, af: `atempo=${f}` };
 }
 
+/** Quadros por segundo aceitos na exportação (0 = o do vídeo gravado). */
+export const EXPORT_FPS = [24, 25, 30, 50, 60, 120];
+
+/**
+ * Filtro de fps da exportação: abaixo do gravado descarta quadros (fps); acima, cria os
+ * quadros que faltam misturando os vizinhos (framerate) — fica mais fluido, mas não
+ * inventa movimento que a câmera não gravou. Null = mantém o fps do vídeo. Puro.
+ */
+export function fpsVf(fps, srcFps) {
+  const n = Number(fps);
+  if (!EXPORT_FPS.includes(n)) return null;
+  const src = Number(srcFps) || 30;
+  if (Math.abs(n - src) < 0.5) return null;
+  return n > src ? `framerate=fps=${n}` : `fps=${n}`;
+}
+
 export async function finalRender(input, outputsDir, jobId, meta, options, onProgress) {
   const aspect = options.aspect || 'original';
   const target = outputTarget(meta, options);
@@ -174,13 +190,16 @@ export async function finalRender(input, outputsDir, jobId, meta, options, onPro
       graph += `;[1:v]scale=${W}:${H},setsar=1,format=yuv420p[rfcover];[rtv][rfcover]overlay=0:0:enable='lt(t,0.4)':eof_action=pass,format=yuv420p[rfout]`;
       vOut = '[rfout]';
     }
-    const args = [...inputs, '-filter_complex', graph, '-map', vOut, ...(meta.hasAudio ? ['-map', '[rta]', '-c:a', 'aac', '-b:a', '192k'] : []), ...x264Final(), '-movflags', '+faststart', '-y', output];
+    const args = [...inputs, '-filter_complex', graph, '-map', vOut, ...(meta.hasAudio ? ['-map', '[rta]', '-c:a', 'aac', '-b:a', '192k'] : []), ...x264Final(), ...(EXPORT_FPS.includes(Number(options.fps)) ? ['-r', String(Number(options.fps))] : []), '-movflags', '+faststart', '-y', output];
     await runFfmpeg(args, { label: 'render', totalDuration: retimedDuration(pieces), onProgress });
     const st = await fs.stat(output);
     log.ok(`render final: ${path.basename(output)} (${(st.size / 1e6).toFixed(1)} MB, ${aspect}, ${pieces.length} pedaços de velocidade/congelar)`);
     return { output, aspect, sizeBytes: st.size, reframe };
   }
   if (speed) vf = `${vf},${speed.vf}`;
+  // Quadros por segundo escolhidos na janela Exportar (depois da velocidade).
+  const fv = fpsVf(options.fps, meta.fps);
+  if (fv) vf = `${vf},${fv}`;
   let args = ['-i', input, '-vf', vf, ...x264Final()];
   // Capa no começo (vira a miniatura nas redes): a imagem por cima dos primeiros 0,4 s,
   // no mesmo passe (não muda a duração nem a sincronia).

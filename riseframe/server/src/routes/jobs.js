@@ -636,6 +636,8 @@ export function parseOptions(raw) {
     speed: speedOf(o.speed),
     // Qualidade de exportação (Premium): 720p, 1080p ou 4K (lado menor do quadro).
     quality: ['720', '1080', '2160'].includes(String(o.quality)) ? String(o.quality) : 'original',
+    // Quadros por segundo da exportação (0 = o do vídeo gravado): 24, 25, 30, 50, 60 ou 120.
+    ...([24, 25, 30, 50, 60, 120].includes(Number(o.fps)) ? { fps: Number(o.fps) } : {}),
     audioVolume: clampNum(o.audioVolume, 0, 4, 1),
     // Recorte (Crop) do vídeo principal: quanto sai de cada lado (fração).
     ...(cleanCrop(o.videoCrop) ? { videoCrop: cleanCrop(o.videoCrop) } : {}),
