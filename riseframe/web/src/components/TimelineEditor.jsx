@@ -732,7 +732,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
   }
 
-  const isPauseCut = (p) => !keptPauses.has(pauseKey(p));
+  // Silêncio longo no COMEÇO ou no FIM do vídeo (≥ 2,5 s) costuma ser imagem de propósito
+  // (abertura, cena, final): fica por padrão e o clique corta. Os outros silêncios saem
+  // por padrão e o clique mantém. (A escolha fica no mesmo conjunto, com o prefixo "cut:".)
+  const isLongEdge = (p) => (p.start <= 0.01 || p.end >= dur - 0.01) && p.dur >= 2.5;
+  const isPauseCut = (p) => (isLongEdge(p) ? keptPauses.has(`cut:${pauseKey(p)}`) : !keptPauses.has(pauseKey(p)));
   // Pausa com som que não é palavra (tosse, pigarro): o clique alterna
   // cortar só o silêncio → cortar TUDO (o som junto, como um corte à mão) → manter.
   const pauseForcedCut = (p) => cuts.find((c) => c.pause && Math.abs(c.start - p.start) < 0.02 && Math.abs(c.end - p.end) < 0.02);
@@ -744,8 +748,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function setPauseKept(p, keep) {
     setKeptPauses((prev) => {
       const n = new Set(prev);
-      const k = pauseKey(p);
-      if (keep) n.add(k); else n.delete(k);
+      if (isLongEdge(p)) {
+        const k = `cut:${pauseKey(p)}`;
+        if (keep) n.delete(k); else n.add(k);
+      } else {
+        const k = pauseKey(p);
+        if (keep) n.add(k); else n.delete(k);
+      }
       return n;
     });
   }
@@ -1010,8 +1019,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return () => cancelAnimationFrame(id);
   }, []);
 
-  // ── arrastar bordas dos blocos (trim) — listeners globais durante o arrasto
+  // ── arrastar bordas dos blocos (trim) — listeners globais durante o arrasto. As funções
+  // vêm de um ref atualizado a cada render: antes ficava a versão do 1º render (zoom e
+  // duração antigos) e a ponta da legenda andava errado ou nem andava.
+  const capDragFns = useRef({});
   useEffect(() => {
+    const moveCaption = (...a) => capDragFns.current.moveCaption(...a);
+    const applyTrim = (...a) => capDragFns.current.applyTrim(...a);
+    const timeAtClientX = (x) => capDragFns.current.timeAtClientX(x);
     function move(e) {
       const m = capMoveRef.current;
       if (m) {
@@ -1127,7 +1142,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     function move(e) {
       const d = drawRef.current;
       if (!d) return;
-      const t = Math.max(0, Math.min(dur, srcOf((e.clientX - d.left) / pps)));
+      const t = Math.max(0, Math.min(dur, capDragFns.current.srcOf((e.clientX - d.left) / pps))); // srcOf atual (cortes mudam)
       d.cur = t;
       setDrawing({ start: Math.min(d.t0, t), end: Math.max(d.t0, t) });
     }
@@ -1406,12 +1421,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   // Pontas do bloco de legenda (como no CapCut): mudam só quando o texto aparece/some.
   // Não passam das legendas vizinhas nem cortam a fala — para cortar a fala, "Cortar trecho".
+  /** Até onde uma legenda pode ir: a vizinha que ainda aparece (as cortadas não travam). */
+  function capLimits(list, si) {
+    let lo = 0;
+    for (let j = si - 1; j >= 0; j--) if (!list[j].words.every((w) => w.removed)) { lo = capRangeOf(list[j])[1]; break; }
+    let hi = dur;
+    for (let j = si + 1; j < list.length; j++) if (!list[j].words.every((w) => w.removed)) { hi = capRangeOf(list[j])[0]; break; }
+    return [lo, hi];
+  }
   function applyTrim(si, edge, t) {
     setSegments((prev) => prev.map((s, i) => {
       if (i !== si) return s;
       const [c0, c1] = capRangeOf(s);
-      const lo = si > 0 ? capRangeOf(prev[si - 1])[1] : 0;
-      const hi = si < prev.length - 1 ? capRangeOf(prev[si + 1])[0] : dur;
+      const [lo, hi] = capLimits(prev, si);
       if (edge === 'left') return { ...s, capStart: +Math.max(lo, Math.min(t, c1 - 0.2)).toFixed(3), capEnd: c1 };
       return { ...s, capStart: c0, capEnd: +Math.min(hi, Math.max(t, c0 + 0.2)).toFixed(3) };
     }));
@@ -1420,14 +1442,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function moveCaption(si, c0, c1, shift) {
     setSegments((prev) => prev.map((s, i) => {
       if (i !== si) return s;
-      const lo = si > 0 ? capRangeOf(prev[si - 1])[1] : 0;
-      const hi = si < prev.length - 1 ? capRangeOf(prev[si + 1])[0] : dur;
+      const [lo, hi] = capLimits(prev, si);
       const len = c1 - c0;
       const start = Math.max(lo, Math.min(hi - len, c0 + shift));
       return { ...s, capStart: +start.toFixed(3), capEnd: +(start + len).toFixed(3) };
     }));
   }
   const capMoveRef = useRef(null); // { si, x0, c0, c1, moved }
+  capDragFns.current = { applyTrim, moveCaption, timeAtClientX, srcOf };
   const capClickBlockRef = useRef(false);
   function startCapMove(si, e) {
     if (e.button !== 0 || isMobile) return;
@@ -6354,8 +6376,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     {/* alças de trim (só no bloco principal selecionado) */}
                     {isSel && si === sel && !gone && (
                       <>
-                        <div onMouseDown={(e) => { capMoveRef.current = null; startDrag(si, 'left', e); }} onClick={(e) => e.stopPropagation()} style={handleStyle('left')} />
-                        <div onMouseDown={(e) => { capMoveRef.current = null; startDrag(si, 'right', e); }} onClick={(e) => e.stopPropagation()} style={handleStyle('right')} />
+                        <div onMouseDown={(e) => { capMoveRef.current = null; startDrag(si, 'left', e); }} onClick={(e) => e.stopPropagation()} title="Arraste: quando a legenda aparece"
+                          style={{ ...handleStyle('left'), left: -10, width: 11, zIndex: 6, borderRadius: '6px 0 0 6px' }} />
+                        <div onMouseDown={(e) => { capMoveRef.current = null; startDrag(si, 'right', e); }} onClick={(e) => e.stopPropagation()} title="Arraste: quando a legenda some"
+                          style={{ ...handleStyle('right'), right: -10, width: 11, zIndex: 6, borderRadius: '0 6px 6px 0' }} />
                       </>
                     )}
                   </div>
