@@ -45,3 +45,13 @@ test('vídeo pequeno exportado em 1080p sai em 1080p (ampliado antes das legenda
   assert.equal(m.height, 1918);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('fps da exportação: mantém, descarta ou cria quadros', async () => {
+  const { fpsVf } = await import('../src/pipeline/render.js');
+  assert.equal(fpsVf(0, 30), null);
+  assert.equal(fpsVf(30, 30), null);
+  assert.equal(fpsVf(24, 30), 'fps=24');
+  assert.equal(fpsVf(60, 30), 'framerate=fps=60');
+  assert.equal(fpsVf(120, 59.94), 'framerate=fps=120');
+  assert.equal(fpsVf(45, 30), null);
+});

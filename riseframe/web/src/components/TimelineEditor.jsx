@@ -2361,6 +2361,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         speed,
         audioVolume: +Number(audioVolume).toFixed(2),
         ...(videoCrop.l + videoCrop.t + videoCrop.r + videoCrop.b > 0.001 ? { videoCrop } : {}),
+        ...(exportFps ? { fps: exportFps } : {}),
         ...(blanks.length ? { videoBlanks: blanks.map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2) })) } : {}),
         audioGains: gains.map((g) => ({ start: +g.start.toFixed(2), end: +g.end.toFixed(2), volume: +Number(g.volume).toFixed(2) })),
         // Minhas mídias colocadas na timeline (imagens/vídeos/músicas próprias).
@@ -2703,6 +2704,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // ── Janela Exportar (como o Export do Premiere): formato, qualidade, legenda e o resumo da
   // saída antes de gerar. Abre pelo botão Exportar, Ctrl+M ou o menu do app.
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportFps, setExportFps] = useState(() => ([24, 25, 30, 50, 60, 120].includes(Number(options?.fps)) ? Number(options.fps) : 0)); // 0 = o do vídeo
   function openExport() { if (!busy && !allGone) setExportOpen(true); }
   const openExportRef = useRef(openExport);
   openExportRef.current = openExport;
@@ -2717,7 +2719,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     let [ow, oh] = AR ? (AR[0] <= AR[1] ? [1080, Math.round((1080 * AR[1]) / AR[0])] : [Math.round((1080 * AR[0]) / AR[1]), 1080]) : [src.w, src.h];
     if (hdAllowed && quality !== 'original') { const k = Number(quality) / Math.min(ow, oh); ow = Math.round((ow * k) / 2) * 2; oh = Math.round((oh * k) / 2) * 2; }
     const secs = Math.max(0, (stats.keptSec + retimeDelta) / speed);
-    const mbps = Math.min(ow, oh) >= 2000 ? 35 : Math.min(ow, oh) >= 1000 ? 10 : 5;
+    const mbps = (Math.min(ow, oh) >= 2000 ? 35 : Math.min(ow, oh) >= 1000 ? 10 : 5) * (exportFps >= 100 ? 2.2 : exportFps >= 50 ? 1.5 : 1);
     const sizeMb = ((mbps + 0.192) * secs) / 8;
     const row = (k, v) => (
       <div style={{ display: 'flex', gap: 10, fontSize: 12.5, lineHeight: 1.5 }}><span style={{ color: C.faint, flex: '0 0 74px' }}>{k}</span><span style={{ color: C.text }}>{v}</span></div>
@@ -2735,6 +2737,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, alignItems: 'start' }}>
             <div style={{ display: 'grid', gap: 0 }}>
               {exportSettingsJsx()}
+              <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8, marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Quadros por segundo (fps)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}>
+                  {[[0, 'Original', 'do vídeo'], [24, '24', 'cinema'], [30, '30', 'padrão'], [60, '60', 'fluido'], [120, '120', 'máximo']].map(([n, label, sub]) => (
+                    <button key={n} onClick={() => setExportFps(n)} style={{ ...framingTab(exportFps === n), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px' }}>
+                      <span style={{ fontSize: 13, fontWeight: 800 }}>{label}</span>
+                      <span style={{ fontSize: 10, color: C.faint, fontWeight: 600 }}>{sub}</span>
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: C.faint, lineHeight: 1.45 }}>
+                  {exportFps >= 50 ? 'Acima do fps gravado, os quadros que faltam são criados misturando os vizinhos: o movimento fica mais suave, mas não aparece detalhe que a câmera não gravou. Arquivo maior e exportação mais demorada.' : exportFps ? 'Menos quadros que o gravado deixa o arquivo menor.' : 'Mantém os quadros por segundo da gravação (recomendado).'}
+                </div>
+              </div>
               <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>Legenda</div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: C.muted, cursor: 'pointer' }}>
@@ -2745,7 +2761,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </div>
             <div style={{ display: 'grid', gap: 10, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
               <div style={{ fontSize: 13, fontWeight: 700 }}>Saída</div>
-              {row('Vídeo', `H.264 · ${ow}×${oh} · 30 fps`)}
+              {row('Vídeo', `H.264 · ${ow}×${oh} · ${exportFps ? `${exportFps} fps` : 'fps do vídeo gravado'}`)}
               {row('Áudio', 'AAC · 192 kbps · 48 kHz · estéreo')}
               {row('Formato', aspectSel === 'original' ? 'Original (como foi gravado)' : aspectSel)}
               {row('Qualidade', hdAllowed && quality !== 'original' ? QUALITY_OPTS.find((q) => q.id === quality)?.label : 'Original')}
@@ -5244,14 +5260,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <button onClick={() => setLayoutOpen((v) => !v)} title="Ajustar o tamanho do vídeo, das opções e da timeline" className="rf-tl-navbtn" style={layoutOpen ? { borderColor: '#2D8CFF', color: '#7DB6FF' } : undefined}>
               ▦ <span className="rf-navlbl2">Layout</span>
             </button>
-            <button onClick={() => setShowKeys((v) => !v)} title="Atalhos do teclado" className="rf-tl-navbtn" style={showKeys ? { borderColor: '#2D8CFF', color: '#7DB6FF' } : undefined}>
-              ⌨ Atalhos
-            </button>
             <button onClick={() => setTour(true)} title="Guia rápido: mostra para que serve cada parte do editor" className="rf-tl-navbtn">
               ? <span className="rf-navlbl2">Guia</span>
             </button>
             <button data-tour="export" onClick={openExport} disabled={busy || allGone} className="rf-tl-navbtn rf-tl-navbtn--go" style={{ background: busy || allGone ? 'rgba(255,255,255,0.08)' : GRAD, cursor: busy || allGone ? 'not-allowed' : 'pointer' }}>
               <Icon name="upload" size={13} strokeWidth={2.2} /> Exportar
+            </button>
+            <button onClick={() => setShowKeys((v) => !v)} title="Atalhos do teclado" className="rf-tl-navbtn" style={showKeys ? { borderColor: '#2D8CFF', color: '#7DB6FF' } : undefined}>
+              ⌨ Atalhos
             </button>
           </div>
         </nav>
