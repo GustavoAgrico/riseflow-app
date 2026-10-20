@@ -34,7 +34,7 @@ const MAX_BYTES = 256 * 1024;
 // Só o que é "estilo" entra no modelo (nada da fala, cortes ou B-roll daquele vídeo).
 const KEYS = ['cap', 'media', 'textLayers', 'colorLook', 'colorAdj', 'fx', 'voice', 'audioVolume', 'aspectSel', 'quality'];
 const MEDIA_KEYS = ['key', 'mediaId', 'kind', 'filename', 'srcDuration', 'start', 'duration', 'mode', 'volume', 'scale', 'px', 'py', 'cx', 'cy', 'opacity',
-  'animIn', 'animOut', 'blend', 'layer', 'fadeIn', 'fadeOut', 'offset', 'muted', 'bright', 'contrast', 'sat', 'flip', 'whole'];
+  'animIn', 'animOut', 'blend', 'layer', 'fadeIn', 'fadeOut', 'offset', 'muted', 'bright', 'contrast', 'sat', 'flip', 'rot', 'crop', 'whole'];
 
 function cleanData(raw) {
   const d = raw && typeof raw === 'object' ? raw : {};

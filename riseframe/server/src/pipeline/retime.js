@@ -55,6 +55,17 @@ export function retimePieces(ranges, freezes, duration, globalSpeed = 1) {
   return out;
 }
 
+/** Tempo t (vídeo antes da velocidade) → tempo no vídeo final com os pedaços. Puro. */
+export function retimeTime(t, pieces) {
+  let out = 0;
+  for (const p of pieces) {
+    if (p.freeze != null) { if (t >= p.at - 1e-6) out += p.freeze; continue; }
+    if (t >= p.b) out += (p.b - p.a) / p.k;
+    else { if (t > p.a) out += (t - p.a) / p.k; break; }
+  }
+  return out;
+}
+
 /** Duração do vídeo depois de aplicar os pedaços. Puro. */
 export function retimedDuration(pieces) {
   return pieces.reduce((s, p) => s + (p.freeze != null ? p.freeze : (p.b - p.a) / p.k), 0);

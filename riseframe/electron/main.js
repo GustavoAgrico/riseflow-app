@@ -299,6 +299,27 @@ app.on('activate', () => {
   if (mainWindow === null && serverPort) createWindow();
 });
 
+// Abas do editor (Projeto, Enquadramento, Texto…): o editor manda quais existem e quais
+// estão ocultas; o menu Ver › Abas do editor mostra/oculta cada uma (como Janela no Premiere).
+let editorTabs = { all: [], hidden: [] };
+function editorTabsMenu() {
+  if (!editorTabs.all.length) return [{ label: 'Abra um vídeo no editor para escolher as abas', enabled: false }];
+  return [
+    ...editorTabs.all.map((t) => ({
+      label: t.label, type: 'checkbox', checked: !editorTabs.hidden.includes(t.id),
+      click: () => mainWindow?.webContents.send('editor-tab-toggle', t.id),
+    })),
+    { type: 'separator' },
+    { label: 'Mostrar todas as abas', enabled: editorTabs.hidden.length > 0, click: () => mainWindow?.webContents.send('editor-tab-toggle', '*all') },
+  ];
+}
+ipcMain.on('editor-tabs-state', (_e, state) => {
+  const all = Array.isArray(state?.all) ? state.all.filter((t) => t && typeof t.id === 'string' && typeof t.label === 'string').slice(0, 40) : [];
+  const hidden = Array.isArray(state?.hidden) ? state.hidden.filter((id) => typeof id === 'string') : [];
+  editorTabs = { all: all.map(({ id, label }) => ({ id, label: label.slice(0, 60) })), hidden };
+  buildMenu();
+});
+
 function buildMenu() {
   const template = [
     {
@@ -331,6 +352,8 @@ function buildMenu() {
     {
       label: 'Ver',
       submenu: [
+        { label: 'Abas do editor', submenu: editorTabsMenu() },
+        { type: 'separator' },
         { role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' },
         { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' },
         { role: 'togglefullscreen' },

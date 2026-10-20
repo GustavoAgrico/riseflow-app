@@ -113,6 +113,15 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     const pi = progIn(m, a);
     const po = progOut(m, a);
 
+    // Recorte (Crop) da camada, como no Premiere: as bordas somem (ficam transparentes) e o
+    // resto continua do mesmo tamanho e no mesmo lugar.
+    const cr = m.crop && typeof m.crop === 'object' ? {
+      l: clamp(m.crop.l, 0, 0.45, 0), t: clamp(m.crop.t, 0, 0.45, 0), r: clamp(m.crop.r, 0, 0.45, 0), b: clamp(m.crop.b, 0, 0.45, 0),
+    } : null;
+    const hasCrop = cr && cr.l + cr.t + cr.r + cr.b > 0.001;
+    const src = `[${m._inIdx}:v]`;
+    const aspect = m._aspect || null;
+
     // Tamanho base da camada.
     let chain;
     let w0 = W;
@@ -120,12 +129,20 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     if (m.mode === 'pip') {
       const scale = clamp(m.scale, 0.05, 3, 0.4);
       w0 = Math.max(2, Math.round((W * scale) / 2) * 2);
-      h0 = m._aspect ? Math.round((w0 * m._aspect) / 2) * 2 : null;
-      chain = `[${m._inIdx}:v]scale=${w0}:-2,setsar=1`;
+      h0 = aspect ? Math.round((w0 * aspect) / 2) * 2 : null;
+      chain = `${src}scale=${w0}:-2,setsar=1`;
     } else {
-      chain = `[${m._inIdx}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`;
+      chain = `${src}scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`;
     }
     chain += layerAdjustVf(m);
+    let rgba = false;
+    if (hasCrop) {
+      const kx = f3(1 - cr.l - cr.r);
+      const ky = f3(1 - cr.t - cr.b);
+      chain += `,format=rgba,crop=w='trunc(iw*${kx})':h='trunc(ih*${ky})':x='trunc(iw*${f3(cr.l)})':y='trunc(ih*${f3(cr.t)})'`
+        + `,pad=w='trunc(iw/${kx})':h='trunc(ih/${ky})':x='trunc(iw*${f3(cr.l)}/${kx})':y='trunc(ih*${f3(cr.t)}/${ky})':color=black@0`;
+      rgba = true;
+    }
     chain += `,setpts=PTS-STARTPTS+${f3(m.start)}/TB`;
 
     // Transparência: opacidade fixa (no modo normal) + fades com alpha.
@@ -133,9 +150,16 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     if (animIn === 'fade') fades.push(`fade=t=in:st=${f3(m.start)}:d=${f3(a)}:alpha=1`);
     if (animOut === 'fade') fades.push(`fade=t=out:st=${f3(m.end - a)}:d=${f3(a)}:alpha=1`);
     if (fades.length || (op < 0.999 && blend === 'normal')) {
-      chain += ',format=rgba';
+      if (!rgba) chain += ',format=rgba';
+      rgba = true;
       if (op < 0.999 && blend === 'normal') chain += `,colorchannelmixer=aa=${f3(op)}`;
       if (fades.length) chain += `,${fades.join(',')}`;
+    }
+    // Giro (Rotation): os cantos ficam transparentes; no PiP a caixa cresce para caber.
+    const rot = clamp(m.rot, -180, 180, 0);
+    if (Math.abs(rot) > 0.05) {
+      const rad = f3((rot * Math.PI) / 180);
+      chain += `${rgba ? '' : ',format=rgba'},rotate=${rad}${m.mode === 'pip' ? `:ow=rotw(${rad}):oh=roth(${rad})` : ''}:c=none`;
     }
 
     // Escala animada (zoom/pop), por quadro.

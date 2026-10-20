@@ -9,7 +9,7 @@ import { silenceRemovalRanges } from './silence.js';
 import { preciseRemovals, wordGapRanges, dropSlivers } from './cutRefine.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, unmapTime } from './timeline.js';
 import { insertBroll } from './broll.js';
-import { applyManualFrame } from './frame.js';
+import { applyManualFrame, applyVideoCrop, cleanCrop } from './frame.js';
 import { applyUserMedia } from './overlay.js';
 import { applyMotion, dynamicZoomWindows } from './motion.js';
 import { enhanceVoice, voiceActive, voiceSettings } from './voice.js';
@@ -21,13 +21,15 @@ import { jobAccountToken } from '../account.js';
 import { burnCaptions, captionSfxEvents } from './captions.js';
 import { translateTranscript } from './translate.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
+import { captionCues, toSrt, toVtt, toTxt } from '../../../shared/captionExport.js';
 import { applySoundEffects } from './sfx.js';
 import { transitionVf, cutJoins } from './transitions.js';
 import { applyVideoFx } from './videofx.js';
 import { burnTexts } from './texts.js';
 import { applyWatermark } from './watermark.js';
 import { colorFilter, hasColorAdjust } from './color.js';
-import { convertAspect, finalRender, outputTarget } from './render.js';
+import { convertAspect, finalRender, outputTarget, speedFilters } from './render.js';
+import { retimePieces, retimeTime } from './retime.js';
 import { burnHeadline, makeCover } from './headline.js';
 import { generateClips } from './clips.js';
 import { selectStory, markStory } from './shortVideo.js';
@@ -66,6 +68,7 @@ function buildPlan(mode, options) {
       { key: 'voicefx', label: 'Aplicando o modificador de voz', weight: 6, enabled: voiceActive(options, 'fx') },
       { key: 'cut', label: 'Aplicando cortes na timeline', weight: 20, enabled: hasRemoval },
       { key: 'analyze', label: 'Analisando temas', weight: 3, enabled: true },
+      { key: 'crop', label: 'Recortando o vídeo', weight: 5, enabled: Boolean(cleanCrop(options.videoCrop)) },
       { key: 'motion', label: 'Aplicando movimento (zoom)', weight: 12, enabled: (Boolean(options.videoMotion) && options.videoMotion !== 'none') || (Array.isArray(options.transformKeys) && options.transformKeys.length > 0) },
       { key: 'frame', label: 'Reenquadrando o vídeo', weight: 8, enabled: (Number(options.personZoom) || 1) > 1.001 },
       { key: 'aspect', label: QUALITY_STAGE[options.quality] || 'Ajustando ao formato', weight: QUALITY_STAGE[options.quality] ? 12 : 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) || Boolean(QUALITY_STAGE[options.quality]) },
@@ -478,6 +481,17 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
+  // 4b. Recorte (Crop) do vídeo principal — antes do zoom/movimento, como no Premiere:
+  // o que foi recortado fica preto e o resto não muda de lugar.
+  if (has('crop')) {
+    const st = enter('crop');
+    const r = await applyVideoCrop(input, work, meta, options.videoCrop, st.onProgress);
+    input = r.output;
+    report.crop = { applied: r.applied, ...cleanCrop(options.videoCrop) };
+    st.record(report.crop);
+    st.onProgress(1);
+  }
+
   // 5. Movimento (zoom/pan) — sobre o vídeo base, antes de B-roll/legendas para não
   // ampliar as legendas junto. Atualiza também o trackInput (fonte limpa do reframe).
   if (has('motion')) {
@@ -588,6 +602,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
   // 6. Legendas (transcrição sincronizada)
   let captionStyle = null; // o estilo usado também decide os sons da legenda (6b)
+  let cueSegments = null; // a legenda no tempo do vídeo final (vira .srt/.vtt/.txt no fim)
   if (has('captions')) {
     const st = enter('captions');
     const style = {
@@ -641,6 +656,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
         translation = { language: options.captionLanguage, skipped: err.message };
       }
     }
+    cueSegments = captionTranscript.segments;
     const r = await burnCaptions(input, work, meta, captionTranscript, style, st.onProgress);
     input = r.output;
     report.captions = { segments: r.count, template: style.template, color: style.color, ...(translation ? { translation } : {}) };
@@ -767,7 +783,10 @@ export async function runPipeline(job, onUpdate = () => {}) {
     const vf = [colorVf, tVf, ...mVf].filter(Boolean).join(',') || null;
     const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf: vf, reframe: aspectReframe, coverFile: options.cover?.intro ? coverFile : null }, st.onProgress);
     const outMeta = await probeSummary(r.output).catch(() => ({}));
-    report.output = { file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe, width: outMeta.width || null, height: outMeta.height || null, speed: options.speed && options.speed !== 1 ? options.speed : undefined, duration: outMeta.duration || null };
+    // Legenda em arquivo (.srt/.vtt/.txt), no tempo do vídeo final (com a velocidade)
+    const captionFiles = await writeCaptionFiles(job, cueSegments || withExtraCaptions(visibleCaptions(transcript), options.extraCaptions)?.segments, options, meta)
+      .catch((err) => { log.warn(`não deu para gerar a legenda em arquivo: ${err.message}`); return null; });
+    report.output = { ...(captionFiles ? { captionFiles } : {}), file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe, width: outMeta.width || null, height: outMeta.height || null, speed: options.speed && options.speed !== 1 ? options.speed : undefined, duration: outMeta.duration || null };
     st.record({ aspect: r.aspect });
     st.onProgress(1);
   }
@@ -783,6 +802,25 @@ export async function runPipeline(job, onUpdate = () => {}) {
   emit({ progress: 100, stage: 'done', stageLabel: 'Concluído' });
   log.ok(`pipeline (${mode}) concluído para job ${job.id}`);
   return report;
+}
+
+/**
+ * Grava a legenda do vídeo final em .srt, .vtt e .txt na pasta de saída (para subir nas
+ * redes ou abrir no Premiere). Os tempos já estão no vídeo final; aqui entra a velocidade
+ * (geral e por trecho / congelar). → { srt, vtt, txt, count } ou null sem fala.
+ */
+async function writeCaptionFiles(job, segments, options, meta) {
+  if (!segments?.length) return null;
+  const k = speedFilters(options.speed, meta.fps)?.k || 1;
+  const pieces = retimePieces(options.speedRanges, options.freezes, meta.duration, k);
+  const mapT = pieces ? (t) => retimeTime(t, pieces) : (t) => t / k;
+  const cues = captionCues(segments, { lines: options.captionLines === 1 ? 1 : 2, maxChars: Number(options.captionMaxChars) > 0 ? Number(options.captionMaxChars) : 42, mapT });
+  if (!cues.length) return null;
+  const files = { srt: `${job.id}.srt`, vtt: `${job.id}.vtt`, txt: `${job.id}.txt` };
+  await fs.promises.writeFile(path.join(job.outputsDir, files.srt), toSrt(cues), 'utf8');
+  await fs.promises.writeFile(path.join(job.outputsDir, files.vtt), toVtt(cues), 'utf8');
+  await fs.promises.writeFile(path.join(job.outputsDir, files.txt), toTxt(cues), 'utf8');
+  return { ...files, count: cues.length };
 }
 
 /** Escolhe o que fica no vídeo curto e marca o resto como removido. */

@@ -37,6 +37,7 @@ import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
 import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
 import { brandIn, entityQuery } from '../pipeline/entities.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
+import { cleanCrop } from '../pipeline/frame.js';
 import { SFX_LIBRARY } from '../pipeline/sfx.js';
 import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
 
@@ -449,6 +450,9 @@ function sanitizeUserMedia(raw) {
       contrast: clampNum(m.contrast, 0.5, 2, 1),
       sat: clampNum(m.sat, 0, 2, 1),
       flip: m.flip === true,
+      // Propriedades: giro (graus) e recorte de cada lado (fração), como no Premiere.
+      ...(Math.abs(Number(m.rot) || 0) > 0.05 ? { rot: clampNum(m.rot, -180, 180, 0) } : {}),
+      ...(cleanCrop(m.crop) ? { crop: cleanCrop(m.crop) } : {}),
     };
     out.push(item);
     if (out.length >= 40) break; // teto de segurança
@@ -630,6 +634,8 @@ export function parseOptions(raw) {
     // Qualidade de exportação (Premium): 720p, 1080p ou 4K (lado menor do quadro).
     quality: ['720', '1080', '2160'].includes(String(o.quality)) ? String(o.quality) : 'original',
     audioVolume: clampNum(o.audioVolume, 0, 4, 1),
+    // Recorte (Crop) do vídeo principal: quanto sai de cada lado (fração).
+    ...(cleanCrop(o.videoCrop) ? { videoCrop: cleanCrop(o.videoCrop) } : {}),
     audioGains: Array.isArray(o.audioGains)
       ? o.audioGains
           .filter((g) => g && Number(g.end) > Number(g.start))
@@ -1619,6 +1625,18 @@ jobsRouter.get('/jobs/:id/cover', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message || 'falha ao gerar a capa' });
   }
+});
+
+// GET /api/jobs/:id/captions.srt|vtt|txt → a legenda do vídeo final em arquivo (para subir
+// nas redes ou abrir no Premiere), no tempo do vídeo exportado.
+jobsRouter.get('/jobs/:id/captions.:fmt', (req, res) => {
+  const job = queue.get(req.params.id);
+  const fmt = String(req.params.fmt || '').toLowerCase();
+  const name = ['srt', 'vtt', 'txt'].includes(fmt) ? job?.report?.output?.captionFiles?.[fmt] : null;
+  const file = name && path.join(config.paths.outputs, path.basename(name));
+  if (!file || !fs.existsSync(file)) return res.status(404).json({ error: 'legenda em arquivo não disponível para este vídeo' });
+  const base = path.parse(job.filename || 'video').name.replace(/[^\w.-]+/g, '_');
+  res.download(file, `riseframe_${base}.${fmt}`);
 });
 
 // GET /api/jobs/:id/cover.jpg → a capa gerada junto com o vídeo (render pronto)
