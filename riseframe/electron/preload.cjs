@@ -13,6 +13,13 @@ contextBridge.exposeInMainWorld('electron', {
   },
   getDataDir: () => ipcRenderer.invoke('get-data-dir'),
   getVersion: () => ipcRenderer.invoke('get-version'),
+  // Menu Ver › Abas do editor: o editor informa as abas e recebe os cliques do menu
+  setEditorTabs: (state) => ipcRenderer.send('editor-tabs-state', state),
+  onEditorTabToggle: (cb) => {
+    const h = (_e, id) => cb(id);
+    ipcRenderer.on('editor-tab-toggle', h);
+    return () => ipcRenderer.removeListener('editor-tab-toggle', h);
+  },
   platform: process.platform,
   arch: process.arch,
 });

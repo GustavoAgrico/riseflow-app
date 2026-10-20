@@ -563,6 +563,8 @@ export const sourceUrl = (id) => `${BASE}/jobs/${id}/source`;
 // Quadro do vídeo com a cor EXATA do render (mesma cadeia de filtros do servidor).
 /** Capa gerada junto com o vídeo (resultado). */
 export const coverDownloadUrl = (id) => `${BASE}/jobs/${id}/cover.jpg`;
+/** Legenda do vídeo final em arquivo: 'srt' | 'vtt' | 'txt'. */
+export const captionsDownloadUrl = (id, fmt = 'srt') => `${BASE}/jobs/${id}/captions.${fmt}`;
 /** Capa (JPG): quadro do vídeo original no segundo `t`, no formato final, com o título. */
 export const coverUrl = (id, { t = 0, text = '', style = 'box', color = 'FF6B35', pos = 'center', aspect = 'original', quality = 'original', fx = 0.5, full = false } = {}) =>
   `${BASE}/jobs/${id}/cover?${new URLSearchParams({ t: Number(t || 0).toFixed(1), text, style, color, pos, aspect, quality, fx: Number(fx).toFixed(2), ...(full ? { full: '1' } : {}) })}`;

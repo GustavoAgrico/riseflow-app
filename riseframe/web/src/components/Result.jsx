@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { C, GRAD, glass, fmtBytes, fmtDuration } from '../theme.js';
 import { GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
-import { previewUrl, downloadUrl, coverDownloadUrl } from '../api.js';
+import { previewUrl, downloadUrl, coverDownloadUrl, captionsDownloadUrl } from '../api.js';
 
 // +X% / −X% em relação a 1.0 (ganho neutro)
 const fmtGain = (g) => `${g >= 1 ? '+' : '−'}${Math.abs(Math.round((g - 1) * 100))}%`;
@@ -91,6 +91,14 @@ export default function Result({ job, onReset, onEditTimeline }) {
             <a href={coverDownloadUrl(job.id)} style={{ width: '100%', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, textDecoration: 'none', background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 14, padding: '13px', fontSize: 14, fontWeight: 700 }}>
               <Icon name="image" size={17} strokeWidth={2} /> Baixar capa (JPG)
             </a>
+          )}
+          {r.output?.captionFiles && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto repeat(3, minmax(0, 1fr))', gap: 6, alignItems: 'center' }} title="A legenda no tempo do vídeo final — para subir no YouTube/Instagram/TikTok ou abrir no Premiere">
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.muted, display: 'flex', alignItems: 'center', gap: 6, paddingRight: 4 }}><Icon name="captions" size={16} strokeWidth={2} /> Legenda</span>
+              {[['srt', '.SRT'], ['vtt', '.VTT'], ['txt', '.TXT']].map(([fmt, label]) => (
+                <a key={fmt} href={captionsDownloadUrl(job.id, fmt)} style={{ textAlign: 'center', textDecoration: 'none', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 11, padding: '10px 4px', fontSize: 13, fontWeight: 700 }}>{label}</a>
+              ))}
+            </div>
           )}
           {onEditTimeline && (
             <button onClick={onEditTimeline} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 14, padding: '13px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
