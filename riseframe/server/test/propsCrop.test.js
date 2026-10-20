@@ -19,7 +19,7 @@ test('camada: recorte deixa as bordas transparentes e giro com cantos transparen
   assert.match(chain, /scale=540:-2/);
   assert.match(chain, /format=rgba,crop=w='trunc\(iw\*0\.800\)'/);
   assert.match(chain, /pad=w='trunc\(iw\/0\.800\)'.*color=black@0/);
-  assert.match(chain, /rotate=0\.262:ow=rotw\(0\.262\):oh=roth\(0\.262\):c=none/);
+  assert.match(chain, /rotate=0\.262:ow=rotw\(0\.262\):oh=roth\(0\.262\):c=black@0/);
   assert.equal((chain.match(/format=rgba/g) || []).length, 1);
   // sem recorte nem giro: nada disso
   const [plain] = visualLayerParts([{ _inIdx: 1, start: 0, end: 2, d: 2, mode: 'cover' }], { W: 1080, H: 1920, fps: 30, dur: 2 });

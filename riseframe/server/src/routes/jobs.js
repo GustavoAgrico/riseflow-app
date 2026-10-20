@@ -38,6 +38,7 @@ import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
 import { brandIn, entityQuery } from '../pipeline/entities.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
 import { cleanCrop } from '../pipeline/frame.js';
+import { cleanLayerKf } from '../../../shared/layerKeys.js';
 import { SFX_LIBRARY } from '../pipeline/sfx.js';
 import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
 
@@ -453,6 +454,8 @@ function sanitizeUserMedia(raw) {
       // Propriedades: giro (graus) e recorte de cada lado (fração), como no Premiere.
       ...(Math.abs(Number(m.rot) || 0) > 0.05 ? { rot: clampNum(m.rot, -180, 180, 0) } : {}),
       ...(cleanCrop(m.crop) ? { crop: cleanCrop(m.crop) } : {}),
+      // Quadros-chave (Propriedades): posição, escala, giro e opacidade ao longo do tempo.
+      ...(cleanLayerKf(m.kf) ? { kf: cleanLayerKf(m.kf) } : {}),
     };
     out.push(item);
     if (out.length >= 40) break; // teto de segurança
