@@ -330,6 +330,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [libScope, setLibScope] = useState('projeto');
   const markProjectMedia = (id) => { if (id) setProjMediaIds((l) => (l.includes(id) ? l : [...l, id])); };
   const [selBlank, setSelBlank] = useState(null);
+  // Áudio e vídeo vinculados (como no Premiere): juntos, excluir tira imagem e som; soltos,
+  // excluir na V1 tira só a imagem (fica o som) e no A1 só o som (fica a imagem).
+  const [avLinked, setAvLinked] = useState(true);
+  const [selAudio, setSelAudio] = useState(null); // {start,end} do pedaço selecionado no A1
+  const [ctxMenu, setCtxMenu] = useState(null); // { x, y, title, items:[{label, act, danger, off, sep}] }
+  useEffect(() => {
+    if (!ctxMenu) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setCtxMenu(null); } };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [ctxMenu]);
   // Trecho selecionado em TODAS as faixas (arrastar na régua, ferramenta de seleção, I/O,
   // Ctrl+A): Delete corta vídeo, áudio e legenda juntos.
   const [range, setRange] = useState(null); // { a, b } em segundos
@@ -517,12 +528,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const visXcaps = laneHide.xcap ? [] : extraCaps;
   const overlaySegs = useMemo(() => mergeExtraCaptions(capSegments, visXcaps), [capSegments, visXcaps]);
   const histState = {
-    segments, cuts, keptPauses, keptNoises, gains, videoCrop, blanks, projMediaIds, media, brollReview, brollOn, zoomMoments, headline, cover,
+    segments, cuts, keptPauses, keptNoises, gains, videoCrop, blanks, projMediaIds, avLinked, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs,
     aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
   };
   const histSet = {
-    segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, blanks: setBlanks, projMediaIds: setProjMediaIds, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
+    segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, blanks: setBlanks, projMediaIds: setProjMediaIds, avLinked: setAvLinked, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
     brollReview: setBrollReview, brollOn: setBrollOn, zoomMoments: setZoomMoments, headline: setHeadline,
     cover: setCover, colorLook: setColorLook, colorAdj: setColorAdj, cap: setCap, fx: setFx, voice: setVoice,
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths,
@@ -1761,7 +1772,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       return [...list.slice(0, i), a, b, ...list.slice(i + 1)];
     });
   }
-  const canDeleteSel = (selKind === 'blank' && !!selBlank) || (selKind === 'words' && !!txSel) || (selKind === 'range' && !!range && range.b - range.a > 0.05) || (selKind === 'caption' && selCaptions.length > 0) || (selKind === 'video' && !!selVideo)
+  const canDeleteSel = (selKind === 'blank' && !!selBlank) || (selKind === 'audio' && !!selAudio) || (selKind === 'words' && !!txSel) || (selKind === 'range' && !!range && range.b - range.a > 0.05) || (selKind === 'caption' && selCaptions.length > 0) || (selKind === 'video' && !!selVideo)
     || (selKind === 'media' && !!selMediaItem) || (selKind === 'zoom' && !!selZoomItem)
     || (selKind === 'broll' && !!brollReview?.moments[selBroll]) || (selKind === 'gain' && !!selGain)
     || (selKind === 'keyframe' && selKey != null) || (selKind === 'text' && !!selText) || (selKind === 'vfx' && !!selFx) || (selKind === 'xcap' && !!selXcap) || (selKind === 'trans' && !!selTrans) || (selKind === 'marker' && !!selMarker) || (selKind === 'speed' && !!selSpeed) || (selKind === 'freeze' && !!selFreeze);
@@ -1776,20 +1787,121 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
   /** Excluir: trecho/legenda/vídeo saem do vídeo final (vídeo, áudio e legenda juntos); os demais itens saem da faixa. */
   /** Deixa [a, b] vazio no vídeo principal (preto e mudo) — junta com vazios vizinhos. */
-  function addBlank(a, b) {
+  function addBlank(a, b, { audio = true } = {}) {
     const lo = +Math.max(0, Math.min(a, b)).toFixed(2);
     const hi = +Math.min(dur, Math.max(a, b)).toFixed(2);
     if (hi - lo < 0.05) return;
     setBlanks((list) => {
-      const all = [...list, { key: `b${Date.now()}`, start: lo, end: hi }].sort((x, y) => x.start - y.start);
+      const all = [...list, { key: `b${Date.now()}`, start: lo, end: hi, ...(audio ? {} : { audio: false }) }].sort((x, y) => x.start - y.start);
       const out = [];
       for (const x of all) {
-        const last = out[out.length - 1];
-        if (last && x.start <= last.end + 0.01) last.end = Math.max(last.end, x.end);
+        // junta vazios encostados do MESMO tipo (com som / só imagem)
+        const last = [...out].reverse().find((o) => (o.audio !== false) === (x.audio !== false));
+        if (last && x.start <= last.end + 0.01 && x.start >= last.start) last.end = Math.max(last.end, x.end);
         else out.push({ ...x });
       }
-      return out;
+      return out.sort((x, y) => x.start - y.start);
     });
+  }
+  // ── Menu do botão direito (faixas e pedaços), como no Premiere ──
+  function openCtx(e, title, items) {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: Math.min(e.clientX, window.innerWidth - 300), y: Math.min(e.clientY, window.innerHeight - 60 - items.length * 32), title, items });
+  }
+  const linkItem = () => ({ label: avLinked ? 'Desvincular áudio e vídeo' : 'Vincular áudio e vídeo', act: () => setAvLinked((v) => !v) });
+  function openTrackMenu(e, id) {
+    const ask = (msg) => window.confirm(msg);
+    const hideCaps = (hidden) => setSegments((prev) => prev.map((sg) => ({ ...sg, words: sg.words.map((w) => (!!w.hidden === hidden ? w : { ...w, hidden })) })));
+    const L = {
+      legenda: ['Faixa de legenda (C1)', [
+        { label: cap.captions === false ? 'Mostrar a faixa de legenda' : 'Ocultar a faixa de legenda', act: () => setCap((c) => ({ ...c, captions: c.captions === false })) },
+        { sep: true },
+        { label: 'Excluir faixa (apagar todas as legendas)', danger: true, act: () => { if (ask('Apagar todas as legendas? O vídeo e a fala continuam. (Ctrl+Z desfaz)')) hideCaps(true); } },
+        { label: 'Restaurar todas as legendas', act: () => hideCaps(false) },
+      ]],
+      xcap: ['Suas legendas (C2)', [
+        { label: laneHide.xcap ? 'Mostrar a faixa' : 'Ocultar a faixa', act: () => togHide('xcap') },
+        { sep: true },
+        { label: 'Excluir faixa (apagar as legendas que você adicionou)', danger: true, act: () => { if (ask('Apagar todas as legendas que você adicionou?')) setExtraCaps([]); } },
+      ]],
+      txt: ['Textos (T1)', [
+        { label: laneHide.txt ? 'Mostrar a faixa' : 'Ocultar a faixa', act: () => togHide('txt') },
+        { sep: true },
+        { label: 'Excluir faixa (apagar todos os textos)', danger: true, act: () => { if (ask('Apagar todos os textos?')) setTextLayers([]); } },
+      ]],
+      vfx: ['Efeitos (FX)', [
+        { label: laneHide.vfx ? 'Mostrar a faixa' : 'Ocultar a faixa', act: () => togHide('vfx') },
+        { sep: true },
+        { label: 'Excluir faixa (apagar todos os efeitos)', danger: true, act: () => { if (ask('Apagar todos os efeitos da faixa?')) setFxMoments([]); } },
+      ]],
+      broll: ['B-roll (V2)', [
+        { label: brollOn ? 'Ocultar a faixa' : 'Mostrar a faixa', act: () => setBrollOn((v) => !v) },
+        { sep: true },
+        { label: 'Excluir faixa (tirar todo o B-roll)', danger: true, act: () => { if (ask('Tirar todo o B-roll do vídeo?')) setBrollMoments((l) => l.map((m) => ({ ...m, removed: true }))); } },
+      ]],
+      zoom: ['Zoom (ZM)', [
+        { label: 'Excluir faixa (apagar os zooms)', danger: true, act: () => { if (ask('Apagar todos os zooms?')) setZoomMoments([]); } },
+      ]],
+      kf: ['Quadros-chave (KF)', [
+        { label: 'Excluir faixa (apagar os quadros-chave do vídeo principal)', danger: true, act: () => { if (ask('Apagar todos os quadros-chave do vídeo principal?')) setTransformKeys([]); } },
+      ]],
+      video: ['Vídeo (V1)', [
+        linkItem(),
+        { sep: true },
+        { label: 'Excluir faixa: tirar a IMAGEM do vídeo todo (fica só o som)', danger: true, act: () => { if (ask('Deixar o vídeo todo sem imagem (tela preta) e manter o som?')) addBlank(0, dur, { audio: false }); } },
+        { label: 'Restaurar a imagem (tirar os trechos sem imagem)', off: !blanks.some((b) => b.audio === false), act: () => setBlanks((l) => l.filter((b) => b.audio !== false)) },
+      ]],
+      audio: ['Áudio (A1)', [
+        linkItem(),
+        { sep: true },
+        { label: audioMute ? 'Ligar o som do vídeo' : 'Excluir faixa: tirar o SOM do vídeo todo (fica a imagem)', danger: !audioMute, act: () => setAudioMute((v) => !v) },
+        { label: 'Restaurar o som dos trechos silenciados', off: !gains.some((g) => Number(g.volume) === 0), act: () => setGains((l) => l.filter((g) => Number(g.volume) !== 0)) },
+      ]],
+    };
+    if (id.startsWith('m')) {
+      const layer = Number(id.slice(1));
+      L[id] = [`Camada ${layer + 1} (M${layer + 1})`, [
+        { label: laneHide[id] ? 'Mostrar a faixa' : 'Ocultar a faixa', act: () => togHide(id) },
+        { sep: true },
+        { label: 'Excluir faixa (apagar as mídias desta camada)', danger: true, act: () => { if (ask(`Apagar todas as mídias da camada ${layer + 1}?`)) setMedia((l) => normalizeLayers(l.filter((m) => (m.layer || 0) !== layer))); } },
+      ]];
+    }
+    const [title, items] = L[id] || [];
+    if (items) openCtx(e, title, items);
+  }
+  /** Menu do pedaço da V1 ou do A1 (botão direito no clipe). */
+  function openPieceMenu(e, kind, piece) {
+    if (kind === 'video') { setSelKind('video'); setSelVideo({ start: piece.a, end: piece.b }); }
+    else { setSelKind('audio'); setSelAudio({ start: piece.a, end: piece.b }); }
+    const close = { key: `c${Date.now()}`, start: +piece.a.toFixed(2), end: +piece.b.toFixed(2) };
+    const items = kind === 'video' ? [
+      { label: avLinked ? 'Excluir (deixar vazio: imagem e som)' : 'Excluir só a imagem (o som fica)', danger: true, act: () => addBlank(piece.a, piece.b, { audio: avLinked }) },
+      { label: 'Excluir e fechar o espaço (imagem e som)', act: () => setCuts((l) => [...l, close]) },
+      { label: 'Dividir no ponteiro', off: !(cur > piece.a + 0.05 && cur < piece.b - 0.05), act: () => razorCut(cur) },
+      { sep: true },
+      linkItem(),
+    ] : [
+      { label: avLinked ? 'Excluir (deixar vazio: imagem e som)' : 'Excluir só o som (a imagem fica)', danger: true, act: () => (avLinked ? addBlank(piece.a, piece.b) : muteRange(piece.a, piece.b)) },
+      { label: 'Excluir e fechar o espaço (imagem e som)', act: () => setCuts((l) => [...l, close]) },
+      { sep: true },
+      linkItem(),
+    ];
+    openCtx(e, `${kind === 'video' ? 'Clipe de vídeo' : 'Clipe de áudio'} (${fmtDuration(piece.a)}–${fmtDuration(piece.b)})`, items);
+  }
+  /** Pedaço (entre divisões/clipes) sob o mouse na faixa V1 ou A1. */
+  function partAt(e) {
+    const box = e.currentTarget.getBoundingClientRect();
+    const t = Math.max(0, Math.min(dur, srcOf((e.clientX - box.left) / pps)));
+    const p = videoParts([...vsplits, ...v1Clips.map((c) => c.start)], dur).find((q) => t >= q.start && t <= q.end);
+    return p ? { a: p.start, b: p.end } : null;
+  }
+  /** Tira só o SOM de [a, b] (áudio desvinculado): volume 0 naquele trecho. */
+  function muteRange(a, b) {
+    const lo = +Math.max(0, Math.min(a, b)).toFixed(2);
+    const hi = +Math.min(dur, Math.max(a, b)).toFixed(2);
+    if (hi - lo < 0.05) return;
+    setGains((l) => [...l, { key: `g${Date.now()}`, start: lo, end: hi, volume: 0 }].sort((x, y) => x.start - y.start));
   }
   /**
    * Excluir (Delete), como no Premiere: no vídeo/trecho deixa o espaço VAZIO (dá para pôr
@@ -1830,8 +1942,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setCaptionsHidden(!all);
     } else if (selKind === 'video') {
       if (ripple) setCuts((l) => [...l, { key: `c${Date.now()}`, start: +selVideo.start.toFixed(2), end: +selVideo.end.toFixed(2) }]);
-      else addBlank(selVideo.start, selVideo.end);
+      else addBlank(selVideo.start, selVideo.end, { audio: avLinked }); // desvinculado: só a imagem
       setSelVideo(null);
+    } else if (selKind === 'audio') {
+      // pedaço do A1: vinculado = igual à V1; desvinculado = só o som sai (a imagem fica)
+      if (avLinked && ripple) setCuts((l) => [...l, { key: `c${Date.now()}`, start: +selAudio.start.toFixed(2), end: +selAudio.end.toFixed(2) }]);
+      else if (avLinked) addBlank(selAudio.start, selAudio.end);
+      else muteRange(selAudio.start, selAudio.end);
+      setSelAudio(null);
     } else if (selKind === 'media') { removeMedia(selMedia); setSelMedia(null); }
     else if (selKind === 'zoom') { setZoomMoments((l) => l.filter((z) => z.key !== selZoom)); setSelZoom(null); }
     else if (selKind === 'broll') setBrollMoments((l) => l.map((m, i) => (i === selBroll ? { ...m, removed: true } : m)));
@@ -1862,7 +1980,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     : selKind === 'caption' ? 'Apagar só a legenda selecionada — o vídeo continua (Delete)'
       : selKind === 'video' ? 'Excluir o pedaço: fica um espaço vazio (Delete) · Shift+Delete fecha o espaço'
       : selKind === 'blank' ? 'Fechar o espaço vazio (Delete)' : 'Excluir o item selecionado (Delete)';
-  const SEL_LABEL = { blank: 'espaço vazio', range: 'trecho', words: 'palavras', speed: 'velocidade', freeze: 'congelamento', marker: 'marcador', trans: 'transição', text: 'texto', xcap: 'legenda', vfx: 'efeito', keyframe: 'quadro-chave', caption: 'legenda', video: 'vídeo', media: 'camada', zoom: 'zoom', broll: 'B-roll', gain: 'volume' };
+  const SEL_LABEL = { audio: 'áudio', blank: 'espaço vazio', range: 'trecho', words: 'palavras', speed: 'velocidade', freeze: 'congelamento', marker: 'marcador', trans: 'transição', text: 'texto', xcap: 'legenda', vfx: 'efeito', keyframe: 'quadro-chave', caption: 'legenda', video: 'vídeo', media: 'camada', zoom: 'zoom', broll: 'B-roll', gain: 'volume' };
 
 
   function toggleSeg(si) { setSegments((prev) => prev.map((s, i) => { if (i !== si) return s; const gone = segRemoved(s); return { ...s, words: s.words.map((w) => ({ ...w, removed: !gone })) }; })); }
@@ -2362,7 +2480,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         audioVolume: +Number(audioVolume).toFixed(2),
         ...(videoCrop.l + videoCrop.t + videoCrop.r + videoCrop.b > 0.001 ? { videoCrop } : {}),
         ...(exportFps ? { fps: exportFps } : {}),
-        ...(blanks.length ? { videoBlanks: blanks.map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2) })) } : {}),
+        ...(exportStreams !== 'av' ? { streams: exportStreams } : {}),
+        ...(blanks.length ? { videoBlanks: blanks.map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2), ...(b.audio === false ? { audio: false } : {}) })) } : {}),
         audioGains: gains.map((g) => ({ start: +g.start.toFixed(2), end: +g.end.toFixed(2), volume: +Number(g.volume).toFixed(2) })),
         // Minhas mídias colocadas na timeline (imagens/vídeos/músicas próprias).
         userMedia: visMedia.map((m) => ({
@@ -2704,12 +2823,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // ── Janela Exportar (como o Export do Premiere): formato, qualidade, legenda e o resumo da
   // saída antes de gerar. Abre pelo botão Exportar, Ctrl+M ou o menu do app.
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportStreams, setExportStreams] = useState(() => (['video', 'audio'].includes(options?.streams) ? options.streams : 'av')); // vídeo e áudio / só vídeo / só áudio
   const [exportFps, setExportFps] = useState(() => ([24, 25, 30, 50, 60, 120].includes(Number(options?.fps)) ? Number(options.fps) : 0)); // 0 = o do vídeo
   function openExport() { if (!busy && !allGone) setExportOpen(true); }
   const openExportRef = useRef(openExport);
   openExportRef.current = openExport;
   useEffect(() => window.electron?.onEditorCommand?.((cmd) => {
     if (cmd === 'export') openExportRef.current();
+    else if (cmd === 'shortcuts') setShowKeys((v) => !v);
     else if (typeof cmd === 'string' && cmd.startsWith('format:')) setAspectSel(cmd.slice(7));
   }), []);
   // função (não constante): usa valores calculados mais abaixo no render
@@ -2720,7 +2841,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (hdAllowed && quality !== 'original') { const k = Number(quality) / Math.min(ow, oh); ow = Math.round((ow * k) / 2) * 2; oh = Math.round((oh * k) / 2) * 2; }
     const secs = Math.max(0, (stats.keptSec + retimeDelta) / speed);
     const mbps = (Math.min(ow, oh) >= 2000 ? 35 : Math.min(ow, oh) >= 1000 ? 10 : 5) * (exportFps >= 100 ? 2.2 : exportFps >= 50 ? 1.5 : 1);
-    const sizeMb = ((mbps + 0.192) * secs) / 8;
+    const onlyAudio = exportStreams === 'audio';
+    const sizeMb = ((onlyAudio ? 0.192 : exportStreams === 'video' ? mbps : mbps + 0.192) * secs) / 8;
     const row = (k, v) => (
       <div style={{ display: 'flex', gap: 10, fontSize: 12.5, lineHeight: 1.5 }}><span style={{ color: C.faint, flex: '0 0 74px' }}>{k}</span><span style={{ color: C.text }}>{v}</span></div>
     );
@@ -2736,8 +2858,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, alignItems: 'start' }}>
             <div style={{ display: 'grid', gap: 0 }}>
-              {exportSettingsJsx()}
               <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8, marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>O que exportar</div>
+                <div role="radiogroup" aria-label="O que exportar" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+                  {[['av', 'Vídeo e áudio', 'MP4'], ['video', 'Só vídeo', 'MP4 sem som'], ['audio', 'Só áudio', 'MP3']].map(([id, label, sub]) => (
+                    <button key={id} role="radio" aria-checked={exportStreams === id} onClick={() => setExportStreams(id)} style={{ ...framingTab(exportStreams === id), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px' }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 800 }}>{label}</span>
+                      <span style={{ fontSize: 10, color: C.faint, fontWeight: 600 }}>{sub}</span>
+                    </button>
+                  ))}
+                </div>
+                {exportStreams !== 'av' && (
+                  <div style={{ fontSize: 11, color: C.faint, lineHeight: 1.45 }}>
+                    {onlyAudio ? 'Sai um arquivo MP3 com o som do vídeo editado (cortes, volume, música e efeitos sonoros). Bom para podcast ou para trilha.' : 'Sai o vídeo editado sem nenhum som (para pôr outra trilha em outro programa).'}
+                  </div>
+                )}
+              </div>
+              {!onlyAudio && exportSettingsJsx()}
+              {!onlyAudio && <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8, marginBottom: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>Quadros por segundo (fps)</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}>
                   {[[0, 'Original', 'do vídeo'], [24, '24', 'cinema'], [30, '30', 'padrão'], [60, '60', 'fluido'], [120, '120', 'máximo']].map(([n, label, sub]) => (
@@ -2750,24 +2888,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 <div style={{ fontSize: 11, color: C.faint, lineHeight: 1.45 }}>
                   {exportFps >= 50 ? 'Acima do fps gravado, os quadros que faltam são criados misturando os vizinhos: o movimento fica mais suave, mas não aparece detalhe que a câmera não gravou. Arquivo maior e exportação mais demorada.' : exportFps ? 'Menos quadros que o gravado deixa o arquivo menor.' : 'Mantém os quadros por segundo da gravação (recomendado).'}
                 </div>
-              </div>
-              <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8 }}>
+              </div>}
+              {!onlyAudio && <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>Legenda</div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: C.muted, cursor: 'pointer' }}>
                   <input type="checkbox" checked={cap.captions !== false} onChange={(e) => setCap((c) => ({ ...c, captions: e.target.checked }))} /> Legenda no vídeo (queimada)
                 </label>
                 <div style={{ fontSize: 11, color: C.faint }}>Depois de pronto, a legenda também sai em arquivo (.srt, .vtt, .txt) na tela do resultado.</div>
-              </div>
+              </div>}
             </div>
             <div style={{ display: 'grid', gap: 10, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
               <div style={{ fontSize: 13, fontWeight: 700 }}>Saída</div>
-              {row('Vídeo', `H.264 · ${ow}×${oh} · ${exportFps ? `${exportFps} fps` : 'fps do vídeo gravado'}`)}
-              {row('Áudio', 'AAC · 192 kbps · 48 kHz · estéreo')}
-              {row('Formato', aspectSel === 'original' ? 'Original (como foi gravado)' : aspectSel)}
-              {row('Qualidade', hdAllowed && quality !== 'original' ? QUALITY_OPTS.find((q) => q.id === quality)?.label : 'Original')}
+              {row('Vídeo', onlyAudio ? '— (só áudio)' : `H.264 · ${ow}×${oh} · ${exportFps ? `${exportFps} fps` : 'fps do vídeo gravado'}`)}
+              {row('Áudio', onlyAudio ? 'MP3 · 192 kbps · estéreo' : exportStreams === 'video' ? '— (sem som)' : 'AAC · 192 kbps · 48 kHz · estéreo')}
+              {!onlyAudio && row('Formato', aspectSel === 'original' ? 'Original (como foi gravado)' : aspectSel)}
+              {!onlyAudio && row('Qualidade', hdAllowed && quality !== 'original' ? QUALITY_OPTS.find((q) => q.id === quality)?.label : 'Original')}
               {row('Duração', fmtDuration(secs))}
               {row('Tamanho', `≈ ${sizeMb >= 1000 ? `${(sizeMb / 1000).toFixed(1).replace('.', ',')} GB` : `${Math.max(1, Math.round(sizeMb))} MB`}`)}
-              {row('Legenda', cap.captions !== false ? 'no vídeo + arquivo .srt' : 'só em arquivo (.srt)')}
+              {row('Legenda', onlyAudio || cap.captions === false ? 'só em arquivo (.srt)' : 'no vídeo + arquivo .srt')}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
                 <button onClick={() => setExportOpen(false)} style={{ height: 40, padding: '0 16px', borderRadius: 999, border: `1px solid ${C.border}`, background: 'transparent', color: C.text, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>Cancelar</button>
                 <button onClick={() => { setExportOpen(false); generate(); }} disabled={busy || allGone}
@@ -3923,6 +4061,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const res = [];
       let p0 = a;
       for (const bl of blanks) {
+        if (bl.audio === false) continue; // só sem imagem: ao remontar a imagem volta
         if (bl.end <= a || bl.start >= b) continue;
         const s0 = Math.max(a, bl.start);
         const e0 = Math.min(b, bl.end);
@@ -4610,7 +4749,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     gSpeed: speed,
     fxMoments: visFx,
     sfxEvents: liveSfxEvents,
-    audio: { audioMute, audioVolume, gains: [...gains, ...blanks.map((b) => ({ start: b.start, end: b.end, volume: 0 }))] },
+    audio: { audioMute, audioVolume, gains: [...gains, ...blanks.filter((b) => b.audio !== false).map((b) => ({ start: b.start, end: b.end, volume: 0 }))] },
     sfxTimes: [
       ...liveWindows.map(([a]) => Math.max(0, a - 0.3)),
       ...((brollReview?.moments || []).filter((m) => !m.removed).map((m) => Math.max(0, Number(m.start) - 0.3))),
@@ -5151,6 +5290,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </div>
   ) : null;
 
+  // menu do botão direito (faixas e clipes), como no Premiere
+  const ctxMenuEl = ctxMenu && createPortal(
+    <div onMouseDown={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null); }} style={{ position: 'fixed', inset: 0, zIndex: 990 }}>
+      <div role="menu" aria-label={ctxMenu.title} onMouseDown={(e) => e.stopPropagation()}
+        style={{ position: 'fixed', left: Math.max(4, ctxMenu.x), top: Math.max(4, ctxMenu.y), minWidth: 240, maxWidth: 340, padding: '5px 0', borderRadius: 8, background: '#1F2026', border: '1px solid rgba(255,255,255,0.14)', boxShadow: '0 16px 40px -8px rgba(0,0,0,0.85)', fontSize: 12.5, color: PR.text }}>
+        <div style={{ padding: '4px 12px 6px', fontSize: 11, fontWeight: 800, color: PR.dim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ctxMenu.title}</div>
+        {ctxMenu.items.map((it, i) => (it.sep
+          ? <div key={i} style={{ height: 1, margin: '4px 0', background: 'rgba(255,255,255,0.1)' }} />
+          : <button key={i} role="menuitem" disabled={!!it.off} onClick={() => { setCtxMenu(null); it.act?.(); }} className="rf-ctxitem"
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px', border: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: 12.5, cursor: it.off ? 'default' : 'pointer', color: it.off ? 'rgba(214,216,222,0.35)' : it.danger ? '#FF7A8A' : PR.text }}>{it.label}</button>))}
+      </div>
+    </div>,
+    document.body,
+  );
   const editorCard = (
     <div className={`rf-tl-card${isMobile ? ' rf-m' : ''}${isMobile && sheet ? ' rf-m-sheet' : ''}`} style={{ ...glass(), padding: 22 }}>
       {tour && !isMobile && <EditorTour onClose={() => setTour(false)} />}
@@ -5158,6 +5311,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {tplPanel}
       {capDialog}
       {tabsMenuEl}
+      {ctxMenuEl}
       {exportDialog()}
       {v1Busy && createPortal(
         <div role="status" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 960, padding: '10px 16px', borderRadius: 999, background: '#1E3A8A', color: '#fff', fontSize: 13, fontWeight: 700, boxShadow: '0 12px 30px -10px rgba(0,0,0,0.8)' }}>{v1Busy}</div>,
@@ -5405,6 +5559,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 </button>
               </div>
             </div>
+            {/* medidor de volume (dB) do som que está tocando, como o do Premiere */}
+            {!isMobile && <AudioMeter videoRef={videoRef} peaks={peaks} dur={dur} muted={audioMute} />}
           </div>}
         </div>
 
@@ -6474,7 +6630,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 ['S', 'Dividir o item selecionado'], ['Delete', 'Excluir (no vídeo, deixa o espaço vazio)'], ['Shift+Delete', 'Excluir e fechar o espaço'], ['Q / W', 'Cortar até o ponto anterior / próximo'],
                 ['I / O', 'Entrada / saída do trecho'], ['Ctrl+A', 'Selecionar tudo'], ['Espaço', 'Tocar / pausar'], ['J / K / L', 'Voltar 5 s / pausar / tocar'],
                 ['← →', '1 s (Shift: 5 s)'], ['Home / End', 'Começo / fim'], ['= / −', 'Zoom da timeline'], ['\\', 'Ver o vídeo inteiro'],
-                ['M', 'Marcador'], ['N', 'Ímã'], ['H', 'Ocultar legenda'], ['Ctrl+D', 'Duplicar'], ['Ctrl+C / V', 'Copiar / colar'], ['Ctrl+Z', 'Desfazer'],
+                ['M', 'Marcador'], ['N', 'Ímã'], ['H', 'Ocultar legenda'], ['Ctrl+D', 'Duplicar'], ['Ctrl+C / V', 'Copiar / colar'], ['Ctrl+Z', 'Desfazer'], ['Ctrl+M', 'Exportar'], ['Botão direito', 'Menu da faixa / clipe (excluir, vincular)'],
               ].map(([k, d]) => (
                 <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '2px 0' }}>
                   <kbd>{k}</kbd><span>{d}</span>
@@ -6524,18 +6680,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div className="rf-tl-labels" style={{ width: isMobile ? 150 : 140, flexShrink: 0, borderRight: `1px solid ${PR.line}`, background: PR.heads, paddingBottom: 6 }}>
             <div style={{ height: LANE.ruler, borderBottom: `1px solid ${PR.line}`, background: PR.ruler }} />
             {showChapLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('capitulos', e)} onResetSize={() => resetLane('capitulos')} h={LANE.capitulos} gap={4} code="CH" nome="Capítulos" />}
-            <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('legenda', e)} onResetSize={() => resetLane('legenda')} h={legH} gap={6} code="C1" nome="Legenda" hidden={cap.captions === false} onEye={() => setCap((c) => ({ ...c, captions: c.captions === false }))} locked={laneLock.leg} onLock={() => togLock('leg')} />
-            {extraCaps.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('xcap', e)} onResetSize={() => resetLane('xcap')} h={LANE.xcap} gap={4} code="C2" nome="Suas legendas" hidden={laneHide.xcap} onEye={() => togHide('xcap')} locked={laneLock.xcap} onLock={() => togLock('xcap')} />}
+            <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('legenda', e)} onResetSize={() => resetLane('legenda')} h={legH} gap={6} code="C1" nome="Legenda" onMenu={(e) => openTrackMenu(e, 'legenda')} hidden={cap.captions === false} onEye={() => setCap((c) => ({ ...c, captions: c.captions === false }))} locked={laneLock.leg} onLock={() => togLock('leg')} />
+            {extraCaps.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('xcap', e)} onResetSize={() => resetLane('xcap')} h={LANE.xcap} gap={4} code="C2" nome="Suas legendas" onMenu={(e) => openTrackMenu(e, 'xcap')} hidden={laneHide.xcap} onEye={() => togHide('xcap')} locked={laneLock.xcap} onLock={() => togLock('xcap')} />}
             {media.length > 0 && Array.from({ length: mediaRows }, (_, r) => mediaRows - 1 - r).map((l) => (
-              <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('midias', e)} onResetSize={() => resetLane('midias')} key={l} h={LANE.midias} gap={l === mediaRows - 1 ? 4 : 0} code={`M${l + 1}`} nome={`Camada ${l + 1}`} hidden={laneHide[`m${l}`]} onEye={() => togHide(`m${l}`)} locked={laneLock[`m${l}`]} onLock={() => togLock(`m${l}`)} />
+              <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('midias', e)} onResetSize={() => resetLane('midias')} key={l} h={LANE.midias} gap={l === mediaRows - 1 ? 4 : 0} code={`M${l + 1}`} nome={`Camada ${l + 1}`} onMenu={(e) => openTrackMenu(e, `m${l}`)} hidden={laneHide[`m${l}`]} onEye={() => togHide(`m${l}`)} locked={laneLock[`m${l}`]} onLock={() => togLock(`m${l}`)} />
             ))}
-            {textLayers.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('txt', e)} onResetSize={() => resetLane('txt')} h={LANE.txt} gap={4} code="T1" nome="Textos" hidden={laneHide.txt} onEye={() => togHide('txt')} locked={laneLock.txt} onLock={() => togLock('txt')} />}
-            {fxMoments.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('vfx', e)} onResetSize={() => resetLane('vfx')} h={LANE.vfx} gap={4} code="FX" nome="Efeitos" hidden={laneHide.vfx} onEye={() => togHide('vfx')} locked={laneLock.vfx} onLock={() => togLock('vfx')} />}
-            {showBrollLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('broll', e)} onResetSize={() => resetLane('broll')} h={LANE.broll} gap={4} code="V2" nome="B-roll" hidden={!brollOn} onEye={() => setBrollOn((v) => !v)} locked={laneLock.broll} onLock={() => togLock('broll')} />}
-            {showZoomLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('zoom', e)} onResetSize={() => resetLane('zoom')} h={LANE.zoom} gap={4} code="ZM" nome="Zoom" locked={laneLock.zoom} onLock={() => togLock('zoom')} />}
-            {transformKeys.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('kf', e)} onResetSize={() => resetLane('kf')} h={LANE.kf} gap={4} code="KF" nome="Quadros" locked={laneLock.kf} onLock={() => togLock('kf')} />}
-            <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('video', e)} onResetSize={() => resetLane('video')} h={LANE.video} gap={4} code="V1" active nome="Vídeo" locked={laneLock.vid} onLock={() => togLock('vid')} />
-            <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('audio', e)} onResetSize={() => resetLane('audio')} h={LANE.audio} gap={4} code="A1" active nome="Áudio" muted={audioMute} onMute={() => setAudioMute((v) => !v)} locked={laneLock.aud} onLock={() => togLock('aud')} />
+            {textLayers.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('txt', e)} onResetSize={() => resetLane('txt')} h={LANE.txt} gap={4} code="T1" nome="Textos" onMenu={(e) => openTrackMenu(e, 'txt')} hidden={laneHide.txt} onEye={() => togHide('txt')} locked={laneLock.txt} onLock={() => togLock('txt')} />}
+            {fxMoments.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('vfx', e)} onResetSize={() => resetLane('vfx')} h={LANE.vfx} gap={4} code="FX" nome="Efeitos" onMenu={(e) => openTrackMenu(e, 'vfx')} hidden={laneHide.vfx} onEye={() => togHide('vfx')} locked={laneLock.vfx} onLock={() => togLock('vfx')} />}
+            {showBrollLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('broll', e)} onResetSize={() => resetLane('broll')} h={LANE.broll} gap={4} code="V2" nome="B-roll" onMenu={(e) => openTrackMenu(e, 'broll')} hidden={!brollOn} onEye={() => setBrollOn((v) => !v)} locked={laneLock.broll} onLock={() => togLock('broll')} />}
+            {showZoomLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('zoom', e)} onResetSize={() => resetLane('zoom')} h={LANE.zoom} gap={4} code="ZM" nome="Zoom" onMenu={(e) => openTrackMenu(e, 'zoom')} locked={laneLock.zoom} onLock={() => togLock('zoom')} />}
+            {transformKeys.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('kf', e)} onResetSize={() => resetLane('kf')} h={LANE.kf} gap={4} code="KF" nome="Quadros" onMenu={(e) => openTrackMenu(e, 'kf')} locked={laneLock.kf} onLock={() => togLock('kf')} />}
+            <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('video', e)} onResetSize={() => resetLane('video')} h={LANE.video} gap={4} code="V1" active nome={avLinked ? 'Vídeo' : 'Vídeo · solto'} onMenu={(e) => openTrackMenu(e, 'video')} locked={laneLock.vid} onLock={() => togLock('vid')} />
+            <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('audio', e)} onResetSize={() => resetLane('audio')} h={LANE.audio} gap={4} code="A1" active nome={avLinked ? 'Áudio' : 'Áudio · solto'} onMenu={(e) => openTrackMenu(e, 'audio')} muted={audioMute} onMute={() => setAudioMute((v) => !v)} locked={laneLock.aud} onLock={() => togLock('aud')} />
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('pausas', e)} onResetSize={() => resetLane('pausas')} h={LANE.pausas} gap={4} code="P" nome="Pausas" locked={laneLock.pau} onLock={() => togLock('pau')} />
           </div>
           <div ref={trackRef} onClick={onTrackClick} onScroll={onTrackScroll} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
@@ -6859,6 +7015,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <div
               data-lane="v1"
               onMouseDown={startCutDraw}
+              onContextMenu={(e) => { const p = partAt(e); if (p) openPieceMenu(e, 'video', p); else e.preventDefault(); }}
               title="Arraste para selecionar um trecho (Delete exclui) · clique seleciona o pedaço · solte uma mídia da biblioteca aqui para pôr no vídeo principal"
               style={{ position: 'relative', height: LANE.video, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${isMobile ? C.border : '#3B6FD6'}`, background: 'rgba(0,0,0,0.45)', cursor: 'crosshair', ...lk('vid'), ...(libDrop?.v1 ? { boxShadow: '0 0 0 2px #3B82F6, 0 0 18px rgba(59,130,246,0.55)' } : null) }}
             >
@@ -6940,10 +7097,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 return (
                   <div key={b.key} onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); setSelBlank(b.key); setSelKind('blank'); seek(b.start); }}
+                    onContextMenu={(e) => { setSelBlank(b.key); setSelKind('blank'); openCtx(e, `Espaço vazio (${fmtDuration(b.start)}–${fmtDuration(b.end)})`, [
+                      { label: b.audio === false ? 'Trazer a imagem de volta' : 'Desfazer (trazer o vídeo de volta)', act: () => setBlanks((l) => l.filter((x) => x.key !== b.key)) },
+                      { label: 'Fechar o espaço (tirar o trecho do vídeo)', danger: true, act: () => { setBlanks((l) => l.filter((x) => x.key !== b.key)); setCuts((l) => [...l, { key: `c${Date.now()}`, start: b.start, end: b.end }]); setSelBlank(null); } },
+                    ]); }}
                     title="Espaço vazio — arraste uma mídia da biblioteca para cá para ocupar · Delete fecha o espaço"
                     style={{ position: 'absolute', left: X(b.start), width: w, top: 0, bottom: 0, zIndex: 5, cursor: 'pointer', background: 'repeating-linear-gradient(135deg, #0b0b0f, #0b0b0f 6px, #16161d 6px, #16161d 12px)',
                       border: on ? '2px solid #fff' : '1px dashed rgba(255,255,255,0.35)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    {w > 70 && <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '0 6px' }}>{w > 190 ? 'Vazio · solte uma mídia aqui' : 'Vazio'}</span>}
+                    {w > 70 && <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '0 6px' }}>{b.audio === false ? (w > 190 ? 'Sem imagem · o som continua' : 'Sem imagem') : (w > 190 ? 'Vazio · solte uma mídia aqui' : 'Vazio')}</span>}
                   </div>
                 );
               })}
@@ -6996,6 +7157,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 return <div style={{ position: 'absolute', left: xi - 2, width: 4, top: 0, bottom: 0, background: '#FACC15', boxShadow: '0 0 10px #FACC15', pointerEvents: 'none', zIndex: 8 }} />;
               })()}
               {/* pedaço selecionado + divisões (S/Ctrl+B na faixa de vídeo) */}
+              {avLinked && selKind === 'audio' && selAudio && (
+                <div style={{ position: 'absolute', left: X(selAudio.start), width: W(selAudio.start, selAudio.end), top: 0, bottom: 0, border: '2px solid #fff', borderRadius: 4, boxShadow: `inset 0 0 0 2px ${C.orange}`, pointerEvents: 'none' }} />
+              )}
               {selKind === 'video' && selVideo && (
                 <div style={{ position: 'absolute', left: X(selVideo.start), width: W(selVideo.start, selVideo.end), top: 0, bottom: 0, border: '2px solid #fff', borderRadius: 4, boxShadow: `inset 0 0 0 2px ${C.orange}`, pointerEvents: 'none' }} />
               )}
@@ -7014,7 +7178,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               )}
             </div>
             {/* Faixa de áudio: forma de onda da fala original */}
-            <div style={{ position: 'relative', height: LANE.audio, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${isMobile ? C.border : 'rgba(52,195,176,0.55)'}`, background: isMobile ? 'rgba(59,130,246,0.08)' : 'rgba(52,195,176,0.12)', ...(audioMute ? LANE_HIDDEN : null), ...lk('aud') }}>
+            <div data-lane="a1"
+              onClick={(e) => { if (rangeClickBlockRef.current || isMobile) return; const p = partAt(e); if (!p) return; setSelKind('audio'); setSelAudio({ start: p.a, end: p.b }); }}
+              onContextMenu={(e) => { const p = partAt(e); if (p && !isMobile) openPieceMenu(e, 'audio', p); else e.preventDefault(); }}
+              style={{ position: 'relative', height: LANE.audio, marginTop: 4, borderRadius: 6, overflow: 'hidden', border: `1px solid ${isMobile ? C.border : 'rgba(52,195,176,0.55)'}`, background: isMobile ? 'rgba(59,130,246,0.08)' : 'rgba(52,195,176,0.12)', ...(audioMute ? LANE_HIDDEN : null), ...lk('aud') }}>
               {/* cortes da faixa de vídeo também tiram o áudio daquele pedaço */}
               {!ripple && cuts.map((c) => (
                 <div key={c.key} style={{ position: 'absolute', left: c.start * pps, width: Math.max(2, (c.end - c.start) * pps), top: 0, bottom: 0, zIndex: 2, pointerEvents: 'none',
@@ -7027,6 +7194,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </svg>
                 </div>
               ))}
+              {/* espaços vazios com som tirado (vinculados) */}
+              {blanks.filter((b) => b.audio !== false).map((b) => (
+                <div key={b.key} style={{ position: 'absolute', left: X(b.start), width: W(b.start, b.end), top: 0, bottom: 0, zIndex: 2, pointerEvents: 'none', background: 'repeating-linear-gradient(135deg, #0b0b0f, #0b0b0f 6px, #16161d 6px, #16161d 12px)', borderLeft: '1px dashed rgba(255,255,255,0.35)', borderRight: '1px dashed rgba(255,255,255,0.35)' }} />
+              ))}
+              {/* pedaço selecionado no A1 (ou o da V1, quando estão vinculados) */}
+              {((selKind === 'audio' && selAudio) || (avLinked && selKind === 'video' && selVideo)) && (() => {
+                const sp = selKind === 'audio' ? selAudio : selVideo;
+                return <div style={{ position: 'absolute', left: X(sp.start), width: W(sp.start, sp.end), top: 0, bottom: 0, zIndex: 4, border: '2px solid #fff', borderRadius: 4, boxShadow: `inset 0 0 0 2px ${C.orange}`, pointerEvents: 'none' }} />;
+              })()}
               {gains.map((g) => {
                 const left = X(g.start);
                 const w = Math.max(16, W(g.start, g.end) - 1);
@@ -7328,6 +7504,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         @media (max-width: 1699px){ .rf-navlbl2{ display: none; } }
         .rf-tl-navbtn{ display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 11px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.05); color: #E8EAF0; font: 600 12px inherit; font-family: inherit; cursor: pointer; white-space: nowrap; }
         .rf-tl-navbtn:hover{ background: rgba(255,255,255,0.1); }
+        .rf-ctxitem:not(:disabled):hover{ background: #2D8CFF !important; color: #fff !important; }
         .rf-tl-navbtn--go{ border: none; color: #fff; font-weight: 800; box-shadow: 0 6px 16px -8px rgba(255,107,53,0.8); }
         .rf-tl-navbtn--go:hover{ filter: brightness(1.08); }
         .rf-tl-stats{ display: none; order: 99; margin-left: auto; font-size: 11px; color: #8B9099; white-space: nowrap; }
@@ -7670,6 +7847,96 @@ function normalizeLayers(list) {
   return list.map((m) => ({ ...m, layer: used.indexOf(m.layer || 0) }));
 }
 /** Pedaços da faixa de vídeo entre as divisões (início, divisões, fim). */
+// ── Medidor de áudio (dB) da prévia, como o do Premiere: -60 a 0 dB, verde → amarelo →
+// vermelho, com a marca do pico. Lê o som que está saindo do <video> (Web Audio); se o
+// vídeo vier de outra origem (sem CORS o som sairia mudo), usa a forma de onda.
+const METER_MIN = -60;
+const meterTaps = new WeakMap();
+function meterTap(video) {
+  if (meterTaps.has(video)) return meterTaps.get(video);
+  let tap = null;
+  try {
+    const src = video.currentSrc || video.src;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC && src && new URL(src, window.location.href).origin === window.location.origin) {
+      const ac = new AC();
+      const node = ac.createMediaElementSource(video);
+      const an = ac.createAnalyser();
+      an.fftSize = 1024;
+      node.connect(an);
+      an.connect(ac.destination); // o som continua saindo normalmente
+      tap = { ac, an, buf: new Float32Array(an.fftSize) };
+    }
+  } catch { tap = null; }
+  meterTaps.set(video, tap);
+  return tap;
+}
+function AudioMeter({ videoRef, peaks, dur, muted }) {
+  const barRef = useRef(null);
+  const holdRef = useRef(null);
+  const live = useRef({ peaks, dur, muted });
+  live.current = { peaks, dur, muted };
+  useEffect(() => {
+    let raf = 0;
+    let shown = METER_MIN;
+    let hold = METER_MIN;
+    let holdAt = 0;
+    let last = performance.now();
+    const pct = (db) => ((Math.max(METER_MIN, Math.min(0, db)) - METER_MIN) / -METER_MIN) * 100;
+    const tick = (now) => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const v = videoRef.current;
+      const { peaks: pk, dur: d, muted: mu } = live.current;
+      let db = -Infinity;
+      if (v && !v.paused && !v.muted && !mu && v.volume > 0) {
+        const tap = meterTap(v);
+        if (tap) {
+          if (tap.ac.state === 'suspended') tap.ac.resume().catch(() => {});
+          tap.an.getFloatTimeDomainData(tap.buf);
+          let m = 0;
+          for (let i = 0; i < tap.buf.length; i++) { const x = Math.abs(tap.buf[i]); if (x > m) m = x; }
+          db = 20 * Math.log10(m || 1e-6);
+        } else if (pk?.length && d > 0) {
+          const x = pk[Math.min(pk.length - 1, Math.max(0, Math.floor((v.currentTime / d) * pk.length)))] * v.volume;
+          db = x > 0 ? 20 * Math.log10(x) - 3 : -Infinity;
+        }
+      }
+      // sobe na hora e desce devagar (≈ 24 dB/s), como num medidor de verdade
+      shown = db >= shown ? db : Math.max(db, shown - 24 * dt);
+      if (!Number.isFinite(shown)) shown = METER_MIN;
+      if (shown >= hold || now - holdAt > 1500) { hold = shown; holdAt = now; }
+      if (barRef.current) barRef.current.style.clipPath = `inset(0 ${100 - pct(shown)}% 0 0)`;
+      if (holdRef.current) { holdRef.current.style.left = `calc(${pct(hold)}% - 1px)`; holdRef.current.style.opacity = hold > METER_MIN + 0.5 ? 1 : 0; holdRef.current.style.background = hold > -6 ? '#FF4D4D' : hold > -18 ? '#FACC15' : '#7CFC8A'; }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [videoRef]);
+  const ticks = [];
+  for (let db = METER_MIN + 6; db <= 0; db += 6) ticks.push(db);
+  return (
+    <div className="rf-meter" title="Volume do som na prévia (dB): verde até −18, amarelo até −6, vermelho perto de 0 (pode estourar)" aria-hidden="true" style={{ padding: '2px 2px 0' }}>
+      <div style={{ position: 'relative', height: 9, borderRadius: 2, background: '#0B0C0F', border: '1px solid rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+        <div ref={barRef} style={{ position: 'absolute', inset: 0, clipPath: 'inset(0 100% 0 0)', background: `linear-gradient(90deg, #1E7B34 0%, #3DDC5A ${((-18 - METER_MIN) / -METER_MIN) * 100}%, #FACC15 ${((-12 - METER_MIN) / -METER_MIN) * 100}%, #FACC15 ${((-6 - METER_MIN) / -METER_MIN) * 100}%, #FF4D4D 100%)` }} />
+        <div ref={holdRef} style={{ position: 'absolute', top: 0, bottom: 0, width: 2, left: 0, opacity: 0, background: '#FACC15' }} />
+      </div>
+      <div style={{ position: 'relative', height: 13, fontSize: 8.5, color: PR.dim, fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ position: 'absolute', left: 0, top: 2 }}>dB</span>
+        {ticks.map((db) => {
+          const x = ((db - METER_MIN) / -METER_MIN) * 100;
+          return (
+            <span key={db} style={{ position: 'absolute', left: `${x}%`, top: 0, transform: db === 0 ? 'translateX(-100%)' : 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: db === 0 ? 'flex-end' : 'center' }}>
+              <i style={{ width: 1, height: 3, background: 'rgba(255,255,255,0.3)' }} />
+              <span className="rf-meter-n" data-db={db}>{db}</span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function videoParts(splits, dur) {
   const pts = [0, ...splits.filter((t) => t > 0.05 && t < dur - 0.05).sort((a, b) => a - b), dur];
   const parts = [];
@@ -7739,11 +8006,12 @@ const svgLock = (on) => (
 );
 
 /** Cabeçalho da faixa (como no Premiere): código (V1, A1…), nome, cadeado, olho e mudo. */
-function TrackHead({ h, gap, code, nome, active, hidden, onEye, locked, onLock, muted, onMute, onResize, onResetSize }) {
+function TrackHead({ h, gap, code, nome, active, hidden, onEye, locked, onLock, muted, onMute, onResize, onResetSize, onMenu }) {
   const ib = (on, color) => ({ width: 20, height: 20, borderRadius: 5, flexShrink: 0, border: 'none', padding: 0, display: 'grid', placeItems: 'center', cursor: 'pointer', fontFamily: 'inherit',
     background: on ? `${color}2e` : 'transparent', color: on ? color : PR.dim });
   return (
-    <div style={{ position: 'relative', height: h, marginTop: gap, padding: '0 4px', display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', borderRadius: 4, background: 'rgba(255,255,255,0.02)' }}>
+    <div onContextMenu={onMenu ? (e) => { e.preventDefault(); onMenu(e); } : undefined} title={onMenu ? 'Botão direito: opções da faixa' : undefined}
+      style={{ position: 'relative', height: h, marginTop: gap, padding: '0 4px', display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', borderRadius: 4, background: 'rgba(255,255,255,0.02)' }}>
       {onResize && <div className="rf-lane-rs" onMouseDown={onResize} onDoubleClick={onResetSize} title="Arraste para mudar a altura da faixa · clique duplo volta ao padrão" />}
       {onLock ? <button className="rf-ptool" onClick={onLock} title={locked ? 'Destravar a faixa' : 'Travar a faixa (não deixa mexer)'} aria-pressed={!!locked} style={ib(locked, '#F5B13D')}>{svgLock(locked)}</button> : <span style={{ width: 22 }} />}
       <span style={{ flexShrink: 0, minWidth: 26, height: 18, padding: '0 4px', borderRadius: 4, display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 800, letterSpacing: 0.2,
