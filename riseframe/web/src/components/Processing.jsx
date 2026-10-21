@@ -86,7 +86,7 @@ function useEta(value, active) {
  * Tela "A IA está editando seu vídeo": anel de progresso + etapas (feitas ✓, a atual,
  * as próximas). `job` = o job do servidor (etapas reais); sem job, use `pct` e `steps`.
  */
-export default function Processing({ job, title = 'A IA está editando seu vídeo', subtitle = 'Isso leva só alguns minutos. Pode deixar esta tela aberta.', pct, steps }) {
+export default function Processing({ job, title = 'A IA está editando seu vídeo', subtitle = 'Isso leva só alguns minutos. Pode deixar esta tela aberta.', pct, steps, onBackground = null }) {
   // posição na fila mais nova (a lista da conta atualiza a cada 3 s; o evento do próprio
   // vídeo só chega quando ele muda)
   const [live, setLive] = useState(null);
@@ -117,7 +117,17 @@ export default function Processing({ job, title = 'A IA está editando seu víde
             {fmtClock(elapsed)} decorridos
           </div>
         )}
-        {job?.id && <div style={{ marginBottom: 22 }}><JobControls job={job} /></div>}
+        {job?.id && <div style={{ marginBottom: onBackground ? 12 : 22 }}><JobControls job={job} /></div>}
+        {/* o vídeo continua no servidor: dá para usar o app enquanto isso */}
+        {job?.id && onBackground && ['queued', 'processing', 'paused'].includes(job.status) && (
+          <div style={{ marginBottom: 22 }}>
+            <button onClick={onBackground}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 40, padding: '0 18px', borderRadius: 999, border: 'none', background: GRAD, color: '#fff', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 10px 24px -10px rgba(255,107,53,0.65)' }}>
+              <Icon name="layers" size={15} strokeWidth={2.2} /> Continuar usando o app
+            </button>
+            <div style={{ fontSize: 12, color: C.faint, marginTop: 6 }}>O vídeo continua sendo feito em segundo plano — avisamos quando ficar pronto (aba Renderizando).</div>
+          </div>
+        )}
         {flow.length > 0 && (
           <div style={{ display: 'inline-grid', gap: 10, textAlign: 'left', minWidth: 'min(320px, 100%)' }}>
             {flow.map((s, i) => {

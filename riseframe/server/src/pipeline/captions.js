@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 import { posOf } from './timeline.js';
+import { shadowParams, shadowGeometry, shadowDialogue } from '../../../shared/captionShadow.js';
 import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
 import { pickKeyword, emphasisOf, premiumChunks, layoutCaption, autoMaxChars, stripPunct, timeSegments } from '../../../shared/captionKeyword.js';
 import {
@@ -166,11 +167,17 @@ export function buildAss(segments, meta, style = {}) {
   const shMode = ['off', 'on'].includes(style.shadowMode) ? style.shadowMode : 'auto';
   let backAlpha = '90';
   if (shMode === 'off') shadow = 0;
-  else if (shMode === 'on' && !useBox) {
-    const size = Math.min(3, Math.max(0.3, Number(style.shadowSize) || 1));
-    const op = Math.min(1, Math.max(0.1, Number(style.shadowOpacity) || 0.6));
-    shadow = Math.max(1, Math.round(em * 0.05 * size));
-    backAlpha = Math.round((1 - op) * 255).toString(16).padStart(2, '0').toUpperCase();
+  // Personalizada = sombra projetada do Photoshop: vira uma cópia do texto por baixo (na cor
+  // da sombra, deslocada, engordada e desfocada) — o texto em si fica sem sombra.
+  let dropShadow = null;
+  if (shMode === 'on' && !useBox) {
+    const g = shadowGeometry(shadowParams({
+      captionShadowBlend: style.shadowBlend, captionShadowColor: style.shadowColor, captionShadowOpacity: style.shadowOpacity,
+      captionShadowAngle: style.shadowAngle, captionShadowDistance: style.shadowDistance, captionShadowSpread: style.shadowSpread,
+      captionShadowBlur: style.shadowBlur, captionShadowSize: style.shadowSize,
+    }), h / 1080);
+    shadow = 0;
+    if (g.opacity > 0.005) dropShadow = { ...g, bgr: bgr(g.color), alpha: Math.round((1 - g.opacity) * 255).toString(16).padStart(2, '0').toUpperCase() };
   }
   // Espaçamento entre as letras (em): também entra na largura das caixas/marcações.
   const sp = T.premium ? 0 : Math.min(0.3, Math.max(-0.05, Number(style.letterSpacing) || 0));
@@ -497,7 +504,10 @@ export function buildAss(segments, meta, style = {}) {
     }
   }
 
-  return `${header.join('\n')}\n${lines.join('\n')}\n`;
+  const shadowLines = dropShadow
+    ? lines.filter((l) => /^Dialogue: \d+,[^,]*,[^,]*,Rise,/.test(l)).map((l) => shadowDialogue(l, { ...dropShadow, outline })).filter(Boolean)
+    : [];
+  return `${header.join('\n')}\n${[...shadowLines, ...lines].join('\n')}\n`;
 }
 
 /**

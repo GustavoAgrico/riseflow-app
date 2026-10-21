@@ -302,6 +302,19 @@ async function uploadTo(endpoint, file, options, onProgress) {
   if (limit && file.size > limit) {
     throw new Error(`o vídeo tem ${formatGB(file.size)} e o limite é ${formatGB(limit)}.`);
   }
+  // App de PC/Mac: usa o arquivo original do computador (não copia — vídeos enormes abrem na hora)
+  const local = localPathOf(file);
+  if (local) {
+    const r = await fetch(`${BASE}${endpoint}`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ localPath: local, options: JSON.stringify(options) }),
+    }).catch(() => null);
+    const data = r ? await r.json().catch(() => ({})) : {};
+    if (r?.ok) { onProgress?.(1); return data; }
+    if (r && r.status !== 400) throw new Error(data.error || `erro ${r.status}`);
+    // servidor sem modo PC: envia a cópia
+  }
   // Retomável (em partes); se o servidor não tiver, cai no envio de uma vez.
   const up = await chunkedUpload(file, onProgress, endpoint === '/transcribe' ? 'transcribe' : endpoint === '/clips' ? 'clips' : 'auto');
   if (up) {

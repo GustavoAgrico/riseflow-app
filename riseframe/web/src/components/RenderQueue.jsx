@@ -54,6 +54,46 @@ export function useRenderingCount(every = 5000) {
   return count;
 }
 
+/**
+ * Contador de vídeos ativos + avisos de "ficou pronto" (vídeo que terminou enquanto o app
+ * estava aberto em qualquer tela). Também manda a notificação do sistema, se permitida.
+ */
+export function useRenderWatch(every = 5000) {
+  const [count, setCount] = useState(0);
+  const [notices, setNotices] = useState([]);
+  const seen = useRef(null); // id → status da última leitura
+  useEffect(() => {
+    let alive = true;
+    let t = 0;
+    const tick = async () => {
+      try {
+        const d = await getMyQueue();
+        const jobs = d.jobs || [];
+        if (!alive) return;
+        setCount(activeJobs(jobs).length);
+        const prev = seen.current;
+        seen.current = new Map(jobs.map((j) => [j.id, j.status]));
+        if (prev) {
+          // só vídeos finais/cortes (o "preparando o editor" abre na hora no próprio editor)
+          const fresh = jobs.filter((j) => j.mode !== 'transcribe' && ['queued', 'processing', 'paused'].includes(prev.get(j.id)) && (j.status === 'done' || (j.status === 'error' && j.stage !== 'canceled')));
+          if (fresh.length) {
+            setNotices((l) => [...l, ...fresh.map((j) => ({ id: j.id, title: j.filename || 'Vídeo', ok: j.status === 'done', error: j.error || '' }))].slice(-4));
+            for (const j of fresh) {
+              try {
+                if (document.hidden && window.Notification && Notification.permission === 'granted') new Notification('Riseframe', { body: `${j.filename || 'Seu vídeo'} ${j.status === 'done' ? 'ficou pronto!' : 'não deu certo.'}` });
+              } catch { /* sem notificação do sistema */ }
+            }
+          }
+        }
+      } catch { /* tenta de novo */ }
+      if (alive) t = setTimeout(tick, every);
+    };
+    tick();
+    return () => { alive = false; clearTimeout(t); };
+  }, [every]);
+  return { count, notices, dismiss: (id) => setNotices((l) => l.filter((n) => n.id !== id)) };
+}
+
 export const activeJobs = (jobs) => jobs.filter((j) => ['queued', 'processing', 'paused'].includes(j.status));
 
 /** Botões Pausar/Retomar e Cancelar de um vídeo da fila. */

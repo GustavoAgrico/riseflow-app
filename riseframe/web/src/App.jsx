@@ -49,6 +49,18 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   const [sourceId, setSourceId] = useState(null);
   const [transcriptData, setTranscriptData] = useState(null);
   const [durationSec, setDurationSec] = useState(0);
+  // duração do arquivo escolhido (lida no navegador, antes de enviar)
+  const [fileDur, setFileDur] = useState(0);
+  useEffect(() => {
+    if (!file || typeof file !== 'object' || !(file instanceof Blob)) { setFileDur(0); return undefined; }
+    const v = document.createElement('video');
+    const url = URL.createObjectURL(file);
+    v.preload = 'metadata';
+    v.onloadedmetadata = () => { setFileDur(Number.isFinite(v.duration) ? v.duration : 0); URL.revokeObjectURL(url); };
+    v.onerror = () => URL.revokeObjectURL(url);
+    v.src = url;
+    return () => { v.onloadedmetadata = null; };
+  }, [file]);
   const [loadingSample, setLoadingSample] = useState(false);
   const [reopening, setReopening] = useState('');
   const [reopenError, setReopenError] = useState('');
@@ -340,6 +352,14 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     }
   }
 
+  // "Continuar usando o app": o vídeo segue no servidor; o aviso de pronto vem do menu (Root).
+  // Só para vídeos curtos (até 5 min): os longos ficam na tela de progresso.
+  const mediaDur = durationSec || fileDur;
+  const toBackground = onHome && mediaDur > 0 && mediaDur <= 300 ? () => {
+    try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission().catch(() => {}); } catch { /* sem notificação */ }
+    onHome();
+  } : null;
+
   function reset() {
     setFile(null);
     setJob(null);
@@ -428,7 +448,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
       )}
 
       {phase === 'transcribing' && (
-        <Processing job={job} title="Preparando o editor" subtitle="Transcrevendo a fala — depois você corta o vídeo editando o texto." />
+        <Processing job={job} title="Preparando o editor" subtitle="Transcrevendo a fala — depois você corta o vídeo editando o texto." onBackground={toBackground} />
       )}
 
       {/* Continua montado (escondido) enquanto o render da timeline processa. */}
@@ -455,7 +475,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
 
       {phase === 'processing' && job && (
         <div className="rf-anim">
-          <Processing job={job} title={job.mode === 'clips' ? 'A IA está criando seus cortes' : 'A IA está editando seu vídeo'} />
+          <Processing job={job} title={job.mode === 'clips' ? 'A IA está criando seus cortes' : 'A IA está editando seu vídeo'} onBackground={toBackground} />
         </div>
       )}
 

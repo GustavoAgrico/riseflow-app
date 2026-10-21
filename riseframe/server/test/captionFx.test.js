@@ -39,9 +39,12 @@ test('espaçamento das letras e sombra personalizada / sem sombra', () => {
   assert.equal(Number(style(base)[13]), 0);
   const spaced = buildAss(segments, meta, { template: 'clean', letterSpacing: 0.1 });
   assert.ok(Number(style(spaced)[13]) > 5, 'espaçamento em px');
-  const on = style(buildAss(segments, meta, { template: 'clean', shadowMode: 'on', shadowSize: 2, shadowOpacity: 1 }));
-  assert.ok(Number(on[17]) > Number(style(base)[17]), 'sombra maior');
-  assert.match(on[6], /^&H00000000$/, 'sombra opaca');
+  // personalizada (projeto antigo: distância 200%, intensidade 100%): o texto fica sem a
+  // sombra própria e uma cópia preta opaca, deslocada, vai por baixo
+  const onAss = buildAss(segments, meta, { template: 'clean', shadowMode: 'on', shadowSize: 2, shadowOpacity: 1 });
+  assert.equal(Number(style(onAss)[17]), 0, 'sem a sombra própria');
+  const dl = onAss.split('\n').filter((l) => l.startsWith('Dialogue'));
+  assert.match(dl[0], /\\1c&H000000&\\3c&H000000&\\1a&H00&/, 'sombra opaca por baixo');
   const off = style(buildAss(segments, meta, { template: 'shadow3d', shadowMode: 'off' }));
   assert.equal(Number(off[17]), 0);
   assert.doesNotMatch(buildAss(segments, meta, { template: 'shadow3d', shadowMode: 'off' }), /\\xshad/, 'sem a sombra 3D do estilo');

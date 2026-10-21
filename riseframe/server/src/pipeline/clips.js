@@ -187,6 +187,12 @@ export async function generateClips(ctx, onProgress = () => {}) {
         shadowMode: options.captionShadow,
         shadowSize: options.captionShadowSize,
         shadowOpacity: options.captionShadowOpacity,
+        shadowBlend: options.captionShadowBlend, // sombra projetada (como no Photoshop)
+        shadowColor: options.captionShadowColor,
+        shadowAngle: options.captionShadowAngle,
+        shadowDistance: options.captionShadowDistance,
+        shadowSpread: options.captionShadowSpread,
+        shadowBlur: options.captionShadowBlur,
         minDuration: options.captionMinDuration, // duração mínima de cada legenda (s)
         gap: options.captionGap, // intervalo entre legendas (s)
         noPunct: options.captionNoPunct === true, // remover pontuação

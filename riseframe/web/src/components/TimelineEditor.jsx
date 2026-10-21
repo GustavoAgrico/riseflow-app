@@ -20,6 +20,8 @@ import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, 
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
 import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
+import ShadowPanel from './ShadowPanel.jsx';
+import { shadowParams } from '../../../shared/captionShadow.js';
 import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById } from '../../../shared/captionStyle.js';
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 import { captionCues, toSrt, toVtt, toTxt, skipMapper } from '../../../shared/captionExport.js';
@@ -123,8 +125,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     captionSafeZone: cap0.captionSafeZone !== false,
     captionSpacing: Number(cap0.captionSpacing) || 0,
     captionShadow: ['off', 'on'].includes(cap0.captionShadow) ? cap0.captionShadow : 'auto',
-    captionShadowSize: Number(cap0.captionShadowSize) || 1,
-    captionShadowOpacity: Number(cap0.captionShadowOpacity) || 0.6,
+    // sombra projetada (Photoshop): projetos antigos viram os campos novos equivalentes
+    ...(({ blend, color, opacity, angle, distance, spread, size }) => ({
+      captionShadowBlend: blend, captionShadowColor: color, captionShadowOpacity: opacity, captionShadowAngle: angle,
+      captionShadowDistance: distance, captionShadowSpread: spread, captionShadowBlur: size,
+    }))(shadowParams(cap0.captionShadow === 'on' || cap0.captionShadowDistance != null ? cap0 : { ...cap0, captionShadowAngle: 120, captionShadowDistance: 6, captionShadowBlur: 8 })),
     captionBrollCenter: cap0.captionBrollCenter !== false,
     captionMinDuration: Number(cap0.captionMinDuration) || 0,
     captionGap: Number(cap0.captionGap) || 0,
@@ -4337,8 +4342,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       }
       return { ...o, words };
     });
-    // o servidor aceita até ~1 MB: transcrição enorme vai sem as palavras (ele transcreve)
-    return JSON.stringify(res).length < 800_000 ? res : out;
+    // o servidor aceita até 25 MB: transcrição enorme vai sem as palavras (ele transcreve)
+    return JSON.stringify(res).length < 20_000_000 ? res : out;
   }
   // pergunta com botões (no lugar do confirm do navegador, que só tem OK/Cancelar)
   const [choice, setChoice] = useState(null);
@@ -5551,12 +5556,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       </CapRow>
       {cap.captionShadow === 'on' && (
         <>
-          <CapRow label={`Distância da sombra (${Math.round((cap.captionShadowSize || 1) * 100)}%)`}>
-            <input type="range" min="0.3" max="3" step="0.1" value={cap.captionShadowSize || 1} onChange={(e) => setCapField({ captionShadowSize: Number(e.target.value) })} style={{ width: '100%' }} />
-          </CapRow>
-          <CapRow label={`Intensidade da sombra (${Math.round((cap.captionShadowOpacity || 0.6) * 100)}%)`}>
-            <input type="range" min="0.1" max="1" step="0.05" value={cap.captionShadowOpacity || 0.6} onChange={(e) => setCapField({ captionShadowOpacity: Number(e.target.value) })} style={{ width: '100%' }} />
-          </CapRow>
+          <ShadowPanel cap={cap} onPatch={setCapField} />
         </>
       )}
       <CapRow label="Na tela dividida do B-roll">
