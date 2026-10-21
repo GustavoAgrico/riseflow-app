@@ -172,6 +172,9 @@ class JobQueue extends EventEmitter {
       // e a reabertura na timeline precisam delas depois de um reinício do servidor.
       options: Object.fromEntries(Object.entries(job.options || {}).filter(([k]) => !/key|token|secret/i.test(k))),
       editedTranscript: job.editedTranscript || null,
+      // a montagem da timeline (clipes da V1): sem ela, depois de reabrir o app a V1 virava um
+      // clipe só com o vídeo antigo inteiro — e ele entrava junto ao pôr outro clipe
+      ...(job.sequence ? { sequence: job.sequence } : {}),
       createdAt: job.createdAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
@@ -191,6 +194,7 @@ class JobQueue extends EventEmitter {
       id: job.id, mode: job.mode, filename: job.filename, inputPath: job.inputPath,
       options: Object.fromEntries(Object.entries(job.options || {}).filter(([k]) => !/key|token|secret/i.test(k))),
       editedTranscript: job.editedTranscript || null, sourceId: job.sourceId || null,
+      ...(job.sequence ? { sequence: job.sequence } : {}),
       hold: job.hold || null, createdAt: job.createdAt, attempts: job.attempts || 0, ownerId: job.ownerId || null,
       paused: job.status === 'paused',
     };

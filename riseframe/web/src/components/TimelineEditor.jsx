@@ -4,7 +4,7 @@ import { C, GRAD, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import { pickExportTarget, setPendingExport } from '../exportTarget.js';
-import { sourceUrl, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, createSequence, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
+import { sourceUrl, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, createSequence, transcribeRange, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -1362,7 +1362,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (e.button !== 0 || isMobile || !contentRef.current) return;
     const r = contentRef.current.getBoundingClientRect();
     // começando no espaço livre embaixo das faixas, a caixa parte da última faixa
-    selRangeDragRef.current = { marq: true, rect: r, x0: e.clientX, y0: Math.min(e.clientY, r.bottom), moved: false };
+    // y em relação à timeline: a barra do trecho que aparece em cima pode empurrar as faixas
+    selRangeDragRef.current = { marq: true, rect: r, x0: e.clientX, y0: Math.min(e.clientY, r.bottom), y0rel: Math.min(e.clientY, r.bottom) - r.top, moved: false };
   }
   function startRangeSel(e, edge = null) {
     if (e.button !== 0 || isMobile) return;
@@ -1379,12 +1380,21 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if (!d.moved) document.body.style.userSelect = 'none';
       d.moved = true;
       if (d.marq) {
-        const r = d.rect;
-        const box = { x0: d.x0 - r.left, y0: d.y0 - r.top, x1: Math.max(0, Math.min(r.width, e.clientX - r.left)), y1: Math.max(0, Math.min(r.height, e.clientY - r.top)) };
+        const r = contentRef.current?.getBoundingClientRect() || d.rect;
+        const box = { x0: d.x0 - d.rect.left, y0: d.y0rel, x1: Math.max(0, Math.min(r.width, e.clientX - r.left)), y1: Math.max(0, Math.min(r.height, e.clientY - r.top)) };
         setMarq(box);
         const ta = timeAtRef.current(Math.min(d.x0, e.clientX));
         const tb = timeAtRef.current(Math.max(d.x0, e.clientX));
-        if (tb - ta > 0.02) { setRange({ a: +ta.toFixed(2), b: +tb.toFixed(2) }); setSelKind('range'); }
+        // só as faixas que a caixa pega ficam selecionadas (só legenda, só vídeo, só áudio…)
+        const y0 = Math.min(r.top + d.y0rel, e.clientY);
+        const y1 = Math.max(r.top + d.y0rel, e.clientY);
+        const lanes = [];
+        const boxes = [];
+        contentRef.current?.querySelectorAll('[data-lane]').forEach((el) => {
+          const lr = el.getBoundingClientRect();
+          if (lr.bottom > y0 && lr.top < y1 && el.dataset.lane !== 'capitulos') { lanes.push(el.dataset.lane); boxes.push({ top: lr.top - r.top, height: lr.height }); }
+        });
+        if (tb - ta > 0.02 && lanes.length) { setRange({ a: +ta.toFixed(2), b: +tb.toFixed(2), lanes, boxes }); setSelKind('range'); }
         return;
       }
       const t = +timeAtRef.current(e.clientX).toFixed(2);
@@ -1955,6 +1965,26 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const p = videoParts([...vsplits, ...v1Clips.map((c) => c.start)], dur).find((q) => t >= q.start && t <= q.end);
     return p ? { a: p.start, b: p.end } : null;
   }
+  /**
+   * Excluir o trecho só nas faixas selecionadas pela caixa (como no Premiere): vídeo e áudio
+   * juntos = como antes; só vídeo = tira a imagem; só áudio = tira o som; legenda, camadas,
+   * textos, efeitos, B-roll e zoom = saem os itens que estão inteiros dentro do trecho.
+   */
+  function deleteRangeLanes({ a, b, lanes }, ripple = false) {
+    const L = new Set(lanes);
+    const inside = (s0, e0) => Number(s0) >= a - 0.05 && Number(e0) <= b + 0.05;
+    if (L.has('v1') && L.has('a1')) { if (ripple) closeRange(a, b); else addBlank(a, b); }
+    else if (L.has('v1')) addBlank(a, b, { audio: false });
+    else if (L.has('a1')) muteRange(a, b);
+    if (L.has('legenda')) setSegments((prev) => prev.map((sg) => (sg.words.some((w) => inside(w.start, w.end)) ? { ...sg, words: sg.words.map((w) => (inside(w.start, w.end) ? { ...w, hidden: true } : w)) } : sg)));
+    if (L.has('xcap')) setExtraCaps((l) => l.filter((x) => !inside(x.start, x.end)));
+    if (L.has('midias')) setMedia((l) => normalizeLayers(l.filter((m) => !inside(m.start, m.start + m.duration))));
+    if (L.has('txt')) setTextLayers((l) => l.filter((x) => !inside(x.start, x.end)));
+    if (L.has('vfx')) setFxMoments((l) => l.filter((x) => !inside(x.start, x.end)));
+    if (L.has('broll')) setBrollMoments((l) => l.map((m) => (inside(m.start, m.end) ? { ...m, removed: true } : m)));
+    if (L.has('zoom')) setZoomMoments((l) => (l ? l.filter((z) => !inside(z.start, z.end)) : l));
+    if (L.has('kf')) setTransformKeys((l) => l.filter((k) => !(k.t >= a - 0.02 && k.t <= b + 0.02)));
+  }
   /** Tira só o SOM de [a, b] (áudio desvinculado): volume 0 naquele trecho. */
   function muteRange(a, b) {
     const lo = +Math.max(0, Math.min(a, b)).toFixed(2);
@@ -1969,7 +1999,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
    */
   function deleteSelected(ripple = false) {
     if (!canDeleteSel) return;
-    if (selKind === 'range') {
+    if (selKind === 'range' && range.lanes) { deleteRangeLanes(range, ripple); setRange(null); setSelKind('caption'); }
+    else if (selKind === 'range') {
       if (ripple) { if (cutTimeRange(range.a, range.b)) { setRange(null); setSelKind('caption'); } }
       else { addBlank(range.a, range.b); setRange(null); setSelKind('caption'); }
     }
@@ -4184,7 +4215,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       for (const c of v1Clips) {
         const s0 = Math.max(a, c.start);
         const e0 = Math.min(b, c.end);
-        if (e0 - s0 > 0.05) res.push(c.kind !== 'video' ? { ...c, duration: e0 - s0 } : { ...c, in: c.in + (s0 - c.start), out: c.in + (e0 - c.start) });
+        // srcAt/in0: onde o clipe está no vídeo de hoje — a fala dele vai junto ao remontar
+        if (e0 - s0 > 0.05) res.push(c.kind !== 'video' ? { ...c, duration: e0 - s0 } : { ...c, srcAt: c.start, in0: c.in, in: c.in + (s0 - c.start), out: c.in + (e0 - c.start) });
       }
       return res;
     };
@@ -4227,23 +4259,95 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return { newPos, units };
   }
   /** Manda montar o vídeo principal com estes clipes; camadas e textos vão para mapT(tempo). */
-  async function v1Rebuild(clips, mapT) {
+  async function v1Rebuild(clips, mapT, { transcribeNew = true } = {}) {
     if (clips.length > 80) throw new Error('O vídeo principal ficaria com clipes demais (máximo 80). Junte alguns na aba Projeto.');
     setV1Busy('Montando o vídeo principal…');
     const job = await createSequence({
+      ...(transcribeNew ? {} : { transcribeNew: false }),
       title: projectTitle || 'Timeline',
       aspect: v1Job?.sequenceAspect && !v1Job.blankTimeline ? v1Job.sequenceAspect : 'auto',
       options,
-      clips: clips.map((c) => (c.kind === 'blank' ? { blank: true, duration: +c.duration.toFixed(2) } : c.sourceId
+      clips: withClipWords(clips, clips.map((c) => (c.kind === 'blank' ? { blank: true, duration: +c.duration.toFixed(2) } : c.sourceId
         ? { sourceId: c.sourceId, filename: c.filename, in: +c.in.toFixed(2), out: +c.out.toFixed(2) }
-        : { mediaId: c.mediaId, ...(c.kind === 'video' ? { in: +c.in.toFixed(2), out: +c.out.toFixed(2) } : { duration: +c.duration.toFixed(2) }) })),
+        : { mediaId: c.mediaId, ...(c.kind === 'video' ? { in: +c.in.toFixed(2), out: +c.out.toFixed(2) } : { duration: +c.duration.toFixed(2) }) }))),
       ...(v1Job?.sequenceMusic?.mediaId ? { music: { mediaId: v1Job.sequenceMusic.mediaId, volume: v1Job.sequenceMusic.volume ?? 0.35 } } : {}),
     });
     carryStyleNow(mapT);
     onRebuild?.(job);
   }
-  const V1_NOTE = 'O vídeo principal é montado de novo e a fala é transcrita de novo. Os cortes grandes já feitos continuam aplicados; legenda, camadas, textos, cor e efeitos continuam.';
+  const V1_NOTE = 'O vídeo principal é montado de novo. A fala que já estava transcrita é reaproveitada (não transcreve tudo de novo); legenda, camadas, textos, cor e efeitos continuam.';
+  /**
+   * A fala de cada clipe vai junto ao remontar a V1 (com as correções feitas aqui): o servidor
+   * reaproveita as palavras em vez de transcrever tudo de novo. `src` são os clipes do plano
+   * (com srcAt/in0 = onde estão no vídeo de hoje); `out`, o que vai para o servidor.
+   */
+  function withClipWords(src, out) {
+    const res = out.map((o, i) => {
+      const c = src[i];
+      if (c?.kind !== 'video' || c.srcAt == null) return o;
+      const s0 = c.srcAt + ((+c.in || 0) - (c.in0 ?? (+c.in || 0)));
+      const len = (+c.out || 0) - (+c.in || 0);
+      const shift = (+c.in || 0) - s0;
+      const words = [];
+      for (const sg of segments) {
+        const ws = (sg.words || []).filter((w) => w.start >= s0 - 0.05 && w.end <= s0 + len + 0.05)
+          .map((w) => ({ start: +(w.start + shift).toFixed(3), end: +(w.end + shift).toFixed(3), word: w.word, ...(w.removed ? { removed: true } : {}), ...(w.hidden ? { hidden: true } : {}) }));
+        if (ws.length) words.push({ start: ws[0].start, end: ws[ws.length - 1].end, text: ws.filter((w) => !w.removed).map((w) => w.word).join(' '), words: ws });
+      }
+      return { ...o, words };
+    });
+    // o servidor aceita até ~1 MB: transcrição enorme vai sem as palavras (ele transcreve)
+    return JSON.stringify(res).length < 800_000 ? res : out;
+  }
+  // pergunta com botões (no lugar do confirm do navegador, que só tem OK/Cancelar)
+  const [choice, setChoice] = useState(null);
+  const askChoice = (title, text, buttons) => new Promise((resolve) => setChoice({ title, text, buttons, resolve }));
+  const choiceEl = choice && createPortal(
+    <div role="dialog" aria-label={choice.title} onMouseDown={(e) => { if (e.target === e.currentTarget) { choice.resolve(null); setChoice(null); } }}
+      style={{ position: 'fixed', inset: 0, zIndex: 970, background: 'rgba(5,5,10,0.6)', display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div style={{ width: 'min(480px, 100%)', background: '#16161F', border: `1px solid ${C.border}`, borderRadius: 16, padding: 18, display: 'grid', gap: 12, color: C.text, boxShadow: '0 30px 80px -20px rgba(0,0,0,0.9)' }}>
+        <b style={{ fontSize: 16 }}>{choice.title}</b>
+        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{choice.text}</div>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {choice.buttons.map((b) => (
+            <button key={b.key} onClick={() => { choice.resolve(b.key); setChoice(null); }}
+              style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 12, border: b.primary ? 'none' : `1px solid ${C.border}`, background: b.primary ? GRAD : 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'inherit', cursor: 'pointer' }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800 }}>{b.label}</div>
+              {b.sub && <div style={{ fontSize: 11.5, opacity: 0.8, marginTop: 2 }}>{b.sub}</div>}
+            </button>
+          ))}
+          <button onClick={() => { choice.resolve(null); setChoice(null); }} style={{ height: 36, borderRadius: 999, border: 'none', background: 'transparent', color: C.faint, fontFamily: 'inherit', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 
+  /**
+   * Transcreve só o trecho [a, b] (ex.: clipe que entrou na V1 sem transcrever) e junta com a
+   * transcrição: a fala de antes nesse trecho é trocada pela nova. Legenda, pausas e palavras
+   * (para cortar erros) passam a existir ali.
+   */
+  async function transcribeRangeNow(a, b) {
+    if (v1Busy || b - a < 0.3) return;
+    if (segments.some((sg) => sg.words.some((w) => w.start >= a - 0.05 && w.end <= b + 0.05)) && !window.confirm('Esse trecho já tem fala transcrita. Transcrever de novo e trocar pela nova (as correções feitas nele se perdem)?')) return;
+    setV1Busy('Transcrevendo o trecho…');
+    try {
+      const r = await transcribeRange(sourceId, +a.toFixed(2), +b.toFixed(2));
+      const fresh = (r.segments || []).map((sg) => ({ ...sg, words: (sg.words || []).map((w) => ({ ...w, removed: !!w.removed })) })).filter((sg) => sg.words.length);
+      setSegments((prev) => [
+        ...prev.map((sg) => ({ ...sg, words: sg.words.filter((w) => !(w.start >= a - 0.05 && w.end <= b + 0.05)) })).filter((sg) => sg.words.length),
+        ...fresh,
+      ].sort((x, y) => x.start - y.start));
+      setSelSet(new Set());
+      const n = fresh.reduce((k, sg) => k + sg.words.length, 0);
+      flashNote(n ? `Trecho transcrito: ${n} palavras. A legenda aparece na faixa Legenda (Delete nela tira só a legenda); as pausas e respirações do trecho já saem do vídeo; clique nas palavras para cortar erros.` : 'Não achei fala nesse trecho.');
+    } catch (e) {
+      flashNote(`Não deu para transcrever o trecho: ${e.message}`);
+    } finally {
+      setV1Busy('');
+    }
+  }
   /** Insere a mídia no vídeo principal no ponto t (tempo do vídeo atual) e remonta. */
   async function insertIntoV1(it, t) {
     if (v1Busy) return;
@@ -4277,11 +4381,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       }
       if (!placed) out.push(add);
       const where = gap ? 'no espaço vazio' : units.length ? `em ${fmtDuration(at)}` : '';
-      if (!window.confirm(`Colocar "${it.filename}" no vídeo principal (V1)${where ? ` ${where}` : ''}?\n\n${V1_NOTE}`)) return;
+      const how = it.kind === 'video'
+        ? await askChoice(`Colocar "${it.filename}" no vídeo principal${where ? ` ${where}` : ''}`, `${V1_NOTE}\n\nO clipe novo:`, [
+          { key: 'place', label: 'Só colocar na timeline', sub: 'Rápido: sem transcrever. Depois selecione o trecho e escolha "Transcrever trecho" para ter legenda, pausas e erros.', primary: true },
+          { key: 'transcribe', label: 'Colocar e transcrever a fala dele', sub: 'Legenda, pausas, respirações e erros já aparecem (só o clipe novo é transcrito).' },
+        ])
+        : (window.confirm(`Colocar "${it.filename}" no vídeo principal (V1)${where ? ` ${where}` : ''}?\n\n${V1_NOTE}`) ? 'place' : null);
+      if (!how) return;
       // camadas e textos seguem o ponto do vídeo em que estavam (depois do clipe, andam junto)
       const shift = gap ? Math.max(0, insLen - gap.len) : insLen;
       const from = gap ? gap.at + gap.len : at;
-      await v1Rebuild(out, (x) => { const n = newPos(x); return +(n >= from - 0.001 ? n + shift : n).toFixed(2); });
+      await v1Rebuild(out, (x) => { const n = newPos(x); return +(n >= from - 0.001 ? n + shift : n).toFixed(2); }, { transcribeNew: how === 'transcribe' });
     } catch (e) {
       window.alert(e.message || 'Não deu para colocar no vídeo principal.');
     } finally {
@@ -5454,6 +5564,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {capDialog}
       {tabsMenuEl}
       {ctxMenuEl}
+      {choiceEl}
       {exportDialog()}
       {tlNote && !v1Busy && createPortal(
         <div role="status" onClick={() => setTlNote('')} style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 960, maxWidth: 'min(640px, calc(100vw - 32px))', padding: '10px 16px', borderRadius: 14, background: '#2A2B33', border: '1px solid rgba(255,255,255,0.14)', color: '#fff', fontSize: 13, fontWeight: 600, lineHeight: 1.4, boxShadow: '0 12px 30px -10px rgba(0,0,0,0.8)', cursor: 'pointer' }}>{tlNote}</div>,
@@ -6491,7 +6602,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
           {/* Minhas mídias: coloque suas imagens/vídeos/músicas na timeline */}
           {tab === 'projeto' && (
-            <ProjectPanel library={libShown} libraryAll={library} scopeBar={libScopeBar} libScope={libScope} onImported={markProjectMedia} onReloadLibrary={loadLibrary} onAddLayer={(it) => addMediaItem(it)} sourceId={sourceId} durationSec={dur}
+            <ProjectPanel withClipWords={withClipWords} library={libShown} libraryAll={library} scopeBar={libScopeBar} libScope={libScope} onImported={markProjectMedia} onReloadLibrary={loadLibrary} onAddLayer={(it) => addMediaItem(it)} sourceId={sourceId} durationSec={dur}
               projectTitle={projectTitle} options={options} carryStyle={carryStyleNow} onRebuild={onRebuild} />
           )}
           {tab === 'midias' && (
@@ -6659,7 +6770,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <div ref={bottomRef} className="rf-tl-bottom" style={{ minWidth: 0, position: 'relative', ...(isMobile ? {} : { background: PR.panel, border: `1px solid ${PR.line}`, borderRadius: 12, padding: '8px 10px 10px', boxShadow: '0 10px 30px -18px rgba(0,0,0,0.8)' }) }}>
         {!isMobile && splitter('row')}
         {/* Barra de ferramentas da timeline */}
-        <div className="rf-tlbar" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 8, flexWrap: 'wrap' }}>
+        <div className="rf-tlbar" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 8, flexWrap: 'wrap' }}>
           <span className="rf-tl-stats" title="Palavras · cortadas · pausas cortadas · duração final">
             <b>{stats.total}</b> palavras · <b style={{ color: '#F0526B' }}>{stats.removed}</b> cortadas · <b style={{ color: '#FF9A6C' }}>{pausesCut.length}</b> pausas{cutCoughs && noisesCut.length ? <> · <b style={{ color: '#F0526B' }}>{noisesCut.length}</b> tosses/sons</> : null} · final <b style={{ color: '#2ED47A' }}>{fmtDuration((stats.keptSec + retimeDelta) / speed)}</b>
           </span>
@@ -6692,16 +6803,27 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </button>
           )}
           {(selKind === 'range' || selKind === 'words') && range && range.b > range.a && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 4px 3px 10px', borderRadius: 8, background: 'rgba(59,130,246,0.14)', border: '1px solid rgba(96,165,250,0.5)' }}>
+            // flutua por cima da régua (não empurra as faixas enquanto você arrasta a seleção)
+            <div style={{ position: isMobile ? 'static' : 'absolute', top: '100%', right: 0, zIndex: 40, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, padding: '3px 4px 3px 10px', borderRadius: 8, background: 'rgba(23,37,64,0.96)', border: '1px solid rgba(96,165,250,0.6)', boxShadow: '0 8px 22px -8px rgba(0,0,0,0.8)' }}>
               <span style={{ fontSize: 11.5, color: '#BFDBFE', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                 Trecho {tcode(range.a)} → {tcode(range.b)} <b style={{ color: '#fff' }}>({(range.b - range.a).toFixed(1).replace('.', ',')} s)</b>
+                {range.lanes && <> · {range.lanes.map((l) => LANE_NAME[l] || l).join(', ')}</>}
               </span>
               <button onClick={() => deleteSelected(false)} title="Tira o vídeo deste trecho e deixa o espaço vazio (Delete) — dá para pôr outra mídia ali" style={{ ...toolBtn(false), background: 'rgba(240,82,107,0.18)', border: '1px solid rgba(240,82,107,0.55)', color: '#FECACA' }}>
                 <Icon name="trash" size={13} strokeWidth={2} /> Excluir (deixar vazio)
               </button>
-              <button onClick={() => deleteSelected(true)} title="Corta o trecho e fecha o buraco: vídeo, áudio e legenda (Shift+Delete)" style={toolBtn(false)}>
-                Excluir e fechar
-              </button>
+              {(!range.lanes || (range.lanes.includes('v1') && range.lanes.includes('a1'))) && (
+                <button onClick={() => deleteSelected(true)} title="Corta o trecho e fecha o buraco: vídeo, áudio e legenda (Shift+Delete)" style={toolBtn(false)}>
+                  Excluir e fechar
+                </button>
+              )}
+              {!isMobile && (
+                <button onClick={() => transcribeRangeNow(range.a, range.b)} disabled={!!v1Busy}
+                  title="Transcreve a fala só deste trecho (clipe que entrou sem transcrever): aparecem a legenda, as pausas/respirações (que já saem) e as palavras para cortar erros"
+                  style={toolBtn(!!v1Busy)}>
+                  <Icon name="captions" size={13} strokeWidth={2} /> Transcrever trecho
+                </button>
+              )}
               <button onClick={clearRange} title="Limpar a seleção (Esc)" style={toolBtn(false)}>×</button>
             </div>
           )}
@@ -6862,8 +6984,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <>
                 {/* como o Premiere: régua clara entre a entrada e a saída, faixas levemente destacadas */}
                 <div style={{ position: 'absolute', left: X(range.a), width: Math.max(2, W(range.a, range.b)), top: 0, height: LANE.ruler, zIndex: 4, pointerEvents: 'none', background: 'rgba(255,255,255,0.26)' }} />
-                <div style={{ position: 'absolute', left: X(range.a), width: Math.max(2, W(range.a, range.b)), top: LANE.ruler, bottom: 0, zIndex: 19, pointerEvents: 'none',
-                  background: 'rgba(45,140,255,0.16)', boxShadow: 'inset 0 0 0 1px rgba(125,182,255,0.75)' }} />
+                {(range.boxes || [{ top: LANE.ruler, height: null }]).map((bx, i) => (
+                  <div key={i} style={{ position: 'absolute', left: X(range.a), width: Math.max(2, W(range.a, range.b)), top: bx.top, ...(bx.height == null ? { bottom: 0 } : { height: bx.height }), zIndex: 19, pointerEvents: 'none',
+                    background: 'rgba(45,140,255,0.16)', boxShadow: 'inset 0 0 0 1px rgba(125,182,255,0.75)', borderRadius: bx.height == null ? 0 : 4 }} />
+                ))}
                 {['a', 'b'].map((edge) => (
                   <div key={edge} onMouseDown={(e) => startRangeSel(e, edge)} title={edge === 'a' ? 'Arraste a entrada do trecho (I no playhead)' : 'Arraste a saída do trecho (O no playhead)'}
                     style={{ position: 'absolute', left: X(range[edge]) - (edge === 'a' ? 1 : 6), top: 0, width: 7, height: LANE.ruler, zIndex: 20, cursor: 'ew-resize',
@@ -6899,7 +7023,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               })}
             </div>
             {showChapLane && (
-              <div style={{ position: 'relative', height: LANE.capitulos, marginTop: 4 }}>
+              <div data-lane="capitulos" style={{ position: 'relative', height: LANE.capitulos, marginTop: 4 }}>
                 {chapters.map((c) => (
                   <button key={c.label} onClick={(e) => { e.stopPropagation(); seek(c.start + 0.01); }} title={`${c.label} · ${mmss(c.start)}–${mmss(c.end)}`}
                     style={{ position: 'absolute', left: X(c.start) + 1, width: Math.max(20, W(c.start, c.end) - 2), top: 2, bottom: 2, borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
@@ -6909,7 +7033,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 ))}
               </div>
             )}
-            <div style={{ position: 'relative', height: legH, marginTop: 6, ...LANE_ROW, ...(cap.captions === false ? LANE_HIDDEN : null), ...lk('leg') }} onMouseDown={(e) => { e.stopPropagation(); startCapBand(e); }}
+            <div data-lane="legenda" style={{ position: 'relative', height: legH, marginTop: 6, ...LANE_ROW, ...(cap.captions === false ? LANE_HIDDEN : null), ...lk('leg') }} onMouseDown={(e) => { e.stopPropagation(); startCapBand(e); }}
               title="Arraste no espaço vazio para selecionar várias legendas">
               {capBand && Math.abs(capBand.b - capBand.a) > 0.02 && (
                 <div style={{ position: 'absolute', left: X(Math.min(capBand.a, capBand.b)), width: W(Math.min(capBand.a, capBand.b), Math.max(capBand.a, capBand.b)), top: 2, bottom: 2, background: 'rgba(255,255,255,0.12)', border: '1px dashed #fff', borderRadius: 4, pointerEvents: 'none', zIndex: 3 }} />
@@ -6982,7 +7106,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </div>
             {/* Faixa SUAS LEGENDAS: legendas adicionadas à mão (arraste move, pontas mudam o tempo) */}
             {extraCaps.length > 0 && (
-              <div style={{ position: 'relative', height: LANE.xcap, marginTop: 4, ...LANE_ROW, ...(laneHide.xcap || cap.captions === false ? LANE_HIDDEN : null), ...lk('xcap') }}>
+              <div data-lane="xcap" style={{ position: 'relative', height: LANE.xcap, marginTop: 4, ...LANE_ROW, ...(laneHide.xcap || cap.captions === false ? LANE_HIDDEN : null), ...lk('xcap') }}>
                 {extraCaps.map((c) => {
                   const on = selKind === 'xcap' && selXcap === c.key;
                   const pick = () => { setSelXcap(c.key); setSelKind('xcap'); };
@@ -7004,7 +7128,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             )}
             {/* Lane das minhas mídias — arraste para mover, pontas para redimensionar */}
             {media.length > 0 && (
-              <div style={{ position: 'relative', height: LANE.midias * mediaRows, marginTop: 4 }}>
+              <div data-lane="midias" style={{ position: 'relative', height: LANE.midias * mediaRows, marginTop: 4 }}>
                 {Array.from({ length: mediaRows - 1 }, (_, r) => (
                   <div key={r} style={{ position: 'absolute', left: 0, right: 0, top: (r + 1) * LANE.midias - 1, borderTop: `1px dashed ${C.border}`, pointerEvents: 'none' }} />
                 ))}
@@ -7042,7 +7166,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             )}
             {/* Faixa TEXTOS: textos livres (arraste para mover, pontas mudam o tempo) */}
             {textLayers.length > 0 && (
-              <div style={{ position: 'relative', height: LANE.txt, marginTop: 4, ...LANE_ROW, ...(laneHide.txt ? LANE_HIDDEN : null), ...lk('txt') }}>
+              <div data-lane="txt" style={{ position: 'relative', height: LANE.txt, marginTop: 4, ...LANE_ROW, ...(laneHide.txt ? LANE_HIDDEN : null), ...lk('txt') }}>
                 {textLayers.map((l) => {
                   const on = selKind === 'text' && selText === l.key;
                   return (
@@ -7061,7 +7185,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             )}
             {/* Faixa EFEITOS: efeitos de vídeo só nesses trechos */}
             {fxMoments.length > 0 && (
-              <div style={{ position: 'relative', height: LANE.vfx, marginTop: 4, ...LANE_ROW, ...(laneHide.vfx ? LANE_HIDDEN : null), ...lk('vfx') }}>
+              <div data-lane="vfx" style={{ position: 'relative', height: LANE.vfx, marginTop: 4, ...LANE_ROW, ...(laneHide.vfx ? LANE_HIDDEN : null), ...lk('vfx') }}>
                 {fxMoments.map((m) => {
                   const on = selKind === 'vfx' && selFx === m.key;
                   return (
@@ -7080,7 +7204,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             )}
             {/* Faixa B-ROLL: momentos revisados (clique abre o ajuste; arraste move) */}
             {showBrollLane && (
-              <div style={{ position: 'relative', height: LANE.broll, marginTop: 4, ...LANE_ROW, opacity: brollOn ? 1 : 0.35, ...lk('broll') }} title={brollOn ? undefined : 'B-roll desligado (aba B-roll)'}>
+              <div data-lane="broll" style={{ position: 'relative', height: LANE.broll, marginTop: 4, ...LANE_ROW, opacity: brollOn ? 1 : 0.35, ...lk('broll') }} title={brollOn ? undefined : 'B-roll desligado (aba B-roll)'}>
                 {brollReview.moments.map((m, i) => {
                   const isSel = i === selBroll;
                   const th = thumbOf(m);
@@ -7115,7 +7239,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             )}
             {/* Faixa ZOOM: momentos-chave do movimento (editáveis) */}
             {showZoomLane && (
-              <div style={{ position: 'relative', height: LANE.zoom, marginTop: 4, ...LANE_ROW, ...lk('zoom') }}>
+              <div data-lane="zoom" style={{ position: 'relative', height: LANE.zoom, marginTop: 4, ...LANE_ROW, ...lk('zoom') }}>
                 {(zoomMoments || []).map((z) => {
                   const isSel = z.key === selZoom;
                   return (
@@ -7141,7 +7265,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             )}
             {/* Faixa dos quadros-chave (Transformar): ◆ clique seleciona, arraste move, Delete apaga */}
             {transformKeys.length > 0 && (
-              <div style={{ position: 'relative', height: LANE.kf, marginTop: 4, ...LANE_ROW, ...lk('kf') }}>
+              <div data-lane="kf" style={{ position: 'relative', height: LANE.kf, marginTop: 4, ...LANE_ROW, ...lk('kf') }}>
                 {transformKeys.length > 1 && (
                   <div style={{ position: 'absolute', left: X(transformKeys[0].t), width: W(transformKeys[0].t, transformKeys[transformKeys.length - 1].t), top: LANE.kf / 2 - 1, height: 2, background: 'rgba(34,211,238,0.45)' }} />
                 )}
@@ -7375,7 +7499,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               })}
             </div>
             {/* Lane de pausas (silêncio entre palavras) — clique alterna cortar/manter */}
-            {!isMobile && <div style={{ position: 'relative', height: LANE.pausas, marginTop: 4, ...LANE_ROW, ...lk('pau') }}>
+            {!isMobile && <div data-lane="pausas" style={{ position: 'relative', height: LANE.pausas, marginTop: 4, ...LANE_ROW, ...lk('pau') }}>
               {/* tosses/pigarros/estalos achados no áudio: saem do vídeo (como no final) */}
               {cutCoughs && (preciseNow?.noises || []).map((n) => (
                 <div key={`n${n.start}`} onClick={(e) => { e.stopPropagation(); toggleNoise(n); }}
@@ -8095,6 +8219,7 @@ function videoParts(splits, dur) {
 const PR = { panel: '#141519', track: '#1A1B20', heads: '#1F2026', tools: '#17181C', ruler: '#202127', line: 'rgba(255,255,255,0.08)', blue: '#2D8CFF', text: '#D6D8DE', dim: '#8B9099' };
 const LANE_ROW = { background: 'rgba(255,255,255,0.022)', borderRadius: 4 };
 const LANE_HIDDEN = { opacity: 0.28 };
+const LANE_NAME = { legenda: 'Legenda', xcap: 'Legendas à mão', midias: 'Camadas', txt: 'Textos', vfx: 'Efeitos', broll: 'B-roll', zoom: 'Zoom', kf: 'Quadros-chave', v1: 'Vídeo', a1: 'Áudio', pausas: 'Pausas' };
 const LANE_LOCKED = { pointerEvents: 'none', filter: 'saturate(0.35)', backgroundImage: 'repeating-linear-gradient(135deg, rgba(255,255,255,0.05) 0 6px, transparent 6px 12px)' };
 const RULER_STEPS = [1, 2, 5, 10, 15, 30, 60];
 const SNAP_PX = 8;

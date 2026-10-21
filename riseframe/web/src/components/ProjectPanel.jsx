@@ -8,7 +8,7 @@ const fmt = (s) => {
   const t = Math.max(0, Number(s) || 0);
   return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 };
-const clipLen = (c) => (c.kind === 'image' ? c.duration : Math.max(0.3, c.out - c.in));
+const clipLen = (c) => (c.kind === 'image' || c.kind === 'blank' ? c.duration : Math.max(0.3, c.out - c.in));
 const sig = (list) => JSON.stringify(list.map((c) => [c.mediaId || c.sourceId, c.kind, +(+c.in || 0).toFixed(2), +(+c.out || 0).toFixed(2), +(+c.duration || 0).toFixed(2)]));
 
 /** Miniatura de uma mídia (imagem, quadro do vídeo ou ícone do áudio). */
@@ -28,7 +28,9 @@ export function MediaThumb({ it, at = 0.5, fit = 'cover' }) {
  * vídeo principal — arraste para mudar a ordem, apare, tire ou acrescente. "Atualizar
  * vídeo principal" monta de novo e reabre o editor mantendo o estilo.
  */
-export default function ProjectPanel({ library, libraryAll = library, scopeBar = null, libScope = 'todos', onImported, onReloadLibrary, onAddLayer, sourceId, durationSec, projectTitle, options, carryStyle, onRebuild }) {
+export default function ProjectPanel({ library, libraryAll = library, scopeBar = null, libScope = 'todos', onImported, onReloadLibrary, onAddLayer, sourceId, durationSec, projectTitle, options, carryStyle, onRebuild, withClipWords = null }) {
+  // clipes novos: transcrever já ou só colocar (a escolha fica lembrada)
+  const [transcribeNew, setTranscribeNew] = useState(() => { try { return localStorage.getItem('rf_transcribe_new') === '1'; } catch { return false; } });
   const [clips, setClips] = useState(null);
   const [original, setOriginal] = useState('');
   const [music, setMusic] = useState(null);
@@ -47,16 +49,18 @@ export default function ProjectPanel({ library, libraryAll = library, scopeBar =
       if (!alive) return;
       // timeline montada (ou em branco: lista vazia) → os clipes dela; senão o vídeo enviado
       const seq = j?.fromSequence && Array.isArray(j.sequenceClips) ? j.sequenceClips : null;
+      // srcAt/in0: onde cada clipe está no vídeo de hoje (a fala dele vai junto ao atualizar)
+      let at = 0;
       const list = seq
-        ? seq.map((c) => ({ ...c, key: key(), in: +c.in || 0, out: +c.out || 0, duration: +c.duration || 3 }))
-        : [{ key: key(), sourceId, kind: 'video', filename: projectTitle || j?.filename || 'Vídeo enviado', in: 0, out: durationSec || j?.report?.input?.duration || 5, src: durationSec }];
+        ? seq.map((c) => { const it = { ...c, key: key(), in: +c.in || 0, out: +c.out || 0, duration: +c.duration || 3 }; it.srcAt = at; it.in0 = it.in; at += clipLen(it); return it; })
+        : [{ key: key(), sourceId, kind: 'video', filename: projectTitle || j?.filename || 'Vídeo enviado', in: 0, out: durationSec || j?.report?.input?.duration || 5, src: durationSec, srcAt: 0, in0: 0 }];
       setClips(list);
       setOriginal(sig(list));
       if (j?.sequenceMusic?.mediaId) setMusic(j.sequenceMusic);
       if (j?.sequenceAspect && !j.blankTimeline) setAspect(j.sequenceAspect);
     }).catch(() => {
       if (!alive) return;
-      const list = [{ key: key(), sourceId, kind: 'video', filename: projectTitle || 'Vídeo enviado', in: 0, out: durationSec || 5, src: durationSec }];
+      const list = [{ key: key(), sourceId, kind: 'video', filename: projectTitle || 'Vídeo enviado', in: 0, out: durationSec || 5, src: durationSec, srcAt: 0, in0: 0 }];
       setClips(list);
       setOriginal(sig(list));
     });
@@ -89,7 +93,8 @@ export default function ProjectPanel({ library, libraryAll = library, scopeBar =
 
   async function rebuild() {
     if (!clips?.length) return;
-    if (!window.confirm('Atualizar o vídeo principal?\n\nO vídeo é montado de novo nessa ordem e a fala é transcrita de novo: cortes e ajustes feitos na legenda deste vídeo serão refeitos. O estilo (legenda, camadas, textos, cor, efeitos) continua.')) return;
+    const novos = clips.some((c) => c.kind === 'video' && c.srcAt == null);
+    if (!window.confirm(`Atualizar o vídeo principal?\n\nO vídeo é montado de novo nessa ordem. A fala que já estava transcrita é reaproveitada${novos ? (transcribeNew ? '; só os clipes novos são transcritos' : '; os clipes novos entram sem transcrever (depois, selecione o trecho e use "Transcrever trecho")') : ''}. O estilo (legenda, camadas, textos, cor, efeitos) continua.`)) return;
     setError('');
     setBusy('Montando o vídeo principal…');
     try {
@@ -97,9 +102,10 @@ export default function ProjectPanel({ library, libraryAll = library, scopeBar =
         title: projectTitle || 'Timeline',
         aspect,
         options,
-        clips: clips.map((c) => (c.kind === 'blank' ? { blank: true, duration: +c.duration.toFixed(2) } : c.sourceId
+        ...(transcribeNew ? {} : { transcribeNew: false }),
+        clips: (withClipWords || ((_, o) => o))(clips, clips.map((c) => (c.kind === 'blank' ? { blank: true, duration: +c.duration.toFixed(2) } : c.sourceId
           ? { sourceId: c.sourceId, filename: c.filename, in: +c.in.toFixed(2), out: +c.out.toFixed(2) }
-          : { mediaId: c.mediaId, ...(c.kind === 'video' ? { in: +c.in.toFixed(2), out: +c.out.toFixed(2) } : { duration: +c.duration.toFixed(2) }) })),
+          : { mediaId: c.mediaId, ...(c.kind === 'video' ? { in: +c.in.toFixed(2), out: +c.out.toFixed(2) } : { duration: +c.duration.toFixed(2) }) }))),
         ...(music?.mediaId ? { music: { mediaId: music.mediaId, volume: music.volume ?? 0.35 } } : {}),
       });
       carryStyle?.();
@@ -223,7 +229,11 @@ export default function ProjectPanel({ library, libraryAll = library, scopeBar =
           style={{ height: 36, borderRadius: 10, border: 'none', background: changed && !busy ? GRAD : 'rgba(255,255,255,0.08)', color: '#fff', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', cursor: changed && !busy ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           {busy.startsWith('Montando') && <Spinner size={13} />} {changed ? 'Atualizar vídeo principal' : 'Mude a ordem, apare ou acrescente clipes para atualizar'}
         </button>
-        <div style={{ fontSize: 10.5, color: C.faint, lineHeight: 1.5 }}>Ao atualizar, o vídeo principal é montado de novo e a fala transcrita de novo (conta como um vídeo novo). Estilo da legenda, camadas, textos, cor e efeitos continuam.</div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted, cursor: 'pointer' }}>
+          <input type="checkbox" checked={transcribeNew} onChange={(e) => { setTranscribeNew(e.target.checked); try { localStorage.setItem('rf_transcribe_new', e.target.checked ? '1' : '0'); } catch { /* sem armazenamento */ } }} />
+          Transcrever a fala dos clipes novos agora (legenda, pausas, erros)
+        </label>
+        <div style={{ fontSize: 10.5, color: C.faint, lineHeight: 1.5 }}>Ao atualizar, o vídeo principal é montado de novo e a fala que já estava transcrita é reaproveitada. Sem a opção acima, os clipes novos entram sem transcrever: depois, selecione o trecho na timeline e use <b>Transcrever trecho</b>. Estilo da legenda, camadas, textos, cor e efeitos continuam.</div>
       </div>
     </div>
   );

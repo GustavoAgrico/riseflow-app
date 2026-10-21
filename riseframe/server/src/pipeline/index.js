@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { assembleSequence } from './sequence.js';
+import { sequenceTranscript } from './seqTranscript.js';
 import { config } from '../config.js';
 import { probeSummary, runFfmpeg, sdrVf, x264Fast } from './ffmpeg.js';
 import { transcribe } from './transcribe/index.js';
@@ -277,7 +278,10 @@ export async function runPipeline(job, onUpdate = () => {}) {
     editorTranscript = transcript;
   } else {
     const st = enter('transcribe');
-    transcript = await transcribe(input, work, meta, st.onProgress, { jobId: job.id });
+    // montagem da timeline: reaproveita a fala dos clipes que já tinham (só o novo é transcrito)
+    transcript = job.sequence && !job.sequence.blank
+      ? await sequenceTranscript(job, input, work, meta, st.onProgress, { jobId: job.id })
+      : await transcribe(input, work, meta, st.onProgress, { jobId: job.id });
     report.provider.transcribe = transcript.provider;
     if (transcript.fallbackFrom) report.provider.transcribeFallback = transcript.fallbackReason;
     st.record({ segments: transcript.segments.length, provider: transcript.provider });

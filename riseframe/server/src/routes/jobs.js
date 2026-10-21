@@ -38,6 +38,7 @@ import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
 import { brandIn, entityQuery } from '../pipeline/entities.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
 import { cleanCrop, cleanBlanks } from '../pipeline/frame.js';
+import { transcribeRange } from '../pipeline/seqTranscript.js';
 import { cleanLayerKf } from '../../../shared/layerKeys.js';
 import { SFX_LIBRARY } from '../pipeline/sfx.js';
 import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
@@ -798,6 +799,19 @@ jobsRouter.post('/transcribe', requireAuth, requireVerified, requireCredits('tra
   });
 });
 
+/** Frases da transcrição vindas do editor: só números válidos e no máximo 20 mil palavras. */
+function cleanSegments(raw) {
+  let n = 0;
+  const out = [];
+  for (const sg of Array.isArray(raw) ? raw : []) {
+    if (n > 20000) break;
+    const words = (Array.isArray(sg?.words) ? sg.words : []).filter((w) => Number.isFinite(Number(w?.start)) && Number.isFinite(Number(w?.end)) && typeof w?.word === 'string').map((w) => ({ ...w, start: Number(w.start), end: Number(w.end), word: w.word.slice(0, 80) }));
+    n += words.length;
+    if (words.length) out.push({ ...sg, start: words[0].start, end: words[words.length - 1].end, text: String(sg.text || '').slice(0, 2000), words });
+  }
+  return out;
+}
+
 // POST /api/sequence/blank  { aspect, title } → timeline em branco: abre o editor na hora
 // (quadro vazio, sem fala), sem cobrar; os clipes entram depois pela aba Projeto.
 jobsRouter.post('/sequence/blank', requireAuth, requireVerified, (req, res) => {
@@ -828,7 +842,12 @@ jobsRouter.post('/sequence', requireAuth, requireVerified, requireCredits('trans
     if (c?.sourceId) {
       const src = queue.get(String(c.sourceId));
       if (!src || (src.ownerId && src.ownerId !== req.user.id) || !src.inputPath || !fs.existsSync(src.inputPath)) continue;
-      clips.push({ file: src.inputPath, kind: 'video', sourceId: src.id, filename: String(c.filename || src.filename || 'vídeo').slice(0, 120), in: clampNum(c.in, 0, 100000, 0), out: clampNum(c.out, 0, 100000, 0), duration: 3 });
+      // a fala desse vídeo já foi transcrita: entra junto (não transcreve de novo). A do
+      // editor (com as correções feitas) vale mais que a original.
+      const words = Array.isArray(c.words) ? cleanSegments(c.words)
+        : body.transcriptSource === src.id && Array.isArray(body.transcript) ? cleanSegments(body.transcript)
+          : (src.report?.editorTranscript?.segments || src.report?.transcript?.segments || null);
+      clips.push({ file: src.inputPath, kind: 'video', sourceId: src.id, filename: String(c.filename || src.filename || 'vídeo').slice(0, 120), in: clampNum(c.in, 0, 100000, 0), out: clampNum(c.out, 0, 100000, 0), duration: 3, ...(words ? { words } : {}) });
       continue;
     }
     const m = resolveMedia(String(c?.mediaId || ''));
@@ -841,6 +860,8 @@ jobsRouter.post('/sequence', requireAuth, requireVerified, requireCredits('trans
       in: clampNum(c.in, 0, 100000, 0),
       out: clampNum(c.out, 0, 100000, 0),
       duration: clampNum(c.duration, 0.5, 60, 3),
+      // fala que o editor já tinha desse clipe (tempo da mídia): não transcreve de novo
+      ...(m.kind === 'video' && Array.isArray(c.words) ? { words: cleanSegments(c.words) } : {}),
     });
   }
   if (!clips.length) return res.status(400).json({ error: 'coloque pelo menos um vídeo ou imagem na timeline' });
@@ -854,11 +875,14 @@ jobsRouter.post('/sequence', requireAuth, requireVerified, requireCredits('trans
   }
   const aspect = ['9:16', '16:9', '1:1', '4:5'].includes(body.aspect) ? body.aspect : 'auto';
   const options = { ...optionsForUser(req), sequenceBuild: true };
+  // "Só colocar na timeline": os clipes novos entram sem transcrever (dá para transcrever um
+  // trecho depois, selecionando na timeline)
+  const transcribeNew = body.transcribeNew !== false;
   chargeAndQueue(req, res, 'transcribe', {
     filename: fixName(String(body.title || '').trim().slice(0, 80) || 'Timeline'),
     inputPath: path.join(config.paths.uploads, `seq_${nanoid(12)}.mp4`),
     options,
-    sequence: { clips, music, aspect },
+    sequence: { clips, music, aspect, ...(transcribeNew ? {} : { transcribeNew: false }) },
   });
 });
 
@@ -912,6 +936,29 @@ jobsRouter.post('/voice/preview', requireAuth, requireVerified, async (req, res)
   } catch (err) {
     if (dir) fs.rm(dir, { recursive: true, force: true }, () => {});
     res.status(500).json({ error: err.message || 'falha ao gerar a prévia da voz' });
+  }
+});
+
+// POST /api/jobs/:id/transcribe-range  (JSON: { start, end }) → transcreve só esse trecho do
+// vídeo do editor (clipe que entrou na timeline sem transcrever). Devolve as frases já no
+// tempo do vídeo; o editor junta com a transcrição que já tem.
+jobsRouter.post('/jobs/:id/transcribe-range', requireAuth, requireVerified, async (req, res) => {
+  const source = queue.get(String(req.params.id));
+  if (!source || (source.ownerId && source.ownerId !== req.user.id)) return res.status(404).json({ error: 'vídeo não encontrado' });
+  if (!source.inputPath || !fs.existsSync(source.inputPath)) return res.status(410).json({ error: 'o vídeo de origem expirou; reenvie' });
+  const a = clampNum(req.body?.start, 0, 100000, 0);
+  const b = clampNum(req.body?.end, 0, 100000, 0);
+  if (b - a < 0.3) return res.status(400).json({ error: 'trecho curto demais' });
+  if (b - a > 3 * 3600) return res.status(400).json({ error: 'trecho longo demais' });
+  let dir;
+  try {
+    dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'rf-trecho-'));
+    const r = await transcribeRange(source.inputPath, dir, a, b, { jobId: source.id });
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'não deu para transcrever o trecho' });
+  } finally {
+    if (dir) fs.rm(dir, { recursive: true, force: true }, () => {});
   }
 });
 
