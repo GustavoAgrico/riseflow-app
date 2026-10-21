@@ -5,6 +5,7 @@ import { PrimaryButton, Card, Spinner } from './components/ui.jsx';
 import Icon, { Logo } from './components/Icon.jsx';
 import OptionsPanel, { Row, Toggle, Select, Swatches } from './components/OptionsPanel.jsx';
 import Result from './components/Result.jsx';
+import { bindPendingExport, setPendingExport } from './exportTarget.js';
 import ClipsResult from './components/ClipsResult.jsx';
 import TimelineEditor from './components/TimelineEditor.jsx';
 
@@ -329,9 +330,11 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     try {
       // extra traz os cortes de silêncio escolhidos na timeline (manualSilence + silenceCuts).
       const created = await renderEdited(sourceId, editedTranscript, await withBrand({ ...options, ...extra }));
+      bindPendingExport(created?.id);
       setEditorError(null);
       watchRender(created, true);
     } catch (e) {
+      setPendingExport(null);
       refreshBilling();
       throw e;
     }

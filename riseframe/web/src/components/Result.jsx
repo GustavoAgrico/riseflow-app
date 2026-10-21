@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { C, GRAD, glass, fmtBytes, fmtDuration } from '../theme.js';
 import { GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import { previewUrl, downloadUrl, coverDownloadUrl, captionsDownloadUrl } from '../api.js';
+import { takeExportTarget, saveToTarget } from '../exportTarget.js';
 
 // +X% / −X% em relação a 1.0 (ganho neutro)
 const fmtGain = (g) => `${g >= 1 ? '+' : '−'}${Math.abs(Math.round((g - 1) * 100))}%`;
@@ -31,6 +32,16 @@ export default function Result({ job, onReset, onEditTimeline }) {
   const inDur = r.input?.duration;
   const cutSec = r.cut?.removedSeconds;
   const [dlHover, setDlHover] = useState(false);
+  // Exportado com destino escolhido: o arquivo vai direto para a pasta, sem clicar para baixar
+  const [saved, setSaved] = useState(null); // { state: 'saving'|'done'|'error', where?, path?, msg? }
+  useEffect(() => {
+    const t = takeExportTarget(job.id);
+    if (!t) return;
+    setSaved({ state: 'saving' });
+    saveToTarget(t, downloadUrl(job.id))
+      .then((r) => setSaved({ state: 'done', ...r, auto: t.kind === 'auto' }))
+      .catch((e) => setSaved({ state: 'error', msg: e.message }));
+  }, [job.id]);
 
   return (
     <div style={{ ...glass(), padding: 'clamp(16px, 3vw, 26px)' }}>
@@ -74,6 +85,21 @@ export default function Result({ job, onReset, onEditTimeline }) {
             <span style={chip}>{r.output?.audioFile ? 'MP3 · só áudio' : r.output?.streams === 'video' ? 'MP4 · só vídeo (sem som)' : "MP4 · sem marca d'água"}</span>
           </div>
 
+          {saved && (
+            <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderRadius: 12, fontSize: 13, lineHeight: 1.4,
+              border: `1px solid ${saved.state === 'error' ? 'rgba(240,82,107,0.6)' : saved.state === 'done' ? 'rgba(46,212,122,0.55)' : C.border}`,
+              background: saved.state === 'error' ? 'rgba(240,82,107,0.12)' : saved.state === 'done' ? 'rgba(46,212,122,0.1)' : 'rgba(255,255,255,0.04)' }}>
+              <Icon name={saved.state === 'done' ? 'check' : saved.state === 'error' ? 'close' : 'download'} size={17} strokeWidth={2.2} />
+              <span style={{ minWidth: 0, flex: 1, wordBreak: 'break-all' }}>
+                {saved.state === 'saving' && 'Salvando na pasta escolhida…'}
+                {saved.state === 'done' && (saved.auto ? <>Download iniciado (pasta <b>Downloads</b>).</> : <>Salvo em <b>{saved.where}</b></>)}
+                {saved.state === 'error' && <>Não deu para salvar ({saved.msg}). Use o botão abaixo.</>}
+              </span>
+              {saved.state === 'done' && saved.path && window.electron?.showInFolder && (
+                <button onClick={() => window.electron.showInFolder(saved.path)} style={{ flexShrink: 0, height: 30, padding: '0 12px', borderRadius: 999, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.06)', color: C.text, fontWeight: 700, fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer' }}>Abrir pasta</button>
+              )}
+            </div>
+          )}
           <a
             href={downloadUrl(job.id)}
             onMouseEnter={() => setDlHover(true)}
@@ -85,7 +111,7 @@ export default function Result({ job, onReset, onEditTimeline }) {
               transition: 'transform .18s ease, box-shadow .18s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
             }}
           >
-            <Icon name="download" size={19} strokeWidth={2} /> {r.output?.audioFile ? 'Baixar áudio (MP3)' : 'Exportar vídeo'}
+            <Icon name="download" size={19} strokeWidth={2} /> {saved?.state === 'done' ? 'Baixar outra cópia' : r.output?.audioFile ? 'Baixar áudio (MP3)' : 'Exportar vídeo'}
           </a>
           {r.output?.audioFile && (
             <a href={`${downloadUrl(job.id)}?as=video`} style={{ textAlign: 'center', textDecoration: 'none', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 14, padding: '13px', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9 }}>

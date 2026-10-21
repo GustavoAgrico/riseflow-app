@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { C, GRAD, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
+import { pickExportTarget, setPendingExport } from '../exportTarget.js';
 import { sourceUrl, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, createSequence, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
@@ -2480,7 +2481,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     requestAnimationFrame(() => renderErrRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
   }, [jobError]);
 
-  async function generate() {
+  async function generate(saveTarget = null) {
     if (sending) return;
     // Cortes de silêncio escolhidos: uma pequena folga interna evita cortar o
     // ataque/finalização das palavras vizinhas.
@@ -2490,6 +2491,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setRenderErr(null);
     setSending(true);
     try {
+      setPendingExport(saveTarget); // onde salvar (escolhido na janela Exportar)
       await onGenerate(
       {
         provider: transcript.provider,
@@ -2991,13 +2993,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               {row('Áudio', onlyAudio ? 'MP3 · 192 kbps · estéreo' : exportStreams === 'video' ? '— (sem som)' : 'AAC · 192 kbps · 48 kHz · estéreo')}
               {!onlyAudio && row('Formato', aspectSel === 'original' ? 'Original (como foi gravado)' : aspectSel)}
               {!onlyAudio && row('Qualidade', hdAllowed && quality !== 'original' ? QUALITY_OPTS.find((q) => q.id === quality)?.label : 'Original')}
+              {row('Salvar', window.electron ? 'você escolhe a pasta ao clicar em Exportar' : typeof window.showSaveFilePicker === 'function' ? 'você escolhe a pasta ao clicar em Exportar' : 'baixa sozinho quando ficar pronto')}
               {row('Trecho', exportRange ? `${fmtDuration(exportRange.a)} → ${fmtDuration(exportRange.b)}` : 'linha toda')}
               {row('Duração', fmtDuration(secs))}
               {row('Tamanho', `≈ ${sizeMb >= 1000 ? `${(sizeMb / 1000).toFixed(1).replace('.', ',')} GB` : `${Math.max(1, Math.round(sizeMb))} MB`}`)}
               {row('Legenda', onlyAudio || cap.captions === false ? 'só em arquivo (.srt)' : 'no vídeo + arquivo .srt')}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
                 <button onClick={() => setExportOpen(false)} style={{ height: 40, padding: '0 16px', borderRadius: 999, border: `1px solid ${C.border}`, background: 'transparent', color: C.text, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>Cancelar</button>
-                <button onClick={() => { setExportOpen(false); generate(); }} disabled={busy || allGone}
+                <button onClick={async () => {
+                  // como no Premiere: escolhe onde salvar agora; ao ficar pronto, o arquivo vai direto para lá
+                  const target = await pickExportTarget({ name: projectTitle || 'video', ext: exportStreams === 'audio' ? 'mp3' : 'mp4' });
+                  if (!target) return;
+                  setExportOpen(false);
+                  generate(target);
+                }} disabled={busy || allGone}
                   style={{ height: 40, padding: '0 22px', borderRadius: 999, border: 'none', background: GRAD, color: '#fff', fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <Icon name="upload" size={15} strokeWidth={2.2} /> Exportar
                 </button>
