@@ -42,6 +42,7 @@ async function activatePlan(userId, planId) {
   )
   if (error) console.error('[Billing] Erro ao ativar plano:', error.message)
   else console.log('[Billing] Plano ativado:', planId, 'user:', userId)
+  return !error
 }
 
 async function downgradeFree(userId) {
@@ -214,3 +215,6 @@ router.get('/status', async (req, res) => {
 })
 
 module.exports = router
+module.exports.PLANS = PLANS
+module.exports.activatePlan = activatePlan
+module.exports.ADMIN_EMAILS = ADMIN_EMAILS

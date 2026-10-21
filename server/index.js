@@ -30,6 +30,7 @@ const clientsRoutes = require('./routes/clients')
 const proposalsRoutes = require('./routes/proposals')
 const meetingsRoutes = require('./routes/meetings')
 const restProxy = require('./routes/restProxy')
+const accessRequestsRoutes = require('./routes/accessRequests')
 const telegram = require('./telegramClient')
 const metaClient = require('./metaClient')
 const whatsappCloud = require('./whatsappCloudClient')
@@ -245,6 +246,9 @@ app.use('/api/meta/oauth', metaRoutes.oauthRouter)
 // iCal feed público — autenticado por token na URL (assinatura Google Calendar/Apple Calendar).
 app.use('/api/calendar', calendarRoutes.feedRouter)
 
+// Aprovar/recusar solicitação de plano — PÚBLICO, autenticado pelo token do link.
+app.use('/api/access-requests', accessRequestsRoutes.publicRouter)
+
 // Telegram e Meta: injetam Socket.io + a mesma cadeia IA→funis do WhatsApp.
 const incomingHandler = ({ jid, text, pushName, fromMe, userId }) =>
   aiRespond({ jid, text, pushName, fromMe, userId })
@@ -290,6 +294,7 @@ app.use('/api/clients', auth, clientsRoutes)
 app.use('/api/proposals', auth, proposalsRoutes)
 app.use('/api/meetings', auth, meetingsRoutes)
 app.use('/api/rest/v1', auth, restProxy)
+app.use('/api/access-requests', auth, accessRequestsRoutes)
 
 // Páginas legais públicas (Política de Privacidade / Exclusão de dados) — exigidas
 // pela App Review da Meta. Montadas ANTES do fallback do SPA para terem URL própria.

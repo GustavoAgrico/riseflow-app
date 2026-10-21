@@ -1,9 +1,9 @@
 import React from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
-import { Gem, Check, ArrowRight, Loader2 } from 'lucide-react'
+import { Gem, Check, ArrowRight, Loader2, Clock } from 'lucide-react'
 import { useAuth } from '@context/AuthContext'
 import { usePlan } from '@hooks/usePlan'
-import { abacatePayService } from '@services/abacatePayService'
+import { api } from '@services/api'
 
 const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-3)', pur:'#7C3AED', grn:'#059669', red:'#EF4444' }
 
@@ -22,16 +22,8 @@ const CATALOG = {
     ideal:'Empresas com alto volume e requisitos de suporte e API dedicados.' },
 }
 
-const applyMask = (raw, type) => {
-  const d = raw.replace(/\D/g, '')
-  if (type === 'cpf') {
-    const n = d.slice(0, 11)
-    if (n.length <= 3) return n
-    if (n.length <= 6) return `${n.slice(0,3)}.${n.slice(3)}`
-    if (n.length <= 9) return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6)}`
-    return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`
-  }
-  const n = d.slice(0, 11)
+const maskPhone = (raw) => {
+  const n = raw.replace(/\D/g, '').slice(0, 11)
   if (n.length <= 2) return n.length ? `(${n}` : ''
   if (n.length <= 6) return `(${n.slice(0,2)}) ${n.slice(2)}`
   if (n.length <= 10) return `(${n.slice(0,2)}) ${n.slice(2,6)}-${n.slice(6)}`
@@ -54,33 +46,39 @@ export const PlanDetails = () => {
   const { user } = useAuth()
   const { plan: usage } = usePlan()
 
-  const [cpf, setCpf] = React.useState('')
   const [phone, setPhone] = React.useState('')
-  const [fieldErr, setFieldErr] = React.useState({})
+  const [phoneErr, setPhoneErr] = React.useState(null)
   const [apiErr, setApiErr] = React.useState(null)
   const [loading, setLoading] = React.useState(false)
+  const [request, setRequest] = React.useState(null)
+
+  React.useEffect(() => {
+    api.get('/access-requests/mine').then(({ data }) => setRequest(data)).catch(() => {})
+  }, [])
 
   const p = CATALOG[planId]
   if (!p) return <Navigate to="/plans" replace />
 
   const isCurrent = usage?.plan === planId
   const isFree = planId === 'free'
-  const cpfDigits = cpf.replace(/\D/g, '').length
-  const phoneDigits = phone.replace(/\D/g, '').length
+  const isPending = request?.status === 'pending' && request?.plan_id === planId
 
-  const handleSubscribe = async () => {
-    const errs = {}
-    if (cpfDigits < 11) errs.cpf = 'Digite os 11 dígitos do CPF'
-    if (phoneDigits < 10) errs.phone = 'Digite um telefone válido (com DDD)'
-    if (Object.keys(errs).length) { setFieldErr(errs); return }
-
-    setFieldErr({})
+  const handleRequest = async () => {
+    const digits = phone.replace(/\D/g, '').length
+    if (digits > 0 && digits < 10) { setPhoneErr('Digite um telefone válido (com DDD)'); return }
+    setPhoneErr(null)
     setApiErr(null)
     setLoading(true)
     try {
-      await abacatePayService.checkout(planId, user, { cpf, phone })
+      const { data } = await api.post('/access-requests', {
+        planId,
+        name: user?.user_metadata?.full_name || '',
+        phone,
+      })
+      if (data?.status === 'approved') { window.location.href = '/dashboard'; return }
+      setRequest({ status: 'pending', plan_id: planId })
     } catch (e) {
-      setApiErr(e.message || 'Não foi possível gerar o link de pagamento. Tente novamente.')
+      setApiErr(e.response?.data?.error || 'Não foi possível enviar a solicitação. Tente novamente.')
     } finally {
       setLoading(false)
     }
@@ -126,58 +124,55 @@ export const PlanDetails = () => {
             </button>
           ) : (
             <div>
-              {/* Separador */}
               <div style={{ borderTop:`1px solid ${C.bd}`, margin:'0 0 20px' }} />
-              <p style={{ fontSize:13, fontWeight:700, color:C.mut, margin:'0 0 14px', textTransform:'uppercase', letterSpacing:'.04em' }}>
-                Dados para pagamento
-              </p>
-              <p style={{ fontSize:12, color:C.mut, margin:'-8px 0 16px', lineHeight:1.5 }}>
-                Necessário para gerar o link. Você será redirecionado para a página de pagamento com PIX e cartão.
-              </p>
-
-              <div style={{ marginBottom:14 }}>
-                <label style={{ display:'block', fontSize:12, color:fieldErr.cpf ? C.red : C.mut, fontWeight:600, marginBottom:5 }}>CPF</label>
-                <input
-                  value={cpf}
-                  onChange={e => { setCpf(applyMask(e.target.value, 'cpf')); setFieldErr(p => ({ ...p, cpf: null })) }}
-                  placeholder="000.000.000-00"
-                  inputMode="numeric"
-                  style={inputStyle(fieldErr.cpf)}
-                />
-                {fieldErr.cpf && <p style={{ margin:'4px 0 0', fontSize:12, color:C.red }}>{fieldErr.cpf}</p>}
-              </div>
-
-              <div style={{ marginBottom:20 }}>
-                <label style={{ display:'block', fontSize:12, color:fieldErr.phone ? C.red : C.mut, fontWeight:600, marginBottom:5 }}>WhatsApp / Telefone</label>
-                <input
-                  value={phone}
-                  onChange={e => { setPhone(applyMask(e.target.value, 'phone')); setFieldErr(p => ({ ...p, phone: null })) }}
-                  placeholder="(11) 99999-9999"
-                  inputMode="numeric"
-                  style={inputStyle(fieldErr.phone)}
-                />
-                {fieldErr.phone && <p style={{ margin:'4px 0 0', fontSize:12, color:C.red }}>{fieldErr.phone}</p>}
-              </div>
-
-              {apiErr && (
-                <div style={{ background:'#EF444422', border:`1px solid ${C.red}`, borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:13, color:'#FCA5A5' }}>
-                  {apiErr}
+              {isPending ? (
+                <div style={{ background:'#F59E0B18', border:'1px solid #F59E0B66', borderRadius:10, padding:'16px', display:'flex', gap:12, alignItems:'flex-start' }}>
+                  <Clock size={20} color="#F59E0B" style={{ flexShrink:0, marginTop:2 }} />
+                  <div>
+                    <p style={{ margin:0, fontSize:15, fontWeight:700 }}>Solicitação enviada</p>
+                    <p style={{ margin:'6px 0 0', fontSize:13, color:C.mut, lineHeight:1.5 }}>
+                      Recebemos seu pedido do plano {p.name} ({p.price}{p.period}). Você recebe um e-mail assim que o acesso for liberado.
+                    </p>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  <p style={{ fontSize:13, fontWeight:700, color:C.mut, margin:'0 0 14px', textTransform:'uppercase', letterSpacing:'.04em' }}>
+                    Solicitar acesso
+                  </p>
+                  <p style={{ fontSize:12, color:C.mut, margin:'-8px 0 16px', lineHeight:1.5 }}>
+                    Nossa equipe analisa o pedido e libera o plano para sua conta. Deixe um WhatsApp se quiser que a gente fale com você.
+                  </p>
+
+                  <div style={{ marginBottom:20 }}>
+                    <label style={{ display:'block', fontSize:12, color:phoneErr ? C.red : C.mut, fontWeight:600, marginBottom:5 }}>WhatsApp (opcional)</label>
+                    <input
+                      value={phone}
+                      onChange={e => { setPhone(maskPhone(e.target.value)); setPhoneErr(null) }}
+                      placeholder="(11) 99999-9999"
+                      inputMode="numeric"
+                      style={inputStyle(phoneErr)}
+                    />
+                    {phoneErr && <p style={{ margin:'4px 0 0', fontSize:12, color:C.red }}>{phoneErr}</p>}
+                  </div>
+
+                  {apiErr && (
+                    <div style={{ background:'#EF444422', border:`1px solid ${C.red}`, borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:13, color:'#FCA5A5' }}>
+                      {apiErr}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleRequest}
+                    disabled={loading}
+                    style={{ width:'100%', background:loading ? C.bd : C.pur, border:'none', borderRadius:10, padding:'14px', color:'#fff', fontWeight:700, fontSize:15, cursor: loading ? 'default' : 'pointer', fontFamily:'DM Sans,sans-serif', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:8, transition:'background .15s' }}
+                  >
+                    {loading
+                      ? <><Loader2 size={16} style={{ animation:'spin 1s linear infinite' }} /> Enviando solicitação…</>
+                      : <><ArrowRight size={16} /> Solicitar acesso — {p.price}{p.period}</>}
+                  </button>
+                </>
               )}
-
-              <button
-                onClick={handleSubscribe}
-                disabled={loading}
-                style={{ width:'100%', background:loading ? C.bd : C.pur, border:'none', borderRadius:10, padding:'14px', color:'#fff', fontWeight:700, fontSize:15, cursor: loading ? 'default' : 'pointer', fontFamily:'DM Sans,sans-serif', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:8, transition:'background .15s' }}
-              >
-                {loading
-                  ? <><Loader2 size={16} style={{ animation:'spin 1s linear infinite' }} /> Gerando link de pagamento…</>
-                  : <><ArrowRight size={16} /> Ir para pagamento — {p.price}{p.period}</>}
-              </button>
-
-              <p style={{ textAlign:'center', fontSize:11, color:C.mut, margin:'10px 0 0' }}>
-                🔒 Pagamento seguro via AbacatePay · PIX e cartão aceitos
-              </p>
             </div>
           )}
         </div>
