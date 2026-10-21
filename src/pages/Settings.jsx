@@ -291,7 +291,7 @@ export const Settings = () => {
       setRole(meta.role ?? '')
       if (meta.timezone) setTimezone(meta.timezone)
       if (meta.language) setLanguage(meta.language)
-      supabase.from('profiles').select('plan').eq('id', user.id).single()
+      supabase.from('profiles').select('plan').eq('id', user.id).maybeSingle()
         .then(({ data }) => { if (data?.plan) setPlan(data.plan) })
       // select('*') em vez de colunas nomeadas: não quebra se notification_prefs
       // ainda não tiver sido migrada no banco (mantém o sistema no ar).

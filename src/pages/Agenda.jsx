@@ -310,7 +310,7 @@ export const Agenda = () => {
               style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#F59E0B', color: '#000', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: meetingForm.title.trim() && meetingForm.date && !saving ? 1 : 0.5 }}>
               {saving ? 'Salvando…' : 'Salvar reunião'}
             </button>
-            <span style={{ fontSize: 11, color: C.mut }}>Sincroniza automaticamente com Google Calendar via iCal feed</span>
+            <span style={{ fontSize: 11, color: C.mut }}>Vai para o Google Calendar pelo link de assinatura (em Sincronizar)</span>
           </div>
         </div>
       )}
@@ -345,14 +345,14 @@ export const Agenda = () => {
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <a href={`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(calFeedUrl)}`} target="_blank" rel="noopener noreferrer" style={{ ...btnStyle, textDecoration: 'none', fontSize: 11 }}>
+                    <a href={`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(calFeedUrl.replace(/^https?:/, 'webcal:'))}`} target="_blank" rel="noopener noreferrer" style={{ ...btnStyle, textDecoration: 'none', fontSize: 11 }}>
                       <ExternalLink size={11} /> Google Calendar
                     </a>
                     <button onClick={regenerateToken} disabled={tokenLoading} style={{ ...btnStyle, fontSize: 11, opacity: tokenLoading ? 0.5 : 1 }}>
                       <RefreshCw size={11} /> Renovar URL
                     </button>
                   </div>
-                  <p style={{ fontSize: 10, color: C.mut, margin: 0 }}>Cole essa URL no seu app de calendário para receber eventos automaticamente (incluindo reuniões).</p>
+                  <p style={{ fontSize: 10, color: C.mut, margin: 0 }}>Cole essa URL no seu app de calendário para receber eventos automaticamente (incluindo reuniões). O Google Calendar busca novidades a cada poucas horas — eventos novos não aparecem na hora.</p>
                 </div>
               ) : (
                 <button onClick={fetchCalToken} disabled={tokenLoading} style={{ ...btnStyle, opacity: tokenLoading ? 0.5 : 1 }}>
