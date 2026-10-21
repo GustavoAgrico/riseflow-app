@@ -4460,6 +4460,34 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return v1Pieces.filter((q, i) => i !== d.k && X(q.va) + W(q.va, q.vb) / 2 < center).length;
   }
   /** Aparar: até onde a borda vai (em segundos) e quanto passa do que já estava no vídeo. */
+  /** Até onde a ponta pode avançar trazendo de volta o que foi tirado (cortes e espaços vazios encostados). */
+  function restoreLimit(side, p) {
+    let lim = side === 'L' ? p.va : p.vb;
+    for (let i = 0; i < 400; i++) {
+      const next = side === 'L'
+        ? [...blanks.filter((b) => b.end >= lim - 0.05 && b.start < lim - 0.01).map((b) => b.start), ...allGaps.filter(([x, y]) => y >= lim - 0.05 && x < lim - 0.01).map(([x]) => x)]
+        : [...blanks.filter((b) => b.start <= lim + 0.05 && b.end > lim + 0.01).map((b) => b.end), ...allGaps.filter(([x, y]) => x <= lim + 0.05 && y > lim + 0.01).map(([, y]) => y)];
+      if (!next.length) break;
+      lim = side === 'L' ? Math.min(...next) : Math.max(...next);
+    }
+    return side === 'L' ? Math.max(0, lim) : Math.min(dur, lim);
+  }
+  /** Traz de volta [a, b]: tira cortes e espaços vazios dali e as palavras cortadas voltam. */
+  function restoreRegion(a, b) {
+    if (b - a < 0.02) return;
+    const sub = (list) => list.flatMap((c) => {
+      if (c.end <= a + 0.001 || c.start >= b - 0.001) return [c];
+      const out = [];
+      if (c.start < a - 0.02) out.push({ ...c, end: +a.toFixed(2) });
+      if (c.end > b + 0.02) out.push({ ...c, key: `${c.key}_r${Date.now()}`, start: +b.toFixed(2) });
+      return out;
+    });
+    setCuts((l) => sub(l));
+    setBlanks((l) => sub(l));
+    setSegments((prev) => prev.map((sg) => (sg.words.some((w) => w.removed && (w.start + w.end) / 2 >= a && (w.start + w.end) / 2 <= b)
+      ? { ...sg, words: sg.words.map((w) => (w.removed && (w.start + w.end) / 2 >= a && (w.start + w.end) / 2 <= b ? { ...w, removed: false } : w)) }
+      : sg)));
+  }
   function v1TrimInfo(d) {
     const p = v1Pieces[d.k];
     const v0 = d.kind === 'L' ? p.va : p.vb;
@@ -4474,10 +4502,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         room = c.kind === 'image' ? Math.max(0, 60 - v1Len(c)) : c.mediaId && srcDur ? Math.max(0, srcDur - c.out) : 0;
       }
     }
+    // o que foi tirado logo depois/antes da ponta (corte ou espaço vazio): arrastando a ponta
+    // por cima, esse pedaço volta (restaurar à mão, sem remontar)
+    const lim = restoreLimit(d.kind, p);
+    const back = d.kind === 'L' ? Math.max(0, p.a - lim) : Math.max(0, lim - p.b);
+    if (back > 0.05) room = back;
     if (d.kind === 'L') v = Math.max(p.a - room, Math.min(p.vb - 0.2, v));
     else v = Math.min(p.b + room, Math.max(p.va + 0.2, v));
-    const ext = d.kind === 'L' ? Math.max(0, p.a - v) : Math.max(0, v - p.b);
-    return { p, v, ext };
+    const out = d.kind === 'L' ? Math.max(0, p.a - v) : Math.max(0, v - p.b);
+    return { p, v, ext: back > 0.05 ? 0 : out, restore: back > 0.05 ? out : 0 };
   }
   function v1DragMove(e) {
     const d = v1DragRef.current;
@@ -4505,8 +4538,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       v1Reorder(d.k, to);
       return;
     }
-    const { v, ext } = v1TrimInfo(d);
+    const { v, ext, restore } = v1TrimInfo(d);
     if (ext > 0.05) { v1Extend(d.kind, d.k, ext); return; }
+    // arrastou por cima do que foi tirado: aquele pedaço volta
+    if (restore > 0.02) { if (d.kind === 'R') restoreRegion(p.vb, v); else restoreRegion(v, p.va); return; }
     v1TrimTo(d.kind, p, v);
   }
   const v1DragFns = useRef({});
@@ -7446,9 +7481,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                         ⠿ {k + 1}. {p.clip.filename || 'clipe'}
                       </div>
                     )}
-                    <div className="rf-v1trim l" onMouseDown={(e) => startV1Drag('L', k, e)} title="Arraste para aparar o começo deste clipe"
+                    <div className="rf-v1trim l" onMouseDown={(e) => startV1Drag('L', k, e)} title="Arraste para aparar o começo deste clipe · para a esquerda, por cima do que foi cortado ou excluído, traz aquele pedaço de volta"
                       style={{ position: 'absolute', left, width: 8, top: 15, bottom: 0, zIndex: 5, cursor: 'ew-resize' }} />
-                    <div className="rf-v1trim r" onMouseDown={(e) => startV1Drag('R', k, e)} title="Arraste para aparar o fim deste clipe"
+                    <div className="rf-v1trim r" onMouseDown={(e) => startV1Drag('R', k, e)} title="Arraste para aparar o fim deste clipe · para a direita, por cima do que foi cortado ou excluído, traz aquele pedaço de volta"
                       style={{ position: 'absolute', left: left + w - 8, width: 8, top: 15, bottom: 0, zIndex: 5, cursor: 'ew-resize' }} />
                     {moving && (
                       <div style={{ position: 'absolute', left, width: w, top: 0, bottom: 0, transform: `translateX(${v1Drag.dx}px)`, border: '2px dashed #FACC15', background: 'rgba(250,204,21,0.14)', borderRadius: 4, pointerEvents: 'none', zIndex: 6 }} />
@@ -7458,7 +7493,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                         <div style={{ position: 'absolute', left: Math.min(edgeX, v1Drag.kind === 'L' ? left : left + w), width: Math.abs(edgeX - (v1Drag.kind === 'L' ? left : left + w)), top: 0, bottom: 0, background: longer ? 'rgba(46,212,122,0.28)' : 'rgba(0,0,0,0.62)', pointerEvents: 'none', zIndex: 6 }} />
                         <div style={{ position: 'absolute', left: edgeX - 1.5, width: 3, top: 0, bottom: 0, background: '#FACC15', boxShadow: '0 0 8px #FACC15', pointerEvents: 'none', zIndex: 7 }}>
                           <span style={{ position: 'absolute', top: 16, [v1Drag.kind === 'L' ? 'left' : 'right']: 5, whiteSpace: 'nowrap', fontSize: 10, fontWeight: 800, color: '#1a1400', background: '#FACC15', borderRadius: 4, padding: '0 5px' }}>
-                            {longer ? '+' : '−'}{Math.abs(trim.v - v0).toFixed(1).replace('.', ',')} s{trim.ext > 0.05 ? ' · remonta' : ''}
+                            {longer ? '+' : '−'}{Math.abs(trim.v - v0).toFixed(1).replace('.', ',')} s{trim.ext > 0.05 ? ' · remonta' : trim.restore > 0.02 ? ' · restaura' : ''}
                           </span>
                         </div>
                       </>
