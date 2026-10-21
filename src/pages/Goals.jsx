@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Target, Package, Plus, Trash2, Check, Trophy } from 'lucide-react'
+import { Target, Package, Plus, Trash2, Check, Trophy, Volume2 } from 'lucide-react'
 import { Layout } from '@components/Layout/Layout'
 import { GoalPanel } from '@components/Goals/GoalPanel'
+import { previewCelebration } from '@components/Goals/GoalCelebration'
 import { supabase } from '@/lib/supabase'
 import { socket } from '@services/socket'
 import { useAuth } from '@context/AuthContext'
@@ -125,6 +126,7 @@ export const Goals = () => {
             <input inputMode="decimal" style={input} value={target} onChange={e => setTarget(e.target.value)} placeholder="Ex: 50000" onKeyDown={e => e.key === 'Enter' && saveGoal()} />
           </div>
           <button onClick={saveGoal} style={btn(C.org)}><Check size={15} /> Salvar meta</button>
+          <button onClick={previewCelebration} style={{ ...btn('transparent'), border: `1px solid ${C.bd}`, color: C.tx }}><Volume2 size={15} /> Testar comemoração</button>
         </div>
         <p style={{ margin: '10px 0 0', fontSize: 12, color: C.mut }}>
           Conta como venda todo negócio que entra numa etapa de "ganho" do funil no mês (data do fechamento), com o valor do negócio.

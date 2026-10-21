@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useGoalProgress } from '@hooks/useGoalProgress'
-import { playAirHorn } from '@lib/airhorn'
+import { playCelebrationSound } from '@lib/airhorn'
+
+export const previewCelebration = () => window.dispatchEvent(new Event('rf:celebrate-preview'))
 import { brl } from '@lib/metrics'
 
 const COLORS = ['#FF6B35', '#7C3AED', '#10B981', '#F59E0B', '#3B82F6', '#EC4899', '#FDE047']
@@ -54,8 +56,14 @@ export function GoalCelebration() {
       localStorage.setItem(seenKey(goal), new Date().toISOString())
     } catch { /* sem storage: comemora mesmo assim */ }
     setShow(true)
-    playAirHorn()
+    playCelebrationSound()
   }, [reached, goal])
+
+  useEffect(() => {
+    const onPreview = () => { setShow(true); playCelebrationSound() }
+    window.addEventListener('rf:celebrate-preview', onPreview)
+    return () => window.removeEventListener('rf:celebrate-preview', onPreview)
+  }, [])
 
   useEffect(() => {
     if (!show) return
@@ -78,9 +86,11 @@ export function GoalCelebration() {
         <p style={{ margin: '10px 0 0', fontSize: 'clamp(18px, 4vw, 26px)', fontWeight: 800, background: 'linear-gradient(90deg,#FF6B35,#F59E0B,#7C3AED)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
           Vamos para a próxima! 🚀
         </p>
-        <p style={{ margin: '18px 0 0', fontSize: 16, color: '#E5E7EB' }}>
-          {brl(sold)} vendidos de {brl(target)} de meta
-        </p>
+        {target > 0 && (
+          <p style={{ margin: '18px 0 0', fontSize: 16, color: '#E5E7EB' }}>
+            {brl(sold)} vendidos de {brl(target)} de meta
+          </p>
+        )}
         <button onClick={() => setShow(false)}
           style={{ marginTop: 24, padding: '12px 28px', borderRadius: 999, border: 'none', background: '#FF6B35', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer' }}>
           Bora! 💪
