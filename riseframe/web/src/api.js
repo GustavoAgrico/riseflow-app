@@ -509,6 +509,18 @@ export async function preciseCuts(id, body, signal) {
   return data;
 }
 
+/** Transcreve só o trecho [start, end] do vídeo do editor. → { provider, segments } */
+export async function transcribeRange(id, start, end) {
+  const r = await fetch(`${BASE}/jobs/${id}/transcribe-range`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ start, end }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data;
+}
+
 // ─── Fontes próprias (legendas) ───
 export function authFetch(url, init = {}) {
   return fetch(url, { ...init, headers: authHeaders(init.headers || {}) });
