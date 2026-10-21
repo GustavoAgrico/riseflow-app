@@ -3,6 +3,7 @@ const crypto = require('crypto')
 const { supabase, isConfigured } = require('../supabaseClient')
 
 const router = express.Router()
+const feedRouter = express.Router()
 
 const pad = n => String(n).padStart(2, '0')
 const icsDate = (date, time) => {
@@ -14,7 +15,7 @@ const icsDate = (date, time) => {
 const esc = s => (s || '').replace(/[\\;,\n]/g, c => c === '\n' ? '\\n' : `\\${c}`)
 const TYPE_LABELS = { schedule: 'Agendamento', task: 'Tarefa', proposal: 'Proposta', meeting: 'Reunião' }
 
-router.get('/feed/:token.ics', async (req, res) => {
+feedRouter.get('/feed/:token.ics', async (req, res) => {
   if (!isConfigured) return res.status(503).send('Supabase não configurado')
 
   const { token } = req.params
@@ -119,3 +120,4 @@ router.post('/token/regenerate', async (req, res) => {
 })
 
 module.exports = router
+module.exports.feedRouter = feedRouter

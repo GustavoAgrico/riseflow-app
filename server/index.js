@@ -62,6 +62,12 @@ if (IS_PROD && !WEBHOOK_TOKEN) {
   process.exit(1)
 }
 
+// Express 4 não captura rejeições de handlers async; sem isto o Node 22
+// encerra o processo e o Render fica fora até reiniciar.
+process.on('unhandledRejection', (err) => {
+  console.error('[unhandledRejection]', err?.stack || err)
+})
+
 const app = express()
 const server = http.createServer(app)
 
@@ -237,7 +243,7 @@ app.use('/api/telegram/webhook', telegramRoutes.webhookRouter)
 app.use('/api/meta/oauth', metaRoutes.oauthRouter)
 
 // iCal feed público — autenticado por token na URL (assinatura Google Calendar/Apple Calendar).
-app.use('/api/calendar', calendarRoutes)
+app.use('/api/calendar', calendarRoutes.feedRouter)
 
 // Telegram e Meta: injetam Socket.io + a mesma cadeia IA→funis do WhatsApp.
 const incomingHandler = ({ jid, text, pushName, fromMe, userId }) =>

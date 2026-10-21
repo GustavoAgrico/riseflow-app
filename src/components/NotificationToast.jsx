@@ -27,7 +27,7 @@ export const NotificationToast = ({ notifications = [], onDismiss }) => {
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--ink-1)' }}>{n.title}</p>
               {n.message && <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--ink-3)', wordBreak: 'break-word' }}>{n.message}</p>}
-              <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-4)' }}>{hhmm(n.time)}</p>
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-4)' }}>{hhmm(n.time ?? n.created_at)}</p>
             </div>
             <button onClick={() => onDismiss(n.id)} aria-label="Fechar" style={{ background: 'none', border: 'none', color: 'var(--ink-4)', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}>×</button>
           </div>
