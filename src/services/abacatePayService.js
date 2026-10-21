@@ -62,7 +62,7 @@ export const abacatePayService = {
           await supabase.from('usage').upsert(
             { user_id: user.id, plan: planId, messages_limit: plan.limit },
             { onConflict: 'user_id' }
-          ).catch(() => {})
+          )
         }
       }
       // Preserva o history.state do React Router (idx/key) — passar {} corromperia

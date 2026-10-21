@@ -153,7 +153,7 @@ app.use(
 
 // rawBody: necessário para validar a assinatura X-Hub-Signature-256 da Meta
 // (o HMAC é calculado sobre o corpo CRU, antes do parse).
-app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf } }))
+app.use(express.json({ limit: '5mb', verify: (req, res, buf) => { req.rawBody = buf } }))
 
 // Healthcheck (público).
 app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now() }))

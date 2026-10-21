@@ -22,20 +22,20 @@ export function useNotifications() {
 
   const dismiss = useCallback(async (id) => {
     setNotifications(p => p.filter(n => n.id !== id))
-    if (!isDemoMode) await supabase.from('notifications').delete().eq('id', id).catch(() => {})
+    if (!isDemoMode) await supabase.from('notifications').delete().eq('id', id)
   }, [isDemoMode])
 
   const markAllRead = useCallback(async () => {
     setNotifications(p => p.map(n => ({ ...n, read: true })))
     if (!isDemoMode && ownerUserId) {
-      await supabase.from('notifications').update({ read: true }).eq('user_id', ownerUserId).eq('read', false).catch(() => {})
+      await supabase.from('notifications').update({ read: true }).eq('user_id', ownerUserId).eq('read', false)
     }
   }, [isDemoMode, ownerUserId])
 
   const clearAll = useCallback(async () => {
     setNotifications([]); setToasts([])
     if (!isDemoMode && ownerUserId) {
-      await supabase.from('notifications').delete().eq('user_id', ownerUserId).catch(() => {})
+      await supabase.from('notifications').delete().eq('user_id', ownerUserId)
     }
   }, [isDemoMode, ownerUserId])
 
@@ -53,7 +53,7 @@ export function useNotifications() {
     if (!isDemoMode && ownerUserId) {
       const { data } = await supabase.from('notifications').insert({
         user_id: ownerUserId, type, title, message,
-      }).select('id').single().catch(() => ({}))
+      }).select('id').single()
       if (data?.id) setNotifications(prev => prev.map(n => n.id === item.id ? { ...n, id: data.id } : n))
     }
   }, [isDemoMode, ownerUserId])

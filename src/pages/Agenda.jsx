@@ -91,7 +91,8 @@ const MiniClientPicker = ({ clients, value, onChange, onNewClient }) => {
 
 export const Agenda = () => {
   const { ownerUserId, isDemoMode } = useAuth()
-  const { addToast } = useApp()
+  const { addNotification } = useApp()
+  const notify = (title, message) => addNotification('system', title, message)
   const [events, setEvents] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -102,6 +103,7 @@ export const Agenda = () => {
   const [showMeetingForm, setShowMeetingForm] = useState(false)
   const [meetingForm, setMeetingForm] = useState({ title: '', date: '', time: '', duration: '60', client_name: '', client_id: null, location: '', description: '' })
   const [saving, setSaving] = useState(false)
+  const [meetingError, setMeetingError] = useState(null)
   const [calToken, setCalToken] = useState(null)
   const [copied, setCopied] = useState(false)
   const [tokenLoading, setTokenLoading] = useState(false)
@@ -140,10 +142,10 @@ export const Agenda = () => {
     try {
       const { data } = await api.post('/calendar/token/regenerate')
       setCalToken(data.token)
-      addToast?.({ title: 'URL renovada', type: 'system' })
+      notify('URL renovada')
     } catch { /* ignore */ }
     setTokenLoading(false)
-  }, [isDemoMode, addToast])
+  }, [isDemoMode])
 
   const calFeedUrl = calToken ? `${window.location.origin}/api/calendar/feed/${calToken}.ics` : null
 
@@ -157,12 +159,12 @@ export const Agenda = () => {
   const handleTogglePush = useCallback(async () => {
     if (push.subscribed) {
       await push.unsubscribe()
-      addToast?.({ title: 'Notificações desativadas', type: 'system' })
+      notify('Notificações desativadas')
     } else {
       const ok = await push.subscribe()
-      if (ok) addToast?.({ title: 'Notificações ativadas!', message: 'Você receberá lembretes 15min antes dos eventos.', type: 'system' })
+      if (ok) notify('Notificações ativadas!', 'Você receberá lembretes 15min antes dos eventos.')
     }
-  }, [push, addToast])
+  }, [push])
 
   const handleNewClient = useCallback(async (name) => {
     if (isDemoMode) return
@@ -176,6 +178,7 @@ export const Agenda = () => {
   const handleSaveMeeting = async () => {
     if (isDemoMode || !meetingForm.title.trim() || !meetingForm.date) return
     setSaving(true)
+    setMeetingError(null)
     try {
       await api.post('/meetings', {
         title: meetingForm.title.trim(),
@@ -187,12 +190,14 @@ export const Agenda = () => {
         location: meetingForm.location.trim() || null,
         description: meetingForm.description.trim() || null,
       })
+      const [y, m] = meetingForm.date.split('-').map(Number)
+      setYear(y); setMonth(m - 1); setSelectedDay(meetingForm.date)
       setMeetingForm({ title: '', date: '', time: '', duration: '60', client_name: '', client_id: null, location: '', description: '' })
       setShowMeetingForm(false)
       fetchEvents()
-      addToast?.({ title: 'Reunião criada!', message: 'Aparecerá no calendário e no feed iCal / Google Calendar.', type: 'system' })
+      notify('Reunião criada!', 'Aparecerá no calendário e no feed do Google Calendar.')
     } catch (e) {
-      addToast?.({ title: 'Erro ao salvar', message: e?.response?.data?.error ?? e?.message, type: 'error' })
+      setMeetingError(e?.response?.data?.error ?? e?.message ?? 'Erro ao salvar reunião')
     }
     setSaving(false)
   }
@@ -258,8 +263,9 @@ export const Agenda = () => {
             <p className="rf-section-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
               <Video size={16} color="#F59E0B" /> Nova reunião
             </p>
-            <button onClick={() => setShowMeetingForm(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.mut, padding: 4 }}><X size={16} /></button>
+            <button onClick={() => { setShowMeetingForm(false); setMeetingError(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.mut, padding: 4 }}><X size={16} /></button>
           </div>
+          {meetingError && <p style={{ margin: '0 0 12px', padding: '8px 12px', borderRadius: 8, background: '#EF444418', color: '#EF4444', fontSize: 12, fontWeight: 600 }}>{meetingError}</p>}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={{ fontSize: 11, color: C.mut, marginBottom: 4, display: 'block' }}>Título *</label>

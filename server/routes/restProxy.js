@@ -1,142 +1,106 @@
+// Repasse das chamadas supabase.from() do frontend para o PostgREST usando a
+// service key. O PostgREST rejeita os JWTs de usuário ("issued at future"),
+// então o isolamento por tenant é feito AQUI: toda leitura/escrita é presa ao
+// user_id do JWT do proxy (req.user.sub).
 const { Router } = require('express')
 const { supabase, isConfigured } = require('../supabaseClient')
 
+const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env
 const router = Router()
 
-const ALLOWED_TABLES = new Set([
-  'clients', 'conversations', 'messages', 'contacts', 'flows',
-  'schedules', 'crm_tasks', 'proposals', 'meetings', 'campaigns',
-  'team_members', 'team_queues', 'settings', 'niche_config',
-  'usage', 'activity_logs', 'pipeline_stages', 'billing_plans',
-  'billing_subscriptions', 'billing_usage', 'push_subscriptions',
-  'call_logs', 'templates', 'tags', 'flow_executions',
+const USER_TABLES = new Set([
+  'activity_logs', 'attendant_config', 'calls', 'campaigns', 'clients', 'contacts',
+  'conversations', 'crm_tasks', 'flows', 'integrations', 'invoices', 'knowledge_base',
+  'lead_scores', 'meetings', 'messages', 'niche_config', 'notes', 'notifications',
+  'pipeline_stages', 'proposals', 'push_subscriptions', 'schedules', 'settings',
+  'team_members', 'team_queues', 'templates', 'usage', 'user_preferences',
 ])
+// Plano/limite só mudam pelo servidor (webhook de pagamento).
+const PROTECTED_FIELDS = { usage: ['plan', 'messages_limit'] }
 
-const NO_USER_ID_TABLES = new Set([
-  'billing_plans',
-])
+const FORWARD_REQ_HEADERS = ['accept', 'prefer', 'range', 'range-unit', 'accept-profile', 'content-profile']
+const FORWARD_RES_HEADERS = ['content-range', 'content-type', 'preference-applied']
 
-function applyFilters(q, query, userId, skipUserId) {
-  for (const [key, val] of Object.entries(query)) {
-    if (['select', 'order', 'limit', 'offset', 'on_conflict'].includes(key)) continue
-    if (key === 'user_id' && skipUserId) continue
-    const match = val.match(/^(eq|neq|gt|gte|lt|lte|like|ilike|is|in|not|cs|cd)\.(.*)/s)
-    if (match) {
-      const [, op, operand] = match
-      if (op === 'in') {
-        q = q.in(key, operand.replace(/^\(|\)$/g, '').split(','))
-      } else if (op === 'not') {
-        const inner = operand.match(/^(\w+)\.(.*)/s)
-        if (inner) q = q.not(key, inner[1], inner[2] === 'null' ? null : inner[2])
-      } else if (op === 'cs') {
-        q = q.contains(key, JSON.parse(operand))
-      } else if (op === 'cd') {
-        q = q.containedBy(key, JSON.parse(operand))
-      } else {
-        q = q[op](key, operand === 'null' ? null : operand)
-      }
-    } else {
-      q = q.eq(key, val)
-    }
-  }
-  return q
+function sanitizeRow(table, row, userId) {
+  const out = { ...row, user_id: userId }
+  for (const f of PROTECTED_FIELDS[table] || []) delete out[f]
+  return out
 }
 
-function applyOrder(q, orderStr) {
-  if (!orderStr) return q
-  const parts = orderStr.split(',')
-  for (const part of parts) {
-    const [col, ...opts] = part.split('.')
-    q = q.order(col, {
-      ascending: !opts.includes('desc'),
-      nullsFirst: opts.includes('nullsfirst'),
-    })
-  }
-  return q
+async function campaignIdsOf(userId) {
+  const { data } = await supabase.from('campaigns').select('id').eq('user_id', userId)
+  return (data || []).map(c => c.id)
 }
 
 router.all('/:table', async (req, res) => {
-  if (!isConfigured) return res.status(503).json({ error: 'Supabase não configurado' })
-
+  if (!isConfigured) return res.status(503).json({ message: 'Supabase não configurado' })
   const { table } = req.params
-  if (!ALLOWED_TABLES.has(table)) {
-    return res.status(403).json({ error: `Tabela '${table}' não permitida` })
+  const userId = req.user?.sub
+  if (!userId) return res.status(401).json({ message: 'Não autenticado' })
+
+  const method = req.method.toUpperCase()
+  const isRead = method === 'GET' || method === 'HEAD'
+  const params = new URLSearchParams(req.originalUrl.split('?')[1] || '')
+
+  let body = ['POST', 'PATCH', 'PUT'].includes(method) ? req.body : undefined
+  const headers = {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+  }
+  for (const h of FORWARD_REQ_HEADERS) if (req.headers[h]) headers[h] = req.headers[h]
+  if (body !== undefined) headers['content-type'] = 'application/json'
+
+  if (USER_TABLES.has(table)) {
+    // O cliente às vezes filtra por user.id (membro) e às vezes por ownerUserId;
+    // o escopo real é sempre o sub do JWT. Outros operadores (ex.: neq) ficam.
+    for (const v of params.getAll('user_id')) if (v.startsWith('eq.')) params.delete('user_id', v)
+    if (method !== 'POST' && method !== 'PUT') params.append('user_id', `eq.${userId}`)
+    if (body !== undefined) {
+      const clean = r => sanitizeRow(table, r, userId)
+      body = Array.isArray(body) ? body.map(clean) : clean(body)
+      if (method === 'PATCH') delete body.user_id
+    }
+    // Upsert cujo conflito não é por user_id poderia sobrescrever linha de outro tenant.
+    const prefer = headers.prefer || ''
+    const onConflict = params.get('on_conflict') || ''
+    if (method === 'POST' && prefer.includes('resolution=merge-duplicates') && !onConflict.split(',').includes('user_id')) {
+      headers.prefer = prefer.replace('resolution=merge-duplicates', 'resolution=ignore-duplicates')
+    }
+  } else if (table === 'profiles') {
+    if (!isRead && method !== 'PATCH') return res.status(403).json({ message: 'Operação não permitida' })
+    params.delete('id')
+    params.append('id', `eq.${userId}`)
+    if (body) { body = { ...body }; delete body.id; delete body.plan }
+  } else if (table === 'campaign_messages') {
+    const ids = await campaignIdsOf(userId)
+    if (method === 'POST') {
+      const rows = Array.isArray(body) ? body : [body]
+      if (rows.some(r => !ids.includes(r.campaign_id))) return res.status(403).json({ message: 'Campanha não pertence ao usuário' })
+    } else {
+      params.append('campaign_id', `in.(${ids.length ? ids.join(',') : '00000000-0000-0000-0000-000000000000'})`)
+    }
+  } else {
+    return res.status(403).json({ message: `Tabela '${table}' não permitida` })
   }
 
-  const userId = req.user?.sub
-  if (!userId) return res.status(401).json({ error: 'Não autenticado' })
-
-  const hasUserIdCol = !NO_USER_ID_TABLES.has(table)
-
   try {
-    const method = req.method.toUpperCase()
-    const query = req.query
-    const select = query.select || '*'
-    const prefer = req.headers['prefer'] || ''
-    const isCount = prefer.includes('count=exact')
-
-    if (method === 'GET' || method === 'HEAD') {
-      let q = supabase.from(table).select(select, isCount ? { count: 'exact', head: method === 'HEAD' } : undefined)
-      if (hasUserIdCol) q = q.eq('user_id', userId)
-      q = applyFilters(q, query, userId, true)
-      q = applyOrder(q, query.order)
-      if (query.limit) q = q.limit(Number(query.limit))
-      if (query.offset) q = q.range(Number(query.offset), Number(query.offset) + (Number(query.limit) || 1000) - 1)
-
-      const { data, error, count } = await q
-      if (error) throw error
-      if (isCount && method === 'HEAD') {
-        res.set('content-range', `0-0/${count ?? 0}`)
-        return res.status(206).end()
-      }
-      if (isCount) res.set('content-range', `0-${(data?.length || 1) - 1}/${count ?? 0}`)
-      res.json(data ?? [])
-
-    } else if (method === 'POST') {
-      const body = Array.isArray(req.body)
-        ? req.body.map(r => ({ ...r, ...(hasUserIdCol ? { user_id: userId } : {}) }))
-        : { ...req.body, ...(hasUserIdCol ? { user_id: userId } : {}) }
-
-      let q
-      if (prefer.includes('resolution=merge-duplicates')) {
-        q = supabase.from(table).upsert(body, { onConflict: query.on_conflict || undefined })
-      } else {
-        q = supabase.from(table).insert(body)
-      }
-      if (prefer.includes('return=representation')) q = q.select()
-      if (prefer.includes('count=exact')) q = q.select('*', { count: 'exact' })
-
-      const { data, error } = await q
-      if (error) throw error
-      res.status(201).json(data ?? { ok: true })
-
-    } else if (method === 'PATCH') {
-      const body = { ...req.body }
-      delete body.user_id
-      let q = supabase.from(table).update(body)
-      if (hasUserIdCol) q = q.eq('user_id', userId)
-      q = applyFilters(q, query, userId, true)
-      if (prefer.includes('return=representation')) q = q.select()
-
-      const { data, error } = await q
-      if (error) throw error
-      res.json(data ?? { ok: true })
-
-    } else if (method === 'DELETE') {
-      let q = supabase.from(table).delete()
-      if (hasUserIdCol) q = q.eq('user_id', userId)
-      q = applyFilters(q, query, userId, true)
-
-      const { error } = await q
-      if (error) throw error
-      res.json({ ok: true })
-
-    } else {
-      res.status(405).json({ error: 'Método não suportado' })
+    const qs = params.toString()
+    const upstream = await fetch(`${SUPABASE_URL}/rest/v1/${encodeURIComponent(table)}${qs ? `?${qs}` : ''}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    })
+    res.status(upstream.status)
+    for (const h of FORWARD_RES_HEADERS) {
+      const v = upstream.headers.get(h)
+      if (v) res.set(h, v)
     }
+    const text = await upstream.text()
+    if (upstream.status >= 400) console.warn(`[rest-proxy] ${method} ${table} → ${upstream.status}: ${text.slice(0, 200)}`)
+    res.send(text)
   } catch (e) {
-    console.error(`[rest-proxy] ${req.method} /${table}:`, e.message)
-    res.status(e.code === '42P01' ? 404 : 500).json({ error: e.message })
+    console.error(`[rest-proxy] ${method} ${table}:`, e.message)
+    res.status(502).json({ message: e.message })
   }
 })
 
