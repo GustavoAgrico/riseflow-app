@@ -13,7 +13,7 @@ import Library from './pages/Library.jsx';
 import Settings from './pages/Settings.jsx';
 import Plans from './pages/Plans.jsx';
 import Rendering from './pages/Rendering.jsx';
-import { useRenderingCount } from './components/RenderQueue.jsx';
+import { useRenderWatch } from './components/RenderQueue.jsx';
 import { getHealth } from './api.js';
 import SupportContact from './components/SupportContact.jsx';
 import { APP_VERSION } from './version.js';
@@ -218,8 +218,28 @@ function MobileTabBar({ view, onView }) {
 }
 
 /** Área logada: acompanha a fila da conta (contador da aba "Renderizando"). */
-function LoggedShell({ children }) {
-  return children(useRenderingCount(5000));
+function LoggedShell({ children, onLibrary }) {
+  const { count, notices, dismiss } = useRenderWatch(5000);
+  return (
+    <>
+      {children(count)}
+      {notices.length > 0 && (
+        <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1000, display: 'grid', gap: 8, maxWidth: 'min(380px, calc(100vw - 32px))' }}>
+          {notices.map((n) => (
+            <div key={n.id} role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 14, background: '#1B1B24', border: `1px solid ${n.ok ? 'rgba(46,212,122,0.55)' : 'rgba(240,82,107,0.6)'}`, boxShadow: '0 18px 40px -14px rgba(0,0,0,0.9)', color: C.text, fontSize: 13 }}>
+              <Icon name={n.ok ? 'check' : 'close'} size={17} strokeWidth={2.4} color={n.ok ? C.green : C.red} />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <b style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title}</b>
+                <span style={{ color: C.muted, fontSize: 12 }}>{n.ok ? 'Ficou pronto!' : `Não deu certo${n.error ? `: ${n.error}` : ''}`}</span>
+              </span>
+              {n.ok && <button onClick={() => { dismiss(n.id); onLibrary?.(); }} style={{ height: 30, padding: '0 12px', borderRadius: 999, border: 'none', background: GRAD, color: '#fff', fontWeight: 800, fontSize: 12, fontFamily: 'inherit', cursor: 'pointer' }}>Ver</button>}
+              <button onClick={() => dismiss(n.id)} aria-label="Fechar" style={{ background: 'none', border: 'none', color: C.faint, fontSize: 18, cursor: 'pointer' }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
 
 // 'v165' (numeração antiga = 0.165) ou 'v1.0' / 'v1.2.3' (a partir da 1.0) → número comparável
@@ -433,7 +453,7 @@ export default function Root() {
     return <AppPaywall user={user} onRefresh={refreshBilling} onLogout={logout} />;
   }
 
-  return <LoggedShell>{(renderingCount) => (
+  return <LoggedShell onLibrary={() => go('library')}>{(renderingCount) => (
     <div className="rf-root" style={{ minHeight: '100vh', display: 'flex' }}>
       <Sidebar user={user} billing={billing} view={view} onView={go} onLogout={logout} renderingCount={renderingCount} />
       <div className="rf-main" style={{ flex: 1, minWidth: 0 }}>

@@ -64,7 +64,9 @@ const corsOrigin = config.corsOrigin.includes('*') ? true : config.corsOrigin;
 app.use(cors({ origin: corsOrigin }));
 // Projetos do editor: corpo JSON maior (transcrição longa) — antes do limite geral.
 app.use('/api', (req, res, next) => (req.method === 'PUT' && req.path.startsWith('/projects/') ? projectsRouter(req, res, next) : next()));
-app.use(express.json({ limit: '1mb' }));
+// 25 MB: a edição de um vídeo longo (YouTube de 1 h+) manda a transcrição inteira com os
+// cortes — com 1 MB os vídeos maiores davam erro ao gerar/remontar.
+app.use(express.json({ limit: '25mb' }));
 
 app.get('/api/health', async (_req, res) => {
   res.json({

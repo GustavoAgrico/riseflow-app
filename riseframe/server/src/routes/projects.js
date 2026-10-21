@@ -12,7 +12,7 @@ import { listTemplates, saveTemplate, setDefaultTemplate, deleteTemplate } from 
  */
 export const projectsRouter = Router();
 // projeto com transcrição longa passa de 1 MB (limite geral do JSON)
-const bigJson = express.json({ limit: '5mb' });
+const bigJson = express.json({ limit: '25mb' });
 
 // ── Meus modelos (estilo de legenda, mídias, textos, cor…) ──
 projectsRouter.get('/templates', requireAuth, (req, res) => {

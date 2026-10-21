@@ -4337,8 +4337,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       }
       return { ...o, words };
     });
-    // o servidor aceita até ~1 MB: transcrição enorme vai sem as palavras (ele transcreve)
-    return JSON.stringify(res).length < 800_000 ? res : out;
+    // o servidor aceita até 25 MB: transcrição enorme vai sem as palavras (ele transcreve)
+    return JSON.stringify(res).length < 20_000_000 ? res : out;
   }
   // pergunta com botões (no lugar do confirm do navegador, que só tem OK/Cancelar)
   const [choice, setChoice] = useState(null);
