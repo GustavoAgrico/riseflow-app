@@ -3529,6 +3529,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const t = e.target;
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       const k = keysRef.current;
+      // F1 mostra/oculta os atalhos (no app de PC quem cuida é o menu Atalhos)
+      if (e.key === 'F1') { e.preventDefault(); if (!window.electron) k.toggleKeys(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) k.redo(); else k.undo(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); k.redo(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); k.splitSelected(); return; }
@@ -5485,9 +5487,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <button data-tour="export" onClick={openExport} disabled={busy || allGone} className="rf-tl-navbtn rf-tl-navbtn--go" style={{ background: busy || allGone ? 'rgba(255,255,255,0.08)' : GRAD, cursor: busy || allGone ? 'not-allowed' : 'pointer' }}>
               <Icon name="upload" size={13} strokeWidth={2.2} /> Exportar
             </button>
-            <button onClick={() => setShowKeys((v) => !v)} title="Atalhos do teclado" className="rf-tl-navbtn" style={showKeys ? { borderColor: '#2D8CFF', color: '#7DB6FF' } : undefined}>
-              ⌨ Atalhos
-            </button>
           </div>
         </nav>
 
@@ -6687,7 +6686,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {showKeys && !isMobile && (
             <div className="rf-keys" onClick={(e) => e.stopPropagation()}>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
-                <b style={{ fontSize: 12 }}>Atalhos</b>
+                <b style={{ fontSize: 12 }}>Atalhos</b><span style={{ fontSize: 11, color: C.faint, marginLeft: 6 }}>F1 mostra/oculta</span>
                 <button onClick={() => setShowKeys(false)} className="rf-tbtn" style={{ marginLeft: 'auto', width: 22, height: 22 }} aria-label="Fechar">×</button>
               </div>
               {[
