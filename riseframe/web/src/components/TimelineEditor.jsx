@@ -1360,7 +1360,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function startMarquee(e) {
     if (e.button !== 0 || isMobile || !contentRef.current) return;
     const r = contentRef.current.getBoundingClientRect();
-    selRangeDragRef.current = { marq: true, rect: r, x0: e.clientX, y0: e.clientY, moved: false };
+    // começando no espaço livre embaixo das faixas, a caixa parte da última faixa
+    selRangeDragRef.current = { marq: true, rect: r, x0: e.clientX, y0: Math.min(e.clientY, r.bottom), moved: false };
   }
   function startRangeSel(e, edge = null) {
     if (e.button !== 0 || isMobile) return;
@@ -3527,7 +3528,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     function onKey(e) {
       if (keysRef.current.hidden) return; // escondido durante o render
       const t = e.target;
-      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      // só campos de DIGITAR seguram as teclas (caixinha, controle deslizante e botão não)
+      if (t && (t.isContentEditable || /^(TEXTAREA|SELECT)$/.test(t.tagName) || (t.tagName === 'INPUT' && !/^(checkbox|radio|range|button|submit|color|file)$/i.test(t.type || '')))) return;
       const k = keysRef.current;
       // F1 mostra/oculta os atalhos (no app de PC quem cuida é o menu Atalhos)
       if (e.key === 'F1') { e.preventDefault(); if (!window.electron) k.toggleKeys(); return; }
@@ -6758,7 +6760,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('audio', e)} onResetSize={() => resetLane('audio')} h={LANE.audio} gap={4} code="A1" active nome={avLinked ? 'Áudio' : 'Áudio · solto'} onMenu={(e) => openTrackMenu(e, 'audio')} muted={audioMute} onMute={() => setAudioMute((v) => !v)} locked={laneLock.aud} onLock={() => togLock('aud')} />
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('pausas', e)} onResetSize={() => resetLane('pausas')} h={LANE.pausas} gap={4} code="P" nome="Pausas" locked={laneLock.pau} onLock={() => togLock('pau')} />
           </div>
-          <div ref={trackRef} onClick={onTrackClick} onScroll={onTrackScroll} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
+          <div ref={trackRef} onClick={onTrackClick} onScroll={onTrackScroll}
+            onMouseDownCapture={() => { const a = document.activeElement; if (a && a !== document.body && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(a.tagName)) a.blur(); }}
+            onMouseDown={(e) => { if (e.target === e.currentTarget) startMarquee(e); }} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
             <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setDropT(null); setLibDrop(null); } }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
@@ -6782,7 +6786,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 {/* como o Premiere: régua clara entre a entrada e a saída, faixas levemente destacadas */}
                 <div style={{ position: 'absolute', left: X(range.a), width: Math.max(2, W(range.a, range.b)), top: 0, height: LANE.ruler, zIndex: 4, pointerEvents: 'none', background: 'rgba(255,255,255,0.26)' }} />
                 <div style={{ position: 'absolute', left: X(range.a), width: Math.max(2, W(range.a, range.b)), top: LANE.ruler, bottom: 0, zIndex: 19, pointerEvents: 'none',
-                  background: 'rgba(255,255,255,0.07)', borderLeft: '1px solid rgba(255,255,255,0.45)', borderRight: '1px solid rgba(255,255,255,0.45)' }} />
+                  background: 'rgba(45,140,255,0.16)', boxShadow: 'inset 0 0 0 1px rgba(125,182,255,0.75)' }} />
                 {['a', 'b'].map((edge) => (
                   <div key={edge} onMouseDown={(e) => startRangeSel(e, edge)} title={edge === 'a' ? 'Arraste a entrada do trecho (I no playhead)' : 'Arraste a saída do trecho (O no playhead)'}
                     style={{ position: 'absolute', left: X(range[edge]) - (edge === 'a' ? 1 : 6), top: 0, width: 7, height: LANE.ruler, zIndex: 20, cursor: 'ew-resize',
