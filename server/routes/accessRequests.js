@@ -66,7 +66,7 @@ async function notifyAdmin(req, row) {
     const userId = await resolveAdminUserId()
     if (!userId) throw new Error(`conta admin ${ADMIN_EMAIL} não encontrada`)
     const text = `🔔 *Nova solicitação de acesso — RiseFlow*\n\n${lines.join('\n')}\n\n✅ Aprovar: ${links.approve}\n\n❌ Recusar: ${links.deny}`
-    await baileys.post('/send/text', { userId, number: ADMIN_WHATSAPP, text })
+    await baileys.post('/send/text', { userId, number: ADMIN_WHATSAPP, text }, { timeout: 15_000 })
   })()
 
   // Sino do app: chega mesmo se e-mail e WhatsApp estiverem fora do ar.
@@ -120,8 +120,9 @@ router.post('/', async (req, res) => {
     }).select().single()
     if (error) throw error
 
-    const notified = await notifyAdmin(req, row)
-    res.json({ status: 'pending', id: row.id, notified })
+    // Responde já: WhatsApp/e-mail podem demorar (ou estar fora) e não devem travar o cliente.
+    res.json({ status: 'pending', id: row.id })
+    notifyAdmin(req, row).catch(e => console.warn('[access] falha ao notificar admin:', e.message))
   } catch (e) {
     console.error('[access] erro ao criar solicitação:', e.message)
     res.status(500).json({ error: 'Não foi possível enviar a solicitação. Tente novamente.' })

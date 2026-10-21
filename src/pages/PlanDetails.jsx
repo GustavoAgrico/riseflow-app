@@ -5,7 +5,7 @@ import { useAuth } from '@context/AuthContext'
 import { usePlan } from '@hooks/usePlan'
 import { api } from '@services/api'
 
-const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-3)', pur:'#7C3AED', grn:'#059669', red:'#EF4444' }
+const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-3)', acc:'#FF6B35', grad:'linear-gradient(135deg,#FF6B35,#E55100)', grn:'#059669', red:'#EF4444' }
 
 const CATALOG = {
   free: { name:'Grátis', price:'R$0', period:'', tagline:'Para experimentar o RiseFlow sem compromisso.',
@@ -78,7 +78,10 @@ export const PlanDetails = () => {
       if (data?.status === 'approved') { window.location.href = '/dashboard'; return }
       setRequest({ status: 'pending', plan_id: planId })
     } catch (e) {
-      setApiErr(e.response?.data?.error || 'Não foi possível enviar a solicitação. Tente novamente.')
+      // A resposta pode ter se perdido (timeout/deploy) com o pedido já gravado.
+      const { data: mine } = await api.get('/access-requests/mine').catch(() => ({}))
+      if (mine?.status === 'pending' && mine.plan_id === planId) setRequest(mine)
+      else setApiErr(e.response?.data?.error || 'Não foi possível enviar a solicitação. Tente novamente.')
     } finally {
       setLoading(false)
     }
@@ -88,16 +91,16 @@ export const PlanDetails = () => {
     <div style={{ minHeight:'100vh', background:C.bg, color:C.tx, fontFamily:'DM Sans,sans-serif' }}>
       <div style={{ display:'flex', alignItems:'center', gap:14, padding:'16px 24px', borderBottom:`1px solid ${C.bd}`, background:C.card }}>
         <button onClick={() => navigate('/plans')} style={{ background:'none', border:`1px solid ${C.bd}`, borderRadius:8, padding:'8px 12px', color:C.tx, cursor:'pointer', fontFamily:'inherit', fontSize:13 }}>← Voltar aos planos</button>
-        <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}><Gem size={18} color={C.pur} /> Plano {p.name}</span>
+        <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}><Gem size={18} color={C.acc} /> Plano {p.name}</span>
       </div>
 
       <div style={{ maxWidth:560, margin:'0 auto', padding:'32px 24px' }}>
-        <div style={{ background:C.card, borderRadius:16, padding:28, border:`1px solid ${p.hot ? C.pur : C.bd}`, position:'relative' }}>
-          {p.hot && <span style={{ position:'absolute', top:-11, right:24, background:C.pur, fontSize:10, fontWeight:700, padding:'4px 12px', borderRadius:6 }}>MAIS POPULAR</span>}
+        <div style={{ background:C.card, borderRadius:16, padding:28, border:`1px solid ${p.hot ? C.acc : C.bd}`, position:'relative' }}>
+          {p.hot && <span style={{ position:'absolute', top:-11, right:24, background:'linear-gradient(135deg,#FF6B35,#7C3AED)', fontSize:10, fontWeight:700, padding:'4px 12px', borderRadius:6 }}>MAIS POPULAR</span>}
 
           <h1 style={{ margin:0, fontSize:28, fontWeight:800 }}>{p.name}</h1>
           <p style={{ margin:'8px 0 0', fontSize:14, color:C.mut }}>{p.tagline}</p>
-          <div style={{ fontSize:36, fontWeight:800, margin:'20px 0', color:C.pur }}>
+          <div style={{ fontSize:36, fontWeight:800, margin:'20px 0', color:C.acc }}>
             {p.price}<span style={{ fontSize:15, color:C.mut, fontWeight:500 }}>{p.period}</span>
           </div>
 
@@ -110,7 +113,7 @@ export const PlanDetails = () => {
             ))}
           </ul>
 
-          <div style={{ background:C.pur+'18', border:`1px solid ${C.pur}55`, borderRadius:10, padding:'12px 14px', marginBottom:24 }}>
+          <div style={{ background:C.acc+'18', border:`1px solid ${C.acc}55`, borderRadius:10, padding:'12px 14px', marginBottom:24 }}>
             <p style={{ margin:0, fontSize:13, color:C.tx }}><strong>Ideal para:</strong> {p.ideal}</p>
           </div>
 
@@ -165,7 +168,7 @@ export const PlanDetails = () => {
                   <button
                     onClick={handleRequest}
                     disabled={loading}
-                    style={{ width:'100%', background:loading ? C.bd : C.pur, border:'none', borderRadius:10, padding:'14px', color:'#fff', fontWeight:700, fontSize:15, cursor: loading ? 'default' : 'pointer', fontFamily:'DM Sans,sans-serif', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:8, transition:'background .15s' }}
+                    style={{ width:'100%', background:loading ? C.bd : C.grad, boxShadow: loading ? 'none' : '0 8px 20px -8px rgba(255,107,53,0.6)', border:'none', borderRadius:10, padding:'14px', color:'#fff', fontWeight:700, fontSize:15, cursor: loading ? 'default' : 'pointer', fontFamily:'DM Sans,sans-serif', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:8, transition:'background .15s' }}
                   >
                     {loading
                       ? <><Loader2 size={16} style={{ animation:'spin 1s linear infinite' }} /> Enviando solicitação…</>

@@ -156,8 +156,8 @@ function playSynth() {
   } catch { /* sem Web Audio: segue só com a animação */ }
 }
 
-// Se existir public/sounds/meta-batida.mp3, toca o arquivo; senão, o som sintetizado.
-const SOUND_FILE = '/sounds/meta-batida.mp3'
+// Toca public/sounds/meta-batida.m4a; se o arquivo faltar ou falhar, o som sintetizado.
+const SOUND_FILE = '/sounds/meta-batida.m4a'
 
 export function playCelebrationSound() {
   const audio = new Audio(SOUND_FILE)

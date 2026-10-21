@@ -6,7 +6,7 @@ import { usageService } from '@services/usageService'
 import { checkoutService } from '@services/checkoutService'
 import { logger } from '@services/activityLogger'
 
-const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-3)', pur:'#7C3AED', grn:'#059669', red:'#EF4444' }
+const C = { bg:'var(--bg)', card:'var(--card)', bd:'var(--border)', tx:'var(--ink-1)', mut:'var(--ink-3)', acc:'#FF6B35', grad:'linear-gradient(135deg,#FF6B35,#E55100)', grn:'#059669', red:'#EF4444' }
 
 const CATALOG = [
   {
@@ -33,7 +33,7 @@ const CATALOG = [
 ]
 
 const S = {
-  btn:(bg=C.pur)=>({ background:bg,border:'none',borderRadius:8,padding:'10px 16px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit',width:'100%' }),
+  btn:(bg=C.grad)=>({ background:bg, boxShadow: bg===C.grad ? '0 8px 20px -8px rgba(255,107,53,0.6)' : undefined,border:'none',borderRadius:8,padding:'10px 16px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',fontFamily:'inherit',width:'100%' }),
   ghost:{ background:'none',border:`1px solid ${C.bd}`,borderRadius:8,padding:'8px 12px',color:C.tx,cursor:'pointer',fontFamily:'inherit',fontSize:13,textDecoration:'none' },
 }
 
@@ -85,8 +85,8 @@ export const Plans = () => {
     <div style={{ minHeight:'100vh', background:C.bg, color:C.tx, fontFamily:'DM Sans,sans-serif' }}>
       <div style={{ display:'flex', alignItems:'center', flexWrap:'wrap', gap:12, padding:'12px 24px', borderBottom:`1px solid ${C.bd}`, background:C.card }}>
         <button onClick={goBack} style={S.ghost}>← Voltar</button>
-        <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}><Gem size={18} color={C.pur} /> Planos</span>
-        {usage && <span style={{ background:C.pur+'22', color:C.pur, borderRadius:6, padding:'3px 10px', fontSize:11, fontWeight:700 }}>Plano atual: {current}</span>}
+        <span style={{ fontSize:18, fontWeight:800, display:'inline-flex', alignItems:'center', gap:8 }}><Gem size={18} color={C.acc} /> Planos</span>
+        {usage && <span style={{ background:C.acc+'22', color:C.acc, borderRadius:6, padding:'3px 10px', fontSize:11, fontWeight:700 }}>Plano atual: {current}</span>}
         {current !== 'free' && <button onClick={cancelPlan} style={{ ...S.ghost, marginLeft:'auto', cursor:'pointer', color:'#EF4444', borderColor:'#EF444455' }}>Cancelar assinatura</button>}
       </div>
 
@@ -94,11 +94,11 @@ export const Plans = () => {
         {CATALOG.map(p => {
           const isCurrent = p.id === current
           return (
-            <div key={p.id} style={{ background:C.card, borderRadius:14, padding:20, border:`1px solid ${isCurrent?C.grn:p.hot?C.pur:C.bd}`, position:'relative', boxShadow:isCurrent?`0 0 0 1px ${C.grn}33`:undefined }}>
+            <div key={p.id} style={{ background:C.card, borderRadius:14, padding:20, border:`1px solid ${isCurrent?C.grn:p.hot?C.acc:C.bd}`, position:'relative', boxShadow:isCurrent?`0 0 0 1px ${C.grn}33`:undefined }}>
               {isCurrent && <span style={{ position:'absolute', top:-10, right:16, background:C.grn, fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:6 }}>ATIVO</span>}
-              {!isCurrent && p.hot && <span style={{ position:'absolute', top:-10, right:16, background:C.pur, fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:6 }}>POPULAR</span>}
+              {!isCurrent && p.hot && <span style={{ position:'absolute', top:-10, right:16, background:'linear-gradient(135deg,#FF6B35,#7C3AED)', fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:6 }}>POPULAR</span>}
               <div style={{ fontWeight:800, fontSize:16 }}>{p.name}</div>
-              <div style={{ fontSize:24, fontWeight:800, margin:'6px 0 14px', color:C.pur }}>{p.price}{p.id!=='free' && <span style={{ fontSize:12, color:C.mut, fontWeight:500 }}>/mês</span>}</div>
+              <div style={{ fontSize:24, fontWeight:800, margin:'6px 0 14px', color:C.acc }}>{p.price}{p.id!=='free' && <span style={{ fontSize:12, color:C.mut, fontWeight:500 }}>/mês</span>}</div>
               <ul style={{ listStyle:'none', padding:0, margin:'0 0 12px', display:'flex', flexDirection:'column', gap:8 }}>
                 {p.feats.map(f => <li key={f} style={{ fontSize:13, color:C.mut, display:'flex', alignItems:'center', gap:6 }}><Check size={13} color={C.grn} /> {f}</li>)}
               </ul>
