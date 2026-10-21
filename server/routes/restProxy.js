@@ -4,6 +4,7 @@
 // user_id do JWT do proxy (req.user.sub).
 const { Router } = require('express')
 const { supabase, isConfigured } = require('../supabaseClient')
+const { emitSalesUpdate } = require('../realtime')
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env
 const router = Router()
@@ -12,7 +13,7 @@ const USER_TABLES = new Set([
   'activity_logs', 'attendant_config', 'calls', 'campaigns', 'clients', 'contacts',
   'conversations', 'crm_tasks', 'flows', 'integrations', 'invoices', 'knowledge_base',
   'lead_scores', 'meetings', 'messages', 'niche_config', 'notes', 'notifications',
-  'pipeline_stages', 'proposals', 'push_subscriptions', 'schedules', 'settings',
+  'pipeline_stages', 'products', 'proposals', 'push_subscriptions', 'sales_goals', 'schedules', 'settings',
   'team_members', 'team_queues', 'templates', 'usage', 'user_preferences',
 ])
 // Plano/limite só mudam pelo servidor (webhook de pagamento).
@@ -97,6 +98,7 @@ router.all('/:table', async (req, res) => {
     }
     const text = await upstream.text()
     if (upstream.status >= 400) console.warn(`[rest-proxy] ${method} ${table} → ${upstream.status}: ${text.slice(0, 200)}`)
+    else if (!isRead) emitSalesUpdate(userId, table)
     res.send(text)
   } catch (e) {
     console.error(`[rest-proxy] ${method} ${table}:`, e.message)

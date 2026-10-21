@@ -31,6 +31,8 @@ import { FlowBuilder } from '@pages/FlowBuilder'
 import Flows from '@pages/Flows'
 import { Templates } from '@pages/Templates'
 import { Plans } from '@pages/Plans'
+import { Goals } from '@pages/Goals'
+import { GoalCelebration } from '@components/Goals/GoalCelebration'
 import { Product } from '@pages/Product'
 import { PlanDetails } from '@pages/PlanDetails'
 import { ActivityLogs } from '@pages/ActivityLogs'
@@ -119,6 +121,7 @@ function App() {
       <AuthProvider>
         <AppProvider>
           <GlobalToasts />
+          <GoalCelebration />
           <InstallPrompt />
           <BrowserRouter>
             <PageTransition />
@@ -166,6 +169,7 @@ function App() {
               <Route path="/templates" element={<PrivateRoute><Templates /></PrivateRoute>} />
               <Route path="/produto" element={<PrivateRoute><Product /></PrivateRoute>} />
               <Route path="/plans" element={<PrivateRoute><Plans /></PrivateRoute>} />
+              <Route path="/goals" element={<PrivateRoute><Goals /></PrivateRoute>} />
               <Route path="/plans/:planId" element={<PrivateRoute><PlanDetails /></PrivateRoute>} />
 
               <Route path="*" element={<Navigate to="/dashboard" replace />} />

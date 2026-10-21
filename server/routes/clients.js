@@ -1,10 +1,13 @@
 const { Router } = require('express')
 const { supabase, isConfigured } = require('../supabaseClient')
+const { emitSalesUpdate } = require('../realtime')
 
 const router = Router()
 
+// Membros de equipe já recebem sub = dono da conta no JWT; o "owner" enviado
+// pelo frontend é ignorado (aceitá-lo permitiria acessar outra conta).
 function resolveOwner(req) {
-  return req.query.owner || req.body?.owner || req.user?.sub
+  return req.user?.sub
 }
 
 const guard = (req, res, next) => {
@@ -36,6 +39,7 @@ router.get('/tasks', guard, async (req, res) => {
     const { data, error } = await supabase
       .from('crm_tasks')
       .select('*')
+      .eq('user_id', req.user.sub)
       .eq('client_id', client_id)
       .order('done', { ascending: true })
       .order('due_date', { ascending: true, nullsFirst: false })
@@ -65,11 +69,12 @@ router.post('/tasks', guard, async (req, res) => {
 
 router.patch('/tasks/:id', guard, async (req, res) => {
   try {
-    const { owner, ...fields } = req.body
+    const { owner, user_id, ...fields } = req.body
     const { data, error } = await supabase
       .from('crm_tasks')
       .update(fields)
       .eq('id', req.params.id)
+      .eq('user_id', req.user.sub)
       .select()
       .single()
     if (error) throw error
@@ -85,6 +90,7 @@ router.delete('/tasks/:id', guard, async (req, res) => {
       .from('crm_tasks')
       .delete()
       .eq('id', req.params.id)
+      .eq('user_id', req.user.sub)
     if (error) throw error
     res.json({ ok: true })
   } catch (e) {
@@ -123,10 +129,10 @@ router.get('/next-task', guard, async (req, res) => {
   try {
     const { client_id } = req.query
     if (!client_id) return res.json(null)
-    const today = new Date().toISOString().slice(0, 10)
     const { data } = await supabase
       .from('crm_tasks')
       .select('id, title, due_date')
+      .eq('user_id', req.user.sub)
       .eq('client_id', client_id)
       .eq('done', false)
       .not('due_date', 'is', null)
@@ -161,10 +167,11 @@ router.post('/', guard, async (req, res) => {
     const { owner, ...fields } = req.body
     const { data, error } = await supabase
       .from('clients')
-      .insert({ user_id: userId, status: 'active', ...fields })
+      .insert({ status: 'active', ...fields, user_id: userId })
       .select()
       .single()
     if (error) throw error
+    emitSalesUpdate(userId, 'clients')
     res.json(data)
   } catch (e) {
     res.status(500).json({ error: e.message })
@@ -174,7 +181,7 @@ router.post('/', guard, async (req, res) => {
 router.patch('/:id', guard, async (req, res) => {
   try {
     const userId = resolveOwner(req)
-    const { owner, ...fields } = req.body
+    const { owner, user_id, ...fields } = req.body
     const { data, error } = await supabase
       .from('clients')
       .update(fields)
@@ -183,6 +190,7 @@ router.patch('/:id', guard, async (req, res) => {
       .select()
       .single()
     if (error) throw error
+    emitSalesUpdate(userId, 'clients')
     res.json(data)
   } catch (e) {
     res.status(500).json({ error: e.message })
@@ -198,6 +206,7 @@ router.delete('/:id', guard, async (req, res) => {
       .eq('id', req.params.id)
       .eq('user_id', userId)
     if (error) throw error
+    emitSalesUpdate(userId, 'clients')
     res.json({ ok: true })
   } catch (e) {
     res.status(500).json({ error: e.message })

@@ -21,6 +21,7 @@ import { DEMO_DEALS } from '@constants/demoDeals'
 import { useOnboarding } from '@hooks/useOnboarding'
 import { OnboardingWizard } from '@components/OnboardingWizard'
 import { LiveConversations } from '@components/Dashboard/LiveConversations'
+import { GoalPanel } from '@components/Goals/GoalPanel'
 import { useApp } from '@context/AppContext'
 import { useAuth } from '@context/AuthContext'
 import clsx from 'clsx'
@@ -376,6 +377,9 @@ export const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* ── Meta de vendas do mês (ao vivo) ── */}
+      <div style={{ marginBottom: 24 }}><GoalPanel /></div>
 
       {/* ── Hero premium ── */}
       <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 20, marginBottom: 24,

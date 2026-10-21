@@ -104,6 +104,7 @@ const io = new Server(server, {
   cors: { origin: allowedOrigins, credentials: true },
 })
 setFlowEngineIo(io)
+require('./realtime').setIo(io)
 io.on('connection', (socket) => {
   console.log(`[socket] cliente conectado: ${socket.id}`)
   let presenceMemberId = null

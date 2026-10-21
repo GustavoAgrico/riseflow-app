@@ -100,6 +100,7 @@ export const NAV_GROUPS = [
   {
     id: 'admin', label: 'Administração', kind: 'admin',
     items: [
+      { id: 'goals', label: 'Metas e produtos', icon: 'Target', path: '/goals' },
       { id: 'teams', label: 'Equipes', icon: 'UserCog', path: '/teams' },
       { id: 'integrations', label: 'Integrações', icon: 'Plug', path: '/integrations' },
       { id: 'billing', label: 'Cobranças', icon: 'Receipt', path: '/billing' },
