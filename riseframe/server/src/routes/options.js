@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { capabilities } from '../config.js';
+import { appCapabilities } from '../appCaps.js';
 import { lookNames } from '../pipeline/color.js';
 import { NICHES } from '../pipeline/niche.js';
 import { VOICE_NOISE, VOICE_PRESETS, VOICE_EFFECTS } from '../pipeline/voice.js';
@@ -28,9 +29,9 @@ optionsRouter.get('/sfx/:type', async (req, res) => {
 });
 
 /** Catálogo de escolhas para a UI montar os controles. */
-optionsRouter.get('/options', (_req, res) => {
+optionsRouter.get('/options', async (_req, res) => {
   res.json({
-    capabilities: capabilities(),
+    capabilities: await appCapabilities(),
     colorLooks: lookNames().map((id) => ({ id, label: LABELS.color[id] || id })),
     captionTemplates: Object.entries(CAPTION_TEMPLATE_LABELS).map(([id, label]) => ({ id, label })),
     voiceNoises: Object.entries(VOICE_NOISE).map(([id, label]) => ({ id, label })),
