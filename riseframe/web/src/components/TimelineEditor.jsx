@@ -1844,6 +1844,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const lo = +Math.max(0, Math.min(a, b)).toFixed(2);
     const hi = +Math.min(dur, Math.max(a, b)).toFixed(2);
     if (hi - lo < 0.05) return;
+    // espaço vazio no FIM do vídeo sem nada por cima não serve para nada (como no Premiere,
+    // a sequência acaba no último clipe): o trecho sai
+    if (audio && hi >= dur - 0.05 && !layersOver(lo, hi).length && keptIn(0, lo) > 0.1) {
+      setCuts((l) => [...l, { key: `c${Date.now()}`, start: lo, end: +dur.toFixed(2) }]);
+      return;
+    }
     setBlanks((list) => {
       const all = [...list, { key: `b${Date.now()}`, start: lo, end: hi, ...(audio ? {} : { audio: false }) }].sort((x, y) => x.start - y.start);
       const out = [];
@@ -2525,7 +2531,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         colorLook,
         colorAdjust: colorAdj,
         // Trechos cortados à mão na faixa de vídeo (tempo original).
-        videoCuts: cuts.map((c) => ({ start: +c.start.toFixed(2), end: +c.end.toFixed(2) })),
+        // exportar só o trecho (entrada → saída): o que está fora sai como corte
+        videoCuts: [...cuts, ...(exportRange ? [{ start: 0, end: exportRange.a }, { start: exportRange.b, end: dur }] : [])]
+          .filter((c) => c.end - c.start > 0.02).map((c) => ({ start: +c.start.toFixed(2), end: +c.end.toFixed(2) })),
         // Volume da fala (tempo original — este estágio roda antes dos cortes).
         audioMute,
         cutBreaths,
@@ -2877,9 +2885,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // ── Janela Exportar (como o Export do Premiere): formato, qualidade, legenda e o resumo da
   // saída antes de gerar. Abre pelo botão Exportar, Ctrl+M ou o menu do app.
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportScope, setExportScope] = useState('all'); // linha toda | só o trecho entre a entrada e a saída (I/O)
+  const exportRange = exportScope === 'range' && range && range.b - range.a >= 0.3 ? range : null;
   const [exportStreams, setExportStreams] = useState(() => (['video', 'audio'].includes(options?.streams) ? options.streams : 'av')); // vídeo e áudio / só vídeo / só áudio
   const [exportFps, setExportFps] = useState(() => ([24, 25, 30, 50, 60, 120].includes(Number(options?.fps)) ? Number(options.fps) : 0)); // 0 = o do vídeo
-  function openExport() { if (!busy && !allGone) setExportOpen(true); }
+  function openExport() {
+    if (busy || allGone) return;
+    // com um trecho marcado (I/O ou arrastando), a janela já abre em "Do trecho"
+    setExportScope(range && range.b - range.a >= 0.3 ? 'range' : 'all');
+    setExportOpen(true);
+  }
   const openExportRef = useRef(openExport);
   openExportRef.current = openExport;
   useEffect(() => window.electron?.onEditorCommand?.((cmd) => {
@@ -2893,7 +2908,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const AR = { '9:16': [9, 16], '16:9': [16, 9], '1:1': [1, 1], '4:5': [4, 5] }[aspectSel];
     let [ow, oh] = AR ? (AR[0] <= AR[1] ? [1080, Math.round((1080 * AR[1]) / AR[0])] : [Math.round((1080 * AR[0]) / AR[1]), 1080]) : [src.w, src.h];
     if (hdAllowed && quality !== 'original') { const k = Number(quality) / Math.min(ow, oh); ow = Math.round((ow * k) / 2) * 2; oh = Math.round((oh * k) / 2) * 2; }
-    const secs = Math.max(0, (stats.keptSec + retimeDelta) / speed);
+    const scopeK = exportRange ? Math.max(0, keptIn(exportRange.a, exportRange.b)) / Math.max(0.01, keptIn(0, dur)) : 1;
+    const secs = Math.max(0, ((stats.keptSec + retimeDelta) * scopeK) / speed);
+    const hasRange = !!range && range.b - range.a >= 0.3;
     const mbps = (Math.min(ow, oh) >= 2000 ? 35 : Math.min(ow, oh) >= 1000 ? 10 : 5) * (exportFps >= 100 ? 2.2 : exportFps >= 50 ? 1.5 : 1);
     const onlyAudio = exportStreams === 'audio';
     const sizeMb = ((onlyAudio ? 0.192 : exportStreams === 'video' ? mbps : mbps + 0.192) * secs) / 8;
@@ -2912,6 +2929,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, alignItems: 'start' }}>
             <div style={{ display: 'grid', gap: 0 }}>
+              <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8, marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Exportar</div>
+                <div role="radiogroup" aria-label="Exportar" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+                  {[['all', 'Linha toda', `todo o vídeo · ${fmtDuration(dur)}`], ['range', 'Do trecho (entrada → saída)', hasRange ? `${fmtDuration(range.a)} → ${fmtDuration(range.b)}` : 'marque com I e O']].map(([id, label, sub]) => (
+                    <button key={id} role="radio" aria-checked={exportScope === id} disabled={id === 'range' && !hasRange} onClick={() => setExportScope(id)}
+                      style={{ ...framingTab(exportScope === id && (id === 'all' || hasRange)), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px', opacity: id === 'range' && !hasRange ? 0.5 : 1, cursor: id === 'range' && !hasRange ? 'not-allowed' : 'pointer' }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 800 }}>{label}</span>
+                      <span style={{ fontSize: 10, color: C.faint, fontWeight: 600 }}>{sub}</span>
+                    </button>
+                  ))}
+                </div>
+                {!hasRange && (
+                  <div style={{ fontSize: 11, color: C.faint, lineHeight: 1.45 }}>
+                    Para exportar só um trecho: na timeline, ponha o ponteiro no começo e aperte <b>I</b> (entrada), depois no fim e aperte <b>O</b> (saída) — ou arraste na régua com Shift.
+                  </div>
+                )}
+              </div>
               <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8, marginBottom: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>O que exportar</div>
                 <div role="radiogroup" aria-label="O que exportar" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
@@ -2957,6 +2991,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               {row('Áudio', onlyAudio ? 'MP3 · 192 kbps · estéreo' : exportStreams === 'video' ? '— (sem som)' : 'AAC · 192 kbps · 48 kHz · estéreo')}
               {!onlyAudio && row('Formato', aspectSel === 'original' ? 'Original (como foi gravado)' : aspectSel)}
               {!onlyAudio && row('Qualidade', hdAllowed && quality !== 'original' ? QUALITY_OPTS.find((q) => q.id === quality)?.label : 'Original')}
+              {row('Trecho', exportRange ? `${fmtDuration(exportRange.a)} → ${fmtDuration(exportRange.b)}` : 'linha toda')}
               {row('Duração', fmtDuration(secs))}
               {row('Tamanho', `≈ ${sizeMb >= 1000 ? `${(sizeMb / 1000).toFixed(1).replace('.', ',')} GB` : `${Math.max(1, Math.round(sizeMb))} MB`}`)}
               {row('Legenda', onlyAudio || cap.captions === false ? 'só em arquivo (.srt)' : 'no vídeo + arquivo .srt')}
@@ -4069,6 +4104,29 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return [{ sourceId, kind: 'video', filename: projectTitle || v1Job?.filename || 'Vídeo', in: 0, out: dur, i: 0, start: 0, end: dur, whole: true }];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [v1Job, dur, sourceId, projectTitle]);
+  // Sobra vazia no fim (clipes "vazio" do fim da montagem ou espaço vazio encostado no fim),
+  // sem camada por cima: sai do vídeo sozinha — não é parte do vídeo.
+  const tailDone = useRef('');
+  useEffect(() => {
+    if (!dur) return;
+    const empty = [
+      ...v1Clips.filter((c) => c.kind === 'blank').map((c) => [c.start, c.end]),
+      ...blanks.filter((b) => b.audio !== false).map((b) => [b.start, b.end]),
+    ].sort((x, y) => y[1] - x[1]);
+    let tail = null;
+    for (const [a, b] of empty) {
+      if (tail == null) { if (b < dur - 0.05) break; tail = a; } else if (b >= tail - 0.05) tail = Math.min(tail, a);
+    }
+    if (tail == null || dur - tail < 0.1) return;
+    const key = `${sourceId}:${tail.toFixed(2)}`;
+    if (tailDone.current === key) return; // já tirado uma vez (Desfazer não traz de volta à força)
+    if (allGaps.some(([a, b]) => a <= tail + 0.05 && b >= dur - 0.05)) return; // já cortado
+    if (layersOver(tail, dur).length || keptIn(0, tail) < 0.1) return;
+    tailDone.current = key;
+    setBlanks((l) => l.filter((b) => b.audio === false || b.end < tail - 0.01).map((b) => (b.audio !== false && b.end > tail ? { ...b, end: tail } : b)));
+    setCuts((l) => [...l, { key: `c${Date.now()}`, start: +tail.toFixed(2), end: +dur.toFixed(2) }]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [v1Clips, blanks, dur, sourceId, media, textLayers, brollReview, laneHide]);
   const projIdSet = useMemo(() => new Set([
     ...projMediaIds,
     ...media.map((m) => m.mediaId),
@@ -4147,6 +4205,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const parts = ranges.flatMap(([x, y]) => slice(x, y));
       return { p, parts, len: parts.reduce((s, c) => s + v1Len(c), 0) };
     }).filter((u) => u.parts.length);
+    // vazio no fim da montagem (sem camada por cima) não entra: o vídeo acaba no último clipe
+    const endOver = layersOver(0, dur).some((x) => x.end > (keptPieces.length ? keptPieces[keptPieces.length - 1][1] : dur) - 0.05);
+    while (!endOver && units.length) {
+      const u = units[units.length - 1];
+      const last = u.parts[u.parts.length - 1];
+      if (last?.kind !== 'blank' || units.flatMap((x) => x.parts).every((c) => c.kind === 'blank')) break;
+      u.parts.pop();
+      u.len -= v1Len(last);
+      if (!u.parts.length) units.pop();
+    }
     return { newPos, units };
   }
   /** Manda montar o vídeo principal com estes clipes; camadas e textos vão para mapT(tempo). */
@@ -7172,7 +7240,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     title="Espaço vazio — arraste uma mídia da biblioteca para cá para ocupar · Delete fecha o espaço"
                     style={{ position: 'absolute', left: X(b.start), width: w, top: 0, bottom: 0, zIndex: 5, cursor: 'pointer', background: 'repeating-linear-gradient(135deg, #0b0b0f, #0b0b0f 6px, #16161d 6px, #16161d 12px)',
                       border: on ? '2px solid #fff' : '1px dashed rgba(255,255,255,0.35)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    {w > 70 && <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '0 6px' }}>{b.audio === false ? (w > 190 ? 'Sem imagem · o som continua' : 'Sem imagem') : (w > 190 ? 'Vazio · solte uma mídia aqui' : 'Vazio')}</span>}
+                    {b.audio === false && w > 70 && <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '0 6px' }}>{w > 190 ? 'Sem imagem · o som continua' : 'Sem imagem'}</span>}
                   </div>
                 );
               })}
@@ -7183,6 +7251,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 const dragging = v1Drag && v1Drag.k === k;
                 const moving = dragging && v1Drag.kind === 'move' && Math.abs(v1Drag.dx) >= 4;
                 const trim = dragging && v1Drag.kind !== 'move' ? v1TrimInfo(v1Drag) : null;
+                if (p.clip.kind === 'blank') return null; // pedaço vazio: sem alças nem nome
                 const showGrip = v1Pieces.length > 1 || !p.clip.whole;
                 const edgeX = trim ? (v1Drag.kind === 'L' ? left + (trim.v - p.va) * pps : left + w + (trim.v - p.vb) * pps) : 0;
                 const v0 = trim ? (v1Drag.kind === 'L' ? p.va : p.vb) : 0;
