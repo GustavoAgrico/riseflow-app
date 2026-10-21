@@ -314,22 +314,10 @@ function exportMenu() {
     ...OUTPUT_FORMATS.map(([id, label]) => ({ label, type: 'radio', enabled: on, checked: editorTabs.format === id, click: () => send(`format:${id}`) })),
   ];
 }
-// Menu Atalhos (barra de cima do app): abre o painel de atalhos do editor e lista as teclas.
-const SHORTCUTS = [
-  ['Espaço', 'Tocar / pausar'], ['J / K / L', 'Voltar 5 s / pausar / tocar'], ['← →', 'Andar 1 s (Shift: 5 s)'], ['Home / End', 'Começo / fim'],
-  ['V', 'Seleção'], ['C', 'Navalha (clique corta)'], ['R', 'Seleção de trecho'], ['Ctrl+K', 'Dividir no ponteiro'], ['S', 'Dividir o item selecionado'],
-  ['Delete', 'Excluir (no vídeo, deixa o espaço vazio)'], ['Shift+Delete', 'Excluir e fechar o espaço'], ['Q / W', 'Cortar até o ponto anterior / próximo'],
-  ['I / O', 'Entrada / saída do trecho'], ['Ctrl+A', 'Selecionar tudo'], ['= / −', 'Zoom da timeline (ou Ctrl+rolagem)'], ['\\', 'Ver o vídeo inteiro'],
-  ['M', 'Marcador'], ['N', 'Ímã'], ['H', 'Ocultar legenda'], ['Ctrl+D', 'Duplicar'], ['Ctrl+C / V', 'Copiar / colar'], ['Ctrl+Z', 'Desfazer'],
-  ['Ctrl+M', 'Exportar'], ['Botão direito', 'Menu da faixa / do clipe (excluir, vincular)'],
-];
+// Menu Atalhos (barra de cima do app): só mostra/oculta o painel de atalhos do editor.
 function shortcutsMenu() {
-  const on = editorTabs.all.length > 0;
-  const open = () => mainWindow?.webContents.send('editor-command', 'shortcuts');
   return [
-    { label: 'Mostrar / ocultar o painel de atalhos', accelerator: 'F1', enabled: on, click: open },
-    { type: 'separator' },
-    ...SHORTCUTS.map(([k, d]) => ({ label: `${k}   —   ${d}`, enabled: on, click: open })),
+    { label: 'Mostrar / ocultar o painel de atalhos', accelerator: 'F1', enabled: editorTabs.all.length > 0, click: () => mainWindow?.webContents.send('editor-command', 'shortcuts') },
   ];
 }
 function editorTabsMenu() {
