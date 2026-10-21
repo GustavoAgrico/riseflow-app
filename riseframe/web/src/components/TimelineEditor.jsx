@@ -4,7 +4,7 @@ import { C, GRAD, glass, fmtDuration } from '../theme.js';
 import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import { pickExportTarget, setPendingExport } from '../exportTarget.js';
-import { sourceUrl, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, createSequence, transcribeRange, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
+import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, createSequence, transcribeRange, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -428,60 +428,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Palavras dentro de um corte da faixa de vídeo saem junto (vídeo, áudio e legenda):
   // a faixa e a prévia mostram a legenda cortada; o servidor faz o mesmo no remap.
   const capSegments = useMemo(() => segments.map((s) => dispSeg(cuts.length ? markCut(s, cuts) : s)), [segments, cuts]);
-  // Ripple (como no Premiere): o que foi excluído (cortes e falas cortadas) some da
-  // timeline e o resto encosta. Tudo continua guardado no tempo ORIGINAL do vídeo; só a
-  // posição na tela passa por X(t) e o clique volta por srcOf().
-  const [ripple, setRipple] = useState(true);
-  // tudo o que sai do vídeo final (cortes + palavras tiradas), com ou sem "fechar buracos"
-  const allGaps = useMemo(() => {
-    const r = cuts.map((c) => [Number(c.start), Number(c.end)]);
-    const flat = [];
-    for (const sg of segments) for (const w of sg.words) if (Number.isFinite(w.start) && Number.isFinite(w.end)) flat.push(w);
-    flat.sort((a, b) => a.start - b.start);
-    let run = null;
-    for (const w of flat) {
-      if (w.removed) { if (!run) run = [w.start, w.end]; else run[1] = Math.max(run[1], w.end); } else if (run) { r.push(run); run = null; }
-    }
-    if (run) r.push(run);
-    r.sort((a, b) => a[0] - b[0]);
-    const out = [];
-    for (const [a0, b0] of r) {
-      const a = Math.max(0, a0);
-      const b = Math.min(dur, b0);
-      if (!(b - a >= 0.05)) continue;
-      const last = out[out.length - 1];
-      if (last && a <= last[1] + 0.01) last[1] = Math.max(last[1], b);
-      else out.push([a, b]);
-    }
-    return out;
-  }, [cuts, segments, dur]);
-  const gaps = useMemo(() => (ripple ? allGaps : []), [ripple, allGaps]);
-  const progOf = (t) => {
-    let p = t;
-    for (const [a, b] of gaps) {
-      if (t >= b) p -= b - a;
-      else { if (t > a) p -= t - a; break; }
-    }
-    return p;
-  };
-  const srcOf = (p) => {
-    let t = p;
-    for (const [a, b] of gaps) { if (t >= a) t += b - a; else break; }
-    return Math.min(dur, t);
-  };
-  const X = (t) => progOf(Number(t) || 0) * pps;
-  const W = (a, b) => Math.max(0, X(b) - X(a));
-  const progDur = progOf(dur);
-  // pedaços que ficam (miniaturas e forma de onda são recortadas neles)
-  const keptPieces = useMemo(() => {
-    const out = [];
-    let t = 0;
-    for (const [a, b] of gaps) { if (a > t) out.push([t, a]); t = b; }
-    if (dur > t) out.push([t, dur]);
-    return out;
-  }, [gaps, dur]);
-  const width = Math.max(320, Math.round(progDur * pps));
-
   // ── Pausas de silêncio (gaps entre palavras mantidas). O usuário decide, na
   // timeline, quais cortar. Por padrão TODA pausa visível é cortada (o cliente
   // reclamou que sobrava silêncio); clicar numa pausa a preserva.
@@ -521,6 +467,83 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
     return res;
   }, [flatWords, dur, blanks]);
+
+  // Silêncio longo no COMEÇO ou no FIM do vídeo (≥ 2,5 s) costuma ser imagem de propósito
+  // (abertura, cena, final): fica por padrão e o clique corta. Os outros silêncios saem
+  // por padrão e o clique mantém. (A escolha fica no mesmo conjunto, com o prefixo "cut:".)
+  const isLongEdge = (p) => (p.start <= 0.01 || p.end >= dur - 0.01) && p.dur >= 2.5;
+  const isPauseCut = (p) => (isLongEdge(p) ? keptPauses.has(`cut:${pauseKey(p)}`) : !keptPauses.has(pauseKey(p)));
+  // Ver pausas: por padrão a timeline fica limpa (as pausas cortadas somem, como no vídeo
+  // final); "Ver pausas" mostra a faixa delas para restaurar ou cortar cada uma.
+  const [showPauses, setShowPauses] = useState(() => { try { return localStorage.getItem('rf_show_pauses') === '1'; } catch { return false; } });
+  const toggleShowPauses = () => setShowPauses((v) => { try { localStorage.setItem('rf_show_pauses', v ? '0' : '1'); } catch { /* sem armazenamento */ } return !v; });
+
+  // Ripple (como no Premiere): o que foi excluído (cortes e falas cortadas) some da
+  // timeline e o resto encosta. Tudo continua guardado no tempo ORIGINAL do vídeo; só a
+  // posição na tela passa por X(t) e o clique volta por srcOf().
+  const [ripple, setRipple] = useState(true);
+  // tudo o que sai do vídeo final (cortes + palavras tiradas), com ou sem "fechar buracos"
+  const allGaps = useMemo(() => {
+    const r = cuts.map((c) => [Number(c.start), Number(c.end)]);
+    const flat = [];
+    for (const sg of segments) for (const w of sg.words) if (Number.isFinite(w.start) && Number.isFinite(w.end)) flat.push(w);
+    flat.sort((a, b) => a.start - b.start);
+    let run = null;
+    for (const w of flat) {
+      if (w.removed) { if (!run) run = [w.start, w.end]; else run[1] = Math.max(run[1], w.end); } else if (run) { r.push(run); run = null; }
+    }
+    if (run) r.push(run);
+    r.sort((a, b) => a[0] - b[0]);
+    const out = [];
+    for (const [a0, b0] of r) {
+      const a = Math.max(0, a0);
+      const b = Math.min(dur, b0);
+      if (!(b - a >= 0.05)) continue;
+      const last = out[out.length - 1];
+      if (last && a <= last[1] + 0.01) last[1] = Math.max(last[1], b);
+      else out.push([a, b]);
+    }
+    return out;
+  }, [cuts, segments, dur]);
+  const gaps = useMemo(() => {
+    if (!ripple) return [];
+    if (showPauses) return allGaps;
+    // timeline limpa: as pausas cortadas também somem (com a mesma folga do vídeo final)
+    const extra = pauses.filter(isPauseCut).map((p) => [p.start + Math.min(0.03, p.dur / 4), p.end - Math.min(0.03, p.dur / 4)]).filter(([a, b]) => b - a > 0.02);
+    if (!extra.length) return allGaps;
+    const out = [];
+    for (const [a, b] of [...allGaps, ...extra].sort((x, y) => x[0] - y[0])) {
+      const last = out[out.length - 1];
+      if (last && a <= last[1] + 0.01) last[1] = Math.max(last[1], b); else out.push([a, b]);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ripple, allGaps, showPauses, pauses, keptPauses, dur]);
+  const progOf = (t) => {
+    let p = t;
+    for (const [a, b] of gaps) {
+      if (t >= b) p -= b - a;
+      else { if (t > a) p -= t - a; break; }
+    }
+    return p;
+  };
+  const srcOf = (p) => {
+    let t = p;
+    for (const [a, b] of gaps) { if (t >= a) t += b - a; else break; }
+    return Math.min(dur, t);
+  };
+  const X = (t) => progOf(Number(t) || 0) * pps;
+  const W = (a, b) => Math.max(0, X(b) - X(a));
+  const progDur = progOf(dur);
+  // pedaços que ficam (miniaturas e forma de onda são recortadas neles)
+  const keptPieces = useMemo(() => {
+    const out = [];
+    let t = 0;
+    for (const [a, b] of gaps) { if (a > t) out.push([t, a]); t = b; }
+    if (dur > t) out.push([t, dur]);
+    return out;
+  }, [gaps, dur]);
+  const width = Math.max(320, Math.round(progDur * pps));
 
   // Desfazer / refazer: TODA edição da timeline (texto, cortes, pausas, legendas, B-roll,
   // capa e título, cor, áudio, enquadramento, minhas mídias). Mudanças seguidas em menos
@@ -745,7 +768,30 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   // Vídeo de origem do projeto: se o arquivo foi apagado/movido, pede para localizar.
   const [srcVer, setSrcVer] = useState(0);
-  const srcUrl = `${sourceUrl(sourceId)}${srcVer ? `?v=${srcVer}` : ''}`;
+  // Cópia para editar (quadro-chave a cada 0,5 s): o servidor faz uma vez quando o vídeo pula
+  // mal; enquanto isso a prévia usa o original. Troca só com o vídeo parado.
+  const [editSrc, setEditSrc] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    let timer = 0;
+    setEditSrc(false);
+    const check = async () => {
+      try {
+        const r = await editSourceStatus(sourceId);
+        if (!alive) return;
+        if (r.ready) {
+          if (!r.proxy) return;
+          if (videoRef.current && !videoRef.current.paused) { timer = setTimeout(check, 2000); return; }
+          setEditSrc(true);
+          return;
+        }
+      } catch { return; }
+      timer = setTimeout(check, 5000);
+    };
+    check();
+    return () => { alive = false; clearTimeout(timer); };
+  }, [sourceId, srcVer]);
+  const srcUrl = `${editSrc ? editSourceUrl(sourceId) : sourceUrl(sourceId)}${srcVer ? `?v=${srcVer}` : ''}`;
   const [srcOffline, setSrcOffline] = useState(false);
   const srcRelinkRef = useRef(null);
   useEffect(() => {
@@ -766,11 +812,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
   }
 
-  // Silêncio longo no COMEÇO ou no FIM do vídeo (≥ 2,5 s) costuma ser imagem de propósito
-  // (abertura, cena, final): fica por padrão e o clique corta. Os outros silêncios saem
-  // por padrão e o clique mantém. (A escolha fica no mesmo conjunto, com o prefixo "cut:".)
-  const isLongEdge = (p) => (p.start <= 0.01 || p.end >= dur - 0.01) && p.dur >= 2.5;
-  const isPauseCut = (p) => (isLongEdge(p) ? keptPauses.has(`cut:${pauseKey(p)}`) : !keptPauses.has(pauseKey(p)));
   // Pausa com som que não é palavra (tosse, pigarro): o clique alterna
   // cortar só o silêncio → cortar TUDO (o som junto, como um corte à mão) → manter.
   const pauseForcedCut = (p) => cuts.find((c) => c.pause && Math.abs(c.start - p.start) < 0.02 && Math.abs(c.end - p.end) < 0.02);
@@ -6865,6 +6906,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <>
               <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />
               <span className="rf-tl-hide-sm" style={{ fontSize: 11.5, color: C.faint }}>Pausas:</span>
+              {!isMobile && (
+                <button onClick={toggleShowPauses} aria-pressed={showPauses} style={{ ...toolBtn(false), ...(showPauses ? { borderColor: '#2D8CFF', color: '#7DB6FF' } : null) }}
+                  title={showPauses ? 'Esconder a faixa de pausas (a timeline fica limpa, como o vídeo final)' : 'Mostrar as pausas: clique numa pausa para restaurar (manter) ou cortar'}>
+                  <Icon name={showPauses ? 'eyeOff' : 'eye'} size={13} strokeWidth={2} /> {showPauses ? 'Esconder pausas' : `Ver pausas (${pausesCut.length})`}
+                </button>
+              )}
               <button onClick={cutAllPauses} disabled={pausesCut.length === pauses.length} style={toolBtn(pausesCut.length === pauses.length)}>
                 <Icon name="scissors" size={13} strokeWidth={2} /> <span className="rf-tl-hide-sm">Cortar pausas</span>
               </button>
@@ -6957,14 +7004,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {transformKeys.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('kf', e)} onResetSize={() => resetLane('kf')} h={LANE.kf} gap={4} code="KF" nome="Quadros" onMenu={(e) => openTrackMenu(e, 'kf')} locked={laneLock.kf} onLock={() => togLock('kf')} />}
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('video', e)} onResetSize={() => resetLane('video')} h={LANE.video} gap={4} code="V1" active nome={avLinked ? 'Vídeo' : 'Vídeo · solto'} onMenu={(e) => openTrackMenu(e, 'video')} locked={laneLock.vid} onLock={() => togLock('vid')} />
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('audio', e)} onResetSize={() => resetLane('audio')} h={LANE.audio} gap={4} code="A1" active nome={avLinked ? 'Áudio' : 'Áudio · solto'} onMenu={(e) => openTrackMenu(e, 'audio')} muted={audioMute} onMute={() => setAudioMute((v) => !v)} locked={laneLock.aud} onLock={() => togLock('aud')} />
-            <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('pausas', e)} onResetSize={() => resetLane('pausas')} h={LANE.pausas} gap={4} code="P" nome="Pausas" locked={laneLock.pau} onLock={() => togLock('pau')} />
+            {showPauses && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('pausas', e)} onResetSize={() => resetLane('pausas')} h={LANE.pausas} gap={4} code="P" nome="Pausas" locked={laneLock.pau} onLock={() => togLock('pau')} />}
           </div>
           <div ref={trackRef} onClick={onTrackClick} onScroll={onTrackScroll}
             onMouseDownCapture={() => { const a = document.activeElement; if (a && a !== document.body && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(a.tagName)) a.blur(); }}
             onMouseDown={(e) => { if (e.target === e.currentTarget) startMarquee(e); }} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
-            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setDropT(null); setLibDrop(null); } }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
+            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setDropT(null); setLibDrop(null); } }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile || !showPauses ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
             {/* ferramenta de seleção: arrastar em qualquer faixa marca o trecho (todas as faixas) */}
             {razorTool && !isMobile && (
               <div onMouseMove={(e) => setRazorT(timeAtClientX(e.clientX))} onMouseLeave={() => setRazorT(null)}
@@ -7499,7 +7546,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               })}
             </div>
             {/* Lane de pausas (silêncio entre palavras) — clique alterna cortar/manter */}
-            {!isMobile && <div data-lane="pausas" style={{ position: 'relative', height: LANE.pausas, marginTop: 4, ...LANE_ROW, ...lk('pau') }}>
+            {!isMobile && showPauses && <div data-lane="pausas" style={{ position: 'relative', height: LANE.pausas, marginTop: 4, ...LANE_ROW, ...lk('pau') }}>
               {/* tosses/pigarros/estalos achados no áudio: saem do vídeo (como no final) */}
               {cutCoughs && (preciseNow?.noises || []).map((n) => (
                 <div key={`n${n.start}`} onClick={(e) => { e.stopPropagation(); toggleNoise(n); }}

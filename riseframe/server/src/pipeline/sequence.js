@@ -112,7 +112,8 @@ export async function assembleSequence({ clips, music = null, aspect = 'auto', o
   await fs.writeFile(script, parts.join(';\n'), 'utf8');
   await runFfmpeg([
     ...args, '-filter_complex_script', script, '-map', '[vout]', '-map', '[aout]', '-r', '30',
-    ...x264Fast(), '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-t', f3(total), '-y', output,
+    // quadro-chave a cada 0,5 s: a prévia pula os cortes sem travar (o vídeo do editor é este)
+    ...x264Fast(), '-g', '15', '-keyint_min', '15', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-t', f3(total), '-y', output,
   ], { label: 'sequence', totalDuration: total, onProgress });
   log.ok(`timeline montada: ${list.length} clipe(s), ${total.toFixed(1)} s, ${W}x${H}${music?.file ? ' + música' : ''}`);
   return { output, duration: total, width: W, height: H };
