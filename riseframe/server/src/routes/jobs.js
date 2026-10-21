@@ -39,6 +39,7 @@ import { brandIn, entityQuery } from '../pipeline/entities.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
 import { cleanCrop, cleanBlanks } from '../pipeline/frame.js';
 import { transcribeRange } from '../pipeline/seqTranscript.js';
+import { editSourceStatus, editSourcePath } from '../pipeline/editSource.js';
 import { cleanLayerKf } from '../../../shared/layerKeys.js';
 import { SFX_LIBRARY } from '../pipeline/sfx.js';
 import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
@@ -1284,6 +1285,7 @@ jobsRouter.post('/jobs/:id/source/relink', requireAuth, upload.single('file'), (
   if (!file) return res.status(400).json({ error: 'escolha o vídeo do projeto' });
   if (!MEDIA_VIDEO.has(path.extname(file).toLowerCase())) return res.status(400).json({ error: 'escolha um arquivo de vídeo' });
   job.inputPath = file;
+  fs.rmSync(editSourcePath(job.id), { force: true }); // a cópia de editar era do arquivo antigo
   queue._persist(job);
   res.json({ ok: true });
 });
@@ -1708,6 +1710,24 @@ jobsRouter.get('/jobs/:id/cover.jpg', (req, res) => {
   if (!file || !fs.existsSync(file)) return res.status(404).json({ error: 'capa não disponível' });
   const base = path.parse(job.filename || 'video').name.replace(/[^\w.-]+/g, '_');
   res.download(file, `riseframe_${base}_capa.jpg`);
+});
+
+// GET /api/jobs/:id/edit-source/status → { ready, proxy }: a cópia de EDITAR (quadro-chave a
+// cada 0,5 s, para a prévia não travar nos cortes) começa a ser feita na 1ª pergunta.
+jobsRouter.get('/jobs/:id/edit-source/status', async (req, res) => {
+  const job = queue.get(req.params.id);
+  if (!job || !job.inputPath || !fs.existsSync(job.inputPath)) return res.status(404).json({ error: 'vídeo não encontrado' });
+  try { res.json(await editSourceStatus(job.id, job.inputPath)); } catch (e) { res.json({ ready: true, proxy: false, error: e.message }); }
+});
+// GET /api/jobs/:id/edit-source → a cópia de editar (ou o original, se ela não existe)
+jobsRouter.get('/jobs/:id/edit-source', (req, res) => {
+  const job = queue.get(req.params.id);
+  if (!job || !job.inputPath || !fs.existsSync(job.inputPath)) return res.status(404).json({ error: 'vídeo não encontrado' });
+  const proxy = editSourcePath(job.id);
+  if (fs.existsSync(proxy)) { res.type('video/mp4'); return res.sendFile(path.resolve(proxy)); }
+  const ext = path.extname(job.inputPath).toLowerCase();
+  res.type(MIME_BY_EXT[ext] || 'application/octet-stream');
+  res.sendFile(path.resolve(job.inputPath));
 });
 
 jobsRouter.get('/jobs/:id/source', (req, res) => {

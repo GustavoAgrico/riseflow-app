@@ -572,6 +572,13 @@ export async function getJob(id) {
 }
 
 export const sourceUrl = (id) => `${BASE}/jobs/${id}/source`;
+/** Cópia do vídeo para editar (quadro-chave a cada 0,5 s: a prévia não trava nos cortes). */
+export const editSourceUrl = (id) => `${BASE}/jobs/${id}/edit-source`;
+export async function editSourceStatus(id) {
+  const r = await fetch(`${BASE}/jobs/${id}/edit-source/status`, { headers: authHeaders() });
+  if (!r.ok) throw new Error(`erro ${r.status}`);
+  return r.json();
+}
 // Quadro do vídeo com a cor EXATA do render (mesma cadeia de filtros do servidor).
 /** Capa gerada junto com o vídeo (resultado). */
 export const coverDownloadUrl = (id) => `${BASE}/jobs/${id}/cover.jpg`;
