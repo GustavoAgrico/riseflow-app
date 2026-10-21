@@ -638,6 +638,7 @@ export function parseOptions(raw) {
     quality: ['720', '1080', '2160'].includes(String(o.quality)) ? String(o.quality) : 'original',
     // Quadros por segundo da exportação (0 = o do vídeo gravado): 24, 25, 30, 50, 60 ou 120.
     ...([24, 25, 30, 50, 60, 120].includes(Number(o.fps)) ? { fps: Number(o.fps) } : {}),
+    ...(['video', 'audio'].includes(o.streams) ? { streams: o.streams } : {}),
     audioVolume: clampNum(o.audioVolume, 0, 4, 1),
     // Recorte (Crop) do vídeo principal: quanto sai de cada lado (fração).
     ...(cleanCrop(o.videoCrop) ? { videoCrop: cleanCrop(o.videoCrop) } : {}),
@@ -1318,6 +1319,10 @@ jobsRouter.get('/jobs/:id/download', (req, res) => {
   const file = outputOf(req.params.id, job);
   if (!file) return res.status(404).json({ error: 'render não disponível' });
   const base = path.parse(job?.filename || req.params.id).name.replace(/[^\w.-]+/g, '_');
+  // exportado "só áudio": baixa o MP3 (o MP4 fica para a prévia; ?as=video baixa ele)
+  const audio = job?.report?.output?.audioFile;
+  const mp3 = audio && req.query.as !== 'video' ? path.join(config.paths.outputs, `${job.id}.mp3`) : null;
+  if (mp3 && fs.existsSync(mp3)) return res.download(mp3, `riseframe_${base}.mp3`);
   res.download(file, `riseframe_${base}.mp4`);
 });
 

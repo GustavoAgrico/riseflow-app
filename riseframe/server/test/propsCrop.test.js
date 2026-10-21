@@ -31,4 +31,8 @@ test('espaços vazios do vídeo principal: limpa, junta e monta o enable do FFmp
   assert.deepEqual(cleanBlanks([{ start: 3, end: 4 }, { start: 1, end: 2 }, { start: 1.5, end: 2.5 }, { start: 5, end: 5.01 }, null]), [{ start: 1, end: 2.5 }, { start: 3, end: 4 }]);
   assert.equal(blanksEnable([{ start: 1, end: 2.5 }]), 'between(t,1.000,2.500)');
   assert.deepEqual(cleanBlanks('x'), []);
+  // só a imagem (áudio desvinculado): guarda a marca e só junta com trechos do mesmo tipo
+  assert.deepEqual(cleanBlanks([{ start: 1, end: 3, audio: false }, { start: 2, end: 4 }, { start: 3.5, end: 5, audio: false }]),
+    [{ start: 1, end: 3, audio: false }, { start: 2, end: 4 }, { start: 3.5, end: 5, audio: false }]);
+  assert.deepEqual(cleanBlanks([{ start: 1, end: 3, audio: false }, { start: 2.5, end: 4, audio: false }]), [{ start: 1, end: 4, audio: false }]);
 });

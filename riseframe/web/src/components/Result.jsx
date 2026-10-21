@@ -70,8 +70,8 @@ export default function Result({ job, onReset, onEditTimeline }) {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {r.output?.aspect && <span style={chip}><Icon name="crop" size={13} strokeWidth={2} /> {r.output.aspect}</span>}
             {r.output?.width && r.output?.height && <span style={chip}>{Math.min(r.output.width, r.output.height) >= 1080 ? '1080p' : `${Math.min(r.output.width, r.output.height)}p`}</span>}
-            {r.output?.sizeBytes > 0 && <span style={chip}>{fmtBytes(r.output.sizeBytes)}</span>}
-            <span style={chip}>MP4 · sem marca d'água</span>
+            {r.output?.sizeBytes > 0 && <span style={chip}>{fmtBytes(r.output.audioBytes || r.output.sizeBytes)}</span>}
+            <span style={chip}>{r.output?.audioFile ? 'MP3 · só áudio' : r.output?.streams === 'video' ? 'MP4 · só vídeo (sem som)' : "MP4 · sem marca d'água"}</span>
           </div>
 
           <a
@@ -85,8 +85,13 @@ export default function Result({ job, onReset, onEditTimeline }) {
               transition: 'transform .18s ease, box-shadow .18s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
             }}
           >
-            <Icon name="download" size={19} strokeWidth={2} /> Exportar vídeo
+            <Icon name="download" size={19} strokeWidth={2} /> {r.output?.audioFile ? 'Baixar áudio (MP3)' : 'Exportar vídeo'}
           </a>
+          {r.output?.audioFile && (
+            <a href={`${downloadUrl(job.id)}?as=video`} style={{ textAlign: 'center', textDecoration: 'none', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 14, padding: '13px', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9 }}>
+              <Icon name="download" size={17} strokeWidth={2} /> Baixar também o vídeo (MP4)
+            </a>
+          )}
           {r.cover?.file && (
             <a href={coverDownloadUrl(job.id)} style={{ width: '100%', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, textDecoration: 'none', background: 'transparent', border: `1px solid ${C.borderStrong || C.border}`, color: C.text, borderRadius: 14, padding: '13px', fontSize: 14, fontWeight: 700 }}>
               <Icon name="image" size={17} strokeWidth={2} /> Baixar capa (JPG)

@@ -236,6 +236,11 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
+  // Áudio para achar pausas/palavras nos cortes: o de ANTES do volume e dos espaços vazios
+  // (tirar o som de um trecho não pode fazer as palavras dele parecerem silêncio e o
+  // trecho sumir do vídeo).
+  const analysisInput = input;
+
   // Volume da fala (geral/mudo/por trecho). Antes dos cortes, então os trechos usam
   // o tempo original — o mesmo que a timeline mostra.
   if (has('gain')) {
@@ -367,12 +372,12 @@ export async function runPipeline(job, onUpdate = () => {}) {
       // "sumiu"): saem também, menos onde o usuário escolheu manter a pausa.
       if (Array.isArray(options.keptPauses) && options.cutSilence !== false) {
         const kept = options.keptPauses;
-        for (const r of await silenceRemovalRanges(input, meta, options)) {
+        for (const r of await silenceRemovalRanges(analysisInput, meta, options)) {
           if (!kept.some((k) => r.start < k.end + 0.15 && r.end > k.start - 0.15)) pauses.push(r);
         }
       }
     } else if (options.cutSilence !== false) {
-      pauses.push(...(await silenceRemovalRanges(input, meta, options)));
+      pauses.push(...(await silenceRemovalRanges(analysisInput, meta, options)));
       // Respirações ficam acima do limiar do detector de volume: os vãos entre as
       // palavras da transcrição também entram (as bordas são ajustadas pelo áudio).
       if (options.cutBreaths !== false) pauses.push(...wordGapRanges(transcript, { minGap: options.silenceMinDuration ?? 0.45, duration: meta.duration }));
@@ -391,7 +396,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     // Precisão: pausas nunca invadem palavras (transcrição + volume real do áudio) e as
     // palavras removidas são cortadas no vale de volume entre as vizinhas.
     st.onProgress(0.04); // análise do áudio pronta: a barra anda antes do corte em si
-    const precise = await preciseRemovals(input, {
+    const precise = await preciseRemovals(analysisInput, {
       pauses,
       transcript,
       hasAudio: meta.hasAudio,
@@ -792,11 +797,15 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (manual.length) report.transitions = manual.length;
     const vf = [colorVf, tVf, ...mVf].filter(Boolean).join(',') || null;
     const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf: vf, reframe: aspectReframe, coverFile: options.cover?.intro ? coverFile : null }, st.onProgress);
+    // Exportar só o vídeo (sem som) ou só o áudio (MP3), como no Premiere
+    const streamsOut = await exportStreams(r.output, job, options.streams, meta)
+      .catch((err) => { log.warn(`não deu para separar vídeo/áudio: ${err.message}`); return null; });
+    if (streamsOut?.sizeBytes && options.streams === 'video') r.sizeBytes = streamsOut.sizeBytes;
     const outMeta = await probeSummary(r.output).catch(() => ({}));
     // Legenda em arquivo (.srt/.vtt/.txt), no tempo do vídeo final (com a velocidade)
     const captionFiles = await writeCaptionFiles(job, cueSegments || withExtraCaptions(visibleCaptions(transcript), options.extraCaptions)?.segments, options, meta)
       .catch((err) => { log.warn(`não deu para gerar a legenda em arquivo: ${err.message}`); return null; });
-    report.output = { ...(captionFiles ? { captionFiles } : {}), file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe, width: outMeta.width || null, height: outMeta.height || null, speed: options.speed && options.speed !== 1 ? options.speed : undefined, duration: outMeta.duration || null };
+    report.output = { ...(captionFiles ? { captionFiles } : {}), ...(streamsOut?.audioFile ? { audioFile: streamsOut.audioFile, audioBytes: streamsOut.sizeBytes } : {}), ...(options.streams === 'video' && streamsOut ? { streams: 'video' } : {}), file: `${job.id}.mp4`, aspect: r.aspect, sizeBytes: r.sizeBytes, reframe: r.reframe, width: outMeta.width || null, height: outMeta.height || null, speed: options.speed && options.speed !== 1 ? options.speed : undefined, duration: outMeta.duration || null };
     st.record({ aspect: r.aspect });
     st.onProgress(1);
   }
@@ -812,6 +821,29 @@ export async function runPipeline(job, onUpdate = () => {}) {
   emit({ progress: 100, stage: 'done', stageLabel: 'Concluído' });
   log.ok(`pipeline (${mode}) concluído para job ${job.id}`);
   return report;
+}
+
+/**
+ * Exportar só o vídeo ('video': tira o som do MP4) ou só o áudio ('audio': grava um MP3 ao
+ * lado do MP4). → { sizeBytes, audioFile? } ou null quando não há o que separar.
+ */
+async function exportStreams(output, job, streams, meta) {
+  if (streams === 'video') {
+    if (!meta.hasAudio) return null;
+    const tmp = path.join(job.outputsDir, `${job.id}.noaudio.mp4`);
+    await runFfmpeg(['-i', output, '-map', '0:v:0', '-c', 'copy', '-movflags', '+faststart', '-y', tmp], { label: 'só vídeo' });
+    await fs.promises.rename(tmp, output);
+    return { sizeBytes: (await fs.promises.stat(output)).size };
+  }
+  if (streams === 'audio') {
+    if (!meta.hasAudio) throw new Error('o vídeo não tem áudio');
+    // o MP4 continua (prévia no app); o arquivo exportado é o MP3
+    const file = `${job.id}.mp3`;
+    const out = path.join(job.outputsDir, file);
+    await runFfmpeg(['-i', output, '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', '-y', out], { label: 'só áudio' });
+    return { audioFile: file, sizeBytes: (await fs.promises.stat(out)).size };
+  }
+  return null;
 }
 
 /**

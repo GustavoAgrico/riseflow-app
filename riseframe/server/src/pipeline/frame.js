@@ -80,16 +80,17 @@ export async function applyVideoCrop(input, work, meta, crop, onProgress) {
 /** Trechos vazios (Excluir no vídeo, como o "lift" do Premiere): [{start,end}] limpos. Puro. */
 export function cleanBlanks(raw) {
   if (!Array.isArray(raw)) return [];
+  // audio:false = só a imagem sai (áudio desvinculado); sem a marca, imagem e som saem
   const list = raw
-    .map((b) => ({ start: Math.max(0, Number(b?.start)), end: Number(b?.end) }))
+    .map((b) => ({ start: Math.max(0, Number(b?.start)), end: Number(b?.end), audio: b?.audio !== false }))
     .filter((b) => Number.isFinite(b.start) && Number.isFinite(b.end) && b.end - b.start >= 0.05)
     .sort((a, b) => a.start - b.start)
     .slice(0, 100);
   const out = [];
   for (const b of list) {
-    const last = out[out.length - 1];
-    if (last && b.start <= last.end + 0.01) last.end = Math.max(last.end, b.end);
-    else out.push({ start: +b.start.toFixed(3), end: +b.end.toFixed(3) });
+    const last = [...out].reverse().find((x) => (x.audio !== false) === b.audio);
+    if (last && b.start <= last.end + 0.01) last.end = Math.max(last.end, +b.end.toFixed(3));
+    else out.push({ start: +b.start.toFixed(3), end: +b.end.toFixed(3), ...(b.audio ? {} : { audio: false }) });
   }
   return out;
 }
@@ -100,7 +101,8 @@ export function blanksEnable(blanks) {
 }
 
 /**
- * Trechos vazios do vídeo principal: a imagem fica preta e o som some, sem mudar a
+ * Trechos vazios do vídeo principal: a imagem fica preta e o som some (ou fica, nos
+ * trechos `audio:false`, do áudio desvinculado), sem mudar a
  * duração (o espaço continua lá, como no Premiere; camadas e legendas seguem por cima).
  * Roda no tempo original, antes dos cortes.
  */
@@ -108,9 +110,11 @@ export async function applyVideoBlanks(input, work, meta, blanks, onProgress) {
   const list = cleanBlanks(blanks);
   if (!list.length) return { output: input, applied: false };
   const en = blanksEnable(list);
+  const withSound = list.filter((b) => b.audio !== false);
   const out = path.join(work, 'blanks.mp4');
   const args = ['-i', input, '-vf', `drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill:enable='${en}'`];
-  if (meta.hasAudio) args.push('-af', `volume=0:enable='${en}'`, '-c:a', 'aac', '-b:a', '192k');
+  if (meta.hasAudio && withSound.length) args.push('-af', `volume=0:enable='${blanksEnable(withSound)}'`, '-c:a', 'aac', '-b:a', '192k');
+  else if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push(...x264Fast(), '-movflags', '+faststart', '-y', out);
   await runFfmpeg(args, { label: 'blank', totalDuration: meta.duration, onProgress });
   log.ok(`trechos vazios: ${list.length}`);
