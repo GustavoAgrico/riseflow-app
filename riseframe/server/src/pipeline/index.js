@@ -409,7 +409,10 @@ export async function runPipeline(job, onUpdate = () => {}) {
     });
     if (precise.noises?.length) report.noisesRemoved = precise.noises.length;
     st.onProgress(0.08);
-    const removals = [...precise.pauses];
+    // Espaços vazios com o som tirado (vídeo excluído sem fechar): pausas e ruídos ali dentro
+    // não saem — senão o espaço encolheria (e as camadas por cima, como a logo, junto).
+    const holes = cleanBlanks(options.videoBlanks).filter((b) => b.audio !== false);
+    const removals = precise.pauses.flatMap((p) => holes.reduce((parts, h) => parts.flatMap((q) => (h.end <= q.start || h.start >= q.end ? [q] : [{ ...q, end: h.start }, { ...q, start: h.end }].filter((x) => x.end - x.start > 0.02))), [p]));
     // Trechos cortados à mão na faixa de vídeo: valem sempre, com ou sem corte de silêncio.
     for (const c of options.videoCuts || []) {
       if (c && c.end > c.start) removals.push({ start: Math.max(0, c.start), end: Math.min(meta.duration, c.end) });

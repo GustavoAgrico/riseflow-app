@@ -508,8 +508,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const last = flatWords[flatWords.length - 1].end;
       if (dur - last >= MIN_PAUSE) out.push({ start: last, end: dur, dur: dur - last });
     }
-    return out;
-  }, [flatWords, dur]);
+    // vídeo excluído (espaço vazio com o som tirado): as pausas dali saem junto — cortar
+    // uma pausa ali encurtaria o espaço; o que sobra fora do espaço continua valendo
+    const holes = blanks.filter((b) => b.audio !== false);
+    if (!holes.length) return out;
+    const res = [];
+    for (const p of out) {
+      let parts = [[p.start, p.end]];
+      for (const h of holes) parts = parts.flatMap(([a, b]) => (h.end <= a || h.start >= b ? [[a, b]] : [[a, h.start], [h.end, b]].filter(([x, y]) => y - x > 0)));
+      for (const [a, b] of parts) if (b - a >= MIN_PAUSE) res.push({ start: a, end: b, dur: b - a });
+    }
+    return res;
+  }, [flatWords, dur, blanks]);
 
   // Desfazer / refazer: TODA edição da timeline (texto, cortes, pausas, legendas, B-roll,
   // capa e título, cor, áudio, enquadramento, minhas mídias). Mudanças seguidas em menos
@@ -1778,10 +1788,52 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     || (selKind === 'keyframe' && selKey != null) || (selKind === 'text' && !!selText) || (selKind === 'vfx' && !!selFx) || (selKind === 'xcap' && !!selXcap) || (selKind === 'trans' && !!selTrans) || (selKind === 'marker' && !!selMarker) || (selKind === 'speed' && !!selSpeed) || (selKind === 'freeze' && !!selFreeze);
   /** Corta um trecho do vídeo final: some o vídeo, o áudio e a legenda daquele pedaço. */
   function cutTimeRange(a, b) {
+    return !!closeRange(a, b);
+  }
+  /** Quanto do vídeo que fica (sem os cortes) cai dentro de [a, b]. */
+  const keptIn = (a, b) => {
+    let n = Math.max(0, b - a);
+    for (const [x, y] of allGaps) n -= Math.max(0, Math.min(b, y) - Math.max(a, x));
+    return n;
+  };
+  /** Camadas por cima do vídeo principal (mídias/logo, textos, B-roll) que aparecem em [a, b]. */
+  function layersOver(a, b) {
+    const items = [
+      ...visMedia.map((m) => ({ name: m.filename || 'mídia', start: m.start, end: m.start + m.duration })),
+      ...visTexts.map((t) => ({ name: `texto "${String(t.text || '').trim().slice(0, 18)}"`, start: t.start, end: t.end })),
+      ...(laneHide.broll ? [] : (brollReview?.moments || []).filter((m) => !m.removed).map((m) => ({ name: 'B-roll', start: m.start, end: m.end }))),
+    ];
+    return items.filter((x) => Number(x.end) > a + 0.01 && Number(x.start) < b - 0.01);
+  }
+  /**
+   * Fechar o espaço [a, b] (corta e junta), como o ripple do Premiere — sem levar junto o que
+   * está por cima: uma camada (ex.: a logo) que sumiria inteira nesse trecho faz perguntar;
+   * com `gentle` (Delete num espaço vazio) qualquer camada por cima mantém o espaço. Se o
+   * vídeo fosse ficar vazio, o trecho vira espaço vazio. → true (fechou) | 'blank' | false.
+   */
+  function closeRange(a, b, { gentle = false } = {}) {
     const lo = Math.max(0, Math.min(a, b));
     const hi = Math.min(dur, Math.max(a, b));
     if (hi - lo < 0.05) return false;
-    if (hi - lo >= dur - 0.2 && !window.confirm('Isso corta o vídeo inteiro (vídeo, áudio e legenda). Continuar?')) return false;
+    if (keptIn(0, dur) - keptIn(lo, hi) < 0.1) {
+      if (!gentle) addBlank(lo, hi);
+      flashNote('O vídeo ficaria vazio: o trecho ficou como espaço vazio (as camadas por cima continuam). Solte outra mídia nele.');
+      return gentle ? false : 'blank';
+    }
+    const over = layersOver(lo, hi);
+    const names = [...new Set(over.map((x) => x.name))].slice(0, 3).join(', ');
+    if (gentle && over.length) {
+      flashNote(`O espaço vazio ficou: tem ${names} por cima, e fechar cortaria junto. Para fechar mesmo assim: botão direito › Fechar o espaço.`);
+      return false;
+    }
+    const vanish = over.filter((x) => { const k = keptIn(x.start, x.end); return k > 0.05 && k - keptIn(Math.max(lo, x.start), Math.min(hi, x.end)) < 0.1; });
+    if (vanish.length) {
+      const vn = [...new Set(vanish.map((x) => x.name))].slice(0, 3).join(', ');
+      if (!window.confirm(`${vn} está só nesse trecho e sairia junto ao fechar o espaço.\n\nOK = fechar o espaço e tirar junto\nCancelar = deixar o espaço vazio (${vanish.length > 1 ? 'as camadas ficam' : 'a camada fica'})`)) {
+        addBlank(lo, hi);
+        return 'blank';
+      }
+    }
     setCuts((l) => [...l, { key: `c${Date.now()}`, start: +lo.toFixed(2), end: +hi.toFixed(2) }]);
     return true;
   }
@@ -1874,16 +1926,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function openPieceMenu(e, kind, piece) {
     if (kind === 'video') { setSelKind('video'); setSelVideo({ start: piece.a, end: piece.b }); }
     else { setSelKind('audio'); setSelAudio({ start: piece.a, end: piece.b }); }
-    const close = { key: `c${Date.now()}`, start: +piece.a.toFixed(2), end: +piece.b.toFixed(2) };
     const items = kind === 'video' ? [
       { label: avLinked ? 'Excluir (deixar vazio: imagem e som)' : 'Excluir só a imagem (o som fica)', danger: true, act: () => addBlank(piece.a, piece.b, { audio: avLinked }) },
-      { label: 'Excluir e fechar o espaço (imagem e som)', act: () => setCuts((l) => [...l, close]) },
+      { label: 'Excluir e fechar o espaço (imagem e som)', act: () => closeRange(piece.a, piece.b) },
       { label: 'Dividir no ponteiro', off: !(cur > piece.a + 0.05 && cur < piece.b - 0.05), act: () => razorCut(cur) },
       { sep: true },
       linkItem(),
     ] : [
       { label: avLinked ? 'Excluir (deixar vazio: imagem e som)' : 'Excluir só o som (a imagem fica)', danger: true, act: () => (avLinked ? addBlank(piece.a, piece.b) : muteRange(piece.a, piece.b)) },
-      { label: 'Excluir e fechar o espaço (imagem e som)', act: () => setCuts((l) => [...l, close]) },
+      { label: 'Excluir e fechar o espaço (imagem e som)', act: () => closeRange(piece.a, piece.b) },
       { sep: true },
       linkItem(),
     ];
@@ -1917,9 +1968,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     else if (selKind === 'blank') {
       // espaço vazio selecionado: Delete fecha o buraco (vira corte)
       const b = blanks.find((x) => x.key === selBlank);
-      if (b) { setBlanks((l) => l.filter((x) => x.key !== b.key)); setCuts((l) => [...l, { key: `c${Date.now()}`, start: b.start, end: b.end }]); }
-      setSelBlank(null);
-      setSelKind('caption');
+      if (b && closeRange(b.start, b.end, { gentle: true }) === true) {
+        setBlanks((l) => l.filter((x) => x.key !== b.key));
+        setSelBlank(null);
+        setSelKind('caption');
+      }
     }
     else if (selKind === 'words') {
       // Palavras selecionadas na transcrição: saem do vídeo (vídeo, áudio e legenda); se todas
@@ -1941,12 +1994,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const all = selCaptions.every((i) => segments[i] && segHidden(segments[i]));
       setCaptionsHidden(!all);
     } else if (selKind === 'video') {
-      if (ripple) setCuts((l) => [...l, { key: `c${Date.now()}`, start: +selVideo.start.toFixed(2), end: +selVideo.end.toFixed(2) }]);
+      if (ripple) closeRange(selVideo.start, selVideo.end);
       else addBlank(selVideo.start, selVideo.end, { audio: avLinked }); // desvinculado: só a imagem
       setSelVideo(null);
     } else if (selKind === 'audio') {
       // pedaço do A1: vinculado = igual à V1; desvinculado = só o som sai (a imagem fica)
-      if (avLinked && ripple) setCuts((l) => [...l, { key: `c${Date.now()}`, start: +selAudio.start.toFixed(2), end: +selAudio.end.toFixed(2) }]);
+      if (avLinked && ripple) closeRange(selAudio.start, selAudio.end);
       else if (avLinked) addBlank(selAudio.start, selAudio.end);
       else muteRange(selAudio.start, selAudio.end);
       setSelAudio(null);
@@ -3947,6 +4000,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // novo, com os cortes grandes já aplicados). Solto em outra faixa ou na prévia: vira camada.
   const [libDrop, setLibDrop] = useState(null); // { t, v1 } durante o arrasto
   const [v1Busy, setV1Busy] = useState('');
+  // aviso rápido na parte de baixo (ex.: por que o espaço vazio não fechou)
+  const [tlNote, setTlNote] = useState('');
+  const noteTimer = useRef(0);
+  function flashNote(msg) {
+    setTlNote(msg);
+    clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => setTlNote(''), 6000);
+  }
   const isLibDrag = (e) => Array.from(e.dataTransfer?.types || []).includes('text/rf-media');
   const libItemOf = (e) => (library || []).find((x) => x.id === e.dataTransfer.getData('text/rf-media'));
   const onV1Lane = (e) => !!e.target?.closest?.('[data-lane="v1"]');
@@ -5313,6 +5374,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {tabsMenuEl}
       {ctxMenuEl}
       {exportDialog()}
+      {tlNote && !v1Busy && createPortal(
+        <div role="status" onClick={() => setTlNote('')} style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 960, maxWidth: 'min(640px, calc(100vw - 32px))', padding: '10px 16px', borderRadius: 14, background: '#2A2B33', border: '1px solid rgba(255,255,255,0.14)', color: '#fff', fontSize: 13, fontWeight: 600, lineHeight: 1.4, boxShadow: '0 12px 30px -10px rgba(0,0,0,0.8)', cursor: 'pointer' }}>{tlNote}</div>,
+        document.body,
+      )}
       {v1Busy && createPortal(
         <div role="status" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 960, padding: '10px 16px', borderRadius: 999, background: '#1E3A8A', color: '#fff', fontSize: 13, fontWeight: 700, boxShadow: '0 12px 30px -10px rgba(0,0,0,0.8)' }}>{v1Busy}</div>,
         document.body,
@@ -7099,7 +7164,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     onClick={(e) => { e.stopPropagation(); setSelBlank(b.key); setSelKind('blank'); seek(b.start); }}
                     onContextMenu={(e) => { setSelBlank(b.key); setSelKind('blank'); openCtx(e, `Espaço vazio (${fmtDuration(b.start)}–${fmtDuration(b.end)})`, [
                       { label: b.audio === false ? 'Trazer a imagem de volta' : 'Desfazer (trazer o vídeo de volta)', act: () => setBlanks((l) => l.filter((x) => x.key !== b.key)) },
-                      { label: 'Fechar o espaço (tirar o trecho do vídeo)', danger: true, act: () => { setBlanks((l) => l.filter((x) => x.key !== b.key)); setCuts((l) => [...l, { key: `c${Date.now()}`, start: b.start, end: b.end }]); setSelBlank(null); } },
+                      { label: 'Fechar o espaço (tirar o trecho do vídeo)', danger: true, act: () => { if (closeRange(b.start, b.end) === true) { setBlanks((l) => l.filter((x) => x.key !== b.key)); setSelBlank(null); } } },
                     ]); }}
                     title="Espaço vazio — arraste uma mídia da biblioteca para cá para ocupar · Delete fecha o espaço"
                     style={{ position: 'absolute', left: X(b.start), width: w, top: 0, bottom: 0, zIndex: 5, cursor: 'pointer', background: 'repeating-linear-gradient(135deg, #0b0b0f, #0b0b0f 6px, #16161d 6px, #16161d 12px)',
