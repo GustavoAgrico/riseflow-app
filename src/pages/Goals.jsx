@@ -3,6 +3,7 @@ import { Target, Package, Plus, Trash2, Check, Trophy } from 'lucide-react'
 import { Layout } from '@components/Layout/Layout'
 import { GoalPanel } from '@components/Goals/GoalPanel'
 import { supabase } from '@/lib/supabase'
+import { socket } from '@services/socket'
 import { useAuth } from '@context/AuthContext'
 import { monthKey } from '@hooks/useGoalProgress'
 import { brl } from '@lib/metrics'
@@ -42,7 +43,12 @@ export const Goals = () => {
     setGoals(g.data ?? []); setProducts(p.data ?? []); setWonDeals(w.data ?? [])
   }, [ownerUserId, isDemoMode])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    const onUpdate = (e) => { if (e?.userId === ownerUserId) load() }
+    socket.on('sales_update', onUpdate)
+    return () => socket.off('sales_update', onUpdate)
+  }, [load, ownerUserId])
 
   useEffect(() => {
     const existing = goals.find(g => g.month === `${month}-01`)
