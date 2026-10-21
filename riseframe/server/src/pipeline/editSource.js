@@ -41,6 +41,8 @@ export async function editSourceStatus(id, input) {
   if (finished.has(id)) return finished.get(id);
   if (building.has(id)) return { ready: false };
   const job = (async () => {
+    // arquivo enorme (dezenas de GB): refazer inteiro custaria horas e o mesmo espaço em disco
+    if (fs.statSync(input).size > 8 * 1024 ** 3) return { ready: true, proxy: false };
     const gap = await keyframeGap(input);
     if (gap <= 1.05) return { ready: true, proxy: false }; // já pula bem: usa o original
     const meta = await probeSummary(input);

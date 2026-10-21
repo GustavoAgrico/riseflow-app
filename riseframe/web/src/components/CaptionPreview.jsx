@@ -3,6 +3,7 @@ import { C } from '../theme.js';
 import SnapGuides, { snapCenter } from './SnapGuides.jsx';
 import { motionAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { pickKeyword, premiumChunks, layoutCaption, autoMaxChars, stripPunct, captionTiming, timeSegments } from '../../../shared/captionKeyword.js';
+import { shadowParams, shadowGeometry } from '../../../shared/captionShadow.js';
 import {
   CAPTION_TEMPLATES, CAPTION_FONTS, CAPTION_COLOR_LIST, fontById, fontBold, colorHex, isLightHex, isWhiteish, HIGHLIGHT_IDS, LINE_HEIGHT, resolveFontFace,
   SAFE_ZONE, isVerticalFrame, safeCaptionBox,
@@ -68,14 +69,14 @@ export function captionLook(options) {
   // espaçamento entre as letras (em) e sombra das letras — iguais ao render
   const spacing = T.premium ? 0 : Math.min(0.3, Math.max(-0.05, Number(options.captionSpacing) || 0));
   const shMode = ['off', 'on'].includes(options.captionShadow) ? options.captionShadow : 'auto';
-  const shSize = Math.min(3, Math.max(0.3, Number(options.captionShadowSize) || 1));
-  const shOpacity = Math.min(1, Math.max(0.1, Number(options.captionShadowOpacity) || 0.6));
+  const shGeo = shadowParams(options);
 
   function stroke(px, c = '#000') {
     return `-${px}px 0 ${c}, ${px}px 0 ${c}, 0 -${px}px ${c}, 0 ${px}px ${c},`
       + `-${px}px -${px}px ${c}, ${px}px ${px}px ${c}, -${px}px ${px}px ${c}, ${px}px -${px}px ${c}`;
   }
   function textStyle(fontPx) {
+    let dropFilter = null;
     const outline = bg === 'clean' || T.outline === 0 ? 0 : Math.max(1, Math.round(fontPx * T.outline));
     const shadow = `0 ${Math.max(1, Math.round(fontPx * 0.05))}px ${Math.round(fontPx * 0.12)}px rgba(0,0,0,.55)`;
     const hs = Math.max(1, Math.round(fontPx * (T.hardShadow === 'accent' ? 0.07 : 0.06)));
@@ -95,14 +96,14 @@ export function captionLook(options) {
         ? `0 0 ${fontPx * 0.15}px ${color}, 0 0 ${fontPx * 0.3}px ${color}${outline ? `, ${stroke(outline, color)}` : ''}`
         : outline ? stroke(outline) : 'none';
     } else if (shMode === 'on' && !useBox) {
-      const d = Math.max(1, Math.round(fontPx * 0.05 * shSize));
-      const c = `rgba(0,0,0,${shOpacity})`;
-      const ring = outline ? [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]].map(([dx, dy]) => `, ${d + dx * outline}px ${d + dy * outline}px 0 ${c}`).join('') : '';
-      const drop = `${d}px ${d}px 0 ${c}${ring}`;
-      const front = glowOn
+      // Sombra projetada (como no Photoshop): a letra com o contorno vira a sombra — no CSS,
+      // drop-shadow do elemento (pega o contorno junto). Mesmas contas do render.
+      baseShadow = glowOn
         ? `0 0 ${fontPx * 0.15}px ${color}, 0 0 ${fontPx * 0.3}px ${color}${outline ? `, ${stroke(outline, color)}` : ''}`
-        : outline ? stroke(outline) : '';
-      baseShadow = front ? `${front}, ${drop}` : drop;
+        : outline ? stroke(outline) : 'none';
+      const g = shadowGeometry(shGeo, fontPx / (1080 * T.size * scale));
+      const [r, gg, b] = [0, 2, 4].map((i) => parseInt(g.color.slice(i, i + 2), 16));
+      dropFilter = g.opacity > 0.005 ? `drop-shadow(${g.dx.toFixed(1)}px ${g.dy.toFixed(1)}px ${(g.blur * 1.2).toFixed(1)}px rgba(${r},${gg},${b},${g.opacity.toFixed(3)}))` : null;
     }
     return {
       fontFamily: `'${fontFamily}', system-ui, sans-serif`,
@@ -111,6 +112,7 @@ export function captionLook(options) {
       lineHeight: LINE_HEIGHT,
       color: glowOn ? '#fff' : color,
       textShadow: baseShadow,
+      ...(dropFilter ? { filter: dropFilter } : null),
       textTransform: caseMode === 'upper' ? 'uppercase' : caseMode === 'lower' ? 'lowercase' : 'none',
       fontStyle: fakeItalic ? 'italic' : 'normal',
       textDecoration: underline ? 'underline' : 'none',

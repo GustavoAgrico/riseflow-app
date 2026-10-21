@@ -219,7 +219,8 @@ function pricingOptions(o = {}) {
 
 /** Cobra o job e cria na fila; responde 402 (e apaga o upload) se faltar saldo. */
 function chargeAndQueue(req, res, mode, jobInput, { sourceId } = {}) {
-  const dropUpload = () => req.file && fs.unlink(req.file.path, () => {});
+  // arquivo original do computador (app de PC) nunca é apagado — só cópias enviadas
+  const dropUpload = () => req.file && !req.file.linked && fs.unlink(req.file.path, () => {});
   if (remoteAccount()) {
     // App de PC/Mac: cobra na conta do site; o vídeo é processado aqui.
     const id = nanoid(12);
@@ -570,7 +571,16 @@ export function parseOptions(raw) {
     captionSpacing: clampNum(o.captionSpacing, -0.05, 0.3, 0),
     captionShadow: ['auto', 'off', 'on'].includes(o.captionShadow) ? o.captionShadow : 'auto',
     captionShadowSize: clampNum(o.captionShadowSize, 0.3, 3, 1),
-    captionShadowOpacity: clampNum(o.captionShadowOpacity, 0.1, 1, 0.6),
+    captionShadowOpacity: clampNum(o.captionShadowOpacity, 0, 1, 0.6),
+    // sombra projetada (como no Photoshop): mesclagem, cor, ângulo, distância, expansão, tamanho
+    captionShadowBlend: ['multiply', 'normal'].includes(o.captionShadowBlend) ? o.captionShadowBlend : 'multiply',
+    captionShadowColor: /^#?[0-9a-f]{6}$/i.test(String(o.captionShadowColor || '')) ? String(o.captionShadowColor).replace('#', '') : '000000',
+    ...(o.captionShadowAngle != null || o.captionShadowDistance != null ? {
+      captionShadowAngle: clampNum(o.captionShadowAngle, -360, 360, 135),
+      captionShadowDistance: clampNum(o.captionShadowDistance, 0, 200, 6),
+      captionShadowSpread: clampNum(o.captionShadowSpread, 0, 100, 0),
+      captionShadowBlur: clampNum(o.captionShadowBlur, 0, 100, 6),
+    } : {}),
     // Como o "Criar legendas" do Premiere: duração mínima na tela, intervalo entre
     // legendas (s) e remover pontuação.
     captionMinDuration: clampNum(o.captionMinDuration, 0, 5, 0),
@@ -780,7 +790,7 @@ jobsRouter.get('/uploads/:id', requireAuth, (req, res) => {
 jobsRouter.put('/uploads/:id', requireAuth, receiveChunk);
 
 // POST /api/jobs  (multipart: file + options) → pipeline automático completo
-jobsRouter.post('/jobs', requireAuth, requireVerified, requireCredits('auto'), checkUploadSize, upload.single('file'), fromChunkedUpload, (req, res) => {
+jobsRouter.post('/jobs', requireAuth, requireVerified, requireCredits('auto'), checkUploadSize, upload.single('file'), fromChunkedUpload, fromLocalPath, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'auto', {
     filename: fixName(req.file.originalname),
@@ -791,7 +801,7 @@ jobsRouter.post('/jobs', requireAuth, requireVerified, requireCredits('auto'), c
 
 // POST /api/transcribe  (multipart: file) → transcreve e para; o upload fica salvo
 // para depois ser reusado por /api/render com a transcrição editada.
-jobsRouter.post('/transcribe', requireAuth, requireVerified, requireCredits('transcribe'), checkUploadSize, upload.single('file'), fromChunkedUpload, (req, res) => {
+jobsRouter.post('/transcribe', requireAuth, requireVerified, requireCredits('transcribe'), checkUploadSize, upload.single('file'), fromChunkedUpload, fromLocalPath, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'transcribe', {
     filename: fixName(req.file.originalname),
@@ -888,7 +898,7 @@ jobsRouter.post('/sequence', requireAuth, requireVerified, requireCredits('trans
 });
 
 // POST /api/clips  (multipart: file) → gera vários clipes curtos do vídeo longo
-jobsRouter.post('/clips', requireAuth, requireVerified, requireCredits('clips'), checkUploadSize, upload.single('file'), fromChunkedUpload, (req, res) => {
+jobsRouter.post('/clips', requireAuth, requireVerified, requireCredits('clips'), checkUploadSize, upload.single('file'), fromChunkedUpload, fromLocalPath, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'clips', {
     filename: fixName(req.file.originalname),
@@ -1079,6 +1089,19 @@ async function probeDuration(file, kind) {
   }
 }
 /** Caminho de arquivo do computador (só no app de PC): absoluto, existe e é mídia. */
+/**
+ * App de PC/Mac: o vídeo principal usa o arquivo ORIGINAL do computador (como as mídias),
+ * sem copiar para a pasta do app — vídeo de dezenas de GB não dobra o espaço nem espera a
+ * cópia. No site (sem modo PC) não faz nada e o envio normal segue.
+ */
+function fromLocalPath(req, res, next) {
+  if (req.file || !req.body?.localPath) return next();
+  const p = desktopPath(req.body.localPath);
+  if (!p) return next();
+  req.file = { path: p, originalname: path.basename(p), size: fs.statSync(p).size, linked: true };
+  next();
+}
+
 function desktopPath(p) {
   if (!config.desktop || typeof p !== 'string' || !p || !path.isAbsolute(p)) return null;
   try {
