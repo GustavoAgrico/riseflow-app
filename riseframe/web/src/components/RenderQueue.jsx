@@ -74,7 +74,8 @@ export function useRenderWatch(every = 5000) {
         const prev = seen.current;
         seen.current = new Map(jobs.map((j) => [j.id, j.status]));
         if (prev) {
-          const fresh = jobs.filter((j) => ['queued', 'processing', 'paused'].includes(prev.get(j.id)) && (j.status === 'done' || (j.status === 'error' && j.stage !== 'canceled')));
+          // só vídeos finais/cortes (o "preparando o editor" abre na hora no próprio editor)
+          const fresh = jobs.filter((j) => j.mode !== 'transcribe' && ['queued', 'processing', 'paused'].includes(prev.get(j.id)) && (j.status === 'done' || (j.status === 'error' && j.stage !== 'canceled')));
           if (fresh.length) {
             setNotices((l) => [...l, ...fresh.map((j) => ({ id: j.id, title: j.filename || 'Vídeo', ok: j.status === 'done', error: j.error || '' }))].slice(-4));
             for (const j of fresh) {
