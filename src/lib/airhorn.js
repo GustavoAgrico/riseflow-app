@@ -146,7 +146,7 @@ function play() {
   popper(t + 3.2); popper(t + 3.35)
 }
 
-export function playCelebrationSound() {
+function playSynth() {
   try {
     setup()
     if (ctx.state === 'running') return play()
@@ -154,4 +154,18 @@ export function playCelebrationSound() {
       window.addEventListener('pointerdown', () => ctx.resume().then(play).catch(() => {}), { once: true })
     })
   } catch { /* sem Web Audio: segue só com a animação */ }
+}
+
+// Se existir public/sounds/meta-batida.mp3, toca o arquivo; senão, o som sintetizado.
+const SOUND_FILE = '/sounds/meta-batida.mp3'
+
+export function playCelebrationSound() {
+  const audio = new Audio(SOUND_FILE)
+  audio.volume = 1
+  audio.addEventListener('error', playSynth, { once: true })
+  audio.play().catch((e) => {
+    if (e?.name === 'NotAllowedError') {
+      window.addEventListener('pointerdown', () => audio.play().catch(() => {}), { once: true })
+    }
+  })
 }
