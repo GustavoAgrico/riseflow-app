@@ -26,6 +26,10 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.on('editor-tab-toggle', h);
     return () => ipcRenderer.removeListener('editor-tab-toggle', h);
   },
+  // Exportar: escolhe onde salvar (janela do sistema) e grava o arquivo pronto ali
+  chooseSavePath: (opts) => ipcRenderer.invoke('choose-save-path', opts),
+  saveDownload: (opts) => ipcRenderer.invoke('save-download', opts),
+  showInFolder: (p) => ipcRenderer.invoke('show-in-folder', p),
   platform: process.platform,
   arch: process.arch,
 });

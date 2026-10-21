@@ -210,6 +210,7 @@ function createWindow() {
     return { action: 'deny' };
   });
   // Em desenvolvimento (npm run dev:all) o Vite serve o site em :5174 com o servidor em :4000.
+  hookExportDownloads(mainWindow);
   mainWindow.loadURL(isDev && !serverProcess ? 'http://localhost:5174' : `http://127.0.0.1:${serverPort}`);
   mainWindow.on('closed', () => { mainWindow = null; });
 }
@@ -391,6 +392,47 @@ function buildMenu() {
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// Exportar direto para a pasta escolhida (como no Premiere): o caminho vem SÓ da janela
+// "Salvar como" do sistema (o editor não escolhe caminhos sozinho).
+let lastExportDir = null;
+const approvedSaves = new Set();
+const pendingSaves = new Map(); // url → { path, resolve }
+ipcMain.handle('choose-save-path', async (_e, opts) => {
+  const ext = opts?.ext === 'mp3' ? 'mp3' : 'mp4';
+  const name = path.basename(String(opts?.defaultName || `video.${ext}`)).replace(/[\\/:*?"<>|]+/g, ' ');
+  const r = await dialog.showSaveDialog(mainWindow, {
+    title: 'Exportar — onde salvar',
+    buttonLabel: 'Exportar',
+    defaultPath: path.join(lastExportDir || app.getPath('videos'), name),
+    filters: [ext === 'mp3' ? { name: 'Áudio MP3', extensions: ['mp3'] } : { name: 'Vídeo MP4', extensions: ['mp4'] }],
+  });
+  if (r.canceled || !r.filePath) return null;
+  lastExportDir = path.dirname(r.filePath);
+  approvedSaves.add(r.filePath);
+  return r.filePath;
+});
+ipcMain.handle('save-download', (_e, opts) => new Promise((resolve) => {
+  const url = String(opts?.url || '');
+  const filePath = String(opts?.path || '');
+  if (!approvedSaves.has(filePath) || !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/api\/jobs\//.test(url) || !mainWindow) return resolve('refused');
+  pendingSaves.set(url, { path: filePath, resolve });
+  mainWindow.webContents.downloadURL(url);
+}));
+ipcMain.handle('show-in-folder', (_e, p) => { if (approvedSaves.has(String(p))) shell.showItemInFolder(String(p)); });
+let exportHooked = false;
+function hookExportDownloads(win) {
+  if (exportHooked) return;
+  exportHooked = true;
+  win.webContents.session.on('will-download', (_e, item) => {
+    const url = item.getURLChain?.()[0] || item.getURL();
+    const job = pendingSaves.get(url);
+    if (!job) return; // outros downloads seguem o normal
+    pendingSaves.delete(url);
+    item.setSavePath(job.path);
+    item.once('done', (_ev, state) => job.resolve(state));
+  });
 }
 
 ipcMain.handle('get-data-dir', () => dataDir);
