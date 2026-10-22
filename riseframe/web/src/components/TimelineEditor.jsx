@@ -356,6 +356,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Espaços vazios no vídeo principal (Excluir sem fechar o buraco, como o "lift" do
   // Premiere): preto e sem som, sem mudar a duração; dá para soltar uma mídia ali.
   const [blanks, setBlanks] = useState([]);
+  // Espaços vazios da própria montagem (clipes "vazio" da V1, ex.: o clipe foi arrastado para
+  // a direita): não são pausa e saem para o render como espaço vazio (o fundo V0 aparece).
+  const [seqHoles, setSeqHoles] = useState([]);
   // Arquivos DESTE projeto (importados aqui ou usados na timeline): a biblioteca mostra só
   // eles por padrão; "Todos" mostra tudo o que você já enviou.
   const [projMediaIds, setProjMediaIds] = useState([]);
@@ -488,7 +491,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
     // vídeo excluído (espaço vazio com o som tirado): as pausas dali saem junto — cortar
     // uma pausa ali encurtaria o espaço; o que sobra fora do espaço continua valendo
-    const holes = blanks.filter((b) => b.audio !== false);
+    const holes = [...blanks.filter((b) => b.audio !== false), ...seqHoles];
     if (!holes.length) return out;
     const res = [];
     for (const p of out) {
@@ -497,7 +500,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       for (const [a, b] of parts) if (b - a >= MIN_PAUSE) res.push({ start: a, end: b, dur: b - a });
     }
     return res;
-  }, [flatWords, dur, blanks]);
+  }, [flatWords, dur, blanks, seqHoles]);
 
   // Silêncio longo no COMEÇO ou no FIM do vídeo (≥ 2,5 s) costuma ser imagem de propósito
   // (abertura, cena, final): fica por padrão e o clique corta. Os outros silêncios saem
@@ -1178,13 +1181,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const timed = d.kind !== 'image'; // vídeo/música: aparar a esquerda avança no arquivo
       const srcLeft = timed && d.srcDuration ? Math.max(0.3, d.srcDuration - d.off0) : Infinity;
       if (d.mode === 'move') {
-        let start = Math.max(0, Math.min(d.start0 + dt, dur - Math.min(d.dur0, dur)));
-        const sn = snapSpan(snapRef.current, start, d.dur0, d.key);
-        start = Math.max(0, Math.min(sn.start, dur - Math.min(d.dur0, dur)));
+        // pode ir para a direita mesmo ocupando o vídeo todo: o fim que passaria do vídeo é
+        // aparado (como no Premiere); voltando no mesmo arrasto, a duração volta
+        const maxStart = Math.max(0, dur - 0.3);
+        let start = Math.max(0, Math.min(d.start0 + dt, maxStart));
+        const sn = snapSpan(snapRef.current, start, Math.min(d.dur0, dur - start), d.key);
+        start = Math.max(0, Math.min(sn.start, maxStart));
         setSnapLine(sn.line);
+        const duration = Math.max(0.3, Math.min(d.dur0, dur - start));
         // Arrastar para cima/baixo troca de camada (cima = por cima no vídeo).
         const layer = d.under ? d.layer0 : Math.max(0, Math.min(d.maxLayer + 1, d.layer0 + Math.round((d.y0 - e.clientY) / LANE.midias)));
-        updateMedia(d.key, { start: +start.toFixed(2), layer });
+        updateMedia(d.key, { start: +start.toFixed(2), duration: +duration.toFixed(2), layer });
         d.x1 = e.clientX;
         d.y1 = e.clientY;
       } else if (d.mode === 'right') {
@@ -2779,7 +2786,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         ...((cropRanges || []).length ? { cropRanges: cropRanges.map((x) => ({ start: +x.start.toFixed(3), end: +x.end.toFixed(3), l: x.l || 0, t: x.t || 0, r: x.r || 0, b: x.b || 0 })) } : {}),
         ...(exportFps ? { fps: exportFps } : {}),
         ...(exportStreams !== 'av' ? { streams: exportStreams } : {}),
-        ...(blanks.length ? { videoBlanks: blanks.map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2), ...(b.audio === false ? { audio: false } : {}) })) } : {}),
+        ...(blanks.length || seqHoles.length ? { videoBlanks: [...blanks, ...seqHoles].map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2), ...(b.audio === false ? { audio: false } : {}) })) } : {}),
         audioGains: gains.map((g) => ({ start: +g.start.toFixed(2), end: +g.end.toFixed(2), volume: +Number(g.volume).toFixed(2) })),
         // Minhas mídias colocadas na timeline (imagens/vídeos/músicas próprias).
         userMedia: visMedia.map((m) => ({
@@ -3944,7 +3951,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // aparece o fundo (no vídeo final é igual: o fundo aparece em volta e nos espaços vazios).
   const visTop = visMedia.filter((m) => !m.under);
   const visUnder = visMedia.filter((m) => m.under);
-  const inBlankNow = blanks.some((b) => cur >= b.start && cur < b.end);
+  const inBlankNow = blanks.some((b) => cur >= b.start && cur < b.end) || seqHoles.some((b) => cur >= b.start && cur < b.end);
   const underBlank = inBlankNow && visUnder.length > 0;
   const personHalf = (
     <div
@@ -4381,6 +4388,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return [{ sourceId, kind: 'video', filename: projectTitle || v1Job?.filename || 'Vídeo', in: 0, out: dur, i: 0, start: 0, end: dur, whole: true }];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [v1Job, dur, sourceId, projectTitle]);
+  useEffect(() => {
+    const next = v1Clips.filter((c) => c.kind === 'blank').map((c) => ({ start: +c.start.toFixed(3), end: +c.end.toFixed(3) }));
+    setSeqHoles((cur) => (JSON.stringify(cur) === JSON.stringify(next) ? cur : next));
+  }, [v1Clips]);
   // Sobra vazia no fim (clipes "vazio" do fim da montagem ou espaço vazio encostado no fim),
   // sem camada por cima: sai do vídeo sozinha — não é parte do vídeo.
   const tailDone = useRef('');
@@ -4730,8 +4741,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         return;
       }
       const to = v1MoveTarget(d);
-      if (to === d.k) return;
-      v1Reorder(d.k, to);
+      if (to !== d.k) { v1Reorder(d.k, to); return; }
+      // sem mudar a ordem: desliza o clipe (como no Premiere). Direita abre um espaço vazio
+      // antes dele; esquerda fecha o espaço vazio que houver antes.
+      const sec = d.dx / pps;
+      if (sec > 0.1) v1Slide(d.k, sec);
+      else if (sec < -0.1) {
+        const room = p.va - v1EmptyBefore(p.va);
+        if (room < 0.05) { flashNote('Não há espaço vazio antes deste clipe para ele ir para a esquerda. Para mudar a ordem, arraste até passar de outro clipe.'); return; }
+        closeRange(p.va - Math.min(room, -sec), p.va);
+      }
       return;
     }
     const { v, ext, restore } = v1TrimInfo(d);
@@ -4792,6 +4811,44 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         return +(startOf.get(u) + off).toFixed(2);
       };
       await v1Rebuild(order.flatMap((u) => u.parts), mapT);
+    } catch (e) {
+      window.alert(e.message || 'Não deu para mover o clipe.');
+    } finally {
+      setV1Busy('');
+    }
+  }
+  /** Começo do espaço vazio encostado antes de t (vazios do editor e da montagem). */
+  function v1EmptyBefore(t) {
+    let e = t;
+    for (let i = 0; i < 50; i++) {
+      const bl = blanks.find((b) => b.audio !== false && Math.abs(b.end - e) < 0.06 && b.start < e - 0.01);
+      const pc = v1Pieces.find((q) => q.clip.kind === 'blank' && Math.abs(q.vb - e) < 0.06 && q.va < e - 0.01);
+      const next = Math.min(bl ? bl.start : e, pc ? pc.va : e);
+      if (next >= e - 0.001) break;
+      e = next;
+    }
+    return Math.max(0, e);
+  }
+  /** Desliza o clipe k para a direita: entra um espaço vazio de `sec` antes dele e remonta. */
+  async function v1Slide(k, sec) {
+    if (v1Busy) return;
+    try {
+      const { newPos, units } = v1Plan();
+      const ui = units.findIndex((u) => u.p === v1Pieces[k]);
+      if (ui < 0) return;
+      const add = +Math.min(600, sec).toFixed(2);
+      const parts = [];
+      units.forEach((u, i) => {
+        if (i === ui) {
+          const last = parts[parts.length - 1];
+          if (last?.kind === 'blank') last.duration += add; // já tinha vazio antes: aumenta
+          else parts.push({ kind: 'blank', filename: 'Vazio', duration: add });
+        }
+        parts.push(...u.parts.map((c) => ({ ...c })));
+      });
+      const from = newPos(v1Pieces[k].a);
+      // camadas e textos a partir do clipe andam junto com ele
+      await v1Rebuild(parts, (x) => { const n = newPos(x); return +(n >= from - 0.001 ? n + add : n).toFixed(2); });
     } catch (e) {
       window.alert(e.message || 'Não deu para mover o clipe.');
     } finally {
@@ -7860,7 +7917,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 const moving = dragging && v1Drag.kind === 'move' && Math.abs(v1Drag.dx) >= 4;
                 const trim = dragging && v1Drag.kind !== 'move' ? v1TrimInfo(v1Drag) : null;
                 if (p.clip.kind === 'blank') return null; // pedaço vazio: sem alças nem nome
-                const showGrip = v1Pieces.length > 1 || !p.clip.whole;
+                const showGrip = true; // mover para os lados (abre espaço antes) ou mudar a ordem
                 const edgeX = trim ? (v1Drag.kind === 'L' ? left + (trim.v - p.va) * pps : left + w + (trim.v - p.vb) * pps) : 0;
                 const v0 = trim ? (v1Drag.kind === 'L' ? p.va : p.vb) : 0;
                 const longer = trim && (v1Drag.kind === 'L' ? trim.v < v0 : trim.v > v0);
@@ -7869,7 +7926,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     {k > 0 && <div style={{ position: 'absolute', left: left - 1, top: 0, bottom: 0, width: 2, background: 'rgba(0,0,0,0.9)', pointerEvents: 'none', zIndex: 3 }} />}
                     {showGrip && w > 24 && (
                       <div className="rf-v1grip" onMouseDown={(e) => startV1Drag('move', k, e)}
-                        title={`${k + 1}. ${p.clip.filename || 'clipe'} — arraste para mudar a ordem no vídeo principal · clique seleciona`}
+                        title={`${k + 1}. ${p.clip.filename || 'clipe'} — arraste para os lados para mover (abre espaço antes) ou passe de outro clipe para mudar a ordem · clique seleciona`}
                         style={{ position: 'absolute', left: left + 10, width: Math.max(0, w - 20), top: 0, height: 15, zIndex: 4, cursor: moving ? 'grabbing' : 'grab', background: 'rgba(10,12,20,0.72)', color: '#E5E7EB', fontSize: 9.5, fontWeight: 700, lineHeight: '15px', padding: '0 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', borderRadius: '0 0 4px 4px', boxSizing: 'border-box' }}>
                         ⠿ {k + 1}. {p.clip.filename || 'clipe'}
                       </div>
@@ -7879,7 +7936,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <div className="rf-v1trim r" onMouseDown={(e) => startV1Drag('R', k, e)} title="Arraste para aparar o fim deste clipe · para a direita, por cima do que foi cortado ou excluído, traz aquele pedaço de volta"
                       style={{ position: 'absolute', left: left + w - 8, width: 8, top: 15, bottom: 0, zIndex: 5, cursor: 'ew-resize' }} />
                     {moving && (
-                      <div style={{ position: 'absolute', left, width: w, top: 0, bottom: 0, transform: `translateX(${v1Drag.dx}px)`, border: '2px dashed #FACC15', background: 'rgba(250,204,21,0.14)', borderRadius: 4, pointerEvents: 'none', zIndex: 6 }} />
+                      <div style={{ position: 'absolute', left, width: w, top: 0, bottom: 0, transform: `translateX(${v1Drag.dx}px)`, border: '2px dashed #FACC15', background: 'rgba(250,204,21,0.14)', borderRadius: 4, pointerEvents: 'none', zIndex: 6 }}>
+                        {v1MoveTarget(v1Drag) === k && (
+                          <span style={{ position: 'absolute', top: 16, left: 4, whiteSpace: 'nowrap', fontSize: 10, fontWeight: 800, color: '#1a1400', background: '#FACC15', borderRadius: 4, padding: '0 5px' }}>
+                            {v1Drag.dx > 0 ? `→ +${(v1Drag.dx / pps).toFixed(1).replace('.', ',')} s de espaço antes` : `← fecha ${Math.min(-v1Drag.dx / pps, p.va - v1EmptyBefore(p.va)).toFixed(1).replace('.', ',')} s de espaço`}
+                          </span>
+                        )}
+                      </div>
                     )}
                     {trim && (
                       <>
@@ -7944,6 +8007,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 <div key={c.key} style={{ position: 'absolute', left: c.start * pps, width: Math.max(2, (c.end - c.start) * pps), top: 0, bottom: 0, zIndex: 2, pointerEvents: 'none',
                   background: 'repeating-linear-gradient(45deg, rgba(240,82,107,0.45), rgba(240,82,107,0.45) 5px, rgba(240,82,107,0.2) 5px, rgba(240,82,107,0.2) 10px)', borderLeft: `1px solid ${C.red}`, borderRight: `1px solid ${C.red}` }} />
               ))}
+              {/* alça do áudio: move junto com o vídeo (vinculados), igual à alça da V1 */}
+              {!isMobile && avLinked && v1Pieces.map((p, k) => {
+                if (p.clip.kind === 'blank') return null;
+                const w = W(p.va, p.vb);
+                if (w <= 24) return null;
+                return (
+                  <div key={`a1g${k}-${p.a}`} onMouseDown={(e) => startV1Drag('move', k, e)} onClick={(e) => e.stopPropagation()}
+                    title="Arraste para os lados para mover o clipe (vídeo e áudio juntos)"
+                    style={{ position: 'absolute', left: X(p.va) + 10, width: Math.max(0, w - 20), top: 0, height: 12, zIndex: 4, cursor: 'grab', background: 'rgba(10,12,20,0.55)', color: '#CFFAF3', fontSize: 9, fontWeight: 700, lineHeight: '12px', padding: '0 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', borderRadius: '0 0 4px 4px' }}>
+                    ⠿ {k + 1}. áudio
+                  </div>
+                );
+              })}
               {wave && keptPieces.map(([a, b]) => (
                 <div key={a} style={{ position: 'absolute', top: 0, left: X(a), width: W(a, b), height: LANE.audio - 2, overflow: 'hidden' }}>
                   <svg width={dur * pps} height={LANE.audio - 2} viewBox={`0 0 ${peaks.length} 100`} preserveAspectRatio="none" style={{ display: 'block', marginLeft: -a * pps }}>
