@@ -2245,6 +2245,38 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setMediaBusy(false);
     }
   }
+  // Arrastar arquivos do computador direto para a biblioteca: só guarda (não põe na timeline).
+  const [libFileOver, setLibFileOver] = useState(false);
+  const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+  function onLibFileDragOver(e) {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!libFileOver) setLibFileOver(true);
+  }
+  async function onLibFileDrop(e) {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setLibFileOver(false);
+    const files = Array.from(e.dataTransfer.files || []).filter((f) => /^(image|video|audio)\//.test(f.type) || /\.(png|jpe?g|webp|gif|svg|mp4|mov|m4v|webm|mkv|avi|mp3|wav|m4a|aac|ogg|flac)$/i.test(f.name));
+    if (!files.length) { setMediaErr('Solte imagens, vídeos ou músicas.'); return; }
+    setMediaErr('');
+    setMediaBusy(true);
+    setLibOpen(true);
+    try {
+      for (const file of files) {
+        const info = await addProjectMedia(file);
+        markProjectMedia(info?.id);
+      }
+    } catch (err) {
+      setMediaErr(err.message || 'falha ao enviar a mídia');
+    } finally {
+      setMediaBusy(false);
+      loadLibrary();
+    }
+  }
   /** Coloca uma mídia (recém-enviada ou da biblioteca) na timeline, no ponto atual. */
   function addMediaItem(info, extra = null, file = null) {
         const srcDur = Number(info.durationSec) || (info.kind === 'image' ? 4 : 5);
@@ -2305,6 +2337,42 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (!window.confirm('Tirar esta mídia da biblioteca? Os vídeos que já usam continuam iguais.')) return;
     setLibrary((l) => (l || []).filter((x) => x.id !== id));
     removeLibraryMedia(id).catch(() => loadLibrary());
+  }
+  // Selecionar vários itens da biblioteca para tirar de uma vez (Ctrl/⌘ ou Shift + clique
+  // também seleciona, como no explorador de arquivos).
+  const [libSelMode, setLibSelMode] = useState(false);
+  const [libSel, setLibSel] = useState([]);
+  const libSelLast = useRef(null);
+  function toggleLibSel(id, e, list) {
+    setLibSelMode(true);
+    if (e?.shiftKey && libSelLast.current) {
+      const ids = list.map((x) => x.id);
+      const a = ids.indexOf(libSelLast.current);
+      const b = ids.indexOf(id);
+      if (a >= 0 && b >= 0) {
+        const span = ids.slice(Math.min(a, b), Math.max(a, b) + 1);
+        setLibSel((sel) => [...new Set([...sel, ...span])]);
+        return;
+      }
+    }
+    libSelLast.current = id;
+    setLibSel((sel) => (sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]));
+  }
+  function endLibSel() {
+    setLibSelMode(false);
+    setLibSel([]);
+    libSelLast.current = null;
+  }
+  async function forgetLibraryItems(ids) {
+    if (!ids.length) return;
+    if (!window.confirm(`Tirar ${ids.length === 1 ? 'esta mídia' : `estas ${ids.length} mídias`} da biblioteca? Os vídeos que já usam continuam iguais.`)) return;
+    setLibrary((l) => (l || []).filter((x) => !ids.includes(x.id)));
+    endLibSel();
+    let failed = false;
+    for (const id of ids) {
+      try { await removeLibraryMedia(id); } catch { failed = true; }
+    }
+    if (failed) loadLibrary();
   }
 
   // ── Meus modelos: o jeito de editar que você sempre usa (legenda, logo, textos, cor…) ──
@@ -6786,32 +6854,67 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               </div>}
               {mediaErr && <div style={{ fontSize: 11, color: C.red, marginTop: 6 }}>{mediaErr}</div>}
               {/* Biblioteca: o que você já enviou fica guardado — clique para usar de novo */}
-              <div style={{ marginTop: 12, border: `1px solid ${C.border}`, borderRadius: 10, padding: 9, background: 'rgba(255,255,255,0.02)' }}>
+              <div onDragOver={onLibFileDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setLibFileOver(false); }} onDrop={onLibFileDrop}
+                style={{ position: 'relative', marginTop: 12, border: libFileOver ? `2px dashed ${C.orange}` : `1px solid ${C.border}`, borderRadius: 10, padding: libFileOver ? 8 : 9, background: libFileOver ? 'rgba(255,107,53,0.08)' : 'rgba(255,255,255,0.02)' }}>
+                {libFileOver && (
+                  <div style={{ position: 'absolute', inset: 0, zIndex: 3, display: 'grid', placeItems: 'center', borderRadius: 10, background: 'rgba(14,14,20,0.72)', color: C.text, fontSize: 12.5, fontWeight: 700, pointerEvents: 'none' }}>
+                    Solte para guardar na biblioteca
+                  </div>
+                )}
+                {mediaBusy && <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>Enviando para a biblioteca…</div>}
                 <button onClick={() => setLibOpen((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', background: 'none', border: 'none', color: C.text, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
                   {libOpen ? '▾' : '▸'} Sua biblioteca {library ? <span style={{ fontWeight: 500, color: C.faint }}>· {library.length} arquivo(s) guardado(s)</span> : null}
-                  <span style={{ marginLeft: 'auto', fontWeight: 500, color: C.faint, fontSize: 10.5 }}>clique: ponto atual · arraste para a timeline (V1 = vídeo principal)</span>
+                  <span style={{ marginLeft: 'auto', fontWeight: 500, color: C.faint, fontSize: 10.5 }}>clique: ponto atual · arraste para a timeline · solte arquivos aqui</span>
                 </button>
-                {libOpen && library && <div style={{ marginTop: 8 }}>{libScopeBar}</div>}
+                {libOpen && library && (
+                  <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+                    {libScopeBar}
+                    {libShown?.length > 0 && (!libSelMode ? (
+                      <button onClick={() => setLibSelMode(true)} title="Selecionar vários itens para tirar da biblioteca (ou Ctrl/Shift + clique)"
+                        style={{ height: 28, padding: '0 10px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.05)', color: C.text, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>☐ Selecionar</button>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 11, color: C.muted }}>{libSel.length} selecionado(s)</span>
+                        <button onClick={() => setLibSel(libSel.length === libShown.length ? [] : libShown.map((x) => x.id))}
+                          style={{ height: 28, padding: '0 10px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.05)', color: C.text, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>{libSel.length === libShown.length ? 'Nenhum' : 'Todos'}</button>
+                        <button onClick={() => forgetLibraryItems(libSel)} disabled={!libSel.length} title="Tirar os selecionados da biblioteca"
+                          style={{ height: 28, padding: '0 10px', borderRadius: 8, border: `1px solid ${libSel.length ? C.red : C.border}`, background: libSel.length ? 'rgba(240,82,107,0.15)' : 'transparent', color: libSel.length ? C.red : C.faint, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: libSel.length ? 'pointer' : 'not-allowed' }}>Excluir ({libSel.length})</button>
+                        <button onClick={endLibSel}
+                          style={{ height: 28, padding: '0 10px', borderRadius: 8, border: 'none', background: 'transparent', color: C.muted, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>Cancelar</button>
+                      </>
+                    ))}
+                  </div>
+                )}
                 {libOpen && (library === null ? (
                   <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Carregando…</div>
                 ) : libScope === 'projeto' && library.length > 0 && !libShown.length ? (
                   <div style={{ fontSize: 11, color: C.faint, marginTop: 6, lineHeight: 1.5 }}>Nenhum arquivo deste projeto ainda. Envie aqui ou veja em <b>Todos</b> os que você já mandou.</div>
                 ) : library.length === 0 ? (
-                  <div style={{ fontSize: 11, color: C.faint, marginTop: 6, lineHeight: 1.5 }}>Tudo o que você enviar (logo, vinheta, música, fotos) fica guardado aqui para usar em outros vídeos sem subir de novo.</div>
+                  <div style={{ fontSize: 11, color: C.faint, marginTop: 6, lineHeight: 1.5 }}>Tudo o que você enviar (logo, vinheta, música, fotos) fica guardado aqui para usar em outros vídeos sem subir de novo. Arraste arquivos do computador para cá.</div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))', gap: 6, marginTop: 8, maxHeight: 220, overflowY: 'auto' }}>
-                    {libShown.map((it) => (
-                      <div key={it.id} style={{ position: 'relative' }} draggable={!isMobile && it.status === 'ok'}
+                    {libShown.map((it) => {
+                      const picked = libSel.includes(it.id);
+                      return (
+                      <div key={it.id} style={{ position: 'relative' }} draggable={!isMobile && it.status === 'ok' && !libSelMode}
                         onDragStart={(e) => { e.dataTransfer.setData('text/rf-media', it.id); e.dataTransfer.effectAllowed = 'copy'; }}>
-                        <button onClick={() => it.status === 'ok' && addMediaItem(it)} disabled={it.status !== 'ok'} title={it.status === 'ok' ? `${it.filename} — colocar no ponto atual` : `${it.filename} — arquivo não encontrado`}
-                          style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: `1px solid ${C.border}`, background: '#0E0E14', cursor: it.status === 'ok' ? 'pointer' : 'not-allowed', padding: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', opacity: it.status === 'ok' ? 1 : 0.4 }}>
+                        <button onClick={(e) => { if (libSelMode || e.ctrlKey || e.metaKey || e.shiftKey) toggleLibSel(it.id, e, libShown); else if (it.status === 'ok') addMediaItem(it); }}
+                          title={libSelMode ? `${it.filename} — clique para ${picked ? 'desmarcar' : 'marcar'} (Shift: vários seguidos)` : it.status === 'ok' ? `${it.filename} — colocar no ponto atual · Ctrl/Shift + clique seleciona` : `${it.filename} — arquivo não encontrado`}
+                          aria-pressed={libSelMode ? picked : undefined}
+                          style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: picked ? `2px solid ${C.orange}` : `1px solid ${C.border}`, boxShadow: picked ? `0 0 0 2px ${C.orange}55` : 'none', background: '#0E0E14', cursor: libSelMode || it.status === 'ok' ? 'pointer' : 'not-allowed', padding: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', opacity: it.status === 'ok' || libSelMode ? 1 : 0.4 }}>
                           <MediaThumb it={it} fit={it.kind === 'image' ? 'contain' : 'cover'} />
                         </button>
                         <div style={{ fontSize: 9.5, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>{it.filename}</div>
-                        <button onClick={() => forgetLibraryItem(it.id)} title="Tirar da biblioteca" aria-label="Tirar da biblioteca"
-                          style={{ position: 'absolute', top: 3, right: 3, width: 18, height: 18, borderRadius: 5, border: 'none', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 11, lineHeight: 1, cursor: 'pointer', padding: 0 }}>×</button>
+                        {libSelMode ? (
+                          <span aria-hidden="true" style={{ position: 'absolute', top: 4, left: 4, width: 18, height: 18, borderRadius: 5, display: 'grid', placeItems: 'center', pointerEvents: 'none', fontSize: 12, fontWeight: 800, lineHeight: 1,
+                            background: picked ? C.orange : 'rgba(0,0,0,0.6)', border: picked ? 'none' : '1.5px solid rgba(255,255,255,0.75)', color: '#fff' }}>{picked ? '✓' : ''}</span>
+                        ) : (
+                          <button onClick={() => forgetLibraryItem(it.id)} title="Tirar da biblioteca" aria-label="Tirar da biblioteca"
+                            style={{ position: 'absolute', top: 3, right: 3, width: 18, height: 18, borderRadius: 5, border: 'none', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 11, lineHeight: 1, cursor: 'pointer', padding: 0 }}>×</button>
+                        )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ))}
               </div>
