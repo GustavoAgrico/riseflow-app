@@ -466,8 +466,8 @@ export function CaptionOverlay({ videoRef, clock, segments, options, box, sample
     const move = (ev) => {
       const r = el.getBoundingClientRect();
       // gruda no centro do quadro (com a linha-guia) quando passa perto
-      const sx = snapCenter(Math.min(0.94, Math.max(0.06, (ev.clientX - r.left) / r.width)), r.width);
-      const sy = snapCenter(Math.min(0.96, Math.max(0.04, (ev.clientY - r.top) / r.height)), r.height);
+      const sx = snapCenter(Math.min(0.94, Math.max(0.06, (ev.clientX - r.left) / r.width)), r.width, undefined, 'x');
+      const sy = snapCenter(Math.min(0.96, Math.max(0.04, (ev.clientY - r.top) / r.height)), r.height, undefined, 'y');
       setGuides({ x: sx.on, y: sy.on });
       onDragPos(+sx.v.toFixed(3), +sy.v.toFixed(3), seg, words[wi]);
     };
