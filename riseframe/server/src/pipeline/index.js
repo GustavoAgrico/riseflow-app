@@ -10,7 +10,7 @@ import { silenceRemovalRanges } from './silence.js';
 import { preciseRemovals, wordGapRanges, dropSlivers } from './cutRefine.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, unmapTime } from './timeline.js';
 import { insertBroll } from './broll.js';
-import { applyManualFrame, applyVideoCrop, cleanCrop, applyVideoBlanks, cleanBlanks } from './frame.js';
+import { applyManualFrame, applyVideoCrop, cleanCrop, cleanCropRanges, hasCrop, applyVideoBlanks, cleanBlanks } from './frame.js';
 import { applyUnderlay, hasUnderlay } from './underlay.js';
 import { applyUserMedia } from './overlay.js';
 import { applyMotion, dynamicZoomWindows } from './motion.js';
@@ -73,7 +73,7 @@ function buildPlan(mode, options) {
       { key: 'analyze', label: 'Analisando temas', weight: 3, enabled: true },
       // mídia por baixo do vídeo (V0): o recorte e o movimento entram na mesma passada
       { key: 'underlay', label: 'Montando o fundo (por baixo do vídeo)', weight: 12, enabled: hasUnderlay(options) },
-      { key: 'crop', label: 'Recortando o vídeo', weight: 5, enabled: Boolean(cleanCrop(options.videoCrop)) && !hasUnderlay(options) },
+      { key: 'crop', label: 'Recortando o vídeo', weight: 5, enabled: hasCrop(options) && !hasUnderlay(options) },
       { key: 'motion', label: 'Aplicando movimento (zoom)', weight: 12, enabled: !hasUnderlay(options) && ((Boolean(options.videoMotion) && options.videoMotion !== 'none') || (Array.isArray(options.transformKeys) && options.transformKeys.length > 0)) },
       { key: 'frame', label: 'Reenquadrando o vídeo', weight: 8, enabled: (Number(options.personZoom) || 1) > 1.001 },
       { key: 'aspect', label: QUALITY_STAGE[options.quality] || 'Ajustando ao formato', weight: QUALITY_STAGE[options.quality] ? 12 : 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) || Boolean(QUALITY_STAGE[options.quality]) },
@@ -473,6 +473,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       // Velocidade por trecho e congelar quadro: do tempo original para o vídeo cortado.
       if (Array.isArray(options.speedRanges)) options.speedRanges = options.speedRanges.map((r) => ({ ...r, start: +remapTime(Number(r.start), keep).toFixed(3), end: +remapTime(Number(r.end), keep).toFixed(3) })).filter((r) => r.end - r.start >= 0.05);
       if (Array.isArray(options.freezes)) options.freezes = options.freezes.map((f) => ({ ...f, t: +remapTime(Number(f.t), keep).toFixed(3) }));
+      if (Array.isArray(options.cropRanges)) options.cropRanges = cleanCropRanges(options.cropRanges).map((r) => ({ ...r, start: +remapTime(r.start, keep).toFixed(3), end: +remapTime(r.end, keep).toFixed(3) })).filter((r) => r.end - r.start >= 0.05);
       if (Array.isArray(options.transformKeys)) options.transformKeys = options.transformKeys.map((k) => ({ ...k, t: +remapTime(Number(k.t), keep).toFixed(3) }));
       if (Array.isArray(options.sfxMoments)) options.sfxMoments = options.sfxMoments.map((m) => ({ ...m, t: +remapTime(Number(m.t), keep).toFixed(3) }));
       // Minhas mídias também foram posicionadas na timeline original.
@@ -524,9 +525,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
   // o que foi recortado fica preto e o resto não muda de lugar.
   if (has('crop')) {
     const st = enter('crop');
-    const r = await applyVideoCrop(input, work, meta, options.videoCrop, st.onProgress);
+    const r = await applyVideoCrop(input, work, meta, options.videoCrop, st.onProgress, options.cropRanges);
     input = r.output;
-    report.crop = { applied: r.applied, ...cleanCrop(options.videoCrop) };
+    report.crop = { applied: r.applied, ...cleanCrop(options.videoCrop), ranges: cleanCropRanges(options.cropRanges).length };
     st.record(report.crop);
     st.onProgress(1);
   }

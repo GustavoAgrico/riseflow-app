@@ -50,6 +50,55 @@ export function cleanCrop(raw) {
   return out.l + out.t + out.r + out.b > 0.001 ? out : null;
 }
 
+/**
+ * Recorte só num trecho (pedaço da V1, como o Crop do clipe no Premiere): vale no lugar do
+ * recorte geral dentro de [start,end). Recorte zerado também conta (pedaço sem recorte).
+ * → [{ start, end, l, t, r, b }] em ordem, sem sobreposição. Puro.
+ */
+export function cleanCropRanges(raw) {
+  if (!Array.isArray(raw)) return [];
+  const c = (v) => Math.max(0, Math.min(0.45, Number(v) || 0));
+  const out = [];
+  for (const x of raw.slice(0, 100)) {
+    const start = Math.max(0, Number(x?.start));
+    const end = Number(x?.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < 0.05) continue;
+    out.push({ start: +start.toFixed(3), end: +end.toFixed(3), l: c(x.l), t: c(x.t), r: c(x.r), b: c(x.b) });
+  }
+  out.sort((a, b) => a.start - b.start);
+  const kept = [];
+  for (const x of out) if (!kept.length || x.start >= kept[kept.length - 1].end - 0.001) kept.push(x);
+  return kept;
+}
+
+/** Há algum recorte para fazer (geral ou por trecho)? Puro. */
+export const hasCrop = (o) => Boolean(cleanCrop(o?.videoCrop)) || cleanCropRanges(o?.cropRanges).some((x) => x.l + x.t + x.r + x.b > 0.001);
+
+/**
+ * Filtro do recorte com trechos: pinta de preto (ou transparente, com alpha) as bordas
+ * recortadas, cada trecho no seu tempo e o recorte geral fora deles. Mantém tamanho e lugar.
+ * null quando não há o que pintar. Puro.
+ */
+export function cropBoxesVf(W, H, crop, ranges, { alpha = false } = {}) {
+  const list = cleanCropRanges(ranges);
+  const color = alpha ? 'black@0:replace=1' : 'black';
+  const boxes = [];
+  const paint = (cr, enable) => {
+    if (!cr || cr.l + cr.t + cr.r + cr.b <= 0.001) return;
+    const r = cropRect(W, H, cr);
+    const en = enable ? `:enable='${enable}'` : '';
+    const box = (x, y, w, h) => { if (w > 0 && h > 0) boxes.push(`drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=${color}:t=fill${en}`); };
+    box(0, 0, W, r.y); // topo
+    box(0, r.y + r.h, W, H - r.y - r.h); // base
+    box(0, r.y, r.x, r.h); // esquerda
+    box(r.x + r.w, r.y, W - r.x - r.w, r.h); // direita
+  };
+  const inAny = list.map((x) => `between(t,${x.start.toFixed(3)},${(x.end - 0.001).toFixed(3)})`).join('+');
+  paint(cleanCrop(crop), list.length ? `not(${inAny})` : '');
+  for (const x of list) paint(x, `between(t,${x.start.toFixed(3)},${(x.end - 0.001).toFixed(3)})`);
+  return boxes.length ? boxes.join(',') : null;
+}
+
 /** Retângulo que fica (pixels pares) num quadro W×H com o recorte. Puro. */
 export function cropRect(W, H, crop) {
   const ev = (n) => Math.max(2, Math.round(n / 2) * 2);
@@ -62,18 +111,29 @@ export function cropRect(W, H, crop) {
  * Recorte do vídeo principal: o que foi recortado fica preto e o resto continua no mesmo
  * lugar e tamanho (como o efeito Crop do Premiere). Roda antes do zoom/movimento.
  */
-export async function applyVideoCrop(input, work, meta, crop, onProgress) {
+export async function applyVideoCrop(input, work, meta, crop, onProgress, ranges = []) {
   const cr = cleanCrop(crop);
-  if (!cr) return { output: input, applied: false };
   const W = meta.width || 1080;
   const H = meta.height || 1920;
-  const r = cropRect(W, H, cr);
+  const list = cleanCropRanges(ranges);
+  let vf;
+  if (list.length) {
+    // recorte por trecho (pedaço da V1): bordas pintadas só no tempo de cada um
+    const boxes = cropBoxesVf(W, H, cr, list);
+    if (!boxes) return { output: input, applied: false };
+    vf = `${boxes},setsar=1`;
+  } else {
+    if (!cr) return { output: input, applied: false };
+    const r = cropRect(W, H, cr);
+    vf = `crop=${r.w}:${r.h}:${r.x}:${r.y},pad=${W}:${H}:${r.x}:${r.y}:black,setsar=1`;
+  }
   const out = path.join(work, 'crop.mp4');
-  const args = ['-i', input, '-vf', `crop=${r.w}:${r.h}:${r.x}:${r.y},pad=${W}:${H}:${r.x}:${r.y}:black,setsar=1`];
+  const args = ['-i', input, '-vf', vf];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push(...x264Fast(), '-movflags', '+faststart', '-y', out);
   await runFfmpeg(args, { label: 'crop', totalDuration: meta.duration, onProgress });
-  log.ok(`recorte: esq ${Math.round(cr.l * 100)}% · topo ${Math.round(cr.t * 100)}% · dir ${Math.round(cr.r * 100)}% · base ${Math.round(cr.b * 100)}%`);
+  if (!cr) { log.ok(`recorte por trecho: ${list.length} pedaço(s)`); return { output: out, applied: true }; }
+  log.ok(`recorte${list.length ? ` (+${list.length} pedaço(s))` : ''}: esq ${Math.round(cr.l * 100)}% · topo ${Math.round(cr.t * 100)}% · dir ${Math.round(cr.r * 100)}% · base ${Math.round(cr.b * 100)}%`);
   return { output: out, applied: true };
 }
 

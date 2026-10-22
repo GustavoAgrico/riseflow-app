@@ -297,6 +297,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const c = options?.videoCrop || {};
     return { l: Number(c.l) || 0, t: Number(c.t) || 0, r: Number(c.r) || 0, b: Number(c.b) || 0 };
   });
+  // Recorte só de um pedaço da V1 (como o Crop do clipe no Premiere): [{start,end,l,t,r,b}]
+  // no tempo da timeline; dentro do pedaço vale no lugar do recorte geral.
+  const [cropRanges, setCropRanges] = useState(() => (Array.isArray(options?.cropRanges) ? options.cropRanges : []));
+  /** Recorte que vale no tempo t (o do pedaço, se tiver; senão o geral). */
+  function cropAt(t) {
+    const r = (Array.isArray(cropRanges) ? cropRanges : []).find((x) => t >= x.start - 0.001 && t < x.end);
+    return r ? { l: r.l || 0, t: r.t || 0, r: r.r || 0, b: r.b || 0 } : videoCrop;
+  }
   const [gains, setGains] = useState([]);
   // Trechos cortados à mão na faixa de vídeo (tempo original).
   const [cuts, setCuts] = useState([]);
@@ -563,7 +571,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const visTexts = laneHide.txt ? [] : textLayers;
   const visFx = laneHide.vfx ? [] : fxMoments;
   const visMedia = media.filter((m) => (m.under ? !laneHide.v0 : !laneHide[`m${m.layer || 0}`]));
-  const cropOn = videoCrop.l + videoCrop.t + videoCrop.r + videoCrop.b > 0.001;
+  const curCrop = cropAt(cur);
+  const cropOn = curCrop.l + curCrop.t + curCrop.r + curCrop.b > 0.001;
   // V0: mídias POR BAIXO do vídeo principal (fundo); as demais são camadas por cima (M1, M2…)
   const topMedia = media.filter((m) => !m.under);
   const underMedia = media.filter((m) => m.under);
@@ -576,12 +585,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const visXcaps = laneHide.xcap ? [] : extraCaps;
   const overlaySegs = useMemo(() => mergeExtraCaptions(capSegments, visXcaps), [capSegments, visXcaps]);
   const histState = {
-    segments, cuts, keptPauses, keptNoises, gains, videoCrop, blanks, projMediaIds, avLinked, media, brollReview, brollOn, zoomMoments, headline, cover,
+    segments, cuts, keptPauses, keptNoises, gains, videoCrop, cropRanges, blanks, projMediaIds, avLinked, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs,
     aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
   };
   const histSet = {
-    segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, blanks: setBlanks, projMediaIds: setProjMediaIds, avLinked: setAvLinked, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
+    segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, cropRanges: setCropRanges, blanks: setBlanks, projMediaIds: setProjMediaIds, avLinked: setAvLinked, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
     brollReview: setBrollReview, brollOn: setBrollOn, zoomMoments: setZoomMoments, headline: setHeadline,
     cover: setCover, colorLook: setColorLook, colorAdj: setColorAdj, cap: setCap, fx: setFx, voice: setVoice,
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths,
@@ -2752,6 +2761,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         speed,
         audioVolume: +Number(audioVolume).toFixed(2),
         ...(videoCrop.l + videoCrop.t + videoCrop.r + videoCrop.b > 0.001 ? { videoCrop } : {}),
+        ...((cropRanges || []).length ? { cropRanges: cropRanges.map((x) => ({ start: +x.start.toFixed(3), end: +x.end.toFixed(3), l: x.l || 0, t: x.t || 0, r: x.r || 0, b: x.b || 0 })) } : {}),
         ...(exportFps ? { fps: exportFps } : {}),
         ...(exportStreams !== 'av' ? { streams: exportStreams } : {}),
         ...(blanks.length ? { videoBlanks: blanks.map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2), ...(b.audio === false ? { audio: false } : {}) })) } : {}),
@@ -3081,7 +3091,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const noCrop = { l: 0, t: 0, r: 0, b: 0 };
   // Recorte do vídeo principal na prévia: o que foi recortado fica preto (igual ao vídeo final)
   const cropBars = (box) => {
-    const c = videoCrop;
+    const c = curCrop;
     if (!(c.l + c.t + c.r + c.b > 0.001)) return null;
     const bar = (st) => <div style={{ position: 'absolute', background: '#000', ...st }} />;
     return (
@@ -3516,11 +3526,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return (
       <div style={{ display: 'grid', gap: 10 }}>
         {head('Propriedades', piece
-          ? `Vídeo principal · pedaço ${pieceIdx + 1} (${fmtDuration(piece.a)}–${fmtDuration(piece.b)}) — o Transformar vale só nele`
+          ? `Vídeo principal · pedaço ${pieceIdx + 1} (${fmtDuration(piece.a)}–${fmtDuration(piece.b)}) — Transformar e Recortar valem só nele`
           : 'Vídeo principal (V1) — selecione uma camada ou texto na timeline para ver as dela')}
         {v1Pieces.length > 1 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11.5, color: C.faint }}>Transformar vale para:</span>
+            <span style={{ fontSize: 11.5, color: C.faint }}>Transformar e Recortar valem para:</span>
             <button onClick={() => setV1Scope('piece')} style={miniBtn(v1Scope === 'piece', false)}>Só o pedaço {piece ? pieceIdx + 1 : ''}</button>
             <button onClick={() => setV1Scope('all')} style={miniBtn(v1Scope === 'all', false)}>Vídeo inteiro</button>
             {v1Scope === 'piece' && <span style={{ fontSize: 11, color: C.faint }}>clique num pedaço da V1 (ou mova o ponteiro) para ajustar outro</span>}
@@ -3553,9 +3563,27 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </PropRow>
           <div style={{ fontSize: 11, color: C.faint }}>Giro e movimento ao longo do tempo: quadros-chave na aba Enquadramento.</div>
         </PropSection>
-        <PropSection title="Recortar" onReset={() => setVideoCrop(noCrop)}>
-          {cropRows(videoCrop, setVideoCrop)}
-        </PropSection>
+        {piece ? (() => {
+          // pedaço selecionado: o recorte vale só nele (o resto do vídeo não muda)
+          const same = (x) => Math.abs(x.start - piece.a) < 0.02 && Math.abs(x.end - piece.b) < 0.02;
+          const own = (cropRanges || []).find(same);
+          const val = own || cropAt(piece.a);
+          const setPiece = (c) => setCropRanges((l) => [
+            ...(l || []).filter((x) => !same(x) && (x.end <= piece.a + 0.001 || x.start >= piece.b - 0.001)),
+            { start: +piece.a.toFixed(3), end: +piece.b.toFixed(3), l: c.l || 0, t: c.t || 0, r: c.r || 0, b: c.b || 0 },
+          ].sort((x, y) => x.start - y.start));
+          return (
+            <PropSection title={`Recortar · só o pedaço ${pieceIdx + 1}`} onReset={() => setCropRanges((l) => (l || []).filter((x) => !same(x)))}>
+              {cropRows(val, setPiece)}
+              <div style={{ fontSize: 11, color: C.faint }}>{own ? 'Este pedaço tem recorte próprio. O resto do vídeo não muda.' : 'Mexer aqui recorta só este pedaço.'} Para recortar o vídeo todo, escolha “Vídeo inteiro” acima.</div>
+            </PropSection>
+          );
+        })() : (
+          <PropSection title="Recortar" onReset={() => setVideoCrop(noCrop)}>
+            {cropRows(videoCrop, setVideoCrop)}
+            {(cropRanges || []).length > 0 && <div style={{ fontSize: 11, color: C.faint }}>{cropRanges.length} pedaço(s) têm recorte próprio (selecione o pedaço para mudar).</div>}
+          </PropSection>
+        )}
         <PropSection title="Áudio" onReset={() => { setAudioVolume(1); setAudioMute(false); }}>
           <PropRow label="Volume">
             <ScrubNum value={dbOf(audioVolume)} step={0.2} min={-60} max={12} decimals={1} suffix=" dB" onChange={(v) => setAudioVolume(+volOf(v).toFixed(3))} />
@@ -3923,7 +3951,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           ref={previewVideoRef}
           src={srcUrl}
           muted playsInline preload="auto"
-          style={{ ...(podSplit ? podHalfStyle(splitSwap ? 0.72 : 0.28) : personCropStyle), ...(underBlank ? { visibility: 'hidden' } : null) }}
+          style={{ ...(podSplit ? podHalfStyle(splitSwap ? 0.72 : 0.28) : personCropStyle), ...(!podSplit && cropOn ? { clipPath: `inset(${curCrop.t * 100}% ${curCrop.r * 100}% ${curCrop.b * 100}% ${curCrop.l * 100}%)` } : null), ...(underBlank ? { visibility: 'hidden' } : null) }}
         />
       </div>
       {podSplit && (
@@ -3998,7 +4026,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {singleMon && cbox && <div ref={transOverlayRef} style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, pointerEvents: 'none', zIndex: 4, opacity: 0 }} />}
       {singleMon && cbox && headline.on && headline.text.trim() && (!headline.seconds || cur < headline.seconds) && <HeadlineOverlay h={headline} box={cbox} />}
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
-      {cbox && aspectSel === 'original' && cropBars(cbox)}
+      {cbox && aspectSel === 'original' && !visUnder.length && cropBars(cbox)}
       {cbox && inBlankNow && !underBlank && <div aria-hidden="true" style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, background: '#000', zIndex: 1, pointerEvents: 'none' }} />}
       {cbox && <StageLayers part="media" z={2} videoRef={videoRef} box={cbox} cur={cur} media={visTop} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
         onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
@@ -5912,7 +5940,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <div className="rf-tl-main" style={{ flex: '0 0 auto', minWidth: 0 }}>
               <div style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${mainAr.toFixed(4)}), calc((100cqw - ${showFormatPreview ? 16 : 0}px) * var(--main-share)))`, aspectRatio: `${mainAr}`, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000', isolation: 'isolate' }}>
                 {vbox && visUnder.length > 0 && <StageLayers part="media" z={-1} videoRef={videoRef} box={vbox} cur={cur} media={visUnder} texts={[]} editable={false} selMedia={selMedia} selText={selText} onMedia={() => {}} onText={() => {}} />}
-                <video ref={videoRef} src={srcUrl} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: visUnder.length ? 'transparent' : '#000', filter: videoFilterFx, ...(visUnder.length && cropOn ? { clipPath: `inset(${videoCrop.t * 100}% ${videoCrop.r * 100}% ${videoCrop.b * 100}% ${videoCrop.l * 100}%)` } : null), ...(underBlank ? { opacity: 0 } : null) }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim(editSrc && editDimRef.current ? editDimRef.current : { w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
+                <video ref={videoRef} src={srcUrl} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: visUnder.length ? 'transparent' : '#000', filter: videoFilterFx, ...(visUnder.length && cropOn ? { clipPath: `inset(${curCrop.t * 100}% ${curCrop.r * 100}% ${curCrop.b * 100}% ${curCrop.l * 100}%)` } : null), ...(underBlank ? { opacity: 0 } : null) }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim(editSrc && editDimRef.current ? editDimRef.current : { w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
                 {vbox && lookCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...lookCss.tint }} />}
                 {vbox && headline.on && headline.text.trim() && (!headline.seconds || cur < headline.seconds) && (
                   <HeadlineOverlay h={headline} box={vbox} />

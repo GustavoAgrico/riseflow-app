@@ -8,7 +8,7 @@ import path from 'node:path';
 import { runFfmpeg, x264Fast, probeSummary } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 import { visualLayerParts, LAYER_ANIMATIONS } from './overlay.js';
-import { cleanCrop, cropRect, blanksEnable } from './frame.js';
+import { cleanCrop, cropRect, blanksEnable, cleanCropRanges, cropBoxesVf } from './frame.js';
 import { keyframesVf, momentsZoomVf, dynamicZoomWindows, MOTIONS } from './motion.js';
 import { defaultMomentEffect } from '../../../shared/transform.js';
 
@@ -48,7 +48,11 @@ export async function applyUnderlay(input, work, meta, options, onProgress, segm
   const mainIdx = vis.length + 1;
   let chain = `[${mainIdx}:v]format=yuva420p`;
   const cr = cleanCrop(options.videoCrop);
-  if (cr) {
+  if (cleanCropRanges(options.cropRanges).length) {
+    // recorte por pedaço: as bordas ficam transparentes só no tempo de cada pedaço
+    const boxes = cropBoxesVf(W, H, cr, options.cropRanges, { alpha: true });
+    if (boxes) chain += `,${boxes}`;
+  } else if (cr) {
     const r = cropRect(W, H, cr);
     chain += `,crop=${r.w}:${r.h}:${r.x}:${r.y},pad=${W}:${H}:${r.x}:${r.y}:color=black@0`;
   }
