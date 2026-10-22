@@ -37,7 +37,7 @@ import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
 import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
 import { brandIn, entityQuery } from '../pipeline/entities.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
-import { cleanCrop, cleanBlanks } from '../pipeline/frame.js';
+import { cleanCrop, cleanCropRanges, cleanBlanks } from '../pipeline/frame.js';
 import { transcribeRange } from '../pipeline/seqTranscript.js';
 import { editSourceStatus, editSourcePath } from '../pipeline/editSource.js';
 import { cleanLayerKf } from '../../../shared/layerKeys.js';
@@ -662,6 +662,7 @@ export function parseOptions(raw) {
     audioVolume: clampNum(o.audioVolume, 0, 4, 1),
     // Recorte (Crop) do vídeo principal: quanto sai de cada lado (fração).
     ...(cleanCrop(o.videoCrop) ? { videoCrop: cleanCrop(o.videoCrop) } : {}),
+    ...(cleanCropRanges(o.cropRanges).length ? { cropRanges: cleanCropRanges(o.cropRanges) } : {}),
     // Espaços vazios no vídeo principal (Excluir sem fechar o buraco), tempo original.
     ...(cleanBlanks(o.videoBlanks).length ? { videoBlanks: cleanBlanks(o.videoBlanks) } : {}),
     audioGains: Array.isArray(o.audioGains)
