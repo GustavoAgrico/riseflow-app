@@ -13,7 +13,9 @@ const log = makeLogger('edit-source');
 const building = new Map(); // id → Promise
 const finished = new Map(); // id → resultado (o original já pula bem / cópia pronta)
 
-export const editSourcePath = (id) => path.join(config.paths.cache, `${String(id).replace(/[^\w-]/g, '')}.edit.mp4`);
+// .edit2: a cópia leve (720p, quadro-chave a cada 10 quadros) — as antigas (.edit) são refeitas
+export const editSourcePath = (id) => path.join(config.paths.cache, `${String(id).replace(/[^\w-]/g, '')}.edit2.mp4`);
+const dimsOf = (out) => { try { return JSON.parse(fs.readFileSync(`${out}.json`, 'utf8')); } catch { return {}; } };
 
 /** Maior distância entre quadros-chave nos primeiros 20 s (segundos). */
 function keyframeGap(file) {
@@ -37,24 +39,32 @@ function keyframeGap(file) {
  */
 export async function editSourceStatus(id, input) {
   const out = editSourcePath(id);
-  if (fs.existsSync(out)) return { ready: true, proxy: true };
+  if (fs.existsSync(out)) return { ready: true, proxy: true, ...dimsOf(out) };
   if (finished.has(id)) return finished.get(id);
   if (building.has(id)) return { ready: false };
   const job = (async () => {
-    // arquivo enorme (dezenas de GB): refazer inteiro custaria horas e o mesmo espaço em disco
-    if (fs.statSync(input).size > 8 * 1024 ** 3) return { ready: true, proxy: false };
-    const gap = await keyframeGap(input);
-    if (gap <= 1.05) return { ready: true, proxy: false }; // já pula bem: usa o original
     const meta = await probeSummary(input);
+    const gap = await keyframeGap(input);
+    // Pausas pulam sem travar quando o navegador acha um quadro-chave logo ali e o vídeo é
+    // leve de decodificar. 4K, HEVC/VP9 (celular) ou quadros-chave a cada 1 s+ → cópia leve.
+    const heavy = Math.min(meta.width || 0, meta.height || 0) > 1080 || (meta.videoCodec && meta.videoCodec !== 'h264');
+    if (gap <= 0.55 && !heavy) return { ready: true, proxy: false };
     const tmp = `${out}.tmp.mp4`;
-    const vf = sdrVf(meta);
-    log.info(`cópia de edição de ${id} (quadros-chave a cada ${gap.toFixed(1)} s no original)`);
+    // lado menor em 720 px (nunca amplia): a prévia é pequena e decodifica rápido
+    const portrait = (meta.height || 0) >= (meta.width || 0);
+    const small = Math.min(meta.width || 0, meta.height || 0);
+    const scale = small > 720 ? (portrait ? 'scale=720:-2' : 'scale=-2:720') : null;
+    const vf = [sdrVf(meta), scale].filter(Boolean).join(',');
+    log.info(`cópia de edição de ${id} (quadros-chave a cada ${gap.toFixed(1)} s, ${meta.videoCodec}, ${meta.width}x${meta.height})`);
     await runFfmpeg(['-i', input, '-map', '0:v:0', '-map', '0:a:0?', ...(vf ? ['-vf', vf] : []),
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-g', '15', '-keyint_min', '15', '-sc_threshold', '0', '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', '-y', tmp], { label: 'edit-source', totalDuration: meta.duration });
+      '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'fastdecode', '-crf', '23', '-g', '10', '-keyint_min', '10', '-sc_threshold', '0', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-y', tmp], { label: 'edit-source', totalDuration: meta.duration });
     fs.renameSync(tmp, out);
+    // tamanho do ORIGINAL: o editor faz as contas de formato com ele, não com a cópia
+    const dims = { width: meta.width || 0, height: meta.height || 0 };
+    fs.writeFileSync(`${out}.json`, JSON.stringify(dims));
     log.ok(`cópia de edição pronta: ${id}`);
-    return { ready: true, proxy: true };
+    return { ready: true, proxy: true, ...dims };
   })();
   building.set(id, job);
   job.then((r) => { if (!r.proxy) finished.set(id, r); }).catch(() => finished.set(id, { ready: true, proxy: false }));
