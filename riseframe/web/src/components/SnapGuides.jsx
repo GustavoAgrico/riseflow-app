@@ -9,9 +9,22 @@ import React from 'react';
 export const SNAP_PX = 7;
 export const GUIDE_COLOR = '#22D3EE';
 
-export function snapCenter(v, sizePx, tolPx = SNAP_PX) {
+// Guias do monitor (como no Premiere: View › Mostrar guias / Encaixar no monitor): com o
+// encaixe ligado, o item também gruda nas linhas que a pessoa colocou. x = guias verticais.
+let userGuides = { snap: false, x: [], y: [] };
+export function setUserGuides(g) {
+  userGuides = g || { snap: false, x: [], y: [] };
+}
+
+export function snapCenter(v, sizePx, tolPx = SNAP_PX, axis = null) {
   const tol = sizePx > 0 ? tolPx / sizePx : 0.02;
-  return Math.abs(v - 0.5) <= tol ? { v: 0.5, on: true } : { v, on: false };
+  if (Math.abs(v - 0.5) <= tol) return { v: 0.5, on: true };
+  if (axis && userGuides.snap) {
+    let best = null;
+    for (const g of userGuides[axis] || []) if (Math.abs(v - g) <= tol && (best == null || Math.abs(v - g) < Math.abs(v - best))) best = g;
+    if (best != null) return { v: best, on: false, guide: true };
+  }
+  return { v, on: false };
 }
 
 /** Linhas sobre a caixa `box` ({x,y,w,h} em px dentro do pai) ou sobre o pai inteiro. */

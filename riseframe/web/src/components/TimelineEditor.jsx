@@ -9,7 +9,8 @@ import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
 import { CaptionOverlay } from './CaptionPreview.jsx';
-import SnapGuides, { snapCenter } from './SnapGuides.jsx';
+import SnapGuides, { snapCenter, setUserGuides } from './SnapGuides.jsx';
+import MonitorGuides, { GUIDE_TEMPLATES, withIds } from './MonitorGuides.jsx';
 import { loadAutosave, saveAutosave, markAutosaveSubmitted, clearAutosave, packState, unpackState } from '../autosave.js';
 import CaptionGallery, { FontPicker, ColorSwatches, TextStyleBar } from './CaptionGallery.jsx';
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
@@ -211,6 +212,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [colorAdj, setColorAdj] = useState({ brightness: 0, contrast: 0, saturation: 0, temperature: 0, ...(cap0.colorAdjust || {}) });
   const colorCss = colorPreviewCss(colorAdj);
   const [showSource, setShowSource] = useState(false); // comparar com o vídeo original ao lado
+  // Réguas e guias do monitor (como no Premiere: View › Mostrar réguas / guias / travar /
+  // encaixar). Ficam salvas neste computador; os modelos próprios também.
+  const [guidesCfg, setGuidesCfg] = useState(() => {
+    const d = { rulers: false, show: true, lock: false, snap: true, lines: [], mine: [] };
+    try { const v = JSON.parse(localStorage.getItem('rf_monitor_guides') || 'null'); return v && typeof v === 'object' ? { ...d, ...v, lines: withIds(Array.isArray(v.lines) ? v.lines : []), mine: Array.isArray(v.mine) ? v.mine : [] } : d; } catch { return d; }
+  });
+  const patchGuides = (patch) => setGuidesCfg((g) => ({ ...g, ...(typeof patch === 'function' ? patch(g) : patch) }));
+  useEffect(() => {
+    try { localStorage.setItem('rf_monitor_guides', JSON.stringify(guidesCfg)); } catch { /* sem armazenamento */ }
+    const on = guidesCfg.show ? guidesCfg.lines : [];
+    setUserGuides({ snap: guidesCfg.snap, x: on.filter((l) => l.o === 'v').map((l) => l.p), y: on.filter((l) => l.o === 'h').map((l) => l.p) });
+  }, [guidesCfg]);
+  const [guidesMenu, setGuidesMenu] = useState(null); // {x,y} do menu Guias
+  const [guideForm, setGuideForm] = useState({ o: 'h', px: '' });
   const transOverlayRef = useRef(null); // camada da transição (no monitor visível)
   const fxOverlayRef = useRef(null); // camada dos efeitos de vídeo
   // Prévia do look escolhido (aproximada) + ajuste manual por cima.
@@ -1512,8 +1527,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const ch = vh * scale;
     const offX = rect.left + (rect.width - cw) / 2;
     const offY = rect.top + (rect.height - ch) / 2;
-    const sx = snapCenter(Math.min(1, Math.max(0, cw ? (clientX - offX) / cw : 0.5)), cw);
-    const sy = snapCenter(Math.min(1, Math.max(0, ch ? (clientY - offY) / ch : 0.5)), ch);
+    const sx = snapCenter(Math.min(1, Math.max(0, cw ? (clientX - offX) / cw : 0.5)), cw, undefined, 'x');
+    const sy = snapCenter(Math.min(1, Math.max(0, ch ? (clientY - offY) / ch : 0.5)), ch, undefined, 'y');
     setGuides({ where: 'focus', x: sx.on, y: sy.on });
     setFocus({ x: sx.v, y: sy.v });
   }
@@ -4028,6 +4043,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
       {cbox && aspectSel === 'original' && !visUnder.length && cropBars(cbox)}
       {cbox && inBlankNow && !underBlank && <div aria-hidden="true" style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, background: '#000', zIndex: 1, pointerEvents: 'none' }} />}
+      {cbox && !isMobile && <MonitorGuides box={cbox} frameW={FW} frameH={FH} cfg={guidesCfg} onLines={(lines) => patchGuides({ lines })} />}
       {cbox && <StageLayers part="media" z={2} videoRef={videoRef} box={cbox} cur={cur} media={visTop} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
         onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
       {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
@@ -5014,12 +5030,122 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     else if (id === 'tl-') saveLayout({ panelH: H(adj + 50) });
     setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
   }
+  // Espaços de trabalho (como no Premiere): cada um guarda tamanhos dos painéis, palco,
+  // abas visíveis, a aba aberta e a altura das faixas. Os prontos podem ser alterados
+  // (Salvar alterações) e voltam com Redefinir; dá para criar os seus.
+  const WS_BUILTIN = [
+    { id: 'edicao', name: 'Edição' },
+    { id: 'vertical', name: 'Vertical' },
+    { id: 'montagem', name: 'Montagem' },
+    { id: 'legendas', name: 'Legendas e gráficos' },
+    { id: 'efeitos', name: 'Efeitos' },
+    { id: 'cor', name: 'Cor' },
+    { id: 'audio', name: 'Áudio' },
+    { id: 'todos', name: 'Todos os painéis' },
+  ];
+  const [ws, setWs] = useState(() => {
+    const d = { active: 'edicao', label: true, custom: [], saved: {} };
+    try { const v = JSON.parse(localStorage.getItem('rf_workspaces') || 'null'); return v && typeof v === 'object' ? { ...d, ...v } : d; } catch { return d; }
+  });
+  const saveWs = (fn) => setWs((cur) => {
+    const next = typeof fn === 'function' ? fn(cur) : { ...cur, ...fn };
+    try { localStorage.setItem('rf_workspaces', JSON.stringify(next)); } catch { /* sem armazenamento */ }
+    return next;
+  });
+  const wsList = [...WS_BUILTIN, ...(ws.custom || [])];
+  const wsName = (wsList.find((w) => w.id === ws.active) || WS_BUILTIN[0]).name;
+  function wsDefault(id) {
+    const g = gridRef.current;
+    const gw = g?.getBoundingClientRect().width || 1200;
+    const gh = g?.getBoundingClientRect().height || window.innerHeight * 0.8;
+    const W = (v) => Math.round(Math.max(220, Math.min(gw - 420, v)));
+    const H = (v) => Math.round(Math.max(120, Math.min(window.innerHeight * 0.8, v)));
+    const base = { layout: {}, stage: 'm', hidden: [], lanes: {} };
+    if (id === 'vertical') return { ...base, layout: { panelH: H(gh * 0.4) } };
+    if (id === 'montagem') return { ...base, tab: 'projeto', layout: { panelH: H(gh * 0.45) } };
+    if (id === 'legendas') return { ...base, tab: 'legenda', layout: { panelH: H(gh * 0.6) } };
+    if (id === 'efeitos') return { ...base, tab: 'efeitos', layout: { panelH: H(gh * 0.55) } };
+    if (id === 'cor') return { ...base, tab: 'cor', layout: { monW: W(gw * 0.55) } };
+    if (id === 'audio') return { ...base, tab: 'audio', layout: { panelH: H(gh * 0.32) }, lanes: { audio: 72 } };
+    if (id === 'todos') return { ...base, tab: 'propriedades' };
+    return { ...base, tab: 'enquadramento' };
+  }
+  function wsSnapshot() {
+    return { layout: { ...(layoutSz.monW ? { monW: layoutSz.monW } : {}), ...(layoutSz.panelH ? { panelH: layoutSz.panelH } : {}) }, stage, hidden: [...hiddenTabs], tab, lanes: { ...laneOv } };
+  }
+  function wsApply(snap) {
+    saveLayout({ monW: snap.layout?.monW ?? null, panelH: snap.layout?.panelH ?? null });
+    setStage(snap.stage || 'm');
+    const hidden = (snap.hidden || []).filter((id) => id !== snap.tab);
+    setHiddenTabs(hidden);
+    if (snap.tab) setTab(snap.tab);
+    saveLaneOv(snap.lanes || {});
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
+  }
+  const wsSaved = (id) => ws.saved?.[id] || (ws.custom || []).find((w) => w.id === id)?.snap || wsDefault(id);
+  function wsSwitch(id) {
+    saveWs({ active: id });
+    wsApply(wsSaved(id));
+  }
+  function wsSaveAs() {
+    const name = window.prompt('Nome do novo espaço de trabalho:', `Meu espaço ${(ws.custom || []).length + 1}`);
+    if (!name || !name.trim()) return;
+    const id = `w${Date.now().toString(36)}`;
+    saveWs((c) => ({ ...c, active: id, custom: [...(c.custom || []), { id, name: name.trim().slice(0, 40), snap: wsSnapshot() }] }));
+  }
+  function wsSaveChanges() {
+    const snap = wsSnapshot();
+    saveWs((c) => ((c.custom || []).some((w) => w.id === c.active)
+      ? { ...c, custom: c.custom.map((w) => (w.id === c.active ? { ...w, snap } : w)) }
+      : { ...c, saved: { ...(c.saved || {}), [c.active]: snap } }));
+  }
+  function wsResetBuiltin(id) {
+    saveWs((c) => { const saved = { ...(c.saved || {}) }; delete saved[id]; return { ...c, saved }; });
+    wsApply(wsDefault(id));
+  }
   const layoutPanel = layoutOpen && createPortal(
     <div role="dialog" aria-label="Ajustar o layout" style={{ position: 'fixed', top: 64, right: 24, zIndex: 900, width: 300, padding: 14, borderRadius: 14, background: '#16161F', border: `1px solid ${C.border}`, boxShadow: '0 24px 60px -20px rgba(0,0,0,0.9)', color: C.text, display: 'grid', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center' }}>
-        <b style={{ fontSize: 13.5 }}>Ajustar o layout</b>
+        <b style={{ fontSize: 13.5 }}>Layout e espaço de trabalho</b>
         <button onClick={() => setLayoutOpen(false)} aria-label="Fechar" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.faint, fontSize: 18, cursor: 'pointer' }}>×</button>
       </div>
+      <div style={{ display: 'grid', gap: 2, maxHeight: 290, overflowY: 'auto', padding: 4, borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.25)' }}>
+        {wsList.map((w) => {
+          const on = w.id === ws.active;
+          const mine = (ws.custom || []).some((x) => x.id === w.id);
+          return (
+            <div key={w.id} style={{ display: 'flex', alignItems: 'center', borderRadius: 6, background: on ? 'rgba(45,140,255,0.14)' : 'transparent' }}>
+              <button onClick={() => wsSwitch(w.id)} aria-pressed={on}
+                style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', border: 'none', background: 'transparent', color: on ? '#7DB6FF' : C.text, fontSize: 12.5, fontWeight: on ? 700 : 500, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ width: 12 }}>{on ? '✓' : ''}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.name}</span>
+                {!mine && ws.saved?.[w.id] && <span style={{ fontSize: 10, color: C.faint }}>· alterado</span>}
+              </button>
+              {mine && <>
+                <button onClick={() => { const n = window.prompt('Novo nome:', w.name); if (n && n.trim()) saveWs((c) => ({ ...c, custom: c.custom.map((x) => (x.id === w.id ? { ...x, name: n.trim().slice(0, 40) } : x)) })); }}
+                  title="Renomear" aria-label={`Renomear ${w.name}`} style={{ width: 24, height: 24, border: 'none', background: 'transparent', color: C.faint, cursor: 'pointer', fontSize: 12 }}>✎</button>
+                <button onClick={() => { if (window.confirm(`Apagar o espaço de trabalho "${w.name}"?`)) saveWs((c) => ({ ...c, active: c.active === w.id ? 'edicao' : c.active, custom: c.custom.filter((x) => x.id !== w.id) })); }}
+                  title="Apagar" aria-label={`Apagar ${w.name}`} style={{ width: 24, height: 24, border: 'none', background: 'transparent', color: C.faint, cursor: 'pointer', fontSize: 14 }}>×</button>
+              </>}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: 'grid', gap: 4 }}>
+        {[
+          ['Redefinir para o layout salvo', () => (ws.saved?.[ws.active] || (ws.custom || []).some((w) => w.id === ws.active) ? wsApply(wsSaved(ws.active)) : wsResetBuiltin(ws.active))],
+          ...(!(ws.custom || []).some((w) => w.id === ws.active) && ws.saved?.[ws.active] ? [['Voltar ao padrão do Riseframe', () => wsResetBuiltin(ws.active)]] : []),
+          ['Salvar alterações neste espaço de trabalho', wsSaveChanges],
+          ['Salvar como novo espaço de trabalho…', wsSaveAs],
+        ].map(([label, act]) => (
+          <button key={label} onClick={act} style={{ ...miniBtn(false, false), height: 30, justifyContent: 'flex-start', textAlign: 'left', padding: '0 10px' }}>{label}</button>
+        ))}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.muted, cursor: 'pointer', padding: '2px 2px' }}>
+          <input type="checkbox" checked={ws.label !== false} onChange={(e) => saveWs({ label: e.target.checked })} /> Mostrar o nome do espaço de trabalho na barra
+        </label>
+      </div>
+      <div style={{ height: 1, background: C.border }} />
+      <b style={{ fontSize: 12, color: C.muted }}>Tamanho dos painéis</b>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
         {[['video', 'Vídeo grande'], ['timeline', 'Timeline grande'], ['opcoes', 'Opções grandes'], ['reset', 'Padrão']].map(([id, label]) => (
           <button key={id} onClick={() => layoutPreset(id)} style={{ ...miniBtn(false, false), height: 34 }}>{label}</button>
@@ -5036,6 +5162,74 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         Ou arraste as <b style={{ color: '#7DB6FF' }}>divisórias azuis</b> entre o vídeo, as opções e a timeline. A altura de cada faixa da timeline muda arrastando a borda de baixo do nome dela. Fica salvo neste computador.
       </div>
     </div>,
+    document.body,
+  );
+
+  // Menu Guias (como View no Premiere): réguas, guias, travar, adicionar, limpar, encaixar e modelos.
+  const guideFrame = showFormatPreview && !showSource ? [FW, FH] : [vdim?.w || 1080, vdim?.h || 1920];
+  function addGuideAt(o, px) {
+    const full = o === 'h' ? guideFrame[1] : guideFrame[0];
+    const n = px === '' || px == null ? full / 2 : Number(String(px).replace(',', '.'));
+    if (!Number.isFinite(n)) return;
+    patchGuides((g) => ({ show: true, lines: withIds([...g.lines, { o, p: Math.max(0, Math.min(1, n / full)) }]) }));
+    setGuideForm((f) => ({ ...f, px: '' }));
+  }
+  const guidesMenuEl = guidesMenu && createPortal(
+    <>
+      <div onMouseDown={() => setGuidesMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 940 }} />
+      <div role="menu" aria-label="Guias do monitor"
+        style={{ position: 'fixed', left: Math.min(guidesMenu.x, window.innerWidth - 300), ...(guidesMenu.y + 480 > window.innerHeight && guidesMenu.top > 300 ? { bottom: Math.max(8, window.innerHeight - guidesMenu.top + 6), maxHeight: guidesMenu.top - 14, overflowY: 'auto' } : { top: guidesMenu.y, maxHeight: window.innerHeight - guidesMenu.y - 8, overflowY: 'auto' }), zIndex: 941, width: 286, padding: 6, borderRadius: 10, background: '#1E1E26', border: `1px solid ${C.border}`, boxShadow: '0 18px 50px -12px rgba(0,0,0,0.9)', color: C.text, fontSize: 12.5 }}>
+        {(() => {
+          const item = (label, on, act, opt = {}) => (
+            <button role={on == null ? 'menuitem' : 'menuitemcheckbox'} aria-checked={on == null ? undefined : !!on} disabled={opt.off} onClick={act}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', borderRadius: 6, border: 'none', background: 'transparent', color: opt.off ? C.faint : opt.danger ? C.red : C.text, fontSize: 12.5, fontFamily: 'inherit', cursor: opt.off ? 'default' : 'pointer', textAlign: 'left' }}
+              onMouseEnter={(e) => { if (!opt.off) e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
+              <span style={{ width: 14, color: '#7DB6FF', fontWeight: 800 }}>{on ? '✓' : ''}</span>{label}
+            </button>
+          );
+          const sep = <div style={{ height: 1, background: C.border, margin: '5px 4px' }} />;
+          const n = guidesCfg.lines.length;
+          return (
+            <>
+              {item('Mostrar réguas', guidesCfg.rulers, () => patchGuides((g) => ({ rulers: !g.rulers })))}
+              {item(`Mostrar guias${n ? ` (${n})` : ''}`, guidesCfg.show, () => patchGuides((g) => ({ show: !g.show })))}
+              {item('Travar guias', guidesCfg.lock, () => patchGuides((g) => ({ lock: !g.lock })))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px 5px 30px' }}>
+                <span style={{ color: C.muted, whiteSpace: 'nowrap' }}>Adicionar</span>
+                <select value={guideForm.o} onChange={(e) => setGuideForm((f) => ({ ...f, o: e.target.value }))} aria-label="Direção da guia"
+                  style={{ height: 26, borderRadius: 6, border: `1px solid ${C.border}`, background: '#121218', color: C.text, fontSize: 11.5, fontFamily: 'inherit' }}>
+                  <option value="h">Horizontal (Y)</option>
+                  <option value="v">Vertical (X)</option>
+                </select>
+                <input value={guideForm.px} onChange={(e) => setGuideForm((f) => ({ ...f, px: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') addGuideAt(guideForm.o, guideForm.px); }}
+                  placeholder={`${Math.round((guideForm.o === 'h' ? guideFrame[1] : guideFrame[0]) / 2)}`} aria-label="Posição em pixels" inputMode="numeric"
+                  style={{ width: 54, height: 26, padding: '0 6px', borderRadius: 6, border: `1px solid ${C.border}`, background: '#121218', color: C.text, fontSize: 11.5, fontFamily: 'inherit' }} />
+                <button onClick={() => addGuideAt(guideForm.o, guideForm.px)} title="Adicionar a guia nesta posição (px)"
+                  style={{ height: 26, padding: '0 8px', borderRadius: 6, border: 'none', background: '#2D8CFF', color: '#fff', fontWeight: 700, fontSize: 11.5, fontFamily: 'inherit', cursor: 'pointer' }}>+</button>
+              </div>
+              {item('Limpar guias', null, () => patchGuides({ lines: [] }), { off: !n, danger: true })}
+              {sep}
+              {item('Encaixar no monitor (grudar nas guias)', guidesCfg.snap, () => patchGuides((g) => ({ snap: !g.snap })))}
+              {sep}
+              <div style={{ padding: '4px 8px 2px 30px', fontSize: 11, color: C.faint, fontWeight: 700, letterSpacing: 0.3 }}>MODELOS DE GUIA</div>
+              {GUIDE_TEMPLATES.map((t) => item(t.label, null, () => patchGuides({ show: true, lines: withIds(t.lines) })))}
+              {guidesCfg.mine.map((t) => (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>{item(`★ ${t.name}`, null, () => patchGuides({ show: true, lines: withIds(t.lines) }))}</div>
+                  <button onClick={() => patchGuides((g) => ({ mine: g.mine.filter((x) => x.id !== t.id) }))} title="Apagar este modelo" aria-label={`Apagar o modelo ${t.name}`}
+                    style={{ width: 24, height: 24, border: 'none', background: 'transparent', color: C.faint, cursor: 'pointer', fontSize: 14 }}>×</button>
+                </div>
+              ))}
+              {item('Salvar as guias atuais como modelo…', null, () => {
+                const name = window.prompt('Nome do modelo de guias:', `Minhas guias ${guidesCfg.mine.length + 1}`);
+                if (name && name.trim()) patchGuides((g) => ({ mine: [...g.mine, { id: `t${Date.now().toString(36)}`, name: name.trim().slice(0, 40), lines: g.lines.map(({ o, p: pp }) => ({ o, p: pp })) }] }));
+              }, { off: !n })}
+              <div style={{ padding: '6px 8px 4px 30px', fontSize: 10.5, color: C.faint, lineHeight: 1.45 }}>Com as réguas ligadas, arraste da régua para criar uma guia. Arraste a linha para mover, para fora do quadro para apagar; clique duplo = posição exata.</div>
+            </>
+          );
+        })()}
+      </div>
+    </>,
     document.body,
   );
 
@@ -5811,6 +6005,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     <div className={`rf-tl-card${isMobile ? ' rf-m' : ''}${isMobile && sheet ? ' rf-m-sheet' : ''}`} style={{ ...glass(), padding: 22 }}>
       {tour && !isMobile && <EditorTour onClose={() => setTour(false)} />}
       {!isMobile && layoutPanel}
+      {!isMobile && guidesMenuEl}
       {tplPanel}
       {capDialog}
       {tabsMenuEl}
@@ -5919,8 +6114,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <button onClick={() => { setTplOpen((v) => !v); setLayoutOpen(false); }} title="Meus modelos: salve e aplique o seu jeito de editar (legenda, logo, textos, cor…)" className="rf-tl-navbtn" style={tplOpen ? { borderColor: '#FF8A5C', color: '#FFD2BF' } : undefined}>
               ★ <span className="rf-navlbl2">Modelos</span>
             </button>
-            <button onClick={() => setLayoutOpen((v) => !v)} title="Ajustar o tamanho do vídeo, das opções e da timeline" className="rf-tl-navbtn" style={layoutOpen ? { borderColor: '#2D8CFF', color: '#7DB6FF' } : undefined}>
-              ▦ <span className="rf-navlbl2">Layout</span>
+            <button onClick={() => setLayoutOpen((v) => !v)} title={`Espaço de trabalho: ${wsName} — trocar, salvar e ajustar o tamanho do vídeo, das opções e da timeline`} className="rf-tl-navbtn" style={layoutOpen ? { borderColor: '#2D8CFF', color: '#7DB6FF' } : undefined}>
+              ▦ <span className="rf-navlbl2">{ws.label !== false ? wsName.toUpperCase() : 'Layout'}</span>
             </button>
             <button onClick={() => setTour(true)} title="Guia rápido: mostra para que serve cada parte do editor" className="rf-tl-navbtn">
               ? <span className="rf-navlbl2">Guia</span>
@@ -5970,6 +6165,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 {vbox && !singleMon && <div ref={transOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 4, opacity: 0 }} />}
                 {vbox && !visUnder.length && cropBars(vbox)}
                 {vbox && inBlankNow && !underBlank && <div aria-hidden="true" style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, background: '#000', zIndex: 1, pointerEvents: 'none' }} />}
+                {vbox && !isMobile && <MonitorGuides box={vbox} frameW={vdim?.w || vbox.vw || 1080} frameH={vdim?.h || vbox.vh || 1920} cfg={guidesCfg} onLines={(lines) => patchGuides({ lines })} />}
                 {vbox && <StageLayers part="media" z={2} videoRef={videoRef} box={vbox} cur={cur} media={visTop} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
                   onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
                 {cap.captions && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
@@ -6057,6 +6253,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     <Icon name="layout" size={13} strokeWidth={2.2} />
                   </button>
                 )}
+                <button className={`rf-tbtn${guidesCfg.rulers || (guidesCfg.show && guidesCfg.lines.length) ? ' on' : ''}`} aria-haspopup="menu" aria-expanded={!!guidesMenu}
+                  onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setGuidesMenu((m) => (m ? null : { x: r.left, y: r.bottom + 6, top: r.top })); }}
+                  title="Réguas e guias do monitor (como o menu View do Premiere)" aria-label="Guias">
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M1 4h14M1 11h14M5 1v14M12 1v14" strokeDasharray="2 1.6" /></svg>
+                </button>
                 <button className={`rf-tbtn${previewCuts ? ' on' : ''}`} onClick={() => setPreviewCuts((v) => !v)} title={previewCuts ? 'Tocando com os cortes (como no vídeo final) — clique para tocar sem cortes' : 'Tocando sem cortes — clique para pular os trechos cortados'} aria-pressed={previewCuts}>
                   <Icon name="scissors" size={13} strokeWidth={2.2} />
                 </button>
@@ -8087,6 +8288,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         .rf-split{ display: none; position: absolute; z-index: 30; }
         .rf-split > span{ position: absolute; border-radius: 3px; background: rgba(125,182,255,0.45); transition: background .15s, box-shadow .15s; }
         .rf-split:hover > span, .rf-show-splits .rf-split > span{ background: #2D8CFF; box-shadow: 0 0 0 3px rgba(45,140,255,0.25); }
+        .rf-split::before{ content: ''; position: absolute; background: transparent; transition: background .15s; }
+        .rf-split--col::before{ left: 4px; top: 0; bottom: 0; width: 2px; }
+        .rf-split--row::before{ top: 4px; left: 0; right: 0; height: 2px; }
+        .rf-split:hover::before, .rf-show-splits .rf-split::before{ background: rgba(45,140,255,0.55); }
         @media (min-width: 861px) and (max-width: 1100px){
           .rf-tl-card:not(.rf-m) .rf-tl-preview{ position: relative; }
         }
@@ -8220,8 +8425,8 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
       const dy = e.clientY - d.y0;
       if (d.kind === 'text') {
         // gruda no centro do quadro (com a linha-guia) quando passa perto — igual à legenda
-        const sx = snapCenter(Math.max(0, Math.min(1, d.ox + dx / bx.w)), bx.w);
-        const sy = snapCenter(Math.max(0, Math.min(1, d.oy + dy / bx.h)), bx.h);
+        const sx = snapCenter(Math.max(0, Math.min(1, d.ox + dx / bx.w)), bx.w, undefined, 'x');
+        const sy = snapCenter(Math.max(0, Math.min(1, d.oy + dy / bx.h)), bx.h, undefined, 'y');
         setGuides({ x: sx.on, y: sy.on });
         ot(d.key, { x: +sx.v.toFixed(3), y: +sy.v.toFixed(3) });
       } else if (d.kind === 'resize') {
@@ -8229,8 +8434,8 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
         const sx = d.dir && d.dir[1] === 'w' ? -dx : dx;
         om(d.key, { scale: +Math.max(0.05, Math.min(3, (d.w0 + 2 * sx) / bx.w)).toFixed(3), cx: d.cx, cy: d.cy });
       } else {
-        const sx = snapCenter(clampC(d.cx + dx / bx.w), bx.w);
-        const sy = snapCenter(clampC(d.cy + dy / bx.h), bx.h);
+        const sx = snapCenter(clampC(d.cx + dx / bx.w), bx.w, undefined, 'x');
+        const sy = snapCenter(clampC(d.cy + dy / bx.h), bx.h, undefined, 'y');
         setGuides({ x: sx.on, y: sy.on });
         om(d.key, { cx: +sx.v.toFixed(3), cy: +sy.v.toFixed(3) });
       }
