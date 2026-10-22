@@ -7,6 +7,22 @@ export const TEXT_ANIMS_OUT = { none: 'Nenhuma', fade: 'Fade', zoom: 'Encolher' 
 /** Fundo do texto: só contorno, caixa sólida ou nada. */
 export const TEXT_BOXES = { outline: 'Contorno', box: 'Caixa', none: 'Sem fundo' };
 
+/** Altura da linha do texto (em "em", igual ao line-height do CSS da prévia). */
+export const TEXT_LINE_H = 1.15;
+export const TEXT_PAD_DEFAULT = 0.28;
+/**
+ * Medidas da caixa de cada linha, em "em" (tamanho da letra) — a MESMA conta na prévia e
+ * no render. pad = folga dos lados (Tamanho do fundo); em cima/embaixo é 43% disso.
+ * radius 0–1 = canto reto até a ponta toda arredondada (pílula).
+ */
+export function textBoxMetrics(l) {
+  const box = l?.box === 'box';
+  const pad = box ? num(l.pad, 0, 1.2, TEXT_PAD_DEFAULT) : 0;
+  const padY = pad * 0.43;
+  const boxH = TEXT_LINE_H + 2 * padY;
+  return { padX: pad, padY, boxH, pitch: box ? boxH : TEXT_LINE_H, r: box ? num(l.radius, 0, 1, 0) * (boxH / 2) : 0 };
+}
+
 /**
  * Modelos de texto prontos (os mais usados em Reels/Shorts). Cada um é só um conjunto
  * de valores iniciais — depois tudo pode ser mudado no texto.
@@ -89,6 +105,8 @@ export function cleanTextLayers(raw, fonts = null, max = 30) {
       color: HEX.test(l.color) ? l.color : '#FFFFFF',
       box: pickOf(TEXT_BOXES, l.box, 'outline'),
       boxColor: HEX.test(l.boxColor) ? l.boxColor : '#000000',
+      // caixa: tamanho do fundo (folga) e arredondar os cantos
+      ...(l.box === 'box' ? { pad: num(l.pad, 0, 1.2, TEXT_PAD_DEFAULT), radius: num(l.radius, 0, 1, 0) } : {}),
       x: num(l.x, 0, 1, 0.5),
       y: num(l.y, 0, 1, 0.5),
       animIn: pickOf(TEXT_ANIMS_IN, l.animIn, 'fade'),
