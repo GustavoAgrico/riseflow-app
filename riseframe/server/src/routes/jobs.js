@@ -465,6 +465,8 @@ function sanitizeUserMedia(raw) {
       ...(cleanCrop(m.crop) ? { crop: cleanCrop(m.crop) } : {}),
       // Quadros-chave (Propriedades): posição, escala, giro e opacidade ao longo do tempo.
       ...(cleanLayerKf(m.kf) ? { kf: cleanLayerKf(m.kf) } : {}),
+      // V0: por baixo do vídeo principal (aparece onde ele não cobre: diminuído, recortado, vazio)
+      ...(m.under === true && kind !== 'audio' ? { under: true } : {}),
     };
     out.push(item);
     if (out.length >= 40) break; // teto de segurança

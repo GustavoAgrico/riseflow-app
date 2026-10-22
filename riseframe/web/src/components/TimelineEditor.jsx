@@ -562,7 +562,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [laneLock, setLaneLock] = useState({});
   const visTexts = laneHide.txt ? [] : textLayers;
   const visFx = laneHide.vfx ? [] : fxMoments;
-  const visMedia = media.filter((m) => !laneHide[`m${m.layer || 0}`]);
+  const visMedia = media.filter((m) => (m.under ? !laneHide.v0 : !laneHide[`m${m.layer || 0}`]));
+  const cropOn = videoCrop.l + videoCrop.t + videoCrop.r + videoCrop.b > 0.001;
+  // V0: mídias POR BAIXO do vídeo principal (fundo); as demais são camadas por cima (M1, M2…)
+  const topMedia = media.filter((m) => !m.under);
+  const underMedia = media.filter((m) => m.under);
+  const showV0 = !isMobile || underMedia.length > 0;
+  const v0H = underMedia.length ? LANE.midias : 22;
   const lk = (id) => (laneLock[id] ? LANE_LOCKED : null);
   const togHide = (id) => setLaneHide((h) => ({ ...h, [id]: !h[id] }));
   const togLock = (id) => setLaneLock((h) => ({ ...h, [id]: !h[id] }));
@@ -1153,8 +1159,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         start = Math.max(0, Math.min(sn.start, dur - Math.min(d.dur0, dur)));
         setSnapLine(sn.line);
         // Arrastar para cima/baixo troca de camada (cima = por cima no vídeo).
-        const layer = Math.max(0, Math.min(d.maxLayer + 1, d.layer0 + Math.round((d.y0 - e.clientY) / LANE.midias)));
+        const layer = d.under ? d.layer0 : Math.max(0, Math.min(d.maxLayer + 1, d.layer0 + Math.round((d.y0 - e.clientY) / LANE.midias)));
         updateMedia(d.key, { start: +start.toFixed(2), layer });
+        d.x1 = e.clientX;
+        d.y1 = e.clientY;
       } else if (d.mode === 'right') {
         const sn = snapPoint(snapRef.current, d.start0 + d.dur0 + dt, d.key);
         setSnapLine(sn.line);
@@ -1180,9 +1188,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         document.body.style.userSelect = '';
         // Soltou numa camada ocupada no mesmo tempo: abre uma camada nova logo acima
         // (se subiu) ou abaixo (se desceu) da alvo. Depois renumera sem buracos.
+        // Soltou em outra faixa: V0 (por baixo do vídeo) ↔ camadas (por cima).
+        const over = d.mode === 'move' && d.y1 != null ? document.elementFromPoint(d.x1, d.y1)?.closest?.('[data-lane]')?.dataset.lane : null;
         setMedia((list) => {
-          const m = list.find((x) => x.key === d.key);
-          const clash = m && list.some((x) => x.key !== m.key && (x.layer || 0) === (m.layer || 0) && x.start < m.start + m.duration && x.start + x.duration > m.start);
+          let m = list.find((x) => x.key === d.key);
+          if (m && over === 'v0' && !m.under && m.kind !== 'audio') return normalizeLayers(list.map((x) => (x.key === m.key ? { ...x, under: true, layer: 0 } : x)));
+          if (m && over === 'midias' && m.under) {
+            list = list.map((x) => (x.key === m.key ? { ...x, under: false, layer: freeLayer(list, m.start, m.duration) } : x));
+            m = list.find((x) => x.key === d.key);
+          }
+          if (m?.under) return list;
+          const clash = m && list.some((x) => x.key !== m.key && !x.under && (x.layer || 0) === (m.layer || 0) && x.start < m.start + m.duration && x.start + x.duration > m.start);
           const next = clash ? list.map((x) => (x.key === m.key ? { ...x, layer: (m.layer || 0) + ((m.layer || 0) >= d.layer0 ? 0.5 : -0.5) } : x)) : list;
           return normalizeLayers(next);
         });
@@ -1279,8 +1295,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setSelKind('media');
     mediaDragRef.current = {
       key: m.key, mode, x0: e.clientX, y0: e.clientY, start0: m.start, dur0: m.duration, kind: m.kind,
-      srcDuration: m.srcDuration, off0: Number(m.offset) || 0, layer0: m.layer || 0, kf0: m.kf || null,
-      maxLayer: media.reduce((mx, x) => Math.max(mx, x.layer || 0), 0),
+      srcDuration: m.srcDuration, off0: Number(m.offset) || 0, layer0: m.layer || 0, kf0: m.kf || null, under: m.under === true,
+      maxLayer: media.reduce((mx, x) => (x.under ? mx : Math.max(mx, x.layer || 0)), 0),
     };
     document.body.style.userSelect = 'none';
   }
@@ -1981,12 +1997,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         { label: 'Restaurar o som dos trechos silenciados', off: !gains.some((g) => Number(g.volume) === 0), act: () => setGains((l) => l.filter((g) => Number(g.volume) !== 0)) },
       ]],
     };
-    if (id.startsWith('m')) {
+    if (id === 'v0') {
+      L.v0 = ['Por baixo do vídeo (V0)', [
+        { label: laneHide.v0 ? 'Mostrar a faixa' : 'Ocultar a faixa', act: () => togHide('v0') },
+        { sep: true },
+        { label: 'Excluir faixa (apagar as mídias de baixo)', danger: true, off: !underMedia.length, act: () => { if (ask('Apagar todas as mídias que estão por baixo do vídeo (V0)?')) setMedia((l) => l.filter((m) => !m.under)); } },
+      ]];
+    }
+    if (/^m\d+$/.test(id)) {
       const layer = Number(id.slice(1));
       L[id] = [`Camada ${layer + 1} (M${layer + 1})`, [
         { label: laneHide[id] ? 'Mostrar a faixa' : 'Ocultar a faixa', act: () => togHide(id) },
         { sep: true },
-        { label: 'Excluir faixa (apagar as mídias desta camada)', danger: true, act: () => { if (ask(`Apagar todas as mídias da camada ${layer + 1}?`)) setMedia((l) => normalizeLayers(l.filter((m) => (m.layer || 0) !== layer))); } },
+        { label: 'Excluir faixa (apagar as mídias desta camada)', danger: true, act: () => { if (ask(`Apagar todas as mídias da camada ${layer + 1}?`)) setMedia((l) => normalizeLayers(l.filter((m) => m.under || (m.layer || 0) !== layer))); } },
       ]];
     }
     const [title, items] = L[id] || [];
@@ -2030,7 +2053,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     else if (L.has('a1')) muteRange(a, b);
     if (L.has('legenda')) setSegments((prev) => prev.map((sg) => (sg.words.some((w) => inside(w.start, w.end)) ? { ...sg, words: sg.words.map((w) => (inside(w.start, w.end) ? { ...w, hidden: true } : w)) } : sg)));
     if (L.has('xcap')) setExtraCaps((l) => l.filter((x) => !inside(x.start, x.end)));
-    if (L.has('midias')) setMedia((l) => normalizeLayers(l.filter((m) => !inside(m.start, m.start + m.duration))));
+    if (L.has('midias') || L.has('v0')) setMedia((l) => normalizeLayers(l.filter((m) => !((m.under ? L.has('v0') : L.has('midias')) && inside(m.start, m.start + m.duration)))));
     if (L.has('txt')) setTextLayers((l) => l.filter((x) => !inside(x.start, x.end)));
     if (L.has('vfx')) setFxMoments((l) => l.filter((x) => !inside(x.start, x.end)));
     if (L.has('broll')) setBrollMoments((l) => l.map((m) => (inside(m.start, m.end) ? { ...m, removed: true } : m)));
@@ -2111,14 +2134,49 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function moveLayer(key, delta) {
     setMedia((list) => {
       const m = list.find((x) => x.key === key);
-      if (!m) return list;
+      if (!m || m.under) return list;
       const from = m.layer || 0;
       const to = Math.max(0, from + delta);
       if (to === from) return list;
-      return normalizeLayers(list.map((x) => (x.key === key ? { ...x, layer: to } : (x.layer || 0) === to ? { ...x, layer: from } : x)));
+      return normalizeLayers(list.map((x) => (x.key === key ? { ...x, layer: to } : !x.under && (x.layer || 0) === to ? { ...x, layer: from } : x)));
     });
   }
-  const mediaRows = media.reduce((mx, m) => Math.max(mx, (m.layer || 0) + 1), 1);
+  const mediaRows = topMedia.reduce((mx, m) => Math.max(mx, (m.layer || 0) + 1), 1);
+  /** Bloco de uma mídia na timeline (camadas M1, M2… ou V0, por baixo do vídeo). */
+  function mediaChip(m) {
+    const left = X(m.start);
+    const w = Math.max(16, W(m.start, m.start + m.duration) - 1);
+    const col = m.kind === 'audio' ? C.purple : m.kind === 'video' ? C.orange : '#22D3EE';
+    const isSelM = selKind === 'media' && selMedia === m.key;
+    return (
+      <div
+        key={m.key}
+        onMouseDown={(e) => startMediaDrag(m, 'move', e)}
+        onClick={(e) => { e.stopPropagation(); setSelMedia(m.key); setSelKind('media'); seek(m.start); }}
+        title={m.under ? `${m.filename} — por baixo do vídeo (V0): arraste para os lados (tempo) ou para as camadas (por cima); pontas ajustam a duração` : `${m.filename} — arraste para os lados (tempo), para cima/baixo (camada) ou até a V0 (por baixo do vídeo); pontas ajustam a duração`}
+        style={{
+          position: 'absolute', left, top: m.under ? 0 : (mediaRows - 1 - (m.layer || 0)) * LANE.midias, width: w, height: 28, borderRadius: 7, overflow: 'hidden',
+          cursor: 'grab', display: 'flex', alignItems: 'center', gap: 5, padding: '0 9px',
+          background: m.offline ? 'rgba(240,82,107,0.18)' : `${col}2b`, border: m.offline ? `1px dashed ${C.red}` : isSelM ? '1.5px solid #fff' : `1px solid ${col}`, boxShadow: isSelM ? `0 0 0 2px ${col}66` : 'none', color: C.text, userSelect: 'none',
+          ...(laneHide[m.under ? 'v0' : `m${m.layer || 0}`] ? LANE_HIDDEN : null), ...lk(m.under ? 'v0' : `m${m.layer || 0}`),
+        }}
+      >
+        <span style={{ display: 'flex', flexShrink: 0, color: col }}><Icon name={m.kind === 'audio' ? 'play' : m.kind === 'video' ? 'film' : 'image'} size={11} strokeWidth={2.2} /></span>
+        {w > 44 && <span style={{ fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.filename}</span>}
+        {m.kf && [...new Set(Object.values(m.kf).flatMap((tr) => tr.map((k) => k.t)))].filter((t) => t <= m.duration + 0.01).map((t) => (
+          <span key={t} title={`Quadro-chave em ${fmtDuration(m.start + t)} (clique para ir)`} onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); setSelMedia(m.key); setSelKind('media'); seek(m.start + t); }}
+            style={{ position: 'absolute', left: X(m.start + t) - left - 4, bottom: 2, width: 8, height: 8, transform: 'rotate(45deg)', background: '#FACC15', border: '1px solid #1a1400', cursor: 'pointer', zIndex: 2 }} />
+        ))}
+        <div onMouseDown={(e) => startMediaDrag(m, 'left', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
+        <div onMouseDown={(e) => startMediaDrag(m, 'right', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
+      </div>
+    );
+  }
+  /** Passa a mídia para a V0 (por baixo do vídeo) ou de volta para as camadas (por cima). */
+  function setUnder(key, under) {
+    setMedia((list) => normalizeLayers(list.map((x) => (x.key !== key || x.kind === 'audio' ? x : under ? { ...x, under: true, layer: 0 } : { ...x, under: false, layer: freeLayer(list, x.start, x.duration) }))));
+  }
   const delTitle = selKind === 'words' ? 'Cortar as palavras selecionadas: vídeo, áudio e legenda (Delete)' : selKind === 'range' ? 'Excluir o trecho: fica um espaço vazio (Delete) · Shift+Delete fecha o espaço'
     : selKind === 'xcap' ? 'Apagar a legenda que você adicionou (Delete) — o vídeo não muda'
     : selKind === 'caption' ? 'Apagar só a legenda selecionada — o vídeo continua (Delete)'
@@ -2646,6 +2704,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           animOut: m.animOut || 'none',
           blend: m.blend || 'normal',
           layer: m.layer || 0,
+          ...(m.under && m.kind !== 'audio' ? { under: true } : {}),
           offset: +Number(m.offset || 0).toFixed(2),
           ...(m.kind === 'video' && m.muted ? { muted: true } : {}),
           ...(m.kind !== 'audio' ? { bright: +Number(m.bright || 0).toFixed(2), contrast: +Number(m.contrast ?? 1).toFixed(2), sat: +Number(m.sat ?? 1).toFixed(2), flip: m.flip === true } : {}),
@@ -3770,6 +3829,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const g = coverCrop(sd.w, sd.h, pbox.w, pbox.h, focus, zoom);
     return { position: 'absolute', left: -g.cropX, top: -g.cropY, width: g.scaledW, height: g.scaledH, maxWidth: 'none', objectFit: 'fill', filter: videoFilterFx };
   })();
+  // V0 na prévia: as mídias de baixo ficam atrás do vídeo; num espaço vazio o vídeo some e
+  // aparece o fundo (no vídeo final é igual: o fundo aparece em volta e nos espaços vazios).
+  const visTop = visMedia.filter((m) => !m.under);
+  const visUnder = visMedia.filter((m) => m.under);
+  const inBlankNow = blanks.some((b) => cur >= b.start && cur < b.end);
+  const underBlank = inBlankNow && visUnder.length > 0;
   const personHalf = (
     <div
       key="person"
@@ -3790,7 +3855,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           ref={previewVideoRef}
           src={srcUrl}
           muted playsInline preload="auto"
-          style={podSplit ? podHalfStyle(splitSwap ? 0.72 : 0.28) : personCropStyle}
+          style={{ ...(podSplit ? podHalfStyle(splitSwap ? 0.72 : 0.28) : personCropStyle), ...(underBlank ? { visibility: 'hidden' } : null) }}
         />
       </div>
       {podSplit && (
@@ -3856,6 +3921,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const singleMon = showFormatPreview && !showSource;
   const composedPreview = (
     <div ref={composedRef} style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${fmtAr.toFixed(4)}), calc((100cqw - 16px) * var(--fmt-share)))`, aspectRatio: previewRatio, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
+      {cbox && visUnder.length > 0 && <StageLayers part="media" z={0} videoRef={videoRef} box={cbox} cur={cur} media={visUnder} texts={[]} editable={false} selMedia={selMedia} selText={selText} onMedia={() => {}} onText={() => {}} />}
       {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
       {/* Cor, título, efeitos e transições como saem no vídeo final (monitor único). */}
       {singleMon && cbox && lookCss.tint && <div style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, pointerEvents: 'none', zIndex: 1, ...lookCss.tint }} />}
@@ -3865,8 +3931,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {singleMon && cbox && headline.on && headline.text.trim() && (!headline.seconds || cur < headline.seconds) && <HeadlineOverlay h={headline} box={cbox} />}
       {/* Legenda como sai no vídeo final, por cima da prévia do formato. */}
       {cbox && aspectSel === 'original' && cropBars(cbox)}
-      {cbox && blanks.some((b) => cur >= b.start && cur < b.end) && <div aria-hidden="true" style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, background: '#000', zIndex: 1, pointerEvents: 'none' }} />}
-      {cbox && <StageLayers part="media" z={2} videoRef={videoRef} box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
+      {cbox && inBlankNow && !underBlank && <div aria-hidden="true" style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, background: '#000', zIndex: 1, pointerEvents: 'none' }} />}
+      {cbox && <StageLayers part="media" z={2} videoRef={videoRef} box={cbox} cur={cur} media={visTop} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
         onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
       {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
       {cbox && <StageLayers part="texts" z={3} videoRef={videoRef} box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
@@ -4145,6 +4211,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const isLibDrag = (e) => Array.from(e.dataTransfer?.types || []).includes('text/rf-media');
   const libItemOf = (e) => (library || []).find((x) => x.id === e.dataTransfer.getData('text/rf-media'));
   const onV1Lane = (e) => !!e.target?.closest?.('[data-lane="v1"]');
+  const onV0Lane = (e) => !!e.target?.closest?.('[data-lane="v0"]');
   useEffect(() => {
     const end = () => setLibDrop(null);
     window.addEventListener('dragend', end);
@@ -4157,7 +4224,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     e.dataTransfer.dropEffect = 'copy';
     const t = timeAtClientX(e.clientX);
     const v1 = onV1Lane(e);
-    setLibDrop((d) => (d && Math.abs(d.t - t) < 0.01 && d.v1 === v1 ? d : { t, v1 }));
+    const v0 = onV0Lane(e);
+    setLibDrop((d) => (d && Math.abs(d.t - t) < 0.01 && d.v1 === v1 && d.v0 === v0 ? d : { t, v1, v0 }));
     return true;
   }
   function onLibDrop(e) {
@@ -4166,9 +4234,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const it = libItemOf(e);
     const t = timeAtClientX(e.clientX);
     const v1 = onV1Lane(e);
+    const v0 = onV0Lane(e);
     setLibDrop(null);
     if (!it || it.status !== 'ok') return true;
     if (v1 && it.kind !== 'audio') insertIntoV1(it, t);
+    else if (v0 && it.kind !== 'audio') addMediaItem(it, { start: t, under: true, layer: 0, volume: 0 });
     else addMediaItem(it, { start: t });
     return true;
   }
@@ -5772,8 +5842,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               cada um ocupa uma fatia da largura proporcional ao seu formato. */}
           <div onDragOver={onPreviewDragOver} onDrop={onPreviewDrop} className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}${singleMon ? ' rf-tl-pv--one' : ''}`} style={{ '--main-share': showFormatPreview ? (mainAr / (mainAr + fmtAr)).toFixed(4) : 1, '--fmt-share': singleMon ? 1 : showFormatPreview ? (fmtAr / (mainAr + fmtAr)).toFixed(4) : 1, containerType: 'inline-size', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(194,65,12,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
             <div className="rf-tl-main" style={{ flex: '0 0 auto', minWidth: 0 }}>
-              <div style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${mainAr.toFixed(4)}), calc((100cqw - ${showFormatPreview ? 16 : 0}px) * var(--main-share)))`, aspectRatio: `${mainAr}`, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
-                <video ref={videoRef} src={srcUrl} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim(editSrc && editDimRef.current ? editDimRef.current : { w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
+              <div style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${mainAr.toFixed(4)}), calc((100cqw - ${showFormatPreview ? 16 : 0}px) * var(--main-share)))`, aspectRatio: `${mainAr}`, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000', isolation: 'isolate' }}>
+                {vbox && visUnder.length > 0 && <StageLayers part="media" z={-1} videoRef={videoRef} box={vbox} cur={cur} media={visUnder} texts={[]} editable={false} selMedia={selMedia} selText={selText} onMedia={() => {}} onText={() => {}} />}
+                <video ref={videoRef} src={srcUrl} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: visUnder.length ? 'transparent' : '#000', filter: videoFilterFx, ...(visUnder.length && cropOn ? { clipPath: `inset(${videoCrop.t * 100}% ${videoCrop.r * 100}% ${videoCrop.b * 100}% ${videoCrop.l * 100}%)` } : null), ...(underBlank ? { opacity: 0 } : null) }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim(editSrc && editDimRef.current ? editDimRef.current : { w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
                 {vbox && lookCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...lookCss.tint }} />}
                 {vbox && headline.on && headline.text.trim() && (!headline.seconds || cur < headline.seconds) && (
                   <HeadlineOverlay h={headline} box={vbox} />
@@ -5801,9 +5872,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 )}
                 {vbox && !singleMon && <div ref={fxOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 2, backgroundSize: 'cover' }} />}
                 {vbox && !singleMon && <div ref={transOverlayRef} style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', zIndex: 4, opacity: 0 }} />}
-                {vbox && cropBars(vbox)}
-                {vbox && blanks.some((b) => cur >= b.start && cur < b.end) && <div aria-hidden="true" style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, background: '#000', zIndex: 1, pointerEvents: 'none' }} />}
-                {vbox && <StageLayers part="media" z={2} videoRef={videoRef} box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
+                {vbox && !visUnder.length && cropBars(vbox)}
+                {vbox && inBlankNow && !underBlank && <div aria-hidden="true" style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, background: '#000', zIndex: 1, pointerEvents: 'none' }} />}
+                {vbox && <StageLayers part="media" z={2} videoRef={videoRef} box={vbox} cur={cur} media={visTop} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
                   onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
                 {cap.captions && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
                 {vbox && <StageLayers part="texts" z={3} videoRef={videoRef} box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
@@ -6931,8 +7002,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </>}
           {selKind === 'media' && selMediaItem && (
             <>
-              <button onClick={() => moveLayer(selMediaItem.key, 1)} style={toolBtn(false)} title="Coloca esta mídia por cima da camada de cima">▲ <span className="rf-tl-hide-sm">Subir camada</span></button>
-              <button onClick={() => moveLayer(selMediaItem.key, -1)} disabled={!selMediaItem.layer} style={toolBtn(!selMediaItem.layer)} title="Coloca esta mídia por baixo">▼ <span className="rf-tl-hide-sm">Descer camada</span></button>
+              {!selMediaItem.under && <>
+                <button onClick={() => moveLayer(selMediaItem.key, 1)} style={toolBtn(false)} title="Coloca esta mídia por cima da camada de cima">▲ <span className="rf-tl-hide-sm">Subir camada</span></button>
+                <button onClick={() => moveLayer(selMediaItem.key, -1)} disabled={!selMediaItem.layer} style={toolBtn(!selMediaItem.layer)} title="Coloca esta mídia por baixo">▼ <span className="rf-tl-hide-sm">Descer camada</span></button>
+              </>}
+              {selMediaItem.kind !== 'audio' && (
+                <button onClick={() => setUnder(selMediaItem.key, !selMediaItem.under)} style={toolBtn(false)}
+                  title={selMediaItem.under ? 'Volta a mídia para as camadas (por cima do vídeo)' : 'Coloca a mídia na V0, por baixo do vídeo principal (vira o fundo)'}>
+                  {selMediaItem.under ? '▲' : '▼'} <span className="rf-tl-hide-sm">{selMediaItem.under ? 'Por cima do vídeo' : 'Por baixo do vídeo (V0)'}</span>
+                </button>
+              )}
             </>
           )}
           {isMobile && <span style={{ width: 1, height: 20, background: C.border, margin: '0 2px' }} />}
@@ -7039,7 +7118,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {showChapLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('capitulos', e)} onResetSize={() => resetLane('capitulos')} h={LANE.capitulos} gap={4} code="CH" nome="Capítulos" />}
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('legenda', e)} onResetSize={() => resetLane('legenda')} h={legH} gap={6} code="C1" nome="Legenda" onMenu={(e) => openTrackMenu(e, 'legenda')} hidden={cap.captions === false} onEye={() => setCap((c) => ({ ...c, captions: c.captions === false }))} locked={laneLock.leg} onLock={() => togLock('leg')} />
             {extraCaps.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('xcap', e)} onResetSize={() => resetLane('xcap')} h={LANE.xcap} gap={4} code="C2" nome="Suas legendas" onMenu={(e) => openTrackMenu(e, 'xcap')} hidden={laneHide.xcap} onEye={() => togHide('xcap')} locked={laneLock.xcap} onLock={() => togLock('xcap')} />}
-            {media.length > 0 && Array.from({ length: mediaRows }, (_, r) => mediaRows - 1 - r).map((l) => (
+            {topMedia.length > 0 && Array.from({ length: mediaRows }, (_, r) => mediaRows - 1 - r).map((l) => (
               <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('midias', e)} onResetSize={() => resetLane('midias')} key={l} h={LANE.midias} gap={l === mediaRows - 1 ? 4 : 0} code={`M${l + 1}`} nome={`Camada ${l + 1}`} onMenu={(e) => openTrackMenu(e, `m${l}`)} hidden={laneHide[`m${l}`]} onEye={() => togHide(`m${l}`)} locked={laneLock[`m${l}`]} onLock={() => togLock(`m${l}`)} />
             ))}
             {textLayers.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('txt', e)} onResetSize={() => resetLane('txt')} h={LANE.txt} gap={4} code="T1" nome="Textos" onMenu={(e) => openTrackMenu(e, 'txt')} hidden={laneHide.txt} onEye={() => togHide('txt')} locked={laneLock.txt} onLock={() => togLock('txt')} />}
@@ -7048,6 +7127,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {showZoomLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('zoom', e)} onResetSize={() => resetLane('zoom')} h={LANE.zoom} gap={4} code="ZM" nome="Zoom" onMenu={(e) => openTrackMenu(e, 'zoom')} locked={laneLock.zoom} onLock={() => togLock('zoom')} />}
             {transformKeys.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('kf', e)} onResetSize={() => resetLane('kf')} h={LANE.kf} gap={4} code="KF" nome="Quadros" onMenu={(e) => openTrackMenu(e, 'kf')} locked={laneLock.kf} onLock={() => togLock('kf')} />}
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('video', e)} onResetSize={() => resetLane('video')} h={LANE.video} gap={4} code="V1" active nome={avLinked ? 'Vídeo' : 'Vídeo · solto'} onMenu={(e) => openTrackMenu(e, 'video')} locked={laneLock.vid} onLock={() => togLock('vid')} />
+            {showV0 && <TrackHead h={v0H} gap={4} code="V0" nome="Por baixo" onMenu={(e) => openTrackMenu(e, 'v0')} hidden={laneHide.v0} onEye={() => togHide('v0')} locked={laneLock.v0} onLock={() => togLock('v0')} />}
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('audio', e)} onResetSize={() => resetLane('audio')} h={LANE.audio} gap={4} code="A1" active nome={avLinked ? 'Áudio' : 'Áudio · solto'} onMenu={(e) => openTrackMenu(e, 'audio')} muted={audioMute} onMute={() => setAudioMute((v) => !v)} locked={laneLock.aud} onLock={() => togLock('aud')} />
             {showPauses && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('pausas', e)} onResetSize={() => resetLane('pausas')} h={LANE.pausas} gap={4} code="P" nome="Pausas" locked={laneLock.pau} onLock={() => togLock('pau')} />}
           </div>
@@ -7056,7 +7136,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             onMouseDown={(e) => { if (e.target === e.currentTarget) startMarquee(e); }} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
-            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setDropT(null); setLibDrop(null); } }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile || !showPauses ? 0 : 4 + LANE.pausas) + (media.length ? 4 + LANE.midias * mediaRows : 0) }}>
+            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setDropT(null); setLibDrop(null); } }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (isMobile || !showPauses ? 0 : 4 + LANE.pausas) + (topMedia.length ? 4 + LANE.midias * mediaRows : 0) + (showV0 ? 4 + v0H : 0) }}>
             {/* ferramenta de seleção: arrastar em qualquer faixa marca o trecho (todas as faixas) */}
             {razorTool && !isMobile && (
               <div onMouseMove={(e) => setRazorT(timeAtClientX(e.clientX))} onMouseLeave={() => setRazorT(null)}
@@ -7219,41 +7299,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               </div>
             )}
             {/* Lane das minhas mídias — arraste para mover, pontas para redimensionar */}
-            {media.length > 0 && (
+            {topMedia.length > 0 && (
               <div data-lane="midias" style={{ position: 'relative', height: LANE.midias * mediaRows, marginTop: 4 }}>
                 {Array.from({ length: mediaRows - 1 }, (_, r) => (
                   <div key={r} style={{ position: 'absolute', left: 0, right: 0, top: (r + 1) * LANE.midias - 1, borderTop: `1px dashed ${C.border}`, pointerEvents: 'none' }} />
                 ))}
-                {media.map((m) => {
-                  const left = X(m.start);
-                  const w = Math.max(16, W(m.start, m.start + m.duration) - 1);
-                  const col = m.kind === 'audio' ? C.purple : m.kind === 'video' ? C.orange : '#22D3EE';
-                  const isSelM = selKind === 'media' && selMedia === m.key;
-                  return (
-                    <div
-                      key={m.key}
-                      onMouseDown={(e) => startMediaDrag(m, 'move', e)}
-                      onClick={(e) => { e.stopPropagation(); setSelMedia(m.key); setSelKind('media'); seek(m.start); }}
-                      title={`${m.filename} — arraste para os lados (tempo) ou para cima/baixo (camada); pontas ajustam a duração`}
-                      style={{
-                        position: 'absolute', left, top: (mediaRows - 1 - (m.layer || 0)) * LANE.midias, width: w, height: 28, borderRadius: 7, overflow: 'hidden',
-                        cursor: 'grab', display: 'flex', alignItems: 'center', gap: 5, padding: '0 9px',
-                        background: m.offline ? 'rgba(240,82,107,0.18)' : `${col}2b`, border: m.offline ? `1px dashed ${C.red}` : isSelM ? '1.5px solid #fff' : `1px solid ${col}`, boxShadow: isSelM ? `0 0 0 2px ${col}66` : 'none', color: C.text, userSelect: 'none',
-                        ...(laneHide[`m${m.layer || 0}`] ? LANE_HIDDEN : null), ...lk(`m${m.layer || 0}`),
-                      }}
-                    >
-                      <span style={{ display: 'flex', flexShrink: 0, color: col }}><Icon name={m.kind === 'audio' ? 'play' : m.kind === 'video' ? 'film' : 'image'} size={11} strokeWidth={2.2} /></span>
-                      {w > 44 && <span style={{ fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.filename}</span>}
-                      {m.kf && [...new Set(Object.values(m.kf).flatMap((tr) => tr.map((k) => k.t)))].filter((t) => t <= m.duration + 0.01).map((t) => (
-                        <span key={t} title={`Quadro-chave em ${fmtDuration(m.start + t)} (clique para ir)`} onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => { e.stopPropagation(); setSelMedia(m.key); setSelKind('media'); seek(m.start + t); }}
-                          style={{ position: 'absolute', left: X(m.start + t) - left - 4, bottom: 2, width: 8, height: 8, transform: 'rotate(45deg)', background: '#FACC15', border: '1px solid #1a1400', cursor: 'pointer', zIndex: 2 }} />
-                      ))}
-                      <div onMouseDown={(e) => startMediaDrag(m, 'left', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
-                      <div onMouseDown={(e) => startMediaDrag(m, 'right', e)} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: `${col}` }} />
-                    </div>
-                  );
-                })}
+                {topMedia.map(mediaChip)}
               </div>
             )}
             {/* Faixa TEXTOS: textos livres (arraste para mover, pontas mudam o tempo) */}
@@ -7539,6 +7590,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 <div style={{ position: 'absolute', left: X(drawing.start), width: W(drawing.start, drawing.end), top: 0, bottom: 0, background: 'rgba(59,130,246,0.3)', border: '1px solid #3B82F6', pointerEvents: 'none' }} />
               )}
             </div>
+            {/* Faixa V0: imagens/vídeos POR BAIXO do vídeo principal (aparecem em volta do vídeo
+                reduzido, girado ou recortado e nos espaços vazios), como uma V1 abaixo no Premiere */}
+            {showV0 && (
+              <div data-lane="v0" style={{ position: 'relative', height: v0H, marginTop: 4, borderRadius: 6, background: underMedia.length ? 'transparent' : 'rgba(255,255,255,0.025)', border: underMedia.length ? 'none' : `1px dashed ${C.border}`, ...lk('v0'), ...(libDrop?.v0 ? { boxShadow: '0 0 0 2px #22D3EE, 0 0 14px rgba(34,211,238,0.5)' } : null) }}>
+                {!underMedia.length && (
+                  <div style={{ position: 'sticky', left: 8, display: 'inline-flex', alignItems: 'center', height: '100%', padding: '0 8px', fontSize: 10, color: C.faint, whiteSpace: 'nowrap', pointerEvents: 'none' }}>
+                    Arraste uma imagem ou vídeo aqui para ficar por baixo do vídeo (fundo)
+                  </div>
+                )}
+                {underMedia.map(mediaChip)}
+              </div>
+            )}
             {/* Faixa de áudio: forma de onda da fala original */}
             <div data-lane="a1"
               onClick={(e) => { if (rangeClickBlockRef.current || isMobile) return; const p = partAt(e); if (!p) return; setSelKind('audio'); setSelAudio({ start: p.a, end: p.b }); }}
@@ -7642,7 +7705,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {libDrop && (
               <div style={{ position: 'absolute', left: X(libDrop.t), top: 0, bottom: 0, width: 2, marginLeft: -1, background: libDrop.v1 ? '#3B82F6' : '#22D3EE', boxShadow: `0 0 8px ${libDrop.v1 ? '#3B82F6' : '#22D3EE'}`, pointerEvents: 'none', zIndex: 22 }}>
                 <span style={{ position: 'absolute', top: 2, left: 6, whiteSpace: 'nowrap', fontSize: 10.5, fontWeight: 700, color: '#fff', background: libDrop.v1 ? '#2563EB' : '#0E7490', borderRadius: 5, padding: '1px 6px' }}>
-                  {libDrop.v1 ? 'Inserir no vídeo principal (V1)' : 'Camada'} · {fmtDuration(libDrop.t)}
+                  {libDrop.v1 ? 'Inserir no vídeo principal (V1)' : libDrop.v0 ? 'Por baixo do vídeo (V0)' : 'Camada'} · {fmtDuration(libDrop.t)}
                 </span>
               </div>
             )}
@@ -8199,18 +8262,18 @@ const GRAIN_SVG = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/sv
 function freeLayer(list, start, duration) {
   const end = start + duration;
   let l = 0;
-  while (list.some((m) => (m.layer || 0) === l && m.start < end && m.start + m.duration > start)) l++;
+  while (list.some((m) => !m.under && (m.layer || 0) === l && m.start < end && m.start + m.duration > start)) l++;
   return l;
 }
-/** Renumera as camadas em 0, 1, 2… mantendo a ordem (tira as camadas vazias). */
 /** Fonte de um texto: da lista ou "custom:<id>" (fonte que a pessoa enviou). */
 function textFontOf(font) {
   return String(font || '').startsWith('custom:') ? { family: customFontFamily(String(font).slice(7)), bold: false } : fontById(font);
 }
+/** Renumera as camadas em 0, 1, 2… mantendo a ordem (tira as camadas vazias). A V0 não conta. */
 function normalizeLayers(list) {
-  const used = [...new Set(list.map((m) => m.layer || 0))].sort((a, b) => a - b);
+  const used = [...new Set(list.filter((m) => !m.under).map((m) => m.layer || 0))].sort((a, b) => a - b);
   if (used.every((l, i) => l === i)) return list;
-  return list.map((m) => ({ ...m, layer: used.indexOf(m.layer || 0) }));
+  return list.map((m) => (m.under ? m : { ...m, layer: used.indexOf(m.layer || 0) }));
 }
 /** Pedaços da faixa de vídeo entre as divisões (início, divisões, fim). */
 // ── Medidor de áudio (dB) da prévia, como o do Premiere: -60 a 0 dB, verde → amarelo →
@@ -8315,7 +8378,7 @@ function videoParts(splits, dur) {
 const PR = { panel: '#141519', track: '#1A1B20', heads: '#1F2026', tools: '#17181C', ruler: '#202127', line: 'rgba(255,255,255,0.08)', blue: '#2D8CFF', text: '#D6D8DE', dim: '#8B9099' };
 const LANE_ROW = { background: 'rgba(255,255,255,0.022)', borderRadius: 4 };
 const LANE_HIDDEN = { opacity: 0.28 };
-const LANE_NAME = { legenda: 'Legenda', xcap: 'Legendas à mão', midias: 'Camadas', txt: 'Textos', vfx: 'Efeitos', broll: 'B-roll', zoom: 'Zoom', kf: 'Quadros-chave', v1: 'Vídeo', a1: 'Áudio', pausas: 'Pausas' };
+const LANE_NAME = { legenda: 'Legenda', xcap: 'Legendas à mão', midias: 'Camadas', txt: 'Textos', vfx: 'Efeitos', broll: 'B-roll', zoom: 'Zoom', kf: 'Quadros-chave', v1: 'Vídeo', v0: 'Por baixo (V0)', a1: 'Áudio', pausas: 'Pausas' };
 const LANE_LOCKED = { pointerEvents: 'none', filter: 'saturate(0.35)', backgroundImage: 'repeating-linear-gradient(135deg, rgba(255,255,255,0.05) 0 6px, transparent 6px 12px)' };
 const RULER_STEPS = [1, 2, 5, 10, 15, 30, 60];
 const SNAP_PX = 8;
