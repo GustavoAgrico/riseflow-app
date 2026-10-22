@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Calendar, Clock, CheckSquare, FileText, Mess
 import { SkeletonCards } from '@components/ui/Skeleton'
 import { downloadICS } from '@utils/icalUtils'
 import { usePushNotifications } from '@hooks/usePushNotifications'
-import api from '@services/api'
+import api, { API_ORIGIN } from '@services/api'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED', org: '#FF6B35' }
 
@@ -147,7 +147,7 @@ export const Agenda = () => {
     setTokenLoading(false)
   }, [isDemoMode])
 
-  const calFeedUrl = calToken ? `${window.location.origin}/api/calendar/feed/${calToken}.ics` : null
+  const calFeedUrl = calToken ? `${API_ORIGIN}/api/calendar/feed/${calToken}.ics` : null
 
   const copyFeedUrl = useCallback(() => {
     if (!calFeedUrl) return

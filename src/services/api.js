@@ -11,6 +11,10 @@ import { supabase, getProxyToken, clearProxyToken } from '@/lib/supabase'
 // Em dev o .env define http://localhost:3001 e o Vite proxia /api → :3333.
 const BASE = `${import.meta.env.VITE_API_URL || ''}/api`
 
+// Origem pública do servidor — difere da do frontend quando ele está no Cloudflare Pages.
+// Use para links que o servidor atende (feed iCal, webhooks), nunca window.location.origin.
+export const API_ORIGIN = import.meta.env.VITE_API_URL || window.location.origin
+
 export const api = axios.create({
   baseURL: BASE,
   timeout: 10000,

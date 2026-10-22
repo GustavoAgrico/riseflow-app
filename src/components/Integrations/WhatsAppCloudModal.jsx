@@ -2,10 +2,11 @@ import React, { useState } from 'react'
 import { ExternalLink, Loader2, MessageCircle, Copy, Check } from 'lucide-react'
 import { connectWhatsAppCloud, whatsappCloudErrorMessage } from '@services/whatsappCloudService'
 import { ModalBase, Steps, HelpAccordion } from './ModalBase'
+import { API_ORIGIN } from '@services/api'
 
 // Integração oficial: o usuário cola Phone Number ID + Access Token (e WABA ID
 // opcional) do painel WhatsApp do app Meta. O webhook é configurado no painel da
-// Meta apontando para a URL mostrada abaixo (mesma origem do app).
+// Meta apontando para a URL mostrada abaixo (a do servidor, não a do frontend).
 export const WhatsAppCloudModal = ({ onClose, onSuccess }) => {
   const [phoneNumberId, setPhoneNumberId] = useState('')
   const [token, setToken] = useState('')
@@ -14,7 +15,7 @@ export const WhatsAppCloudModal = ({ onClose, onSuccess }) => {
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
 
-  const webhookUrl = `${window.location.origin}/api/webhook/whatsapp`
+  const webhookUrl = `${API_ORIGIN}/api/webhook/whatsapp`
 
   const copyWebhook = () => {
     navigator.clipboard?.writeText(webhookUrl).then(() => {

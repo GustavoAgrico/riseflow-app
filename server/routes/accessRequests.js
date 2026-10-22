@@ -17,7 +17,10 @@ const ADMIN_WHATSAPP = (process.env.ADMIN_NOTIFY_WHATSAPP || '5511974216693').re
 const brl = cents => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const planLabel = p => `${p.name} — ${brl(p.price)}/mês`
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-const appUrl = req => (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')
+// Links de decisão são atendidos por este servidor; o "acesse o app" vai para o frontend
+// (APP_URL), que pode estar em outro domínio (Cloudflare Pages).
+const apiUrl = req => `${req.protocol}://${req.get('host')}`
+const appUrl = req => (process.env.APP_URL || apiUrl(req)).replace(/\/$/, '')
 
 let adminUserId = process.env.ADMIN_USER_ID || null
 async function resolveAdminUserId() {
@@ -29,7 +32,7 @@ async function resolveAdminUserId() {
 }
 
 function decisionLinks(req, row) {
-  const base = `${appUrl(req)}/api/access-requests/${row.id}/decision?token=${row.token}`
+  const base = `${apiUrl(req)}/api/access-requests/${row.id}/decision?token=${row.token}`
   return { approve: `${base}&action=approve`, deny: `${base}&action=deny` }
 }
 
