@@ -3807,11 +3807,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [razorT, setRazorT] = useState(null);
   const [showKeys, setShowKeys] = useState(false);
   function pickTool(t) { setRazorTool(t === 'razor'); setRangeTool(t === 'range'); setRazorT(null); }
-  /** Navalha / Ctrl+K: divide vídeo (V1) e legenda no ponto. */
+  /**
+   * Navalha / Ctrl+K: divide só o vídeo (V1) e o áudio no ponto. A legenda é outra faixa (como
+   * no Premiere) e fica inteira — para dividir a legenda, selecione-a e use S.
+   */
   function razorCut(t) {
     const at = +Math.max(0.05, Math.min(dur - 0.05, t)).toFixed(2);
     setVsplits((l) => (l.some((x) => Math.abs(x - at) < 0.05) ? l : [...l, at].sort((a, b) => a - b)));
-    splitAtPlayhead(at);
   }
   /** Pontos de edição (como no Premiere): começo, fim, divisões e bordas dos cortes. */
   const editPoints = () => [...new Set([0, dur, ...vsplits, ...cuts.flatMap((c) => [c.start, c.end])].map((x) => +x.toFixed(2)))].sort((a, b) => a - b);
@@ -7614,7 +7616,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <ToolIcon title="Seleção (V) — clique para selecionar, arraste para mover" active={!razorTool && !rangeTool} onClick={() => pickTool('select')}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 8-6 1.6L10 19z" /></svg>
               </ToolIcon>
-              <ToolIcon title="Navalha (C) — clique na timeline para cortar ali (vídeo e legenda)" active={razorTool} onClick={() => pickTool(razorTool ? 'select' : 'razor')}>
+              <ToolIcon title="Navalha (C) — clique na timeline para dividir o vídeo ali (a legenda fica inteira)" active={razorTool} onClick={() => pickTool(razorTool ? 'select' : 'razor')}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20l9-9M13 11l7-7v6l-4 4M8 4l3 3" /><circle cx="6" cy="18" r="2" /></svg>
               </ToolIcon>
               <ToolIcon title="Seleção de trecho (R) — arraste para marcar o trecho em todas as faixas · I/O marcam entrada/saída" active={rangeTool} onClick={() => pickTool(rangeTool ? 'select' : 'range')}>
