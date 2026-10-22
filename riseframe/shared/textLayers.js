@@ -83,7 +83,8 @@ export function cleanTextLayers(raw, fonts = null, max = 30) {
       text,
       start: Math.max(0, start),
       end: Math.min(start + 600, end),
-      font: typeof l.font === 'string' && (!fonts || fonts.includes(l.font)) ? l.font : 'poppins',
+      // fonte da lista ou "custom:<id>" (fonte enviada pela pessoa — o servidor confere o dono)
+      font: typeof l.font === 'string' && ((!fonts || fonts.includes(l.font)) || /^custom:[\w-]{1,40}$/.test(l.font)) ? l.font : 'poppins',
       size: num(l.size, 0.015, 0.2, 0.05),
       color: HEX.test(l.color) ? l.color : '#FFFFFF',
       box: pickOf(TEXT_BOXES, l.box, 'outline'),

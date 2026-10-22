@@ -516,6 +516,19 @@ export function buildAss(segments, meta, style = {}) {
  * absoluto com `:`), espaços, vírgulas, aspas… — copia as fontes para dentro da
  * pasta do job e usa só `fonts`. Exportado para teste.
  */
+/** Pasta do job com as fontes embutidas (links, sem copiar) + as fontes próprias `files`. */
+export async function jobFontsDir(work, files) {
+  const dir = path.join(work, 'fonts_job');
+  await fs.mkdir(dir, { recursive: true });
+  for (const f of await fs.readdir(FONTS_DIR)) {
+    if (!/\.(ttf|otf)$/i.test(f)) continue;
+    await fs.link(path.join(FONTS_DIR, f), path.join(dir, f)).catch(() => fs.copyFile(path.join(FONTS_DIR, f), path.join(dir, f)).catch(() => {}));
+  }
+  let i = 0;
+  for (const file of [...new Set(files)]) await fs.copyFile(file, path.join(dir, `custom${i++}${path.extname(file)}`)).catch(() => {});
+  return dir;
+}
+
 export async function fontsDirArg(work, fontsDir = FONTS_DIR) {
   const rel = path.relative(work, fontsDir).split(path.sep).join('/');
   if (rel && !path.isAbsolute(rel) && /^[A-Za-z0-9._/-]+$/.test(rel)) return rel;
@@ -541,17 +554,9 @@ export async function burnCaptions(input, work, meta, transcript, style, onProgr
   // `fontsdir` (caminho RELATIVO, com "/" — sem drive/espaços) aponta para as fontes
   // premium empacotadas, garantindo a tipografia escolhida em qualquer máquina.
   // Fonte própria: uma pasta do job com as fontes embutidas (links, sem copiar) + a dela.
-  let fontsRel;
-  if (style.customFont?.file) {
-    const dir = path.join(work, 'fonts_job');
-    await fs.mkdir(dir, { recursive: true });
-    for (const f of await fs.readdir(FONTS_DIR)) {
-      if (!/\.(ttf|otf)$/i.test(f)) continue;
-      await fs.link(path.join(FONTS_DIR, f), path.join(dir, f)).catch(() => fs.copyFile(path.join(FONTS_DIR, f), path.join(dir, f)).catch(() => {}));
-    }
-    await fs.copyFile(style.customFont.file, path.join(dir, `custom${path.extname(style.customFont.file)}`));
-    fontsRel = await fontsDirArg(work, dir);
-  } else fontsRel = await fontsDirArg(work);
+  const fontsRel = style.customFont?.file
+    ? await fontsDirArg(work, await jobFontsDir(work, [style.customFont.file]))
+    : await fontsDirArg(work);
   const vf = `subtitles=${ASS_NAME}:fontsdir=${fontsRel}`;
   const args = ['-i', input, '-vf', vf, ...x264Fast()];
   if (meta.hasAudio) args.push('-c:a', 'copy');

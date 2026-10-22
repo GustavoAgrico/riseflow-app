@@ -21,6 +21,8 @@ import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
 import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
 import ShadowPanel from './ShadowPanel.jsx';
+import ColorField from './ColorPicker.jsx';
+import { customFontFamily, useCustomFonts } from '../customFonts.js';
 import { shadowParams } from '../../../shared/captionShadow.js';
 import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById } from '../../../shared/captionStyle.js';
 import { layoutCaption } from '../../../shared/captionKeyword.js';
@@ -100,6 +102,7 @@ function wordOut(w, dw = null) {
 
 export default function TimelineEditor({ transcript, durationSec, sourceId, catalog, options, onGenerate, onBack, onSettings, busy, hidden = false, jobError = null, projectTitle = '', onRebuild = null, initialTab = null }) {
   const { billing } = useAuth();
+  useCustomFonts(); // registra as fontes próprias no navegador (textos e legendas com elas)
   const caps = catalog?.capabilities || {};
   const cap0 = options || {};
   // Ajustes de legenda editáveis aqui na timeline (posição, fonte, estilo, etc.).
@@ -3448,7 +3451,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {Object.entries(TEXT_TEMPLATES).map(([id, t]) => (
             <button key={id} onClick={() => addText(id)} style={{ ...framingTab(false), textAlign: 'left', display: 'grid', gap: 2 }}>
               <span style={{ fontSize: 11, color: C.faint }}>{t.label}</span>
-              <span style={{ fontFamily: `'${fontById(t.font).family}'`, fontWeight: fontById(t.font).bold === false ? 400 : 700, fontSize: 13, color: t.color, background: t.box === 'box' ? t.boxColor : 'transparent', padding: t.box === 'box' ? '1px 5px' : 0, borderRadius: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', WebkitTextStroke: t.box === 'outline' ? `0.6px ${t.boxColor}` : undefined }}>{t.text.split('\n')[0]}</span>
+              <span style={{ fontFamily: `'${textFontOf(t.font).family}'`, fontWeight: textFontOf(t.font).bold === false ? 400 : 700, fontSize: 13, color: t.color, background: t.box === 'box' ? t.boxColor : 'transparent', padding: t.box === 'box' ? '1px 5px' : 0, borderRadius: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', WebkitTextStroke: t.box === 'outline' ? `0.6px ${t.boxColor}` : undefined }}>{t.text.split('\n')[0]}</span>
             </button>
           ))}
         </div>
@@ -3464,18 +3467,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <div style={{ border: '1px solid #E8A020', borderRadius: 10, padding: 10, display: 'grid', gap: 8 }}>
           <textarea value={selTextItem.text} rows={2} onChange={(e) => updateText(selTextItem.key, { text: e.target.value })}
             style={{ width: '100%', boxSizing: 'border-box', background: '#13131B', color: C.text, border: `1px solid ${C.border}`, borderRadius: 9, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
-          <CapRow label="Fonte"><Sel value={selTextItem.font} opts={CAPTION_FONT_LIST.map((f) => ({ id: f.id, label: f.label }))} onChange={(v) => updateText(selTextItem.key, { font: v })} /></CapRow>
+          {/* as mesmas fontes da legenda, inclusive as que você adicionou (Minhas fontes) */}
+          <CapRow label="Fonte"><FontPicker value={selTextItem.font} fonts={CAPTION_FONT_LIST.filter((f) => f.id !== 'auto')} onChange={(v) => updateText(selTextItem.key, { font: v })} compact /></CapRow>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
             <span style={{ width: 58 }}>Tamanho</span>
             <input type="range" min="0.015" max="0.2" step="0.002" value={selTextItem.size} onChange={(e) => updateText(selTextItem.key, { size: Number(e.target.value) })} style={{ flex: 1 }} />
             <span style={{ width: 36, textAlign: 'right' }}>{Math.round(selTextItem.size * 1000) / 10}</span>
           </label>
-          <CapRow label="Cor do texto"><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{CAPTION_COLOR_LIST.map((c) => swatch(c.hex, selTextItem.color.toUpperCase() === c.hex.toUpperCase(), () => updateText(selTextItem.key, { color: c.hex })))}{swatch('#111111', selTextItem.color === '#111111', () => updateText(selTextItem.key, { color: '#111111' }))}</div></CapRow>
+          <CapRow label="Cor do texto"><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{CAPTION_COLOR_LIST.map((c) => swatch(c.hex, selTextItem.color.toUpperCase() === c.hex.toUpperCase(), () => updateText(selTextItem.key, { color: c.hex })))}{swatch('#111111', selTextItem.color === '#111111', () => updateText(selTextItem.key, { color: '#111111' }))}<ColorField value={selTextItem.color} title="Cor do texto" size={22} onChange={(h) => updateText(selTextItem.key, { color: h })} /></div></CapRow>
           <CapRow label="Fundo">
             <div style={{ display: 'flex', gap: 6 }}>{Object.entries(TEXT_BOXES).map(([id, label]) => (<button key={id} onClick={() => updateText(selTextItem.key, { box: id })} style={framingTab(selTextItem.box === id)}>{label}</button>))}</div>
           </CapRow>
           {selTextItem.box !== 'none' && (
-            <CapRow label={selTextItem.box === 'box' ? 'Cor da caixa' : 'Cor do contorno'}><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{['#000000', '#111111', '#FFFFFF', ...CAPTION_COLOR_LIST.map((c) => c.hex).filter((h) => h !== '#FFFFFF')].map((hex) => swatch(hex, selTextItem.boxColor.toUpperCase() === hex.toUpperCase(), () => updateText(selTextItem.key, { boxColor: hex })))}</div></CapRow>
+            <CapRow label={selTextItem.box === 'box' ? 'Cor da caixa' : 'Cor do contorno'}><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{['#000000', '#111111', '#FFFFFF', ...CAPTION_COLOR_LIST.map((c) => c.hex).filter((h) => h !== '#FFFFFF')].map((hex) => swatch(hex, selTextItem.boxColor.toUpperCase() === hex.toUpperCase(), () => updateText(selTextItem.key, { boxColor: hex })))}<ColorField value={selTextItem.boxColor} title={selTextItem.box === 'box' ? 'Cor da caixa' : 'Cor do contorno'} size={22} onChange={(h) => updateText(selTextItem.key, { boxColor: h })} /></div></CapRow>
           )}
           {[['x', 'Posição X'], ['y', 'Posição Y']].map(([k, label]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
@@ -6405,6 +6409,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                         {['FF6B35', '7C3AED', 'FFD60A', '111111', 'FFFFFF', '2ED47A'].map((c) => (
                           <button key={c} onClick={() => setHl({ color: c })} aria-label={`cor ${c}`} style={{ width: 24, height: 24, borderRadius: '50%', background: `#${c}`, border: headline.color === c ? '2px solid #fff' : `1px solid ${C.border}`, cursor: 'pointer', padding: 0 }} />
                         ))}
+                        <ColorField value={`#${headline.color || 'FF6B35'}`} title="Cor da caixa" size={24} onChange={(h) => setHl({ color: h.slice(1) })} />
                       </div>
                     </CapRow>
                   )}
@@ -8087,7 +8092,7 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
         );
       })}
       {liveTexts.map((l) => {
-        const f = fontById(l.font);
+        const f = textFontOf(l.font);
         const px = l.size * box.h;
         const on = editable && selText === l.key;
         return (
@@ -8198,6 +8203,10 @@ function freeLayer(list, start, duration) {
   return l;
 }
 /** Renumera as camadas em 0, 1, 2… mantendo a ordem (tira as camadas vazias). */
+/** Fonte de um texto: da lista ou "custom:<id>" (fonte que a pessoa enviou). */
+function textFontOf(font) {
+  return String(font || '').startsWith('custom:') ? { family: customFontFamily(String(font).slice(7)), bold: false } : fontById(font);
+}
 function normalizeLayers(list) {
   const used = [...new Set(list.map((m) => m.layer || 0))].sort((a, b) => a - b);
   if (used.every((l, i) => l === i)) return list;

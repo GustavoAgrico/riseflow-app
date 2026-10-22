@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
-import { fontsDirArg } from './captions.js';
+import { fontsDirArg, jobFontsDir } from './captions.js';
 import { fontById } from '../../../shared/captionStyle.js';
 import { makeLogger } from '../logger.js';
 
@@ -37,7 +37,7 @@ export function buildTextAss(layers, meta) {
   const styles = [];
   const events = [];
   layers.forEach((l, i) => {
-    const f = fontById(l.font);
+    const f = l.fontFile && l.fontFamily ? { family: l.fontFamily, bold: false } : fontById(l.font);
     const size = Math.max(8, Math.round(l.size * H));
     const bold = f.bold === false ? 0 : -1;
     const isBox = l.box === 'box';
@@ -84,7 +84,8 @@ export async function burnTexts(input, work, meta, layers, onProgress) {
   if (!layers?.length) return { output: input, count: 0 };
   const NAME = 'texts.ass';
   await fs.writeFile(path.join(work, NAME), buildTextAss(layers, meta), 'utf8');
-  const fontsRel = await fontsDirArg(work);
+  const own = layers.map((l) => l.fontFile).filter(Boolean);
+  const fontsRel = own.length ? await fontsDirArg(work, await jobFontsDir(work, own)) : await fontsDirArg(work);
   const output = path.join(work, 'texts.mp4');
   // cwd = pasta do job e o .ass pelo nome relativo (igual às legendas: sem drive/espaços).
   const args = ['-i', input, '-vf', `subtitles=${NAME}:fontsdir=${fontsRel}`, ...x264Fast()];
