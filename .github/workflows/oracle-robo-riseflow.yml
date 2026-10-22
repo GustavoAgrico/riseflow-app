@@ -1,0 +1,95 @@
+# Robô que cria a VM grátis do SERVIDOR do RiseFlow na Oracle (sa-saopaulo-1) assim
+# que abrir vaga — ARM 1 núcleo/6 GB ou AMD Micro. Roda de hora em hora; cada rodada
+# tenta por até ~5h40. Se a VM "riseflow-app" já existir, termina na hora.
+#
+# Usa os mesmos secrets do robô do Riseframe (OCI_USER, OCI_TENANCY, OCI_FINGERPRINT,
+# OCI_REGION, OCI_KEY). Quando cria, abre uma issue com o IP (aviso por e-mail).
+# Pausar: variável de repositório ORACLE_ROBO_RISEFLOW=off.
+name: 'Oracle: robô da VM do RiseFlow'
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '47 * * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: oracle-robo-riseflow
+  cancel-in-progress: false
+
+jobs:
+  robo:
+    if: ${{ vars.ORACLE_ROBO_RISEFLOW != 'off' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      # Chave PÚBLICA de acesso (a privada fica só no PC do administrador: ~/.ssh/riseflow-oracle).
+      SSH_PUBKEY: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJgaluXgc+GHv2T+DdbNLDmtIbd+HJ0bmDpHjWBUf9jn riseflow-oracle-2026-10-22
+    steps:
+      - name: Conferir os secrets
+        id: check
+        env:
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_KEY: ${{ secrets.OCI_KEY }}
+        run: |
+          if [ -z "$OCI_USER" ] || [ -z "$OCI_KEY" ]; then
+            echo "::warning::Secrets da Oracle não configurados — o robô não pode tentar."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ok == 'true'
+        with:
+          sparse-checkout: .github/oracle
+
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.ok == 'true'
+        with:
+          python-version: '3.12'
+
+      - name: Instalar e configurar o OCI CLI
+        if: steps.check.outputs.ok == 'true'
+        env:
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_KEY: ${{ secrets.OCI_KEY }}
+        run: |
+          pip install --quiet oci-cli
+          mkdir -p ~/.oci
+          printf '%s\n' "$OCI_KEY" > ~/.oci/oci_api_key.pem
+          printf '[DEFAULT]\nuser=%s\nfingerprint=%s\ntenancy=%s\nregion=%s\nkey_file=~/.oci/oci_api_key.pem\n' \
+            "$OCI_USER" "$OCI_FINGERPRINT" "$OCI_TENANCY" "${OCI_REGION:-sa-saopaulo-1}" > ~/.oci/config
+          chmod 600 ~/.oci/config ~/.oci/oci_api_key.pem
+
+      - name: Tentar criar a VM até abrir vaga
+        if: steps.check.outputs.ok == 'true'
+        env:
+          INTERVAL: '60'
+          MAX_SECONDS: '20400'
+          ROBO_RESULT: ${{ runner.temp }}/robo.txt
+        run: bash .github/oracle/riseflow-vm.sh
+
+      - name: Avisar (issue com o IP)
+        if: steps.check.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT_FILE: ${{ runner.temp }}/robo.txt
+        run: |
+          [ -f "$RESULT_FILE" ] || exit 0
+          read -r STATUS IP SHAPE < "$RESULT_FILE"
+          [ "$STATUS" = "created" ] || exit 0
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "✅ Oracle: VM do servidor RiseFlow criada (IP ${IP})" \
+            --body "O robô conseguiu vaga: **${SHAPE}**, IP público **${IP}**.
+
+          A VM já vem com swap, Node 22, pm2, cloudflared e o servidor instalados (cloud-init).
+          Próximo passo: avisar o Claude para configurar o server/.env, o Cloudflare Tunnel e migrar o backend do Render.
+
+          Acesso: \`ssh -i ~/.ssh/riseflow-oracle ubuntu@${IP}\`"

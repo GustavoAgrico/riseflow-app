@@ -1,0 +1,16 @@
+#cloud-config
+# Prepara a VM do servidor RiseFlow na criação: swap, Node 22, pm2, cloudflared e o
+# código do servidor com dependências. NÃO sobe o app — o server/.env (segredos) é
+# colocado depois por SSH, junto com o Cloudflare Tunnel.
+package_update: true
+packages:
+  - git
+  - curl
+runcmd:
+  - [bash, -c, "if ! swapon --show | grep -q /swapfile; then fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; fi"]
+  - [bash, -c, "curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs"]
+  - [bash, -c, "npm install -g pm2"]
+  - [bash, -c, "curl -fsSL -o /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$(dpkg --print-architecture).deb && dpkg -i /tmp/cloudflared.deb"]
+  - [bash, -c, "sudo -u ubuntu git clone --depth 1 https://github.com/GustavoAgrico/riseflow-app.git /home/ubuntu/riseflow-app"]
+  - [bash, -c, "cd /home/ubuntu/riseflow-app/server && sudo -u ubuntu npm ci --omit=dev"]
+  - [bash, -c, "sudo -u ubuntu touch /home/ubuntu/.riseflow-ready"]
