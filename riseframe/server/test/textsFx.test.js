@@ -20,8 +20,19 @@ test('buildTextAss: posição pelo centro, caixa, quebra de linha e animações'
   const [l] = cleanTextLayers([{ ...TEXT_TEMPLATES.nome, start: 2, end: 5 }]);
   const ass = buildTextAss([l], meta);
   assert.match(ass, /PlayResX: 1080\nPlayResY: 1920/);
-  assert.match(ass, /Style: T0,Poppins,77,&H00FFFFFF,&H00FFFFFF,&H00356BFF,&H00356BFF,-1,0,0,0,100,100,0,0,3,/, 'caixa laranja (BorderStyle 3)');
-  assert.match(ass, /Dialogue: 0,0:00:02\.00,0:00:05\.00,T0,,0,0,0,,\{\\an5\\move\(562,1613,346,1613,0,350\)\\fad\(350,350\)\}Seu Nome\\NEspecialista/);
+  // tamanho = "em" do CSS × célula da fonte (Poppins 1,76): igual à prévia
+  assert.match(ass, /Style: T0,Poppins,135,&H00FFFFFF,&H00FFFFFF,&H00356BFF,&H00000000,-1,0,0,0,100,100,0,0,1,0,/, 'texto sem caixa do ASS');
+  // cada linha: caixa desenhada (laranja, do tamanho do texto) por baixo e o texto por cima
+  assert.match(ass, /Dialogue: 0,0:00:02\.00,0:00:05\.00,TBox,,0,0,0,,\{\\an5\\move\(562,\d+,346,\d+,0,350\)\\fad\(350,350\)\\bord0\\shad0\\1c&H356BFF&\\p1\}m 0 0 /);
+  assert.match(ass, /Dialogue: 1,0:00:02\.00,0:00:05\.00,T0,,0,0,0,,\{\\an5\\move\(562,\d+,346,\d+,0,350\)\\fad\(350,350\)\}Seu Nome\n/);
+  assert.match(ass, /\}Especialista\n/);
+  // arredondar os cantos e o tamanho do fundo
+  const [r] = cleanTextLayers([{ ...TEXT_TEMPLATES.nome, start: 2, end: 5, radius: 1, pad: 0.6 }]);
+  const ra = buildTextAss([r], meta);
+  const box = ra.match(/\\p1\}(m [^\n]+)/)[1].split(' ').map(Number).filter(Number.isFinite);
+  assert.ok(box[0] > 40, `cantos arredondados (raio ${box[0]})`);
+  const wide = (txt) => Math.max(...txt.match(/\\p1\}(m [^\n]+)/)[1].split(' ').map(Number).filter(Number.isFinite));
+  assert.ok(wide(ra) > wide(ass), 'mais folga = caixa maior');
   const [pop] = cleanTextLayers([{ text: '{x}Oi', start: 0, end: 2, animIn: 'pop', animOut: 'zoom' }]);
   const a2 = buildTextAss([pop], meta);
   assert.ok(a2.includes('\\fscx0\\fscy0\\t(0,210,\\fscx115\\fscy115)'), 'pop');

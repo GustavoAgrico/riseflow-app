@@ -17,7 +17,7 @@ import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, playSfxUrl, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
 import { keyAt, cleanKeys, keysChangeAnything, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
-import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES } from '../../../shared/textLayers.js';
+import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
 import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
@@ -3658,6 +3658,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {selTextItem.box !== 'none' && (
             <CapRow label={selTextItem.box === 'box' ? 'Cor da caixa' : 'Cor do contorno'}><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{['#000000', '#111111', '#FFFFFF', ...CAPTION_COLOR_LIST.map((c) => c.hex).filter((h) => h !== '#FFFFFF')].map((hex) => swatch(hex, selTextItem.boxColor.toUpperCase() === hex.toUpperCase(), () => updateText(selTextItem.key, { boxColor: hex })))}<ColorField value={selTextItem.boxColor} title={selTextItem.box === 'box' ? 'Cor da caixa' : 'Cor do contorno'} size={22} onChange={(h) => updateText(selTextItem.key, { boxColor: h })} /></div></CapRow>
           )}
+          {selTextItem.box === 'box' && [
+            ['pad', 'Tamanho do fundo', 0.04, 1.2, 0.02, selTextItem.pad ?? TEXT_PAD_DEFAULT],
+            ['radius', 'Arredondar cantos', 0, 1, 0.02, selTextItem.radius ?? 0],
+          ].map(([k, label, min, max, step, v]) => (
+            <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}
+              title={k === 'pad' ? 'Folga da caixa em volta do texto' : '0% = canto reto · 100% = pontas todas redondas (pílula)'}>
+              <span style={{ width: 58, lineHeight: 1.15 }}>{label}</span>
+              <input type="range" min={min} max={max} step={step} value={v} onChange={(e) => updateText(selTextItem.key, { [k]: Number(e.target.value) })} style={{ flex: 1 }} />
+              <span style={{ width: 36, textAlign: 'right' }}>{Math.round(v * 100)}%</span>
+            </label>
+          ))}
           {[['x', 'Posição X'], ['y', 'Posição Y']].map(([k, label]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
               <span style={{ width: 58 }}>{label}</span>
@@ -8570,14 +8581,19 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
         const f = textFontOf(l.font);
         const px = l.size * box.h;
         const on = editable && selText === l.key;
+        // uma caixa por linha (do tamanho do texto), com a folga e os cantos escolhidos — a
+        // mesma conta do render (textBoxMetrics)
+        const g = textBoxMetrics(l);
         return (
           <div key={l.key} onPointerDown={(e) => start(e, { kind: 'text', key: l.key, ox: l.x, oy: l.y })}
-            style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, transform: 'translate(-50%, -50%)', whiteSpace: 'pre', textAlign: 'center', lineHeight: 1.15,
+            style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, transform: 'translate(-50%, -50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', lineHeight: TEXT_LINE_H,
               fontFamily: `'${f.family}'`, fontWeight: f.bold === false ? 400 : 700, fontSize: px, color: l.color,
-              background: l.box === 'box' ? l.boxColor : 'transparent', padding: l.box === 'box' ? `${px * 0.12}px ${px * 0.28}px` : 0,
-              WebkitTextStroke: l.box === 'outline' ? `${Math.max(1, px * 0.07)}px ${l.boxColor}` : undefined, paintOrder: 'stroke fill',
               pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: on ? '2px dashed #E8A020' : 'none', outlineOffset: 4 }}>
-            {l.text}
+            {String(l.text).split('\n').map((ln, j) => (
+              <div key={j} style={{ whiteSpace: 'pre', minHeight: TEXT_LINE_H * px,
+                ...(l.box === 'box' && ln.trim() ? { background: l.boxColor, padding: `${g.padY * px}px ${g.padX * px}px`, borderRadius: g.r * px } : l.box === 'box' ? { padding: `${g.padY * px}px 0` } : null),
+                WebkitTextStroke: l.box === 'outline' ? `${Math.max(1, px * 0.07)}px ${l.boxColor}` : undefined, paintOrder: 'stroke fill' }}>{ln || ' '}</div>
+            ))}
           </div>
         );
       })}
