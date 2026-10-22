@@ -665,6 +665,8 @@ export function parseOptions(raw) {
     ...(cleanCropRanges(o.cropRanges).length ? { cropRanges: cleanCropRanges(o.cropRanges) } : {}),
     // Espaços vazios no vídeo principal (Excluir sem fechar o buraco), tempo original.
     ...(cleanBlanks(o.videoBlanks).length ? { videoBlanks: cleanBlanks(o.videoBlanks) } : {}),
+    // clipes ainda sem transcrição: ali nada sai como pausa/silêncio
+    ...(cleanBlanks(o.noCutRanges).length ? { noCutRanges: cleanBlanks(o.noCutRanges).map(({ start, end }) => ({ start, end })) } : {}),
     audioGains: Array.isArray(o.audioGains)
       ? o.audioGains
           .filter((g) => g && Number(g.end) > Number(g.start))
@@ -973,7 +975,7 @@ jobsRouter.post('/jobs/:id/transcribe-range', requireAuth, requireVerified, asyn
   let dir;
   try {
     dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'rf-trecho-'));
-    const r = await transcribeRange(source.inputPath, dir, a, b, { jobId: source.id });
+    const r = await transcribeRange(source.inputPath, dir, a, b, { jobId: source.id, language: req.body?.language });
     res.json(r);
   } catch (err) {
     res.status(500).json({ error: err.message || 'não deu para transcrever o trecho' });
@@ -1205,7 +1207,7 @@ jobsRouter.post('/transcribe/remote', requireAuth, requireVerified, requireAppPl
     remoteMinutes.set(req.user.id, { day, min: sofar + minutes });
     work = fs.mkdtempSync(path.join(config.paths.work, 'rtx-'));
     const { transcribe } = await import('../pipeline/transcribe/index.js');
-    const t = await transcribe(file, work, { ...meta, hasAudio: true });
+    const t = await transcribe(file, work, { ...meta, hasAudio: true }, undefined, { language: req.body?.language });
     res.json({ provider: t.provider, language: t.language, text: t.text, segments: t.segments });
   } catch (err) {
     res.status(500).json({ error: err.message || 'falha na transcrição' });

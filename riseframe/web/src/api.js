@@ -523,11 +523,11 @@ export async function preciseCuts(id, body, signal) {
 }
 
 /** Transcreve só o trecho [start, end] do vídeo do editor. → { provider, segments } */
-export async function transcribeRange(id, start, end) {
+export async function transcribeRange(id, start, end, language = '') {
   const r = await fetch(`${BASE}/jobs/${id}/transcribe-range`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ start, end }),
+    body: JSON.stringify({ start, end, ...(language ? { language } : {}) }),
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || `erro ${r.status}`);

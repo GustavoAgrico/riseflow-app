@@ -22,6 +22,12 @@ const log = makeLogger('transcribe');
  * (uso local/dev) ainda cai para o mock.
  * @returns {Promise<{provider,language,text,segments}>}
  */
+/** Idioma pedido: código curto ("pt", "en", "pt-BR") ou vazio (detectar sozinho). Puro. */
+export function cleanLanguage(v) {
+  const s = String(v || '').trim();
+  return /^[a-z]{2}(-[A-Z]{2})?$/.test(s) ? s : '';
+}
+
 export async function transcribe(input, work, meta, onProgress, ctx = {}) {
   // "(tosse)", "[pigarro]" viram palavras removidas; "[Música]", "(risos)" saem do texto.
   return markNoiseTags(await transcribeAny(input, work, meta, onProgress, ctx));
@@ -31,13 +37,14 @@ export async function transcribe(input, work, meta, onProgress, ctx = {}) {
  * App de PC sem chave de transcrição: manda só o ÁUDIO (mp3 leve) para o servidor do site,
  * que transcreve com a chave dele (Deepgram/Groq) — a pessoa não precisa instalar nada.
  */
-async function transcribeCloud(input, work, token, onProgress) {
+async function transcribeCloud(input, work, token, onProgress, language = '') {
   if (!config.account.server) throw new Error('sem servidor da conta');
   if (!token) throw new Error('entre na sua conta para transcrever pela nuvem');
   const audio = await extractAudio(input, work, 'mp3');
   onProgress?.(0.15);
   const form = new FormData();
   form.append('audio', new Blob([await fsp.readFile(audio)], { type: 'audio/mpeg' }), 'audio.mp3');
+  if (language) form.append('language', language);
   // o site no plano grátis dorme: tenta de novo enquanto ele acorda (502/503/504)
   const res = await fetchWaking(`${config.account.server}/api/transcribe/remote`, {
     method: 'POST',
@@ -53,7 +60,9 @@ async function transcribeCloud(input, work, token, onProgress) {
 
 async function transcribeAny(input, work, meta, onProgress, ctx = {}) {
   const provider = config.transcribe.provider;
-  const cfg = config.transcribe;
+  // idioma escolhido na hora (Transcrever… no editor); sem ele, o configurado ou automático
+  const language = cleanLanguage(ctx.language);
+  const cfg = language ? { ...config.transcribe, groqLanguage: language, deepgramLanguage: language } : config.transcribe;
   // Vídeo sem faixa de áudio (gravação de tela muda, por exemplo): não há fala para
   // transcrever — segue sem legendas em vez de falhar o job inteiro.
   if (meta && meta.hasAudio === false) {
@@ -64,7 +73,7 @@ async function transcribeAny(input, work, meta, onProgress, ctx = {}) {
   let cloudErr = null;
   if (config.account.server && ['whisper-local', 'mock'].includes(provider)) {
     try {
-      const t = await transcribeCloud(input, work, jobAccountToken(ctx.jobId), onProgress);
+      const t = await transcribeCloud(input, work, jobAccountToken(ctx.jobId), onProgress, language);
       log.ok(`transcrição pela conta do site: ${t.segments.length} frases`);
       return t;
     } catch (e) {
@@ -79,7 +88,7 @@ async function transcribeAny(input, work, meta, onProgress, ctx = {}) {
       log.error(`provedor "${provider}" falhou: ${err.message}`);
       const accountProblem = isAccountProblem(err);
       if (accountProblem) {
-        cfg.keyCheck = { provider, ok: false, error: transcribeErrorMessage(provider, err), at: new Date().toISOString() };
+        config.transcribe.keyCheck = { provider, ok: false, error: transcribeErrorMessage(provider, err), at: new Date().toISOString() };
         alertAdmins(provider, err);
       }
       // Outro provedor de API configurado? Usa ele em vez de falhar o vídeo do cliente.

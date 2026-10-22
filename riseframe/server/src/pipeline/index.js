@@ -418,7 +418,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(0.08);
     // Espaços vazios com o som tirado (vídeo excluído sem fechar): pausas e ruídos ali dentro
     // não saem — senão o espaço encolheria (e as camadas por cima, como a logo, junto).
-    const holes = cleanBlanks(options.videoBlanks).filter((b) => b.audio !== false);
+    // (e clipes que entraram sem transcrição: sem palavras, tudo ali pareceria pausa)
+    const holes = [...cleanBlanks(options.videoBlanks).filter((b) => b.audio !== false), ...cleanBlanks(options.noCutRanges)];
     const removals = precise.pauses.flatMap((p) => holes.reduce((parts, h) => parts.flatMap((q) => (h.end <= q.start || h.start >= q.end ? [q] : [{ ...q, end: h.start }, { ...q, start: h.end }].filter((x) => x.end - x.start > 0.02))), [p]));
     // Trechos cortados à mão na faixa de vídeo: valem sempre, com ou sem corte de silêncio.
     for (const c of options.videoCuts || []) {
