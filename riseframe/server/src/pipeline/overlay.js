@@ -296,7 +296,9 @@ export async function applyUserMedia(input, work, meta, options, onProgress = ()
   const H = meta.height;
   const dur = meta.duration;
 
-  const visual = items.filter((m) => m.kind === 'image' || m.kind === 'video');
+  // as que vão por baixo do vídeo (V0) já entraram no fundo; aqui só o som dos vídeos delas
+  const visual = items.filter((m) => (m.kind === 'image' || m.kind === 'video') && !m.under);
+  const underSound = items.filter((m) => m.kind === 'video' && m.under);
   const music = items.filter((m) => m.kind === 'audio');
 
   // Ordem dos inputs no ffmpeg: 0 = vídeo principal; depois cada mídia na ordem
@@ -357,7 +359,16 @@ export async function applyUserMedia(input, work, meta, options, onProgress = ()
   // Som dos vídeos adicionados (desligável em cada vídeo): só os que têm faixa de áudio.
   const vidParts = [];
   const vidLabels = [];
-  for (const m of vis) {
+  const sounding = [...vis];
+  for (const m0 of underSound) {
+    const start = clamp(m0.start, 0, Math.max(0, dur - 0.05), 0);
+    const end = Math.min(dur, start + clamp(m0.duration, 0.2, dur, 5));
+    if (end - start <= 0.05) continue;
+    const m = { ...m0, start, end, d: end - start, _inIdx: inputs.length + 1 };
+    inputs.push(m);
+    sounding.push(m);
+  }
+  for (const m of sounding) {
     if (m.kind !== 'video' || m.muted === true) continue;
     const vol = clamp(m.volume, 0, 2, 1);
     if (vol < 0.01) continue;

@@ -118,7 +118,9 @@ function keyExpr(keys, prop, T) {
  * do vídeo. Escala abaixo de 100% abre espaço com preto em volta (o vídeo fica menor).
  * Puro/exportado para teste. @returns {string|null}
  */
-export function keyframesVf(rawKeys, meta) {
+export function keyframesVf(rawKeys, meta, { alpha = false } = {}) {
+  // alpha: o que sobra em volta fica TRANSPARENTE (mostra o fundo por baixo do vídeo)
+  const bg = alpha ? 'black@0' : 'black';
   const keys = cleanKeys(rawKeys);
   if (!keysChangeAnything(keys)) return null;
   const W = meta.width || 1080;
@@ -126,13 +128,13 @@ export function keyframesVf(rawKeys, meta) {
   const fps = Math.max(1, Math.round(meta.fps || 30));
   const parts = [];
   if (keys.some((k) => Math.abs(k.rot) > 1e-3)) {
-    parts.push(`rotate=a='(${keyExpr(keys, 'rot', 't')})*PI/180':c=black`);
+    parts.push(`rotate=a='(${keyExpr(keys, 'rot', 't')})*PI/180':c=${bg}`);
   }
   // zoompan só amplia (zoom ≥ 1): para encolher, o quadro ganha uma moldura preta do
   // tamanho certo (pad 2×) e o zoom passa a valer o dobro.
   const shrink = keys.some((k) => k.scale < 1);
   const f = shrink ? 2 : 1;
-  if (shrink) parts.push(`pad=iw*2:ih*2:iw/2:ih/2:black`);
+  if (shrink) parts.push(`pad=iw*2:ih*2:iw/2:ih/2:${bg}`);
   const T = `on/${fps}`;
   const S = `(${f}*(${keyExpr(keys, 'scale', T)}))`;
   const X = `(${keyExpr(keys, 'x', T)})`;

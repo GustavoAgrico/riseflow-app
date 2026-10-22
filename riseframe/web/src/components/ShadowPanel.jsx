@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { C } from '../theme.js';
 import { SHADOW_BLENDS, shadowParams } from '../../../shared/captionShadow.js';
+import ColorField from './ColorPicker.jsx';
 
 // Sombra projetada da legenda, como o painel do Photoshop: modo de mesclagem + cor,
 // opacidade, ângulo (disco arrastável), distância, expansão e tamanho.
@@ -68,8 +69,7 @@ export default function ShadowPanel({ cap, onPatch }) {
           style={{ flex: 1, minWidth: 0, height: 28, borderRadius: 6, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 12.5, fontFamily: 'inherit', padding: '0 6px' }}>
           {SHADOW_BLENDS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
         </select>
-        <input type="color" value={`#${p.color}`} onChange={(e) => put({ captionShadowColor: e.target.value.replace('#', '').toUpperCase() })} title="Cor da sombra"
-          style={{ width: 40, height: 28, padding: 0, border: `1px solid ${C.border}`, borderRadius: 6, background: 'none', cursor: 'pointer' }} />
+        <ColorField value={`#${p.color}`} title="Cor da sombra" size={26} onChange={(h) => put({ captionShadowColor: h.replace('#', '').toUpperCase() })} />
       </Row>
       <Row label="Opacidade"><SliderNum value={Math.round(p.opacity * 100)} min={0} max={100} unit="%" onChange={(v) => put({ captionShadowOpacity: v / 100 })} /></Row>
       <Row label="Ângulo">

@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useCustomFonts } from '../customFonts.js';
+import { ColorPickerDialog, EyeDropperIcon, canPickFromScreen, pickFromScreen } from './ColorPicker.jsx';
 import { C } from '../theme.js';
 import { captionLook, CaptionWords } from './CaptionPreview.jsx';
 import { CAPTION_FONTS, CAPTION_TEMPLATES, fontStyles } from '../../../shared/captionStyle.js';
@@ -187,6 +188,7 @@ export function FontPicker({ value = 'auto', fonts = [], onChange, compact = fal
 /** Cores da legenda: a paleta + uma cor livre (seletor de cor). */
 export function ColorSwatches({ value, options = [], onChange, size = 26 }) {
   const custom = /^#[0-9a-f]{6}$/i.test(String(value || '')) ? value : null;
+  const [picking, setPicking] = useState(false);
   return (
     <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
       {options.map((o) => {
@@ -196,12 +198,17 @@ export function ColorSwatches({ value, options = [], onChange, size = 26 }) {
             style={{ width: size, height: size, borderRadius: '50%', cursor: 'pointer', background: o.hex, border: on ? '2px solid #fff' : '2px solid rgba(255,255,255,0.15)', boxShadow: on ? `0 0 0 2px ${o.hex}, 0 0 10px ${o.hex}88` : 'none', padding: 0 }} />
         );
       })}
-      <label title="Cor personalizada" style={{ position: 'relative', width: size, height: size, borderRadius: '50%', cursor: 'pointer', overflow: 'hidden', flexShrink: 0,
-        background: custom || 'conic-gradient(#ff4d4d, #ffd84d, #4dff88, #4dd2ff, #9b4dff, #ff4dcf, #ff4d4d)',
-        border: custom ? '2px solid #fff' : '2px solid rgba(255,255,255,0.15)', boxShadow: custom ? `0 0 0 2px ${custom}` : 'none' }}>
-        <input type="color" value={custom || '#ffffff'} onChange={(e) => onChange(e.target.value.toUpperCase())} aria-label="Cor personalizada"
-          style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer', border: 'none', padding: 0 }} />
-      </label>
+      <button type="button" title="Qualquer cor (seletor completo)" aria-label="Cor personalizada" onClick={() => setPicking(true)}
+        style={{ width: size, height: size, borderRadius: '50%', cursor: 'pointer', flexShrink: 0, padding: 0,
+          background: custom || 'conic-gradient(#ff4d4d, #ffd84d, #4dff88, #4dd2ff, #9b4dff, #ff4dcf, #ff4d4d)',
+          border: custom ? '2px solid #fff' : '2px solid rgba(255,255,255,0.15)', boxShadow: custom ? `0 0 0 2px ${custom}` : 'none' }} />
+      {canPickFromScreen() && (
+        <button type="button" title="Conta-gotas: pegar uma cor da tela" onClick={async () => { const h = await pickFromScreen(); if (h) onChange(h); }}
+          style={{ width: size, height: size, borderRadius: '50%', display: 'grid', placeItems: 'center', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.04)', color: C.text, cursor: 'pointer', padding: 0 }}>
+          <EyeDropperIcon size={Math.round(size * 0.5)} />
+        </button>
+      )}
+      {picking && <ColorPickerDialog value={custom || (options.find((o) => o.id === value)?.hex) || '#FFFFFF'} title="Cor da legenda" onChange={onChange} onClose={() => setPicking(false)} />}
     </div>
   );
 }

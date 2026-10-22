@@ -69,6 +69,12 @@ function optionsForUser(req) {
       o.captionFontFamily = f.family;
     } else o.captionFont = 'auto';
   }
+  // Textos com fonte própria: o arquivo dela (só do próprio usuário) vai junto para o render
+  for (const l of Array.isArray(o.textLayers) ? o.textLayers : []) {
+    if (!String(l.font).startsWith('custom:')) continue;
+    const f = resolveCustomFont(req.user.id, l.font.slice(7));
+    if (f) { l.fontFile = f.path; l.fontFamily = f.family; } else l.font = 'poppins';
+  }
   const s = getSettings(req.user.id);
   if (s.pexelsKey) o.pexelsKey = s.pexelsKey;
   if (s.anthropicKey) o.anthropicKey = s.anthropicKey;
@@ -459,6 +465,8 @@ function sanitizeUserMedia(raw) {
       ...(cleanCrop(m.crop) ? { crop: cleanCrop(m.crop) } : {}),
       // Quadros-chave (Propriedades): posição, escala, giro e opacidade ao longo do tempo.
       ...(cleanLayerKf(m.kf) ? { kf: cleanLayerKf(m.kf) } : {}),
+      // V0: por baixo do vídeo principal (aparece onde ele não cobre: diminuído, recortado, vazio)
+      ...(m.under === true && kind !== 'audio' ? { under: true } : {}),
     };
     out.push(item);
     if (out.length >= 40) break; // teto de segurança

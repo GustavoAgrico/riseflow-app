@@ -11,6 +11,7 @@ import { preciseRemovals, wordGapRanges, dropSlivers } from './cutRefine.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, unmapTime } from './timeline.js';
 import { insertBroll } from './broll.js';
 import { applyManualFrame, applyVideoCrop, cleanCrop, applyVideoBlanks, cleanBlanks } from './frame.js';
+import { applyUnderlay, hasUnderlay } from './underlay.js';
 import { applyUserMedia } from './overlay.js';
 import { applyMotion, dynamicZoomWindows } from './motion.js';
 import { enhanceVoice, voiceActive, voiceSettings } from './voice.js';
@@ -70,8 +71,10 @@ function buildPlan(mode, options) {
       { key: 'voicefx', label: 'Aplicando o modificador de voz', weight: 6, enabled: voiceActive(options, 'fx') },
       { key: 'cut', label: 'Aplicando cortes na timeline', weight: 20, enabled: hasRemoval },
       { key: 'analyze', label: 'Analisando temas', weight: 3, enabled: true },
-      { key: 'crop', label: 'Recortando o vídeo', weight: 5, enabled: Boolean(cleanCrop(options.videoCrop)) },
-      { key: 'motion', label: 'Aplicando movimento (zoom)', weight: 12, enabled: (Boolean(options.videoMotion) && options.videoMotion !== 'none') || (Array.isArray(options.transformKeys) && options.transformKeys.length > 0) },
+      // mídia por baixo do vídeo (V0): o recorte e o movimento entram na mesma passada
+      { key: 'underlay', label: 'Montando o fundo (por baixo do vídeo)', weight: 12, enabled: hasUnderlay(options) },
+      { key: 'crop', label: 'Recortando o vídeo', weight: 5, enabled: Boolean(cleanCrop(options.videoCrop)) && !hasUnderlay(options) },
+      { key: 'motion', label: 'Aplicando movimento (zoom)', weight: 12, enabled: !hasUnderlay(options) && ((Boolean(options.videoMotion) && options.videoMotion !== 'none') || (Array.isArray(options.transformKeys) && options.transformKeys.length > 0)) },
       { key: 'frame', label: 'Reenquadrando o vídeo', weight: 8, enabled: (Number(options.personZoom) || 1) > 1.001 },
       { key: 'aspect', label: QUALITY_STAGE[options.quality] || 'Ajustando ao formato', weight: QUALITY_STAGE[options.quality] ? 12 : 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) || Boolean(QUALITY_STAGE[options.quality]) },
       { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
@@ -500,6 +503,20 @@ export async function runPipeline(job, onUpdate = () => {}) {
     report.narrative = { summary: narr.summary, hasHook: narr.hasHook, hasCta: narr.hasCta };
     if (narr.hasHook || narr.hasCta) log.info(`narrativa: ${JSON.stringify(narr.summary)}`);
     st.record({ themes: analysis.themes.length, brollMoments: analysis.brollMoments.length });
+    st.onProgress(1);
+  }
+
+  // 4a. Mídias por baixo do vídeo principal (V0) + recorte + movimento, numa passada.
+  if (has('underlay')) {
+    const st = enter('underlay');
+    const blanksNow = cleanBlanks(options.videoBlanks)
+      .map((b) => (cutKeep ? { start: remapTime(b.start, cutKeep), end: remapTime(b.end, cutKeep) } : b))
+      .filter((b) => b.end - b.start > 0.04);
+    const r = await applyUnderlay(input, work, meta, options, st.onProgress, transcript.segments, blanksNow);
+    input = r.output;
+    trackInput = r.output;
+    report.underlay = { applied: r.applied, count: r.count };
+    st.record(report.underlay);
     st.onProgress(1);
   }
 
