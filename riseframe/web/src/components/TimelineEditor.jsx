@@ -776,6 +776,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Cópia para editar (quadro-chave a cada 0,5 s): o servidor faz uma vez quando o vídeo pula
   // mal; enquanto isso a prévia usa o original. Troca só com o vídeo parado.
   const [editSrc, setEditSrc] = useState(false);
+  const editDimRef = useRef(null); // tamanho do ORIGINAL (a cópia de editar é menor)
   useEffect(() => {
     let alive = true;
     let timer = 0;
@@ -787,6 +788,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         if (r.ready) {
           if (!r.proxy) return;
           if (videoRef.current && !videoRef.current.paused) { timer = setTimeout(check, 2000); return; }
+          editDimRef.current = r.width && r.height ? { w: r.width, h: r.height } : null;
           setEditSrc(true);
           return;
         }
@@ -1005,7 +1007,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         let t = v.currentTime;
         // Tocando: pula os trechos cortados (prévia igual ao vídeo final).
         if (!v.paused && L.skip?.length) {
-          const hit = L.skip.find(([a, b]) => t >= a && t < b - 0.03);
+          // um pouco antes do corte (um quadro): o pulo acontece sem mostrar o começo da pausa
+          const hit = L.skip.find(([a, b]) => t >= a - 0.025 && t < b - 0.03);
           if (hit) { v.currentTime = Math.min(hit[1], v.duration || hit[1]); t = hit[1]; }
         }
         const m = v.paused && now < demoRef.current.until
@@ -3884,7 +3887,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     for (const [a, b] of r) {
       if (b - a < 0.05) continue;
       const last = out[out.length - 1];
-      if (last && a <= last[1] + 0.02) last[1] = Math.max(last[1], b);
+      // pedacinho de menos de 0,12 s entre dois cortes sai junto (o vídeo final faz igual):
+      // senão a prévia pula duas vezes seguidas e engasga
+      if (last && (a <= last[1] + 0.02 || (a <= last[1] + 0.12 && !flatWords.some((w) => w.end > last[1] && w.start < a)))) last[1] = Math.max(last[1], b);
       else out.push([a, b]);
     }
     return out;
@@ -5764,7 +5769,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div onDragOver={onPreviewDragOver} onDrop={onPreviewDrop} className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}${singleMon ? ' rf-tl-pv--one' : ''}`} style={{ '--main-share': showFormatPreview ? (mainAr / (mainAr + fmtAr)).toFixed(4) : 1, '--fmt-share': singleMon ? 1 : showFormatPreview ? (fmtAr / (mainAr + fmtAr)).toFixed(4) : 1, containerType: 'inline-size', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(194,65,12,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
             <div className="rf-tl-main" style={{ flex: '0 0 auto', minWidth: 0 }}>
               <div style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${mainAr.toFixed(4)}), calc((100cqw - ${showFormatPreview ? 16 : 0}px) * var(--main-share)))`, aspectRatio: `${mainAr}`, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
-                <video ref={videoRef} src={srcUrl} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim({ w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
+                <video ref={videoRef} src={srcUrl} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim(editSrc && editDimRef.current ? editDimRef.current : { w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
                 {vbox && lookCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...lookCss.tint }} />}
                 {vbox && headline.on && headline.text.trim() && (!headline.seconds || cur < headline.seconds) && (
                   <HeadlineOverlay h={headline} box={vbox} />
