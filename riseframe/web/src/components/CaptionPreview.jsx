@@ -355,7 +355,7 @@ const ctlBtn = { width: 26, height: 26, flexShrink: 0, border: 'none', borderRad
 
 function wordsOf(seg) {
   return (seg.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text }])
-    .filter((w) => !w.removed && String(w.word ?? '').trim());
+    .filter((w) => !w.removed && !w.hidden && String(w.word ?? '').trim()); // hidden: legenda apagada (a fala fica)
 }
 
 /**
