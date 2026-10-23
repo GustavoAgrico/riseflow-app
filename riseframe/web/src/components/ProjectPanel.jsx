@@ -28,7 +28,7 @@ export function MediaThumb({ it, at = 0.5, fit = 'cover' }) {
  * vídeo principal — arraste para mudar a ordem, apare, tire ou acrescente. "Atualizar
  * vídeo principal" monta de novo e reabre o editor mantendo o estilo.
  */
-export default function ProjectPanel({ library, libraryAll = library, scopeBar = null, libScope = 'todos', onImported, onReloadLibrary, onAddLayer, sourceId, durationSec, projectTitle, options, carryStyle, onRebuild, withClipWords = null }) {
+export default function ProjectPanel({ library, libraryAll = library, scopeBar = null, libScope = 'todos', onImported, onReloadLibrary, onAddLayer, onRemoveMedia = null, sourceId, durationSec, projectTitle, options, carryStyle, onRebuild, withClipWords = null }) {
   // clipes novos: transcrever já ou só colocar (a escolha fica lembrada)
   const [transcribeNew, setTranscribeNew] = useState(() => { try { return localStorage.getItem('rf_transcribe_new') === '1'; } catch { return false; } });
   const [clips, setClips] = useState(null);
@@ -40,6 +40,30 @@ export default function ProjectPanel({ library, libraryAll = library, scopeBar =
   const [error, setError] = useState('');
   const fileRef = useRef(null);
   const dragKey = useRef(null);
+  // Bin: ver em grade (miniaturas grandes) ou lista; marcar vários para excluir/pôr na V1
+  const [view, setView] = useState(() => { try { return localStorage.getItem('rf_bin_view') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; } });
+  const setViewKeep = (v) => { setView(v); try { localStorage.setItem('rf_bin_view', v); } catch { /* sem armazenamento */ } };
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState([]);
+  const lastPick = useRef(null);
+  const shown = library || [];
+  function togglePick(id, e) {
+    setPicking(true);
+    if (e?.shiftKey && lastPick.current) {
+      const ids = shown.map((x) => x.id);
+      const a = ids.indexOf(lastPick.current);
+      const b = ids.indexOf(id);
+      if (a >= 0 && b >= 0) { setPicked((p) => [...new Set([...p, ...ids.slice(Math.min(a, b), Math.max(a, b) + 1)])]); return; }
+    }
+    lastPick.current = id;
+    setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  }
+  const endPick = () => { setPicking(false); setPicked([]); lastPick.current = null; };
+  async function removePicked(ids) {
+    if (!onRemoveMedia || !ids.length) return;
+    await onRemoveMedia(ids);
+    setPicked((p) => p.filter((x) => !ids.includes(x)));
+  }
   const key = () => `c${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
 
   // O que forma o vídeo principal hoje: a montagem (timeline em branco) ou o vídeo enviado.
@@ -132,23 +156,86 @@ export default function ProjectPanel({ library, libraryAll = library, scopeBar =
           <button onClick={() => fileRef.current?.click()} disabled={!!busy} style={{ ...btn(true), marginLeft: 'auto' }}>{busy && busy.startsWith('Enviando') ? busy : '+ Importar'}</button>
         </div>
         <div style={{ fontSize: 11, color: C.faint }}>Arraste arquivos para cá. Em cada mídia: <b>Camada</b> põe por cima do vídeo no ponto atual · <b>V1</b> põe no vídeo principal · ou arraste a mídia direto para a faixa V1 da timeline.</div>
+        {library && library.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <div role="group" aria-label="Ver como" style={{ display: 'inline-flex', gap: 2, padding: 2, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: `1px solid ${C.border}` }}>
+              {[['grid', '▦ Grade'], ['list', '☰ Lista']].map(([v, l]) => (
+                <button key={v} onClick={() => setViewKeep(v)} aria-pressed={view === v}
+                  style={{ height: 24, padding: '0 9px', borderRadius: 6, border: 'none', background: view === v ? 'rgba(255,255,255,0.14)' : 'transparent', color: view === v ? C.text : C.muted, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>{l}</button>
+              ))}
+            </div>
+            {!picking ? (
+              <button onClick={() => setPicking(true)} title="Marcar várias mídias para excluir ou pôr na V1 (ou Ctrl/Shift + clique)" style={btn(false)}>☐ Selecionar</button>
+            ) : (
+              <>
+                <span style={{ fontSize: 11, color: C.muted }}>{picked.length} selecionada(s)</span>
+                <button onClick={() => setPicked(picked.length === shown.length ? [] : shown.map((x) => x.id))} style={btn(false)}>{picked.length === shown.length ? 'Nenhuma' : 'Todas'}</button>
+                <button onClick={() => { shown.filter((x) => picked.includes(x.id) && x.status === 'ok').sort((x, y) => picked.indexOf(x.id) - picked.indexOf(y.id)).forEach((it) => addToV1(it)); endPick(); }} disabled={!picked.length} style={{ ...btn(true), opacity: picked.length ? 1 : 0.5 }}>+ V1 ({picked.length})</button>
+                {onRemoveMedia && <button onClick={() => removePicked(picked)} disabled={!picked.length} style={{ ...btn(false), color: picked.length ? C.red : C.faint, borderColor: picked.length ? C.red : C.border }}>Excluir ({picked.length})</button>}
+                <button onClick={endPick} style={{ ...btn(false), border: 'none', background: 'transparent', color: C.muted }}>Cancelar</button>
+              </>
+            )}
+          </div>
+        )}
         {library === null ? <div style={{ fontSize: 12, color: C.faint }}>Carregando…</div> : library.length === 0 ? (
           <div style={{ fontSize: 12, color: C.faint }}>{libScope === 'projeto' && libraryAll?.length ? 'Nenhum arquivo deste projeto ainda — importe aqui ou veja em Todos os que você já enviou.' : 'Nenhuma mídia ainda — importe vídeos, áudios e imagens.'}</div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8, maxHeight: 290, overflowY: 'auto' }}>
-            {library.map((it) => (
-              <div key={it.id} draggable={it.status === 'ok'} onDragStart={(e) => { e.dataTransfer.setData('text/rf-media', it.id); e.dataTransfer.effectAllowed = 'copy'; }} style={{ display: 'grid', gap: 3, opacity: it.status === 'ok' ? 1 : 0.4 }} title={it.filename}>
-                <div style={{ position: 'relative', aspectRatio: '16 / 10', borderRadius: 7, overflow: 'hidden', background: '#0E0E14', border: `1px solid ${C.border}` }}>
-                  <MediaThumb it={it} />
-                  {it.durationSec ? <span style={{ position: 'absolute', right: 3, bottom: 3, fontSize: 9.5, background: 'rgba(0,0,0,0.7)', borderRadius: 4, padding: '0 4px' }}>{fmt(it.durationSec)}</span> : null}
+          <div style={view === 'list'
+            ? { display: 'grid', gap: 2, maxHeight: 290, overflowY: 'auto' }
+            : { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8, maxHeight: 290, overflowY: 'auto' }}>
+            {library.map((it) => {
+              const on = picked.includes(it.id);
+              const ok = it.status === 'ok';
+              const onDrag = (e) => {
+                e.dataTransfer.setData('text/rf-media', it.id);
+                // arrastou uma das marcadas: vão todas (na ordem em que foram marcadas)
+                const ids = on && picked.length > 1 ? picked.filter((id) => shown.some((x) => x.id === id)) : [it.id];
+                e.dataTransfer.setData('text/rf-media-list', JSON.stringify(ids));
+                e.dataTransfer.effectAllowed = 'copy';
+              };
+              const pickClick = (e) => { if (picking || e.ctrlKey || e.metaKey || e.shiftKey) { e.preventDefault(); togglePick(it.id, e); } };
+              const check = picking && (
+                <span aria-hidden="true" style={{ position: 'absolute', left: 4, top: 4, width: 16, height: 16, borderRadius: 4, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, background: on ? C.orange : 'rgba(0,0,0,0.6)', border: on ? 'none' : '1.5px solid rgba(255,255,255,0.75)', color: '#fff', pointerEvents: 'none' }}>{on ? '✓' : ''}</span>
+              );
+              const del = onRemoveMedia && !picking && (
+                <button onClick={(e) => { e.stopPropagation(); removePicked([it.id]); }} title="Tirar da biblioteca" aria-label={`Tirar ${it.filename} da biblioteca`}
+                  style={view === 'list'
+                    ? { width: 24, height: 24, flexShrink: 0, borderRadius: 6, border: 'none', background: 'transparent', color: C.faint, fontSize: 14, cursor: 'pointer', padding: 0 }
+                    : { position: 'absolute', top: 3, right: 3, width: 18, height: 18, borderRadius: 5, border: 'none', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 11, lineHeight: 1, cursor: 'pointer', padding: 0 }}>×</button>
+              );
+              const actions = (
+                <>
+                  <button onClick={() => ok && onAddLayer?.(it)} disabled={!ok} title="Por cima do vídeo, no ponto atual" style={{ ...btn(false), flex: view === 'list' ? 'none' : 1, height: 24, padding: view === 'list' ? '0 8px' : 0, fontSize: 10.5 }}>Camada</button>
+                  <button onClick={() => ok && addToV1(it)} disabled={!ok} title={it.kind === 'audio' ? 'Música do vídeo principal' : 'No fim do vídeo principal (V1)'} style={{ ...btn(true), flex: view === 'list' ? 'none' : 1, height: 24, padding: view === 'list' ? '0 8px' : 0, fontSize: 10.5 }}>{it.kind === 'audio' ? '♪ V1' : '+ V1'}</button>
+                </>
+              );
+              if (view === 'list') {
+                return (
+                  <div key={it.id} draggable={ok} onDragStart={onDrag} onClickCapture={pickClick} title={it.filename}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px', borderRadius: 7, opacity: ok ? 1 : 0.4, background: on ? 'rgba(255,107,53,0.14)' : 'transparent', border: `1px solid ${on ? C.orange : 'transparent'}`, cursor: picking ? 'pointer' : 'default' }}>
+                    <div style={{ position: 'relative', width: 54, height: 32, flexShrink: 0, borderRadius: 5, overflow: 'hidden', background: '#0E0E14', border: `1px solid ${C.border}` }}>
+                      <MediaThumb it={it} />{check}
+                    </div>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.filename}</span>
+                    <span style={{ fontSize: 10.5, color: C.faint, width: 64, textAlign: 'right', flexShrink: 0 }}>{it.kind === 'video' ? 'vídeo' : it.kind === 'image' ? 'imagem' : 'áudio'}{it.durationSec ? ` · ${fmt(it.durationSec)}` : ''}</span>
+                    {!picking && actions}
+                    {del}
+                  </div>
+                );
+              }
+              return (
+                <div key={it.id} draggable={ok} onDragStart={onDrag} onClickCapture={pickClick} style={{ display: 'grid', gap: 3, opacity: ok ? 1 : 0.4, cursor: picking ? 'pointer' : 'default' }} title={it.filename}>
+                  <div style={{ position: 'relative', aspectRatio: '16 / 10', borderRadius: 7, overflow: 'hidden', background: '#0E0E14', border: on ? `2px solid ${C.orange}` : `1px solid ${C.border}` }}>
+                    <MediaThumb it={it} />
+                    {it.durationSec ? <span style={{ position: 'absolute', right: 3, bottom: 3, fontSize: 9.5, background: 'rgba(0,0,0,0.7)', borderRadius: 4, padding: '0 4px' }}>{fmt(it.durationSec)}</span> : null}
+                    {check}
+                    {del}
+                  </div>
+                  <span style={{ fontSize: 10.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.filename}</span>
+                  {!picking && <div style={{ display: 'flex', gap: 4 }}>{actions}</div>}
                 </div>
-                <span style={{ fontSize: 10.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.filename}</span>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button onClick={() => it.status === 'ok' && onAddLayer?.(it)} disabled={it.status !== 'ok'} title="Por cima do vídeo, no ponto atual" style={{ ...btn(false), flex: 1, height: 24, padding: 0, fontSize: 10.5 }}>Camada</button>
-                  <button onClick={() => it.status === 'ok' && addToV1(it)} disabled={it.status !== 'ok'} title={it.kind === 'audio' ? 'Música do vídeo principal' : 'No fim do vídeo principal (V1)'} style={{ ...btn(true), flex: 1, height: 24, padding: 0, fontSize: 10.5 }}>{it.kind === 'audio' ? '♪ V1' : '+ V1'}</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

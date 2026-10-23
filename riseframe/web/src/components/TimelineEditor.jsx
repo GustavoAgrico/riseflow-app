@@ -7242,7 +7242,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
           {/* Minhas mídias: coloque suas imagens/vídeos/músicas na timeline */}
           {tab === 'projeto' && (
-            <ProjectPanel withClipWords={withClipWords} library={libShown} libraryAll={library} scopeBar={libScopeBar} libScope={libScope} onImported={markProjectMedia} onReloadLibrary={loadLibrary} onAddLayer={(it) => addMediaItem(it)} sourceId={sourceId} durationSec={dur}
+            <ProjectPanel withClipWords={withClipWords} library={libShown} libraryAll={library} scopeBar={libScopeBar} libScope={libScope} onImported={markProjectMedia} onReloadLibrary={loadLibrary} onAddLayer={(it) => addMediaItem(it)} onRemoveMedia={forgetLibraryItems} sourceId={sourceId} durationSec={dur}
               projectTitle={projectTitle} options={options} carryStyle={carryStyleNow} onRebuild={onRebuild} />
           )}
           {tab === 'midias' && (
