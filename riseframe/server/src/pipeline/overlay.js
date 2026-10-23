@@ -151,6 +151,10 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
       rgba = true;
     }
     chain += `,setpts=PTS-STARTPTS+${f3(m.start)}/TB`;
+    // Camada animada (quadros-chave, zoom/pop): um quadro da camada para cada quadro do vídeo.
+    // Sem isso a imagem (25 qps) mudava de tamanho/giro em outro ritmo e o movimento saía aos
+    // trancos, parando e pulando.
+    if (kf || scaleFactor(animIn, pi) || scaleFactor(animOut, po)) chain += `,fps=${f3(fps)}`;
 
     // Transparência: opacidade fixa (no modo normal) + fades com alpha.
     const fades = [];
@@ -406,7 +410,8 @@ export async function applyUserMedia(input, work, meta, options, onProgress = ()
   for (const m of inputs) {
     if (m.kind === 'image') {
       const d = clamp(m.duration, 0.2, dur, 4);
-      args.push('-loop', '1', '-t', d.toFixed(2));
+      // imagem na mesma cadência do vídeo (o padrão é 25 qps: animação aos trancos)
+      args.push('-framerate', f3(meta.fps || 30), '-loop', '1', '-t', d.toFixed(2));
     } else {
       // Vídeo/música aparado na ponta esquerda (ou dividido): começa deste ponto do arquivo.
       const offset = clamp(m.offset, 0, 100000, 0);

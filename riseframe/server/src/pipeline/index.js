@@ -8,6 +8,7 @@ import { transcribe } from './transcribe/index.js';
 import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
 import { preciseRemovals, wordGapRanges, dropSlivers } from './cutRefine.js';
+import { remapKf } from '../../../shared/layerKeys.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, unmapTime } from './timeline.js';
 import { insertBroll } from './broll.js';
 import { applyManualFrame, applyVideoCrop, cleanCrop, cleanCropRanges, hasCrop, applyVideoBlanks, cleanBlanks } from './frame.js';
@@ -141,7 +142,10 @@ export function remapUserMedia(items, keep) {
     .map((m) => {
       const start = remapTime(Number(m.start) || 0, keep);
       const end = remapTime((Number(m.start) || 0) + (Number(m.duration) || 0), keep);
-      return end - start >= 0.2 ? { ...m, start: +start.toFixed(3), duration: +(end - start).toFixed(3) } : null;
+      if (end - start < 0.2) return null;
+      // os quadros-chave vão junto para o tempo cortado (senão a animação para ou pula)
+      const kf = m.kf ? remapKf(m.kf, Number(m.start) || 0, start, (t) => remapTime(t, keep)) : m.kf;
+      return { ...m, start: +start.toFixed(3), duration: +(end - start).toFixed(3), ...(m.kf ? { kf } : {}) };
     })
     .filter(Boolean);
 }
