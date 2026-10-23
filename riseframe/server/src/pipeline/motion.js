@@ -107,7 +107,10 @@ function keyExpr(keys, prop, T) {
     const a = keys[i];
     const b = keys[i + 1];
     const q = `clip((${T}-${a.t.toFixed(3)})/${Math.max(0.001, b.t - a.t).toFixed(3)}\\,0\\,1)`;
-    expr = `if(lt(${T}\\,${b.t.toFixed(3)})\\,${v(a)}+(${v(b)}-${v(a)})*${q}\\,${expr})`;
+    // interpolação do quadro (a mesma conta da prévia: keyCurve)
+    const qq = a.eo && b.ei ? `(${q}*${q}*(3-2*${q}))` : a.eo ? `(${q}*${q})` : b.ei ? `(${q}*(2-${q}))` : q;
+    const seg = a.hold ? v(a) : `${v(a)}+(${v(b)}-${v(a)})*${qq}`;
+    expr = `if(lt(${T}\\,${b.t.toFixed(3)})\\,${seg}\\,${expr})`;
   }
   return expr;
 }

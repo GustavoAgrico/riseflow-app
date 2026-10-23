@@ -4,6 +4,8 @@ import { C } from '../theme.js';
 import { LAYER_KF_PROPS, KF_INTERPS, kfInterpOf, withInterp } from '../../../shared/layerKeys.js';
 
 const LABEL = { pos: 'Posição', scale: 'Escala', rot: 'Rotação', opacity: 'Opacidade' };
+/** Linhas das propriedades de uma camada (Propriedades/Controle de efeitos). */
+export const layerRows = (layer, onTrack) => LAYER_KF_PROPS.map((p) => ({ id: p, label: LABEL[p], keys: layer.kf?.[p] || [], onChange: (list) => onTrack(p, list) }));
 const fmtT = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}.${String(Math.floor((s % 1) * 10))}`;
 
 /** Desenho do quadro conforme a interpolação (como no Premiere: losango, ampulheta, quadrado). */
@@ -23,16 +25,17 @@ function KeyIcon({ interp, on }) {
  * clique para ir até ele e use o botão direito para a interpolação (Linear, Bezier, Ease
  * In/Out, Manter) ou para apagar.
  */
-export default function KeyframeLanes({ layer, cur, onSeek, onTrack }) {
+export default function KeyframeLanes({ start = 0, duration, rows, cur, onSeek }) {
   const stripRef = useRef(null);
   const [sel, setSel] = useState(null); // { prop, t }
   const [menu, setMenu] = useState(null); // { x, y, prop, t }
   const drag = useRef(null);
-  const cb = useRef({ layer, onTrack, onSeek });
-  cb.current = { layer, onTrack, onSeek };
-  const dur = Math.max(0.2, Number(layer.duration) || 1);
-  const kf = layer.kf || {};
-  const rel = Math.max(0, Math.min(dur, cur - layer.start));
+  const dur = Math.max(0.2, Number(duration) || 1);
+  const cb = useRef({ start, dur, rows, onSeek });
+  cb.current = { start, dur, rows, onSeek };
+  const kf = Object.fromEntries(rows.map((r) => [r.id, r.keys || []]));
+  const rowOf = (id) => rows.find((r) => r.id === id);
+  const rel = Math.max(0, Math.min(dur, cur - start));
 
   useEffect(() => {
     function move(e) {
@@ -42,8 +45,9 @@ export default function KeyframeLanes({ layer, cur, onSeek, onTrack }) {
       if (Math.abs(e.clientX - d.x0) > 3) d.moved = true;
       if (!d.moved) return;
       const r = el.getBoundingClientRect();
-      const t = +Math.max(0, Math.min(cb.current.layer.duration, ((e.clientX - r.left) / r.width) * cb.current.layer.duration)).toFixed(3);
-      const tr = cb.current.layer.kf?.[d.prop] || [];
+      const t = +Math.max(0, Math.min(cb.current.dur, ((e.clientX - r.left) / r.width) * cb.current.dur)).toFixed(3);
+      const row = cb.current.rows.find((x) => x.id === d.prop);
+      const tr = row?.keys || [];
       // não deixa dois quadros no mesmo ponto: para um pouco antes do vizinho
       if (tr.some((k, i) => i !== d.i && Math.abs(k.t - t) < 0.04)) return;
       const next = tr.map((k, i) => (i === d.i ? { ...k, t } : k));
@@ -51,20 +55,20 @@ export default function KeyframeLanes({ layer, cur, onSeek, onTrack }) {
       next.sort((a, b) => a.t - b.t);
       d.i = next.indexOf(moved);
       setSel({ prop: d.prop, t });
-      cb.current.onTrack(d.prop, next);
+      row.onChange(next);
     }
     function up() {
       const d = drag.current;
       drag.current = null;
-      if (d && !d.moved) cb.current.onSeek(cb.current.layer.start + d.t);
+      if (d && !d.moved) cb.current.onSeek(cb.current.start + d.t);
     }
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
   }, []);
 
-  const setInterp = (prop, t, id) => onTrack(prop, (kf[prop] || []).map((k) => (Math.abs(k.t - t) < 0.001 ? withInterp(k, id) : k)));
-  const removeKey = (prop, t) => onTrack(prop, (kf[prop] || []).filter((k) => Math.abs(k.t - t) >= 0.001));
+  const setInterp = (prop, t, id) => rowOf(prop)?.onChange((kf[prop] || []).map((k) => (Math.abs(k.t - t) < 0.001 ? withInterp(k, id) : k)));
+  const removeKey = (prop, t) => rowOf(prop)?.onChange((kf[prop] || []).filter((k) => Math.abs(k.t - t) >= 0.001));
   const ticks = [];
   const step = dur > 20 ? 5 : dur > 8 ? 2 : dur > 3 ? 1 : 0.5;
   for (let s = 0; s <= dur + 1e-6; s += step) ticks.push(+s.toFixed(2));
@@ -75,18 +79,18 @@ export default function KeyframeLanes({ layer, cur, onSeek, onTrack }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '78px minmax(0, 1fr)', gap: 0, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden', background: 'rgba(0,0,0,0.25)' }}>
       <div style={{ height: 18, borderBottom: `1px solid ${C.border}`, fontSize: 10, color: C.faint, padding: '2px 6px', whiteSpace: 'nowrap' }}>Quadros</div>
-      <div onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); onSeek(layer.start + ((e.clientX - r.left) / r.width) * dur); }}
+      <div onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); onSeek(start + ((e.clientX - r.left) / r.width) * dur); }}
         style={{ position: 'relative', height: 18, borderBottom: `1px solid ${C.border}`, cursor: 'pointer' }} title="Clique para ir a este ponto">
         {ticks.map((s) => (
           <span key={s} style={{ position: 'absolute', left: `${(s / dur) * 100}%`, top: 2, fontSize: 9, color: C.faint, transform: s ? 'translateX(-50%)' : 'none', whiteSpace: 'nowrap' }}>{fmtT(s)}</span>
         ))}
         {playhead}
       </div>
-      {LAYER_KF_PROPS.map((p) => (
+      {rows.map(({ id: p, label }, ri) => (
         <React.Fragment key={p}>
-          <div style={{ height: rowH, display: 'flex', alignItems: 'center', padding: '0 6px', fontSize: 11, color: kf[p]?.length ? C.text : C.faint, borderBottom: `1px solid rgba(255,255,255,0.04)` }}>{LABEL[p]}</div>
-          <div ref={p === 'pos' ? stripRef : undefined}
-            onPointerDown={(e) => { if (e.target !== e.currentTarget) return; const r = e.currentTarget.getBoundingClientRect(); onSeek(layer.start + ((e.clientX - r.left) / r.width) * dur); }}
+          <div style={{ height: rowH, display: 'flex', alignItems: 'center', padding: '0 6px', fontSize: 11, color: kf[p]?.length ? C.text : C.faint, borderBottom: `1px solid rgba(255,255,255,0.04)`, whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</div>
+          <div ref={ri === 0 ? stripRef : undefined}
+            onPointerDown={(e) => { if (e.target !== e.currentTarget) return; const r = e.currentTarget.getBoundingClientRect(); onSeek(start + ((e.clientX - r.left) / r.width) * dur); }}
             style={{ position: 'relative', height: rowH, borderBottom: `1px solid rgba(255,255,255,0.04)`, cursor: 'pointer' }}>
             {playhead}
             {(kf[p] || []).length > 1 && (
@@ -99,8 +103,8 @@ export default function KeyframeLanes({ layer, cur, onSeek, onTrack }) {
                 <button key={`${i}-${k.t}`} type="button"
                   onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); setSel({ prop: p, t: k.t }); drag.current = { prop: p, i, t: k.t, x0: e.clientX, moved: false }; }}
                   onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setSel({ prop: p, t: k.t }); setMenu({ x: e.clientX, y: e.clientY, prop: p, t: k.t }); }}
-                  title={`${LABEL[p]} em ${fmtT(k.t)} · ${KF_INTERPS[interp]} — arraste para mudar o tempo · botão direito: interpolação`}
-                  aria-label={`Quadro-chave de ${LABEL[p]} em ${fmtT(k.t)}`}
+                  title={`${label} em ${fmtT(k.t)} · ${KF_INTERPS[interp]} — arraste para mudar o tempo · botão direito: interpolação`}
+                  aria-label={`Quadro-chave de ${label} em ${fmtT(k.t)}`}
                   style={{ position: 'absolute', left: `${(k.t / dur) * 100}%`, top: '50%', transform: 'translate(-50%, -50%)', width: 16, height: 16, padding: 0, border: 'none', background: 'transparent', display: 'grid', placeItems: 'center', cursor: 'ew-resize', zIndex: 2 }}>
                   <KeyIcon interp={interp} on={on} />
                 </button>
@@ -122,7 +126,7 @@ export default function KeyframeLanes({ layer, cur, onSeek, onTrack }) {
               </button>
             ))}
             <div style={{ height: 1, background: C.border, margin: '4px 2px' }} />
-            <button onClick={() => { onSeek(layer.start + menu.t); setMenu(null); }} style={{ display: 'block', width: '100%', padding: '6px 8px 6px 28px', border: 'none', borderRadius: 6, background: 'transparent', color: C.text, fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left' }}>Ir até o quadro</button>
+            <button onClick={() => { onSeek(start + menu.t); setMenu(null); }} style={{ display: 'block', width: '100%', padding: '6px 8px 6px 28px', border: 'none', borderRadius: 6, background: 'transparent', color: C.text, fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left' }}>Ir até o quadro</button>
             <button onClick={() => { removeKey(menu.prop, menu.t); setMenu(null); setSel(null); }} style={{ display: 'block', width: '100%', padding: '6px 8px 6px 28px', border: 'none', borderRadius: 6, background: 'transparent', color: C.red, fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left' }}>Apagar o quadro</button>
           </div>
         </>,

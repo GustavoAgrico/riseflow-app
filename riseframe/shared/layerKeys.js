@@ -191,3 +191,26 @@ export function remapKf(kf, oldStart, newStart, mapT) {
   }
   return Object.keys(out).length ? out : null;
 }
+
+/**
+ * Linha de volume do áudio (como a do Premiere na faixa A1): pontos { t, v: dB } no tempo
+ * do vídeo original, com a mesma interpolação dos quadros (ei/eo/hold). Puro.
+ */
+export const VOL_DB_MIN = -40;
+export const VOL_DB_MAX = 15;
+export function cleanVolKeys(raw, max = 200) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const k of raw) {
+    const t = Number(k?.t);
+    const v = Number(k?.v);
+    if (!Number.isFinite(t) || t < 0 || t > 1e5 || !Number.isFinite(v)) continue;
+    out.push({ t: +t.toFixed(3), v: +Math.max(VOL_DB_MIN, Math.min(VOL_DB_MAX, v)).toFixed(2), ...(k.ei ? { ei: true } : {}), ...(k.eo ? { eo: true } : {}), ...(k.hold ? { hold: true } : {}) });
+  }
+  out.sort((a, b) => a.t - b.t);
+  return out.filter((k, i) => i === 0 || k.t - out[i - 1].t >= 0.02).slice(0, max);
+}
+/** dB da linha de volume no tempo t (0 dB sem pontos). Puro. */
+export function volDbAt(keys, t) {
+  return keys?.length ? kfValue(keys, t) : 0;
+}

@@ -11,7 +11,7 @@ import { useAuth } from '../AuthContext.jsx';
 import { CaptionOverlay } from './CaptionPreview.jsx';
 import SnapGuides, { snapCenter, setUserGuides } from './SnapGuides.jsx';
 import MonitorGuides, { GUIDE_TEMPLATES, withIds } from './MonitorGuides.jsx';
-import KeyframeLanes from './KeyframeLanes.jsx';
+import KeyframeLanes, { layerRows } from './KeyframeLanes.jsx';
 import { loadAutosave, saveAutosave, markAutosaveSubmitted, clearAutosave, packState, unpackState } from '../autosave.js';
 import CaptionGallery, { FontPicker, ColorSwatches, TextStyleBar } from './CaptionGallery.jsx';
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
@@ -29,7 +29,7 @@ import { shadowParams } from '../../../shared/captionShadow.js';
 import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById } from '../../../shared/captionStyle.js';
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 import { captionCues, toSrt, toVtt, toTxt, skipMapper } from '../../../shared/captionExport.js';
-import { layerAt, upsertKey, shiftKf, KF_INTERPS, kfInterpOf, withInterp } from '../../../shared/layerKeys.js';
+import { layerAt, upsertKey, shiftKf, KF_INTERPS, kfInterpOf, withInterp, cleanVolKeys, volDbAt, VOL_DB_MIN, VOL_DB_MAX } from '../../../shared/layerKeys.js';
 
 // Tempo no formato do player: 00:12
 // Timecode como no Premiere (mm:ss:quadros, 30 fps): 00:56:23
@@ -357,6 +357,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Espaços vazios no vídeo principal (Excluir sem fechar o buraco, como o "lift" do
   // Premiere): preto e sem som, sem mudar a duração; dá para soltar uma mídia ali.
   const [blanks, setBlanks] = useState([]);
+  // Linha de volume da faixa A1 (como no Premiere): pontos { t, v: dB } no tempo original.
+  // Arraste a linha para subir/descer; Ctrl/⌘ + clique põe um ponto.
+  const [volKeys, setVolKeys] = useState(() => (Array.isArray(options?.audioVolKeys) ? options.audioVolKeys : []));
   // Espaços vazios da própria montagem (clipes "vazio" da V1, ex.: o clipe foi arrastado para
   // a direita): não são pausa e saem para o render como espaço vazio (o fundo V0 aparece).
   const [seqHoles, setSeqHoles] = useState([]);
@@ -608,14 +611,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const overlaySegs = useMemo(() => mergeExtraCaptions(capSegments, visXcaps), [capSegments, visXcaps]);
   const histState = {
     segments, cuts, keptPauses, keptNoises, gains, videoCrop, cropRanges, blanks, projMediaIds, avLinked, media, brollReview, brollOn, zoomMoments, headline, cover,
-    colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs,
+    colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs, brollLayoutSel, imageSource, volKeys,
     aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
   };
   const histSet = {
     segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, cropRanges: setCropRanges, blanks: setBlanks, projMediaIds: setProjMediaIds, avLinked: setAvLinked, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
     brollReview: setBrollReview, brollOn: setBrollOn, zoomMoments: setZoomMoments, headline: setHeadline,
     cover: setCover, colorLook: setColorLook, colorAdj: setColorAdj, cap: setCap, fx: setFx, voice: setVoice,
-    audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths,
+    audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths, brollLayoutSel: setBrollLayoutSel, imageSource: setImageSource, volKeys: setVolKeys,
     cutCoughs: setCutCoughs, aspectSel: setAspectSel, quality: setQuality, reframeMode: setReframeMode,
     splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom,
     vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, extraCaps: setExtraCaps, fxMoments: setFxMoments, transitions: setTransitions, laneHide: setLaneHide, laneLock: setLaneLock, markers: setMarkers, speedRanges: setSpeedRanges, freezes: setFreezes,
@@ -2208,6 +2211,119 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       </div>
     );
   }
+  // ── Linha de volume da faixa A1 (como no Premiere) ──
+  const [volTip, setVolTip] = useState(null); // { x, y, db } enquanto arrasta
+  const volDragRef = useRef(null);
+  const volFns = useRef({});
+  volFns.current = { setVolKeys, setAudioVolume, setVolTip, srcOf, pps };
+  useEffect(() => {
+    function move(e) {
+      const d = volDragRef.current;
+      if (!d) return;
+      const f = volFns.current;
+      // 0,5 dB por pixel (Shift: ajuste fino, 0,15 dB) — a faixa é baixa, 1:1 pularia demais
+      const dDb = -(e.clientY - d.y0) * (e.shiftKey ? 0.15 : 0.5);
+      const clampDb = (v) => +Math.max(VOL_DB_MIN, Math.min(VOL_DB_MAX, v)).toFixed(2);
+      if (d.mode === 'base') {
+        const db = Math.max(-40, Math.min(12, d.g0 + dDb));
+        f.setAudioVolume(+Math.min(4, 10 ** (db / 20)).toFixed(3));
+        f.setVolTip({ x: e.clientX - d.left, y: e.clientY - d.top, db });
+      } else if (d.mode === 'seg') {
+        const next = d.keys0.map((k, i) => (d.idx.includes(i) ? { ...k, v: clampDb(k.v + dDb) } : k));
+        f.setVolKeys(next);
+        f.setVolTip({ x: e.clientX - d.left, y: e.clientY - d.top, db: d.g0 + next[d.idx[0]].v });
+      } else {
+        // ponto: sobe/desce (dB) e anda para os lados (tempo), sem passar dos vizinhos
+        const k0 = d.keys0[d.i];
+        const lo = d.i > 0 ? d.keys0[d.i - 1].t + 0.03 : 0;
+        const hi = d.i < d.keys0.length - 1 ? d.keys0[d.i + 1].t - 0.03 : 1e5;
+        const t = Math.max(lo, Math.min(hi, f.srcOf((d.x0c + (e.clientX - d.x0)) / f.pps)));
+        const v = clampDb(k0.v + dDb);
+        f.setVolKeys(d.keys0.map((k, i) => (i === d.i ? { ...k, t: +t.toFixed(3), v } : k)));
+        f.setVolTip({ x: e.clientX - d.left, y: e.clientY - d.top, db: d.g0 + v });
+      }
+    }
+    function up() {
+      if (!volDragRef.current) return;
+      volDragRef.current = null;
+      volFns.current.setVolTip(null);
+      document.body.style.userSelect = '';
+    }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  }, []);
+  /** A linha de volume desenhada sobre a onda do A1, com os pontos. */
+  function volBand() {
+    if (isMobile) return null;
+    const h = LANE.audio;
+    const hh = h - 6;
+    const span = VOL_DB_MAX - VOL_DB_MIN;
+    const gDb = 20 * Math.log10(Math.max(1e-4, Number(audioVolume) || 0));
+    const yOf = (db) => 3 + ((VOL_DB_MAX - Math.max(VOL_DB_MIN, Math.min(VOL_DB_MAX, db))) / span) * hh;
+    const keys = volKeys || [];
+    const Wd = Math.max(1, X(dur));
+    const pts = [];
+    for (let x = 0; x < Wd; x += 4) pts.push(`${x.toFixed(1)},${yOf(gDb + volDbAt(keys, srcOf(x / pps))).toFixed(1)}`);
+    pts.push(`${Wd.toFixed(1)},${yOf(gDb + volDbAt(keys, dur)).toFixed(1)}`);
+    const dPath = `M${pts.join(' L')}`;
+    const stop = (e) => e.stopPropagation();
+    const begin = (e, extra) => {
+      const r = e.currentTarget.ownerSVGElement.getBoundingClientRect();
+      volDragRef.current = { y0: e.clientY, x0: e.clientX, x0c: e.clientX - r.left, left: r.left, top: r.top, hh, g0: gDb, keys0: keys.map((k) => ({ ...k })), ...extra };
+      document.body.style.userSelect = 'none';
+    };
+    const onLine = (e) => {
+      if (e.button !== 0 || laneLock.aud) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const r = e.currentTarget.ownerSVGElement.getBoundingClientRect();
+      const t = Math.max(0, Math.min(dur, srcOf((e.clientX - r.left) / pps)));
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl/⌘ + clique: põe um ponto aqui (no valor que a linha já tem)
+        setVolKeys(cleanVolKeys([...keys, { t: +t.toFixed(3), v: +volDbAt(keys, t).toFixed(2) }]));
+        return;
+      }
+      if (!keys.length) { begin(e, { mode: 'base' }); return; }
+      // arrastar o trecho entre dois pontos sobe/desce os dois (como no Premiere)
+      const i = keys.reduce((acc, k, j) => (k.t <= t ? j : acc), -1);
+      const idx = [i, i + 1].filter((j) => j >= 0 && j < keys.length);
+      begin(e, { mode: 'seg', idx });
+    };
+    const keyMenu = (e, i) => {
+      const k = keys[i];
+      openCtx(e, `Ponto de volume · ${(gDb + k.v).toFixed(1).replace('.', ',')} dB`, [
+        ...Object.entries(KF_INTERPS).map(([id, label]) => ({ label: `${kfInterpOf(k) === id ? '✓ ' : ''}${label}`, act: () => setVolKeys((l) => l.map((x, j) => (j === i ? withInterp(x, id) : x))) })),
+        { sep: true },
+        { label: 'Ir até o ponto', act: () => seek(k.t) },
+        { label: 'Apagar o ponto', danger: true, act: () => setVolKeys((l) => l.filter((_, j) => j !== i)) },
+        { label: 'Apagar todos os pontos de volume', danger: true, act: () => setVolKeys([]) },
+      ]);
+    };
+    return (
+      <>
+        <svg width={Wd} height={h} aria-hidden="true" style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', zIndex: 6, pointerEvents: 'none' }}>
+          <path d={dPath} fill="none" stroke="#fff" strokeWidth="1.3" opacity="0.92" />
+          <path d={dPath} fill="none" stroke="transparent" strokeWidth="10" onPointerDown={onLine} onClick={stop}
+            style={{ pointerEvents: 'stroke', cursor: 'ns-resize' }}>
+            <title>Volume: arraste para cima/baixo (Shift = ajuste fino) · Ctrl/⌘ + clique põe um ponto</title>
+          </path>
+          {keys.map((k, i) => (
+            <circle key={`${i}-${k.t}`} cx={X(k.t)} cy={yOf(gDb + k.v)} r="4.5" fill={kfInterpOf(k) === 'linear' ? '#fff' : '#FACC15'} stroke="#111" strokeWidth="1"
+              onPointerDown={(e) => { if (e.button !== 0 || laneLock.aud) return; e.stopPropagation(); e.preventDefault(); begin(e, { mode: 'key', i }); }}
+              onContextMenu={(e) => keyMenu(e, i)} onClick={stop} style={{ pointerEvents: 'all', cursor: 'move' }}>
+              <title>{`${(gDb + k.v).toFixed(1)} dB — arraste · botão direito: interpolação / apagar`}</title>
+            </circle>
+          ))}
+        </svg>
+        {volTip && (
+          <div style={{ position: 'absolute', left: volTip.x + 10, top: Math.max(0, volTip.y - 22), zIndex: 7, pointerEvents: 'none', fontSize: 10.5, fontWeight: 700, color: '#111', background: '#fff', borderRadius: 4, padding: '1px 5px', whiteSpace: 'nowrap' }}>
+            {`${volTip.db >= 0 ? '+' : ''}${volTip.db.toFixed(1).replace('.', ',')} dB`}
+          </div>
+        )}
+      </>
+    );
+  }
   /** Passa a mídia para a V0 (por baixo do vídeo) ou de volta para as camadas (por cima). */
   function setUnder(key, under) {
     setMedia((list) => normalizeLayers(list.map((x) => (x.key !== key || x.kind === 'audio' ? x : under ? { ...x, under: true, layer: 0 } : { ...x, under: false, layer: freeLayer(list, x.start, x.duration) }))));
@@ -2789,6 +2905,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         cutCoughs,
         speed,
         audioVolume: +Number(audioVolume).toFixed(2),
+        ...((volKeys || []).length ? { audioVolKeys: cleanVolKeys(volKeys) } : {}),
         ...(videoCrop.l + videoCrop.t + videoCrop.r + videoCrop.b > 0.001 ? { videoCrop } : {}),
         ...((cropRanges || []).length ? { cropRanges: cropRanges.map((x) => ({ start: +x.start.toFixed(3), end: +x.end.toFixed(3), l: x.l || 0, t: x.t || 0, r: x.r || 0, b: x.b || 0 })) } : {}),
         ...(exportFps ? { fps: exportFps } : {}),
@@ -3442,7 +3559,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               {m.kf && (
                 <>
                   {/* quadros-chave numa mini-timeline (como o Controle de efeitos do Premiere) */}
-                  <KeyframeLanes layer={m} cur={cur} onSeek={seek} onTrack={(prop, list) => setTrack(prop, list)} />
+                  <KeyframeLanes start={m.start} duration={m.duration} rows={layerRows(m, (prop, list) => setTrack(prop, list))} cur={cur} onSeek={seek} />
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
                     Interpolação de todos os quadros
                     <select value={(() => { const ids = [...new Set(Object.values(m.kf).flatMap((tr) => tr.map(kfInterpOf)))]; return ids.length === 1 ? ids[0] : ''; })()}
@@ -3588,6 +3705,28 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <ScrubNum value={KV.rot} step={0.5} min={-180} max={180} decimals={1} suffix=" °" onChange={(v) => setV1V('rot', +v.toFixed(1))} />
           </PropRow>
           {v1AnimV && <div style={{ fontSize: 11, color: C.faint }}>Animando: mudar um valor grava um ◆ no playhead (faixa QUADROS na timeline). {transformKeys.length} quadro(s)-chave.</div>}
+          {transformKeys.length > 0 && (() => {
+            // quadros do vídeo principal numa mini-timeline (o pedaço selecionado ou o vídeo todo)
+            const a0 = piece ? piece.a : 0;
+            const b0 = piece ? piece.b : dur;
+            const inR = (k) => k.t >= a0 - 0.001 && k.t <= b0 + 0.001;
+            const keysIn = transformKeys.filter(inR).map((k) => ({ ...k, t: +(k.t - a0).toFixed(3) }));
+            const write = (list) => setTransformKeys(cleanKeys([...transformKeys.filter((k) => !inR(k)), ...list.map((k) => ({ ...k, t: +(k.t + a0).toFixed(3) }))]));
+            const ids = [...new Set(keysIn.map(kfInterpOf))];
+            return (
+              <>
+                <KeyframeLanes start={a0} duration={b0 - a0} rows={[{ id: 'v1', label: 'Movimento', keys: keysIn, onChange: write }]} cur={cur} onSeek={seek} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
+                  Interpolação de todos os quadros
+                  <select value={ids.length === 1 ? ids[0] : ''} onChange={(e) => { const id = e.target.value; if (id) write(keysIn.map((k) => withInterp(k, id))); }}
+                    style={{ height: 28, borderRadius: 7, border: `1px solid ${C.border}`, background: '#101016', color: C.text, fontSize: 12, fontFamily: 'inherit' }}>
+                    <option value="">— misturada —</option>
+                    {Object.entries(KF_INTERPS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                  </select>
+                </label>
+              </>
+            );
+          })()}
         </PropSection>
         <PropSection title="Enquadramento (zoom no rosto)" onReset={() => { setZoom(1); setFocus({ x: 0.5, y: 0.4 }); }}>
           <PropRow label="Posição (foco)">
@@ -5648,7 +5787,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     gSpeed: speed,
     fxMoments: visFx,
     sfxEvents: liveSfxEvents,
-    audio: { audioMute, audioVolume, gains: [...gains, ...blanks.filter((b) => b.audio !== false).map((b) => ({ start: b.start, end: b.end, volume: 0 }))] },
+    audio: { audioMute, audioVolume, volKeys, gains: [...gains, ...blanks.filter((b) => b.audio !== false).map((b) => ({ start: b.start, end: b.end, volume: 0 }))] },
     sfxTimes: [
       ...liveWindows.map(([a]) => Math.max(0, a - 0.3)),
       ...((brollReview?.moments || []).filter((m) => !m.removed).map((m) => Math.max(0, Number(m.start) - 0.3))),
@@ -5783,8 +5922,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const txQ = norm(txQuery.trim());
   const txHits = txQ ? txWords.reduce((n, x) => n + (norm(x.w.word).includes(txQ) ? 1 : 0), 0) : 0;
   const txText = () => txParas.map((p) => `${tcode(p.start)}\n${txWords.slice(p.from, p.to + 1).filter((x) => !x.w.removed && !x.cut).map((x) => x.w.word).join(' ')}`).join('\n\n');
+  // copiar: só o texto (parágrafos), sem os tempos — o arquivo baixado continua com eles
+  const txPlain = () => txParas.map((p) => txWords.slice(p.from, p.to + 1).filter((x) => !x.w.removed && !x.cut).map((x) => x.w.word).join(' ')).filter((t) => t.trim()).join('\n\n');
   function copyTranscript() {
-    const text = txText();
+    const text = txPlain();
     navigator.clipboard?.writeText(text).then(() => { setTxCopied(true); setTimeout(() => setTxCopied(false), 1500); }, () => {});
   }
   function downloadTranscript() {
@@ -8177,6 +8318,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 <div key={c.key} style={{ position: 'absolute', left: c.start * pps, width: Math.max(2, (c.end - c.start) * pps), top: 0, bottom: 0, zIndex: 2, pointerEvents: 'none',
                   background: 'repeating-linear-gradient(45deg, rgba(240,82,107,0.45), rgba(240,82,107,0.45) 5px, rgba(240,82,107,0.2) 5px, rgba(240,82,107,0.2) 10px)', borderLeft: `1px solid ${C.red}`, borderRight: `1px solid ${C.red}` }} />
               ))}
+              {volBand()}
               {/* alça do áudio: move junto com o vídeo (vinculados), igual à alça da V1 */}
               {!isMobile && avLinked && v1Pieces.map((p, k) => {
                 if (p.clip.kind === 'blank') return null;

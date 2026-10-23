@@ -43,7 +43,8 @@ export function cleanKeys(raw, max = 60) {
   for (const k of raw) {
     const t = Number(k?.t);
     if (!Number.isFinite(t) || t < 0) continue;
-    const item = { t: +t.toFixed(3) };
+    // interpolação do quadro (como no Premiere): Ease In/Out (ei/eo) e Manter (hold)
+    const item = { t: +t.toFixed(3), ...(k.ei ? { ei: true } : {}), ...(k.eo ? { eo: true } : {}), ...(k.hold ? { hold: true } : {}) };
     for (const p of PROPS) {
       const v = Number(k[p]);
       const [lo, hi] = LIMITS[p];
@@ -69,13 +70,21 @@ export function keyAt(keys, t) {
     const a = keys[i];
     const b = keys[i + 1];
     if (t >= a.t && t <= b.t) {
-      const q = (t - a.t) / Math.max(1e-6, b.t - a.t);
+      if (a.hold) return pick(a);
+      const q = keyCurve(a, b, (t - a.t) / Math.max(1e-6, b.t - a.t));
       const v = {};
       for (const p of PROPS) v[p] = a[p] + (b[p] - a[p]) * q;
       return v;
     }
   }
   return pick(last);
+}
+/** Curva entre dois quadros: sai devagar (eo), chega devagar (ei), os dois = suave. Puro. */
+export function keyCurve(a, b, q) {
+  if (a.eo && b.ei) return q * q * (3 - 2 * q);
+  if (a.eo) return q * q;
+  if (b.ei) return q * (2 - q);
+  return q;
 }
 function pick(k) {
   return { scale: k.scale, x: k.x, y: k.y, rot: k.rot };
