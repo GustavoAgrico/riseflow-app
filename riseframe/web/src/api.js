@@ -679,6 +679,8 @@ export const mediaStatus = (id) => jsonReq('GET', `${BASE}/media/${id}/status`);
 export const getMediaLibrary = () => jsonReq('GET', `${BASE}/media/library`).then((d) => d.media || []);
 export const removeLibraryMedia = (id) => jsonReq('DELETE', `${BASE}/media/library/${encodeURIComponent(id)}`);
 /** Timeline em branco: os clipes (mídias da conta, na ordem) viram o vídeo do editor. */
+/** Edição automática: marca muletas, repetições e erros da fala do editor (IA se o plano libera). */
+export const cleanSpeechApi = (id, segments, options) => jsonReq('POST', `${BASE}/jobs/${id}/clean-speech`, { segments, options });
 export const createSequence = (body) => jsonReq('POST', `${BASE}/sequence`, body);
 /** Timeline em branco: abre o editor na hora (sem clipes, sem cobrar). */
 export const createBlankTimeline = (body = {}) => jsonReq('POST', `${BASE}/sequence/blank`, body);

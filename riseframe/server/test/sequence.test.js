@@ -7,7 +7,7 @@ import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ffmpegPath, probeSummary } from '../src/pipeline/ffmpeg.js';
-import { assembleSequence, frameSize, clipDuration } from '../src/pipeline/sequence.js';
+import { assembleSequence, frameSize, clipDuration, canCopyWhole } from '../src/pipeline/sequence.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-seq-'));
@@ -52,6 +52,23 @@ test('monta a timeline: tamanhos diferentes, vídeo sem som, imagem e música', 
   assert.ok(Math.abs(m.duration - 7) < 0.25, `duração 2 + 1,5 + 2 + 1,5 = 7 s (veio ${m.duration})`);
   assert.equal(m.width, 360);
   assert.equal(m.hasAudio, true);
+});
+
+test('um vídeo inteiro entra original (sem recodificar)', { timeout: 60000 }, async () => {
+  const v = { kind: 'video', in: 0, out: 3, _dur: 3, _w: 360, _h: 640 };
+  assert.equal(canCopyWhole([v], null, 'auto'), true);
+  assert.equal(canCopyWhole([v], null, '9:16'), true, 'mesma proporção');
+  assert.equal(canCopyWhole([v], null, '16:9'), false, 'outro formato: monta de novo');
+  assert.equal(canCopyWhole([{ ...v, in: 1 }], null, 'auto'), false, 'aparado: monta de novo');
+  assert.equal(canCopyWhole([v], { file: 'x.mp3' }, 'auto'), false, 'com música: monta de novo');
+  assert.equal(canCopyWhole([v, v], null, 'auto'), false);
+  const out = path.join(tmp, 'copia.mp4');
+  const r = await assembleSequence({ clips: [{ file: wide, kind: 'video', in: 0, out: 4 }], aspect: 'auto', output: out, work: path.join(tmp, 'work2') });
+  assert.equal(r.copied, true);
+  const m = await probeSummary(out);
+  assert.equal(m.width, 640, 'tamanho original (sem reescalar)');
+  assert.equal(m.hasAudio, true, 'o som do arquivo vem junto');
+  assert.ok(Math.abs(m.duration - 4) < 0.2);
 });
 
 // ── fluxo completo: enviar mídias, montar a timeline, abrir no editor ──
@@ -131,6 +148,16 @@ test('timeline em branco: abre na hora, sem cobrar e sem clipes', { timeout: 120
   assert.equal(done.report.input.width, 1080);
   assert.equal(done.report.input.height, 1920);
   assert.equal(done.report.transcript.segments.length, 0, 'sem fala');
+  // Edição automática: muletas e repetições da fala do editor saem (sem IA no plano: só a básica)
+  const words = ['é', 'é', 'então', 'a', 'gente', 'vai', 'vai'].map((w, i) => ({ start: i * 0.4, end: i * 0.4 + 0.3, word: w }));
+  const c = await fetch(`${base}/jobs/${job.id}/clean-speech`, { method: 'POST', headers: auth, body: JSON.stringify({ segments: [{ start: 0, end: 3, text: words.map((w) => w.word).join(' '), words }] }) });
+  assert.equal(c.status, 200, await c.clone().text());
+  const cj = await c.json();
+  assert.ok(cj.removed >= 2, `marcou ${cj.removed}`);
+  assert.equal(cj.segments[0].words.length, words.length, 'as palavras continuam (só marcadas)');
+  assert.equal(cj.segments[0].words.filter((w) => w.removed).length, cj.removed);
+  const vazio = await fetch(`${base}/jobs/${job.id}/clean-speech`, { method: 'POST', headers: auth, body: JSON.stringify({ segments: [] }) });
+  assert.equal(vazio.status, 400);
 });
 
 test('espaço vazio na montagem: preto e sem som, com a duração pedida', { timeout: 120000 }, async () => {

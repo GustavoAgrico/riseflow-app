@@ -228,21 +228,24 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     setJob(t);
     subscribeJob(t.id, (u) => {
       setJob(u);
-      if (u.status === 'done') {
-        const fromSeq = u.fromSequence || u.report?.sequence;
-        const tr = u.report?.transcript || (fromSeq ? { segments: [] } : null);
-        // timeline montada só com imagens/música: abre sem fala (legenda vazia)
-        if (!tr?.segments?.length && !fromSeq) return fail('não foi possível obter a transcrição');
-        setSourceId(u.report.sourceId || u.id);
-        setTranscriptData({ ...tr, segments: tr.segments || [] });
-        setDurationSec(u.report?.input?.duration || 0);
-        recordDraft(u, u.report.sourceId || u.id);
-        // timeline vazia (ou recém-montada): abre na aba Projeto para pôr/ajustar os clipes
-        setEditorTab(u.blankTimeline || u.report?.sequence?.blank ? 'projeto' : null);
-        setPhase('editing');
-      }
+      if (u.status === 'done') openTranscribed(u);
       if (u.status === 'error') fail(u.error);
     });
+  }
+  /** Abre o editor com a transcrição pronta (vídeo enviado ou timeline montada). */
+  function openTranscribed(u, { keepTab = false } = {}) {
+    const fromSeq = u.fromSequence || u.report?.sequence;
+    const tr = u.report?.transcript || (fromSeq ? { segments: [] } : null);
+    // timeline montada só com imagens/música: abre sem fala (legenda vazia)
+    if (!tr?.segments?.length && !fromSeq) return fail('não foi possível obter a transcrição');
+    setJob(u);
+    setSourceId(u.report.sourceId || u.id);
+    setTranscriptData({ ...tr, segments: tr.segments || [] });
+    setDurationSec(u.report?.input?.duration || 0);
+    recordDraft(u, u.report.sourceId || u.id);
+    // timeline vazia (ou recém-montada): abre na aba Projeto para pôr/ajustar os clipes
+    if (!keepTab) setEditorTab(u.blankTimeline || u.report?.sequence?.blank ? 'projeto' : null);
+    setPhase('editing');
   }
 
   // Abre a timeline a partir de um resultado já processado (qualquer modo), usando
@@ -457,7 +460,8 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
           <TimelineEditor
             key={sourceId}
             initialTab={editorTab}
-            onRebuild={(j) => { startedAtRef.current = Date.now(); followTranscribe(j); }}
+            fromSequence={Boolean(job?.fromSequence || job?.report?.sequence)}
+            onRebuild={(j, how) => { if (how?.quiet) { openTranscribed(j, { keepTab: true }); return; } startedAtRef.current = Date.now(); followTranscribe(j); }}
             hidden={phase !== 'editing'}
             jobError={editorError}
             transcript={transcriptData}

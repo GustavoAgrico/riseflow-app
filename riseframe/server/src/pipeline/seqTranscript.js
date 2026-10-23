@@ -74,7 +74,9 @@ export async function sequenceTranscript(job, input, work, meta, onProgress = ()
   const todo = [];
   let reused = 0;
   for (const p of placed) {
-    const known = Array.isArray(p.c.words) ? p.c.words : fromCache(p.c.mediaId, p.cin, p.cin + p.len);
+    // "Só colocar": a mídia entra original — sem puxar a fala de outra vez (nada de pausas
+    // cortadas sozinhas); só a fala que já estava neste editor vem junto.
+    const known = Array.isArray(p.c.words) ? p.c.words : seq.transcribeNew === false ? null : fromCache(p.c.mediaId, p.cin, p.cin + p.len);
     if (known) { parts.push(...sliceSegments(known, p.cin, p.cin + p.len, p.a - p.cin)); reused++; } else todo.push(p);
   }
   const done = (provider, extra = {}) => {
