@@ -6663,6 +6663,45 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   });
   const [tabsMenu, setTabsMenu] = useState(null); // {x, y} do menu aberto
   const shownTabs = TABS.filter((t) => !hiddenTabs.includes(t.id));
+  // Linha das abas (tela grande): se não cabem todas, setas ‹ › nas pontas, a roda do mouse
+  // rola para o lado e a aba aberta sempre aparece inteira.
+  const navRef = useRef(null);
+  const [navOver, setNavOver] = useState({ l: false, r: false, any: false });
+  function measureNav() {
+    const el = navRef.current;
+    if (!el || getComputedStyle(el).display !== 'flex') { setNavOver((o) => (o.any ? { l: false, r: false, any: false } : o)); return; }
+    const l = el.scrollLeft > 2;
+    const r = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+    // (uma vez que as abas não cabem, as setas ficam — sem piscar quando chega na ponta)
+    setNavOver((o) => { const any = o.any || l || r; return o.l === l && o.r === r && o.any === any ? o : { l, r, any }; });
+  }
+  function scrollNav(dir) {
+    const el = navRef.current;
+    if (el) el.scrollBy({ left: dir * Math.max(160, el.clientWidth * 0.6), behavior: 'smooth' });
+  }
+  function onNavWheel(e) {
+    const el = navRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    el.scrollLeft += e.deltaY;
+  }
+  useEffect(() => {
+    measureNav();
+    const el = navRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => measureNav());
+    ro.observe(el);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownTabs.length]);
+  useEffect(() => {
+    const el = navRef.current;
+    const b = el?.querySelector(`[data-tab="${tab}"]`);
+    if (!el || !b || getComputedStyle(el).display !== 'flex') return;
+    const end = el.querySelector('.rf-tl-navend');
+    const right = el.scrollLeft + el.clientWidth - (end ? end.offsetWidth : 0);
+    if (b.offsetLeft < el.scrollLeft + 24) el.scrollTo({ left: Math.max(0, b.offsetLeft - 30), behavior: 'smooth' });
+    else if (b.offsetLeft + b.offsetWidth > right - 8) el.scrollTo({ left: b.offsetLeft + b.offsetWidth - (right - el.scrollLeft) + 40, behavior: 'smooth' });
+  }, [tab]);
   function toggleTabShown(id) {
     setHiddenTabs((h) => (id === '*all' ? [] : h.includes(id) ? h.filter((x) => x !== id) : h.length < TABS.length - 1 ? [...h, id] : h));
   }
@@ -7059,11 +7098,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
       <div ref={gridRef} className={`rf-tl-grid rf-stage-${stage}${(showFormatPreview && !showSource ? fmtAr : mainAr) < 1 ? ' rf-mon-v' : ''}${layoutSz.monW ? ' rf-custom-col' : ''}${layoutSz.panelH ? ' rf-custom-row' : ''}${layoutOpen ? ' rf-show-splits' : ''}`} style={{ ...(layoutSz.monW ? { '--rf-mon-w': `${layoutSz.monW}px` } : {}), ...(layoutSz.panelH ? { '--rf-panel-h': `${layoutSz.panelH}px` } : {}), display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) minmax(320px, 360px)', gap: 16, alignItems: 'start', ...(isMobile && sheet ? { '--rf-stage-h': 'max(140px, calc(100dvh - var(--rf-sheet-h) - 118px - env(safe-area-inset-top)))' } : isMobile ? { '--rf-stage-h': `max(200px, calc(100dvh - ${(stage === 's' ? 470 : stage === 'l' ? 330 : 400) + (showZoomLane ? 28 : 0) + (showBrollLane ? 30 : 0) + (media.length ? 34 : 0)}px - env(safe-area-inset-bottom)))` } : {}) }}>
         {/* Ferramentas (como num editor): cada uma abre o painel de ajustes à direita */}
-        <nav className="rf-tl-nav" style={{ display: 'grid', gap: 4, padding: 8, borderRadius: 16, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.025)', alignSelf: 'start' }}>
+        <nav ref={navRef} onScroll={measureNav} onWheel={onNavWheel} className="rf-tl-nav" style={{ display: 'grid', gap: 4, padding: 8, borderRadius: 16, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.025)', alignSelf: 'start' }}>
+          {navOver.any && (
+            <button className="rf-tl-navarrow rf-tl-navarrow--l" onClick={() => scrollNav(-1)} disabled={!navOver.l} title="Ver as abas da esquerda" aria-label="Abas anteriores">‹</button>
+          )}
           {shownTabs.map((t) => {
             const on = tab === t.id;
             return (
-              <button key={t.id} onClick={() => setTab(t.id)} title={t.label} style={{
+              <button key={t.id} data-tab={t.id} onClick={() => setTab(t.id)} title={t.label} style={{
                 position: 'relative', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', borderRadius: 11, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                 fontSize: 13, fontWeight: on ? 700 : 600, textAlign: 'left', whiteSpace: 'nowrap',
                 background: on ? 'linear-gradient(90deg, rgba(255,107,53,0.18), rgba(255,107,53,0.04))' : 'transparent', color: on ? C.text : C.muted,
@@ -7084,6 +7126,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </button>
           {/* Tela grande: sem cabeçalho — salvar, voltar e exportar ficam na linha das abas */}
           <div className="rf-tl-navend">
+            {navOver.any && (
+              <button className="rf-tl-navarrow" onClick={() => scrollNav(1)} disabled={!navOver.r} title="Ver as outras abas" aria-label="Mais abas">›</button>
+            )}
+            {navOver.any && (
+              <button className="rf-tl-navarrow" style={{ width: 28, fontSize: 13 }} title="Todas as abas" aria-label="Todas as abas"
+                onClick={(e) => openCtx(e, 'Abas', shownTabs.map((t) => ({ label: `${tab === t.id ? '● ' : ''}${t.label}`, act: () => setTab(t.id) })))}>☰</button>
+            )}
             <span className="rf-tl-navsaved" title={cloudErr ? 'Não deu para salvar na conta agora (tenta de novo em 30 s)' : undefined}>
               {APP_VERSION}{cloudSavedAt ? ` · salvo ${new Date(cloudSavedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : savedAt ? ' · salvo neste navegador' : ''}{cloudErr ? ' · ⚠ sem salvar' : ''}
             </span>
@@ -9261,6 +9310,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           .rf-tl-card:not(.rf-m) .rf-tl-nav{ grid-column: 2; grid-row: 1; position: static; display: flex !important; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 2px !important;
             padding: 0 6px !important; border-radius: 10px 10px 0 0 !important; background: #1F2026 !important; border: 1px solid rgba(255,255,255,0.08) !important; border-bottom: none !important; }
           .rf-tl-card:not(.rf-m) .rf-tl-nav::-webkit-scrollbar{ display: none; }
+          .rf-tl-card:not(.rf-m) .rf-tl-navarrow{ display: inline-grid; }
           .rf-tl-card:not(.rf-m) .rf-tl-nav > button{ flex: none; padding: 11px 9px !important; gap: 0 !important; border-radius: 0 !important; background: transparent !important; font-size: 12.5px !important; justify-content: flex-start; }
           .rf-tl-card:not(.rf-m) .rf-tl-nav > button svg{ display: none !important; }
           .rf-tl-card:not(.rf-m) .rf-tl-navlbl{ display: inline !important; }
@@ -9311,6 +9361,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             .rf-tl-bar .rf-transport > div:first-child{ display: none; }
           }
         }
+        .rf-tl-navarrow{ display: none; place-items: center; flex: none; width: 24px; height: 28px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.14); background: #2A2C34; color: #fff; font: 700 17px/1 inherit; cursor: pointer; padding: 0; align-self: center; }
+        .rf-tl-navarrow:hover:not(:disabled){ background: #3A3D47; }
+        .rf-tl-navarrow:disabled{ opacity: 0.35; cursor: default; }
+        .rf-tl-navarrow--l{ position: sticky; left: 0; z-index: 2; margin-right: 2px; box-shadow: 8px 0 10px -4px #1F2026; }
         .rf-tl-navend{ display: none; margin-left: auto; position: sticky; right: 0; align-items: center; gap: 6px; padding-left: 10px; background: inherit; flex: none; }
         .rf-tl-navsaved{ font-size: 10.5px; color: #8B9099; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
         /* janela mais estreita: os botões viram só ícone (o nome aparece ao parar o mouse) e as abas continuam visíveis */
