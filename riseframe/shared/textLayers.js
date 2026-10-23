@@ -16,7 +16,7 @@ export const TEXT_PAD_DEFAULT = 0.28;
  * radius 0–1 = canto reto até a ponta toda arredondada (pílula).
  */
 export function textBoxMetrics(l) {
-  const box = l?.box === 'box';
+  const box = textLook(l).bg;
   const pad = box ? num(l.pad, 0, 1.2, TEXT_PAD_DEFAULT) : 0;
   const padY = pad * 0.43;
   const boxH = TEXT_LINE_H + 2 * padY;
@@ -83,6 +83,69 @@ export const VIDEO_FX_CSS = {
 };
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
+
+/** Alinhamento do parágrafo (como os botões do Premiere) e vertical do bloco. */
+export const TEXT_ALIGNS = ['left', 'center', 'right', 'justify-left', 'justify-center', 'justify-right', 'justify-all'];
+export const TEXT_VALIGNS = ['top', 'center', 'bottom'];
+/**
+ * Aparência e tipografia de um texto (como o Essential Graphics do Premiere), com os
+ * padrões dos textos antigos (`box`: contorno/caixa). A MESMA leitura na prévia e no render.
+ * Medidas em px ficam em fração da ALTURA do quadro (como `size`); tracking em 1/1000 em.
+ */
+export function textLook(l) {
+  const box = l?.box;
+  const legacyStroke = box === 'outline' || box == null;
+  const hasNew = (k) => l != null && l[k] != null;
+  const size = num(l?.size, 0.015, 0.2, 0.05);
+  return {
+    fill: l?.fill !== false,
+    fillColor: HEX.test(l?.color) ? l.color : '#FFFFFF',
+    stroke: hasNew('stroke') ? l.stroke === true : legacyStroke,
+    strokeColor: HEX.test(l?.strokeColor) ? l.strokeColor : HEX.test(l?.boxColor) ? l.boxColor : '#000000',
+    // largura do contorno (fração da altura); o padrão antigo era 3,5% do tamanho da letra
+    strokeW: hasNew('strokeW') ? num(l.strokeW, 0, 0.05, 0) : +(size * 0.035).toFixed(5),
+    strokePos: l?.strokePos === 'center' ? 'center' : 'outer',
+    bg: hasNew('bg') ? l.bg === true : box === 'box',
+    bgColor: HEX.test(l?.bgColor) ? l.bgColor : HEX.test(l?.boxColor) ? l.boxColor : '#000000',
+    bgOpacity: num(l?.bgOpacity, 0, 1, 1),
+    shadow: l?.shadow === true,
+    shadowColor: HEX.test(l?.shadowColor) ? l.shadowColor : '#000000',
+    shadowOpacity: num(l?.shadowOpacity, 0, 1, 0.75),
+    shadowAngle: num(l?.shadowAngle, -360, 360, 135),
+    shadowDist: num(l?.shadowDist, 0, 0.1, 0.004),
+    shadowBlur: num(l?.shadowBlur, 0, 0.05, 0.004),
+    bold: l?.bold === true,
+    italic: l?.italic === true,
+    caps: l?.caps === true,
+    smallCaps: l?.smallCaps === true,
+    underline: l?.underline === true,
+    script: l?.script === 'super' || l?.script === 'sub' ? l.script : null,
+    align: TEXT_ALIGNS.includes(l?.align) ? l.align : 'center',
+    valign: TEXT_VALIGNS.includes(l?.valign) ? l.valign : 'center',
+    tracking: num(l?.tracking, -500, 1000, 0),
+    leading: num(l?.leading, -0.1, 0.2, 0),
+    baseline: num(l?.baseline, -0.1, 0.1, 0),
+    rot: num(l?.rot, -3600, 3600, 0),
+    opacity: num(l?.opacity, 0, 1, 1),
+    scale: num(l?.scale, 0.1, 5, 1),
+  };
+}
+/** Alinhamento de cada linha: o "justificado" alinha as linhas pela regra do Premiere. */
+export function lineAlign(align, isLast) {
+  if (align === 'left' || align === 'center' || align === 'right') return align;
+  if (align === 'justify-all') return 'left';
+  return isLast ? align.replace('justify-', '') : 'left';
+}
+/** Tamanho efetivo (fração da altura) com escala e sobrescrito/subscrito. */
+export function textEm(l) {
+  const L = textLook(l);
+  return num(l?.size, 0.015, 0.2, 0.05) * L.scale * (L.script ? 0.62 : 1);
+}
+/** Texto que aparece (TODAS MAIÚSCULAS). */
+export function textShown(l) {
+  const t = String(l?.text ?? '');
+  return textLook(l).caps ? t.toUpperCase() : t;
+}
 const num = (v, lo, hi, def) => (Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : def);
 const pickOf = (obj, v, def) => (Object.hasOwn(obj, v) ? v : def);
 
@@ -106,7 +169,9 @@ export function cleanTextLayers(raw, fonts = null, max = 30) {
       box: pickOf(TEXT_BOXES, l.box, 'outline'),
       boxColor: HEX.test(l.boxColor) ? l.boxColor : '#000000',
       // caixa: tamanho do fundo (folga) e arredondar os cantos
-      ...(l.box === 'box' ? { pad: num(l.pad, 0, 1.2, TEXT_PAD_DEFAULT), radius: num(l.radius, 0, 1, 0) } : {}),
+      ...(l.box === 'box' || l.bg === true ? { pad: num(l.pad, 0, 1.2, TEXT_PAD_DEFAULT), radius: num(l.radius, 0, 1, 0) } : {}),
+      // aparência e tipografia (Propriedades, como no Premiere) — só o que foi mudado
+      ...pickLook(l),
       x: num(l.x, 0, 1, 0.5),
       y: num(l.y, 0, 1, 0.5),
       animIn: pickOf(TEXT_ANIMS_IN, l.animIn, 'fade'),
@@ -114,6 +179,17 @@ export function cleanTextLayers(raw, fonts = null, max = 30) {
     });
     if (out.length >= max) break;
   }
+  return out;
+}
+
+/** Campos novos de aparência/tipografia que vieram no texto (normalizados). */
+function pickLook(l) {
+  const L = textLook(l);
+  const out = {};
+  const keys = ['fill', 'stroke', 'strokeColor', 'strokeW', 'strokePos', 'bg', 'bgColor', 'bgOpacity', 'shadow', 'shadowColor', 'shadowOpacity', 'shadowAngle', 'shadowDist', 'shadowBlur',
+    'bold', 'italic', 'caps', 'smallCaps', 'underline', 'script', 'align', 'valign', 'tracking', 'leading', 'baseline', 'rot', 'opacity', 'scale'];
+  for (const k of keys) if (l[k] != null) out[k] = L[k];
+  if (out.script === null) delete out.script;
   return out;
 }
 

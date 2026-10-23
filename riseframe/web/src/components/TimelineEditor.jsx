@@ -19,7 +19,7 @@ import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, playSfxUrl, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
 import { keyAt, cleanKeys, keysChangeAnything, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
-import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics } from '../../../shared/textLayers.js';
+import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
 import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
@@ -3335,7 +3335,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   );
 
   // ── Textos livres (aba Texto) ──
-  const updateText = (key, patch) => setTextLayers((l) => l.map((x) => (x.key === key ? { ...x, ...patch } : x)));
+  const updateText = (key, patch) => setTextLayers((l) => l.map((x) => {
+    if (x.key !== key) return x;
+    const n = { ...x, ...patch };
+    // "Fundo" da aba Texto (contorno/caixa/sem fundo) manda de novo no contorno e na caixa
+    if ('box' in patch && !('stroke' in patch) && !('bg' in patch)) { delete n.stroke; delete n.bg; }
+    if ('boxColor' in patch && !('strokeColor' in patch) && !('bgColor' in patch)) { delete n.strokeColor; delete n.bgColor; }
+    return n;
+  }));
   function addText(tplId) {
     const { label, ...tpl } = TEXT_TEMPLATES[tplId] || TEXT_TEMPLATES.simples;
     const start = Math.max(0, Math.min(cur, dur - 0.5));
@@ -3861,23 +3868,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
     if (propTarget === 'text') {
       const l = selTextItem;
-      return (
-        <div style={{ display: 'grid', gap: 10 }}>
-          {head('Propriedades', `Texto · ${String(l.text || '').split('\n')[0].slice(0, 40)}`)}
-          <PropSection title="Transformar" onReset={() => updateText(l.key, { x: 0.5, y: 0.5 })}>
-            <PropRow label="Posição">
-              <span style={{ display: 'inline-flex', gap: 10 }}>
-                <ScrubNum value={(l.x ?? 0.5) * FW} step={2} suffix=" X" onChange={(v) => updateText(l.key, { x: +Math.max(0, Math.min(1, v / FW)).toFixed(4) })} />
-                <ScrubNum value={(l.y ?? 0.5) * FH} step={2} suffix=" Y" onChange={(v) => updateText(l.key, { y: +Math.max(0, Math.min(1, v / FH)).toFixed(4) })} />
-              </span>
-            </PropRow>
-            <PropRow label="Tamanho">
-              <ScrubNum value={(l.size || 0.05) * 1000} step={0.5} min={15} max={200} decimals={0} onChange={(v) => updateText(l.key, { size: +(v / 1000).toFixed(4) })} />
-            </PropRow>
-          </PropSection>
-          <button onClick={() => setTab('texto')} style={{ ...miniBtn(false, false), justifySelf: 'start' }}>Fonte, cor e animação na aba Texto</button>
-        </div>
-      );
+      return <TextProps l={l} FW={FW} FH={FH} head={head} up={(patch) => updateText(l.key, patch)} hidden={!!laneHide.txt} onEye={() => togHide('txt')} />;
     }
     // vídeo principal (V1). Como no Premiere, o Transformar é do CLIPE: com o vídeo dividido
     // (navalha ou montagem), vale só no pedaço selecionado (ou o do ponteiro). Por baixo são
@@ -9516,21 +9507,37 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
       })}
       {liveTexts.map((l) => {
         const f = textFontOf(l.font);
-        const px = l.size * box.h;
+        const L = textLook(l);
+        const px = textEm(l) * box.h; // tamanho efetivo (escala, sobrescrito/subscrito)
+        const emBase = (Number(l.size) || 0.05) * L.scale * box.h;
         const on = editable && selText === l.key;
         // uma caixa por linha (do tamanho do texto), com a folga e os cantos escolhidos — a
-        // mesma conta do render (textBoxMetrics)
+        // mesma conta do render (textBoxMetrics/textLook)
         const g = textBoxMetrics(l);
+        const lines = textShown(l).split('\n');
+        const rgba = (hex, a) => { const h = String(hex).replace('#', ''); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; };
+        // contorno "fora" = a borda inteira por fora (o CSS desenha metade de cada lado)
+        const sw = L.stroke ? L.strokeW * box.h * (L.strokePos === 'center' ? 1 : 2) : 0;
+        const sh = L.shadow ? { dx: -Math.cos((L.shadowAngle * Math.PI) / 180) * L.shadowDist * box.h, dy: Math.sin((L.shadowAngle * Math.PI) / 180) * L.shadowDist * box.h, b: L.shadowBlur * box.h * 2, c: rgba(L.shadowColor, L.shadowOpacity) } : null;
+        const ty = L.valign === 'top' ? '0%' : L.valign === 'bottom' ? '-100%' : '-50%';
+        const shift = L.baseline * box.h + (L.script === 'super' ? -0.33 * emBase : L.script === 'sub' ? 0.12 * emBase : 0);
         return (
           <div key={l.key} onPointerDown={(e) => start(e, { kind: 'text', key: l.key, ox: l.x, oy: l.y })}
-            style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, transform: 'translate(-50%, -50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', lineHeight: TEXT_LINE_H,
-              fontFamily: `'${f.family}'`, fontWeight: f.bold === false ? 400 : 700, fontSize: px, color: l.color,
+            style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, transform: `translate(-50%, ${ty}) translateY(${shift}px)${L.rot ? ` rotate(${L.rot}deg)` : ''}`, opacity: L.opacity,
+              display: 'flex', flexDirection: 'column', alignItems: L.align === 'right' ? 'flex-end' : L.align === 'center' || L.align === 'justify-center' ? 'center' : 'flex-start', lineHeight: TEXT_LINE_H,
+              fontFamily: `'${f.family}'`, fontWeight: f.bold === false && !L.bold ? 400 : 700, fontStyle: L.italic ? 'italic' : 'normal', fontSize: px,
+              textDecoration: L.underline ? 'underline' : 'none', fontVariant: L.smallCaps ? 'small-caps' : 'normal', letterSpacing: L.tracking ? `${L.tracking / 1000}em` : undefined,
+              color: L.fill ? L.fillColor : 'transparent', gap: L.leading ? L.leading * box.h : undefined,
               pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: on ? '2px dashed #E8A020' : 'none', outlineOffset: 4 }}>
-            {String(l.text).split('\n').map((ln, j) => (
-              <div key={j} style={{ whiteSpace: 'pre', minHeight: TEXT_LINE_H * px,
-                ...(l.box === 'box' && ln.trim() ? { background: l.boxColor, padding: `${g.padY * px}px ${g.padX * px}px`, borderRadius: g.r * px } : l.box === 'box' ? { padding: `${g.padY * px}px 0` } : null),
-                WebkitTextStroke: l.box === 'outline' ? `${Math.max(1, px * 0.07)}px ${l.boxColor}` : undefined, paintOrder: 'stroke fill' }}>{ln || ' '}</div>
-            ))}
+            {lines.map((ln, j) => {
+              const al = lineAlign(L.align, j === lines.length - 1);
+              return (
+                <div key={j} style={{ whiteSpace: 'pre', minHeight: TEXT_LINE_H * px, alignSelf: al === 'left' ? 'flex-start' : al === 'right' ? 'flex-end' : 'center',
+                  ...(L.bg && ln.trim() ? { background: rgba(L.bgColor, L.bgOpacity), padding: `${g.padY * px}px ${g.padX * px}px`, borderRadius: g.r * px, ...(sh ? { boxShadow: `${sh.dx}px ${sh.dy}px ${sh.b}px ${sh.c}` } : null) } : L.bg ? { padding: `${g.padY * px}px 0` } : null),
+                  ...(sh && !L.bg ? { textShadow: `${sh.dx}px ${sh.dy}px ${sh.b}px ${sh.c}` } : null),
+                  WebkitTextStroke: sw ? `${Math.max(0.5, sw)}px ${L.strokeColor}` : undefined, paintOrder: 'stroke fill' }}>{ln || ' '}</div>
+              );
+            })}
           </div>
         );
       })}
@@ -10060,6 +10067,163 @@ function Sel({ value, opts, onChange }) {
     <select value={value} onChange={(e) => onChange(e.target.value)} style={{ width: '100%', background: '#13131B', color: C.text, border: `1px solid ${C.border}`, borderRadius: 9, padding: '8px 10px', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>
       {(opts || []).map((o) => (<option key={o.id} value={o.id}>{o.label}</option>))}
     </select>
+  );
+}
+/** Ícone dos botões de alinhamento (linhas como as do Premiere). */
+function AlignIcon({ kind }) {
+  const rows = {
+    left: [[0, 14], [0, 10], [0, 14], [0, 8]], center: [[1, 13], [3, 11], [1, 13], [4, 10]], right: [[0, 14], [4, 14], [0, 14], [6, 14]],
+    'justify-left': [[0, 14], [0, 14], [0, 14], [0, 8]], 'justify-center': [[0, 14], [0, 14], [0, 14], [3, 11]], 'justify-right': [[0, 14], [0, 14], [0, 14], [6, 14]], 'justify-all': [[0, 14], [0, 14], [0, 14], [0, 14]],
+    top: [[0, 14, 0]], vcenter: [[0, 14, 5]], bottom: [[0, 14, 10]],
+  }[kind] || [];
+  return (
+    <svg width="16" height="14" viewBox="0 0 14 13" aria-hidden="true">
+      {kind === 'top' || kind === 'vcenter' || kind === 'bottom'
+        ? [0, 1, 2].map((k) => <rect key={k} x={rows[0][0]} y={rows[0][2] + k * 1.6} width={14} height={1} fill="currentColor" opacity={k ? 0.55 : 1} />)
+        : rows.map(([a, b], k) => <rect key={k} x={a} y={1 + k * 3.2} width={b - a} height={1.4} rx={0.4} fill="currentColor" />)}
+    </svg>
+  );
+}
+/**
+ * Propriedades de um texto como o Essential Graphics do Premiere: a camada, Transformar,
+ * Texto (fonte, estilo, tamanho, alinhamento, espaçamentos) e Aparência (preenchimento,
+ * contorno, fundo e sombra). Tudo igual no vídeo exportado (textLook no render).
+ */
+function TextProps({ l, FW, FH, head, up, hidden, onEye }) {
+  const L = textLook(l);
+  const custom = useCustomFonts();
+  const tb = (on) => ({ minWidth: 28, height: 26, padding: '0 6px', borderRadius: 5, border: `1px solid ${on ? '#2D8CFF' : C.border}`, background: on ? 'rgba(45,140,255,0.22)' : 'rgba(255,255,255,0.03)', color: on ? '#fff' : C.muted, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 });
+  const check = (on, onChange, label) => (
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: C.muted }}>
+      <input type="checkbox" checked={on} onChange={(e) => onChange(e.target.checked)} aria-label={label} /> {label}
+    </label>
+  );
+  const slider = (label, value, min, max, step, onChange, shown) => (
+    <div style={{ display: 'grid', gridTemplateColumns: '92px 1fr 58px', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 11.5, color: C.faint }}>{label}</span>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)} />
+      <span style={{ textAlign: 'right' }}><ScrubNum value={shown.v} step={shown.step ?? 1} min={shown.min ?? -Infinity} max={shown.max ?? Infinity} decimals={shown.d ?? 0} suffix={shown.suffix || ''} onChange={shown.set} /></span>
+    </div>
+  );
+  // fonte: as da lista + as suas (agrupadas em família e estilo, como no Premiere)
+  const STYLE_RE = /^(regular|italic|bold|heavy|light|thin|medium|black|semibold|extrabold|condensed|cond|cram|oblique|book|narrow|wide|expanded|extra|ultra|demi|semi)$/i;
+  const split = (name) => {
+    const w = String(name || '').replace(/\.(ttf|otf|woff2?)$/i, '').split(/[\s_-]+/);
+    const k = w.findIndex((x, i) => i > 0 && STYLE_RE.test(x));
+    return k > 0 ? { fam: w.slice(0, k).join(' '), style: w.slice(k).join(' ') } : { fam: w.join(' '), style: 'Regular' };
+  };
+  const customList = (custom.fonts || []).map((f) => ({ id: `custom:${f.id}`, ...split(f.name) }));
+  const builtIn = CAPTION_FONT_LIST.filter((f) => f.id !== 'auto').map((f) => ({ id: f.id, fam: f.label, style: f.weight >= 700 ? 'Bold' : 'Regular' }));
+  const all = [...customList, ...builtIn];
+  const curF = all.find((f) => f.id === l.font) || builtIn[0];
+  const families = [...new Map(all.map((f) => [f.fam, f])).values()];
+  const styles = all.filter((f) => f.fam === curF.fam);
+  const px = (frac) => frac * FH;
+  const sel = { height: 30, borderRadius: 7, border: `1px solid ${C.border}`, background: '#0E0E14', color: C.text, padding: '0 8px', fontSize: 12.5, fontFamily: 'inherit', width: '100%' };
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {head('Propriedades', `Texto · ${String(l.text || '').split('\\n')[0].slice(0, 40)}`)}
+      {/* a camada (como a lista de camadas do Essential Graphics) */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', background: 'rgba(0,0,0,0.25)' }}>
+        <button onClick={onEye} aria-pressed={!hidden} title={hidden ? 'Mostrar os textos' : 'Esconder os textos'} style={{ background: 'none', border: 'none', color: hidden ? C.faint : C.text, cursor: 'pointer', padding: 2 }}><Icon name={hidden ? 'eyeOff' : 'eye'} size={15} strokeWidth={2} /></button>
+        <b style={{ fontSize: 16, lineHeight: '20px', color: C.text, fontFamily: 'Georgia, serif' }}>T</b>
+        <textarea value={l.text} rows={Math.min(4, String(l.text).split('\\n').length)} onChange={(e) => up({ text: e.target.value })} onKeyDown={(e) => e.stopPropagation()}
+          style={{ flex: 1, resize: 'vertical', background: 'transparent', border: 'none', color: C.text, fontSize: 12.5, fontFamily: 'inherit', lineHeight: 1.45, outline: 'none' }} />
+      </div>
+      <PropSection title="Transformar" onReset={() => up({ x: 0.5, y: 0.5, scale: 1, rot: 0, opacity: 1 })}>
+        <PropRow label="Posição">
+          <span style={{ display: 'inline-flex', gap: 10 }}>
+            <ScrubNum value={(l.x ?? 0.5) * FW} step={2} suffix=" X" onChange={(v) => up({ x: +Math.max(0, Math.min(1, v / FW)).toFixed(4) })} />
+            <ScrubNum value={(l.y ?? 0.5) * FH} step={2} suffix=" Y" onChange={(v) => up({ y: +Math.max(0, Math.min(1, v / FH)).toFixed(4) })} />
+          </span>
+        </PropRow>
+        <PropRow label="Escala"><ScrubNum value={L.scale * 100} step={0.5} min={10} max={500} decimals={1} suffix=" %" onChange={(v) => up({ scale: +(v / 100).toFixed(4) })} /></PropRow>
+        <PropRow label="Rotação"><ScrubNum value={L.rot} step={0.5} min={-3600} max={3600} decimals={1} suffix=" °" onChange={(v) => up({ rot: +v.toFixed(2) })} /></PropRow>
+        <PropRow label="Opacidade"><ScrubNum value={L.opacity * 100} step={0.5} min={0} max={100} decimals={1} suffix=" %" onChange={(v) => up({ opacity: +(v / 100).toFixed(4) })} /></PropRow>
+      </PropSection>
+      <PropSection title="Texto" onReset={() => up({ bold: false, italic: false, caps: false, smallCaps: false, underline: false, script: null, align: 'center', valign: 'center', tracking: 0, leading: 0, baseline: 0 })}>
+        <select value={curF.fam} onChange={(e) => { const f = all.find((x) => x.fam === e.target.value); if (f) up({ font: f.id }); }} style={sel} aria-label="Fonte">
+          {families.map((f) => <option key={f.fam} value={f.fam}>{f.fam}</option>)}
+        </select>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select value={curF.id} onChange={(e) => up({ font: e.target.value })} disabled={styles.length < 2} style={{ ...sel, width: 'auto', flex: '1 1 140px' }} aria-label="Estilo da fonte">
+            {styles.map((f) => <option key={f.id} value={f.id}>{f.style}</option>)}
+          </select>
+          <button onClick={() => up({ bold: !L.bold })} aria-pressed={L.bold} title="Negrito falso" style={{ ...tb(L.bold), fontWeight: 900 }}>T</button>
+          <button onClick={() => up({ italic: !L.italic })} aria-pressed={L.italic} title="Itálico falso" style={{ ...tb(L.italic), fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>T</button>
+          <button onClick={() => up({ caps: !L.caps, smallCaps: false })} aria-pressed={L.caps} title="Todas maiúsculas" style={tb(L.caps)}>TT</button>
+          <button onClick={() => up({ smallCaps: !L.smallCaps, caps: false })} aria-pressed={L.smallCaps} title="Versalete (maiúsculas pequenas)" style={tb(L.smallCaps)}>T<span style={{ fontSize: 9 }}>T</span></button>
+          <button onClick={() => up({ script: L.script === 'super' ? null : 'super' })} aria-pressed={L.script === 'super'} title="Sobrescrito" style={tb(L.script === 'super')}>T<sup style={{ fontSize: 8 }}>1</sup></button>
+          <button onClick={() => up({ script: L.script === 'sub' ? null : 'sub' })} aria-pressed={L.script === 'sub'} title="Subscrito" style={tb(L.script === 'sub')}>T<sub style={{ fontSize: 8 }}>1</sub></button>
+          <button onClick={() => up({ underline: !L.underline })} aria-pressed={L.underline} title="Sublinhado" style={{ ...tb(L.underline), textDecoration: 'underline' }}>T</button>
+        </div>
+        {slider('Tamanho da fonte', l.size || 0.05, 0.015, 0.2, 0.001, (v) => up({ size: v }), { v: px(l.size || 0.05), min: px(0.015), max: px(0.2), set: (v) => up({ size: +Math.max(0.015, Math.min(0.2, v / FH)).toFixed(5) }) })}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+          {[['left', 'Alinhar à esquerda'], ['center', 'Centralizar'], ['right', 'Alinhar à direita'], ['justify-left', 'Justificar, última à esquerda'], ['justify-center', 'Justificar, última centralizada'], ['justify-right', 'Justificar, última à direita'], ['justify-all', 'Justificar tudo']].map(([k, t]) => (
+            <button key={k} onClick={() => up({ align: k })} aria-pressed={L.align === k} title={t} style={tb(L.align === k)}><AlignIcon kind={k} /></button>
+          ))}
+          <span style={{ width: 1, height: 20, background: C.border, margin: '0 3px' }} />
+          {[['top', 'Topo'], ['center', 'Centro vertical'], ['bottom', 'Base']].map(([k, t]) => (
+            <button key={k} onClick={() => up({ valign: k })} aria-pressed={L.valign === k} title={`${t} (em relação à posição)`} style={tb(L.valign === k)}><AlignIcon kind={k === 'center' ? 'vcenter' : k} /></button>
+          ))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, fontSize: 12 }}>
+          <span title="Espaçamento entre as letras (tracking, em 1/1000 do tamanho)" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', color: C.faint }}><b style={{ fontSize: 11 }}>VA↔</b><ScrubNum value={L.tracking} step={1} min={-500} max={1000} onChange={(v) => up({ tracking: Math.round(v) })} /></span>
+          <span title="Entrelinha (px entre as linhas)" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', color: C.faint }}><b style={{ fontSize: 11 }}>A↕A</b><ScrubNum value={px(L.leading)} step={1} min={px(-0.1)} max={px(0.2)} onChange={(v) => up({ leading: +(v / FH).toFixed(5) })} /></span>
+          <span title="Deslocamento da linha de base (px)" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', color: C.faint }}><b style={{ fontSize: 11 }}>Aª</b><ScrubNum value={-px(L.baseline)} step={1} min={-px(0.1)} max={px(0.1)} onChange={(v) => up({ baseline: +(-v / FH).toFixed(5) })} /></span>
+        </div>
+      </PropSection>
+      <PropSection title="Aparência" onReset={() => up({ fill: true, color: '#FFFFFF', stroke: false, bg: false, shadow: false })}>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <b style={{ fontSize: 12 }}>Preenchimento</b>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {check(L.fill, (v) => up({ fill: v }), '')}
+            <ColorField value={L.fillColor} title="Cor do preenchimento" size={20} onChange={(h) => up({ color: h })} />
+          </div>
+        </div>
+        <div style={{ display: 'grid', gap: 6, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+          <b style={{ fontSize: 12 }}>Contorno</b>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {check(L.stroke, (v) => up({ stroke: v, ...(v && !(L.strokeW > 0) ? { strokeW: 0.002 } : {}) }), '')}
+            <ColorField value={L.strokeColor} title="Cor do contorno" size={20} onChange={(h) => up({ strokeColor: h, stroke: true })} />
+            <span style={{ fontSize: 12, opacity: L.stroke ? 1 : 0.45 }}><ScrubNum value={px(L.strokeW)} step={0.2} min={0} max={px(0.05)} decimals={1} suffix=" px" onChange={(v) => up({ strokeW: +(v / FH).toFixed(5), stroke: true })} /></span>
+            <select value={L.strokePos} onChange={(e) => up({ strokePos: e.target.value })} disabled={!L.stroke} style={{ ...sel, width: 'auto', height: 26 }} aria-label="Posição do contorno">
+              <option value="outer">Fora</option>
+              <option value="center">Centro</option>
+            </select>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gap: 6, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+          <b style={{ fontSize: 12 }}>Fundo</b>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {check(L.bg, (v) => up({ bg: v }), '')}
+            <ColorField value={L.bgColor} title="Cor do fundo" size={20} onChange={(h) => up({ bgColor: h, bg: true })} />
+          </div>
+          {L.bg && (
+            <>
+              {slider('Opacidade', L.bgOpacity, 0, 1, 0.01, (v) => up({ bgOpacity: v }), { v: L.bgOpacity * 100, min: 0, max: 100, set: (v) => up({ bgOpacity: +(v / 100).toFixed(3) }) })}
+              {slider('Tamanho', l.pad ?? TEXT_PAD_DEFAULT, 0, 1.2, 0.01, (v) => up({ pad: v }), { v: (l.pad ?? TEXT_PAD_DEFAULT) * px(l.size || 0.05), d: 1, step: 0.2, set: (v) => up({ pad: +Math.max(0, Math.min(1.2, v / px(l.size || 0.05))).toFixed(3) }) })}
+              {slider('Cantos', l.radius ?? 0, 0, 1, 0.01, (v) => up({ radius: v }), { v: (l.radius ?? 0) * 100, min: 0, max: 100, set: (v) => up({ radius: +(v / 100).toFixed(3) }) })}
+            </>
+          )}
+        </div>
+        <div style={{ display: 'grid', gap: 6, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+          <b style={{ fontSize: 12 }}>Sombra</b>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {check(L.shadow, (v) => up({ shadow: v }), '')}
+            <ColorField value={L.shadowColor} title="Cor da sombra" size={20} onChange={(h) => up({ shadowColor: h, shadow: true })} />
+          </div>
+          {L.shadow && (
+            <>
+              {slider('Opacidade', L.shadowOpacity, 0, 1, 0.01, (v) => up({ shadowOpacity: v }), { v: L.shadowOpacity * 100, min: 0, max: 100, set: (v) => up({ shadowOpacity: +(v / 100).toFixed(3) }) })}
+              {slider('Ângulo', L.shadowAngle, -180, 180, 1, (v) => up({ shadowAngle: v }), { v: L.shadowAngle, suffix: '°', set: (v) => up({ shadowAngle: Math.round(v) }) })}
+              {slider('Distância', L.shadowDist, 0, 0.05, 0.0005, (v) => up({ shadowDist: v }), { v: px(L.shadowDist), d: 1, step: 0.2, min: 0, max: px(0.1), set: (v) => up({ shadowDist: +(v / FH).toFixed(5) }) })}
+              {slider('Desfoque', L.shadowBlur, 0, 0.03, 0.0005, (v) => up({ shadowBlur: v }), { v: px(L.shadowBlur), d: 1, step: 0.2, min: 0, max: px(0.05), set: (v) => up({ shadowBlur: +(v / FH).toFixed(5) }) })}
+            </>
+          )}
+        </div>
+      </PropSection>
+    </div>
   );
 }
 /** Seção recolhível do painel Propriedades (título, ↺ restaurar). */
