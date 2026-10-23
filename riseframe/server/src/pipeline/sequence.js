@@ -37,6 +37,35 @@ export function clipDuration(c) {
   return Math.max(0.3, b - a);
 }
 
+/**
+ * Dá para usar o arquivo como está? Um clipe de vídeo, do começo ao fim, sem música e no
+ * formato dele (auto ou mesma proporção). Puro/exportado para teste.
+ */
+export function canCopyWhole(list, music, aspect) {
+  if (list.length !== 1 || music?.file) return false;
+  const c = list[0];
+  if (c.kind !== 'video' || !(c._dur > 0) || !(c._w > 0) || !(c._h > 0)) return false;
+  if ((Number(c.in) || 0) > 0.05 || Math.abs((Number(c.out) || c._dur) - c._dur) > 0.15) return false;
+  if (SIZES[aspect]) {
+    const [w, h] = SIZES[aspect];
+    if (Math.abs(w / h - c._w / c._h) > 0.01) return false;
+  }
+  return true;
+}
+
+/** Copia o vídeo para o mp4 do editor sem recodificar (troca só o contêiner). → ok */
+async function copyWhole(c, output) {
+  try {
+    await runFfmpeg(['-i', c.file, '-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy', '-movflags', '+faststart', '-y', output], { label: 'sequence-copy', totalDuration: c._dur });
+    const m = await probeSummary(output).catch(() => null);
+    if (m?.duration > 0.3 && m.width) return true;
+  } catch (e) {
+    log.warn(`não deu para copiar sem recodificar (${e.message}); montando de novo`);
+  }
+  await fs.rm(output, { force: true }).catch(() => {});
+  return false;
+}
+
 /** Filtro de montagem (puro/exportado para teste). → { parts, total } */
 export function sequenceParts(clips, { W, H, fps = 30, music = null, musicIdx = null }) {
   const parts = [];
@@ -91,12 +120,20 @@ export async function assembleSequence({ clips, music = null, aspect = 'auto', o
     c._hasAudio = c.kind === 'video' && m.hasAudio;
     c._w = m.width;
     c._h = m.height;
+    c._dur = m.duration;
     if (c.kind === 'video' && m.duration) {
       c.in = Math.max(0, Math.min(Number(c.in) || 0, m.duration - 0.3));
       c.out = Math.min(m.duration, Number(c.out) > c.in ? Number(c.out) : m.duration);
     }
   }
   const firstVis = list.find((c) => c.kind !== 'blank');
+  // Um vídeo só, inteiro, sem música: entra ORIGINAL (cópia do arquivo, sem recodificar) —
+  // colocar na timeline fica quase instantâneo e o som/qualidade são os do arquivo.
+  if (canCopyWhole(list, music, aspect) && await copyWhole(list[0], output)) {
+    log.ok(`timeline montada sem recodificar (vídeo original): ${path.basename(list[0].file)}`);
+    onProgress(1);
+    return { output, duration: list[0]._dur, width: list[0]._w, height: list[0]._h, copied: true };
+  }
   const [W, H] = frameSize(aspect, firstVis ? { width: firstVis._w, height: firstVis._h } : null);
   const args = [];
   for (const c of list) {

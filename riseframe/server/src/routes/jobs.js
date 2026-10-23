@@ -985,6 +985,26 @@ jobsRouter.post('/jobs/:id/transcribe-range', requireAuth, requireVerified, asyn
   }
 });
 
+// POST /api/jobs/:id/clean-speech  (JSON: { segments, options }) → a fala do editor com as
+// muletas, repetições e erros marcados para sair (Edição automática da timeline). A IA só
+// entra com o recurso no plano (é cobrada no render, como a limpeza do início); sem ele,
+// só a limpeza básica (muletas e repetições).
+jobsRouter.post('/jobs/:id/clean-speech', requireAuth, requireVerified, async (req, res) => {
+  const source = queue.get(String(req.params.id));
+  if (!source || (source.ownerId && source.ownerId !== req.user.id)) return res.status(404).json({ error: 'vídeo não encontrado' });
+  const segments = cleanSegments(req.body?.segments);
+  if (!segments.length) return res.status(400).json({ error: 'sem fala transcrita para limpar' });
+  const ai = Boolean(remoteAccount()) || trialCovers(req.user, 'render', source.id) || allowedFeatures(req.user).includes('ai');
+  try {
+    const { cleanSpeech } = await import('../pipeline/index.js');
+    const options = { ...optionsForUser(req), ...(ai ? {} : { cleanAI: false }) };
+    const r = await cleanSpeech({ segments }, options, { jobId: source.id });
+    res.json({ segments: r.transcript.segments || [], removed: r.report.removed, method: r.report.method, ai: ai && /IA/.test(r.report.method) });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'não deu para limpar a fala' });
+  }
+});
+
 // POST /api/broll/plan  (JSON: sourceId + editedTranscript + options) → devolve os
 // momentos de B-roll planejados COM candidatos (miniaturas) para o usuário revisar
 // e trocar antes de renderizar. Não baixa nem renderiza nada.
