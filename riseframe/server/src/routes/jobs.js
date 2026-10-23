@@ -666,6 +666,9 @@ export function parseOptions(raw) {
     ...(cleanCropRanges(o.cropRanges).length ? { cropRanges: cleanCropRanges(o.cropRanges) } : {}),
     // Espaços vazios no vídeo principal (Excluir sem fechar o buraco), tempo original.
     ...(cleanBlanks(o.videoBlanks).length ? { videoBlanks: cleanBlanks(o.videoBlanks) } : {}),
+    // espaço vazio antes do vídeo principal / depois do fim (timeline): segundos de preto
+    ...(clampNum(o.padStart, 0, 3600, 0) > 0 ? { padStart: clampNum(o.padStart, 0, 3600, 0) } : {}),
+    ...(clampNum(o.padEnd, 0, 3600, 0) > 0 ? { padEnd: clampNum(o.padEnd, 0, 3600, 0) } : {}),
     // clipes ainda sem transcrição: ali nada sai como pausa/silêncio
     ...(cleanBlanks(o.noCutRanges).length ? { noCutRanges: cleanBlanks(o.noCutRanges).map(({ start, end }) => ({ start, end })) } : {}),
     audioGains: Array.isArray(o.audioGains)
