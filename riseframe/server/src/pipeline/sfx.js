@@ -195,7 +195,121 @@ export const SFX_LIBRARY = {
     src: "aevalsrc='0.5*sin(2*PI*1320*t)*exp(-t*4)+0.25*sin(2*PI*2640*t)*exp(-t*6)':d=1.1:s=44100",
     af: ['aformat=channel_layouts=stereo'],
   },
+  // ── mais sons (como a biblioteca do CapCut), todos sintetizados aqui ──
+  whooshdown: {
+    label: 'Whoosh descendo', base: 'whoosh', gain: 0.9, lead: 0.2,
+    src: 'anoisesrc=d=0.7:c=pink:a=0.9:r=44100',
+    af: ['highpass=f=200', 'lowpass=f=4200', 'afade=t=in:st=0:d=0.12:curve=exp', 'afade=t=out:st=0.2:d=0.5:curve=qsin', 'volume=1.4', 'aformat=channel_layouts=stereo', 'apulsator=hz=1.1:amount=0.6'],
+  },
+  swipe: {
+    label: 'Swipe (deslizar)', base: 'whoosh', gain: 0.7, lead: 0.08,
+    src: 'anoisesrc=d=0.2:c=white:a=0.8:r=44100',
+    af: ['highpass=f=2200', 'lowpass=f=9000', 'afade=t=in:st=0:d=0.1:curve=qsin', 'afade=t=out:st=0.1:d=0.1', 'volume=1.3', 'aformat=channel_layouts=stereo'],
+  },
+  rewind: {
+    label: 'Rebobinar', base: 'whoosh', gain: 0.7, lead: 0,
+    src: "aevalsrc='0.35*sin(2*PI*(900-650*t)*t*(1+0.25*sin(2*PI*14*t)))+0.12*(random(0)*2-1)':d=0.8:s=44100",
+    af: ['highpass=f=200', 'lowpass=f=5000', 'afade=t=out:st=0.6:d=0.2', 'aformat=channel_layouts=stereo'],
+  },
+  boom: {
+    label: 'Explosão (boom grave)', base: 'whoosh', gain: 0.75, lead: 0,
+    src: "aevalsrc='sin(2*PI*(42-14*t)*t)*exp(-t*2.5)+0.5*(random(0)*2-1)*exp(-t*7)':d=2:s=44100",
+    af: ['lowpass=f=420', 'aecho=0.8:0.5:80:0.3', 'volume=1.6', 'aformat=channel_layouts=stereo'],
+  },
+  thud: {
+    label: 'Soco (thud)', base: 'pop', gain: 1.1, lead: 0,
+    src: "aevalsrc='sin(2*PI*(90*exp(-t*30)+50)*t)*exp(-t*14)+0.4*(random(0)*2-1)*exp(-t*60)':d=0.35:s=44100",
+    af: ['lowpass=f=1500', 'aformat=channel_layouts=stereo'],
+  },
+  bassdrop: {
+    label: 'Bass drop', base: 'whoosh', gain: 0.8, lead: 0,
+    src: "aevalsrc='sin(2*PI*(150*exp(-t*2)+30)*t)*exp(-t*1.2)':d=2.2:s=44100",
+    af: ['lowpass=f=320', 'volume=0.95', 'aformat=channel_layouts=stereo'],
+  },
+  notify: {
+    label: 'Notificação (duas notas)', base: 'pop', gain: 0.9, lead: 0,
+    src: "aevalsrc='0.4*sin(2*PI*880*t)*exp(-t*8)*lt(t,0.15)+0.4*sin(2*PI*1320*t)*exp(-(t-0.12)*6)*gte(t,0.12)':d=0.8:s=44100",
+    af: ['aformat=channel_layouts=stereo'],
+  },
+  success: {
+    label: 'Acerto (sucesso)', base: 'pop', gain: 0.9, lead: 0,
+    src: "aevalsrc='0.3*sin(2*PI*523*t)*exp(-t*6)+0.3*sin(2*PI*659*t)*exp(-(t-0.1)*6)*gte(t,0.1)+0.35*sin(2*PI*784*t)*exp(-(t-0.2)*4)*gte(t,0.2)':d=1:s=44100",
+    af: ['aecho=0.8:0.4:50:0.2', 'volume=2.2', 'aformat=channel_layouts=stereo'],
+  },
+  fail: {
+    label: 'Fracasso (trombone)', base: 'pop', gain: 0.7, lead: 0,
+    src: "aevalsrc='0.3*(gt(sin(2*PI*(311-gte(t,0.3)*18-gte(t,0.6)*18-gte(t,0.9)*30*(1+0.03*sin(2*PI*6*t)))*t),0)*2-1)*if(lt(t,0.9),1,exp(-(t-0.9)*2.5))':d=1.6:s=44100",
+    af: ['lowpass=f=1400', 'aformat=channel_layouts=stereo'],
+  },
+  clock: {
+    label: 'Relógio (tic-tac)', base: 'pop', gain: 1, lead: 0,
+    src: "aevalsrc='(random(0)*2-1)*exp(-mod(t,0.5)*300)*(0.6+0.4*lt(mod(t,1),0.5))':d=2:s=44100",
+    af: ['highpass=f=1800', 'aformat=channel_layouts=stereo'],
+  },
+  boing: {
+    label: 'Mola (boing)', base: 'pop', gain: 0.9, lead: 0,
+    src: "aevalsrc='0.5*sin(2*PI*(200+90*sin(2*PI*12*t)*exp(-t*3))*t)*exp(-t*3)':d=0.8:s=44100",
+    af: ['aformat=channel_layouts=stereo'],
+  },
+  coin: {
+    label: 'Moeda (game)', base: 'pop', gain: 0.7, lead: 0,
+    src: "aevalsrc='0.35*(gt(sin(2*PI*988*t),0)*2-1)*lt(t,0.08)+0.35*(gt(sin(2*PI*1319*t),0)*2-1)*gte(t,0.08)*exp(-(t-0.08)*7)':d=0.6:s=44100",
+    af: ['lowpass=f=6000', 'aformat=channel_layouts=stereo'],
+  },
+  laser: {
+    label: 'Laser', base: 'pop', gain: 0.8, lead: 0,
+    src: "aevalsrc='0.5*sin(2*PI*(1800*exp(-t*12)+220)*t)*exp(-t*5)':d=0.45:s=44100",
+    af: ['aformat=channel_layouts=stereo'],
+  },
+  zap: {
+    label: 'Choque (zap)', base: 'pop', gain: 0.6, lead: 0,
+    src: "aevalsrc='(0.45*(random(0)*2-1)*lt(mod(t,0.04),0.02)+0.35*sin(2*PI*(600+400*sin(2*PI*30*t))*t))*exp(-t*4)':d=0.45:s=44100",
+    af: ['highpass=f=250', 'aformat=channel_layouts=stereo'],
+  },
+  sparkle: {
+    label: 'Brilhinho (magia)', base: 'pop', gain: 0.9, lead: 0,
+    src: "aevalsrc='0.2*sin(2*PI*2093*t)*exp(-t*5)+0.2*sin(2*PI*2637*t)*exp(-(t-0.07)*5)*gte(t,0.07)+0.2*sin(2*PI*3136*t)*exp(-(t-0.14)*5)*gte(t,0.14)+0.2*sin(2*PI*4186*t)*exp(-(t-0.21)*5)*gte(t,0.21)':d=1.1:s=44100",
+    af: ['aecho=0.8:0.6:45:0.35', 'volume=2', 'aformat=channel_layouts=stereo'],
+  },
+  magic: {
+    label: 'Varinha mágica (subindo)', base: 'pop', gain: 0.8, lead: 0.4,
+    src: "aevalsrc='0.3*sin(2*PI*(700+1800*t)*t)*exp(-t*1.6)':d=1:s=44100",
+    af: ['aecho=0.8:0.6:60:0.4', 'volume=2.2', 'aformat=channel_layouts=stereo'],
+  },
+  heartbeat: {
+    label: 'Batimento cardíaco', base: 'whoosh', gain: 0.9, lead: 0,
+    src: "aevalsrc='sin(2*PI*55*t)*(exp(-mod(t,0.9)*12)+0.7*exp(-abs(mod(t,0.9)-0.22)*28))':d=1.8:s=44100",
+    af: ['lowpass=f=220', 'volume=1.05', 'aformat=channel_layouts=stereo'],
+  },
+  scratch: {
+    label: 'Disco arranhando', base: 'pop', gain: 0.7, lead: 0,
+    src: "aevalsrc='(random(0)*2-1)*abs(sin(2*PI*7*t))':d=0.5:s=44100",
+    af: ['bandpass=f=1400:w=900', 'volume=60', 'alimiter=limit=0.8', 'aformat=channel_layouts=stereo'],
+  },
 };
+
+/** Categorias da biblioteca (como as do CapCut). */
+export const SFX_CATEGORIES = {
+  transicao: 'Transição',
+  impacto: 'Impacto',
+  interface: 'Interface e redes',
+  divertido: 'Divertido e games',
+  clima: 'Clima e brilho',
+};
+const SFX_CAT = {
+  whoosh: 'transicao', swoosh: 'transicao', riser: 'transicao', whooshdown: 'transicao', swipe: 'transicao', rewind: 'transicao',
+  impact: 'impacto', kick: 'impacto', boom: 'impacto', thud: 'impacto', bassdrop: 'impacto',
+  shutter: 'interface', click: 'interface', typing: 'interface', pop: 'interface', bubble: 'interface', ding: 'interface', notify: 'interface', clock: 'interface',
+  glitch: 'divertido', cash: 'divertido', error: 'divertido', success: 'divertido', fail: 'divertido', boing: 'divertido', coin: 'divertido', laser: 'divertido', zap: 'divertido', scratch: 'divertido',
+  bling: 'clima', drone: 'clima', sparkle: 'clima', magic: 'clima', heartbeat: 'clima',
+};
+/** Categoria e duração (s) de cada som, para a biblioteca e a faixa S1 do editor. */
+export function sfxInfo(type) {
+  const s = SFX_LIBRARY[type];
+  if (!s) return null;
+  const m = /(?:^|[:=])d(?:uration)?=([\d.]+)/.exec(s.src);
+  return { cat: SFX_CAT[type] || 'clima', dur: m ? Number(m[1]) : 0.5 };
+}
 
 const isType = (type) => Object.hasOwn(SFX_LIBRARY, type);
 
@@ -249,7 +363,8 @@ export function buildSfxMix(events, opts = {}) {
   const order = [];
   list.forEach((e, i) => {
     const s = SFX_LIBRARY[e.type];
-    const vol = +(lv[s.base] * s.gain).toFixed(3);
+    // volume de cada som colocado à mão (0–2, como o do CapCut); o padrão é 1
+    const vol = +(lv[s.base] * s.gain * (Number.isFinite(Number(e.volume)) ? Math.max(0, Math.min(2, Number(e.volume))) : 1)).toFixed(3);
     const ms = Math.round(e.at * 1000);
     const idx = i + 1; // input 0 é o vídeo original
     parts.push(`[${idx}:a]adelay=${ms}|${ms},volume=${vol}[e${i}]`);

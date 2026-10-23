@@ -539,6 +539,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // (camadas, textos e sons que passam do fim): a sequência vai de -lead a dur + tail, no
   // tempo do vídeo — sem montar o vídeo de novo. No vídeo final vira preto e sem som.
   const [lead, setLead] = useState(0);
+  // Espaço vazio ANTES de um clipe da V1 (arrastou o clipe para a direita): { at, dur } —
+  // `at` é onde o clipe começa (tempo do vídeo). Muda na hora, sem montar o vídeo de novo.
+  const [v1Gaps, setV1Gaps] = useState([]);
+  const [gapLeft, setGapLeft] = useState(null); // tocando um espaço do meio: quanto falta (s)
   const tail = useMemo(() => {
     const ends = [
       ...media.map((m) => Number(m.start) + Number(m.duration)),
@@ -604,19 +608,33 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return p;
   };
   const progEnd0 = progOf0(dur);
-  // posição na sequência: o espaço antes (lead) + o vídeo sem o que foi cortado + o depois
-  const progOf = (t) => lead + (t < 0 ? t : t > dur ? progEnd0 + (t - dur) : progOf0(t));
+  const gapList = useMemo(() => v1Gaps.filter((g) => g.dur > 0.01 && g.at > 0.01 && g.at < dur - 0.01).sort((a, b) => a.at - b.at), [v1Gaps, dur]);
+  const gapSum = gapList.reduce((s0, g) => s0 + g.dur, 0);
+  // espaços dos clipes antes de t (o próprio ponto do clipe conta: ele começa depois do espaço;
+  // `end` = um trecho que TERMINA em t não atravessa o espaço)
+  const gapsBefore = (t, end = false) => { let s0 = 0; for (const g of gapList) { if (end ? g.at < t - 1e-6 : g.at <= t + 1e-6) s0 += g.dur; else break; } return s0; };
+  // posição na sequência: o espaço antes (lead) + o vídeo sem o que foi cortado (com os
+  // espaços entre os clipes) + o depois do fim
+  const progOf = (t, end = false) => lead + (t < 0 ? t : t > dur ? progEnd0 + gapSum + (t - dur) : progOf0(t) + gapsBefore(t, end));
   const srcOf = (p) => {
     const q = p - lead;
     if (q < 0) return q;
-    if (q > progEnd0) return dur + (q - progEnd0);
-    let t = q;
+    if (q > progEnd0 + gapSum) return dur + (q - progEnd0 - gapSum);
+    let acc = 0;
+    for (const g of gapList) {
+      const pa = progOf0(g.at) + acc;
+      if (q < pa) break;
+      if (q < pa + g.dur) return g.at; // dentro do espaço: o clipe que vem depois
+      acc += g.dur;
+    }
+    let t = q - acc;
     for (const [a, b] of gaps) { if (t >= a) t += b - a; else break; }
     return Math.min(dur, t);
   };
   const X = (t) => progOf(Number(t) || 0) * pps;
-  const W = (a, b) => Math.max(0, X(b) - X(a));
-  const progDur = lead + progEnd0 + tail;
+  const Xe = (t) => progOf(Number(t) || 0, true) * pps; // fim de um trecho
+  const W = (a, b) => Math.max(0, Xe(b) - X(a));
+  const progDur = lead + progEnd0 + gapSum + tail;
   // pedaços que ficam (miniaturas e forma de onda são recortadas neles)
   const keptPieces = useMemo(() => {
     const out = [];
@@ -634,8 +652,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     for (const h of holes) out = out.flatMap(([a, b]) => (h.end <= a || h.start >= b ? [[a, b]] : [[a, h.start], [h.end, b]].filter(([x, y]) => y - x > 0.02)));
     return out;
   };
-  const vidSpans = useMemo(() => minusHoles(keptPieces, [...blanks, ...seqHoles]), [keptPieces, blanks, seqHoles]);
-  const audSpans = useMemo(() => minusHoles(keptPieces, [...blanks.filter((b) => b.audio !== false), ...seqHoles]), [keptPieces, blanks, seqHoles]);
+  // (cortados também nos espaços entre os clipes: ali a faixa fica vazia)
+  const splitAtGaps = (spans) => spans.flatMap(([a, b]) => {
+    const cutsAt = gapList.map((g) => g.at).filter((x) => x > a + 0.01 && x < b - 0.01);
+    const pts = [a, ...cutsAt, b];
+    return pts.slice(1).map((x, i) => [pts[i], x]);
+  });
+  const vidSpans = useMemo(() => splitAtGaps(minusHoles(keptPieces, [...blanks, ...seqHoles])), [keptPieces, blanks, seqHoles, gapList]);
+  const audSpans = useMemo(() => splitAtGaps(minusHoles(keptPieces, [...blanks.filter((b) => b.audio !== false), ...seqHoles])), [keptPieces, blanks, seqHoles, gapList]);
   const spanShown = (spans, a, b) => spans.some(([x, y]) => Math.min(b, y) - Math.max(a, x) > 0.05);
 
   // Desfazer / refazer: TODA edição da timeline (texto, cortes, pausas, legendas, B-roll,
@@ -663,14 +687,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const overlaySegs = useMemo(() => mergeExtraCaptions(capSegments, visXcaps), [capSegments, visXcaps]);
   const histState = {
     segments, cuts, keptPauses, keptNoises, gains, videoCrop, cropRanges, blanks, projMediaIds, avLinked, media, brollReview, brollOn, zoomMoments, headline, cover,
-    colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs, brollLayoutSel, imageSource, volKeys, pauseAuto, aiCleaned, lead,
+    colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs, brollLayoutSel, imageSource, volKeys, pauseAuto, aiCleaned, lead, v1Gaps,
     aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
   };
   const histSet = {
     segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, cropRanges: setCropRanges, blanks: setBlanks, projMediaIds: setProjMediaIds, avLinked: setAvLinked, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
     brollReview: setBrollReview, brollOn: setBrollOn, zoomMoments: setZoomMoments, headline: setHeadline,
     cover: setCover, colorLook: setColorLook, colorAdj: setColorAdj, cap: setCap, fx: setFx, voice: setVoice,
-    audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths, brollLayoutSel: setBrollLayoutSel, imageSource: setImageSource, volKeys: setVolKeys, pauseAuto: setPauseAuto, aiCleaned: setAiCleaned, lead: setLead,
+    audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths, brollLayoutSel: setBrollLayoutSel, imageSource: setImageSource, volKeys: setVolKeys, pauseAuto: setPauseAuto, aiCleaned: setAiCleaned, lead: setLead, v1Gaps: setV1Gaps,
     cutCoughs: setCutCoughs, aspectSel: setAspectSel, quality: setQuality, reframeMode: setReframeMode,
     splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom,
     vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, extraCaps: setExtraCaps, fxMoments: setFxMoments, transitions: setTransitions, laneHide: setLaneHide, laneLock: setLaneLock, markers: setMarkers, speedRanges: setSpeedRanges, freezes: setFreezes,
@@ -1040,10 +1064,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const loop = (now) => {
       const vc = vclockRef.current;
       const F = vfnsRef.current;
-      if (vc.on && vc.playing) {
+      if (vc.on && vc.playing && vc.gap) {
+        // espaço vazio antes de um clipe: o tempo da sequência anda, o do vídeo fica parado
+        vc.gap.left -= (Math.min(100, now - lastNow) / 1000) * (F.speed || 1);
+        if (vc.gap.left <= 0) {
+          const at = vc.gap.at;
+          vc.on = false;
+          vc.playing = false;
+          vc.gap = null;
+          setGapLeft(null);
+          const v = videoRef.current;
+          if (v) { v.currentTime = at; v.play().catch(() => {}); }
+          setCur(at);
+        } else if (now - lastSet > 80) { lastSet = now; setGapLeft(vc.gap.left); }
+      } else if (vc.on && vc.playing) {
         const t0 = vc.t;
         const t = t0 + (Math.min(100, now - lastNow) / 1000) * (F.speed || 1);
-        for (const e of F.sfx || []) if (e.at > t0 && e.at <= t && (e.at < 0 || e.at > F.dur)) playSfxUrl(sfxUrl(e.type), F.intensity);
+        for (const e of F.sfx || []) if (e.at > t0 && e.at <= t && (e.at < 0 || e.at > F.dur)) playSfxUrl(sfxUrl(e.type), F.intensity, e.vol ?? 1);
         if (t0 < 0 && t >= 0) {
           // chegou no vídeo principal: ele começa a tocar
           vc.on = false;
@@ -1160,6 +1197,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if (v && L.fx) {
         const now = performance.now();
         let t = v.currentTime;
+        // Tocando: chegou num espaço vazio antes de um clipe → para o vídeo e o relógio da
+        // prévia conta o espaço (preto, só as camadas); depois o clipe segue.
+        if (!v.paused && lastT != null && L.gaps?.length) {
+          const g = L.gaps.find((x) => lastT < x.at - 0.005 && t >= x.at - 0.04);
+          if (g) {
+            const vc = vclockRef.current;
+            vc.on = true;
+            vc.t = g.at;
+            vc.playing = true;
+            vc.gap = { at: g.at, left: g.dur };
+            v.pause();
+            v.currentTime = g.at;
+            lastT = null;
+            id = requestAnimationFrame(loop);
+            return;
+          }
+        }
         // Tocando: pula os trechos cortados (prévia igual ao vídeo final).
         if (!v.paused && L.skip?.length) {
           // um pouco antes do corte (um quadro): o pulo acontece sem mostrar o começo da pausa
@@ -1171,7 +1225,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           : motionAt(L.fx.videoMotion, L.fx.motionIntensity, t, L.dur, L.windows);
         // Quadros-chave (Transformar) + zoom do momento numa transformação só.
         const K = keyAt(L.keys, t);
+        const TM = transMotion(t, L.trans);
         const tparts = [];
+        if (TM) {
+          if (TM.x || TM.y) tparts.push(`translate(${TM.x.toFixed(2)}%, ${TM.y.toFixed(2)}%)`);
+          if (TM.r) tparts.push(`rotate(${TM.r.toFixed(2)}deg)`);
+          tparts.push(`scale(${(1 + TM.z).toFixed(4)})`);
+        }
         if (Math.abs(K.x) > 1e-4 || Math.abs(K.y) > 1e-4) tparts.push(`translate(${(K.x * 100).toFixed(2)}%, ${(K.y * 100).toFixed(2)}%)`);
         if (Math.abs(K.rot) > 1e-3) tparts.push(`rotate(${K.rot.toFixed(2)}deg)`);
         const sc = K.scale * m.scale;
@@ -1217,22 +1277,25 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // Sons nos mesmos pontos do render: os automáticos (se ligados) e os colocados à mão,
         // cada um com o som REAL da biblioteca (o mesmo arquivo do render).
         if (!v.paused && lastT != null && t > lastT && t - lastT < 0.6) {
-          for (const e of L.sfxEvents) if (e.at > lastT && e.at <= t) playSfxUrl(sfxUrl(e.type), L.fx.sfxIntensity);
+          for (const e of L.sfxEvents) if (e.at > lastT && e.at <= t) playSfxUrl(sfxUrl(e.type), L.fx.sfxIntensity, e.vol ?? 1);
         }
         // Transição no ponto (flash, escurecer, brilho, desfoque) — igual ao render.
         const tro = transOverlayRef.current;
         if (tro) {
           let best = null;
           for (const tr of L.trans) {
-            const h = TRANS_HALF[tr.type] || 0.2;
+            if (!TRANS_OVERLAY.has(tr.type)) continue;
+            const h = (Number(tr.dur) > 0 ? Number(tr.dur) / 2 : TRANS_HALF[tr.type]) || 0.2;
             const e = 1 - Math.abs(t - tr.t) / h;
             if (e > 0 && (!best || e > best.e)) best = { e, type: tr.type };
           }
           const E = best ? best.e : 0;
-          tro.style.opacity = E > 0 ? String(best.type === 'flash' ? 0.9 * E : best.type === 'dip' ? 0.95 * E : best.type === 'glow' ? 0.4 * E : 1) : '0';
-          tro.style.background = best?.type === 'dip' ? '#000' : best && best.type !== 'blur' ? '#fff' : 'transparent';
-          tro.style.mixBlendMode = best?.type === 'glow' ? 'screen' : 'normal';
-          tro.style.backdropFilter = best?.type === 'blur' ? `blur(${(10 * E).toFixed(1)}px)` : 'none';
+          const tm = !best ? transMotion(t, L.trans) : null; // borrão de movimento das de câmera
+          const glitch = best?.type === 'glitch';
+          tro.style.opacity = E > 0 ? String(best.type === 'flash' ? 0.9 * E : best.type === 'dip' ? 0.95 * E : best.type === 'glow' ? 0.4 * E : glitch ? (Math.sin(t * 90) > 0 ? 0.8 : 0.35) : 1) : tm?.blur ? '1' : '0';
+          tro.style.background = best?.type === 'dip' ? '#000' : glitch ? 'linear-gradient(90deg, rgba(255,0,90,0.35), transparent 40%, transparent 60%, rgba(0,220,255,0.35))' : best && best.type !== 'blur' ? '#fff' : 'transparent';
+          tro.style.mixBlendMode = best?.type === 'glow' || glitch ? 'screen' : 'normal';
+          tro.style.backdropFilter = best?.type === 'blur' ? `blur(${(10 * E).toFixed(1)}px)` : glitch ? 'hue-rotate(40deg) saturate(1.6)' : tm?.blur ? `blur(${tm.blur}px)` : 'none';
         }
         // Efeitos de vídeo do momento: camadas (vinheta, moldura, grão, flash) por cima.
         const fxo = fxOverlayRef.current;
@@ -1551,6 +1614,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const v = videoRef.current;
     const c = Math.max(lo, Math.min(dur + tail, t));
     const vc = vclockRef.current;
+    if (vc.gap) { vc.gap = null; setGapLeft(null); }
     if (c < 0 || c > dur) {
       // antes/depois do vídeo principal: o relógio da prévia segue sem o <video>
       const was = vc.on ? vc.playing : !!(v && !v.paused);
@@ -2420,7 +2484,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (!audSpans.length) return null;
     const dPath = audSpans.map(([a, b]) => {
       const xa = X(a);
-      const xb = X(b);
+      const xb = Xe(b);
       const pts = [];
       for (let x = xa; x < xb; x += 4) pts.push(`${x.toFixed(1)},${yOf(gDb + volDbAt(keys, srcOf(x / pps))).toFixed(1)}`);
       pts.push(`${xb.toFixed(1)},${yOf(gDb + volDbAt(keys, b)).toFixed(1)}`);
@@ -3107,14 +3171,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         freezes: freezes.map((f) => ({ t: +f.t.toFixed(3), dur: f.dur })),
         // Transições manuais (cada uma no seu ponto) — as automáticas ficam desligadas.
         transition: 'none',
-        transitions: transitions.map((tr) => ({ t: +tr.t.toFixed(3), type: tr.type })),
+        transitions: transitions.map((tr) => ({ t: +tr.t.toFixed(3), type: tr.type, ...(tr.dur ? { dur: +Number(tr.dur).toFixed(2) } : {}) })),
         // Efeitos de vídeo nos momentos e textos livres (tempo original).
         fxMoments: visFx.map((m) => ({ start: +m.start.toFixed(2), end: +m.end.toFixed(2), effect: m.effect })),
         textLayers: visTexts.map(({ key, ...l }) => ({ ...l, start: +l.start.toFixed(2), end: +l.end.toFixed(2) })),
         // legendas adicionadas à mão (tempo original; o servidor leva para o vídeo cortado)
         extraCaptions: visXcaps.filter((c) => c.text.trim()).map((c) => ({ text: c.text, start: +c.start.toFixed(2), end: +c.end.toFixed(2) })),
         // Efeitos sonoros colocados à mão (tempo original; o servidor remapeia após os cortes).
-        sfxMoments: sfxMoments.map((m) => ({ t: +m.t.toFixed(2), type: m.type })),
+        sfxMoments: sfxMoments.map((m) => ({ t: +m.t.toFixed(2), type: m.type, ...(m.volume != null && m.volume !== 1 ? { volume: +Number(m.volume).toFixed(2) } : {}) })),
         // B-roll revisado: trava o que entra em cada momento (e liga o B-roll).
         ...(!brollOn ? { broll: false, brollPlan: [] } : brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}),
         headline: headline.on && headline.text.trim() ? { text: headline.text.trim(), seconds: headline.seconds, style: headline.style, color: headline.color, position: headline.position } : null,
@@ -3142,23 +3206,32 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function padRender(tr, o) {
     const L = lead > 0.01 && !exportRange ? +lead.toFixed(2) : 0;
     const T = tail > 0.01 && !exportRange ? +tail.toFixed(2) : 0;
-    if (!L && !T) return [tr, o];
-    const sh = (x) => (Number.isFinite(Number(x)) ? +(Number(x) + L).toFixed(3) : x);
-    const se = (r) => ({ ...r, start: sh(r.start), end: sh(r.end) });
+    const G = exportRange ? [] : gapList;
+    if (!L && !T && !G.length) return [tr, o];
+    // tempo do vídeo → tempo do vídeo com os espaços (antes, entre os clipes e depois)
+    const gb = (t, end) => (t < 0 ? 0 : G.reduce((s0, g) => s0 + ((end ? g.at < t - 1e-6 : g.at <= t + 1e-6) ? g.dur : 0), 0));
+    const toV = (x, end = false) => (Number.isFinite(Number(x)) ? +(Number(x) + L + gb(Number(x), end)).toFixed(3) : x);
+    const sh = (x) => toV(x);
+    const se = (r) => ({ ...r, start: toV(r.start), end: toV(r.end, true) });
     const st = (r) => ({ ...r, t: sh(r.t) });
     const map = (a, f) => (Array.isArray(a) ? a.map(f) : a);
-    const out = { ...o, padStart: L, padEnd: T };
+    const out = { ...o, padStart: L, padEnd: T, ...(G.length ? { padGaps: G.map((g) => ({ at: +g.at.toFixed(3), dur: +g.dur.toFixed(3) })) } : {}) };
     for (const k of ['silenceCuts', 'keptPauses', 'keptNoises', 'zoomMoments', 'videoCuts', 'cropRanges', 'noCutRanges', 'videoBlanks', 'audioGains', 'speedRanges', 'fxMoments', 'textLayers', 'extraCaptions', 'brollPlan']) {
       if (o[k] != null) out[k] = map(o[k], se);
     }
     for (const k of ['transformKeys', 'audioVolKeys', 'freezes', 'transitions', 'sfxMoments']) if (o[k] != null) out[k] = map(o[k], st);
-    out.userMedia = map(o.userMedia, (m) => ({ ...m, start: sh(m.start) }));
+    out.userMedia = map(o.userMedia, (m) => {
+      const a = toV(m.start);
+      return { ...m, start: a, duration: +Math.max(0.1, toV(Number(m.start) + Number(m.duration), true) - a).toFixed(3) };
+    });
     if (o.cover) out.cover = { ...o.cover, t: sh(o.cover.t ?? 0) };
     // nada sai das pontas (são preto e silêncio de propósito)
-    out.noCutRanges = [...(out.noCutRanges || []), ...(L ? [{ start: 0, end: L }] : []), ...(T ? [{ start: +(L + dur).toFixed(3), end: +(L + dur + T).toFixed(3) }] : [])];
+    const gV = G.map((g) => { const a = toV(g.at, true); return { start: a, end: +(a + g.dur).toFixed(3) }; });
+    const endV = +(L + dur + G.reduce((s0, g) => s0 + g.dur, 0)).toFixed(3);
+    out.noCutRanges = [...(out.noCutRanges || []), ...(L ? [{ start: 0, end: L }] : []), ...gV, ...(T ? [{ start: endV, end: +(endV + T).toFixed(3) }] : [])];
     const segs = (tr.segments || []).map((sg) => ({
-      ...sg, start: sh(sg.start), end: sh(sg.end),
-      words: (sg.words || []).map((w) => ({ ...w, start: sh(w.start), end: sh(w.end), ...(w.cs != null ? { cs: sh(w.cs), ce: sh(w.ce) } : {}) })),
+      ...sg, start: toV(sg.start), end: toV(sg.end, true),
+      words: (sg.words || []).map((w) => ({ ...w, start: toV(w.start), end: toV(w.end, true), ...(w.cs != null ? { cs: toV(w.cs), ce: toV(w.ce, true) } : {}) })),
     }));
     return [{ ...tr, segments: segs }, out];
   }
@@ -4312,7 +4385,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const visUnder = visMedia.filter((m) => m.under);
   const inBlankNow = blanks.some((b) => cur >= b.start && cur < b.end) || seqHoles.some((b) => cur >= b.start && cur < b.end);
   // fora do vídeo principal (espaço antes/depois): preto, só as camadas
-  const outVideo = cur < -0.001 || cur > dur + 0.001;
+  const outVideo = cur < -0.001 || cur > dur + 0.001 || gapLeft != null;
   const underBlank = (inBlankNow && visUnder.length > 0) || outVideo;
   const personHalf = (
     <div
@@ -4504,16 +4577,30 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
   }, [pps, dur]);
   // Pontos de corte na timeline original (onde o vídeo pula ao tocar com cortes).
-  const cutPoints = (skipRanges || []).map(([a]) => a).filter((a) => a > 0.3 && a < dur - 0.3);
+  // (+ as junções dos clipes da V1, onde o CapCut põe a transição)
+  const seqJoins = (() => {
+    const seq = v1Job?.fromSequence && Array.isArray(v1Job.sequenceClips) ? v1Job.sequenceClips : [];
+    const out = [];
+    let acc = 0;
+    seq.forEach((c, i) => {
+      if (i > 0 && c.kind !== 'blank') out.push(acc);
+      acc += c.kind === 'video' ? Math.max(0.3, (+c.out || 0) - (+c.in || 0)) : c.kind === 'image' ? Math.max(0.5, +c.duration || 3) : Math.max(0.2, +c.duration || 1);
+    });
+    return out;
+  })();
+  const cutPoints = [...new Set([...(skipRanges || []).map(([a]) => a), ...seqJoins, ...gapList.map((g) => g.at)].map((x) => +x.toFixed(3)))]
+    .filter((a) => a > 0.3 && a < dur - 0.3).sort((a, b) => a - b);
+  /** O corte/junção mais perto de t (até 1 s): a transição solta perto dele gruda nele. */
+  const nearCut = (t) => { let best = null; for (const c of cutPoints) if (Math.abs(c - t) <= 1 && (best == null || Math.abs(c - t) < Math.abs(best - t))) best = c; return best ?? t; };
   function addTransition(t, type = transPick) {
     if (transitions.some((x) => Math.abs(x.t - t) < 0.3)) return;
-    const tr = { key: `tr${Date.now()}${Math.round(t * 100)}`, t: +t.toFixed(3), type };
+    const tr = { key: `tr${Date.now()}${Math.round(t * 100)}`, t: +t.toFixed(3), type, dur: TRANS_DUR[type] || 0.5 };
     setTransitions((l) => [...l, tr].sort((a, b) => a.t - b.t));
     setSelTrans(tr.key);
     setSelKind('trans');
   }
   function addTransitionAtCuts() {
-    const add = cutPoints.filter((t) => !transitions.some((x) => Math.abs(x.t - t) < 0.3)).map((t, i) => ({ key: `tr${Date.now()}_${i}`, t: +t.toFixed(3), type: transPick }));
+    const add = cutPoints.filter((t) => !transitions.some((x) => Math.abs(x.t - t) < 0.3)).map((t, i) => ({ key: `tr${Date.now()}_${i}`, t: +t.toFixed(3), type: transPick, dur: TRANS_DUR[transPick] || 0.5 }));
     if (add.length) setTransitions((l) => [...l, ...add].sort((a, b) => a.t - b.t));
   }
   // ── Velocidade do trecho + congelar quadro ──
@@ -4571,6 +4658,27 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     </div>
   );
   const selTransItem = transitions.find((x) => x.key === selTrans) || null;
+  /** Duração da transição (como o controle do CapCut) + aplicar a todas as junções. */
+  function transDurRow(it) {
+    const d = Number(it.dur) || TRANS_DUR[it.type] || 0.5;
+    return (
+      <div style={{ display: 'grid', gap: 6 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
+          Duração
+          <input type="range" min={0.2} max={2} step={0.1} value={d} style={{ flex: 1 }}
+            onChange={(e) => { const v = +e.target.value; setTransitions((l) => l.map((x) => (x.key === it.key ? { ...x, dur: v } : x))); }} />
+          <span style={{ width: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: C.text }}>{d.toFixed(1)}s</span>
+        </label>
+        {cutPoints.length > 1 && (
+          <button onClick={() => {
+            const add = cutPoints.filter((t) => !transitions.some((x) => Math.abs(x.t - t) < 0.3)).map((t, i) => ({ key: `tr${Date.now()}_${i}`, t: +t.toFixed(3), type: it.type, dur: d }));
+            setTransitions((l) => [...l.map((x) => ({ ...x, type: it.type, dur: d })), ...add].sort((a, b) => a.t - b.t));
+            flashNote(`"${transOpts.find((o) => o.id === it.type)?.label || it.type}" em todos os cortes e junções (${cutPoints.length}).`);
+          }} style={{ ...framingTab(false) }}>Aplicar a todos ({cutPoints.length})</button>
+        )}
+      </div>
+    );
+  }
   const transOpts = (catalog?.transitions || []).filter((o) => o.id !== 'none');
   const transBlock = (
     <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 10, display: 'grid', gap: 8 }}>
@@ -4582,11 +4690,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {cutPoints.length > 0 && <button onClick={addTransitionAtCuts} style={{ ...framingTab(false) }}>+ Em todos os cortes ({cutPoints.length})</button>}
       {selTransItem && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <div style={{ flex: 1 }}><Sel value={selTransItem.type} opts={transOpts} onChange={(v) => setTransitions((l) => l.map((x) => (x.key === selTransItem.key ? { ...x, type: v } : x)))} /></div>
+          <div style={{ flex: 1 }}><Sel value={selTransItem.type} opts={transOpts} onChange={(v) => setTransitions((l) => l.map((x) => (x.key === selTransItem.key ? { ...x, type: v, dur: TRANS_DUR[v] || x.dur } : x)))} /></div>
           <span style={{ fontSize: 11, color: C.faint }}>{fmtDuration(selTransItem.t)}</span>
           <button onClick={() => { setTransitions((l) => l.filter((x) => x.key !== selTransItem.key)); setSelTrans(null); }} style={{ ...miniBtn(false, false), color: C.red }}>Remover</button>
         </div>
       )}
+      {selTransItem && transDurRow(selTransItem)}
       <div style={{ fontSize: 11, color: C.faint }}>Como no CapCut: cada transição fica só onde você colocou (marcador ⧓ na faixa de vídeo — arraste para mover). Nada é aplicado sozinho.</div>
     </div>
   );
@@ -4614,7 +4723,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     { cat: 'tempo', kind: 'speed', id: '2', label: 'Acelerar 2×', anim: 'tm-fast' },
     { cat: 'tempo', kind: 'freeze', id: '1', label: 'Congelar 1 s', anim: 'tm-freeze' },
     { cat: 'tempo', kind: 'freeze', id: '2', label: 'Congelar 2 s', anim: 'tm-freeze' },
-    ...(catalog?.sfxTypes || []).filter((o) => o.id !== 'none').map((o) => ({ cat: 'som', kind: 'sfx', id: o.id, label: shortLabel(o.label), anim: 'sfx' })),
+    ...(catalog?.sfxTypes || []).filter((o) => o.id !== 'none').map((o) => ({ cat: 'som', kind: 'sfx', id: o.id, label: shortLabel(o.label), anim: 'sfx', scat: o.cat || 'clima', sdur: o.dur || 0.5 })),
   ].map((x) => ({ ...x, uid: `${x.kind}:${x.id}` }));
   const [fxCat, setFxCat] = useState('trans');
   const [fxQuery, setFxQuery] = useState('');
@@ -4628,14 +4737,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [dropT, setDropT] = useState(null); // onde ele vai entrar na timeline
   const [fxNote, setFxNote] = useState('');
   const fxQ = norm(fxQuery.trim());
-  const fxShown = fxLibrary.filter((x) => (fxQ ? norm(x.label).includes(fxQ) : fxCat === 'fav' ? fxFavs.includes(x.uid) : x.cat === fxCat));
+  // Sons (como a biblioteca do CapCut): subcategorias dentro de "Sons"
+  const [sfxCat, setSfxCat] = useState('');
+  const SFX_COLORS = { transicao: ['rgba(59,130,246,0.45)', 'rgba(14,165,233,0.25)'], impacto: ['rgba(220,38,38,0.45)', 'rgba(249,115,22,0.25)'], interface: ['rgba(16,185,129,0.4)', 'rgba(20,184,166,0.22)'], divertido: ['rgba(168,85,247,0.45)', 'rgba(236,72,153,0.25)'], clima: ['rgba(234,179,8,0.4)', 'rgba(255,107,53,0.22)'] };
+  const fxShown = fxLibrary.filter((x) => (fxQ ? norm(x.label).includes(fxQ) : fxCat === 'fav' ? fxFavs.includes(x.uid) : x.cat === fxCat && (fxCat !== 'som' || !sfxCat || x.scat === sfxCat)));
   /** Coloca o efeito na timeline no instante t (tempo original do vídeo). */
   function addEffectAt(item, t0) {
     const t = Math.max(0, Math.min(dur - 0.2, Number(t0) || 0));
     const end = (len) => +Math.min(dur, t + len).toFixed(2);
     if (item.kind === 'trans') {
-      if (transitions.some((x) => Math.abs(x.t - t) < 0.3)) setTransitions((l) => l.map((x) => (Math.abs(x.t - t) < 0.3 ? { ...x, type: item.id } : x)));
-      else addTransition(t, item.id);
+      const t1 = nearCut(t); // gruda na junção/corte mais perto (como no CapCut)
+      if (transitions.some((x) => Math.abs(x.t - t1) < 0.3)) setTransitions((l) => l.map((x) => (Math.abs(x.t - t1) < 0.3 ? { ...x, type: item.id, dur: TRANS_DUR[item.id] || x.dur } : x)));
+      else addTransition(t1, item.id);
     } else if (item.kind === 'zoom') {
       const z = { key: `z${Date.now()}`, start: +t.toFixed(2), end: end(1.8), scale: null, effect: item.id };
       setZoomMoments((l) => [...(l || []), z].sort((a, b) => a.start - b.start));
@@ -4879,14 +4992,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       // vazios seguidos viram um só
       return res.reduce((acc, c) => { const l = acc[acc.length - 1]; if (c.kind === 'blank' && l?.kind === 'blank') l.duration += c.duration; else acc.push({ ...c }); return acc; }, []);
     };
-    const newPos = (x) => x - cg.reduce((sum, [a, b]) => sum + (x >= b ? b - a : x > a ? x - a : 0), 0);
+    // espaços entre os clipes (arrastou o clipe): entram como vazio no começo do clipe
+    const basePos = (x) => x - cg.reduce((sum, [a, b]) => sum + (x >= b ? b - a : x > a ? x - a : 0), 0);
+    const newPos = (x) => basePos(x) + gapsBefore(x);
     const units = v1Pieces.map((p) => {
       const ranges = [];
       let p0 = p.a;
       for (const [g0, g1] of cg) { if (g1 <= p.a || g0 >= p.b) continue; if (g0 > p0) ranges.push([p0, g0]); p0 = Math.max(p0, g1); }
       if (p.b > p0) ranges.push([p0, p.b]);
       const parts = ranges.flatMap(([x, y]) => slice(x, y));
-      return { p, parts, len: parts.reduce((s, c) => s + v1Len(c), 0) };
+      const pre = parts.length ? gapList.filter((g) => g.at >= p.a - 0.02 && g.at < p.b - 0.02).reduce((s0, g) => s0 + g.dur, 0) : 0;
+      if (pre > 0.01) parts.unshift({ kind: 'blank', filename: 'Vazio', duration: +pre.toFixed(2) });
+      return { p, parts, pre, len: parts.reduce((s, c) => s + v1Len(c), 0) };
     }).filter((u) => u.parts.length);
     // vazio no fim da montagem (sem camada por cima) não entra: o vídeo acaba no último clipe
     const endOver = layersOver(0, dur).some((x) => x.end > (keptPieces.length ? keptPieces[keptPieces.length - 1][1] : dur) - 0.05);
@@ -4898,7 +5015,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       u.len -= v1Len(last);
       if (!u.parts.length) units.pop();
     }
-    return { newPos, units };
+    return { newPos, basePos, units };
   }
   /** Manda montar o vídeo principal com estes clipes; camadas e textos vão para mapT(tempo). */
   async function v1Rebuild(clips0, mapT0, { transcribeNew = false } = {}) {
@@ -5423,6 +5540,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       // o 1º clipe: o espaço antes do vídeo muda na hora (sem montar de novo)
       const firstK = v1Pieces.findIndex((q) => q.clip.kind !== 'blank' && spanShown(vidSpans, q.va, q.vb));
       if (d.k === firstK && (sec > 0.1 || (sec < -0.1 && lead > 0.01))) { moveLead(sec); return; }
+      // os outros clipes: um espaço vazio antes dele cresce/diminui na hora (sem montar de novo)
+      const gapHere = gapList.find((g) => Math.abs(g.at - p.va) < 0.02);
+      if (sec > 0.1 || (sec < -0.1 && gapHere)) {
+        const nd = +Math.max(0, (gapHere?.dur || 0) + sec).toFixed(2);
+        setV1Gaps((l) => [...l.filter((g) => Math.abs(g.at - p.va) >= 0.02), ...(nd > 0.01 ? [{ at: +p.va.toFixed(3), dur: nd }] : [])]);
+        if (nd > 0.01) flashNote(`Espaço de ${fmtDuration(nd)} antes deste clipe (preto, as camadas aparecem). Arraste o clipe de volta para a esquerda para tirar.`);
+        return;
+      }
       if (sec > 0.1) v1Slide(d.k, sec);
       else if (sec < -0.1) {
         const room = p.va - v1EmptyBefore(p.va);
@@ -5472,7 +5597,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   async function v1Reorder(k, to) {
     if (v1Busy) return;
     try {
-      const { newPos, units } = v1Plan();
+      const { basePos, units } = v1Plan();
       const ui = units.findIndex((u) => u.p === v1Pieces[k]);
       if (ui < 0) return;
       const order = units.filter((_, i) => i !== ui);
@@ -5485,7 +5610,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       // camadas e textos andam junto com o pedaço em que estavam
       const mapT = (x) => {
         const u = units.find((q) => x >= q.p.a - 0.01 && x < q.p.b) || units.find((q) => x < q.p.a) || units[units.length - 1];
-        const off = Math.max(0, Math.min(u.len, newPos(x) - newPos(u.p.a)));
+        // (o espaço antes do clipe vai junto com ele)
+        const off = Math.max(0, Math.min(u.len, basePos(x) - basePos(u.p.a) + (x >= u.p.va - 0.01 ? u.pre || 0 : 0)));
         return +(startOf.get(u) + off).toFixed(2);
       };
       await v1Rebuild(order.flatMap((u) => u.parts), mapT);
@@ -5561,11 +5687,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
   }
   const sfxAudioRef = useRef(null);
-  function playSfx(id) {
+  function playSfx(id, vol = 1) {
     try {
       sfxAudioRef.current?.pause();
       const a = new Audio(sfxUrl(id));
-      a.volume = 0.7;
+      a.volume = Math.min(1, 0.7 * vol);
       sfxAudioRef.current = a;
       a.play().catch(() => {});
     } catch { /* sem áudio */ }
@@ -5599,6 +5725,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           })}
         </div>
         <div style={{ padding: 8, overflowY: 'auto', maxHeight: isMobile ? 300 : 360 }}>
+          {fxCat === 'som' && !fxQ && (catalog?.sfxCategories || []).length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+              {[{ id: '', label: 'Todos' }, ...catalog.sfxCategories].map((c) => (
+                <button key={c.id} onClick={() => setSfxCat(c.id)} aria-pressed={sfxCat === c.id}
+                  style={{ height: 24, padding: '0 10px', borderRadius: 999, border: `1px solid ${sfxCat === c.id ? C.orange : C.border}`, background: sfxCat === c.id ? 'rgba(255,107,53,0.16)' : 'transparent', color: sfxCat === c.id ? C.text : C.muted, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>{c.label}</button>
+              ))}
+            </div>
+          )}
           {fxShown.length === 0 && <div style={{ fontSize: 11.5, color: C.faint, padding: 16, textAlign: 'center' }}>{fxCat === 'fav' && !fxQ ? 'Clique na ★ de um efeito para guardar aqui.' : 'Nenhum efeito encontrado.'}</div>}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8 }}>
             {fxShown.map((x) => {
@@ -5612,9 +5746,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   style={{ borderRadius: 9, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)', cursor: isMobile ? 'pointer' : 'grab', overflow: 'hidden', userSelect: 'none' }}>
                   <div style={{ position: 'relative', aspectRatio: '16 / 9', overflow: 'hidden', background: '#111' }}>
                     {x.kind === 'sfx' ? (
-                      <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg, rgba(194,65,12,0.35), rgba(255,107,53,0.25))' }}>
+                      <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: `linear-gradient(135deg, ${(SFX_COLORS[x.scat] || SFX_COLORS.clima)[0]}, ${(SFX_COLORS[x.scat] || SFX_COLORS.clima)[1]})` }}>
                         <button onClick={(e) => { e.stopPropagation(); playSfx(x.id); }} aria-label={`Ouvir ${x.label}`}
                           style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center' }}><Icon name="play" size={14} strokeWidth={2.2} /></button>
+                        <span style={{ position: 'absolute', right: 4, bottom: 3, fontSize: 10, fontWeight: 800, color: '#fff', textShadow: '0 1px 3px #000' }}>{x.sdur.toFixed(1).replace('.', ',')}s</span>
                       </div>
                     ) : (
                       <>
@@ -5643,6 +5778,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     </div>
   );
   // Ajustes do efeito selecionado na timeline (aparece depois de soltar o efeito).
+  const selSfxItem = sfxMoments.find((x) => x.key === selSfx) || null;
   const selFxRow = (label, range, body, onRemove) => (
     <div style={{ border: `1px solid ${C.orange}`, borderRadius: 10, padding: 10, background: 'rgba(255,107,53,0.06)', display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700 }}>
@@ -5668,8 +5804,25 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     <Sel value={selFxItem.effect} opts={fxOpts} onChange={(v) => setFxMoments((l) => l.map((m) => (m.key === selFxItem.key ? { ...m, effect: v } : m)))} />,
     () => { setFxMoments((l) => l.filter((m) => m.key !== selFxItem.key)); setSelFx(null); })
     : selKind === 'trans' && selTransItem ? selFxRow('Transição', fmtDuration(selTransItem.t),
-      <Sel value={selTransItem.type} opts={transOpts} onChange={(v) => setTransitions((l) => l.map((x) => (x.key === selTransItem.key ? { ...x, type: v } : x)))} />,
+      <div style={{ display: 'grid', gap: 6 }}>
+        <Sel value={selTransItem.type} opts={transOpts} onChange={(v) => setTransitions((l) => l.map((x) => (x.key === selTransItem.key ? { ...x, type: v, dur: TRANS_DUR[v] || x.dur } : x)))} />
+        {transDurRow(selTransItem)}
+      </div>,
       () => { setTransitions((l) => l.filter((x) => x.key !== selTransItem.key)); setSelTrans(null); })
+      : selKind === 'sfx' && selSfxItem ? selFxRow('Efeito sonoro', fmtDuration(selSfxItem.t),
+        <div style={{ display: 'grid', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <div style={{ flex: 1 }}><Sel value={selSfxItem.type} opts={(catalog?.sfxTypes || []).filter((o) => o.id !== 'none')} onChange={(v) => setSfxMoments((l) => l.map((x) => (x.key === selSfxItem.key ? { ...x, type: v } : x)))} /></div>
+            <button onClick={() => playSfx(selSfxItem.type, selSfxItem.volume ?? 1)} title="Ouvir" style={{ ...miniBtn(false, false) }}><Icon name="play" size={12} strokeWidth={2.2} /></button>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
+            Volume
+            <input type="range" min={0} max={2} step={0.05} value={selSfxItem.volume ?? 1} style={{ flex: 1 }}
+              onChange={(e) => { const v = +e.target.value; setSfxMoments((l) => l.map((x) => (x.key === selSfxItem.key ? { ...x, volume: v } : x))); }} />
+            <span style={{ width: 40, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: C.text }}>{Math.round((selSfxItem.volume ?? 1) * 100)}%</span>
+          </label>
+        </div>,
+        () => { setSfxMoments((l) => l.filter((x) => x.key !== selSfxItem.key)); setSelSfx(null); })
       : (selKind === 'speed' || selKind === 'freeze') ? speedBlock : null;
 
   // Sons da prévia: os automáticos (se ligados) e os colocados à mão, com o adiantamento de cada som.
@@ -5680,7 +5833,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       ...(fx.sfxBrollType !== 'none' ? (brollReview?.moments || []).filter((m) => !m.removed).map((m) => ({ at: Number(m.start) - leadOf(fx.sfxBrollType), type: fx.sfxBrollType })) : []),
       ...(fx.sfxCutType && fx.sfxCutType !== 'none' ? cutPoints.map((t) => ({ at: t - leadOf(fx.sfxCutType), type: fx.sfxCutType })) : []),
     ] : []),
-    ...sfxMoments.map((m) => ({ at: m.t - leadOf(m.type), type: m.type })),
+    ...sfxMoments.map((m) => ({ at: m.t - leadOf(m.type), type: m.type, vol: m.volume ?? 1 })),
   ];
   // Faixa S1 (abaixo do áudio): os efeitos sonoros no ponto em que tocam
   const sfxLaneItems = [
@@ -6217,6 +6370,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const liveWindows = fx.videoMotion !== 'none' ? (zoomMoments || []).map((z) => [z.start, z.end, z.scale, z.effect || defaultMomentEffect(fx.videoMotion)]) : [];
   vfnsRef.current = { dur, tail, speed, sfx: liveSfxEvents, intensity: fx.sfxIntensity };
   liveRef.current = {
+    gaps: gapList,
     skip: previewCuts ? skipRanges : [],
     fx,
     dur,
@@ -7068,7 +7222,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <SpeedPicker value={speed} onChange={setSpeed} big />
               <div style={{ ...mRow, justifyContent: 'space-between' }}>
                 <span>Duração final</span>
-                <span style={{ color: C.green, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration((stats.keptSec + retimeDelta) / speed + lead + tail)}</span>
+                <span style={{ color: C.green, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration((stats.keptSec + retimeDelta) / speed + lead + gapSum + tail)}</span>
               </div>
               <div style={{ ...mRow, display: 'block' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><Icon name="mic" size={19} strokeWidth={1.9} /> <span style={{ flex: 1 }}>Respirações</span></div>
@@ -7364,7 +7518,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Velocidade do vídeo</div>
                 <SpeedPicker value={speed} onChange={setSpeed} />
-                <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Duração final: <b style={{ color: C.text }}>{fmtDuration((stats.keptSec + retimeDelta) / speed + lead + tail)}</b> · a voz acelera sem mudar o tom.</div>
+                <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Duração final: <b style={{ color: C.text }}>{fmtDuration((stats.keptSec + retimeDelta) / speed + lead + gapSum + tail)}</b> · a voz acelera sem mudar o tom.</div>
               </div>
               <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Voz</div>
@@ -8065,12 +8219,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         {/* Barra de ferramentas da timeline */}
         <div className="rf-tlbar" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 8, flexWrap: 'wrap' }}>
           <span className="rf-tl-stats" title="Palavras · cortadas · pausas cortadas · duração final">
-            <b>{stats.total}</b> palavras · <b style={{ color: '#F0526B' }}>{stats.removed}</b> cortadas · <b style={{ color: '#FF9A6C' }}>{pausesCut.length}</b> pausas{cutCoughs && noisesCut.length ? <> · <b style={{ color: '#F0526B' }}>{noisesCut.length}</b> tosses/sons</> : null} · final <b style={{ color: '#2ED47A' }}>{fmtDuration((stats.keptSec + retimeDelta) / speed + lead + tail)}</b>
+            <b>{stats.total}</b> palavras · <b style={{ color: '#F0526B' }}>{stats.removed}</b> cortadas · <b style={{ color: '#FF9A6C' }}>{pausesCut.length}</b> pausas{cutCoughs && noisesCut.length ? <> · <b style={{ color: '#F0526B' }}>{noisesCut.length}</b> tosses/sons</> : null} · final <b style={{ color: '#2ED47A' }}>{fmtDuration((stats.keptSec + retimeDelta) / speed + lead + gapSum + tail)}</b>
           </span>
           {!isMobile && (
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginRight: 8 }} title="Posição do playhead (horas:minutos:segundos:quadros)">
-              <span className="rf-tc" style={{ fontSize: 21, fontWeight: 600, color: PR.blue, fontVariantNumeric: 'tabular-nums', letterSpacing: 0.4 }}>{tcode(Math.max(0, cur + lead))}</span>
-              <span style={{ fontSize: 11, color: PR.dim, fontVariantNumeric: 'tabular-nums' }}>/ {tcode(dur + lead + tail)}</span>
+              <span className="rf-tc" style={{ fontSize: 21, fontWeight: 600, color: PR.blue, fontVariantNumeric: 'tabular-nums', letterSpacing: 0.4 }}>{tcode(Math.max(0, cur + lead + (cur >= 0 && cur <= dur ? gapsBefore(cur) : cur > dur ? gapSum : 0) - (gapLeft ?? 0)))}</span>
+              <span style={{ fontSize: 11, color: PR.dim, fontVariantNumeric: 'tabular-nums' }}>/ {tcode(dur + lead + gapSum + tail)}</span>
               {projectTitle && <span className="rf-tl-hide-sm" style={{ fontSize: 12, color: PR.text, fontWeight: 600, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginLeft: 6 }}>{projectTitle}</span>}
             </div>
           )}
@@ -8821,15 +8975,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   return (
                     <div key={m.key} title={m.auto ? `${label} (automático: ${m.auto}) — ajuste na aba Efeitos` : `${label} em ${fmtDuration(m.t)} — arraste para mover, Delete apaga, botão direito para trocar`}
                       onMouseDown={m.auto ? (e) => e.stopPropagation() : (e) => startSfxDrag(m, e)}
-                      onClick={(e) => { e.stopPropagation(); if (m.auto) { setTab('efeitos'); return; } setSelSfx(m.key); setSelKind('sfx'); }}
+                      onClick={(e) => { e.stopPropagation(); setTab('efeitos'); if (m.auto) return; setSelSfx(m.key); setSelKind('sfx'); }}
                       onContextMenu={m.auto ? undefined : (e) => { setSelSfx(m.key); setSelKind('sfx'); openCtx(e, `Efeito sonoro (${fmtDuration(m.t)})`, [
                         ...(catalog?.sfxTypes || []).filter((o) => o.id !== 'none' && o.id !== m.type).map((o) => ({ label: `Trocar por: ${o.label}`, act: () => setSfxMoments((l) => l.map((x) => (x.key === m.key ? { ...x, type: o.id } : x))) })),
                         { label: 'Apagar', danger: true, act: () => { setSfxMoments((l) => l.filter((x) => x.key !== m.key)); setSelSfx(null); } },
                       ]); }}
-                      style={{ position: 'absolute', left: X(m.t) - 1, top: 2, bottom: 2, minWidth: 18, maxWidth: 120, padding: '0 6px 0 4px', borderRadius: 5, display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', whiteSpace: 'nowrap', zIndex: on ? 3 : 2,
+                      style={{ position: 'absolute', left: X(m.t) - 1, top: 2, bottom: 2, width: Math.max(18, W(m.t, m.t + (catalog?.sfxTypes?.find((o) => o.id === m.type)?.dur || 0.5))), padding: '0 6px 0 4px', borderRadius: 5, display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', whiteSpace: 'nowrap', zIndex: on ? 3 : 2,
                         cursor: m.auto ? 'pointer' : 'grab', fontSize: 9.5, fontWeight: 700, color: C.text, borderLeft: `2px solid ${m.auto ? 'rgba(244,114,182,0.6)' : '#F472B6'}`,
                         background: on ? 'rgba(244,114,182,0.65)' : m.auto ? 'rgba(244,114,182,0.14)' : 'rgba(244,114,182,0.32)', outline: on ? '1.5px solid #fff' : 'none', opacity: m.auto ? 0.8 : 1 }}>
-                      <Icon name="volume" size={9} strokeWidth={2.4} /> {label}
+                      <Icon name="volume" size={9} strokeWidth={2.4} /> {label}{!m.auto && m.volume != null && m.volume !== 1 ? ` · ${Math.round(m.volume * 100)}%` : ''}
                     </div>
                   );
                 })}
@@ -8900,7 +9054,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ position: 'absolute', left: X(snapLine), top: 0, bottom: 0, width: 1, marginLeft: -0.5, background: '#FFD43B', boxShadow: '0 0 6px #FFD43B', pointerEvents: 'none', zIndex: 8 }} />
             )}
             {!isMobile && (
-            <div style={{ position: 'absolute', left: X(cur), top: 0, bottom: 0, width: 1.5, marginLeft: -0.75, background: PR.blue, boxShadow: `0 0 6px ${PR.blue}aa`, pointerEvents: 'none', zIndex: 6 }}>
+            <div style={{ position: 'absolute', left: gapLeft != null ? X(cur) - gapLeft * pps : X(cur), top: 0, bottom: 0, width: 1.5, marginLeft: -0.75, background: PR.blue, boxShadow: `0 0 6px ${PR.blue}aa`, pointerEvents: 'none', zIndex: 6 }}>
               <div onMouseDown={startScrub} title="Arraste para mover o ponteiro"
                 style={{ position: 'absolute', top: LANE.ruler - 15, left: -6.25, width: 14, height: 15, background: PR.blue, clipPath: 'polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%)', pointerEvents: 'auto', cursor: 'grab' }} />
             </div>
@@ -8937,7 +9091,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <Chip label="Palavras" value={stats.total} color={C.text} />
             <Chip label="Cortadas" value={stats.removed} color={C.red} />
             <Chip label="Pausas cortadas" value={pausesCut.length} sub={pauseCutSec > 0.1 ? `−${fmtDuration(pauseCutSec)}` : null} color={C.orangeSoft} />
-            <Chip label={speed !== 1 ? `Duração final · ${fmtSpeed(speed)}` : 'Duração final'} value={fmtDuration((stats.keptSec + retimeDelta) / speed + lead + tail)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
+            <Chip label={speed !== 1 ? `Duração final · ${fmtSpeed(speed)}` : 'Duração final'} value={fmtDuration((stats.keptSec + retimeDelta) / speed + lead + gapSum + tail)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
           </div>
 
           {trechoBlock}
@@ -9455,6 +9609,15 @@ const FX_ANIM_CSS = `
 .a-tr-glow { animation-name: rfTrGlow; } @keyframes rfTrGlow { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(2.2) saturate(1.4); } }
 .o-tr-flash { background: #fff; opacity: 0; animation-name: rfFlash; } @keyframes rfFlash { 0%, 30%, 70%, 100% { opacity: 0; } 50% { opacity: 1; } }
 .o-tr-dip { background: #000; opacity: 0; animation-name: rfFlash; }
+.a-tr-zoomin { animation-name: rfTrZin; } @keyframes rfTrZin { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.5); filter: blur(2px); } }
+.a-tr-zoomout { animation-name: rfTrZout; } @keyframes rfTrZout { 0%, 45% { transform: scale(1.05); } 50% { transform: scale(1.5); filter: blur(2px); } 100% { transform: scale(1); } }
+.a-tr-slideleft { animation-name: rfTrSl; } @keyframes rfTrSl { 0%, 100% { transform: translateX(0) scale(1); } 48% { transform: translateX(-22%) scale(1.5); filter: blur(2px); } 52% { transform: translateX(22%) scale(1.5); filter: blur(2px); } }
+.a-tr-slideright { animation-name: rfTrSr; } @keyframes rfTrSr { 0%, 100% { transform: translateX(0) scale(1); } 48% { transform: translateX(22%) scale(1.5); filter: blur(2px); } 52% { transform: translateX(-22%) scale(1.5); filter: blur(2px); } }
+.a-tr-slideup { animation-name: rfTrSu; } @keyframes rfTrSu { 0%, 100% { transform: translateY(0) scale(1); } 48% { transform: translateY(-22%) scale(1.5); filter: blur(2px); } 52% { transform: translateY(22%) scale(1.5); filter: blur(2px); } }
+.a-tr-slidedown { animation-name: rfTrSd; } @keyframes rfTrSd { 0%, 100% { transform: translateY(0) scale(1); } 48% { transform: translateY(22%) scale(1.5); filter: blur(2px); } 52% { transform: translateY(-22%) scale(1.5); filter: blur(2px); } }
+.a-tr-spin { animation-name: rfTrSpin; } @keyframes rfTrSpin { 0%, 100% { transform: rotate(0) scale(1); } 48% { transform: rotate(30deg) scale(1.7); filter: blur(2px); } 52% { transform: rotate(-30deg) scale(1.7); filter: blur(2px); } }
+.a-tr-shake { animation-name: rfShake; animation-duration: 0.4s !important; }
+.a-tr-glitch { animation-name: rfGlitch; animation-duration: 0.6s !important; animation-timing-function: steps(1) !important; }
 .o-fx-strobe { background: #fff; opacity: 0; animation-name: rfStrobe; animation-duration: 0.5s !important; animation-timing-function: steps(1) !important; } @keyframes rfStrobe { 0% { opacity: 0; } 50% { opacity: 0.85; } }
 .o-fx-vignette { background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.75) 100%); }
 .o-fx-film { border-top: 9px solid #000; border-bottom: 9px solid #000; box-sizing: border-box; }
@@ -9466,7 +9629,44 @@ const FX_ANIM_CSS = `
 `;
 
 // Meia duração de cada transição (igual ao servidor) e textura de grão para a prévia.
-const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25 };
+const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2 };
+const TRANS_DUR = Object.fromEntries(Object.entries(TRANS_HALF).map(([k, h]) => [k, +(h * 2).toFixed(2)]));
+const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch']);
+/**
+ * Transições de câmera na prévia (as mesmas contas do render): zoom, deslizar, giro e
+ * tremor perto de cada ponto. → { z (zoom extra), x, y (% da tela), r (graus), blur } | null
+ */
+function transMotion(t, list) {
+  let z = 0;
+  let xo = 0;
+  let yo = 0;
+  let r = 0;
+  let blur = 0;
+  for (const tr of list || []) {
+    const h = (Number(tr.dur) > 0 ? Number(tr.dur) / 2 : TRANS_HALF[tr.type]) || 0.25;
+    const d = t - tr.t;
+    if (Math.abs(d) >= h || TRANS_OVERLAY.has(tr.type)) continue;
+    const E = 1 - Math.abs(d) / h;
+    const pre = d < 0 ? E : 0;
+    const post = d >= 0 ? E : 0;
+    if (tr.type !== 'shake' && Math.abs(d) < 0.08) blur = 6;
+    switch (tr.type) {
+      case 'zoomin': z += 0.45 * E; break;
+      case 'zoomout': z += 0.45 * post + 0.12 * pre; break;
+      case 'slideleft': z += 0.5 * E; xo += pre - post; break;
+      case 'slideright': z += 0.5 * E; xo += post - pre; break;
+      case 'slideup': z += 0.5 * E; yo += pre - post; break;
+      case 'slidedown': z += 0.5 * E; yo += post - pre; break;
+      case 'spin': z += 0.7 * E; r += 0.55 * (pre - post) * 57.2958; break;
+      case 'shake': z += 0.12 * E; xo += 0.7 * Math.sin(t * 71) * E; yo += 0.6 * Math.sin(t * 53 + 1) * E; r += 0.035 * Math.sin(t * 47) * E * 57.2958; break;
+      default: break;
+    }
+  }
+  if (!z && !r && !xo && !yo) return null;
+  // a janela do quadro anda +x → o vídeo na tela anda −x (proporcional ao zoom extra)
+  const k = (v) => Math.max(-1, Math.min(1, v));
+  return { z, x: -k(xo) * (z / 2) * 100, y: -k(yo) * (z / 2) * 100, r, blur };
+}
 const GRAIN_SVG = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.35'/></svg>";
 
 /** Primeira camada livre (sem outra mídia no mesmo intervalo de tempo). */

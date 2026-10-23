@@ -669,6 +669,7 @@ export function parseOptions(raw) {
     // espaço vazio antes do vídeo principal / depois do fim (timeline): segundos de preto
     ...(clampNum(o.padStart, 0, 3600, 0) > 0 ? { padStart: clampNum(o.padStart, 0, 3600, 0) } : {}),
     ...(clampNum(o.padEnd, 0, 3600, 0) > 0 ? { padEnd: clampNum(o.padEnd, 0, 3600, 0) } : {}),
+    ...(Array.isArray(o.padGaps) && o.padGaps.length ? { padGaps: o.padGaps.slice(0, 60).map((g) => ({ at: clampNum(g?.at, 0, 100000, 0), dur: clampNum(g?.dur, 0, 3600, 0) })).filter((g) => g.at > 0 && g.dur > 0.01) } : {}),
     // clipes ainda sem transcrição: ali nada sai como pausa/silêncio
     ...(cleanBlanks(o.noCutRanges).length ? { noCutRanges: cleanBlanks(o.noCutRanges).map(({ start, end }) => ({ start, end })) } : {}),
     audioGains: Array.isArray(o.audioGains)
@@ -743,7 +744,7 @@ export function parseOptions(raw) {
       ? o.sfxMoments
           .filter((m) => m && Number.isFinite(Number(m.t)) && Number(m.t) >= 0 && Object.hasOwn(SFX_LIBRARY, m.type))
           .slice(0, 60)
-          .map((m) => ({ t: Number(m.t), type: m.type }))
+          .map((m) => ({ t: Number(m.t), type: m.type, ...(m.volume != null && Number.isFinite(Number(m.volume)) && Number(m.volume) !== 1 ? { volume: Math.max(0, Math.min(2, Number(m.volume))) } : {}) }))
       : [],
     // Transições (flash/esmaecer/brilho/blur) nos cortes e/ou nas entradas de B-roll.
     transition: Object.hasOwn(TRANSITIONS, o.transition) ? o.transition : 'none',
@@ -766,7 +767,7 @@ export function parseOptions(raw) {
       ? o.transitions
           .filter((x) => x && Number.isFinite(Number(x.t)) && Number(x.t) >= 0 && Object.hasOwn(TRANSITIONS, x.type) && x.type !== 'none')
           .slice(0, 80)
-          .map((x) => ({ t: Number(x.t), type: x.type }))
+          .map((x) => ({ t: Number(x.t), type: x.type, ...(Number(x.dur) > 0 ? { dur: Math.max(0.1, Math.min(3, Number(x.dur))) } : {}) }))
       : [],
   };
 }

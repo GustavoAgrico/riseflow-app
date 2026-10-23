@@ -104,7 +104,7 @@ function brownNoise(ac, seconds) {
 const sfxBuffers = new Map(); // url → Promise<AudioBuffer>
 const SFX_GAIN = { suave: 0.55, medio: 0.8, forte: 1 };
 /** Toca o som `url` (prévia), no volume da intensidade. Baixa e guarda na 1ª vez. */
-export function playSfxUrl(url, intensity = 'medio') {
+export function playSfxUrl(url, intensity = 'medio', vol = 1) {
   try {
     const ac = ctx();
     if (!ac || !url) return;
@@ -115,7 +115,7 @@ export function playSfxUrl(url, intensity = 'medio') {
       const src = ac.createBufferSource();
       src.buffer = buf;
       const g = ac.createGain();
-      g.gain.value = SFX_GAIN[intensity] || SFX_GAIN.medio;
+      g.gain.value = (SFX_GAIN[intensity] || SFX_GAIN.medio) * Math.max(0, Math.min(2, Number(vol) || 0));
       src.connect(g).connect(ac.destination);
       src.start();
     }).catch(() => {});

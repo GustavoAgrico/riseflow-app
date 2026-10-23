@@ -26,7 +26,7 @@ import { translateTranscript } from './translate.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import { captionCues, toSrt, toVtt, toTxt } from '../../../shared/captionExport.js';
 import { applySoundEffects } from './sfx.js';
-import { transitionVf, cutJoins } from './transitions.js';
+import { transitionVf, motionTransitionVf, cutJoins } from './transitions.js';
 import { applyVideoFx } from './videofx.js';
 import { burnTexts } from './texts.js';
 import { applyWatermark } from './watermark.js';
@@ -45,9 +45,13 @@ const log = makeLogger('pipeline');
  * Vídeo com `L` s de preto e silêncio antes e `T` s depois (sem mexer no original).
  * Vídeo HDR já sai em cor normal (a conversão de depois vê SDR). → caminho do novo arquivo
  */
-export async function padInput(input, work, L, T) {
+export async function padInput(input, work, L, T, gaps = []) {
   const m = await probeSummary(input);
   const out = path.join(work, 'padded.mp4');
+  const mid = (gaps || []).map((g) => ({ at: Number(g?.at), dur: Number(g?.dur) }))
+    .filter((g) => Number.isFinite(g.at) && Number.isFinite(g.dur) && g.dur > 0.01 && g.at > 0.01 && g.at < (m.duration || 0) - 0.01)
+    .sort((a, b) => a.at - b.at);
+  if (mid.length) return padWithGaps(input, work, out, m, L, T, mid);
   const total = (m.duration || 0) + L + T;
   const vf = [sdrVf(m), 'setsar=1', `tpad=start_duration=${L.toFixed(3)}:stop_duration=${T.toFixed(3)}:color=black`].filter(Boolean).join(',');
   const args = ['-i', input];
@@ -57,6 +61,53 @@ export async function padInput(input, work, L, T) {
   args.push('-t', total.toFixed(3), ...x264Fast(), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-y', out);
   await runFfmpeg(args, { label: 'pad', totalDuration: total });
   log.ok(`espaço na sequência: ${L.toFixed(2)} s antes, ${T.toFixed(2)} s depois`);
+  return out;
+}
+
+/**
+ * Espaços no meio também (clipes da V1 arrastados): o vídeo é partido nos pontos e entre
+ * os pedaços entra preto e silêncio — uma passada só (concat).
+ */
+async function padWithGaps(input, work, out, m, L, T, gaps) {
+  const even = (n) => Math.max(2, Math.round(n / 2) * 2);
+  const W = even(m.width || 1080);
+  const H = even(m.height || 1920);
+  const fps = m.fps > 0 ? m.fps : 30;
+  const bounds = [0, ...gaps.map((g) => g.at), m.duration];
+  const n = bounds.length - 1;
+  const f3 = (x) => Number(x).toFixed(3);
+  const parts = [
+    `[0:v]${[sdrVf(m), `scale=${W}:${H}`, 'setsar=1', `fps=${fps}`, 'format=yuv420p'].filter(Boolean).join(',')},split=${n}${Array.from({ length: n }, (_, i) => `[sv${i}]`).join('')}`,
+  ];
+  if (m.hasAudio) parts.push(`[0:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,asplit=${n}${Array.from({ length: n }, (_, i) => `[sa${i}]`).join('')}`);
+  const seq = [];
+  let k = 0;
+  const black = (d) => {
+    const i = k++;
+    parts.push(`color=c=black:s=${W}x${H}:r=${fps}:d=${f3(d)},format=yuv420p,setsar=1[bv${i}]`);
+    parts.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${f3(d)},aformat=sample_fmts=fltp:channel_layouts=stereo[ba${i}]`);
+    seq.push(`[bv${i}][ba${i}]`);
+  };
+  if (L > 0.01) black(L);
+  for (let i = 0; i < n; i++) {
+    const a = bounds[i];
+    const b = bounds[i + 1];
+    parts.push(`[sv${i}]trim=start=${f3(a)}:end=${f3(b)},setpts=PTS-STARTPTS[pv${i}]`);
+    parts.push(m.hasAudio
+      ? `[sa${i}]atrim=start=${f3(a)}:end=${f3(b)},asetpts=PTS-STARTPTS[pa${i}]`
+      : `anullsrc=r=48000:cl=stereo,atrim=duration=${f3(b - a)},aformat=sample_fmts=fltp:channel_layouts=stereo[pa${i}]`);
+    seq.push(`[pv${i}][pa${i}]`);
+    if (i < gaps.length) black(gaps[i].dur);
+  }
+  if (T > 0.01) black(T);
+  parts.push(`${seq.join('')}concat=n=${seq.length}:v=1:a=1[vout][aout]`);
+  const script = path.join(work, 'pad_filter.txt');
+  await fs.promises.mkdir(work, { recursive: true });
+  await fs.promises.writeFile(script, parts.join(';\n'), 'utf8');
+  const total = (m.duration || 0) + L + T + gaps.reduce((s0, g) => s0 + g.dur, 0);
+  await runFfmpeg(['-i', input, '-filter_complex_script', script, '-map', '[vout]', '-map', '[aout]', ...x264Fast(), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-y', out],
+    { label: 'pad', totalDuration: total });
+  log.ok(`espaços na sequência: ${L.toFixed(2)} s antes, ${gaps.length} entre os clipes, ${T.toFixed(2)} s depois`);
   return out;
 }
 
@@ -230,9 +281,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
   enter('probe');
   // Espaço vazio antes do vídeo principal / camadas depois do fim (timeline): preto e sem
   // som nas pontas. Os tempos já vêm deslocados pelo editor (padStart).
-  if (Number(options.padStart) > 0 || Number(options.padEnd) > 0) {
-    emit({ stageLabel: 'Preparando o espaço antes/depois do vídeo' });
-    input = await padInput(input, work, Number(options.padStart) || 0, Number(options.padEnd) || 0);
+  if (Number(options.padStart) > 0 || Number(options.padEnd) > 0 || options.padGaps?.length) {
+    emit({ stageLabel: 'Preparando os espaços vazios da timeline' });
+    input = await padInput(input, work, Number(options.padStart) || 0, Number(options.padEnd) || 0, options.padGaps || []);
     trackInput = input;
   }
   let meta = await probeSummary(input);
@@ -804,7 +855,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     events.length = 0;
     events.push(...kept);
     // Efeitos colocados à mão na timeline entram sempre, do jeito que foram colocados.
-    for (const m of options.sfxMoments || []) events.push({ t: m.t, type: m.type });
+    for (const m of options.sfxMoments || []) events.push({ t: m.t, type: m.type, ...(m.volume != null ? { volume: m.volume } : {}) });
     const r = await applySoundEffects(input, work, meta, events, options, st.onProgress);
     if (r.applied) input = r.output;
     report.sfx = { count: r.count, byType: r.byType || {} };
@@ -856,9 +907,12 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (tVf) report.transition = { type: options.transition, at: options.transitionAt || 'broll' };
     // Transições manuais (como no CapCut): cada uma num ponto escolhido, com o seu tipo.
     const manual = Array.isArray(options.transitions) ? options.transitions : [];
+    // agrupadas por tipo e duração (cada transição pode ter a sua, como no CapCut)
     const byType = {};
-    for (const tr of manual) (byType[tr.type] ||= []).push(tr.t);
-    const mVf = Object.entries(byType).map(([type, pts]) => transitionVf(type, pts, meta.duration)).filter(Boolean);
+    for (const tr of manual) (byType[`${tr.type}|${tr.dur || ''}`] ||= []).push(tr.t);
+    const mVf = Object.entries(byType).map(([k, pts]) => { const [type, d] = k.split('|'); return transitionVf(type, pts, meta.duration, Number(d) > 0 ? Number(d) / 2 : null); }).filter(Boolean);
+    const camVf = motionTransitionVf(manual.map((tr) => ({ t: tr.t, type: tr.type, half: Number(tr.dur) > 0 ? Number(tr.dur) / 2 : null })), meta, meta.duration);
+    if (camVf) mVf.unshift(camVf);
     if (manual.length) report.transitions = manual.length;
     const vf = [colorVf, tVf, ...mVf].filter(Boolean).join(',') || null;
     const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf: vf, reframe: aspectReframe, coverFile: options.cover?.intro ? coverFile : null }, st.onProgress);
