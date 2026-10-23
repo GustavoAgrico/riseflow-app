@@ -202,13 +202,14 @@ export async function applyMotion(input, work, meta, options, onProgress, segmen
   const kVf = keyframesVf(options.transformKeys, meta);
   if (kVf) parts.push(kVf);
   let moments = 0;
+  let windows = [];
   if (kind !== 'none') {
-    const windows = dynamicZoomWindows(segments, meta, options.zoomMoments, defaultMomentEffect(kind));
+    windows = dynamicZoomWindows(segments, meta, options.zoomMoments, defaultMomentEffect(kind));
     const mVf = momentsZoomVf(windows, meta, options.motionIntensity);
     if (mVf) { parts.push(mVf); moments = windows.length; }
   }
   const keyframes = kVf ? cleanKeys(options.transformKeys).length : 0;
-  if (!parts.length) return { output: input, motion: 'none', moments: 0, keyframes: 0 };
+  if (!parts.length) return { output: input, motion: 'none', moments: 0, keyframes: 0, windows: [] };
 
   const output = path.join(work, 'motion.mp4');
   const args = ['-i', input, '-vf', parts.join(','), ...x264Fast()];
@@ -217,5 +218,5 @@ export async function applyMotion(input, work, meta, options, onProgress, segmen
 
   await runFfmpeg(args, { label: 'motion', totalDuration: meta.duration, onProgress });
   log.ok(`movimento: ${moments ? `${kind} em ${moments} momento(s)` : 'sem momentos'}${keyframes ? ` · ${keyframes} quadro(s)-chave` : ''} (${options.motionIntensity || 'medio'})`);
-  return { output, motion: moments ? kind : 'none', moments, keyframes };
+  return { output, motion: moments ? kind : 'none', moments, keyframes, windows: moments ? windows : [] };
 }

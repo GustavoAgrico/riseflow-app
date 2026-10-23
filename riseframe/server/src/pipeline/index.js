@@ -620,9 +620,18 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
   // 5. Movimento (zoom/pan) — sobre o vídeo base, antes de B-roll/legendas para não
   // ampliar as legendas junto. Atualiza também o trackInput (fonte limpa do reframe).
+  // fonte sem o movimento: na tela dividida a metade da pessoa sai dela e recebe o mesmo
+  // Transformar/zoom no tamanho da metade (como a prévia)
+  let preMotionInput = null;
+  let personMotion = null;
   if (has('motion')) {
     const st = enter('motion');
+    const before = input;
     const r = await applyMotion(input, work, meta, options, st.onProgress, transcript.segments);
+    if (r.output !== before) {
+      preMotionInput = before;
+      personMotion = { keys: options.transformKeys, windows: r.windows, intensity: options.motionIntensity };
+    }
     input = r.output;
     trackInput = r.output;
     report.motion = { effect: r.motion, intensity: options.motionIntensity || 'medio', moments: r.moments, keyframes: r.keyframes };
@@ -676,9 +685,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
     const st = enter('broll');
     // Tela dividida: a pessoa vem da fonte sem o reenquadramento e sem o formato (recorta
     // a metade direto do vídeo original, como a prévia faz).
-    const personInput = preFrameInput || preAspectInput;
+    const personInput = preMotionInput || preFrameInput || preAspectInput;
     const personMeta = personInput ? await probeSummary(personInput) : null;
-    const r = await insertBroll(input, work, meta, analysis, { ...options, personInput, personMeta }, st.onProgress);
+    const r = await insertBroll(input, work, meta, analysis, { ...options, personInput, personMeta, personMotion: preMotionInput ? personMotion : null }, st.onProgress);
     input = r.output;
     // só na tela dividida: a legenda centraliza na linha entre as duas metades
     brollWindows = r.layout && r.layout !== 'fullscreen' ? (r.items || []).map((it) => ({ start: it.start, end: it.end })) : [];

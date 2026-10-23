@@ -446,6 +446,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setBrollLayoutSel(next === 'top' ? 'bottom' : 'top');
   };
   const motionWrapRef = useRef(null); // zoom dos momentos-chave na prévia 9:16
+  const splitWrapRef = useRef(null); // tela dividida inteira (as transições de câmera mexem nela toda, como no render)
   const [media, setMedia] = useState([]); // minhas mídias na timeline (imagens/vídeos/músicas)
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaErr, setMediaErr] = useState('');
@@ -1251,6 +1252,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         if (L.fxTransform) tparts.push(L.fxTransform);
         const tf = tparts.join(' ');
         if (v.style.transform !== tf) v.style.transform = tf;
+        // Tela dividida com B-roll: a transição de câmera vale para o quadro todo (B-roll +
+        // pessoa, como no render); o Transformar/zoom fica só na metade da pessoa.
+        const sw = splitWrapRef.current;
+        const splitNow = Boolean(sw && sw.dataset.split);
+        const tmParts = [];
+        if (splitNow && TM) {
+          if (TM.x || TM.y) tmParts.push(`translate(${TM.x.toFixed(2)}%, ${TM.y.toFixed(2)}%)`);
+          if (TM.r) tmParts.push(`rotate(${TM.r.toFixed(2)}deg)`);
+          tmParts.push(`scale(${(1 + TM.z).toFixed(4)})`);
+        }
+        if (sw) { const stf = tmParts.join(' '); if (sw.style.transform !== stf) sw.style.transform = stf; }
+        const tfHalf = splitNow && TM ? tparts.slice(tmParts.length).join(' ') : tf;
         v.style.transformOrigin = `${m.ox}% ${m.oy}%`;
         v.style.transition = !L.keys?.length && L.fx.videoMotion === 'dynamic' ? 'transform .12s ease-out' : 'none';
         // Prévia 9:16 no mesmo instante do player (mesmo quadro, mesmo zoom).
@@ -1270,7 +1283,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         }
         const mw = motionWrapRef.current;
         if (mw) {
-          if (mw.style.transform !== tf) mw.style.transform = tf;
+          if (mw.style.transform !== tfHalf) mw.style.transform = tfHalf;
           mw.style.transformOrigin = `${m.ox}% ${m.oy}%`;
           mw.style.transition = v.style.transition;
         }
@@ -4518,7 +4531,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const composedPreview = (
     <div ref={composedRef} style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${fmtAr.toFixed(4)}), calc((100cqw - 16px) * var(--fmt-share)))`, aspectRatio: previewRatio, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
       {cbox && visUnder.length > 0 && <StageLayers part="media" z={0} videoRef={clockRef} box={cbox} cur={cur} media={visUnder} texts={[]} editable={false} selMedia={selMedia} selText={selText} onMedia={() => {}} onText={() => {}} />}
-      {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
+      <div ref={splitWrapRef} data-split={previewMode === 'split' ? '1' : ''} style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
+      </div>
       {/* Cor, título, efeitos e transições como saem no vídeo final (monitor único). */}
       {singleMon && cbox && lookCss.tint && <div style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, pointerEvents: 'none', zIndex: 1, ...lookCss.tint }} />}
       {singleMon && cbox && colorCss.tint && <div style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, pointerEvents: 'none', zIndex: 1, ...colorCss.tint }} />}
