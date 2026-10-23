@@ -5,7 +5,7 @@ import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import Processing from './Processing.jsx';
 import { pickExportTarget, setPendingExport } from '../exportTarget.js';
-import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
+import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -1092,7 +1092,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       } else if (vc.on && vc.playing) {
         const t0 = vc.t;
         const t = t0 + (Math.min(100, now - lastNow) / 1000) * (F.speed || 1);
-        for (const e of F.sfx || []) if (e.at > t0 && e.at <= t && (e.at < 0 || e.at > F.dur)) playSfxUrl(sfxUrl(e.type), F.intensity, e.vol ?? 1);
+        for (const e of F.sfx || []) if (e.at > t0 && e.at <= t && (e.at < 0 || e.at > F.dur)) playSfxUrl(e.url ? sfxOnlineUrl(e.url) : sfxUrl(e.type), F.intensity, e.vol ?? 1);
         if (t0 < 0 && t >= 0) {
           // chegou no vídeo principal: ele começa a tocar
           vc.on = false;
@@ -1289,7 +1289,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // Sons nos mesmos pontos do render: os automáticos (se ligados) e os colocados à mão,
         // cada um com o som REAL da biblioteca (o mesmo arquivo do render).
         if (!v.paused && lastT != null && t > lastT && t - lastT < 0.6) {
-          for (const e of L.sfxEvents) if (e.at > lastT && e.at <= t) playSfxUrl(sfxUrl(e.type), L.fx.sfxIntensity, e.vol ?? 1);
+          for (const e of L.sfxEvents) if (e.at > lastT && e.at <= t) playSfxUrl(e.url ? sfxOnlineUrl(e.url) : sfxUrl(e.type), L.fx.sfxIntensity, e.vol ?? 1);
         }
         // Transição no ponto (flash, escurecer, brilho, desfoque) — igual ao render.
         const tro = transOverlayRef.current;
@@ -3190,7 +3190,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // legendas adicionadas à mão (tempo original; o servidor leva para o vídeo cortado)
         extraCaptions: visXcaps.filter((c) => c.text.trim()).map((c) => ({ text: c.text, start: +c.start.toFixed(2), end: +c.end.toFixed(2) })),
         // Efeitos sonoros colocados à mão (tempo original; o servidor remapeia após os cortes).
-        sfxMoments: sfxMoments.map((m) => ({ t: +m.t.toFixed(2), type: m.type, ...(m.volume != null && m.volume !== 1 ? { volume: +Number(m.volume).toFixed(2) } : {}) })),
+        sfxMoments: sfxMoments.map((m) => ({ t: +m.t.toFixed(2), type: m.type, ...(m.type === 'online' ? { url: m.url } : {}), ...(m.volume != null && m.volume !== 1 ? { volume: +Number(m.volume).toFixed(2) } : {}) })),
         // B-roll revisado: trava o que entra em cada momento (e liga o B-roll).
         ...(!brollOn ? { broll: false, brollPlan: [] } : brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}),
         headline: headline.on && headline.text.trim() ? { text: headline.text.trim(), seconds: headline.seconds, style: headline.style, color: headline.color, position: headline.position } : null,
@@ -4782,8 +4782,25 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const fxQ = norm(fxQuery.trim());
   // Sons (como a biblioteca do CapCut): subcategorias dentro de "Sons"
   const [sfxCat, setSfxCat] = useState('');
-  const SFX_COLORS = { transicao: ['rgba(59,130,246,0.45)', 'rgba(14,165,233,0.25)'], impacto: ['rgba(220,38,38,0.45)', 'rgba(249,115,22,0.25)'], interface: ['rgba(16,185,129,0.4)', 'rgba(20,184,166,0.22)'], divertido: ['rgba(168,85,247,0.45)', 'rgba(236,72,153,0.25)'], clima: ['rgba(234,179,8,0.4)', 'rgba(255,107,53,0.22)'] };
-  const fxShown = fxLibrary.filter((x) => (fxQ ? norm(x.label).includes(fxQ) : fxCat === 'fav' ? fxFavs.includes(x.uid) : x.cat === fxCat && (fxCat !== 'som' || !sfxCat || x.scat === sfxCat)));
+  const SFX_COLORS = { transicao: ['rgba(59,130,246,0.45)', 'rgba(14,165,233,0.25)'], impacto: ['rgba(220,38,38,0.45)', 'rgba(249,115,22,0.25)'], interface: ['rgba(16,185,129,0.4)', 'rgba(20,184,166,0.22)'], divertido: ['rgba(168,85,247,0.45)', 'rgba(236,72,153,0.25)'], clima: ['rgba(234,179,8,0.4)', 'rgba(255,107,53,0.22)'], online: ['rgba(14,165,233,0.4)', 'rgba(124,58,237,0.3)'] };
+  // Biblioteca online (Freesound, só sons CC0 — uso livre): busca dentro de "Sons" → "Online"
+  const [sfxOnQ, setSfxOnQ] = useState('');
+  const [sfxOn, setSfxOn] = useState({ busy: false, err: '', list: [], q: null });
+  const sfxOnSeq = useRef(0);
+  async function runSfxSearch(q) {
+    const n = ++sfxOnSeq.current;
+    setSfxOn((o) => ({ ...o, busy: true, err: '', q }));
+    try {
+      const list = await searchSfxOnline(q || 'whoosh');
+      if (n === sfxOnSeq.current) setSfxOn({ busy: false, err: '', list, q });
+    } catch (e) {
+      if (n === sfxOnSeq.current) setSfxOn({ busy: false, err: e.message || 'Não deu para buscar os sons.', list: [], q });
+    }
+  }
+  const sfxOnline = fxCat === 'som' && !fxQ && sfxCat === 'online';
+  useEffect(() => { if (sfxOnline && sfxOn.q == null && !sfxOn.busy) runSfxSearch(''); }, [sfxOnline]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sfxOnItems = sfxOn.list.map((r) => ({ cat: 'som', kind: 'sfx', id: 'online', uid: `online:${r.id}`, label: r.name || 'Som', scat: 'online', sdur: r.dur || 1, online: { url: r.preview, name: r.name || 'Som', dur: r.dur || 1 } }));
+  const fxShown = sfxOnline ? sfxOnItems : fxLibrary.filter((x) => (fxQ ? norm(x.label).includes(fxQ) : fxCat === 'fav' ? fxFavs.includes(x.uid) : x.cat === fxCat && (fxCat !== 'som' || !sfxCat || x.scat === sfxCat)));
   /** Coloca o efeito na timeline no instante t (tempo original do vídeo). */
   function addEffectAt(item, t0) {
     const t = Math.max(0, Math.min(dur - 0.2, Number(t0) || 0));
@@ -4817,7 +4834,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setSelFreeze(f.key);
       setSelKind('freeze');
     } else if (item.kind === 'sfx') {
-      setSfxMoments((l) => [...l, { key: `s${Date.now()}`, t: +t.toFixed(3), type: item.id }].sort((a, b) => a.t - b.t));
+      setSfxMoments((l) => [...l, { key: `s${Date.now()}`, t: +t.toFixed(3), type: item.id, ...(item.online || {}) }].sort((a, b) => a.t - b.t));
     }
     setFxNote(`${item.label} em ${fmtDuration(t)}`);
     setTimeout(() => setFxNote(''), 2200);
@@ -5730,10 +5747,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
   }
   const sfxAudioRef = useRef(null);
-  function playSfx(id, vol = 1) {
+  function playSfx(id, vol = 1, online = '') {
     try {
       sfxAudioRef.current?.pause();
-      const a = new Audio(sfxUrl(id));
+      const a = new Audio(online ? sfxOnlineUrl(online) : sfxUrl(id));
       a.volume = Math.min(1, 0.7 * vol);
       sfxAudioRef.current = a;
       a.play().catch(() => {});
@@ -5770,13 +5787,30 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <div style={{ padding: 8, overflowY: 'auto', maxHeight: isMobile ? 300 : 360 }}>
           {fxCat === 'som' && !fxQ && (catalog?.sfxCategories || []).length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
-              {[{ id: '', label: 'Todos' }, ...catalog.sfxCategories].map((c) => (
+              {[{ id: '', label: 'Todos' }, ...catalog.sfxCategories, { id: 'online', label: '🌐 Online' }].map((c) => (
                 <button key={c.id} onClick={() => setSfxCat(c.id)} aria-pressed={sfxCat === c.id}
                   style={{ height: 24, padding: '0 10px', borderRadius: 999, border: `1px solid ${sfxCat === c.id ? C.orange : C.border}`, background: sfxCat === c.id ? 'rgba(255,107,53,0.16)' : 'transparent', color: sfxCat === c.id ? C.text : C.muted, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>{c.label}</button>
               ))}
             </div>
           )}
-          {fxShown.length === 0 && <div style={{ fontSize: 11.5, color: C.faint, padding: 16, textAlign: 'center' }}>{fxCat === 'fav' && !fxQ ? 'Clique na ★ de um efeito para guardar aqui.' : 'Nenhum efeito encontrado.'}</div>}
+          {sfxOnline && (
+            <form onSubmit={(e) => { e.preventDefault(); runSfxSearch(sfxOnQ.trim()); }} style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input value={sfxOnQ} onChange={(e) => setSfxOnQ(e.target.value)} placeholder="Buscar som (em inglês acha mais: whoosh, pop, click, boom…)"
+                  style={{ flex: 1, minWidth: 0, height: 28, padding: '0 8px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 12, fontFamily: 'inherit' }} />
+                <button type="submit" disabled={sfxOn.busy} style={{ ...miniBtn(true, false), flex: 'none' }}>{sfxOn.busy ? 'Buscando…' : 'Buscar'}</button>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {['whoosh', 'swoosh', 'pop', 'click', 'boom', 'impact', 'riser', 'glitch', 'ding', 'cash register', 'camera shutter', 'applause', 'laugh', 'typing'].map((w) => (
+                  <button key={w} type="button" onClick={() => { setSfxOnQ(w); runSfxSearch(w); }}
+                    style={{ height: 20, padding: '0 8px', borderRadius: 999, border: `1px solid ${C.border}`, background: 'transparent', color: C.muted, fontSize: 10.5, fontFamily: 'inherit', cursor: 'pointer' }}>{w}</button>
+                ))}
+              </div>
+              <span style={{ fontSize: 10.5, color: C.faint }}>Sons do Freesound.org com licença CC0 (domínio público): pode usar em qualquer vídeo, até comercial, sem dar crédito.</span>
+              {sfxOn.err && <span style={{ fontSize: 11.5, color: C.red }}>{sfxOn.err}</span>}
+            </form>
+          )}
+          {fxShown.length === 0 && !(sfxOnline && (sfxOn.busy || sfxOn.err)) && <div style={{ fontSize: 11.5, color: C.faint, padding: 16, textAlign: 'center' }}>{fxCat === 'fav' && !fxQ ? 'Clique na ★ de um efeito para guardar aqui.' : sfxOnline ? 'Nenhum som encontrado — tente outra palavra (em inglês acha mais).' : 'Nenhum efeito encontrado.'}</div>}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8 }}>
             {fxShown.map((x) => {
               const fav = fxFavs.includes(x.uid);
@@ -5790,7 +5824,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <div style={{ position: 'relative', aspectRatio: '16 / 9', overflow: 'hidden', background: '#111' }}>
                     {x.kind === 'sfx' ? (
                       <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: `linear-gradient(135deg, ${(SFX_COLORS[x.scat] || SFX_COLORS.clima)[0]}, ${(SFX_COLORS[x.scat] || SFX_COLORS.clima)[1]})` }}>
-                        <button onClick={(e) => { e.stopPropagation(); playSfx(x.id); }} aria-label={`Ouvir ${x.label}`}
+                        <button onClick={(e) => { e.stopPropagation(); if (x.online) playSfx(null, 1, x.online.url); else playSfx(x.id); }} aria-label={`Ouvir ${x.label}`}
                           style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center' }}><Icon name="play" size={14} strokeWidth={2.2} /></button>
                         <span style={{ position: 'absolute', right: 4, bottom: 3, fontSize: 10, fontWeight: 800, color: '#fff', textShadow: '0 1px 3px #000' }}>{x.sdur.toFixed(1).replace('.', ',')}s</span>
                       </div>
@@ -5801,8 +5835,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                         {x.kind === 'speed' || x.kind === 'freeze' ? <span style={{ position: 'absolute', right: 4, bottom: 3, fontSize: 10, fontWeight: 800, color: '#fff', textShadow: '0 1px 3px #000' }}>{x.kind === 'freeze' ? `❄ ${x.id}s` : `${x.id.replace('.', ',')}×`}</span> : null}
                       </>
                     )}
-                    <button onClick={(e) => { e.stopPropagation(); toggleFav(x.uid); }} aria-label={fav ? 'Tirar dos favoritos' : 'Favoritar'}
-                      style={{ position: 'absolute', top: 2, right: 3, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: fav ? '#FACC15' : 'rgba(255,255,255,0.55)', textShadow: '0 1px 3px #000', padding: 0 }}>{fav ? '★' : '☆'}</button>
+                    {!x.online && <button onClick={(e) => { e.stopPropagation(); toggleFav(x.uid); }} aria-label={fav ? 'Tirar dos favoritos' : 'Favoritar'}
+                      style={{ position: 'absolute', top: 2, right: 3, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: fav ? '#FACC15' : 'rgba(255,255,255,0.55)', textShadow: '0 1px 3px #000', padding: 0 }}>{fav ? '★' : '☆'}</button>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 6px' }}>
                     <span style={{ flex: 1, fontSize: 11, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.label}</span>
@@ -5855,8 +5889,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       : selKind === 'sfx' && selSfxItem ? selFxRow('Efeito sonoro', fmtDuration(selSfxItem.t),
         <div style={{ display: 'grid', gap: 6 }}>
           <div style={{ display: 'flex', gap: 6 }}>
-            <div style={{ flex: 1 }}><Sel value={selSfxItem.type} opts={(catalog?.sfxTypes || []).filter((o) => o.id !== 'none')} onChange={(v) => setSfxMoments((l) => l.map((x) => (x.key === selSfxItem.key ? { ...x, type: v } : x)))} /></div>
-            <button onClick={() => playSfx(selSfxItem.type, selSfxItem.volume ?? 1)} title="Ouvir" style={{ ...miniBtn(false, false) }}><Icon name="play" size={12} strokeWidth={2.2} /></button>
+            <div style={{ flex: 1, minWidth: 0 }}>{selSfxItem.type === 'online'
+              ? <div title={selSfxItem.name} style={{ height: 30, display: 'flex', alignItems: 'center', padding: '0 8px', borderRadius: 7, border: `1px solid ${C.border}`, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🌐 {selSfxItem.name || 'Som online'}</div>
+              : <Sel value={selSfxItem.type} opts={(catalog?.sfxTypes || []).filter((o) => o.id !== 'none')} onChange={(v) => setSfxMoments((l) => l.map((x) => (x.key === selSfxItem.key ? { ...x, type: v } : x)))} />}</div>
+            <button onClick={() => (selSfxItem.type === 'online' ? playSfx(null, selSfxItem.volume ?? 1, selSfxItem.url) : playSfx(selSfxItem.type, selSfxItem.volume ?? 1))} title="Ouvir" style={{ ...miniBtn(false, false) }}><Icon name="play" size={12} strokeWidth={2.2} /></button>
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
             Volume
@@ -5870,13 +5906,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   // Sons da prévia: os automáticos (se ligados) e os colocados à mão, com o adiantamento de cada som.
   const leadOf = (type) => catalog?.sfxTypes?.find((o) => o.id === type)?.lead || 0;
+  // nome e duração de um som (da biblioteca embutida ou da online)
+  const sfxName = (m) => (m.type === 'online' ? m.name || 'Som online' : catalog?.sfxTypes?.find((o) => o.id === m.type)?.label || m.type);
+  const sfxDurOf = (m) => (m.type === 'online' ? Number(m.dur) || 1 : catalog?.sfxTypes?.find((o) => o.id === m.type)?.dur || 0.5);
   const liveSfxEvents = [
     ...(fx.soundEffects ? [
       ...(fx.sfxZoomType !== 'none' && fx.videoMotion !== 'none' ? (zoomMoments || []).map((z) => ({ at: z.start - leadOf(fx.sfxZoomType), type: fx.sfxZoomType })) : []),
       ...(fx.sfxBrollType !== 'none' ? (brollReview?.moments || []).filter((m) => !m.removed).map((m) => ({ at: Number(m.start) - leadOf(fx.sfxBrollType), type: fx.sfxBrollType })) : []),
       ...(fx.sfxCutType && fx.sfxCutType !== 'none' ? cutPoints.map((t) => ({ at: t - leadOf(fx.sfxCutType), type: fx.sfxCutType })) : []),
     ] : []),
-    ...sfxMoments.map((m) => ({ at: m.t - leadOf(m.type), type: m.type, vol: m.volume ?? 1 })),
+    ...sfxMoments.map((m) => ({ at: m.t - leadOf(m.type), type: m.type, vol: m.volume ?? 1, ...(m.type === 'online' ? { url: m.url } : {}) })),
   ];
   // Faixa S1 (abaixo do áudio): os efeitos sonoros no ponto em que tocam
   const sfxLaneItems = [
@@ -7748,7 +7787,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   {sfxMoments.map((m) => (
                     <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: C.muted }}>
                       <span style={{ width: 48, fontVariantNumeric: 'tabular-nums' }}>{m.t.toFixed(1)}s</span>
-                      <span style={{ flex: 1 }}>{catalog.sfxTypes.find((o) => o.id === m.type)?.label || m.type}</span>
+                      <span style={{ flex: 1 }}>{sfxName(m)}</span>
                       <button onClick={() => setSfxMoments((l) => l.filter((x) => x.key !== m.key))} title="Remover" style={{ ...zoomBtn, width: 22, height: 22, color: C.red }}>×</button>
                     </div>
                   ))}
@@ -8525,7 +8564,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {fxMoments.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('vfx', e)} onResetSize={() => resetLane('vfx')} h={LANE.vfx} gap={4} code="FX" nome="Efeitos" onMenu={(e) => openTrackMenu(e, 'vfx')} hidden={laneHide.vfx} onEye={() => togHide('vfx')} locked={laneLock.vfx} onLock={() => togLock('vfx')} />}
             {showBrollLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('broll', e)} onResetSize={() => resetLane('broll')} h={LANE.broll} gap={4} code="V2" nome="B-roll" onMenu={(e) => openTrackMenu(e, 'broll')} hidden={!brollOn} onEye={() => setBrollOn((v) => !v)} locked={laneLock.broll} onLock={() => togLock('broll')} />}
             {showZoomLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('zoom', e)} onResetSize={() => resetLane('zoom')} h={LANE.zoom} gap={4} code="ZM" nome="Zoom" onMenu={(e) => openTrackMenu(e, 'zoom')} locked={laneLock.zoom} onLock={() => togLock('zoom')} />}
-            {transformKeys.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('kf', e)} onResetSize={() => resetLane('kf')} h={LANE.kf} gap={4} code="KF" nome="Quadros" onMenu={(e) => openTrackMenu(e, 'kf')} locked={laneLock.kf} onLock={() => togLock('kf')} />}
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('video', e)} onResetSize={() => resetLane('video')} h={LANE.video} gap={4} code="V1" active nome={avLinked ? 'Vídeo' : 'Vídeo · solto'} onMenu={(e) => openTrackMenu(e, 'video')} locked={laneLock.vid} onLock={() => togLock('vid')} />
             {showV0 && <TrackHead h={v0H} gap={4} code="V0" nome="Por baixo" onMenu={(e) => openTrackMenu(e, 'v0')} hidden={laneHide.v0} onEye={() => togHide('v0')} locked={laneLock.v0} onLock={() => togLock('v0')} />}
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('audio', e)} onResetSize={() => resetLane('audio')} h={LANE.audio} gap={4} code="A1" active nome={avLinked ? 'Áudio' : 'Áudio · solto'} onMenu={(e) => openTrackMenu(e, 'audio')} muted={audioMute} onMute={() => setAudioMute((v) => !v)} locked={laneLock.aud} onLock={() => togLock('aud')} />
@@ -8537,7 +8575,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             onMouseDown={(e) => { if (e.target === e.currentTarget) startMarquee(e); }} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
-            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setDropT(null); setLibDrop(null); } }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + txtH : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (showSfxLane ? 4 + LANE.sfx : 0) + (isMobile || !showPauses ? 0 : 4 + LANE.pausas) + (topMedia.length ? 4 + LANE.midias * mediaRows : 0) + (showV0 ? 4 + v0H : 0) }}>
+            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setDropT(null); setLibDrop(null); } }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + txtH : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (showSfxLane ? 4 + LANE.sfx : 0) + (isMobile || !showPauses ? 0 : 4 + LANE.pausas) + (topMedia.length ? 4 + LANE.midias * mediaRows : 0) + (showV0 ? 4 + v0H : 0) }}>
             {/* ferramenta de seleção: arrastar em qualquer faixa marca o trecho (todas as faixas) */}
             {razorTool && !isMobile && (
               <div onMouseMove={(e) => setRazorT(timeAtClientX(e.clientX))} onMouseLeave={() => setRazorT(null)}
@@ -8811,23 +8849,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 })}
               </div>
             )}
-            {/* Faixa dos quadros-chave (Transformar): ◆ clique seleciona, arraste move, Delete apaga */}
-            {transformKeys.length > 0 && (
-              <div data-lane="kf" style={{ position: 'relative', height: LANE.kf, marginTop: 4, ...LANE_ROW, ...lk('kf') }}>
-                {transformKeys.length > 1 && (
-                  <div style={{ position: 'absolute', left: X(transformKeys[0].t), width: W(transformKeys[0].t, transformKeys[transformKeys.length - 1].t), top: LANE.kf / 2 - 1, height: 2, background: 'rgba(34,211,238,0.45)' }} />
-                )}
-                {transformKeys.map((k) => {
-                  const on = selKind === 'keyframe' && selKey === k.t;
-                  return (
-                    <div key={k.t} onMouseDown={(e) => startKeyDrag(k, e)} onClick={(e) => { e.stopPropagation(); setSelKind('keyframe'); setSelKey(k.t); setTab('efeitos'); seek(k.t); }}
-                      title={`Quadro-chave em ${fmtDuration(k.t)} · escala ${Math.round(k.scale * 100)}% · X ${Math.round(k.x * 100)} · Y ${Math.round(k.y * 100)} · ${Math.round(k.rot)}° — arraste para mover, Delete apaga`}
-                      style={{ position: 'absolute', left: X(k.t) - 7, top: LANE.kf / 2 - 7, width: 14, height: 14, transform: 'rotate(45deg)', borderRadius: 2, cursor: 'grab',
-                        background: on ? '#fff' : '#22D3EE', border: `2px solid ${on ? '#22D3EE' : 'rgba(0,0,0,0.5)'}`, boxShadow: on ? '0 0 0 3px rgba(34,211,238,0.35)' : 'none' }} />
-                  );
-                })}
-              </div>
-            )}
             {/* Faixa de vídeo: miniaturas + cortes desenhados arrastando */}
             <div
               data-lane="v1"
@@ -9073,16 +9094,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div data-lane="sfx" style={{ position: 'relative', height: LANE.sfx, marginTop: 4, ...LANE_ROW }}>
                 {sfxLaneItems.map((m) => {
                   const on = selKind === 'sfx' && selSfx === m.key;
-                  const label = catalog?.sfxTypes?.find((o) => o.id === m.type)?.label || m.type;
+                  const label = sfxName(m);
                   return (
                     <div key={m.key} title={m.auto ? `${label} (automático: ${m.auto}) — ajuste na aba Efeitos` : `${label} em ${fmtDuration(m.t)} — arraste para mover, Delete apaga, botão direito para trocar`}
                       onMouseDown={m.auto ? (e) => e.stopPropagation() : (e) => startSfxDrag(m, e)}
                       onClick={(e) => { e.stopPropagation(); setTab('efeitos'); if (m.auto) return; setSelSfx(m.key); setSelKind('sfx'); }}
                       onContextMenu={m.auto ? undefined : (e) => { setSelSfx(m.key); setSelKind('sfx'); openCtx(e, `Efeito sonoro (${fmtDuration(m.t)})`, [
-                        ...(catalog?.sfxTypes || []).filter((o) => o.id !== 'none' && o.id !== m.type).map((o) => ({ label: `Trocar por: ${o.label}`, act: () => setSfxMoments((l) => l.map((x) => (x.key === m.key ? { ...x, type: o.id } : x))) })),
+                        ...(catalog?.sfxTypes || []).filter((o) => o.id !== 'none' && o.id !== m.type).map((o) => ({ label: `Trocar por: ${o.label}`, act: () => setSfxMoments((l) => l.map((x) => (x.key === m.key ? { key: x.key, t: x.t, type: o.id, ...(x.volume != null ? { volume: x.volume } : {}) } : x))) })),
                         { label: 'Apagar', danger: true, act: () => { setSfxMoments((l) => l.filter((x) => x.key !== m.key)); setSelSfx(null); } },
                       ]); }}
-                      style={{ position: 'absolute', left: X(m.t) - 1, top: 2, bottom: 2, width: Math.max(18, W(m.t, m.t + (catalog?.sfxTypes?.find((o) => o.id === m.type)?.dur || 0.5))), padding: '0 6px 0 4px', borderRadius: 5, display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', whiteSpace: 'nowrap', zIndex: on ? 3 : 2,
+                      style={{ position: 'absolute', left: X(m.t) - 1, top: 2, bottom: 2, width: Math.max(18, W(m.t, m.t + sfxDurOf(m))), padding: '0 6px 0 4px', borderRadius: 5, display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', whiteSpace: 'nowrap', zIndex: on ? 3 : 2,
                         cursor: m.auto ? 'pointer' : 'grab', fontSize: 9.5, fontWeight: 700, color: C.text, borderLeft: `2px solid ${m.auto ? 'rgba(244,114,182,0.6)' : '#F472B6'}`,
                         background: on ? 'rgba(244,114,182,0.65)' : m.auto ? 'rgba(244,114,182,0.14)' : 'rgba(244,114,182,0.32)', outline: on ? '1.5px solid #fff' : 'none', opacity: m.auto ? 0.8 : 1 }}>
                       <Icon name="volume" size={9} strokeWidth={2.4} /> {label}{!m.auto && m.volume != null && m.volume !== 1 ? ` · ${Math.round(m.volume * 100)}%` : ''}

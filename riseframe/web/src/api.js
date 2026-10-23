@@ -712,3 +712,7 @@ export const relinkMedia = (id, file) => relink(`${BASE}/media/${id}/relink`, fi
 export const relinkSource = (id, file) => relink(`${BASE}/jobs/${id}/source/relink`, file);
 
 export const sfxUrl = (type) => `${BASE}/sfx/${type}`;
+/** Biblioteca online de sons (Freesound, só CC0) → [{ id, name, dur, preview, tags }] */
+export const searchSfxOnline = (q, page = 1) => jsonReq('GET', `${BASE}/sfx-online/search?q=${encodeURIComponent(q)}&page=${page}`).then((d) => d.results || []);
+/** Som da biblioteca online, servido pelo nosso servidor (cache) */
+export const sfxOnlineUrl = (u) => `${BASE}/sfx-online/preview?u=${encodeURIComponent(u)}`;
