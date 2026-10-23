@@ -593,7 +593,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (dur > t) out.push([t, dur]);
     return out;
   }, [gaps, dur]);
-  const width = Math.max(320, Math.round(progDur * pps));
+  // a área da timeline ocupa a largura toda (depois do fim fica o espaço vazio, como no Premiere)
+  const width = Math.max(320, isMobile ? 0 : trackW - 14, Math.round(progDur * pps) + (isMobile ? 0 : 40));
   // O que a V1 e a A1 mostram: só o vídeo/áudio que existe (sem os espaços vazios nem o que
   // foi excluído) — a faixa fica limpa, como no Premiere.
   const minusHoles = (spans, holes) => {
@@ -5518,16 +5519,27 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setTrackW(el.clientWidth);
     return () => ro.disconnect();
   }, []);
-  const fitPps = trackW > 0 && progDur > 0 ? Math.max(1, Math.min(PPS_MIN, +((trackW - 60) / progDur).toFixed(2))) : PPS_MIN;
+  // vídeo curto (ou quase tudo excluído): o "ajustar" aproxima até caber na largura
+  const fitPps = trackW > 0 && progDur > 0 ? Math.max(1, Math.min(PPS_MAX, +((trackW - 60) / progDur).toFixed(2))) : PPS_MIN;
   fitPpsRef.current = isMobile ? PPS_MIN : fitPps;
   const fittedRef = useRef(false);
   useEffect(() => {
     if (fittedRef.current || isMobile || !trackW || !(dur > 1)) return;
     fittedRef.current = true;
-    setPps(Math.max(fitPps, Math.min(PPS_MAX, +((trackW - 60) / dur).toFixed(2))));
+    setPps(fitPps);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackW, dur, isMobile]);
-  const fitAll = () => setPps(Math.max(fitPps, Math.min(PPS_MAX, +((trackW - 60) / dur).toFixed(2))));
+  const fitAll = () => setPps(fitPps);
+  // o que fica no vídeo encolheu (excluiu um pedaço grande) e sobrou só um tiquinho na tela:
+  // aproxima de novo para dar para pegar, mover e esticar o que ficou
+  const prevProgRef = useRef(progDur);
+  useEffect(() => {
+    const was = prevProgRef.current;
+    prevProgRef.current = progDur;
+    if (isMobile || !trackW || !(progDur > 0)) return;
+    if (progDur < was - 0.01 && progDur * pps < (trackW - 60) * 0.5) setPps(fitPps);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progDur]);
 
   // Painéis redimensionáveis (como no Premiere): arraste a divisória entre o monitor e o
   // lado direito (largura) e entre as opções e a timeline (altura). Fica salvo neste
