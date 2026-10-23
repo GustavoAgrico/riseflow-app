@@ -63,6 +63,8 @@ services:
       # - key: PEXELS_API_KEY      # B-roll automático
       # - key: PIXABAY_API_KEY     # B-roll: mais vídeos e fotos livres (chave grátis)
       #   sync: false
+      # - key: FREESOUND_API_KEY   # biblioteca online de efeitos sonoros (CC0; chave grátis)
+      #   sync: false
       # - key: SERPER_API_KEY      # "Google Imagens" no B-roll (serper.dev; a API do Google fechou)
       #   sync: false
       # - key: BRAVE_SEARCH_KEY    # alternativa: busca de imagens do Brave (api-dashboard.search.brave.com)

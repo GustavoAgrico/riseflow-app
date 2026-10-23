@@ -69,3 +69,21 @@ test('buildSfxMix: biblioteca — riser começa antes do momento, tipos desconhe
   assert.ok(r.filter.includes('[1:a]adelay=1500|1500'));
   assert.ok(r.filter.includes('[2:a]adelay=2000|2000'));
 });
+
+test('buildSfxMix: som da biblioteca online entra como arquivo, sem adiantamento', () => {
+  const r = buildSfxMix([{ t: 1.5, type: 'online', file: '/tmp/x/som.mp3', volume: 0.5 }, { t: 0.5, type: 'pop' }]);
+  assert.deepEqual(r.order, ['pop', 'file:/tmp/x/som.mp3']);
+  assert.ok(r.filter.includes('[2:a]aformat=sample_rates=44100:channel_layouts=stereo,adelay=1500|1500'), 'arquivo no tempo exato');
+  // tipo desconhecido sem arquivo continua fora
+  assert.equal(buildSfxMix([{ t: 1, type: 'online' }]), null);
+});
+
+test('sfxOnline: só aceita prévias do Freesound', async () => {
+  const { okSfxUrl } = await import('../src/pipeline/sfxOnline.js');
+  assert.ok(okSfxUrl('https://cdn.freesound.org/previews/123/123456_789-hq.mp3'));
+  assert.ok(okSfxUrl('https://freesound.org/data/previews/1/1_2-lq.mp3'));
+  assert.ok(!okSfxUrl('https://evil.com/previews/1.mp3'));
+  assert.ok(!okSfxUrl('https://cdn.freesound.org/previews/../../etc/passwd.mp3'.replace('..', '%2e%2e')));
+  assert.ok(!okSfxUrl('http://cdn.freesound.org/previews/1/1.mp3'));
+  assert.ok(!okSfxUrl('https://cdn.freesound.org.evil.com/previews/1/1.mp3'));
+});

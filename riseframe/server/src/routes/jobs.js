@@ -9,7 +9,7 @@ import { queue } from '../queue.js';
 import { requireAuth, requireVerified } from './auth.js';
 import { getSettings } from '../auth/settings.js';
 import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod, trialCovers, useFreeEdit, refundFreeEdit, holdRemote, releaseRemote, appAccess, hadTrial } from '../auth/billing.js';
-import { remoteAccount, remoteCheck, remoteCharge, holdRemoteCharge, settleRemoteCharge, sendAccountError, rememberJobToken } from '../account.js';
+import { remoteAccount, remoteCheck, remoteCharge, holdRemoteCharge, settleRemoteCharge, sendAccountError, rememberJobToken, accountFetch } from '../account.js';
 import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../../shared/credits.js';
 import { registerMedia, resolveMedia, relinkMedia, mediaStatus, listLibrary, removeFromLibrary } from '../mediaStore.js';
 import { formatBytes, freeDiskBytes } from '../storage.js';
@@ -24,6 +24,7 @@ import { CLIP_GOALS } from '../pipeline/clipSelect.js';
 import { sanitizeHeadline, sanitizeCover, makeCover } from '../pipeline/headline.js';
 import { outputTarget } from '../pipeline/render.js';
 import { brollCandidates, resolveSource, googleConfig, googleReady } from '../pipeline/broll.js';
+import { freesoundKey, searchFreesound, okSfxUrl, onlineSfxFile } from '../pipeline/sfxOnline.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
 import { analyzeAndGrade } from '../pipeline/autoColor.js';
 import { CAPTION_TEMPLATES, CAPTION_FONTS } from '../pipeline/captions.js';
@@ -742,9 +743,9 @@ export function parseOptions(raw) {
     // Efeitos colocados à mão na timeline (tempo original; o servidor remapeia após os cortes).
     sfxMoments: Array.isArray(o.sfxMoments)
       ? o.sfxMoments
-          .filter((m) => m && Number.isFinite(Number(m.t)) && Number(m.t) >= 0 && Object.hasOwn(SFX_LIBRARY, m.type))
+          .filter((m) => m && Number.isFinite(Number(m.t)) && Number(m.t) >= 0 && (Object.hasOwn(SFX_LIBRARY, m.type) || (m.type === 'online' && okSfxUrl(m.url))))
           .slice(0, 60)
-          .map((m) => ({ t: Number(m.t), type: m.type, ...(m.volume != null && Number.isFinite(Number(m.volume)) && Number(m.volume) !== 1 ? { volume: Math.max(0, Math.min(2, Number(m.volume))) } : {}) }))
+          .map((m) => ({ t: Number(m.t), type: m.type, ...(m.type === 'online' ? { url: m.url } : {}), ...(m.volume != null && Number.isFinite(Number(m.volume)) && Number(m.volume) !== 1 ? { volume: Math.max(0, Math.min(2, Number(m.volume))) } : {}) }))
       : [],
     // Transições (flash/esmaecer/brilho/blur) nos cortes e/ou nas entradas de B-roll.
     transition: Object.hasOwn(TRANSITIONS, o.transition) ? o.transition : 'none',
@@ -1293,6 +1294,46 @@ jobsRouter.post('/remote/broll-search', requireAuth, requireVerified, requireApp
     res.json({ candidates });
   } catch (err) {
     res.status(500).json({ error: err.message || 'falha na busca' });
+  }
+});
+
+// ── Biblioteca online de sons (Freesound, só CC0) ──
+// GET /api/sfx-online/search?q=&page= → { results } · sem chave aqui, busca pela conta do site
+jobsRouter.get('/sfx-online/search', requireAuth, async (req, res) => {
+  const q = String(req.query.q || '').slice(0, 80);
+  const page = Number(req.query.page) || 1;
+  try {
+    if (freesoundKey()) return res.json({ results: await searchFreesound(q, { page }) });
+    if (remoteAccount()) {
+      const auth = String(req.headers.authorization || '');
+      const data = await accountFetch('/remote/sfx-search', { method: 'POST', token: auth.startsWith('Bearer ') ? auth.slice(7) : '', body: { q, page }, ip: req.ip });
+      return res.json({ results: Array.isArray(data.results) ? data.results.filter((x) => okSfxUrl(x.preview)) : [] });
+    }
+    res.status(501).json({ error: 'A biblioteca online de sons ainda não foi ligada neste servidor (falta a chave gratuita do Freesound: FREESOUND_API_KEY).' });
+  } catch (err) {
+    res.status(err.status || 502).json({ error: err.body?.error || err.message || 'falha na busca de sons' });
+  }
+});
+// POST /api/remote/sfx-search { q, page } → { results } (para o app de PC sem chave)
+jobsRouter.post('/remote/sfx-search', requireAuth, requireVerified, requireAppPlan, async (req, res) => {
+  if (remoteAccount() || !freesoundKey()) return res.status(501).json({ error: 'a biblioteca online de sons não está ligada no site' });
+  if (!remoteQuota('sfx', req.user.id, Number(process.env.REMOTE_SFX_DAILY) || 1500)) return res.status(429).json({ error: 'limite diário de buscas de sons atingido' });
+  try {
+    res.json({ results: await searchFreesound(String(req.body?.q || ''), { page: Number(req.body?.page) || 1 }) });
+  } catch (err) {
+    res.status(502).json({ error: err.message || 'falha na busca de sons' });
+  }
+});
+// GET /api/sfx-online/preview?u=<prévia do Freesound> → o mp3 (do cache), para ouvir no editor
+jobsRouter.get('/sfx-online/preview', async (req, res) => {
+  const u = String(req.query.u || '');
+  if (!okSfxUrl(u)) return res.status(400).json({ error: 'endereço de som inválido' });
+  try {
+    const file = await onlineSfxFile(u, config.paths.cache);
+    res.set('Cache-Control', 'private, max-age=86400');
+    res.type('audio/mpeg').sendFile(path.resolve(file));
+  } catch (err) {
+    res.status(502).json({ error: err.message || 'não deu para baixar o som' });
   }
 });
 

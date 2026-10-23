@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { assembleSequence } from './sequence.js';
 import { sequenceTranscript } from './seqTranscript.js';
+import { onlineSfxFile } from './sfxOnline.js';
 import { config } from '../config.js';
 import { probeSummary, runFfmpeg, sdrVf, x264Fast } from './ffmpeg.js';
 import { transcribe } from './transcribe/index.js';
@@ -855,7 +856,15 @@ export async function runPipeline(job, onUpdate = () => {}) {
     events.length = 0;
     events.push(...kept);
     // Efeitos colocados à mão na timeline entram sempre, do jeito que foram colocados.
-    for (const m of options.sfxMoments || []) events.push({ t: m.t, type: m.type, ...(m.volume != null ? { volume: m.volume } : {}) });
+    for (const m of options.sfxMoments || []) {
+      // som da biblioteca online: baixa (cache) e entra como arquivo
+      let file = null;
+      if (m.url) {
+        file = await onlineSfxFile(m.url, config.paths.cache).catch((err) => { log.warn(`som online: ${err.message}`); return null; });
+        if (!file) continue;
+      }
+      events.push({ t: m.t, type: m.type, ...(file ? { file } : {}), ...(m.volume != null ? { volume: m.volume } : {}) });
+    }
     const r = await applySoundEffects(input, work, meta, events, options, st.onProgress);
     if (r.applied) input = r.output;
     report.sfx = { count: r.count, byType: r.byType || {} };

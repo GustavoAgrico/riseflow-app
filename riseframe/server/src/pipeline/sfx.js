@@ -352,8 +352,9 @@ export async function sfxPreviewFile(type, cacheDir) {
 export function buildSfxMix(events, opts = {}) {
   const lv = LEVELS[opts.intensity] || LEVELS.medio;
   const list = (events || [])
-    .filter((e) => e && Number.isFinite(e.t) && e.t >= 0 && isType(e.type))
-    .map((e) => ({ ...e, at: Math.max(0, e.t - SFX_LIBRARY[e.type].lead) }))
+    // e.file: som da biblioteca online (já baixado), sem adiantamento
+    .filter((e) => e && Number.isFinite(e.t) && e.t >= 0 && (isType(e.type) || e.file))
+    .map((e) => ({ ...e, at: Math.max(0, e.t - (e.file ? 0 : SFX_LIBRARY[e.type].lead)) }))
     .sort((a, b) => a.at - b.at)
     .slice(0, opts.max ?? 80);
   // Os cliques (tick) chegam prontos numa faixa só (opts.tickTrack), como mais uma entrada.
@@ -362,13 +363,13 @@ export function buildSfxMix(events, opts = {}) {
   const parts = [];
   const order = [];
   list.forEach((e, i) => {
-    const s = SFX_LIBRARY[e.type];
+    const s = e.file ? { base: 'whoosh', gain: 1.2 } : SFX_LIBRARY[e.type];
     // volume de cada som colocado à mão (0–2, como o do CapCut); o padrão é 1
     const vol = +(lv[s.base] * s.gain * (Number.isFinite(Number(e.volume)) ? Math.max(0, Math.min(2, Number(e.volume))) : 1)).toFixed(3);
     const ms = Math.round(e.at * 1000);
     const idx = i + 1; // input 0 é o vídeo original
-    parts.push(`[${idx}:a]adelay=${ms}|${ms},volume=${vol}[e${i}]`);
-    order.push(e.type);
+    parts.push(`[${idx}:a]${e.file ? 'aformat=sample_rates=44100:channel_layouts=stereo,' : ''}adelay=${ms}|${ms},volume=${vol}[e${i}]`);
+    order.push(e.file ? `file:${e.file}` : e.type);
   });
   const labels = list.map((_, i) => `[e${i}]`);
   if (opts.tickTrack) {
@@ -404,7 +405,7 @@ export async function applySoundEffects(input, work, meta, events, options, onPr
   const files = await synthSfx(work, mix.order);
   const output = path.join(work, 'sfx.mp4');
   const args = ['-i', input];
-  for (const type of mix.order) args.push('-i', type === 'ticks' ? tickPath : files[type]);
+  for (const type of mix.order) args.push('-i', type === 'ticks' ? tickPath : type.startsWith('file:') ? type.slice(5) : files[type]);
   args.push(
     '-filter_complex', mix.filter,
     '-map', '0:v', '-map', '[aout]',
@@ -414,7 +415,7 @@ export async function applySoundEffects(input, work, meta, events, options, onPr
   await runFfmpeg(args, { label: 'sfx', totalDuration: meta.duration, onProgress });
   const count = mix.order.filter((t) => t !== 'ticks').length + ticks.length;
   const byType = {};
-  for (const t of mix.order) if (t !== 'ticks') byType[t] = (byType[t] || 0) + 1;
+  for (const t of mix.order) if (t !== 'ticks') { const k = t.startsWith('file:') ? 'online' : t; byType[k] = (byType[k] || 0) + 1; }
   if (ticks.length) byType.tick = ticks.length;
   log.ok(`efeitos sonoros mixados (${count}: ${Object.entries(byType).map(([t, n]) => `${n} ${t}`).join(', ')})`);
   return { output, applied: true, count, byType };
