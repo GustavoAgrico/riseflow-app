@@ -1,7 +1,8 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { runFfmpeg } from './ffmpeg.js';
+import { runFfmpeg, probe } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('sfx');
@@ -295,6 +296,9 @@ export const SFX_CATEGORIES = {
   interface: 'Interface e redes',
   divertido: 'Divertido e games',
   clima: 'Clima e brilho',
+  notificacao: 'Notificações',
+  conquista: 'Conquistas e games',
+  dinheiro: 'Compras e dinheiro',
 };
 const SFX_CAT = {
   whoosh: 'transicao', swoosh: 'transicao', riser: 'transicao', whooshdown: 'transicao', swipe: 'transicao', rewind: 'transicao',
@@ -303,10 +307,53 @@ const SFX_CAT = {
   glitch: 'divertido', cash: 'divertido', error: 'divertido', success: 'divertido', fail: 'divertido', boing: 'divertido', coin: 'divertido', laser: 'divertido', zap: 'divertido', scratch: 'divertido',
   bling: 'clima', drone: 'clima', sparkle: 'clima', magic: 'clima', heartbeat: 'clima',
 };
+// ── Pacote de sons em arquivo (assets/sfx/pack/<categoria>/<som>.mp3) ──
+// Entra no site e no app de PC. pack.json traz nome/categoria/duração; qualquer arquivo
+// de áudio a mais posto numa subpasta também entra (nome = nome do arquivo, categoria =
+// nome da pasta). Só sons livres (CC0/domínio público ou próprios).
+export const SFX_PACK_DIR = path.join(SFX_DIR, 'pack');
+const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|aac|flac)$/i;
+const slug = (x) => String(x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const prettyName = (f) => { const n = path.basename(f).replace(AUDIO_EXT, '').replace(/[-_]+/g, ' ').trim(); return n.charAt(0).toUpperCase() + n.slice(1); };
+export function loadSfxPack(dir = SFX_PACK_DIR) {
+  const added = [];
+  let listed = [];
+  try { listed = JSON.parse(fsSync.readFileSync(path.join(dir, 'pack.json'), 'utf8')).sounds || []; } catch { /* sem manifesto */ }
+  const known = new Set();
+  const add = (rel, label, cat, dur) => {
+    const file = path.join(dir, rel);
+    if (!fsSync.existsSync(file)) return;
+    const id = `p-${slug(rel.replace(AUDIO_EXT, ''))}`.slice(0, 64);
+    if (Object.hasOwn(SFX_LIBRARY, id)) return;
+    if (!Object.hasOwn(SFX_CATEGORIES, cat)) SFX_CATEGORIES[cat] = prettyName(cat);
+    SFX_LIBRARY[id] = { label, file, base: 'pop', gain: 1.5, lead: 0, cat, dur: Number(dur) || 0 };
+    known.add(path.normalize(rel));
+    added.push(id);
+  };
+  for (const x of listed) if (x && typeof x.file === 'string' && !x.file.includes('..')) add(x.file, String(x.label || prettyName(x.file)).slice(0, 60), slug(x.cat || 'clima') || 'clima', x.dur);
+  let dirs = [];
+  try { dirs = fsSync.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()); } catch { return added; }
+  for (const d of dirs) {
+    for (const f of fsSync.readdirSync(path.join(dir, d.name))) {
+      const rel = path.join(d.name, f);
+      if (AUDIO_EXT.test(f) && !known.has(path.normalize(rel))) add(rel, prettyName(f).slice(0, 60), slug(d.name) || 'clima', 0);
+    }
+  }
+  // duração dos arquivos sem manifesto (para a faixa S1), em segundo plano
+  for (const id of added) {
+    const s = SFX_LIBRARY[id];
+    if (!s.dur) probe(s.file).then((m) => { s.dur = +Number(m?.format?.duration || 1).toFixed(2); }).catch(() => { s.dur = 1; });
+  }
+  return added;
+}
+const packIds = loadSfxPack();
+if (packIds.length) log.info(`pacote de sons: ${packIds.length} sons em arquivo`);
+
 /** Categoria e duração (s) de cada som, para a biblioteca e a faixa S1 do editor. */
 export function sfxInfo(type) {
   const s = SFX_LIBRARY[type];
   if (!s) return null;
+  if (s.file) return { cat: s.cat, dur: s.dur || 1 };
   const m = /(?:^|[:=])d(?:uration)?=([\d.]+)/.exec(s.src);
   return { cat: SFX_CAT[type] || 'clima', dur: m ? Number(m[1]) : 0.5 };
 }
@@ -319,6 +366,7 @@ async function synthSfx(work, types) {
   for (const type of new Set(types)) {
     if (!isType(type)) continue;
     const s = SFX_LIBRARY[type];
+    if (s.file) { files[type] = s.file; continue; }
     const file = path.join(work, `sfx_${type}.wav`);
     await runFfmpeg(['-f', 'lavfi', '-i', s.src, '-af', s.af.join(','), '-ac', '2', '-y', file], { label: `sfx-${type}` });
     files[type] = file;
@@ -329,6 +377,7 @@ async function synthSfx(work, types) {
 /** Arquivo do som (gerado uma vez em cache) para ouvir na prévia do editor. */
 export async function sfxPreviewFile(type, cacheDir) {
   if (!isType(type)) return null;
+  if (SFX_LIBRARY[type].file) return SFX_LIBRARY[type].file;
   const file = path.join(cacheDir, `sfx-preview-${type}.wav`);
   try {
     await fs.access(file);
@@ -364,11 +413,12 @@ export function buildSfxMix(events, opts = {}) {
   const order = [];
   list.forEach((e, i) => {
     const s = e.file ? { base: 'whoosh', gain: 1.2 } : SFX_LIBRARY[e.type];
+    const fromFile = Boolean(e.file || s.file);
     // volume de cada som colocado à mão (0–2, como o do CapCut); o padrão é 1
     const vol = +(lv[s.base] * s.gain * (Number.isFinite(Number(e.volume)) ? Math.max(0, Math.min(2, Number(e.volume))) : 1)).toFixed(3);
     const ms = Math.round(e.at * 1000);
     const idx = i + 1; // input 0 é o vídeo original
-    parts.push(`[${idx}:a]${e.file ? 'aformat=sample_rates=44100:channel_layouts=stereo,' : ''}adelay=${ms}|${ms},volume=${vol}[e${i}]`);
+    parts.push(`[${idx}:a]${fromFile ? 'aformat=sample_rates=44100:channel_layouts=stereo,' : ''}adelay=${ms}|${ms},volume=${vol}[e${i}]`);
     order.push(e.file ? `file:${e.file}` : e.type);
   });
   const labels = list.map((_, i) => `[e${i}]`);

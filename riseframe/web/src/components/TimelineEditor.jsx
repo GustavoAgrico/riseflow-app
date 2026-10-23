@@ -1304,8 +1304,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           const E = best ? best.e : 0;
           const tm = !best ? transMotion(t, L.trans) : null; // borrão de movimento das de câmera
           const glitch = best?.type === 'glitch';
-          tro.style.opacity = E > 0 ? String(best.type === 'flash' ? 0.9 * E : best.type === 'dip' ? 0.95 * E : best.type === 'glow' ? 0.4 * E : glitch ? (Math.sin(t * 90) > 0 ? 0.8 : 0.35) : 1) : tm?.blur ? '1' : '0';
-          tro.style.background = best?.type === 'dip' ? '#000' : glitch ? 'linear-gradient(90deg, rgba(255,0,90,0.35), transparent 40%, transparent 60%, rgba(0,220,255,0.35))' : best && best.type !== 'blur' ? '#fff' : 'transparent';
+          const iris = best?.type === 'iris';
+          tro.style.opacity = E > 0 ? String(best.type === 'flash' ? 0.9 * E : best.type === 'dip' ? 0.95 * E : best.type === 'whiteout' ? E : iris ? 1 : best.type === 'glow' ? 0.4 * E : glitch ? (Math.sin(t * 90) > 0 ? 0.8 : 0.35) : 1) : tm?.blur ? '1' : '0';
+          tro.style.background = iris ? `radial-gradient(circle at center, transparent ${Math.max(0, 75 * (1 - E)).toFixed(1)}%, #000 ${Math.max(8, 75 * (1 - E) + 18).toFixed(1)}%)` : best?.type === 'dip' ? '#000' : glitch ? 'linear-gradient(90deg, rgba(255,0,90,0.35), transparent 40%, transparent 60%, rgba(0,220,255,0.35))' : best && best.type !== 'blur' ? '#fff' : 'transparent';
           tro.style.mixBlendMode = best?.type === 'glow' || glitch ? 'screen' : 'normal';
           tro.style.backdropFilter = best?.type === 'blur' ? `blur(${(10 * E).toFixed(1)}px)` : glitch ? 'hue-rotate(40deg) saturate(1.6)' : tm?.blur ? `blur(${tm.blur}px)` : 'none';
         }
@@ -4008,7 +4009,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <PropRow label="Rotação" kf={v1KfV}>
             <ScrubNum value={KV.rot} step={0.5} min={-180} max={180} decimals={1} suffix=" °" onChange={(v) => setV1V('rot', +v.toFixed(1))} />
           </PropRow>
-          {v1AnimV && <div style={{ fontSize: 11, color: C.faint }}>Animando: mudar um valor grava um ◆ no playhead (faixa QUADROS na timeline). {transformKeys.length} quadro(s)-chave.</div>}
+          {v1AnimV && <div style={{ fontSize: 11, color: C.faint }}>Animando: mudar um valor grava um ◆ no playhead (veja na linha Movimento, abaixo). {transformKeys.length} quadro(s)-chave.</div>}
           {transformKeys.length > 0 && (() => {
             // quadros do vídeo principal numa mini-timeline (o pedaço selecionado ou o vídeo todo)
             const a0 = piece ? piece.a : 0;
@@ -4782,7 +4783,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const fxQ = norm(fxQuery.trim());
   // Sons (como a biblioteca do CapCut): subcategorias dentro de "Sons"
   const [sfxCat, setSfxCat] = useState('');
-  const SFX_COLORS = { transicao: ['rgba(59,130,246,0.45)', 'rgba(14,165,233,0.25)'], impacto: ['rgba(220,38,38,0.45)', 'rgba(249,115,22,0.25)'], interface: ['rgba(16,185,129,0.4)', 'rgba(20,184,166,0.22)'], divertido: ['rgba(168,85,247,0.45)', 'rgba(236,72,153,0.25)'], clima: ['rgba(234,179,8,0.4)', 'rgba(255,107,53,0.22)'], online: ['rgba(14,165,233,0.4)', 'rgba(124,58,237,0.3)'] };
+  const SFX_COLORS = { transicao: ['rgba(59,130,246,0.45)', 'rgba(14,165,233,0.25)'], impacto: ['rgba(220,38,38,0.45)', 'rgba(249,115,22,0.25)'], interface: ['rgba(16,185,129,0.4)', 'rgba(20,184,166,0.22)'], divertido: ['rgba(168,85,247,0.45)', 'rgba(236,72,153,0.25)'], clima: ['rgba(234,179,8,0.4)', 'rgba(255,107,53,0.22)'], notificacao: ['rgba(34,197,94,0.4)', 'rgba(59,130,246,0.22)'], conquista: ['rgba(250,204,21,0.45)', 'rgba(168,85,247,0.25)'], dinheiro: ['rgba(16,185,129,0.45)', 'rgba(234,179,8,0.25)'], meus: ['rgba(124,58,237,0.45)', 'rgba(255,107,53,0.25)'], online: ['rgba(14,165,233,0.4)', 'rgba(124,58,237,0.3)'] };
   // Biblioteca online (Freesound, só sons CC0 — uso livre): busca dentro de "Sons" → "Online"
   const [sfxOnQ, setSfxOnQ] = useState('');
   const [sfxOn, setSfxOn] = useState({ busy: false, err: '', list: [], q: null });
@@ -4798,9 +4799,29 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
   }
   const sfxOnline = fxCat === 'som' && !fxQ && sfxCat === 'online';
+  // "Meus sons": os áudios que a pessoa importou (biblioteca de mídias) — entram como camada de áudio
+  const sfxMine = fxCat === 'som' && !fxQ && sfxCat === 'meus';
+  useEffect(() => { if (sfxMine && !libLoadedRef.current) loadLibrary(); }, [sfxMine]); // eslint-disable-line react-hooks/exhaustive-deps
+  const mySoundItems = (library || []).filter((m) => m.kind === 'audio' && m.status === 'ok').map((m) => ({ cat: 'som', kind: 'mysound', id: m.id, uid: `mine:${m.id}`, label: String(m.filename || 'Som').replace(/\.[a-z0-9]+$/i, ''), scat: 'meus', sdur: Number(m.durationSec) || 1, lib: m }));
+  const mySoundRef = useRef(null);
+  async function onPickMySounds(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    setMediaErr('');
+    setMediaBusy(true);
+    try {
+      for (const file of files) { const info = await addProjectMedia(file); markProjectMedia(info?.id); }
+    } catch (err) {
+      setMediaErr(err.message || 'falha ao enviar o som');
+    } finally {
+      setMediaBusy(false);
+      loadLibrary();
+    }
+  }
   useEffect(() => { if (sfxOnline && sfxOn.q == null && !sfxOn.busy) runSfxSearch(''); }, [sfxOnline]); // eslint-disable-line react-hooks/exhaustive-deps
   const sfxOnItems = sfxOn.list.map((r) => ({ cat: 'som', kind: 'sfx', id: 'online', uid: `online:${r.id}`, label: r.name || 'Som', scat: 'online', sdur: r.dur || 1, online: { url: r.preview, name: r.name || 'Som', dur: r.dur || 1 } }));
-  const fxShown = sfxOnline ? sfxOnItems : fxLibrary.filter((x) => (fxQ ? norm(x.label).includes(fxQ) : fxCat === 'fav' ? fxFavs.includes(x.uid) : x.cat === fxCat && (fxCat !== 'som' || !sfxCat || x.scat === sfxCat)));
+  const fxShown = sfxOnline ? sfxOnItems : sfxMine ? mySoundItems : fxLibrary.filter((x) => (fxQ ? norm(x.label).includes(fxQ) : fxCat === 'fav' ? fxFavs.includes(x.uid) : x.cat === fxCat && (fxCat !== 'som' || !sfxCat || x.scat === sfxCat)));
   /** Coloca o efeito na timeline no instante t (tempo original do vídeo). */
   function addEffectAt(item, t0) {
     const t = Math.max(0, Math.min(dur - 0.2, Number(t0) || 0));
@@ -4833,6 +4854,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setFreezes((l) => [...l, f].sort((x, y) => x.t - y.t));
       setSelFreeze(f.key);
       setSelKind('freeze');
+    } else if (item.kind === 'mysound') {
+      addMediaItem(item.lib, { start: t }); // som importado: camada de áudio (dá para cortar, volume, fade)
     } else if (item.kind === 'sfx') {
       setSfxMoments((l) => [...l, { key: `s${Date.now()}`, t: +t.toFixed(3), type: item.id, ...(item.online || {}) }].sort((a, b) => a.t - b.t));
     }
@@ -5747,10 +5770,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
   }
   const sfxAudioRef = useRef(null);
-  function playSfx(id, vol = 1, online = '') {
+  function playSfx(id, vol = 1, online = '', direct = '') {
     try {
       sfxAudioRef.current?.pause();
-      const a = new Audio(online ? sfxOnlineUrl(online) : sfxUrl(id));
+      const a = new Audio(direct || (online ? sfxOnlineUrl(online) : sfxUrl(id)));
       a.volume = Math.min(1, 0.7 * vol);
       sfxAudioRef.current = a;
       a.play().catch(() => {});
@@ -5787,7 +5810,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <div style={{ padding: 8, overflowY: 'auto', maxHeight: isMobile ? 300 : 360 }}>
           {fxCat === 'som' && !fxQ && (catalog?.sfxCategories || []).length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
-              {[{ id: '', label: 'Todos' }, ...catalog.sfxCategories, { id: 'online', label: '🌐 Online' }].map((c) => (
+              {[{ id: '', label: 'Todos' }, ...catalog.sfxCategories, { id: 'meus', label: '📁 Meus sons' }, { id: 'online', label: '🌐 Online' }].map((c) => (
                 <button key={c.id} onClick={() => setSfxCat(c.id)} aria-pressed={sfxCat === c.id}
                   style={{ height: 24, padding: '0 10px', borderRadius: 999, border: `1px solid ${sfxCat === c.id ? C.orange : C.border}`, background: sfxCat === c.id ? 'rgba(255,107,53,0.16)' : 'transparent', color: sfxCat === c.id ? C.text : C.muted, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>{c.label}</button>
               ))}
@@ -5810,7 +5833,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               {sfxOn.err && <span style={{ fontSize: 11.5, color: C.red }}>{sfxOn.err}</span>}
             </form>
           )}
-          {fxShown.length === 0 && !(sfxOnline && (sfxOn.busy || sfxOn.err)) && <div style={{ fontSize: 11.5, color: C.faint, padding: 16, textAlign: 'center' }}>{fxCat === 'fav' && !fxQ ? 'Clique na ★ de um efeito para guardar aqui.' : sfxOnline ? 'Nenhum som encontrado — tente outra palavra (em inglês acha mais).' : 'Nenhum efeito encontrado.'}</div>}
+          {sfxMine && (
+            <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
+              <input ref={mySoundRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" multiple onChange={onPickMySounds} style={{ display: 'none' }} />
+              <div onDragOver={onLibFileDragOver} onDragLeave={() => setLibFileOver(false)} onDrop={onLibFileDrop}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, borderRadius: 9, border: `1px dashed ${libFileOver ? C.orange : C.border}`, background: libFileOver ? 'rgba(255,107,53,0.08)' : 'transparent' }}>
+                <button onClick={() => mySoundRef.current?.click()} disabled={mediaBusy} style={{ ...miniBtn(true, false), flex: 'none' }}>{mediaBusy ? 'Enviando…' : '+ Importar sons'}</button>
+                <span style={{ fontSize: 10.5, color: C.faint }}>MP3, WAV, M4A… ou solte os arquivos aqui. Ficam salvos na sua biblioteca para usar em qualquer projeto.</span>
+              </div>
+              {mediaErr && <span style={{ fontSize: 11.5, color: C.red }}>{mediaErr}</span>}
+            </div>
+          )}
+          {fxShown.length === 0 && !(sfxOnline && (sfxOn.busy || sfxOn.err)) && <div style={{ fontSize: 11.5, color: C.faint, padding: 16, textAlign: 'center' }}>{fxCat === 'fav' && !fxQ ? 'Clique na ★ de um efeito para guardar aqui.' : sfxOnline ? 'Nenhum som encontrado — tente outra palavra (em inglês acha mais).' : sfxMine ? (library == null ? 'Carregando…' : 'Você ainda não importou sons. Clique em “+ Importar sons”.') : 'Nenhum efeito encontrado.'}</div>}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8 }}>
             {fxShown.map((x) => {
               const fav = fxFavs.includes(x.uid);
@@ -5822,9 +5856,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   title={`${x.label} — arraste para a timeline ou para o vídeo · clique duplo coloca no playhead (${fmtDuration(cur)})`}
                   style={{ borderRadius: 9, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)', cursor: isMobile ? 'pointer' : 'grab', overflow: 'hidden', userSelect: 'none' }}>
                   <div style={{ position: 'relative', aspectRatio: '16 / 9', overflow: 'hidden', background: '#111' }}>
-                    {x.kind === 'sfx' ? (
+                    {x.kind === 'sfx' || x.kind === 'mysound' ? (
                       <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: `linear-gradient(135deg, ${(SFX_COLORS[x.scat] || SFX_COLORS.clima)[0]}, ${(SFX_COLORS[x.scat] || SFX_COLORS.clima)[1]})` }}>
-                        <button onClick={(e) => { e.stopPropagation(); if (x.online) playSfx(null, 1, x.online.url); else playSfx(x.id); }} aria-label={`Ouvir ${x.label}`}
+                        <button onClick={(e) => { e.stopPropagation(); if (x.online) playSfx(null, 1, x.online.url); else if (x.kind === 'mysound') playSfx(null, 1, '', mediaFileUrl(x.id)); else playSfx(x.id); }} aria-label={`Ouvir ${x.label}`}
                           style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center' }}><Icon name="play" size={14} strokeWidth={2.2} /></button>
                         <span style={{ position: 'absolute', right: 4, bottom: 3, fontSize: 10, fontWeight: 800, color: '#fff', textShadow: '0 1px 3px #000' }}>{x.sdur.toFixed(1).replace('.', ',')}s</span>
                       </div>
@@ -5835,7 +5869,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                         {x.kind === 'speed' || x.kind === 'freeze' ? <span style={{ position: 'absolute', right: 4, bottom: 3, fontSize: 10, fontWeight: 800, color: '#fff', textShadow: '0 1px 3px #000' }}>{x.kind === 'freeze' ? `❄ ${x.id}s` : `${x.id.replace('.', ',')}×`}</span> : null}
                       </>
                     )}
-                    {!x.online && <button onClick={(e) => { e.stopPropagation(); toggleFav(x.uid); }} aria-label={fav ? 'Tirar dos favoritos' : 'Favoritar'}
+                    {!x.online && x.kind !== 'mysound' && <button onClick={(e) => { e.stopPropagation(); toggleFav(x.uid); }} aria-label={fav ? 'Tirar dos favoritos' : 'Favoritar'}
                       style={{ position: 'absolute', top: 2, right: 3, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: fav ? '#FACC15' : 'rgba(255,255,255,0.55)', textShadow: '0 1px 3px #000', padding: 0 }}>{fav ? '★' : '☆'}</button>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 6px' }}>
@@ -9780,6 +9814,8 @@ const FX_ANIM_CSS = `
 .a-tr-glow { animation-name: rfTrGlow; } @keyframes rfTrGlow { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(2.2) saturate(1.4); } }
 .o-tr-flash { background: #fff; opacity: 0; animation-name: rfFlash; } @keyframes rfFlash { 0%, 30%, 70%, 100% { opacity: 0; } 50% { opacity: 1; } }
 .o-tr-dip { background: #000; opacity: 0; animation-name: rfFlash; }
+.o-tr-whiteout { background: #fff; opacity: 0; animation-name: rfFlash; }
+.o-tr-iris { opacity: 1; animation-name: rfIris; } @keyframes rfIris { 0%, 100% { background: radial-gradient(circle, transparent 75%, #000 93%); } 50% { background: radial-gradient(circle, transparent 0%, #000 8%); } }
 .a-tr-zoomin { animation-name: rfTrZin; } @keyframes rfTrZin { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.5); filter: blur(2px); } }
 .a-tr-zoomout { animation-name: rfTrZout; } @keyframes rfTrZout { 0%, 45% { transform: scale(1.05); } 50% { transform: scale(1.5); filter: blur(2px); } 100% { transform: scale(1); } }
 .a-tr-slideleft { animation-name: rfTrSl; } @keyframes rfTrSl { 0%, 100% { transform: translateX(0) scale(1); } 48% { transform: translateX(-22%) scale(1.5); filter: blur(2px); } 52% { transform: translateX(22%) scale(1.5); filter: blur(2px); } }
@@ -9800,9 +9836,9 @@ const FX_ANIM_CSS = `
 `;
 
 // Meia duração de cada transição (igual ao servidor) e textura de grão para a prévia.
-const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2 };
+const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3 };
 const TRANS_DUR = Object.fromEntries(Object.entries(TRANS_HALF).map(([k, h]) => [k, +(h * 2).toFixed(2)]));
-const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch']);
+const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch', 'whiteout', 'iris']);
 /**
  * Transições de câmera na prévia (as mesmas contas do render): zoom, deslizar, giro e
  * tremor perto de cada ponto. → { z (zoom extra), x, y (% da tela), r (graus), blur } | null

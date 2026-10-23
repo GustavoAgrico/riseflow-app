@@ -1,0 +1,1122 @@
+{
+ "license": "CC0-1.0",
+ "source": "uisfx 0.4.0 (npm, áudio CC0 1.0 — domínio público)",
+ "sounds": [
+  {
+   "file": "conquista/bonus-arcade.mp3",
+   "label": "Bônus · Arcade",
+   "cat": "conquista",
+   "dur": 0.76
+  },
+  {
+   "file": "conquista/bonus-rubber.mp3",
+   "label": "Bônus · Borracha",
+   "cat": "conquista",
+   "dur": 0.74
+  },
+  {
+   "file": "conquista/bonus-cinematic.mp3",
+   "label": "Bônus · Cinema",
+   "cat": "conquista",
+   "dur": 1.3
+  },
+  {
+   "file": "conquista/bonus-glass.mp3",
+   "label": "Bônus · Cristal",
+   "cat": "conquista",
+   "dur": 1.17
+  },
+  {
+   "file": "conquista/bonus-scifi.mp3",
+   "label": "Bônus · Sci-fi",
+   "cat": "conquista",
+   "dur": 0.71
+  },
+  {
+   "file": "conquista/bonus-dreamy.mp3",
+   "label": "Bônus · Sonho",
+   "cat": "conquista",
+   "dur": 1.27
+  },
+  {
+   "file": "conquista/checkpoint-arcade.mp3",
+   "label": "Checkpoint · Arcade",
+   "cat": "conquista",
+   "dur": 0.48
+  },
+  {
+   "file": "conquista/checkpoint-rubber.mp3",
+   "label": "Checkpoint · Borracha",
+   "cat": "conquista",
+   "dur": 0.48
+  },
+  {
+   "file": "conquista/checkpoint-cinematic.mp3",
+   "label": "Checkpoint · Cinema",
+   "cat": "conquista",
+   "dur": 0.84
+  },
+  {
+   "file": "conquista/checkpoint-glass.mp3",
+   "label": "Checkpoint · Cristal",
+   "cat": "conquista",
+   "dur": 0.78
+  },
+  {
+   "file": "conquista/checkpoint-scifi.mp3",
+   "label": "Checkpoint · Sci-fi",
+   "cat": "conquista",
+   "dur": 0.48
+  },
+  {
+   "file": "conquista/checkpoint-dreamy.mp3",
+   "label": "Checkpoint · Sonho",
+   "cat": "conquista",
+   "dur": 0.88
+  },
+  {
+   "file": "conquista/complete-arcade.mp3",
+   "label": "Concluído · Arcade",
+   "cat": "conquista",
+   "dur": 0.73
+  },
+  {
+   "file": "conquista/complete-rubber.mp3",
+   "label": "Concluído · Borracha",
+   "cat": "conquista",
+   "dur": 0.71
+  },
+  {
+   "file": "conquista/complete-cinematic.mp3",
+   "label": "Concluído · Cinema",
+   "cat": "conquista",
+   "dur": 1.22
+  },
+  {
+   "file": "conquista/complete-glass.mp3",
+   "label": "Concluído · Cristal",
+   "cat": "conquista",
+   "dur": 1.12
+  },
+  {
+   "file": "conquista/complete-scifi.mp3",
+   "label": "Concluído · Sci-fi",
+   "cat": "conquista",
+   "dur": 0.69
+  },
+  {
+   "file": "conquista/complete-dreamy.mp3",
+   "label": "Concluído · Sonho",
+   "cat": "conquista",
+   "dur": 1.21
+  },
+  {
+   "file": "conquista/achievement-arcade.mp3",
+   "label": "Conquista · Arcade",
+   "cat": "conquista",
+   "dur": 1.02
+  },
+  {
+   "file": "conquista/achievement-rubber.mp3",
+   "label": "Conquista · Borracha",
+   "cat": "conquista",
+   "dur": 1.03
+  },
+  {
+   "file": "conquista/achievement-cinematic.mp3",
+   "label": "Conquista · Cinema",
+   "cat": "conquista",
+   "dur": 1.5
+  },
+  {
+   "file": "conquista/achievement-glass.mp3",
+   "label": "Conquista · Cristal",
+   "cat": "conquista",
+   "dur": 1.5
+  },
+  {
+   "file": "conquista/achievement-scifi.mp3",
+   "label": "Conquista · Sci-fi",
+   "cat": "conquista",
+   "dur": 0.98
+  },
+  {
+   "file": "conquista/achievement-dreamy.mp3",
+   "label": "Conquista · Sonho",
+   "cat": "conquista",
+   "dur": 1.5
+  },
+  {
+   "file": "conquista/badge-arcade.mp3",
+   "label": "Medalha · Arcade",
+   "cat": "conquista",
+   "dur": 0.65
+  },
+  {
+   "file": "conquista/badge-rubber.mp3",
+   "label": "Medalha · Borracha",
+   "cat": "conquista",
+   "dur": 0.65
+  },
+  {
+   "file": "conquista/badge-cinematic.mp3",
+   "label": "Medalha · Cinema",
+   "cat": "conquista",
+   "dur": 1.2
+  },
+  {
+   "file": "conquista/badge-glass.mp3",
+   "label": "Medalha · Cristal",
+   "cat": "conquista",
+   "dur": 1.06
+  },
+  {
+   "file": "conquista/badge-scifi.mp3",
+   "label": "Medalha · Sci-fi",
+   "cat": "conquista",
+   "dur": 0.63
+  },
+  {
+   "file": "conquista/badge-dreamy.mp3",
+   "label": "Medalha · Sonho",
+   "cat": "conquista",
+   "dur": 1.18
+  },
+  {
+   "file": "conquista/reward-arcade.mp3",
+   "label": "Recompensa · Arcade",
+   "cat": "conquista",
+   "dur": 0.56
+  },
+  {
+   "file": "conquista/reward-rubber.mp3",
+   "label": "Recompensa · Borracha",
+   "cat": "conquista",
+   "dur": 0.55
+  },
+  {
+   "file": "conquista/reward-cinematic.mp3",
+   "label": "Recompensa · Cinema",
+   "cat": "conquista",
+   "dur": 1.02
+  },
+  {
+   "file": "conquista/reward-glass.mp3",
+   "label": "Recompensa · Cristal",
+   "cat": "conquista",
+   "dur": 0.9
+  },
+  {
+   "file": "conquista/reward-scifi.mp3",
+   "label": "Recompensa · Sci-fi",
+   "cat": "conquista",
+   "dur": 0.53
+  },
+  {
+   "file": "conquista/reward-dreamy.mp3",
+   "label": "Recompensa · Sonho",
+   "cat": "conquista",
+   "dur": 0.99
+  },
+  {
+   "file": "conquista/streak-arcade.mp3",
+   "label": "Sequência · Arcade",
+   "cat": "conquista",
+   "dur": 0.64
+  },
+  {
+   "file": "conquista/streak-rubber.mp3",
+   "label": "Sequência · Borracha",
+   "cat": "conquista",
+   "dur": 0.64
+  },
+  {
+   "file": "conquista/streak-cinematic.mp3",
+   "label": "Sequência · Cinema",
+   "cat": "conquista",
+   "dur": 1.12
+  },
+  {
+   "file": "conquista/streak-glass.mp3",
+   "label": "Sequência · Cristal",
+   "cat": "conquista",
+   "dur": 1.01
+  },
+  {
+   "file": "conquista/streak-scifi.mp3",
+   "label": "Sequência · Sci-fi",
+   "cat": "conquista",
+   "dur": 0.63
+  },
+  {
+   "file": "conquista/streak-dreamy.mp3",
+   "label": "Sequência · Sonho",
+   "cat": "conquista",
+   "dur": 1.13
+  },
+  {
+   "file": "conquista/level-up-arcade.mp3",
+   "label": "Subiu de nível · Arcade",
+   "cat": "conquista",
+   "dur": 0.8
+  },
+  {
+   "file": "conquista/level-up-rubber.mp3",
+   "label": "Subiu de nível · Borracha",
+   "cat": "conquista",
+   "dur": 0.79
+  },
+  {
+   "file": "conquista/level-up-cinematic.mp3",
+   "label": "Subiu de nível · Cinema",
+   "cat": "conquista",
+   "dur": 1.38
+  },
+  {
+   "file": "conquista/level-up-glass.mp3",
+   "label": "Subiu de nível · Cristal",
+   "cat": "conquista",
+   "dur": 1.24
+  },
+  {
+   "file": "conquista/level-up-scifi.mp3",
+   "label": "Subiu de nível · Sci-fi",
+   "cat": "conquista",
+   "dur": 0.76
+  },
+  {
+   "file": "conquista/level-up-dreamy.mp3",
+   "label": "Subiu de nível · Sonho",
+   "cat": "conquista",
+   "dur": 1.35
+  },
+  {
+   "file": "dinheiro/add-to-cart-arcade.mp3",
+   "label": "Carrinho · Arcade",
+   "cat": "dinheiro",
+   "dur": 0.48
+  },
+  {
+   "file": "dinheiro/add-to-cart-rubber.mp3",
+   "label": "Carrinho · Borracha",
+   "cat": "dinheiro",
+   "dur": 0.46
+  },
+  {
+   "file": "dinheiro/add-to-cart-cinematic.mp3",
+   "label": "Carrinho · Cinema",
+   "cat": "dinheiro",
+   "dur": 0.83
+  },
+  {
+   "file": "dinheiro/add-to-cart-glass.mp3",
+   "label": "Carrinho · Cristal",
+   "cat": "dinheiro",
+   "dur": 0.75
+  },
+  {
+   "file": "dinheiro/add-to-cart-scifi.mp3",
+   "label": "Carrinho · Sci-fi",
+   "cat": "dinheiro",
+   "dur": 0.46
+  },
+  {
+   "file": "dinheiro/add-to-cart-dreamy.mp3",
+   "label": "Carrinho · Sonho",
+   "cat": "dinheiro",
+   "dur": 0.82
+  },
+  {
+   "file": "dinheiro/purchase-arcade.mp3",
+   "label": "Compra · Arcade",
+   "cat": "dinheiro",
+   "dur": 0.59
+  },
+  {
+   "file": "dinheiro/purchase-rubber.mp3",
+   "label": "Compra · Borracha",
+   "cat": "dinheiro",
+   "dur": 0.59
+  },
+  {
+   "file": "dinheiro/purchase-cinematic.mp3",
+   "label": "Compra · Cinema",
+   "cat": "dinheiro",
+   "dur": 1.09
+  },
+  {
+   "file": "dinheiro/purchase-glass.mp3",
+   "label": "Compra · Cristal",
+   "cat": "dinheiro",
+   "dur": 0.96
+  },
+  {
+   "file": "dinheiro/purchase-scifi.mp3",
+   "label": "Compra · Sci-fi",
+   "cat": "dinheiro",
+   "dur": 0.57
+  },
+  {
+   "file": "dinheiro/purchase-dreamy.mp3",
+   "label": "Compra · Sonho",
+   "cat": "dinheiro",
+   "dur": 1.09
+  },
+  {
+   "file": "dinheiro/coupon-arcade.mp3",
+   "label": "Cupom · Arcade",
+   "cat": "dinheiro",
+   "dur": 0.51
+  },
+  {
+   "file": "dinheiro/coupon-rubber.mp3",
+   "label": "Cupom · Borracha",
+   "cat": "dinheiro",
+   "dur": 0.49
+  },
+  {
+   "file": "dinheiro/coupon-cinematic.mp3",
+   "label": "Cupom · Cinema",
+   "cat": "dinheiro",
+   "dur": 0.87
+  },
+  {
+   "file": "dinheiro/coupon-glass.mp3",
+   "label": "Cupom · Cristal",
+   "cat": "dinheiro",
+   "dur": 0.8
+  },
+  {
+   "file": "dinheiro/coupon-scifi.mp3",
+   "label": "Cupom · Sci-fi",
+   "cat": "dinheiro",
+   "dur": 0.48
+  },
+  {
+   "file": "dinheiro/coupon-dreamy.mp3",
+   "label": "Cupom · Sonho",
+   "cat": "dinheiro",
+   "dur": 0.9
+  },
+  {
+   "file": "interface/open-arcade.mp3",
+   "label": "Abrir · Arcade",
+   "cat": "interface",
+   "dur": 0.38
+  },
+  {
+   "file": "interface/open-rubber.mp3",
+   "label": "Abrir · Borracha",
+   "cat": "interface",
+   "dur": 0.34
+  },
+  {
+   "file": "interface/open-cinematic.mp3",
+   "label": "Abrir · Cinema",
+   "cat": "interface",
+   "dur": 0.67
+  },
+  {
+   "file": "interface/open-glass.mp3",
+   "label": "Abrir · Cristal",
+   "cat": "interface",
+   "dur": 0.58
+  },
+  {
+   "file": "interface/open-scifi.mp3",
+   "label": "Abrir · Sci-fi",
+   "cat": "interface",
+   "dur": 0.36
+  },
+  {
+   "file": "interface/open-dreamy.mp3",
+   "label": "Abrir · Sonho",
+   "cat": "interface",
+   "dur": 0.69
+  },
+  {
+   "file": "interface/wake-arcade.mp3",
+   "label": "Acender · Arcade",
+   "cat": "interface",
+   "dur": 0.44
+  },
+  {
+   "file": "interface/wake-rubber.mp3",
+   "label": "Acender · Borracha",
+   "cat": "interface",
+   "dur": 0.43
+  },
+  {
+   "file": "interface/wake-cinematic.mp3",
+   "label": "Acender · Cinema",
+   "cat": "interface",
+   "dur": 0.79
+  },
+  {
+   "file": "interface/wake-glass.mp3",
+   "label": "Acender · Cristal",
+   "cat": "interface",
+   "dur": 0.72
+  },
+  {
+   "file": "interface/wake-scifi.mp3",
+   "label": "Acender · Sci-fi",
+   "cat": "interface",
+   "dur": 0.44
+  },
+  {
+   "file": "interface/wake-dreamy.mp3",
+   "label": "Acender · Sonho",
+   "cat": "interface",
+   "dur": 0.81
+  },
+  {
+   "file": "interface/press-arcade.mp3",
+   "label": "Botão · Arcade",
+   "cat": "interface",
+   "dur": 0.2
+  },
+  {
+   "file": "interface/press-rubber.mp3",
+   "label": "Botão · Borracha",
+   "cat": "interface",
+   "dur": 0.18
+  },
+  {
+   "file": "interface/press-cinematic.mp3",
+   "label": "Botão · Cinema",
+   "cat": "interface",
+   "dur": 0.41
+  },
+  {
+   "file": "interface/press-glass.mp3",
+   "label": "Botão · Cristal",
+   "cat": "interface",
+   "dur": 0.36
+  },
+  {
+   "file": "interface/press-scifi.mp3",
+   "label": "Botão · Sci-fi",
+   "cat": "interface",
+   "dur": 0.21
+  },
+  {
+   "file": "interface/press-dreamy.mp3",
+   "label": "Botão · Sonho",
+   "cat": "interface",
+   "dur": 0.43
+  },
+  {
+   "file": "interface/lock-arcade.mp3",
+   "label": "Cadeado · Arcade",
+   "cat": "interface",
+   "dur": 0.34
+  },
+  {
+   "file": "interface/lock-rubber.mp3",
+   "label": "Cadeado · Borracha",
+   "cat": "interface",
+   "dur": 0.33
+  },
+  {
+   "file": "interface/lock-cinematic.mp3",
+   "label": "Cadeado · Cinema",
+   "cat": "interface",
+   "dur": 0.64
+  },
+  {
+   "file": "interface/lock-glass.mp3",
+   "label": "Cadeado · Cristal",
+   "cat": "interface",
+   "dur": 0.57
+  },
+  {
+   "file": "interface/lock-scifi.mp3",
+   "label": "Cadeado · Sci-fi",
+   "cat": "interface",
+   "dur": 0.34
+  },
+  {
+   "file": "interface/lock-dreamy.mp3",
+   "label": "Cadeado · Sonho",
+   "cat": "interface",
+   "dur": 0.63
+  },
+  {
+   "file": "interface/unlock-arcade.mp3",
+   "label": "Destravar · Arcade",
+   "cat": "interface",
+   "dur": 0.44
+  },
+  {
+   "file": "interface/unlock-rubber.mp3",
+   "label": "Destravar · Borracha",
+   "cat": "interface",
+   "dur": 0.42
+  },
+  {
+   "file": "interface/unlock-cinematic.mp3",
+   "label": "Destravar · Cinema",
+   "cat": "interface",
+   "dur": 0.78
+  },
+  {
+   "file": "interface/unlock-glass.mp3",
+   "label": "Destravar · Cristal",
+   "cat": "interface",
+   "dur": 0.7
+  },
+  {
+   "file": "interface/unlock-scifi.mp3",
+   "label": "Destravar · Sci-fi",
+   "cat": "interface",
+   "dur": 0.42
+  },
+  {
+   "file": "interface/unlock-dreamy.mp3",
+   "label": "Destravar · Sonho",
+   "cat": "interface",
+   "dur": 0.81
+  },
+  {
+   "file": "interface/close-arcade.mp3",
+   "label": "Fechar · Arcade",
+   "cat": "interface",
+   "dur": 0.33
+  },
+  {
+   "file": "interface/close-rubber.mp3",
+   "label": "Fechar · Borracha",
+   "cat": "interface",
+   "dur": 0.33
+  },
+  {
+   "file": "interface/close-cinematic.mp3",
+   "label": "Fechar · Cinema",
+   "cat": "interface",
+   "dur": 0.65
+  },
+  {
+   "file": "interface/close-glass.mp3",
+   "label": "Fechar · Cristal",
+   "cat": "interface",
+   "dur": 0.58
+  },
+  {
+   "file": "interface/close-scifi.mp3",
+   "label": "Fechar · Sci-fi",
+   "cat": "interface",
+   "dur": 0.34
+  },
+  {
+   "file": "interface/close-dreamy.mp3",
+   "label": "Fechar · Sonho",
+   "cat": "interface",
+   "dur": 0.66
+  },
+  {
+   "file": "interface/toggle-on-arcade.mp3",
+   "label": "Ligar · Arcade",
+   "cat": "interface",
+   "dur": 0.32
+  },
+  {
+   "file": "interface/toggle-on-rubber.mp3",
+   "label": "Ligar · Borracha",
+   "cat": "interface",
+   "dur": 0.31
+  },
+  {
+   "file": "interface/toggle-on-cinematic.mp3",
+   "label": "Ligar · Cinema",
+   "cat": "interface",
+   "dur": 0.6
+  },
+  {
+   "file": "interface/toggle-on-glass.mp3",
+   "label": "Ligar · Cristal",
+   "cat": "interface",
+   "dur": 0.53
+  },
+  {
+   "file": "interface/toggle-on-scifi.mp3",
+   "label": "Ligar · Sci-fi",
+   "cat": "interface",
+   "dur": 0.32
+  },
+  {
+   "file": "interface/toggle-on-dreamy.mp3",
+   "label": "Ligar · Sonho",
+   "cat": "interface",
+   "dur": 0.61
+  },
+  {
+   "file": "interface/play-arcade.mp3",
+   "label": "Play · Arcade",
+   "cat": "interface",
+   "dur": 0.35
+  },
+  {
+   "file": "interface/play-rubber.mp3",
+   "label": "Play · Borracha",
+   "cat": "interface",
+   "dur": 0.34
+  },
+  {
+   "file": "interface/play-cinematic.mp3",
+   "label": "Play · Cinema",
+   "cat": "interface",
+   "dur": 0.64
+  },
+  {
+   "file": "interface/play-glass.mp3",
+   "label": "Play · Cristal",
+   "cat": "interface",
+   "dur": 0.58
+  },
+  {
+   "file": "interface/play-scifi.mp3",
+   "label": "Play · Sci-fi",
+   "cat": "interface",
+   "dur": 0.35
+  },
+  {
+   "file": "interface/play-dreamy.mp3",
+   "label": "Play · Sonho",
+   "cat": "interface",
+   "dur": 0.64
+  },
+  {
+   "file": "interface/select-arcade.mp3",
+   "label": "Selecionar · Arcade",
+   "cat": "interface",
+   "dur": 0.3
+  },
+  {
+   "file": "interface/select-rubber.mp3",
+   "label": "Selecionar · Borracha",
+   "cat": "interface",
+   "dur": 0.29
+  },
+  {
+   "file": "interface/select-cinematic.mp3",
+   "label": "Selecionar · Cinema",
+   "cat": "interface",
+   "dur": 0.57
+  },
+  {
+   "file": "interface/select-glass.mp3",
+   "label": "Selecionar · Cristal",
+   "cat": "interface",
+   "dur": 0.51
+  },
+  {
+   "file": "interface/select-scifi.mp3",
+   "label": "Selecionar · Sci-fi",
+   "cat": "interface",
+   "dur": 0.31
+  },
+  {
+   "file": "interface/select-dreamy.mp3",
+   "label": "Selecionar · Sonho",
+   "cat": "interface",
+   "dur": 0.59
+  },
+  {
+   "file": "notificacao/warning-arcade.mp3",
+   "label": "Alerta · Arcade",
+   "cat": "notificacao",
+   "dur": 0.59
+  },
+  {
+   "file": "notificacao/warning-rubber.mp3",
+   "label": "Alerta · Borracha",
+   "cat": "notificacao",
+   "dur": 0.57
+  },
+  {
+   "file": "notificacao/warning-cinematic.mp3",
+   "label": "Alerta · Cinema",
+   "cat": "notificacao",
+   "dur": 1.06
+  },
+  {
+   "file": "notificacao/warning-glass.mp3",
+   "label": "Alerta · Cristal",
+   "cat": "notificacao",
+   "dur": 0.94
+  },
+  {
+   "file": "notificacao/warning-scifi.mp3",
+   "label": "Alerta · Sci-fi",
+   "cat": "notificacao",
+   "dur": 0.56
+  },
+  {
+   "file": "notificacao/warning-dreamy.mp3",
+   "label": "Alerta · Sonho",
+   "cat": "notificacao",
+   "dur": 1.03
+  },
+  {
+   "file": "notificacao/reaction-arcade.mp3",
+   "label": "Curtida · Arcade",
+   "cat": "notificacao",
+   "dur": 0.41
+  },
+  {
+   "file": "notificacao/reaction-rubber.mp3",
+   "label": "Curtida · Borracha",
+   "cat": "notificacao",
+   "dur": 0.38
+  },
+  {
+   "file": "notificacao/reaction-cinematic.mp3",
+   "label": "Curtida · Cinema",
+   "cat": "notificacao",
+   "dur": 0.71
+  },
+  {
+   "file": "notificacao/reaction-glass.mp3",
+   "label": "Curtida · Cristal",
+   "cat": "notificacao",
+   "dur": 0.64
+  },
+  {
+   "file": "notificacao/reaction-scifi.mp3",
+   "label": "Curtida · Sci-fi",
+   "cat": "notificacao",
+   "dur": 0.39
+  },
+  {
+   "file": "notificacao/reaction-dreamy.mp3",
+   "label": "Curtida · Sonho",
+   "cat": "notificacao",
+   "dur": 0.75
+  },
+  {
+   "file": "notificacao/error-arcade.mp3",
+   "label": "Erro · Arcade",
+   "cat": "notificacao",
+   "dur": 0.56
+  },
+  {
+   "file": "notificacao/error-rubber.mp3",
+   "label": "Erro · Borracha",
+   "cat": "notificacao",
+   "dur": 0.53
+  },
+  {
+   "file": "notificacao/error-cinematic.mp3",
+   "label": "Erro · Cinema",
+   "cat": "notificacao",
+   "dur": 0.99
+  },
+  {
+   "file": "notificacao/error-glass.mp3",
+   "label": "Erro · Cristal",
+   "cat": "notificacao",
+   "dur": 0.89
+  },
+  {
+   "file": "notificacao/error-scifi.mp3",
+   "label": "Erro · Sci-fi",
+   "cat": "notificacao",
+   "dur": 0.52
+  },
+  {
+   "file": "notificacao/error-dreamy.mp3",
+   "label": "Erro · Sonho",
+   "cat": "notificacao",
+   "dur": 0.98
+  },
+  {
+   "file": "notificacao/send-arcade.mp3",
+   "label": "Mensagem enviada · Arcade",
+   "cat": "notificacao",
+   "dur": 0.41
+  },
+  {
+   "file": "notificacao/send-rubber.mp3",
+   "label": "Mensagem enviada · Borracha",
+   "cat": "notificacao",
+   "dur": 0.39
+  },
+  {
+   "file": "notificacao/send-cinematic.mp3",
+   "label": "Mensagem enviada · Cinema",
+   "cat": "notificacao",
+   "dur": 0.74
+  },
+  {
+   "file": "notificacao/send-glass.mp3",
+   "label": "Mensagem enviada · Cristal",
+   "cat": "notificacao",
+   "dur": 0.66
+  },
+  {
+   "file": "notificacao/send-scifi.mp3",
+   "label": "Mensagem enviada · Sci-fi",
+   "cat": "notificacao",
+   "dur": 0.4
+  },
+  {
+   "file": "notificacao/send-dreamy.mp3",
+   "label": "Mensagem enviada · Sonho",
+   "cat": "notificacao",
+   "dur": 0.75
+  },
+  {
+   "file": "notificacao/receive-arcade.mp3",
+   "label": "Mensagem recebida · Arcade",
+   "cat": "notificacao",
+   "dur": 0.44
+  },
+  {
+   "file": "notificacao/receive-rubber.mp3",
+   "label": "Mensagem recebida · Borracha",
+   "cat": "notificacao",
+   "dur": 0.45
+  },
+  {
+   "file": "notificacao/receive-cinematic.mp3",
+   "label": "Mensagem recebida · Cinema",
+   "cat": "notificacao",
+   "dur": 0.8
+  },
+  {
+   "file": "notificacao/receive-glass.mp3",
+   "label": "Mensagem recebida · Cristal",
+   "cat": "notificacao",
+   "dur": 0.74
+  },
+  {
+   "file": "notificacao/receive-scifi.mp3",
+   "label": "Mensagem recebida · Sci-fi",
+   "cat": "notificacao",
+   "dur": 0.45
+  },
+  {
+   "file": "notificacao/receive-dreamy.mp3",
+   "label": "Mensagem recebida · Sonho",
+   "cat": "notificacao",
+   "dur": 0.85
+  },
+  {
+   "file": "notificacao/mention-arcade.mp3",
+   "label": "Menção · Arcade",
+   "cat": "notificacao",
+   "dur": 0.57
+  },
+  {
+   "file": "notificacao/mention-rubber.mp3",
+   "label": "Menção · Borracha",
+   "cat": "notificacao",
+   "dur": 0.57
+  },
+  {
+   "file": "notificacao/mention-cinematic.mp3",
+   "label": "Menção · Cinema",
+   "cat": "notificacao",
+   "dur": 1.02
+  },
+  {
+   "file": "notificacao/mention-glass.mp3",
+   "label": "Menção · Cristal",
+   "cat": "notificacao",
+   "dur": 0.92
+  },
+  {
+   "file": "notificacao/mention-scifi.mp3",
+   "label": "Menção · Sci-fi",
+   "cat": "notificacao",
+   "dur": 0.56
+  },
+  {
+   "file": "notificacao/mention-dreamy.mp3",
+   "label": "Menção · Sonho",
+   "cat": "notificacao",
+   "dur": 1.01
+  },
+  {
+   "file": "notificacao/notification-arcade.mp3",
+   "label": "Notificação · Arcade",
+   "cat": "notificacao",
+   "dur": 0.52
+  },
+  {
+   "file": "notificacao/notification-rubber.mp3",
+   "label": "Notificação · Borracha",
+   "cat": "notificacao",
+   "dur": 0.49
+  },
+  {
+   "file": "notificacao/notification-cinematic.mp3",
+   "label": "Notificação · Cinema",
+   "cat": "notificacao",
+   "dur": 0.94
+  },
+  {
+   "file": "notificacao/notification-glass.mp3",
+   "label": "Notificação · Cristal",
+   "cat": "notificacao",
+   "dur": 0.83
+  },
+  {
+   "file": "notificacao/notification-scifi.mp3",
+   "label": "Notificação · Sci-fi",
+   "cat": "notificacao",
+   "dur": 0.48
+  },
+  {
+   "file": "notificacao/notification-dreamy.mp3",
+   "label": "Notificação · Sonho",
+   "cat": "notificacao",
+   "dur": 0.92
+  },
+  {
+   "file": "notificacao/success-arcade.mp3",
+   "label": "Sucesso · Arcade",
+   "cat": "notificacao",
+   "dur": 0.62
+  },
+  {
+   "file": "notificacao/success-rubber.mp3",
+   "label": "Sucesso · Borracha",
+   "cat": "notificacao",
+   "dur": 0.64
+  },
+  {
+   "file": "notificacao/success-cinematic.mp3",
+   "label": "Sucesso · Cinema",
+   "cat": "notificacao",
+   "dur": 1.13
+  },
+  {
+   "file": "notificacao/success-glass.mp3",
+   "label": "Sucesso · Cristal",
+   "cat": "notificacao",
+   "dur": 1.03
+  },
+  {
+   "file": "notificacao/success-scifi.mp3",
+   "label": "Sucesso · Sci-fi",
+   "cat": "notificacao",
+   "dur": 0.62
+  },
+  {
+   "file": "notificacao/success-dreamy.mp3",
+   "label": "Sucesso · Sonho",
+   "cat": "notificacao",
+   "dur": 1.13
+  },
+  {
+   "file": "transicao/swipe-arcade.mp3",
+   "label": "Deslizar · Arcade",
+   "cat": "transicao",
+   "dur": 0.36
+  },
+  {
+   "file": "transicao/swipe-rubber.mp3",
+   "label": "Deslizar · Borracha",
+   "cat": "transicao",
+   "dur": 0.34
+  },
+  {
+   "file": "transicao/swipe-cinematic.mp3",
+   "label": "Deslizar · Cinema",
+   "cat": "transicao",
+   "dur": 0.69
+  },
+  {
+   "file": "transicao/swipe-glass.mp3",
+   "label": "Deslizar · Cristal",
+   "cat": "transicao",
+   "dur": 0.61
+  },
+  {
+   "file": "transicao/swipe-scifi.mp3",
+   "label": "Deslizar · Sci-fi",
+   "cat": "transicao",
+   "dur": 0.33
+  },
+  {
+   "file": "transicao/swipe-dreamy.mp3",
+   "label": "Deslizar · Sonho",
+   "cat": "transicao",
+   "dur": 0.68
+  },
+  {
+   "file": "transicao/snap-arcade.mp3",
+   "label": "Encaixe · Arcade",
+   "cat": "transicao",
+   "dur": 0.2
+  },
+  {
+   "file": "transicao/snap-rubber.mp3",
+   "label": "Encaixe · Borracha",
+   "cat": "transicao",
+   "dur": 0.18
+  },
+  {
+   "file": "transicao/snap-cinematic.mp3",
+   "label": "Encaixe · Cinema",
+   "cat": "transicao",
+   "dur": 0.41
+  },
+  {
+   "file": "transicao/snap-glass.mp3",
+   "label": "Encaixe · Cristal",
+   "cat": "transicao",
+   "dur": 0.36
+  },
+  {
+   "file": "transicao/snap-scifi.mp3",
+   "label": "Encaixe · Sci-fi",
+   "cat": "transicao",
+   "dur": 0.21
+  },
+  {
+   "file": "transicao/snap-dreamy.mp3",
+   "label": "Encaixe · Sonho",
+   "cat": "transicao",
+   "dur": 0.42
+  },
+  {
+   "file": "transicao/drop-arcade.mp3",
+   "label": "Soltar · Arcade",
+   "cat": "transicao",
+   "dur": 0.31
+  },
+  {
+   "file": "transicao/drop-rubber.mp3",
+   "label": "Soltar · Borracha",
+   "cat": "transicao",
+   "dur": 0.31
+  },
+  {
+   "file": "transicao/drop-cinematic.mp3",
+   "label": "Soltar · Cinema",
+   "cat": "transicao",
+   "dur": 0.58
+  },
+  {
+   "file": "transicao/drop-glass.mp3",
+   "label": "Soltar · Cristal",
+   "cat": "transicao",
+   "dur": 0.53
+  },
+  {
+   "file": "transicao/drop-scifi.mp3",
+   "label": "Soltar · Sci-fi",
+   "cat": "transicao",
+   "dur": 0.32
+  },
+  {
+   "file": "transicao/drop-dreamy.mp3",
+   "label": "Soltar · Sonho",
+   "cat": "transicao",
+   "dur": 0.59
+  }
+ ]
+}

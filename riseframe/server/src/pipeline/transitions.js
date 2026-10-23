@@ -23,6 +23,8 @@ export const TRANSITIONS = {
   spin: 'Giro',
   shake: 'Tremor',
   glitch: 'Glitch',
+  whiteout: 'Esmaecimento branco',
+  iris: 'Íris (fecha em círculo)',
 };
 /** Transições de câmera (mexem no quadro): vão juntas num zoompan/rotate só. */
 export const MOTION_TRANSITIONS = ['zoomin', 'zoomout', 'slideleft', 'slideright', 'slideup', 'slidedown', 'spin', 'shake'];
@@ -34,7 +36,7 @@ export const TRANSITION_TARGETS = {
 };
 
 /** Metade da duração de cada transição (s): o efeito vai de p-HALF a p+HALF. */
-const HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2 };
+const HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3 };
 /** Duração padrão (s) de cada transição — a mesma que a prévia usa. */
 export const TRANSITION_DUR = Object.fromEntries(Object.entries(HALF).map(([k, h]) => [k, +(h * 2).toFixed(2)]));
 const MAX_POINTS = 40; // a expressão do FFmpeg cresce com os pontos — teto de segurança
@@ -108,6 +110,12 @@ export function transitionVf(type, points, duration, half = null) {
         `noise=alls=28:allf=t:enable='${windowExpr(pts, h * 0.6)}'`,
         `rgbashift=rh=-10:bv=10:enable='${windowExpr(pts, h * 0.3)}'`,
       ].join(',');
+    case 'whiteout':
+      // como o "Dip to White" do Premiere: clareia até o branco total no corte e volta
+      return `eq=brightness='${E}':saturation='1-${E}':eval=frame`;
+    case 'iris':
+      // como a Íris do Premiere: a borda escurece fechando em círculo até o corte e reabre
+      return `vignette=angle='1.5*${E}':eval=frame,eq=brightness='-0.6*(${E})^2':eval=frame`;
     default:
       return null;
   }
