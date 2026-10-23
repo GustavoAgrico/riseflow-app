@@ -10,7 +10,7 @@ import { CLIP_GOALS } from '../pipeline/clipSelect.js';
 import { CAPTION_LANGUAGES } from '../pipeline/translate.js';
 import { MOMENT_EFFECTS } from '../../../shared/transform.js';
 import { TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, VIDEO_FX } from '../../../shared/textLayers.js';
-import { SFX_LIBRARY, sfxPreviewFile } from '../pipeline/sfx.js';
+import { SFX_LIBRARY, SFX_CATEGORIES, sfxInfo, sfxPreviewFile } from '../pipeline/sfx.js';
 import { config as appConfig } from '../config.js';
 import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
@@ -57,7 +57,8 @@ optionsRouter.get('/options', async (_req, res) => {
     textAnimsOut: Object.entries(TEXT_ANIMS_OUT).map(([id, label]) => ({ id, label })),
     textBoxes: Object.entries(TEXT_BOXES).map(([id, label]) => ({ id, label })),
     // lead: segundos antes do momento em que o som começa (o riser "chega" no ponto)
-    sfxTypes: [{ id: 'none', label: 'Nenhum' }, ...Object.entries(SFX_LIBRARY).map(([id, x]) => ({ id, label: x.label, lead: x.lead || 0 }))],
+    sfxTypes: [{ id: 'none', label: 'Nenhum' }, ...Object.entries(SFX_LIBRARY).map(([id, x]) => ({ id, label: x.label, lead: x.lead || 0, ...sfxInfo(id) }))],
+    sfxCategories: Object.entries(SFX_CATEGORIES).map(([id, label]) => ({ id, label })),
     transitions: Object.entries(TRANSITIONS).map(([id, label]) => ({ id, label })),
     transitionTargets: Object.entries(TRANSITION_TARGETS).map(([id, label]) => ({ id, label })),
     layerAnimations: Object.entries(LAYER_ANIMATIONS).map(([id, label]) => ({ id, label })),
