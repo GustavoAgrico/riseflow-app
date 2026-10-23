@@ -45,6 +45,9 @@ test('transições de câmera (zoom, deslizar, giro, tremor) e glitch: o FFmpeg 
   assert.match(cam, /rotate=/);
   const gl = transitionVf('glitch', [1.5], 3, 0.3);
   assert.match(gl, /rgbashift/);
-  const r = spawnSync(ffmpegPath, ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=30:d=3', '-vf', `${cam},${gl}`, '-f', 'null', '-']);
+  const wo = transitionVf('whiteout', [0.8], 3);
+  const ir = transitionVf('iris', [2], 3);
+  assert.match(ir, /vignette=angle/);
+  const r = spawnSync(ffmpegPath, ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=30:d=3', '-vf', `${cam},${gl},${wo},${ir}`, '-f', 'null', '-']);
   assert.equal(r.status, 0, r.stderr.toString());
 });

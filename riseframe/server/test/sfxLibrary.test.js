@@ -26,3 +26,25 @@ test('volume de cada efeito colocado à mão', () => {
   const v = (f) => Number(/volume=([\d.]+)/.exec(f.filter)[1]);
   assert.ok(Math.abs(v(b) - 2 * v(a)) < 0.002, `${v(a)} → ${v(b)}`);
 });
+
+test('pacote de sons em arquivo: manifesto + arquivos soltos numa subpasta', async () => {
+  const { loadSfxPack } = await import('../src/pipeline/sfx.js');
+  // o pacote do projeto (CC0) já entrou na biblioteca, com categoria e duração
+  const packed = Object.entries(SFX_LIBRARY).filter(([, s]) => s.file);
+  assert.ok(packed.length >= 100, `${packed.length} sons do pacote`);
+  for (const [id, s] of packed.slice(0, 5)) {
+    assert.ok(fs.existsSync(s.file), id);
+    assert.ok(Object.hasOwn(SFX_CATEGORIES, sfxInfo(id).cat));
+  }
+  // som posto à mão numa pasta nova vira categoria nova
+  const dir = path.join(tmp, 'pack');
+  fs.mkdirSync(path.join(dir, 'risadas'), { recursive: true });
+  fs.copyFileSync(packed[0][1].file, path.join(dir, 'risadas', 'risada_curta.mp3'));
+  const ids = loadSfxPack(dir);
+  assert.deepEqual(ids, ['p-risadas-risada-curta']);
+  assert.equal(SFX_LIBRARY['p-risadas-risada-curta'].label, 'Risada curta');
+  assert.equal(SFX_CATEGORIES.risadas, 'Risadas');
+  // no mix ele entra como arquivo (formato normalizado), sem adiantamento
+  const mix = buildSfxMix([{ t: 2, type: 'p-risadas-risada-curta' }]);
+  assert.ok(mix.filter.includes('[1:a]aformat=sample_rates=44100:channel_layouts=stereo,adelay=2000|2000'), mix.filter);
+});

@@ -22,7 +22,7 @@ optionsRouter.get('/sfx/:type', async (req, res) => {
   try {
     const file = await sfxPreviewFile(req.params.type, appConfig.paths.cache);
     if (!file) return res.status(404).json({ error: 'efeito sonoro desconhecido' });
-    res.type('audio/wav').set('Cache-Control', 'public, max-age=86400').sendFile(file);
+    (file.endsWith('.wav') ? res.type('audio/wav') : res).set('Cache-Control', 'public, max-age=86400').sendFile(file);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
