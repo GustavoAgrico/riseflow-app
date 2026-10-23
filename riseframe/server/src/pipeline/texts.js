@@ -40,6 +40,16 @@ function roundRect(W, H, r) {
     + `l ${q(r)} ${q(H)} b ${q(k)} ${q(H)} 0 ${q(H - k)} 0 ${q(H - r)} l 0 ${q(r)} b 0 ${q(k)} ${q(k)} 0 ${q(r)} 0`;
 }
 
+/** Elipse (desenho ASS, origem no canto de cima à esquerda), com as curvas do CSS. */
+function ellipse(W, H) {
+  const q = (v) => Math.round(v);
+  const k = 0.5523;
+  const rx = W / 2;
+  const ry = H / 2;
+  return `m ${q(rx)} 0 b ${q(rx + rx * k)} 0 ${q(W)} ${q(ry - ry * k)} ${q(W)} ${q(ry)} b ${q(W)} ${q(ry + ry * k)} ${q(rx + rx * k)} ${q(H)} ${q(rx)} ${q(H)} `
+    + `b ${q(rx - rx * k)} ${q(H)} 0 ${q(ry + ry * k)} 0 ${q(ry)} b 0 ${q(ry - ry * k)} ${q(rx - rx * k)} 0 ${q(rx)} 0`;
+}
+
 /**
  * Monta o .ass dos textos livres. Puro/exportado para teste. MESMO desenho da prévia
  * (StageLayers no editor): o tamanho é o "em" do CSS (no ASS vira em × célula da fonte),
@@ -56,6 +66,29 @@ export function buildTextAss(layers, meta) {
   const bgr = (hex) => assColor(hex).replace('&H00', '&H');
   layers.forEach((l, i) => {
     const L = textLook(l);
+    if (l.kind === 'shape') {
+      // forma (retângulo/elipse): preenchimento, contorno por fora, sombra, giro e opacidade
+      const durMs = Math.round((l.end - l.start) * 1000);
+      const a = Math.min(ANIM_MS, Math.floor(durMs / 3));
+      const bw = l.w * W;
+      const bh = l.h * H;
+      const cx = l.x * W;
+      const cy = l.y * H;
+      const shape = l.shape === 'ellipse' ? ellipse(bw, bh) : roundRect(bw, bh, (Number(l.radius) || 0) * Math.min(bw, bh) / 2);
+      const fin = ['fade', 'slide-up', 'slide-left', 'zoom'].includes(l.animIn) ? a : 0;
+      const fout = l.animOut === 'fade' ? a : 0;
+      const rotT = L.rot ? `\\org(${Math.round(cx)},${Math.round(cy)})\\frz${(-L.rot).toFixed(2)}` : '';
+      const base = (px, py) => `\\an7\\pos(${Math.round(px - bw / 2)},${Math.round(py - bh / 2)})${rotT}${fin || fout ? `\\fad(${fin},${fout})` : ''}\\shad0`;
+      const bord = L.stroke ? +(L.strokeW * H).toFixed(2) : 0;
+      if (L.shadow) {
+        const dx = -Math.cos((L.shadowAngle * Math.PI) / 180) * L.shadowDist * H;
+        const dy = Math.sin((L.shadowAngle * Math.PI) / 180) * L.shadowDist * H;
+        const sa = alpha(L.shadowOpacity * L.opacity);
+        events.push(`Dialogue: ${i * 4},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${base(cx + dx, cy + dy)}\\bord${bord}\\blur${(L.shadowBlur * H).toFixed(1)}\\1c${bgr(L.shadowColor)}&\\3c${bgr(L.shadowColor)}&\\1a${sa}\\3a${sa}\\p1}${shape}`);
+      }
+      events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${base(cx, cy)}\\bord${bord}\\1c${bgr(L.fillColor)}&\\3c${bgr(L.strokeColor)}&\\1a${L.fill ? alpha(L.opacity) : '&HFF&'}\\3a${alpha(L.opacity)}\\p1}${shape}`);
+      return;
+    }
     const custom = l.fontFile && l.fontFamily;
     const f = custom ? { family: l.fontFamily, bold: false } : fontById(l.font);
     const FM = custom ? fontMetricsFile(l.fontFile) : fontMetrics(f.family);
@@ -103,11 +136,21 @@ export function buildTextAss(layers, meta) {
     const top = (L.valign === 'top' ? y : L.valign === 'bottom' ? y - blockH : y - blockH / 2)
       + L.baseline * H + (L.script === 'super' ? -0.33 * emBase : L.script === 'sub' ? 0.12 * emBase : 0);
     const padW = g.padX * em * 2;
-    const units = lines.map((line) => (line.trim() ? lineW(line) + (L.bg ? padW : 0) : 0));
+    const units = lines.map((line) => (line.trim() ? lineW(line) + (L.bg && !g.block ? padW : 0) : 0));
     const blockW = Math.max(0, ...units);
     const org = [x, top + blockH / 2];
     const sh = L.shadow ? { dx: -Math.cos((L.shadowAngle * Math.PI) / 180) * L.shadowDist * H, dy: Math.sin((L.shadowAngle * Math.PI) / 180) * L.shadowDist * H } : null;
     const fillA = L.fill ? alpha(L.opacity) : '&HFF&';
+    if (L.bg && g.block && units.some((u) => u > 0)) {
+      // fundo inteiro: uma forma do tamanho do bloco (+ a folga nos 4 lados), como o
+      // "Background" do Premiere — a entrelinha não mexe nele além do próprio bloco
+      const bw0 = blockW + 2 * g.padX * em;
+      const bh0 = blockH + 2 * g.padY * em;
+      const shape = roundRect(bw0, bh0, g.r * Math.min(bw0, bh0) / 2);
+      const cyB = top + blockH / 2;
+      if (sh) events.push(`Dialogue: ${i * 4},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${tagsAt(x + sh.dx, cyB + sh.dy, [org[0] + sh.dx, org[1] + sh.dy])}\\bord0\\shad0\\blur${(L.shadowBlur * H).toFixed(1)}\\1c${bgr(L.shadowColor)}&\\1a${alpha(L.shadowOpacity * L.opacity)}\\p1}${shape}`);
+      events.push(`Dialogue: ${i * 4 + 1},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${tagsAt(x, cyB, org)}\\bord0\\shad0\\1c${bgr(L.bgColor)}&\\1a${alpha(L.bgOpacity * L.opacity)}\\p1}${shape}`);
+    }
     lines.forEach((line, j) => {
       if (!line.trim()) return;
       const al = lineAlign(L.align, j === lines.length - 1);
@@ -115,8 +158,8 @@ export function buildTextAss(layers, meta) {
       const cx = al === 'left' ? x - blockW / 2 + u / 2 : al === 'right' ? x + blockW / 2 - u / 2 : x;
       const cy = top + j * (basePitch + lead) + basePitch / 2;
       const ty = cy + FM.cssBase * em - FM.assBase * em;
-      const shape = L.bg ? roundRect(lineW(line) + padW, g.boxH * em, g.r * em) : null;
-      if (sh) {
+      const shape = L.bg && !g.block ? roundRect(lineW(line) + padW, g.boxH * em, g.r * em) : null;
+      if (sh && (shape || !L.bg)) {
         // sombra: uma cópia por baixo, deslocada e desfocada (como a do Premiere)
         const blur = (L.shadowBlur * H).toFixed(1);
         const sa = alpha(L.shadowOpacity * L.opacity);
