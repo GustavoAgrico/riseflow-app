@@ -92,7 +92,7 @@ Every inbound message goes through this chain in `server/index.js`:
 webhook (public) → aiRespond() → handleIncomingMessage() (flow engine)
 ```
 
-`aiRespond` (`server/aiAttendant.js`) checks if the conversation has `ai_auto_reply=true` and handles it with the LLM; if not handled, falls through to `handleIncomingMessage`.
+`aiRespond` (`server/aiAttendant.js`) checks if the owner has an enabled `attendant_config` (`enabled=true`), skips conversations in `waiting_human` or awaiting a flow reply, and handles the message with the LLM; if not handled, falls through to `handleIncomingMessage`. The per-contact anti-loop counter lives in the `ai_auto_replies` table (`supabase/ai_auto_replies.sql`).
 
 Multi-channel: channel is detected from the JID prefix (`tg/` → Telegram, `fb/` → Facebook/Meta, `ig/` → Instagram). The phone number goes in as-is for WhatsApp.
 

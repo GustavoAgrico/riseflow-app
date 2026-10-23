@@ -16,17 +16,27 @@ const { sendText, getWaitingExecution, hasMatchingFlow } = require('./flowEngine
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const jidToNumber = (jid) => String(jid || '').split('@')[0].split(':')[0]
 
-/* Anti-loop: nº de respostas automáticas por contato (em memória).
+/* Anti-loop: nº de respostas automáticas por contato, persistido em
+   ai_auto_replies (sobrevive a reinícios do servidor e a múltiplas instâncias).
    Zera após 6h sem respostas — uma conversa nova no dia seguinte recomeça. */
-const autoCount = new Map() // phone -> { count, last }
 const COUNT_RESET_MS = 6 * 60 * 60 * 1000
 
-function countFor(phone) {
-  const e = autoCount.get(phone)
-  return e && Date.now() - e.last < COUNT_RESET_MS ? e.count : 0
+async function countFor(userId, phone) {
+  const { data } = await supabase.from('ai_auto_replies')
+    .select('count, last_at')
+    .eq('user_id', userId).eq('contact_phone', phone)
+    .maybeSingle()
+  if (!data) return 0
+  return Date.now() - new Date(data.last_at).getTime() < COUNT_RESET_MS ? data.count : 0
 }
-function bump(phone) {
-  autoCount.set(phone, { count: countFor(phone) + 1, last: Date.now() })
+async function bump(userId, phone) {
+  const current = await countFor(userId, phone)
+  await supabase.from('ai_auto_replies').upsert({
+    user_id: userId,
+    contact_phone: phone,
+    count: current + 1,
+    last_at: new Date().toISOString(),
+  }, { onConflict: 'user_id,contact_phone' })
 }
 
 function buildSystemPrompt(config, faqs, historyText, contactName) {
@@ -118,7 +128,7 @@ async function askClaude(key, systemPrompt, userMessage) {
   if (!key) return null
   try {
     const { data } = await axios.post('https://api.anthropic.com/v1/messages', {
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-haiku-5-5',
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
       max_tokens: 300,
@@ -164,7 +174,7 @@ async function aiRespond({ jid, text, pushName, fromMe, userId: ownerId }) {
     if (conv?.status === 'waiting_human') return false
 
     const max = Number(config.max_auto_messages) || 10
-    if (countFor(phone) >= max) {
+    if ((await countFor(userId, phone)) >= max) {
       console.log('[IA] Limite de respostas automáticas atingido p/', phone)
       return false
     }
@@ -216,7 +226,7 @@ async function aiRespond({ jid, text, pushName, fromMe, userId: ownerId }) {
     const delay = Math.min(Number(config.response_delay) || 0, 60)
     if (delay > 0) await sleep(delay * 1000)
     await sendText({ jid, userId, pushName, contact: { name: pushName } }, response)
-    bump(phone)
+    await bump(userId, phone)
     console.log('[IA] 🤖 Respondeu:', response.slice(0, 60))
     return true
   } catch (e) {

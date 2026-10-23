@@ -1,9 +1,17 @@
 const express = require('express')
 const Anthropic = require('@anthropic-ai/sdk')
 const { chatComplete } = require('../aiProvider')
+const { supabase, isConfigured } = require('../supabaseClient')
 const router = express.Router()
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+// A chave é a do próprio usuário (settings.anthropic_key), nunca a do servidor:
+// assim o custo de cada cliente fica na conta dele.
+async function getUserAnthropicKey(userId) {
+  if (!isConfigured || !userId) return null
+  const { data } = await supabase.from('settings')
+    .select('anthropic_key').eq('user_id', userId).maybeSingle()
+  return data?.anthropic_key ?? null
+}
 
 // Rate limiting em memória por usuário (evita drenagem de créditos). Cada bucket
 // tem seu próprio limite: gerar mensagem de campanha é raro; o chat do atendente/
@@ -38,7 +46,9 @@ router.post('/generate-message', async (req, res) => {
   const { channel = 'whatsapp', goal, tone = 'informal', audience, extraContext } = req.body ?? {}
 
   if (!goal) return res.status(400).json({ error: 'Campo "goal" obrigatório.' })
-  if (!process.env.ANTHROPIC_API_KEY) return res.status(503).json({ error: 'ANTHROPIC_API_KEY não configurada no servidor.' })
+  const apiKey = await getUserAnthropicKey(req.user?.sub)
+  if (!apiKey) return res.status(503).json({ error: 'Configure sua chave da Anthropic em Integrações → Claude.' })
+  const client = new Anthropic({ apiKey })
 
   const channelHint = channel === 'email'
     ? 'Email marketing (pode ter até 800 palavras, parágrafos, sem emojis excessivos)'
@@ -60,7 +70,7 @@ Escreva a mensagem de campanha completa.`
 
   try {
     const response = await client.messages.create({
-      model: 'claude-opus-4-8',
+      model: 'claude-sonnet-5-5',
       max_tokens: 600,
       messages: [{ role: 'user', content: userPrompt }],
       system,

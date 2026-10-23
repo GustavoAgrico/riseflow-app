@@ -14,8 +14,8 @@ const { supabase, isConfigured } = require('./supabaseClient')
 const MODEL_MAP = {
   'OpenAI GPT-4o-mini': 'gpt-4o-mini',
   'OpenAI GPT-4o':      'gpt-4o',
-  'Claude Sonnet':      'claude-sonnet-4-20250514',
-  'Claude Haiku':       'claude-haiku-4-5-20251001',
+  'Claude Sonnet':      'claude-sonnet-5-5',
+  'Claude Haiku':       'claude-haiku-5-5',
 }
 
 async function getApiKeys(userId) {
@@ -55,7 +55,7 @@ async function callOpenAI({ provider, systemPrompt, userMessage, temperature, ma
 }
 
 async function callClaude({ provider, systemPrompt, userMessage, temperature, maxTokens, apiKey, conversationHistory }) {
-  const model = MODEL_MAP[provider] ?? 'claude-haiku-4-5-20251001'
+  const model = MODEL_MAP[provider] ?? 'claude-haiku-5-5'
   const body = {
     model,
     messages: [...toChatHistory(conversationHistory), { role: 'user', content: userMessage }],
