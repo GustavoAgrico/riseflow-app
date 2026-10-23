@@ -6,6 +6,7 @@ import { pipeline as streamPipeline } from 'node:stream/promises';
 import { config } from '../config.js';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { averageSubjectCenter } from './reframe.js';
+import { keyframesVf, momentsZoomVf } from './motion.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('broll');
@@ -618,12 +619,21 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
         parts.push(`[pbb${i}][pff${i}]overlay=x=(W-w)/2:y=${alignY}[ph${i}]`);
       }
     });
+    // Transformar (quadros-chave) e zoom dos momentos na metade da pessoa: aplicados DEPOIS
+    // do recorte, no tamanho da metade — como a prévia (que mexe só na metade). Antes o
+    // vídeo inteiro era ampliado/deslocado e depois recortado: a pessoa saía maior e fora do
+    // lugar (o deslocamento valia o dobro).
+    const pm = options.personMotion;
+    const halfMeta = { width: regionW, height: regionH, fps: meta.fps };
+    const pmVf = pm ? [keyframesVf(pm.keys, halfMeta), momentsZoomVf(pm.windows, halfMeta, pm.intensity)].filter(Boolean).join(',') : '';
+    if (pmVf) clips.forEach((_, i) => parts.push(`[ph${i}]${pmVf},setsar=1[phm${i}]`));
+    const ph = (i) => (pmVf ? `[phm${i}]` : `[ph${i}]`);
     last = '[base]';
     clips.forEach((c, i) => {
       const win = `enable='between(t,${c.start.toFixed(3)},${c.end.toFixed(3)})'`;
       const mid = `[s${i}]`;
       // 1) encaixa a pessoa na metade dela; 2) coloca o B-roll na outra metade.
-      parts.push(`${last}[ph${i}]overlay=x=0:y=${personY}:${win}${mid}`);
+      parts.push(`${last}${ph(i)}overlay=x=0:y=${personY}:${win}${mid}`);
       parts.push(`${mid}[b${i}]overlay=x=0:y=${ovY}:${win}${i === n - 1 ? '[outv]' : `[o${i}]`}`);
       last = i === n - 1 ? '[outv]' : `[o${i}]`;
     });
