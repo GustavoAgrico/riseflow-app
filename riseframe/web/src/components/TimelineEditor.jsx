@@ -11,6 +11,7 @@ import { useAuth } from '../AuthContext.jsx';
 import { CaptionOverlay } from './CaptionPreview.jsx';
 import SnapGuides, { snapCenter, setUserGuides } from './SnapGuides.jsx';
 import MonitorGuides, { GUIDE_TEMPLATES, withIds } from './MonitorGuides.jsx';
+import KeyframeLanes from './KeyframeLanes.jsx';
 import { loadAutosave, saveAutosave, markAutosaveSubmitted, clearAutosave, packState, unpackState } from '../autosave.js';
 import CaptionGallery, { FontPicker, ColorSwatches, TextStyleBar } from './CaptionGallery.jsx';
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
@@ -28,7 +29,7 @@ import { shadowParams } from '../../../shared/captionShadow.js';
 import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById } from '../../../shared/captionStyle.js';
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 import { captionCues, toSrt, toVtt, toTxt, skipMapper } from '../../../shared/captionExport.js';
-import { layerAt, upsertKey, shiftKf } from '../../../shared/layerKeys.js';
+import { layerAt, upsertKey, shiftKf, KF_INTERPS, kfInterpOf, withInterp } from '../../../shared/layerKeys.js';
 
 // Tempo no formato do player: 00:12
 // Timecode como no Premiere (mm:ss:quadros, 30 fps): 00:56:23
@@ -2375,6 +2376,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Selecionar vários itens da biblioteca para tirar de uma vez (Ctrl/⌘ ou Shift + clique
   // também seleciona, como no explorador de arquivos).
   const [libSelMode, setLibSelMode] = useState(false);
+  // Minhas mídias em grade (miniaturas) ou lista (nome, tipo e duração)
+  const [libView, setLibView] = useState(() => { try { return localStorage.getItem('rf_lib_view') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; } });
+  const setLibViewKeep = (v) => { setLibView(v); try { localStorage.setItem('rf_lib_view', v); } catch { /* sem armazenamento */ } };
   const [libSel, setLibSel] = useState([]);
   const libSelLast = useRef(null);
   function toggleLibSel(id, e, list) {
@@ -3436,13 +3440,21 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 <ScrubNum value={valOf.opacity * 100} step={0.5} min={10} max={100} decimals={0} suffix=" %" onChange={(v) => up({ opacity: +(v / 100).toFixed(3) })} />
               </PropRow>
               {m.kf && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={Object.values(m.kf).some((tr) => tr.some((k) => k.ease))}
-                    onChange={(e) => setMedia((all) => all.map((x) => (x.key !== m.key || !x.kf ? x : { ...x, kf: Object.fromEntries(Object.entries(x.kf).map(([p, tr]) => [p, tr.map((k) => ({ t: k.t, v: k.v, ...(e.target.checked ? { ease: true } : {}) }))])) })))} />
-                  Movimento suave entre os quadros (entrada e saída suaves)
-                </label>
+                <>
+                  {/* quadros-chave numa mini-timeline (como o Controle de efeitos do Premiere) */}
+                  <KeyframeLanes layer={m} cur={cur} onSeek={seek} onTrack={(prop, list) => setTrack(prop, list)} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
+                    Interpolação de todos os quadros
+                    <select value={(() => { const ids = [...new Set(Object.values(m.kf).flatMap((tr) => tr.map(kfInterpOf)))]; return ids.length === 1 ? ids[0] : ''; })()}
+                      onChange={(e) => { const id = e.target.value; if (!id) return; setMedia((all) => all.map((x) => (x.key !== m.key || !x.kf ? x : { ...x, kf: Object.fromEntries(Object.entries(x.kf).map(([pp, tr]) => [pp, tr.map((k) => withInterp(k, id))])) }))); }}
+                      style={{ height: 28, borderRadius: 7, border: `1px solid ${C.border}`, background: '#101016', color: C.text, fontSize: 12, fontFamily: 'inherit' }}>
+                      <option value="">— misturada —</option>
+                      {Object.entries(KF_INTERPS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                    </select>
+                  </label>
+                  <div style={{ fontSize: 11, color: C.faint, lineHeight: 1.45 }}>Com o cronômetro ligado, mudar um valor (ou arrastar na prévia) grava um ◆ no playhead. Arraste os ◆ acima para mudar o tempo; botão direito no ◆ escolhe a interpolação (Bezier = movimento suave, Manter = pula sem animar).</div>
+                </>
               )}
-              {m.kf && <div style={{ fontSize: 11, color: C.faint }}>Com o cronômetro ligado, mudar um valor (ou arrastar na prévia) grava um ◆ no playhead. Os ◆ aparecem no bloco da camada na timeline.</div>}
             </PropSection>
           )}
           {visual && (
@@ -7284,6 +7296,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 {libOpen && library && (
                   <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
                     {libScopeBar}
+                    <div role="group" aria-label="Ver como" style={{ display: 'inline-flex', gap: 2, padding: 2, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: `1px solid ${C.border}` }}>
+                      {[['grid', '▦ Grade'], ['list', '☰ Lista']].map(([v, l]) => (
+                        <button key={v} onClick={() => setLibViewKeep(v)} aria-pressed={libView === v}
+                          style={{ height: 24, padding: '0 8px', borderRadius: 6, border: 'none', background: libView === v ? 'rgba(255,255,255,0.14)' : 'transparent', color: libView === v ? C.text : C.muted, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>{l}</button>
+                      ))}
+                    </div>
                     {libShown?.length > 0 && (!libSelMode ? (
                       <button onClick={() => setLibSelMode(true)} title="Selecionar vários itens para tirar da biblioteca (ou Ctrl/Shift + clique)"
                         style={{ height: 28, padding: '0 10px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.05)', color: C.text, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>☐ Selecionar</button>
@@ -7307,11 +7325,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 ) : library.length === 0 ? (
                   <div style={{ fontSize: 11, color: C.faint, marginTop: 6, lineHeight: 1.5 }}>Tudo o que você enviar (logo, vinheta, música, fotos) fica guardado aqui para usar em outros vídeos sem subir de novo. Arraste arquivos do computador para cá.</div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))', gap: 6, marginTop: 8, maxHeight: 220, overflowY: 'auto' }}>
+                  <div style={libView === 'list'
+                    ? { display: 'grid', gap: 2, marginTop: 8, maxHeight: 260, overflowY: 'auto' }
+                    : { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))', gap: 6, marginTop: 8, maxHeight: 220, overflowY: 'auto' }}>
                     {libShown.map((it) => {
                       const picked = libSel.includes(it.id);
+                      const list = libView === 'list';
+                      const act = (e) => { if (libSelMode || e.ctrlKey || e.metaKey || e.shiftKey) toggleLibSel(it.id, e, libShown); else if (it.status === 'ok') addMediaItem(it); };
                       return (
-                      <div key={it.id} style={{ position: 'relative' }} draggable={!isMobile && it.status === 'ok'}
+                      <div key={it.id} style={list ? { position: 'relative', display: 'flex', alignItems: 'center', gap: 8, padding: '3px 4px', borderRadius: 7, background: picked ? 'rgba(255,107,53,0.14)' : 'transparent', border: `1px solid ${picked ? C.orange : 'transparent'}` } : { position: 'relative' }} draggable={!isMobile && it.status === 'ok'}
                         onDragStart={(e) => {
                           e.dataTransfer.setData('text/rf-media', it.id);
                           // arrastou um dos selecionados: vão todos, na ordem em que foram marcados
@@ -7320,19 +7342,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                           libDragCount.current = ids.length;
                           e.dataTransfer.effectAllowed = 'copy';
                         }}>
-                        <button onClick={(e) => { if (libSelMode || e.ctrlKey || e.metaKey || e.shiftKey) toggleLibSel(it.id, e, libShown); else if (it.status === 'ok') addMediaItem(it); }}
+                        <button onClick={act}
                           title={libSelMode ? `${it.filename} — clique para ${picked ? 'desmarcar' : 'marcar'} (Shift: vários seguidos)` : it.status === 'ok' ? `${it.filename} — colocar no ponto atual · Ctrl/Shift + clique seleciona` : `${it.filename} — arquivo não encontrado`}
                           aria-pressed={libSelMode ? picked : undefined}
-                          style={{ width: '100%', aspectRatio: '1', borderRadius: 8, border: picked ? `2px solid ${C.orange}` : `1px solid ${C.border}`, boxShadow: picked ? `0 0 0 2px ${C.orange}55` : 'none', background: '#0E0E14', cursor: libSelMode || it.status === 'ok' ? 'pointer' : 'not-allowed', padding: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', opacity: it.status === 'ok' || libSelMode ? 1 : 0.4 }}>
+                          style={{ ...(list ? { width: 52, height: 30, flexShrink: 0, borderRadius: 5 } : { width: '100%', aspectRatio: '1', borderRadius: 8 }), border: picked && !list ? `2px solid ${C.orange}` : `1px solid ${C.border}`, boxShadow: picked && !list ? `0 0 0 2px ${C.orange}55` : 'none', background: '#0E0E14', cursor: libSelMode || it.status === 'ok' ? 'pointer' : 'not-allowed', padding: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', opacity: it.status === 'ok' || libSelMode ? 1 : 0.4 }}>
                           <MediaThumb it={it} fit={it.kind === 'image' ? 'contain' : 'cover'} />
                         </button>
-                        <div style={{ fontSize: 9.5, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>{it.filename}</div>
+                        {list ? (
+                          <>
+                            <span onClick={act} style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}>{it.filename}</span>
+                            <span style={{ fontSize: 10, color: C.faint, flexShrink: 0 }}>{it.kind === 'video' ? 'vídeo' : it.kind === 'image' ? 'imagem' : 'áudio'}{it.durationSec ? ` · ${fmtDuration(it.durationSec)}` : ''}</span>
+                          </>
+                        ) : <div style={{ fontSize: 9.5, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>{it.filename}</div>}
                         {libSelMode ? (
-                          <span aria-hidden="true" style={{ position: 'absolute', top: 4, left: 4, width: 18, height: 18, borderRadius: 5, display: 'grid', placeItems: 'center', pointerEvents: 'none', fontSize: 12, fontWeight: 800, lineHeight: 1,
+                          <span aria-hidden="true" style={{ position: 'absolute', top: list ? 9 : 4, left: list ? 8 : 4, width: 18, height: 18, borderRadius: 5, display: 'grid', placeItems: 'center', pointerEvents: 'none', fontSize: 12, fontWeight: 800, lineHeight: 1,
                             background: picked ? C.orange : 'rgba(0,0,0,0.6)', border: picked ? 'none' : '1.5px solid rgba(255,255,255,0.75)', color: '#fff' }}>{picked ? '✓' : ''}</span>
                         ) : (
                           <button onClick={() => forgetLibraryItem(it.id)} title="Tirar da biblioteca" aria-label="Tirar da biblioteca"
-                            style={{ position: 'absolute', top: 3, right: 3, width: 18, height: 18, borderRadius: 5, border: 'none', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 11, lineHeight: 1, cursor: 'pointer', padding: 0 }}>×</button>
+                            style={list ? { width: 22, height: 22, flexShrink: 0, borderRadius: 5, border: 'none', background: 'transparent', color: C.faint, fontSize: 13, lineHeight: 1, cursor: 'pointer', padding: 0 } : { position: 'absolute', top: 3, right: 3, width: 18, height: 18, borderRadius: 5, border: 'none', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 11, lineHeight: 1, cursor: 'pointer', padding: 0 }}>×</button>
                         )}
                       </div>
                       );
@@ -8664,10 +8691,30 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
     window.addEventListener('pointerup', up);
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
   }, []);
+  // Camada com quadros-chave: tocando, o tempo vem do <video> a cada quadro (o `cur` do
+  // editor só muda umas 4 vezes por segundo — a animação ia aos pulos na prévia).
+  const animated = part !== 'texts' && (media || []).some((m) => m.kf);
+  const [liveT, setLiveT] = useState(null);
+  useEffect(() => {
+    if (!animated) { setLiveT(null); return undefined; }
+    let id;
+    let last = -1;
+    const loop = () => {
+      const v = videoRef?.current;
+      if (v && !v.paused) {
+        const t = v.currentTime;
+        if (Math.abs(t - last) > 0.008) { last = t; setLiveT(t); }
+      } else if (last !== -1) { last = -1; setLiveT(null); }
+      id = requestAnimationFrame(loop);
+    };
+    id = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(id);
+  }, [animated, videoRef]);
+  const T = liveT ?? cur;
   if (!box || box.h < 10) return null;
   const visible = (part === 'texts' ? [] : media || [])
-    .filter((m) => m.kind !== 'audio' && m.previewUrl && cur >= m.start && cur < m.start + m.duration)
-    .map((m) => layerAt(m, cur)) // quadros-chave: posição/escala/giro/opacidade deste instante
+    .filter((m) => m.kind !== 'audio' && m.previewUrl && T >= m.start && T < m.start + m.duration)
+    .map((m) => layerAt(m, T)) // quadros-chave: posição/escala/giro/opacidade deste instante
     .sort((a, b) => (a.layer || 0) - (b.layer || 0));
   const liveTexts = (part === 'media' ? [] : texts || []).filter((l) => cur >= l.start && cur < l.end);
   if (!visible.length && !liveTexts.length) return null;

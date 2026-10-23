@@ -71,7 +71,7 @@ export async function applyUnderlay(input, work, meta, options, onProgress, segm
   fs.writeFileSync(script, parts.join(';\n'), 'utf8');
   const args = ['-f', 'lavfi', '-i', `color=c=black:s=${W}x${H}:r=${fps}:d=${dur.toFixed(3)}`];
   for (const m of vis) {
-    if (m.kind === 'image') args.push('-loop', '1', '-t', m.d.toFixed(2));
+    if (m.kind === 'image') args.push('-framerate', String(fps), '-loop', '1', '-t', m.d.toFixed(2));
     else if (clamp(m.offset, 0, 100000, 0) > 0.01) args.push('-ss', clamp(m.offset, 0, 100000, 0).toFixed(3));
     args.push('-i', m.file);
   }
