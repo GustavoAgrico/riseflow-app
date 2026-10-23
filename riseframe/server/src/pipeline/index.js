@@ -42,6 +42,25 @@ import { makeLogger } from '../logger.js';
 const log = makeLogger('pipeline');
 
 /**
+ * Vídeo com `L` s de preto e silêncio antes e `T` s depois (sem mexer no original).
+ * Vídeo HDR já sai em cor normal (a conversão de depois vê SDR). → caminho do novo arquivo
+ */
+export async function padInput(input, work, L, T) {
+  const m = await probeSummary(input);
+  const out = path.join(work, 'padded.mp4');
+  const total = (m.duration || 0) + L + T;
+  const vf = [sdrVf(m), 'setsar=1', `tpad=start_duration=${L.toFixed(3)}:stop_duration=${T.toFixed(3)}:color=black`].filter(Boolean).join(',');
+  const args = ['-i', input];
+  if (!m.hasAudio) args.push('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo');
+  args.push('-map', '0:v:0', '-map', m.hasAudio ? '0:a:0' : '1:a:0', '-vf', vf);
+  if (m.hasAudio) args.push('-af', `aresample=48000,adelay=${Math.round(L * 1000)}:all=1,apad=pad_dur=${T.toFixed(3)}`);
+  args.push('-t', total.toFixed(3), ...x264Fast(), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-y', out);
+  await runFfmpeg(args, { label: 'pad', totalDuration: total });
+  log.ok(`espaço na sequência: ${L.toFixed(2)} s antes, ${T.toFixed(2)} s depois`);
+  return out;
+}
+
+/**
  * Plano de etapas por modo, com pesos (etapas desligadas são removidas e o peso
  * redistribuído).
  * - transcribe: sonda + transcreve e para (para o editor de transcrição).
@@ -209,6 +228,13 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
   // 1. Probe
   enter('probe');
+  // Espaço vazio antes do vídeo principal / camadas depois do fim (timeline): preto e sem
+  // som nas pontas. Os tempos já vêm deslocados pelo editor (padStart).
+  if (Number(options.padStart) > 0 || Number(options.padEnd) > 0) {
+    emit({ stageLabel: 'Preparando o espaço antes/depois do vídeo' });
+    input = await padInput(input, work, Number(options.padStart) || 0, Number(options.padEnd) || 0);
+    trackInput = input;
+  }
   let meta = await probeSummary(input);
   report.input = meta;
   if (!meta.duration || meta.duration < 0.3) throw new Error('vídeo inválido ou muito curto');

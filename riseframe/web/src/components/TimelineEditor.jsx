@@ -338,6 +338,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }, [sourceId]);
 
   const videoRef = useRef(null);
+  // relógio da prévia fora do vídeo principal (antes do início / depois do fim)
+  const vclockRef = useRef({ on: false, t: 0, playing: false });
+  const vfnsRef = useRef({ dur: 0, tail: 0, speed: 1, sfx: [], intensity: 'medium' });
+  // "o <video> principal" para as camadas: o tempo da sequência (mesmo fora do vídeo)
+  const clockRef = useRef(null);
+  if (!clockRef.current) {
+    clockRef.current = {
+      get currentTime() { return vclockRef.current.on ? vclockRef.current.t : (videoRef.current?.currentTime ?? 0); },
+      get paused() { return vclockRef.current.on ? !vclockRef.current.playing : (videoRef.current?.paused ?? true); },
+      get seeking() { return vclockRef.current.on ? false : !!videoRef.current?.seeking; },
+      get playbackRate() { return videoRef.current?.playbackRate || 1; },
+      get muted() { return !!videoRef.current?.muted; },
+    };
+  }
   const previewVideoRef = useRef(null);
   const previewBoxRef = useRef(null);
   const panRef = useRef(null); // arraste na prévia: {startX,startY,fx,fy,w,h,zoom}
@@ -521,6 +535,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [v1Job, setV1Job] = useState(null); // o job do vídeo principal (montagem da V1)
   const [pauseAuto, setPauseAuto] = useState(null);
   const [aiCleaned, setAiCleaned] = useState(false); // a IA limpou a fala aqui (Edição automática)
+  // Espaço vazio ANTES do vídeo principal (arrastou a V1 para a direita) e DEPOIS do fim
+  // (camadas, textos e sons que passam do fim): a sequência vai de -lead a dur + tail, no
+  // tempo do vídeo — sem montar o vídeo de novo. No vídeo final vira preto e sem som.
+  const [lead, setLead] = useState(0);
+  const tail = useMemo(() => {
+    const ends = [
+      ...media.map((m) => Number(m.start) + Number(m.duration)),
+      ...textLayers.map((l) => Number(l.end)),
+      ...sfxMoments.map((m) => Number(m.t) + 0.5),
+    ].filter(Number.isFinite);
+    return Math.max(0, +(Math.max(0, ...ends) - dur).toFixed(2));
+  }, [media, textLayers, sfxMoments, dur]);
   const pausesAutoCut = pauseAuto ?? !(fromSequence || v1Job?.fromSequence);
   const isPauseCut = (p) => (isLongEdge(p) || !pausesAutoCut ? keptPauses.has(`cut:${pauseKey(p)}`) : !keptPauses.has(pauseKey(p)));
   // Ver pausas: por padrão a timeline fica limpa (as pausas cortadas somem, como no vídeo
@@ -569,7 +595,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ripple, allGaps, showPauses, pauses, keptPauses, dur]);
-  const progOf = (t) => {
+  const progOf0 = (t) => {
     let p = t;
     for (const [a, b] of gaps) {
       if (t >= b) p -= b - a;
@@ -577,14 +603,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
     return p;
   };
+  const progEnd0 = progOf0(dur);
+  // posição na sequência: o espaço antes (lead) + o vídeo sem o que foi cortado + o depois
+  const progOf = (t) => lead + (t < 0 ? t : t > dur ? progEnd0 + (t - dur) : progOf0(t));
   const srcOf = (p) => {
-    let t = p;
+    const q = p - lead;
+    if (q < 0) return q;
+    if (q > progEnd0) return dur + (q - progEnd0);
+    let t = q;
     for (const [a, b] of gaps) { if (t >= a) t += b - a; else break; }
     return Math.min(dur, t);
   };
   const X = (t) => progOf(Number(t) || 0) * pps;
   const W = (a, b) => Math.max(0, X(b) - X(a));
-  const progDur = progOf(dur);
+  const progDur = lead + progEnd0 + tail;
   // pedaços que ficam (miniaturas e forma de onda são recortadas neles)
   const keptPieces = useMemo(() => {
     const out = [];
@@ -631,14 +663,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const overlaySegs = useMemo(() => mergeExtraCaptions(capSegments, visXcaps), [capSegments, visXcaps]);
   const histState = {
     segments, cuts, keptPauses, keptNoises, gains, videoCrop, cropRanges, blanks, projMediaIds, avLinked, media, brollReview, brollOn, zoomMoments, headline, cover,
-    colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs, brollLayoutSel, imageSource, volKeys, pauseAuto, aiCleaned,
+    colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs, brollLayoutSel, imageSource, volKeys, pauseAuto, aiCleaned, lead,
     aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
   };
   const histSet = {
     segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, cropRanges: setCropRanges, blanks: setBlanks, projMediaIds: setProjMediaIds, avLinked: setAvLinked, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
     brollReview: setBrollReview, brollOn: setBrollOn, zoomMoments: setZoomMoments, headline: setHeadline,
     cover: setCover, colorLook: setColorLook, colorAdj: setColorAdj, cap: setCap, fx: setFx, voice: setVoice,
-    audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths, brollLayoutSel: setBrollLayoutSel, imageSource: setImageSource, volKeys: setVolKeys, pauseAuto: setPauseAuto, aiCleaned: setAiCleaned,
+    audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths, brollLayoutSel: setBrollLayoutSel, imageSource: setImageSource, volKeys: setVolKeys, pauseAuto: setPauseAuto, aiCleaned: setAiCleaned, lead: setLead,
     cutCoughs: setCutCoughs, aspectSel: setAspectSel, quality: setQuality, reframeMode: setReframeMode,
     splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom,
     vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, extraCaps: setExtraCaps, fxMoments: setFxMoments, transitions: setTransitions, laneHide: setLaneHide, laneLock: setLaneLock, markers: setMarkers, speedRanges: setSpeedRanges, freezes: setFreezes,
@@ -978,14 +1010,63 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return undefined;
-    const onTime = () => setCur(v.currentTime);
+    const onTime = () => { if (!vclockRef.current.on) setCur(v.currentTime); };
     const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
+    const onPause = () => { if (!vclockRef.current.on) setPlaying(false); };
+    // acabou o vídeo e há camadas depois do fim: a prévia continua pelo espaço depois
+    const onEnded = () => {
+      const F = vfnsRef.current;
+      if (!(F.tail > 0.05)) return;
+      const vc = vclockRef.current;
+      vc.on = true;
+      vc.t = F.dur;
+      vc.playing = true;
+      setCur(F.dur);
+      setPlaying(true);
+    };
     v.addEventListener('timeupdate', onTime);
     v.addEventListener('play', onPlay);
     v.addEventListener('pause', onPause);
-    return () => { v.removeEventListener('timeupdate', onTime); v.removeEventListener('play', onPlay); v.removeEventListener('pause', onPause); };
+    v.addEventListener('ended', onEnded);
+    return () => { v.removeEventListener('timeupdate', onTime); v.removeEventListener('play', onPlay); v.removeEventListener('pause', onPause); v.removeEventListener('ended', onEnded); };
   }, [isMobile]); // no celular o editor vai para um portal → o <video> é outro elemento
+
+  // Relógio da prévia fora do vídeo principal (espaço antes/depois): anda sozinho, toca os
+  // efeitos sonoros e as camadas (que leem `clockRef` em vez do <video>).
+  useEffect(() => {
+    let id;
+    let lastNow = performance.now();
+    let lastSet = 0;
+    const loop = (now) => {
+      const vc = vclockRef.current;
+      const F = vfnsRef.current;
+      if (vc.on && vc.playing) {
+        const t0 = vc.t;
+        const t = t0 + (Math.min(100, now - lastNow) / 1000) * (F.speed || 1);
+        for (const e of F.sfx || []) if (e.at > t0 && e.at <= t && (e.at < 0 || e.at > F.dur)) playSfxUrl(sfxUrl(e.type), F.intensity);
+        if (t0 < 0 && t >= 0) {
+          // chegou no vídeo principal: ele começa a tocar
+          vc.on = false;
+          vc.playing = false;
+          const v = videoRef.current;
+          if (v) { v.currentTime = 0; v.play().catch(() => {}); }
+          setCur(0);
+        } else if (t >= F.dur + F.tail) {
+          vc.t = F.dur + F.tail;
+          vc.playing = false;
+          setPlaying(false);
+          setCur(vc.t);
+        } else {
+          vc.t = t;
+          if (now - lastSet > 80) { lastSet = now; setCur(t); }
+        }
+      }
+      lastNow = now;
+      id = requestAnimationFrame(loop);
+    };
+    id = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   // Retângulo onde o vídeo aparece dentro do player (object-fit: contain) — base para
   // desenhar legenda, véus de cor e B-roll exatamente sobre a imagem.
@@ -1221,12 +1302,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if (d.mode === 'move') {
         // pode ir para a direita mesmo ocupando o vídeo todo: o fim que passaria do vídeo é
         // aparado (como no Premiere); voltando no mesmo arrasto, a duração volta
-        const maxStart = Math.max(0, dur - 0.3);
-        let start = Math.max(0, Math.min(d.start0 + dt, maxStart));
-        const sn = snapSpan(snapRef.current, start, Math.min(d.dur0, dur - start), d.key);
-        start = Math.max(0, Math.min(sn.start, maxStart));
+        // pode passar do fim do vídeo (a sequência cresce) e ir para o espaço antes dele
+        const lo = d.lo ?? 0;
+        let start = Math.max(lo, d.start0 + dt);
+        const sn = snapSpan(snapRef.current, start, d.dur0, d.key);
+        start = Math.max(lo, sn.start);
         setSnapLine(sn.line);
-        const duration = Math.max(0.3, Math.min(d.dur0, dur - start));
+        const duration = d.dur0;
         // Arrastar para cima/baixo troca de camada (cima = por cima no vídeo).
         const layer = d.under ? d.layer0 : Math.max(0, Math.min(d.maxLayer + 1, d.layer0 + Math.round((d.y0 - e.clientY) / LANE.midias)));
         updateMedia(d.key, { start: +start.toFixed(2), duration: +duration.toFixed(2), layer });
@@ -1235,13 +1317,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       } else if (d.mode === 'right') {
         const sn = snapPoint(snapRef.current, d.start0 + d.dur0 + dt, d.key);
         setSnapLine(sn.line);
-        const duration = Math.max(0.3, Math.min(sn.t - d.start0, srcLeft, dur - d.start0));
+        const duration = Math.max(0.3, Math.min(sn.t - d.start0, srcLeft, 3600));
         updateMedia(d.key, { duration: +duration.toFixed(2) });
       } else { // left
-        const minStart = timed ? d.start0 - d.off0 : 0; // não volta antes do início do arquivo
+        const minStart = timed ? d.start0 - d.off0 : -Infinity; // não volta antes do início do arquivo
         const sn = snapPoint(snapRef.current, d.start0 + dt, d.key);
         setSnapLine(sn.line);
-        const start = Math.max(0, minStart, Math.min(sn.t, d.start0 + d.dur0 - 0.3));
+        const start = Math.max(d.lo ?? 0, minStart, Math.min(sn.t, d.start0 + d.dur0 - 0.3));
         const duration = d.start0 + d.dur0 - start;
         const patch = { start: +start.toFixed(2), duration: +duration.toFixed(2) };
         if (timed) patch.offset = +Math.max(0, d.off0 + (start - d.start0)).toFixed(2);
@@ -1286,17 +1368,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const dt = (e.clientX - d.x0) / pps;
       d.setList((list) => list.map((r) => {
         if (r.key !== d.key) return r;
+        const lo = d.lo ?? 0;
+        const hi = d.hi ?? dur;
         if (d.mode === 'move') {
           const len = d.end0 - d.start0;
-          const sn = snapSpan(snapRef.current, Math.max(0, Math.min(d.start0 + dt, dur - len)), len, d.key);
+          const sn = snapSpan(snapRef.current, Math.max(lo, Math.min(d.start0 + dt, hi - len)), len, d.key);
           d.line = sn.line;
-          const start = Math.max(0, Math.min(sn.start, dur - len));
+          const start = Math.max(lo, Math.min(sn.start, hi - len));
           return { ...r, start: +start.toFixed(2), end: +(start + len).toFixed(2) };
         }
         const sn = snapPoint(snapRef.current, (d.mode === 'right' ? d.end0 : d.start0) + dt, d.key);
         d.line = sn.line;
-        if (d.mode === 'right') return { ...r, end: +Math.min(dur, Math.max(d.start0 + 0.4, sn.t)).toFixed(2) };
-        return { ...r, start: +Math.max(0, Math.min(d.end0 - 0.4, sn.t)).toFixed(2) };
+        if (d.mode === 'right') return { ...r, end: +Math.min(hi, Math.max(d.start0 + 0.4, sn.t)).toFixed(2) };
+        return { ...r, start: +Math.max(lo, Math.min(d.end0 - 0.4, sn.t)).toFixed(2) };
       }));
       setSnapLine(d.line ?? null);
     }
@@ -1353,7 +1437,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function startRangeDrag(setList, r, mode, e) {
     e.stopPropagation();
     e.preventDefault();
-    rangeDragRef.current = { setList, key: r.key, mode, x0: e.clientX, start0: r.start, end0: r.end };
+    // textos podem ir para o espaço antes do vídeo e passar do fim (a sequência cresce)
+    const free = setList === setTextLayers;
+    rangeDragRef.current = { setList, key: r.key, mode, x0: e.clientX, start0: r.start, end0: r.end, lo: free ? -lead : 0, hi: free ? Infinity : null };
     document.body.style.userSelect = 'none';
   }
 
@@ -1366,6 +1452,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       key: m.key, mode, x0: e.clientX, y0: e.clientY, start0: m.start, dur0: m.duration, kind: m.kind,
       srcDuration: m.srcDuration, off0: Number(m.offset) || 0, layer0: m.layer || 0, kf0: m.kf || null, under: m.under === true,
       maxLayer: media.reduce((mx, x) => (x.under ? mx : Math.max(mx, x.layer || 0)), 0),
+      lo: -lead, // até o começo da sequência (o espaço antes do vídeo)
     };
     document.body.style.userSelect = 'none';
   }
@@ -1374,7 +1461,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const el = trackRef.current;
     const r = el.getBoundingClientRect();
     const padL = isMobile ? el.clientWidth / 2 : 0; // no celular a timeline começa no meio (cursor fixo)
-    return Math.max(0, Math.min(dur, srcOf((clientX - r.left + el.scrollLeft - padL) / pps)));
+    return Math.max(-lead, Math.min(dur + tail, srcOf((clientX - r.left + el.scrollLeft - padL) / pps)));
   }
 
   const progScrollRef = useRef(-1);
@@ -1460,8 +1547,42 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const selZoomItem = (zoomMoments || []).find((z) => z.key === selZoom) || null;
   const setBrollMoments = (fn) => setBrollReview((r) => (r ? { ...r, moments: fn(r.moments) } : r));
 
-  function seek(t) { const v = videoRef.current; const c = Math.max(0, Math.min(dur, t)); if (v) v.currentTime = c; setCur(c); }
-  function togglePlay() { const v = videoRef.current; if (!v) return; if (v.paused) v.play(); else v.pause(); }
+  function seek(t, lo = -lead) {
+    const v = videoRef.current;
+    const c = Math.max(lo, Math.min(dur + tail, t));
+    const vc = vclockRef.current;
+    if (c < 0 || c > dur) {
+      // antes/depois do vídeo principal: o relógio da prévia segue sem o <video>
+      const was = vc.on ? vc.playing : !!(v && !v.paused);
+      vc.on = true;
+      vc.t = c;
+      vc.playing = was;
+      if (v) { if (!v.paused) v.pause(); v.currentTime = c < 0 ? 0 : dur; }
+      setPlaying(was);
+    } else {
+      const was = vc.on && vc.playing;
+      vc.on = false;
+      vc.playing = false;
+      if (v) { v.currentTime = c; if (was) v.play().catch(() => {}); }
+    }
+    setCur(c);
+  }
+  function togglePlay() {
+    const v = videoRef.current;
+    const vc = vclockRef.current;
+    if (vc.on) {
+      if (vc.playing) { vc.playing = false; setPlaying(false); return; }
+      if (vc.t >= dur + tail - 0.02) { seek(lead > 0 ? -lead : 0); if (!(lead > 0)) { v?.play().catch(() => {}); return; } }
+      vc.playing = true;
+      setPlaying(true);
+      return;
+    }
+    if (!v) return;
+    if (!v.paused) { v.pause(); return; }
+    // no fim do vídeo com camadas depois dele: segue pelo espaço depois do fim
+    if (tail > 0.05 && v.currentTime >= dur - 0.05) { vc.on = true; vc.t = dur; vc.playing = true; setCur(dur); setPlaying(true); return; }
+    v.play();
+  }
   function onTrackClick(e) { if (rangeClickBlockRef.current) return; seek(timeAtClientX(e.clientX)); }
   /** Arrastar o ponteiro azul (na régua ou pela cabeça dele), como no Premiere. */
   function startScrub(e) {
@@ -2893,7 +3014,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setSending(true);
     try {
       setPendingExport(saveTarget); // onde salvar (escolhido na janela Exportar)
-      await onGenerate(
+      await onGenerate(...padRender(
       {
         provider: transcript.provider,
         language: transcript.language,
@@ -3002,7 +3123,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         brollLayout: brollLayoutSel,
         imageSource,
       },
-      );
+      ));
       markAutosaveSubmitted(sourceId);
     } catch (e) {
       setRenderErr({ message: e.message, code: e.code || null, locked: e.locked || [] });
@@ -3014,6 +3135,34 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   // Capítulos automáticos (faixa colorida da timeline): Intro, Conteúdo principal e
   // Conclusão — ou "Chamada (CTA)" quando a frase final pede uma ação.
+  /**
+   * Espaço antes do vídeo principal / camadas depois do fim: o servidor põe preto e
+   * silêncio nas pontas (padStart/padEnd) e todos os tempos andam `lead` para a frente.
+   */
+  function padRender(tr, o) {
+    const L = lead > 0.01 && !exportRange ? +lead.toFixed(2) : 0;
+    const T = tail > 0.01 && !exportRange ? +tail.toFixed(2) : 0;
+    if (!L && !T) return [tr, o];
+    const sh = (x) => (Number.isFinite(Number(x)) ? +(Number(x) + L).toFixed(3) : x);
+    const se = (r) => ({ ...r, start: sh(r.start), end: sh(r.end) });
+    const st = (r) => ({ ...r, t: sh(r.t) });
+    const map = (a, f) => (Array.isArray(a) ? a.map(f) : a);
+    const out = { ...o, padStart: L, padEnd: T };
+    for (const k of ['silenceCuts', 'keptPauses', 'keptNoises', 'zoomMoments', 'videoCuts', 'cropRanges', 'noCutRanges', 'videoBlanks', 'audioGains', 'speedRanges', 'fxMoments', 'textLayers', 'extraCaptions', 'brollPlan']) {
+      if (o[k] != null) out[k] = map(o[k], se);
+    }
+    for (const k of ['transformKeys', 'audioVolKeys', 'freezes', 'transitions', 'sfxMoments']) if (o[k] != null) out[k] = map(o[k], st);
+    out.userMedia = map(o.userMedia, (m) => ({ ...m, start: sh(m.start) }));
+    if (o.cover) out.cover = { ...o.cover, t: sh(o.cover.t ?? 0) };
+    // nada sai das pontas (são preto e silêncio de propósito)
+    out.noCutRanges = [...(out.noCutRanges || []), ...(L ? [{ start: 0, end: L }] : []), ...(T ? [{ start: +(L + dur).toFixed(3), end: +(L + dur + T).toFixed(3) }] : [])];
+    const segs = (tr.segments || []).map((sg) => ({
+      ...sg, start: sh(sg.start), end: sh(sg.end),
+      words: (sg.words || []).map((w) => ({ ...w, start: sh(w.start), end: sh(w.end), ...(w.cs != null ? { cs: sh(w.cs), ce: sh(w.ce) } : {}) })),
+    }));
+    return [{ ...tr, segments: segs }, out];
+  }
+
   const chapters = useMemo(() => {
     const segs = segments.filter((x) => !segRemoved(x));
     if (dur < 12 || segs.length < 3) return [];
@@ -4083,8 +4232,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       else if (e.key === '-' || e.key === '_') { k.zoomTl(-1); }
       else if (e.key === '\\') { k.fitAll(); }
       else if (e.key === '?') { k.toggleKeys(); }
-      else if (e.key === 'Home') { e.preventDefault(); k.seek(0); }
-      else if (e.key === 'End') { e.preventDefault(); k.seek(k.dur); }
+      else if (e.key === 'Home') { e.preventDefault(); k.seek(-1e9); } // começo da sequência
+      else if (e.key === 'End') { e.preventDefault(); k.seek(1e9); }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -4162,7 +4311,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const visTop = visMedia.filter((m) => !m.under);
   const visUnder = visMedia.filter((m) => m.under);
   const inBlankNow = blanks.some((b) => cur >= b.start && cur < b.end) || seqHoles.some((b) => cur >= b.start && cur < b.end);
-  const underBlank = inBlankNow && visUnder.length > 0;
+  // fora do vídeo principal (espaço antes/depois): preto, só as camadas
+  const outVideo = cur < -0.001 || cur > dur + 0.001;
+  const underBlank = (inBlankNow && visUnder.length > 0) || outVideo;
   const personHalf = (
     <div
       key="person"
@@ -4249,7 +4400,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const singleMon = showFormatPreview && !showSource;
   const composedPreview = (
     <div ref={composedRef} style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${fmtAr.toFixed(4)}), calc((100cqw - 16px) * var(--fmt-share)))`, aspectRatio: previewRatio, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 12, border: `1px solid ${C.border}`, background: '#000' }}>
-      {cbox && visUnder.length > 0 && <StageLayers part="media" z={0} videoRef={videoRef} box={cbox} cur={cur} media={visUnder} texts={[]} editable={false} selMedia={selMedia} selText={selText} onMedia={() => {}} onText={() => {}} />}
+      {cbox && visUnder.length > 0 && <StageLayers part="media" z={0} videoRef={clockRef} box={cbox} cur={cur} media={visUnder} texts={[]} editable={false} selMedia={selMedia} selText={selText} onMedia={() => {}} onText={() => {}} />}
       {personSide === 'top' ? [personHalf, brollHalf] : [brollHalf, personHalf]}
       {/* Cor, título, efeitos e transições como saem no vídeo final (monitor único). */}
       {singleMon && cbox && lookCss.tint && <div style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, pointerEvents: 'none', zIndex: 1, ...lookCss.tint }} />}
@@ -4261,10 +4412,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {cbox && aspectSel === 'original' && !visUnder.length && cropBars(cbox)}
       {cbox && inBlankNow && !underBlank && <div aria-hidden="true" style={{ position: 'absolute', left: cbox.x, top: cbox.y, width: cbox.w, height: cbox.h, background: '#000', zIndex: 1, pointerEvents: 'none' }} />}
       {cbox && !isMobile && <MonitorGuides box={cbox} frameW={FW} frameH={FH} cfg={guidesCfg} onLines={(lines) => patchGuides({ lines })} />}
-      {cbox && <StageLayers part="media" z={2} videoRef={videoRef} box={cbox} cur={cur} media={visTop} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
+      {cbox && <StageLayers part="media" z={2} videoRef={clockRef} box={cbox} cur={cur} media={visTop} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
         onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
-      {cap.captions && cbox && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
-      {cbox && <StageLayers part="texts" z={3} videoRef={videoRef} box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
+      {cap.captions && !outVideo && cbox && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={cbox} sample={tab === 'legenda'} editable={tab === 'legenda'} onDragPos={onCapDrag} centerWindows={capCenterWins} />}
+      {cbox && <StageLayers part="texts" z={3} videoRef={clockRef} box={cbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
         onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
     </div>
   );
@@ -4750,7 +4901,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return { newPos, units };
   }
   /** Manda montar o vídeo principal com estes clipes; camadas e textos vão para mapT(tempo). */
-  async function v1Rebuild(clips, mapT, { transcribeNew = false } = {}) {
+  async function v1Rebuild(clips0, mapT0, { transcribeNew = false } = {}) {
+    // o espaço antes do vídeo entra como um vazio no começo da montagem
+    const clips = lead > 0.05 ? [{ kind: 'blank', filename: 'Vazio', duration: lead }, ...clips0] : clips0;
+    const mapT = lead > 0.05 ? (x) => +(mapT0(x) + lead).toFixed(2) : mapT0;
     if (clips.length > 80) throw new Error('O vídeo principal ficaria com clipes demais (máximo 80). Junte alguns na aba Projeto.');
     setV1Busy('Montando o vídeo principal…');
     const job = await createSequence({
@@ -5163,6 +5317,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     document.body.style.userSelect = 'none';
     return true;
   }
+  /**
+   * Muda o espaço vazio antes do vídeo principal (arrastar a V1 para os lados): o vídeo e o
+   * que é dele (legenda, cortes, zooms) andam; camadas, textos, sons e marcadores ficam
+   * onde estavam na sequência (como no Premiere).
+   */
+  function moveLead(sec) {
+    const nl = +Math.max(0, lead + sec).toFixed(2);
+    const delta = +(nl - lead).toFixed(2);
+    if (Math.abs(delta) < 0.01) return;
+    setLead(nl);
+    setMedia((l) => l.map((m) => ({ ...m, start: +(Number(m.start) - delta).toFixed(2) })));
+    setTextLayers((l) => l.map((x) => ({ ...x, start: +(x.start - delta).toFixed(2), end: +(x.end - delta).toFixed(2) })));
+    setSfxMoments((l) => l.map((x) => ({ ...x, t: +(x.t - delta).toFixed(2) })));
+    setMarkers((l) => l.map((x) => ({ ...x, t: +(x.t - delta).toFixed(2) })));
+    seek(cur - delta, -nl); // o ponteiro fica no mesmo ponto da sequência
+    if (nl > 0) flashNote(`O vídeo principal começa em ${fmtDuration(nl)} — antes dele fica preto (as camadas aparecem). Arraste de volta para a esquerda para tirar o espaço.`);
+  }
   /** Para onde o pedaço arrastado vai (índice na nova ordem), pelo centro dele. */
   function v1MoveTarget(d) {
     const p = v1Pieces[d.k];
@@ -5249,6 +5420,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       // sem mudar a ordem: desliza o clipe (como no Premiere). Direita abre um espaço vazio
       // antes dele; esquerda fecha o espaço vazio que houver antes.
       const sec = d.dx / pps;
+      // o 1º clipe: o espaço antes do vídeo muda na hora (sem montar de novo)
+      const firstK = v1Pieces.findIndex((q) => q.clip.kind !== 'blank' && spanShown(vidSpans, q.va, q.vb));
+      if (d.k === firstK && (sec > 0.1 || (sec < -0.1 && lead > 0.01))) { moveLead(sec); return; }
       if (sec > 0.1) v1Slide(d.k, sec);
       else if (sec < -0.1) {
         const room = p.va - v1EmptyBefore(p.va);
@@ -5527,7 +5701,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const x0 = e.clientX;
     const p0 = progOf(m.t);
     const move = (ev) => {
-      const t = +srcOf(Math.max(0, p0 + (ev.clientX - x0) / pps)).toFixed(2);
+      const t = +srcOf(Math.max(0, p0 + (ev.clientX - x0) / pps)).toFixed(2); // (0 = começo da sequência)
       setSfxMoments((l) => l.map((x) => (x.key === m.key ? { ...x, t } : x)));
     };
     const up = () => {
@@ -6041,6 +6215,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   // Dados usados pela prévia ao vivo (lidos pelo laço do player).
   const liveWindows = fx.videoMotion !== 'none' ? (zoomMoments || []).map((z) => [z.start, z.end, z.scale, z.effect || defaultMomentEffect(fx.videoMotion)]) : [];
+  vfnsRef.current = { dur, tail, speed, sfx: liveSfxEvents, intensity: fx.sfxIntensity };
   liveRef.current = {
     skip: previewCuts ? skipRanges : [],
     fx,
@@ -6741,7 +6916,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           <div onDragOver={onPreviewDragOver} onDrop={onPreviewDrop} className={`rf-tl-pv${showFormatPreview ? ' rf-tl-pv--fmt' : ''}${singleMon ? ' rf-tl-pv--one' : ''}`} style={{ '--main-share': showFormatPreview ? (mainAr / (mainAr + fmtAr)).toFixed(4) : 1, '--fmt-share': singleMon ? 1 : showFormatPreview ? (fmtAr / (mainAr + fmtAr)).toFixed(4) : 1, containerType: 'inline-size', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, padding: 10, borderRadius: 16, border: `1px solid ${C.border}`, background: 'radial-gradient(circle at 50% 0%, rgba(194,65,12,0.10), transparent 60%), rgba(0,0,0,0.35)' }}>
             <div className="rf-tl-main" style={{ flex: '0 0 auto', minWidth: 0 }}>
               <div style={{ position: 'relative', width: `min(calc(var(--rf-stage-h) * ${mainAr.toFixed(4)}), calc((100cqw - ${showFormatPreview ? 16 : 0}px) * var(--main-share)))`, aspectRatio: `${mainAr}`, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000', isolation: 'isolate' }}>
-                {vbox && visUnder.length > 0 && <StageLayers part="media" z={-1} videoRef={videoRef} box={vbox} cur={cur} media={visUnder} texts={[]} editable={false} selMedia={selMedia} selText={selText} onMedia={() => {}} onText={() => {}} />}
+                {vbox && visUnder.length > 0 && <StageLayers part="media" z={-1} videoRef={clockRef} box={vbox} cur={cur} media={visUnder} texts={[]} editable={false} selMedia={selMedia} selText={selText} onMedia={() => {}} onText={() => {}} />}
                 <video ref={videoRef} src={srcUrl} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', background: visUnder.length ? 'transparent' : '#000', filter: videoFilterFx, ...(visUnder.length && cropOn ? { clipPath: `inset(${curCrop.t * 100}% ${curCrop.r * 100}% ${curCrop.b * 100}% ${curCrop.l * 100}%)` } : null), ...(underBlank ? { opacity: 0 } : null) }} onClick={framingMode === 'manual' ? undefined : togglePlay} onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth) setVdim(editSrc && editDimRef.current ? editDimRef.current : { w: v.videoWidth, h: v.videoHeight }); if (cur > 0.05 && Math.abs(v.currentTime - cur) > 0.2) v.currentTime = cur; v.playbackRate = speed; measureVideo(); }} playsInline />
                 {vbox && lookCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...lookCss.tint }} />}
                 {vbox && headline.on && headline.text.trim() && (!headline.seconds || cur < headline.seconds) && (
@@ -6773,10 +6948,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 {vbox && !visUnder.length && cropBars(vbox)}
                 {vbox && inBlankNow && !underBlank && <div aria-hidden="true" style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, background: '#000', zIndex: 1, pointerEvents: 'none' }} />}
                 {vbox && !isMobile && <MonitorGuides box={vbox} frameW={vdim?.w || vbox.vw || 1080} frameH={vdim?.h || vbox.vh || 1920} cfg={guidesCfg} onLines={(lines) => patchGuides({ lines })} />}
-                {vbox && <StageLayers part="media" z={2} videoRef={videoRef} box={vbox} cur={cur} media={visTop} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
+                {vbox && <StageLayers part="media" z={2} videoRef={clockRef} box={vbox} cur={cur} media={visTop} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
                   onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
-                {cap.captions && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
-                {vbox && <StageLayers part="texts" z={3} videoRef={videoRef} box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
+                {cap.captions && !outVideo && <CaptionOverlay videoRef={videoRef} segments={overlaySegs} options={cap} box={vbox} sample={tab === 'legenda'} editable={tab === 'legenda' && !showFormatPreview} onDragPos={onCapDrag} />}
+                {vbox && <StageLayers part="texts" z={3} videoRef={clockRef} box={vbox} cur={cur} media={visMedia} texts={visTexts} editable={tab === 'midias' || tab === 'texto' || tab === 'graficos' || tab === 'propriedades'} selMedia={selMedia} selText={selText}
                   onMedia={(key, patch) => { patchLayer(key, patch); setSelMedia(key); setSelKind('media'); }} onText={(key, patch) => { updateText(key, patch); setSelText(key); setSelKind('text'); }} />}
                 {framingMode === 'manual' && (
                   <div
@@ -6893,7 +7068,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <SpeedPicker value={speed} onChange={setSpeed} big />
               <div style={{ ...mRow, justifyContent: 'space-between' }}>
                 <span>Duração final</span>
-                <span style={{ color: C.green, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration((stats.keptSec + retimeDelta) / speed)}</span>
+                <span style={{ color: C.green, fontVariantNumeric: 'tabular-nums' }}>{fmtDuration((stats.keptSec + retimeDelta) / speed + lead + tail)}</span>
               </div>
               <div style={{ ...mRow, display: 'block' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}><Icon name="mic" size={19} strokeWidth={1.9} /> <span style={{ flex: 1 }}>Respirações</span></div>
@@ -7189,7 +7364,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Velocidade do vídeo</div>
                 <SpeedPicker value={speed} onChange={setSpeed} />
-                <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Duração final: <b style={{ color: C.text }}>{fmtDuration((stats.keptSec + retimeDelta) / speed)}</b> · a voz acelera sem mudar o tom.</div>
+                <div style={{ fontSize: 11, color: C.faint, marginTop: 6 }}>Duração final: <b style={{ color: C.text }}>{fmtDuration((stats.keptSec + retimeDelta) / speed + lead + tail)}</b> · a voz acelera sem mudar o tom.</div>
               </div>
               <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Voz</div>
@@ -7890,12 +8065,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         {/* Barra de ferramentas da timeline */}
         <div className="rf-tlbar" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 8, flexWrap: 'wrap' }}>
           <span className="rf-tl-stats" title="Palavras · cortadas · pausas cortadas · duração final">
-            <b>{stats.total}</b> palavras · <b style={{ color: '#F0526B' }}>{stats.removed}</b> cortadas · <b style={{ color: '#FF9A6C' }}>{pausesCut.length}</b> pausas{cutCoughs && noisesCut.length ? <> · <b style={{ color: '#F0526B' }}>{noisesCut.length}</b> tosses/sons</> : null} · final <b style={{ color: '#2ED47A' }}>{fmtDuration((stats.keptSec + retimeDelta) / speed)}</b>
+            <b>{stats.total}</b> palavras · <b style={{ color: '#F0526B' }}>{stats.removed}</b> cortadas · <b style={{ color: '#FF9A6C' }}>{pausesCut.length}</b> pausas{cutCoughs && noisesCut.length ? <> · <b style={{ color: '#F0526B' }}>{noisesCut.length}</b> tosses/sons</> : null} · final <b style={{ color: '#2ED47A' }}>{fmtDuration((stats.keptSec + retimeDelta) / speed + lead + tail)}</b>
           </span>
           {!isMobile && (
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginRight: 8 }} title="Posição do playhead (horas:minutos:segundos:quadros)">
-              <span className="rf-tc" style={{ fontSize: 21, fontWeight: 600, color: PR.blue, fontVariantNumeric: 'tabular-nums', letterSpacing: 0.4 }}>{tcode(cur)}</span>
-              <span style={{ fontSize: 11, color: PR.dim, fontVariantNumeric: 'tabular-nums' }}>/ {tcode(dur)}</span>
+              <span className="rf-tc" style={{ fontSize: 21, fontWeight: 600, color: PR.blue, fontVariantNumeric: 'tabular-nums', letterSpacing: 0.4 }}>{tcode(Math.max(0, cur + lead))}</span>
+              <span style={{ fontSize: 11, color: PR.dim, fontVariantNumeric: 'tabular-nums' }}>/ {tcode(dur + lead + tail)}</span>
               {projectTitle && <span className="rf-tl-hide-sm" style={{ fontSize: 12, color: PR.text, fontWeight: 600, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginLeft: 6 }}>{projectTitle}</span>}
             </div>
           )}
@@ -8762,7 +8937,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <Chip label="Palavras" value={stats.total} color={C.text} />
             <Chip label="Cortadas" value={stats.removed} color={C.red} />
             <Chip label="Pausas cortadas" value={pausesCut.length} sub={pauseCutSec > 0.1 ? `−${fmtDuration(pauseCutSec)}` : null} color={C.orangeSoft} />
-            <Chip label={speed !== 1 ? `Duração final · ${fmtSpeed(speed)}` : 'Duração final'} value={fmtDuration((stats.keptSec + retimeDelta) / speed)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
+            <Chip label={speed !== 1 ? `Duração final · ${fmtSpeed(speed)}` : 'Duração final'} value={fmtDuration((stats.keptSec + retimeDelta) / speed + lead + tail)} sub={(stats.removedSec + cortadoSec) > 0.1 ? `−${fmtDuration(stats.removedSec + cortadoSec)}` : null} color={C.green} />
           </div>
 
           {trechoBlock}
