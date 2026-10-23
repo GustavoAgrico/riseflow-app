@@ -961,7 +961,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return () => { clearTimeout(id); ctl.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cutKey, sourceId, preciseTick]);
-  const preciseNow = precise && precise.key === cutKey ? precise : null;
+  // Clipes sem transcrição e espaços vazios: sem palavras, toda a fala pareceria "som solto"
+  // (tosse) ou pausa — ali nada sai sozinho (a prévia toca o áudio original, como o render).
+  const preciseNow = useMemo(() => {
+    if (!precise || precise.key !== cutKey) return null;
+    const holes = [...blanks.filter((b) => b.audio !== false), ...seqHoles, ...noTxRanges];
+    if (!holes.length) return precise;
+    const inHole = (n) => holes.some((h) => Math.min(h.end, n.end) - Math.max(h.start, n.start) > 0.02);
+    const outside = (list) => list.flatMap((q) => holes.reduce((parts, h) => parts.flatMap((x) => (h.end <= x.start || h.start >= x.end ? [x] : [{ ...x, end: h.start }, { ...x, start: h.end }].filter((y) => y.end - y.start > 0.02))), [q]));
+    return { ...precise, pauses: outside(precise.pauses), removed: outside(precise.removed), noises: precise.noises.filter((n) => !inHole(n)) };
+  }, [precise, cutKey, blanks, seqHoles, noTxRanges]);
   const noisesCut = (preciseNow?.noises || []).filter((n) => !n.kept);
   const pauseCutSec = pausesCut.reduce((a, p) => a + p.dur, 0);
 
@@ -2897,6 +2906,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         ...renderOff,
         manualSilence: true,
         silenceCuts,
+        // vídeo original (pausas não saem sozinhas): só saem as pausas cortadas à mão
+        ...(pausesAutoCut ? {} : { cutSilence: false }),
         // pausas que o usuário escolheu manter (os outros silêncios que o servidor achar saem)
         keptPauses: pauses.filter((p) => !isPauseCut(p)).map((p) => ({ start: +p.start.toFixed(2), end: +p.end.toFixed(2) })),
         // tosses/sons soltos que o usuário restaurou (os outros saem)
@@ -5133,6 +5144,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     v1DragRef.current = { kind, k, x0: e.clientX, dx: 0, off: e.clientX - e.currentTarget.getBoundingClientRect().left + (kind === 'move' ? 10 : 0) };
     setV1Drag(v1DragRef.current);
     document.body.style.userSelect = 'none';
+  }
+  /**
+   * Ferramenta Seleção (como no Premiere): arrastar o próprio clipe na V1/A1 move o clipe.
+   * (para marcar um trecho: ferramenta Seleção de trecho, R) → true se começou a arrastar
+   */
+  function startV1BodyDrag(e) {
+    if (e.button !== 0 || laneLock.vid || razorTool || rangeTool || isMobile || e.shiftKey) return false;
+    const left = e.currentTarget.getBoundingClientRect().left;
+    const t = srcOf((e.clientX - left) / pps);
+    const k = v1Pieces.findIndex((p) => p.clip.kind !== 'blank' && t >= p.va - 0.01 && t < p.vb + 0.01 && spanShown(vidSpans, p.va, p.vb));
+    if (k < 0) return false;
+    if (blanks.some((b) => t >= b.start && t < b.end)) return false; // espaço vazio: clique seleciona ele
+    e.stopPropagation();
+    e.preventDefault();
+    v1DragRef.current = { kind: 'move', k, x0: e.clientX, dx: 0, off: e.clientX - (left + X(v1Pieces[k].va)) };
+    setV1Drag(v1DragRef.current);
+    document.body.style.userSelect = 'none';
+    return true;
   }
   /** Para onde o pedaço arrastado vai (índice na nova ordem), pelo centro dele. */
   function v1MoveTarget(d) {
@@ -8371,9 +8400,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {/* Faixa de vídeo: miniaturas + cortes desenhados arrastando */}
             <div
               data-lane="v1"
-              onMouseDown={startCutDraw}
+              onMouseDown={(e) => { if (!startV1BodyDrag(e)) startCutDraw(e); }}
               onContextMenu={(e) => { const p = partAt(e); if (p) openPieceMenu(e, 'video', p); else e.preventDefault(); }}
-              title="Arraste para selecionar um trecho (Delete exclui) · clique seleciona o pedaço · solte uma mídia da biblioteca aqui para pôr no vídeo principal"
+              title="Arraste o clipe para movê-lo · clique seleciona o pedaço · Shift+arrastar (ou a ferramenta R) marca um trecho · solte uma mídia da biblioteca aqui para pôr no vídeo principal"
               style={{ position: 'relative', height: LANE.video, marginTop: 4, borderRadius: 6, overflow: 'hidden', ...LANE_ROW, cursor: 'crosshair', ...lk('vid'), ...(libDrop?.v1 ? { boxShadow: '0 0 0 2px #3B82F6, 0 0 18px rgba(59,130,246,0.55)' } : null) }}
             >
               {vidSpans.map(([a, b]) => (
@@ -8548,6 +8577,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             )}
             {/* Faixa de áudio: forma de onda da fala original */}
             <div data-lane="a1"
+              onMouseDown={(e) => { if (avLinked) startV1BodyDrag(e); }}
               onClick={(e) => { if (rangeClickBlockRef.current || isMobile) return; const p = partAt(e); if (!p) return; setSelKind('audio'); setSelAudio({ start: p.a, end: p.b }); }}
               onContextMenu={(e) => { const p = partAt(e); if (p && !isMobile) openPieceMenu(e, 'audio', p); else e.preventDefault(); }}
               style={{ position: 'relative', height: LANE.audio, marginTop: 4, borderRadius: 6, overflow: 'hidden', ...LANE_ROW, ...(audioMute ? LANE_HIDDEN : null), ...lk('aud') }}>

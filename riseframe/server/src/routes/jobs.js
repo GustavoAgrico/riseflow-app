@@ -1613,14 +1613,18 @@ jobsRouter.post('/jobs/:id/precise-cuts', requireAuth, async (req, res) => {
     const audio = await audioCache.get(job.id);
     // Tosses: a prévia corta igual ao vídeo final (procuradas uma vez por vídeo, em segundo
     // plano na 1ª chamada; enquanto isso a prévia segue sem elas).
-    const coughs = req.body.coughs !== false;
+    // sem palavras (vídeo que entrou sem transcrever) não dá para separar tosse de fala:
+    // nada é procurado. A busca vale para a fala desse momento (transcreveu → procura de novo).
+    const nWords = transcript.segments.reduce((k, sg) => k + (Array.isArray(sg?.words) ? sg.words.length : 0), 0);
+    const coughs = req.body.coughs !== false && nWords > 0;
     let noises = null;
     if (coughs) {
-      if (!noiseCache.has(job.id)) {
-        noiseCache.set(job.id, detectNoises(job.inputPath, transcript, { audio, duration: Number(job.report?.input?.duration) || Infinity }).catch(() => []));
+      const nk = `${job.id}:${nWords}`;
+      if (!noiseCache.has(nk)) {
+        noiseCache.set(nk, detectNoises(job.inputPath, transcript, { audio, duration: Number(job.report?.input?.duration) || Infinity }).catch(() => []));
         while (noiseCache.size > 4) noiseCache.delete(noiseCache.keys().next().value);
       }
-      noises = await Promise.race([noiseCache.get(job.id), new Promise((r) => setTimeout(() => r(null), 25_000))]);
+      noises = await Promise.race([noiseCache.get(nk), new Promise((r) => setTimeout(() => r(null), 25_000))]);
     }
     const ranges = (Array.isArray(pauses) ? pauses : [])
       .slice(0, 5000)
