@@ -29,3 +29,11 @@ test('gainAf: trecho inválido é descartado e volume é limitado', () => {
   assert.ok(gainAf({ audioGains: [{ start: 0, end: 1, volume: 99 }] }).includes(':volume=4.00'), 'teto de 4x');
   assert.ok(gainAf({ audioGains: [{ start: 0, end: 1, volume: -3 }] }).includes(':volume=0.00'), 'piso de 0');
 });
+
+test('gainAf: linha de volume do A1 (pontos em dB, interpolados a cada quadro)', async () => {
+  const { gainAf } = await import('../src/pipeline/gain.js');
+  assert.equal(gainAf({ audioVolKeys: [{ t: 1, v: 0 }, { t: 2, v: 0 }] }), '', 'tudo em 0 dB: nada a fazer');
+  const af = gainAf({ audioVolKeys: [{ t: 1, v: 0 }, { t: 2, v: 6, ei: true }, { t: 3, v: -10, hold: true }] });
+  assert.match(af, /^volume='pow\(10,\(.+\)\/20\)':eval=frame$/);
+  assert.ok(af.includes('(2-'), 'Ease In no 2º ponto');
+});

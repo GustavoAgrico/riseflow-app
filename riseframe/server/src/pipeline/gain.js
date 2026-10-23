@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { runFfmpeg, audioStageOutput } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
+import { cleanVolKeys, kfExpr } from '../../../shared/layerKeys.js';
 
 const log = makeLogger('gain');
 
@@ -12,7 +13,7 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
  * que a timeline mostra, sem remapear.
  * @returns {string} cadeia de filtro, ou '' quando não há nada a fazer
  */
-export function gainAf({ audioMute, audioVolume, audioGains } = {}) {
+export function gainAf({ audioMute, audioVolume, audioGains, audioVolKeys } = {}) {
   if (audioMute) return 'volume=0';
   const parts = [];
   const base = clamp(Number(audioVolume ?? 1), 0, 4);
@@ -25,6 +26,9 @@ export function gainAf({ audioMute, audioVolume, audioGains } = {}) {
     // O filtro volume aceita 'enable', então cada trecho é um volume próprio na cadeia.
     parts.push(`volume=enable='between(t,${s.toFixed(2)},${e.toFixed(2)})':volume=${v.toFixed(2)}`);
   }
+  // Linha de volume com pontos (A1, como no Premiere): dB interpolado a cada quadro de áudio.
+  const vk = cleanVolKeys(audioVolKeys);
+  if (vk.length && vk.some((k) => Math.abs(k.v) > 0.05)) parts.push(`volume='pow(10,(${kfExpr(vk)})/20)':eval=frame`);
   return parts.join(',');
 }
 

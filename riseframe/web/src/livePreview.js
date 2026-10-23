@@ -1,3 +1,4 @@
+import { volDbAt } from '../../shared/layerKeys.js';
 // Prévia AO VIVO dos efeitos no player da timeline (zoom, cor, whoosh, volume).
 // Espelha as fórmulas do servidor (pipeline/motion.js, color.js, sfx.js) de forma
 // aproximada, só no navegador — o render final continua sendo feito pelo FFmpeg.
@@ -48,10 +49,12 @@ export function demoMotion(kind, intensity, e) {
 }
 
 /** Volume da fala no instante t (mudo, volume geral e trechos com volume próprio). */
-export function volumeAt(t, { audioMute, audioVolume, gains }) {
+export function volumeAt(t, { audioMute, audioVolume, gains, volKeys }) {
   if (audioMute) return 0;
   let v = Number(audioVolume ?? 1);
   for (const g of gains || []) if (t >= g.start && t < g.end) v *= Number(g.volume);
+  // linha de volume da faixa A1 (pontos em dB, como no Premiere)
+  if (volKeys?.length) v *= 10 ** (volDbAt(volKeys, t) / 20);
   return v;
 }
 

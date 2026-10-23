@@ -40,7 +40,7 @@ import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
 import { cleanCrop, cleanCropRanges, cleanBlanks } from '../pipeline/frame.js';
 import { transcribeRange } from '../pipeline/seqTranscript.js';
 import { editSourceStatus, editSourcePath } from '../pipeline/editSource.js';
-import { cleanLayerKf } from '../../../shared/layerKeys.js';
+import { cleanLayerKf, cleanVolKeys } from '../../../shared/layerKeys.js';
 import { SFX_LIBRARY } from '../pipeline/sfx.js';
 import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
 
@@ -660,6 +660,7 @@ export function parseOptions(raw) {
     ...([24, 25, 30, 50, 60, 120].includes(Number(o.fps)) ? { fps: Number(o.fps) } : {}),
     ...(['video', 'audio'].includes(o.streams) ? { streams: o.streams } : {}),
     audioVolume: clampNum(o.audioVolume, 0, 4, 1),
+    ...(cleanVolKeys(o.audioVolKeys).length ? { audioVolKeys: cleanVolKeys(o.audioVolKeys) } : {}),
     // Recorte (Crop) do vídeo principal: quanto sai de cada lado (fração).
     ...(cleanCrop(o.videoCrop) ? { videoCrop: cleanCrop(o.videoCrop) } : {}),
     ...(cleanCropRanges(o.cropRanges).length ? { cropRanges: cleanCropRanges(o.cropRanges) } : {}),
