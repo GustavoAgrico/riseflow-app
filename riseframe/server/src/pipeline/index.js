@@ -412,8 +412,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
       transcript,
       hasAudio: meta.hasAudio,
       breaths: options.cutBreaths !== false,
-      // tosse, pigarro e estalos de boca nos vãos entre as palavras
-      coughs: options.cutCoughs !== false,
+      // tosse, pigarro e estalos de boca nos vãos entre as palavras (sem palavras não dá
+      // para separar tosse de fala: nada sai)
+      coughs: options.cutCoughs !== false && (transcript.segments || []).some((sg) => sg.words?.length),
       keepNoises: options.keptNoises || [],
       duration: meta.duration,
       strength: options.cutStrength,
@@ -424,13 +425,15 @@ export async function runPipeline(job, onUpdate = () => {}) {
     // não saem — senão o espaço encolheria (e as camadas por cima, como a logo, junto).
     // (e clipes que entraram sem transcrição: sem palavras, tudo ali pareceria pausa)
     const holes = [...cleanBlanks(options.videoBlanks).filter((b) => b.audio !== false), ...cleanBlanks(options.noCutRanges)];
-    const removals = precise.pauses.flatMap((p) => holes.reduce((parts, h) => parts.flatMap((q) => (h.end <= q.start || h.start >= q.end ? [q] : [{ ...q, end: h.start }, { ...q, start: h.end }].filter((x) => x.end - x.start > 0.02))), [p]));
+    const outHoles = (list) => list.flatMap((p) => holes.reduce((parts, h) => parts.flatMap((q) => (h.end <= q.start || h.start >= q.end ? [q] : [{ ...q, end: h.start }, { ...q, start: h.end }].filter((x) => x.end - x.start > 0.02))), [p]));
+    const removals = outHoles(precise.pauses);
     // Trechos cortados à mão na faixa de vídeo: valem sempre, com ou sem corte de silêncio.
     for (const c of options.videoCuts || []) {
       if (c && c.end > c.start) removals.push({ start: Math.max(0, c.start), end: Math.min(meta.duration, c.end) });
     }
     // Palavras marcadas como removidas: edição manual do cliente (render) e/ou limpeza automática.
-    removals.push(...precise.removed);
+    // (tosses/sons achados também entram aqui — nunca dentro dos clipes sem transcrição)
+    removals.push(...outHoles(precise.removed));
 
     // Ajusta ao grid de frames e usa o MESMO keep no corte do vídeo e no remap das
     // legendas — evita o drift progressivo (legenda adiantando/atrasando após cortes).
