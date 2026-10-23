@@ -16,11 +16,15 @@ export const TEXT_PAD_DEFAULT = 0.28;
  * radius 0–1 = canto reto até a ponta toda arredondada (pílula).
  */
 export function textBoxMetrics(l) {
-  const box = textLook(l).bg;
+  const L = textLook(l);
+  const box = L.bg;
   const pad = box ? num(l.pad, 0, 1.2, TEXT_PAD_DEFAULT) : 0;
-  const padY = pad * 0.43;
+  // fundo inteiro (uma forma atrás do bloco): a folga é igual nos 4 lados e não mexe na
+  // altura das linhas (a entrelinha muda só o texto)
+  const block = box && L.bgMode === 'block';
+  const padY = block ? pad : pad * 0.43;
   const boxH = TEXT_LINE_H + 2 * padY;
-  return { padX: pad, padY, boxH, pitch: box ? boxH : TEXT_LINE_H, r: box ? num(l.radius, 0, 1, 0) * (boxH / 2) : 0 };
+  return { padX: pad, padY, boxH, block, pitch: box && !block ? boxH : TEXT_LINE_H, r: box ? num(l.radius, 0, 1, 0) * (block ? 1 : boxH / 2) : 0 };
 }
 
 /**
@@ -94,7 +98,7 @@ export const TEXT_VALIGNS = ['top', 'center', 'bottom'];
  */
 export function textLook(l) {
   const box = l?.box;
-  const legacyStroke = box === 'outline' || box == null;
+  const legacyStroke = l?.kind !== 'shape' && (box === 'outline' || box == null); // forma nasce sem contorno
   const hasNew = (k) => l != null && l[k] != null;
   const size = num(l?.size, 0.015, 0.2, 0.05);
   return {
@@ -108,6 +112,8 @@ export function textLook(l) {
     bg: hasNew('bg') ? l.bg === true : box === 'box',
     bgColor: HEX.test(l?.bgColor) ? l.bgColor : HEX.test(l?.boxColor) ? l.boxColor : '#000000',
     bgOpacity: num(l?.bgOpacity, 0, 1, 1),
+    // 'lines' = uma caixa por linha (junto com o texto); 'block' = uma forma atrás do bloco
+    bgMode: l?.bgMode === 'block' || l?.bgMode === 'lines' ? l.bgMode : hasNew('bg') ? 'block' : 'lines',
     shadow: l?.shadow === true,
     shadowColor: HEX.test(l?.shadowColor) ? l.shadowColor : '#000000',
     shadowOpacity: num(l?.shadowOpacity, 0, 1, 0.75),
@@ -150,10 +156,44 @@ const num = (v, lo, hi, def) => (Number.isFinite(Number(v)) ? Math.max(lo, Math.
 const pickOf = (obj, v, def) => (Object.hasOwn(obj, v) ? v : def);
 
 /** Normaliza as camadas de texto (vindas do cliente). `fonts` = ids de fonte válidos. */
+/** Formas (como as do Premiere): retângulo e elipse. */
+export const SHAPES = { rect: 'Retângulo', ellipse: 'Elipse' };
+/**
+ * Forma na faixa de textos/gráficos: centro x/y e tamanho w/h em fração da tela (w da
+ * largura, h da altura); cantos 0–1 (retângulo); o resto da aparência é a do texto.
+ */
+function cleanShape(l) {
+  const start = Number(l?.start);
+  const end = Number(l?.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < 0.2) return null;
+  return {
+    kind: 'shape',
+    shape: pickOf(SHAPES, l.shape, 'rect'),
+    text: '',
+    start: Math.max(0, start),
+    end: Math.min(start + 600, end),
+    x: num(l.x, -0.5, 1.5, 0.5),
+    y: num(l.y, -0.5, 1.5, 0.5),
+    w: num(l.w, 0.005, 3, 0.4),
+    h: num(l.h, 0.005, 3, 0.1),
+    color: HEX.test(l.color) ? l.color : '#FF6B35',
+    radius: num(l.radius, 0, 1, 0),
+    animIn: pickOf(TEXT_ANIMS_IN, l.animIn, 'fade'),
+    animOut: pickOf(TEXT_ANIMS_OUT, l.animOut, 'fade'),
+    ...pickLook({ ...l, bg: undefined }),
+  };
+}
+
 export function cleanTextLayers(raw, fonts = null, max = 30) {
   if (!Array.isArray(raw)) return [];
   const out = [];
   for (const l of raw) {
+    if (l?.kind === 'shape') {
+      const sh = cleanShape(l);
+      if (sh) out.push(sh);
+      if (out.length >= max) break;
+      continue;
+    }
     const text = String(l?.text ?? '').replace(/\r/g, '').slice(0, 200);
     const start = Number(l?.start);
     const end = Number(l?.end);
@@ -186,7 +226,7 @@ export function cleanTextLayers(raw, fonts = null, max = 30) {
 function pickLook(l) {
   const L = textLook(l);
   const out = {};
-  const keys = ['fill', 'stroke', 'strokeColor', 'strokeW', 'strokePos', 'bg', 'bgColor', 'bgOpacity', 'shadow', 'shadowColor', 'shadowOpacity', 'shadowAngle', 'shadowDist', 'shadowBlur',
+  const keys = ['fill', 'stroke', 'strokeColor', 'strokeW', 'strokePos', 'bg', 'bgColor', 'bgOpacity', 'bgMode', 'shadow', 'shadowColor', 'shadowOpacity', 'shadowAngle', 'shadowDist', 'shadowBlur',
     'bold', 'italic', 'caps', 'smallCaps', 'underline', 'script', 'align', 'valign', 'tracking', 'leading', 'baseline', 'rot', 'opacity', 'scale'];
   for (const k of keys) if (l[k] != null) out[k] = L[k];
   if (out.script === null) delete out.script;

@@ -59,6 +59,30 @@ test('buildTextAss: aparência e tipografia como no Premiere', () => {
   assert.match(buildTextAss([sc], meta), /L\{\\fscx78\\fscy78\}INHA/);
 });
 
+test('buildTextAss: fundo como uma forma só (bloco) e formas (retângulo/elipse)', () => {
+  const base = { text: 'Um\nDois\nTrês', start: 0, end: 2, font: 'poppins', size: 0.05, color: '#FFFFFF', x: 0.5, y: 0.5, animIn: 'none', animOut: 'none' };
+  const [blk] = cleanTextLayers([{ ...base, bg: true, bgColor: '#13305A', leading: -0.01 }]);
+  const a = buildTextAss([blk], meta);
+  assert.equal((a.match(/Dialogue: 1,[^\n]*TBox/g) || []).length, 1, 'uma forma atrás do bloco todo');
+  const [lin] = cleanTextLayers([{ ...base, bg: true, bgMode: 'lines' }]);
+  assert.equal((buildTextAss([lin], meta).match(/Dialogue: 1,[^\n]*TBox/g) || []).length, 3, 'uma caixa por linha');
+  // entrelinha negativa aproxima as linhas
+  const ys = (txt) => [...txt.matchAll(/Dialogue: 3,[^\n]*\\pos\(\d+,(\d+)\)/g)].map((m) => Number(m[1]));
+  const [plain] = cleanTextLayers([base]);
+  const gapPlain = ys(buildTextAss([plain], meta))[1] - ys(buildTextAss([plain], meta))[0];
+  const gapNeg = ys(a)[1] - ys(a)[0];
+  assert.ok(gapNeg < gapPlain - 15, `entrelinha −19 px (${gapPlain} → ${gapNeg})`);
+  const shapes = cleanTextLayers([
+    { kind: 'shape', shape: 'rect', start: 0, end: 2, x: 0.5, y: 0.5, w: 0.5, h: 0.1, color: '#FF0000', radius: 1, stroke: true, strokeW: 0.002 },
+    { kind: 'shape', shape: 'ellipse', start: 0, end: 2, x: 0.25, y: 0.25, w: 0.2, h: 0.1, color: '#00FF00', shadow: true },
+  ]);
+  assert.equal(shapes.length, 2);
+  const s = buildTextAss(shapes, meta);
+  assert.match(s, /Dialogue: 3,[^\n]*\\an7\\pos\(270,864\)[^\n]*\\bord3\.84\\1c&H0000FF&[^\n]*\\p1\}m /, 'retângulo vermelho com contorno');
+  assert.match(s, /Dialogue: 4,[^\n]*TBox[^\n]*\\blur/, 'sombra da elipse');
+  assert.match(s, /Dialogue: 7,[^\n]*\\1c&H00FF00&[^\n]*\\p1\}m 108 0 b /, 'elipse com curvas');
+});
+
 test('videoFxVf: cada efeito só na janela dele; desconhecido sai', () => {
   assert.equal(videoFxVf([]), null);
   const fx = cleanFxMoments([{ start: 1, end: 2, effect: 'bw' }, { start: 3, end: 4, effect: 'film' }, { start: 5, end: 6, effect: 'nada' }]);

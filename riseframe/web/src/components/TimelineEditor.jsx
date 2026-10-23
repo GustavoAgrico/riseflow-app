@@ -19,7 +19,7 @@ import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, playSfxUrl, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
 import { keyAt, cleanKeys, keysChangeAnything, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
-import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign } from '../../../shared/textLayers.js';
+import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
 import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
@@ -670,6 +670,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [laneHide, setLaneHide] = useState({});
   const [laneLock, setLaneLock] = useState({});
   const visTexts = laneHide.txt ? [] : textLayers;
+  // faixa T1: textos e formas que se sobrepõem no tempo ficam em linhas (de cima = na frente)
+  const txtRows = useMemo(() => {
+    const rows = {};
+    const ends = [];
+    for (const l of [...textLayers].reverse()) {
+      let r = ends.findIndex((e) => e <= l.start + 0.001);
+      if (r < 0) { r = ends.length; ends.push(l.end); } else ends[r] = l.end;
+      rows[l.key] = Math.min(r, 3);
+    }
+    return { rows, n: Math.max(1, Math.min(4, ends.length)) };
+  }, [textLayers]);
+  const txtH = txtRows.n > 1 ? Math.max(LANE.txt, 18 * txtRows.n) : LANE.txt; // a faixa cresce com as linhas
   const visFx = laneHide.vfx ? [] : fxMoments;
   const visMedia = media.filter((m) => (m.under ? !laneHide.v0 : !laneHide[`m${m.layer || 0}`]));
   const curCrop = cropAt(cur);
@@ -3343,6 +3355,30 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if ('boxColor' in patch && !('strokeColor' in patch) && !('bgColor' in patch)) { delete n.strokeColor; delete n.bgColor; }
     return n;
   }));
+  /** Ordem das camadas de texto/forma (como "Trazer para frente / Enviar para trás"). */
+  function moveTextLayer(key, dir) {
+    setTextLayers((l) => {
+      const i = l.findIndex((x) => x.key === key);
+      if (i < 0) return l;
+      const n = [...l];
+      const [it] = n.splice(i, 1);
+      if (dir === 'front') n.push(it); else if (dir === 'back') n.unshift(it);
+      else n.splice(Math.max(0, Math.min(n.length, i + (dir === 'up' ? 1 : -1))), 0, it);
+      return n;
+    });
+  }
+  /** Forma nova (como as ferramentas Retângulo/Elipse do Premiere), no playhead, no meio da tela. */
+  function addShape(shape) {
+    const start = Math.max(-lead, Math.min(cur, dur - 0.5));
+    const ar = (FMT_WH[aspectSel]?.[0] || vdim?.w || 1080) / (FMT_WH[aspectSel]?.[1] || vdim?.h || 1920);
+    const t = shape === 'ellipse'
+      ? { key: `t${Date.now()}`, kind: 'shape', shape, text: '', x: 0.5, y: 0.5, w: 0.3, h: +(0.3 * ar).toFixed(4), color: '#FF6B35', animIn: 'fade', animOut: 'fade' }
+      : { key: `t${Date.now()}`, kind: 'shape', shape, text: '', x: 0.5, y: 0.5, w: 0.6, h: 0.08, color: '#FF6B35', radius: 0.15, animIn: 'fade', animOut: 'fade' };
+    setTextLayers((l) => [...l, { ...t, start: +start.toFixed(2), end: +(start + 3).toFixed(2) }]);
+    setSelText(t.key);
+    setSelKind('text');
+    setTab('propriedades');
+  }
   function addText(tplId) {
     const { label, ...tpl } = TEXT_TEMPLATES[tplId] || TEXT_TEMPLATES.simples;
     const start = Math.max(0, Math.min(cur, dur - 0.5));
@@ -3447,6 +3483,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
           <b style={{ fontSize: 13.5 }}>Gráficos essenciais</b>
           <span style={{ fontSize: 11.5, color: C.faint }}>clique para pôr no playhead ({fmtDuration(cur)}) · arraste na prévia para posicionar</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={() => addShape('rect')} style={{ ...miniBtn(false, false), display: 'inline-flex', alignItems: 'center', gap: 6 }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3.5" y="6" width="17" height="12" rx="2" /></svg> Retângulo</button>
+          <button onClick={() => addShape('ellipse')} style={{ ...miniBtn(false, false), display: 'inline-flex', alignItems: 'center', gap: 6 }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><ellipse cx="12" cy="12" rx="8.5" ry="7" /></svg> Elipse</button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
           {Object.entries(TEXT_TEMPLATES).map(([id, t]) => {
@@ -3868,7 +3908,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
     if (propTarget === 'text') {
       const l = selTextItem;
-      return <TextProps l={l} FW={FW} FH={FH} head={head} up={(patch) => updateText(l.key, patch)} hidden={!!laneHide.txt} onEye={() => togHide('txt')} />;
+      const idx = textLayers.findIndex((x) => x.key === l.key);
+      const order = (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {[['front', 'Trazer para a frente', idx === textLayers.length - 1], ['up', 'Avançar', idx === textLayers.length - 1], ['down', 'Recuar', idx === 0], ['back', 'Enviar para trás', idx === 0]].map(([d, label, off]) => (
+            <button key={d} onClick={() => moveTextLayer(l.key, d)} disabled={off} style={{ ...miniBtn(false, false), opacity: off ? 0.4 : 1 }}>{label}</button>
+          ))}
+        </div>
+      );
+      if (l.kind === 'shape') return <ShapeProps l={l} FW={FW} FH={FH} head={head} order={order} up={(patch) => updateText(l.key, patch)} hidden={!!laneHide.txt} onEye={() => togHide('txt')} />;
+      return <TextProps l={l} FW={FW} FH={FH} head={head} order={order} up={(patch) => updateText(l.key, patch)} hidden={!!laneHide.txt} onEye={() => togHide('txt')} />;
     }
     // vídeo principal (V1). Como no Premiere, o Transformar é do CLIPE: com o vídeo dividido
     // (navalha ou montagem), vale só no pedaço selecionado (ou o do ponteiro). Por baixo são
@@ -4046,11 +4095,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {textLayers.length > 0 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {textLayers.map((l) => (
-            <button key={l.key} onClick={() => { setSelText(l.key); setSelKind('text'); seek(l.start + 0.05); }} style={{ ...miniBtn(selText === l.key, false), maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtDuration(l.start)} · {l.text.split('\n')[0]}</button>
+            <button key={l.key} onClick={() => { setSelText(l.key); setSelKind('text'); seek(l.start + 0.05); }} style={{ ...miniBtn(selText === l.key, false), maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtDuration(l.start)} · {l.kind === 'shape' ? SHAPES[l.shape] : l.text.split('\n')[0]}</button>
           ))}
         </div>
       )}
-      {selTextItem && (
+      {selTextItem?.kind === 'shape' && (
+        <button onClick={() => setTab('propriedades')} style={{ ...miniBtn(false, false), justifySelf: 'start' }}>{SHAPES[selTextItem.shape]} selecionado — ajuste em Propriedades</button>
+      )}
+      {selTextItem && selTextItem.kind !== 'shape' && (
         <div style={{ border: '1px solid #E8A020', borderRadius: 10, padding: 10, display: 'grid', gap: 8 }}>
           <textarea value={selTextItem.text} rows={2} onChange={(e) => updateText(selTextItem.key, { text: e.target.value })}
             style={{ width: '100%', boxSizing: 'border-box', background: '#13131B', color: C.text, border: `1px solid ${C.border}`, borderRadius: 9, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
@@ -8383,6 +8435,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <ToolIcon title="Seleção de trecho (R) — arraste para marcar o trecho em todas as faixas · I/O marcam entrada/saída" active={rangeTool} onClick={() => pickTool(rangeTool ? 'select' : 'range')}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M4 4v16M20 4v16" /><rect x="7.5" y="7" width="9" height="10" rx="1.5" strokeDasharray="2.5 2" /></svg>
               </ToolIcon>
+              <ToolIcon title="Retângulo — põe uma forma no playhead (ajuste em Propriedades)" onClick={() => addShape('rect')}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3.5" y="6" width="17" height="12" rx="2" /></svg>
+              </ToolIcon>
+              <ToolIcon title="Elipse — põe uma forma no playhead (ajuste em Propriedades)" onClick={() => addShape('ellipse')}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><ellipse cx="12" cy="12" rx="8.5" ry="7" /></svg>
+              </ToolIcon>
               <span className="rf-tsep" />
               <ToolIcon title={`Dividir no playhead (Ctrl+K · S divide ${SEL_LABEL[selKind]})`} onClick={() => razorCut(cur)}><Icon name="scissors" size={15} strokeWidth={2} /></ToolIcon>
               <ToolIcon title={delTitle} disabled={!canDeleteSel} onClick={() => deleteSelected(false)}><Icon name="trash" size={15} strokeWidth={2} /></ToolIcon>
@@ -8414,7 +8472,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {topMedia.length > 0 && Array.from({ length: mediaRows }, (_, r) => mediaRows - 1 - r).map((l) => (
               <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('midias', e)} onResetSize={() => resetLane('midias')} key={l} h={LANE.midias} gap={l === mediaRows - 1 ? 4 : 0} code={`M${l + 1}`} nome={`Camada ${l + 1}`} onMenu={(e) => openTrackMenu(e, `m${l}`)} hidden={laneHide[`m${l}`]} onEye={() => togHide(`m${l}`)} locked={laneLock[`m${l}`]} onLock={() => togLock(`m${l}`)} />
             ))}
-            {textLayers.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('txt', e)} onResetSize={() => resetLane('txt')} h={LANE.txt} gap={4} code="T1" nome="Textos" onMenu={(e) => openTrackMenu(e, 'txt')} hidden={laneHide.txt} onEye={() => togHide('txt')} locked={laneLock.txt} onLock={() => togLock('txt')} />}
+            {textLayers.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('txt', e)} onResetSize={() => resetLane('txt')} h={txtH} gap={4} code="T1" nome="Textos" onMenu={(e) => openTrackMenu(e, 'txt')} hidden={laneHide.txt} onEye={() => togHide('txt')} locked={laneLock.txt} onLock={() => togLock('txt')} />}
             {fxMoments.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('vfx', e)} onResetSize={() => resetLane('vfx')} h={LANE.vfx} gap={4} code="FX" nome="Efeitos" onMenu={(e) => openTrackMenu(e, 'vfx')} hidden={laneHide.vfx} onEye={() => togHide('vfx')} locked={laneLock.vfx} onLock={() => togLock('vfx')} />}
             {showBrollLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('broll', e)} onResetSize={() => resetLane('broll')} h={LANE.broll} gap={4} code="V2" nome="B-roll" onMenu={(e) => openTrackMenu(e, 'broll')} hidden={!brollOn} onEye={() => setBrollOn((v) => !v)} locked={laneLock.broll} onLock={() => togLock('broll')} />}
             {showZoomLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('zoom', e)} onResetSize={() => resetLane('zoom')} h={LANE.zoom} gap={4} code="ZM" nome="Zoom" onMenu={(e) => openTrackMenu(e, 'zoom')} locked={laneLock.zoom} onLock={() => togLock('zoom')} />}
@@ -8430,7 +8488,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             onMouseDown={(e) => { if (e.target === e.currentTarget) startMarquee(e); }} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
-            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setDropT(null); setLibDrop(null); } }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + LANE.txt : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (showSfxLane ? 4 + LANE.sfx : 0) + (isMobile || !showPauses ? 0 : 4 + LANE.pausas) + (topMedia.length ? 4 + LANE.midias * mediaRows : 0) + (showV0 ? 4 + v0H : 0) }}>
+            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setDropT(null); setLibDrop(null); } }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (transformKeys.length ? 4 + LANE.kf : 0) + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + txtH : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (showSfxLane ? 4 + LANE.sfx : 0) + (isMobile || !showPauses ? 0 : 4 + LANE.pausas) + (topMedia.length ? 4 + LANE.midias * mediaRows : 0) + (showV0 ? 4 + v0H : 0) }}>
             {/* ferramenta de seleção: arrastar em qualquer faixa marca o trecho (todas as faixas) */}
             {razorTool && !isMobile && (
               <div onMouseMove={(e) => setRazorT(timeAtClientX(e.clientX))} onMouseLeave={() => setRazorT(null)}
@@ -8603,16 +8661,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             )}
             {/* Faixa TEXTOS: textos livres (arraste para mover, pontas mudam o tempo) */}
             {textLayers.length > 0 && (
-              <div data-lane="txt" style={{ position: 'relative', height: LANE.txt, marginTop: 4, ...LANE_ROW, ...(laneHide.txt ? LANE_HIDDEN : null), ...lk('txt') }}>
+              <div data-lane="txt" style={{ position: 'relative', height: txtH, marginTop: 4, ...LANE_ROW, ...(laneHide.txt ? LANE_HIDDEN : null), ...lk('txt') }}>
                 {textLayers.map((l) => {
                   const on = selKind === 'text' && selText === l.key;
+                  const row = txtRows.rows[l.key] || 0;
+                  const rh = txtH / txtRows.n;
                   return (
-                    <div key={l.key} title={`${l.text} — arraste para mover, pontas mudam o tempo`}
+                    <div key={l.key} title={`${l.kind === 'shape' ? SHAPES[l.shape] : l.text} — arraste para mover, pontas mudam o tempo`}
                       onMouseDown={(e) => { setSelText(l.key); setSelKind('text'); startRangeDrag(setTextLayers, l, 'move', e); }}
-                      onClick={(e) => { e.stopPropagation(); setSelText(l.key); setSelKind('text'); setTab('texto'); seek(l.start + 0.05); }}
-                      style={{ position: 'absolute', left: X(l.start), width: Math.max(16, W(l.start, l.end) - 1), top: 0, bottom: 0, borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                      onClick={(e) => { e.stopPropagation(); setSelText(l.key); setSelKind('text'); setTab('propriedades'); seek(l.start + 0.05); }}
+                      style={{ position: 'absolute', left: X(l.start), width: Math.max(16, W(l.start, l.end) - 1), top: row * rh, height: rh - (txtRows.n > 1 ? 1 : 0), borderRadius: 5, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
                         border: `1px solid ${on ? '#fff' : '#E8A020'}`, background: on ? 'rgba(232,160,32,0.6)' : 'rgba(232,160,32,0.3)', fontSize: 10, fontWeight: 700, color: C.text }}>
-                      <Icon name="type" size={10} strokeWidth={2.4} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.text.split('\n')[0]}</span>
+                      {l.kind === 'shape'
+                        ? <><span style={{ display: 'inline-block', width: 10, height: 8, border: '1.5px solid currentColor', borderRadius: l.shape === 'ellipse' ? '50%' : 2, background: l.color, flex: 'none' }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{SHAPES[l.shape]}</span></>
+                        : <><Icon name="type" size={10} strokeWidth={2.4} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.text.split('\n')[0]}</span></>}
                       <div onMouseDown={(e) => startRangeDrag(setTextLayers, l, 'left', e)} style={handleStyle('left')} />
                       <div onMouseDown={(e) => startRangeDrag(setTextLayers, l, 'right', e)} style={handleStyle('right')} />
                     </div>
@@ -9418,7 +9480,10 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
       const { box: bx, onMedia: om, onText: ot } = cb.current;
       const dx = e.clientX - d.x0;
       const dy = e.clientY - d.y0;
-      if (d.kind === 'text') {
+      if (d.kind === 'shapeSize') {
+        // canto da forma: o centro fica e o tamanho segue o mouse (dos dois lados)
+        ot(d.key, { w: +Math.max(0.01, d.w0 + (2 * dx) / bx.w).toFixed(4), h: +Math.max(0.01, d.h0 + (2 * dy) / bx.h).toFixed(4) });
+      } else if (d.kind === 'text') {
         // gruda no centro do quadro (com a linha-guia) quando passa perto — igual à legenda
         const sx = snapCenter(Math.max(0, Math.min(1, d.ox + dx / bx.w)), bx.w, undefined, 'x');
         const sy = snapCenter(Math.max(0, Math.min(1, d.oy + dy / bx.h)), bx.h, undefined, 'y');
@@ -9506,8 +9571,30 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
         );
       })}
       {liveTexts.map((l) => {
-        const f = textFontOf(l.font);
         const L = textLook(l);
+        if (l.kind === 'shape') {
+          // forma (retângulo/elipse): as mesmas contas do render (texts.js)
+          const on = editable && selText === l.key;
+          const bw = l.w * box.w;
+          const bh = l.h * box.h;
+          const rgba = (hex, a) => { const h = String(hex).replace('#', ''); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; };
+          const sw = L.stroke ? L.strokeW * box.h : 0;
+          const shadows = [];
+          if (sw) shadows.push(`0 0 0 ${sw}px ${L.strokeColor}`); // contorno por fora
+          if (L.shadow) shadows.push(`${-Math.cos((L.shadowAngle * Math.PI) / 180) * L.shadowDist * box.h}px ${Math.sin((L.shadowAngle * Math.PI) / 180) * L.shadowDist * box.h}px ${L.shadowBlur * box.h * 2}px ${rgba(L.shadowColor, L.shadowOpacity)}`);
+          return (
+            <div key={l.key} onPointerDown={(e) => start(e, { kind: 'text', key: l.key, ox: l.x, oy: l.y })}
+              style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, width: bw, height: bh, transform: `translate(-50%, -50%)${L.rot ? ` rotate(${L.rot}deg)` : ''}`, opacity: L.opacity,
+                background: L.fill ? L.fillColor : 'transparent', borderRadius: l.shape === 'ellipse' ? '50%' : (Number(l.radius) || 0) * Math.min(bw, bh) / 2, boxShadow: shadows.join(', ') || undefined,
+                pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: on ? '2px dashed #E8A020' : 'none', outlineOffset: 4 + sw }}>
+              {on && (
+                <span onPointerDown={(e) => start(e, { kind: 'shapeSize', key: l.key, w0: l.w, h0: l.h })} title="Arraste para mudar o tamanho"
+                  style={{ position: 'absolute', right: -8 - sw, bottom: -8 - sw, width: 12, height: 12, borderRadius: 3, background: '#fff', border: '2px solid #E8A020', cursor: 'nwse-resize' }} />
+              )}
+            </div>
+          );
+        }
+        const f = textFontOf(l.font);
         const px = textEm(l) * box.h; // tamanho efetivo (escala, sobrescrito/subscrito)
         const emBase = (Number(l.size) || 0.05) * L.scale * box.h;
         const on = editable && selText === l.key;
@@ -9524,16 +9611,18 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
         return (
           <div key={l.key} onPointerDown={(e) => start(e, { kind: 'text', key: l.key, ox: l.x, oy: l.y })}
             style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, transform: `translate(-50%, ${ty}) translateY(${shift}px)${L.rot ? ` rotate(${L.rot}deg)` : ''}`, opacity: L.opacity,
+              ...(L.bg && g.block ? { background: rgba(L.bgColor, L.bgOpacity), padding: `${g.padY * px}px ${g.padX * px}px`, borderRadius: g.r * (lines.length * TEXT_LINE_H * px + (lines.length - 1) * L.leading * box.h + 2 * g.padY * px) / 2, ...(sh ? { boxShadow: `${sh.dx}px ${sh.dy}px ${sh.b}px ${sh.c}` } : null) } : null),
               display: 'flex', flexDirection: 'column', alignItems: L.align === 'right' ? 'flex-end' : L.align === 'center' || L.align === 'justify-center' ? 'center' : 'flex-start', lineHeight: TEXT_LINE_H,
               fontFamily: `'${f.family}'`, fontWeight: f.bold === false && !L.bold ? 400 : 700, fontStyle: L.italic ? 'italic' : 'normal', fontSize: px,
               textDecoration: L.underline ? 'underline' : 'none', fontVariant: L.smallCaps ? 'small-caps' : 'normal', letterSpacing: L.tracking ? `${L.tracking / 1000}em` : undefined,
-              color: L.fill ? L.fillColor : 'transparent', gap: L.leading ? L.leading * box.h : undefined,
+              color: L.fill ? L.fillColor : 'transparent',
               pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: on ? '2px dashed #E8A020' : 'none', outlineOffset: 4 }}>
             {lines.map((ln, j) => {
               const al = lineAlign(L.align, j === lines.length - 1);
               return (
                 <div key={j} style={{ whiteSpace: 'pre', minHeight: TEXT_LINE_H * px, alignSelf: al === 'left' ? 'flex-start' : al === 'right' ? 'flex-end' : 'center',
-                  ...(L.bg && ln.trim() ? { background: rgba(L.bgColor, L.bgOpacity), padding: `${g.padY * px}px ${g.padX * px}px`, borderRadius: g.r * px, ...(sh ? { boxShadow: `${sh.dx}px ${sh.dy}px ${sh.b}px ${sh.c}` } : null) } : L.bg ? { padding: `${g.padY * px}px 0` } : null),
+                  ...(j > 0 && L.leading ? { marginTop: L.leading * box.h } : null), // entrelinha (pode ser negativa)
+                  ...(L.bg && g.block ? null : L.bg && ln.trim() ? { background: rgba(L.bgColor, L.bgOpacity), padding: `${g.padY * px}px ${g.padX * px}px`, borderRadius: g.r * px, ...(sh ? { boxShadow: `${sh.dx}px ${sh.dy}px ${sh.b}px ${sh.c}` } : null) } : L.bg ? { padding: `${g.padY * px}px 0` } : null),
                   ...(sh && !L.bg ? { textShadow: `${sh.dx}px ${sh.dy}px ${sh.b}px ${sh.c}` } : null),
                   WebkitTextStroke: sw ? `${Math.max(0.5, sw)}px ${L.strokeColor}` : undefined, paintOrder: 'stroke fill' }}>{ln || ' '}</div>
               );
@@ -10089,7 +10178,7 @@ function AlignIcon({ kind }) {
  * Texto (fonte, estilo, tamanho, alinhamento, espaçamentos) e Aparência (preenchimento,
  * contorno, fundo e sombra). Tudo igual no vídeo exportado (textLook no render).
  */
-function TextProps({ l, FW, FH, head, up, hidden, onEye }) {
+function TextProps({ l, FW, FH, head, up, hidden, onEye, order = null }) {
   const L = textLook(l);
   const custom = useCustomFonts();
   const tb = (on) => ({ minWidth: 28, height: 26, padding: '0 6px', borderRadius: 5, border: `1px solid ${on ? '#2D8CFF' : C.border}`, background: on ? 'rgba(45,140,255,0.22)' : 'rgba(255,255,255,0.03)', color: on ? '#fff' : C.muted, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 });
@@ -10130,6 +10219,7 @@ function TextProps({ l, FW, FH, head, up, hidden, onEye }) {
         <textarea value={l.text} rows={Math.min(4, String(l.text).split('\\n').length)} onChange={(e) => up({ text: e.target.value })} onKeyDown={(e) => e.stopPropagation()}
           style={{ flex: 1, resize: 'vertical', background: 'transparent', border: 'none', color: C.text, fontSize: 12.5, fontFamily: 'inherit', lineHeight: 1.45, outline: 'none' }} />
       </div>
+      {order}
       <PropSection title="Transformar" onReset={() => up({ x: 0.5, y: 0.5, scale: 1, rot: 0, opacity: 1 })}>
         <PropRow label="Posição">
           <span style={{ display: 'inline-flex', gap: 10 }}>
@@ -10201,6 +10291,11 @@ function TextProps({ l, FW, FH, head, up, hidden, onEye }) {
           </div>
           {L.bg && (
             <>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[['block', 'Forma inteira', 'Uma forma atrás do bloco todo (a entrelinha não mexe nela)'], ['lines', 'Por linha', 'Uma caixa em cada linha, junto com o texto']].map(([k, label, t]) => (
+                  <button key={k} onClick={() => up({ bgMode: k })} aria-pressed={L.bgMode === k} title={t} style={{ ...tb(L.bgMode === k), flex: 1 }}>{label}</button>
+                ))}
+              </div>
               {slider('Opacidade', L.bgOpacity, 0, 1, 0.01, (v) => up({ bgOpacity: v }), { v: L.bgOpacity * 100, min: 0, max: 100, set: (v) => up({ bgOpacity: +(v / 100).toFixed(3) }) })}
               {slider('Tamanho', l.pad ?? TEXT_PAD_DEFAULT, 0, 1.2, 0.01, (v) => up({ pad: v }), { v: (l.pad ?? TEXT_PAD_DEFAULT) * px(l.size || 0.05), d: 1, step: 0.2, set: (v) => up({ pad: +Math.max(0, Math.min(1.2, v / px(l.size || 0.05))).toFixed(3) }) })}
               {slider('Cantos', l.radius ?? 0, 0, 1, 0.01, (v) => up({ radius: v }), { v: (l.radius ?? 0) * 100, min: 0, max: 100, set: (v) => up({ radius: +(v / 100).toFixed(3) }) })}
@@ -10222,6 +10317,67 @@ function TextProps({ l, FW, FH, head, up, hidden, onEye }) {
             </>
           )}
         </div>
+      </PropSection>
+    </div>
+  );
+}
+/** Propriedades de uma forma (retângulo/elipse), como no Premiere. */
+function ShapeProps({ l, FW, FH, head, up, hidden, onEye, order = null }) {
+  const L = textLook(l);
+  const px = (frac) => frac * FH;
+  const check = (on, onChange) => <input type="checkbox" checked={on} onChange={(e) => onChange(e.target.checked)} />;
+  const slider = (label, value, min, max, step, onChange, shown) => (
+    <div style={{ display: 'grid', gridTemplateColumns: '92px 1fr 58px', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 11.5, color: C.faint }}>{label}</span>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)} />
+      <span style={{ textAlign: 'right' }}><ScrubNum value={shown.v} step={shown.step ?? 1} min={shown.min ?? -Infinity} max={shown.max ?? Infinity} decimals={shown.d ?? 0} onChange={shown.set} /></span>
+    </div>
+  );
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {head('Propriedades', `Forma · ${SHAPES[l.shape]}`)}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', background: 'rgba(0,0,0,0.25)' }}>
+        <button onClick={onEye} aria-pressed={!hidden} title={hidden ? 'Mostrar' : 'Esconder'} style={{ background: 'none', border: 'none', color: hidden ? C.faint : C.text, cursor: 'pointer', padding: 2 }}><Icon name={hidden ? 'eyeOff' : 'eye'} size={15} strokeWidth={2} /></button>
+        <span style={{ display: 'inline-block', width: 16, height: 12, border: '1.5px solid #fff', borderRadius: l.shape === 'ellipse' ? '50%' : 3 }} />
+        <span style={{ fontSize: 12.5 }}>{SHAPES[l.shape]}</span>
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 4 }}>
+          {Object.entries(SHAPES).map(([k, label]) => <button key={k} onClick={() => up({ shape: k })} aria-pressed={l.shape === k} style={{ ...miniBtn(l.shape === k, false) }}>{label}</button>)}
+        </span>
+      </div>
+      {order}
+      <PropSection title="Transformar" onReset={() => up({ x: 0.5, y: 0.5, rot: 0, opacity: 1 })}>
+        <PropRow label="Posição">
+          <span style={{ display: 'inline-flex', gap: 10 }}>
+            <ScrubNum value={l.x * FW} step={2} suffix=" X" onChange={(v) => up({ x: +Math.max(-0.5, Math.min(1.5, v / FW)).toFixed(4) })} />
+            <ScrubNum value={l.y * FH} step={2} suffix=" Y" onChange={(v) => up({ y: +Math.max(-0.5, Math.min(1.5, v / FH)).toFixed(4) })} />
+          </span>
+        </PropRow>
+        <PropRow label="Tamanho">
+          <span style={{ display: 'inline-flex', gap: 10 }}>
+            <ScrubNum value={l.w * FW} step={2} min={2} suffix=" L" onChange={(v) => up({ w: +Math.max(0.005, v / FW).toFixed(4) })} />
+            <ScrubNum value={l.h * FH} step={2} min={2} suffix=" A" onChange={(v) => up({ h: +Math.max(0.005, v / FH).toFixed(4) })} />
+          </span>
+        </PropRow>
+        <PropRow label="Rotação"><ScrubNum value={L.rot} step={0.5} min={-3600} max={3600} decimals={1} suffix=" °" onChange={(v) => up({ rot: +v.toFixed(2) })} /></PropRow>
+        <PropRow label="Opacidade"><ScrubNum value={L.opacity * 100} step={0.5} min={0} max={100} decimals={1} suffix=" %" onChange={(v) => up({ opacity: +(v / 100).toFixed(4) })} /></PropRow>
+      </PropSection>
+      <PropSection title="Aparência" onReset={() => up({ fill: true, stroke: false, shadow: false, radius: 0 })}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><b style={{ fontSize: 12, width: 92 }}>Preenchimento</b>{check(L.fill, (v) => up({ fill: v }))}<ColorField value={L.fillColor} title="Cor da forma" size={20} onChange={(h) => up({ color: h })} /></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <b style={{ fontSize: 12, width: 92 }}>Contorno</b>{check(L.stroke, (v) => up({ stroke: v, ...(v && !(l.strokeW > 0) ? { strokeW: 0.003 } : {}) }))}
+          <ColorField value={L.strokeColor} title="Cor do contorno" size={20} onChange={(h) => up({ strokeColor: h, stroke: true })} />
+          <span style={{ fontSize: 12, opacity: L.stroke ? 1 : 0.45 }}><ScrubNum value={px(L.strokeW)} step={0.2} min={0} max={px(0.05)} decimals={1} suffix=" px" onChange={(v) => up({ strokeW: +(v / FH).toFixed(5), stroke: true })} /></span>
+        </div>
+        {l.shape === 'rect' && slider('Cantos', l.radius ?? 0, 0, 1, 0.01, (v) => up({ radius: v }), { v: (l.radius ?? 0) * 100, min: 0, max: 100, set: (v) => up({ radius: +(v / 100).toFixed(3) }) })}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><b style={{ fontSize: 12, width: 92 }}>Sombra</b>{check(L.shadow, (v) => up({ shadow: v }))}<ColorField value={L.shadowColor} title="Cor da sombra" size={20} onChange={(h) => up({ shadowColor: h, shadow: true })} /></div>
+        {L.shadow && (
+          <>
+            {slider('Opacidade', L.shadowOpacity, 0, 1, 0.01, (v) => up({ shadowOpacity: v }), { v: L.shadowOpacity * 100, min: 0, max: 100, set: (v) => up({ shadowOpacity: +(v / 100).toFixed(3) }) })}
+            {slider('Ângulo', L.shadowAngle, -180, 180, 1, (v) => up({ shadowAngle: v }), { v: L.shadowAngle, set: (v) => up({ shadowAngle: Math.round(v) }) })}
+            {slider('Distância', L.shadowDist, 0, 0.05, 0.0005, (v) => up({ shadowDist: v }), { v: px(L.shadowDist), d: 1, step: 0.2, min: 0, set: (v) => up({ shadowDist: +(v / FH).toFixed(5) }) })}
+            {slider('Desfoque', L.shadowBlur, 0, 0.03, 0.0005, (v) => up({ shadowBlur: v }), { v: px(L.shadowBlur), d: 1, step: 0.2, min: 0, set: (v) => up({ shadowBlur: +(v / FH).toFixed(5) }) })}
+          </>
+        )}
       </PropSection>
     </div>
   );
