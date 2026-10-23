@@ -23,8 +23,9 @@ test('buildTextAss: posição pelo centro, caixa, quebra de linha e animações'
   // tamanho = "em" do CSS × célula da fonte (Poppins 1,76): igual à prévia
   assert.match(ass, /Style: T0,Poppins,135,&H00FFFFFF,&H00FFFFFF,&H00356BFF,&H00000000,-1,0,0,0,100,100,0,0,1,0,/, 'texto sem caixa do ASS');
   // cada linha: caixa desenhada (laranja, do tamanho do texto) por baixo e o texto por cima
-  assert.match(ass, /Dialogue: 0,0:00:02\.00,0:00:05\.00,TBox,,0,0,0,,\{\\an5\\move\(562,\d+,346,\d+,0,350\)\\fad\(350,350\)\\bord0\\shad0\\1c&H356BFF&\\p1\}m 0 0 /);
-  assert.match(ass, /Dialogue: 1,0:00:02\.00,0:00:05\.00,T0,,0,0,0,,\{\\an5\\move\(562,\d+,346,\d+,0,350\)\\fad\(350,350\)\}Seu Nome\n/);
+  // (camadas: 0 sombra, 1 caixa, 3 texto)
+  assert.match(ass, /Dialogue: 1,0:00:02\.00,0:00:05\.00,TBox,,0,0,0,,\{\\an5\\move\(562,\d+,346,\d+,0,350\)\\fad\(350,350\)\\bord0\\shad0\\1c&H356BFF&\\1a&H00&\\p1\}m 0 0 /);
+  assert.match(ass, /Dialogue: 3,0:00:02\.00,0:00:05\.00,T0,,0,0,0,,\{\\an5\\move\(562,\d+,346,\d+,0,350\)\\fad\(350,350\)\\1a&H00&\\3a&H00&\}Seu Nome\n/);
   assert.match(ass, /\}Especialista\n/);
   // arredondar os cantos e o tamanho do fundo
   const [r] = cleanTextLayers([{ ...TEXT_TEMPLATES.nome, start: 2, end: 5, radius: 1, pad: 0.6 }]);
@@ -38,6 +39,24 @@ test('buildTextAss: posição pelo centro, caixa, quebra de linha e animações'
   assert.ok(a2.includes('\\fscx0\\fscy0\\t(0,210,\\fscx115\\fscy115)'), 'pop');
   assert.ok(a2.includes('\\t(1650,2000,\\fscx0\\fscy0)'), 'encolhe na saída');
   assert.ok(a2.endsWith('}xOi\n'), 'chaves do usuário não viram tags');
+});
+
+test('buildTextAss: aparência e tipografia como no Premiere', () => {
+  const base = { text: 'Linha um\nDois', start: 0, end: 2, font: 'poppins', size: 0.05, color: '#FFFFFF', x: 0.5, y: 0.5, animIn: 'none', animOut: 'none' };
+  const [l] = cleanTextLayers([{ ...base, bold: true, italic: true, underline: true, tracking: 100, stroke: true, strokeW: 0.004, strokeColor: '#FF0000', bg: true, bgColor: '#0000FF', bgOpacity: 0.5, shadow: true, shadowOpacity: 0.5, rot: 15, opacity: 0.8, align: 'left', fill: false }]);
+  const ass = buildTextAss([l], meta);
+  // negrito/itálico/sublinhado, espaçamento (100/1000 em) e contorno (0,004 × 1920 ≈ 7,7 px)
+  assert.match(ass, /Style: T0,Poppins,\d+,&H00FFFFFF,&H00FFFFFF,&H000000FF,&H00000000,-1,-1,-1,0,100,100,9\.60,0,1,7\.68,/);
+  assert.match(ass, /Dialogue: 0,[^\n]*TBox[^\n]*\\blur[\d.]+\\1c&H000000&\\1a&H99&/, 'sombra da caixa (50% × 80%)');
+  assert.match(ass, /Dialogue: 1,[^\n]*\\1c&HFF0000&\\1a&H99&\\p1/, 'caixa azul a 50% × 80%');
+  assert.match(ass, /Dialogue: 3,[^\n]*\\org\(540,960\)\\frz-15\.00[^\n]*\\1a&HFF&\\3a&H33&\}Linha um/, 'giro, sem preenchimento e opacidade 80%');
+  // alinhado à esquerda: as duas linhas começam no mesmo x (a mais curta fica mais à esquerda no centro)
+  const xs = [...ass.matchAll(/Dialogue: 3,[^\n]*\\pos\((\d+),/g)].map((m) => Number(m[1]));
+  assert.ok(xs[1] < xs[0], `linha curta à esquerda (${xs})`);
+  const [caps] = cleanTextLayers([{ ...base, caps: true }]);
+  assert.match(buildTextAss([caps], meta), /\}LINHA UM\n/);
+  const [sc] = cleanTextLayers([{ ...base, smallCaps: true }]);
+  assert.match(buildTextAss([sc], meta), /L\{\\fscx78\\fscy78\}INHA/);
 });
 
 test('videoFxVf: cada efeito só na janela dele; desconhecido sai', () => {

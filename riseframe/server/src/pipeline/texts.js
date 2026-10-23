@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { fontsDirArg, jobFontsDir } from './captions.js';
 import { fontById } from '../../../shared/captionStyle.js';
-import { textBoxMetrics } from '../../../shared/textLayers.js';
+import { textBoxMetrics, textLook, textEm, textShown, lineAlign } from '../../../shared/textLayers.js';
 import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
 import { makeLogger } from '../logger.js';
 
@@ -52,49 +52,81 @@ export function buildTextAss(layers, meta) {
   const H = meta.height || 1920;
   const styles = [];
   const events = [];
+  const alpha = (op) => `&H${Math.round((1 - Math.max(0, Math.min(1, op))) * 255).toString(16).padStart(2, '0').toUpperCase()}&`;
+  const bgr = (hex) => assColor(hex).replace('&H00', '&H');
   layers.forEach((l, i) => {
+    const L = textLook(l);
     const custom = l.fontFile && l.fontFamily;
     const f = custom ? { family: l.fontFamily, bold: false } : fontById(l.font);
     const FM = custom ? fontMetricsFile(l.fontFile) : fontMetrics(f.family);
-    const em = l.size * H; // = font-size do CSS, em px do quadro
+    const em = textEm(l) * H; // = font-size do CSS, em px do quadro
+    const emBase = (Number(l.size) || 0.05) * L.scale * H;
     const size = Math.max(8, Math.round(em * FM.cell));
-    const bold = f.bold === false ? 0 : -1;
-    const isBox = l.box === 'box';
-    // contorno do CSS (stroke por baixo do texto): metade dele fica para fora da letra
-    const outline = l.box === 'outline' ? Math.max(1, Math.round(em * 0.035)) : 0;
-    styles.push(`Style: T${i},${f.family},${size},${assColor(l.color)},${assColor(l.color)},${assColor(l.boxColor)},&H00000000,${bold},0,0,0,100,100,0,0,1,${outline},0,5,0,0,0,1`);
+    const bold = f.bold === false && !L.bold ? 0 : -1; // negrito falso = o do libass
+    const sp = (L.tracking / 1000) * em; // espaçamento entre letras (px)
+    // contorno: "fora" = a borda inteira para fora da letra; "centro" = metade
+    const bord = L.stroke ? +(L.strokeW * H * (L.strokePos === 'center' ? 0.5 : 1)).toFixed(2) : 0;
+    styles.push(`Style: T${i},${f.family},${size},${assColor(L.fillColor)},${assColor(L.fillColor)},${assColor(L.strokeColor)},&H00000000,${bold},${L.italic ? -1 : 0},${L.underline ? -1 : 0},0,100,100,${sp ? sp.toFixed(2) : 0},0,1,${bord},0,5,0,0,0,1`);
     const g = textBoxMetrics(l);
-    const x = Math.round(l.x * W);
+    const x = l.x * W;
     const y = l.y * H;
     const durMs = Math.round((l.end - l.start) * 1000);
     const a = Math.min(ANIM_MS, Math.floor(durMs / 3));
-    // mesma animação em cada pedaço (caixa e texto de cada linha)
-    const tagsAt = (px, py) => {
+    const rot = L.rot ? `\\frz${(-L.rot).toFixed(2)}` : '';
+    // mesma animação em cada pedaço (sombra, caixa e texto de cada linha)
+    const tagsAt = (px0, py0, org) => {
+      const px = Math.round(px0);
+      const py = Math.round(py0);
       const tags = [];
       if (l.animIn === 'slide-up') tags.push(`\\an5\\move(${px},${py + Math.round(H * 0.06)},${px},${py},0,${a})`);
       else if (l.animIn === 'slide-left') tags.push(`\\an5\\move(${px + Math.round(W * 0.2)},${py},${px},${py},0,${a})`);
       else tags.push(`\\an5\\pos(${px},${py})`);
-      const fin = l.animIn === 'fade' || l.animIn === 'slide-up' || l.animIn === 'slide-left' ? a : 0;
+      if (rot) tags.push(`\\org(${Math.round(org[0])},${Math.round(org[1])})${rot}`);
+      const fin = ['fade', 'slide-up', 'slide-left', 'zoom'].includes(l.animIn) ? a : 0;
       const fout = l.animOut === 'fade' ? a : 0;
       if (fin || fout) tags.push(`\\fad(${fin},${fout})`);
       if (l.animIn === 'pop') tags.push(`\\fscx0\\fscy0\\t(0,${Math.round(a * 0.6)},\\fscx115\\fscy115)\\t(${Math.round(a * 0.6)},${a},\\fscx100\\fscy100)`);
-      if (l.animIn === 'zoom') tags.push(`\\fscx60\\fscy60\\alpha&HFF&\\t(0,${a},\\fscx100\\fscy100\\alpha&H00&)`);
+      if (l.animIn === 'zoom') tags.push(`\\fscx60\\fscy60\\t(0,${a},\\fscx100\\fscy100)`);
       if (l.animOut === 'zoom') tags.push(`\\t(${durMs - a},${durMs},\\fscx0\\fscy0)`);
       return tags.join('');
     };
-    const lines = String(l.text).replace(/[{}]/g, '').replace(/\\/g, '').split('\n');
-    const pitch = g.pitch * em;
-    const top = y - (lines.length * pitch) / 2;
+    const clean = (t) => String(t).replace(/[{}]/g, '').replace(/\\/g, '');
+    const lines = clean(textShown(l)).split('\n');
+    // versalete: minúsculas viram maiúsculas menores (78%)
+    const SC = 0.78;
+    const runs = (line) => (L.smallCaps ? line.match(/[a-zà-ÿ]+|[^a-zà-ÿ]+/g) || [] : [line]);
+    const lineW = (line) => runs(line).reduce((w, r) => w + (L.smallCaps && /[a-zà-ÿ]/.test(r[0]) ? FM.width(r.toUpperCase()) * SC : FM.width(r)), 0) * em + sp * [...line].length;
+    const lineAss = (line) => (L.smallCaps ? runs(line).map((r) => (/[a-zà-ÿ]/.test(r[0]) ? `{\\fscx${SC * 100}\\fscy${SC * 100}}${r.toUpperCase()}{\\fscx100\\fscy100}` : r)).join('') : line);
+    const basePitch = g.pitch * em;
+    const lead = L.leading * H;
+    const blockH = lines.length * basePitch + Math.max(0, lines.length - 1) * lead;
+    const top = (L.valign === 'top' ? y : L.valign === 'bottom' ? y - blockH : y - blockH / 2)
+      + L.baseline * H + (L.script === 'super' ? -0.33 * emBase : L.script === 'sub' ? 0.12 * emBase : 0);
+    const padW = g.padX * em * 2;
+    const units = lines.map((line) => (line.trim() ? lineW(line) + (L.bg ? padW : 0) : 0));
+    const blockW = Math.max(0, ...units);
+    const org = [x, top + blockH / 2];
+    const sh = L.shadow ? { dx: -Math.cos((L.shadowAngle * Math.PI) / 180) * L.shadowDist * H, dy: Math.sin((L.shadowAngle * Math.PI) / 180) * L.shadowDist * H } : null;
+    const fillA = L.fill ? alpha(L.opacity) : '&HFF&';
     lines.forEach((line, j) => {
       if (!line.trim()) return;
-      const cy = top + (j + 0.5) * pitch;
-      if (isBox) {
-        const bw = FM.width(line) * em + 2 * g.padX * em;
-        const bh = g.boxH * em;
-        events.push(`Dialogue: ${i * 2},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${tagsAt(x, Math.round(cy))}\\bord0\\shad0\\1c${assColor(l.boxColor).replace('&H00', '&H')}&\\p1}${roundRect(bw, bh, g.r * em)}`);
+      const al = lineAlign(L.align, j === lines.length - 1);
+      const u = units[j];
+      const cx = al === 'left' ? x - blockW / 2 + u / 2 : al === 'right' ? x + blockW / 2 - u / 2 : x;
+      const cy = top + j * (basePitch + lead) + basePitch / 2;
+      const ty = cy + FM.cssBase * em - FM.assBase * em;
+      const shape = L.bg ? roundRect(lineW(line) + padW, g.boxH * em, g.r * em) : null;
+      if (sh) {
+        // sombra: uma cópia por baixo, deslocada e desfocada (como a do Premiere)
+        const blur = (L.shadowBlur * H).toFixed(1);
+        const sa = alpha(L.shadowOpacity * L.opacity);
+        if (shape) events.push(`Dialogue: ${i * 4},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${tagsAt(cx + sh.dx, cy + sh.dy, [org[0] + sh.dx, org[1] + sh.dy])}\\bord0\\shad0\\blur${blur}\\1c${bgr(L.shadowColor)}&\\1a${sa}\\p1}${shape}`);
+        else events.push(`Dialogue: ${i * 4},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${tagsAt(cx + sh.dx, ty + sh.dy, [org[0] + sh.dx, org[1] + sh.dy])}\\blur${blur}\\1c${bgr(L.shadowColor)}&\\3c${bgr(L.shadowColor)}&\\1a${sa}\\3a${sa}}${lineAss(line)}`);
       }
-      const ty = Math.round(cy + FM.cssBase * em - FM.assBase * em);
-      events.push(`Dialogue: ${i * 2 + 1},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${tagsAt(x, ty)}}${line}`);
+      if (shape) {
+        events.push(`Dialogue: ${i * 4 + 1},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${tagsAt(cx, cy, org)}\\bord0\\shad0\\1c${bgr(L.bgColor)}&\\1a${alpha(L.bgOpacity * L.opacity)}\\p1}${shape}`);
+      }
+      events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${tagsAt(cx, ty, org)}\\1a${fillA}\\3a${alpha(L.opacity)}}${lineAss(line)}`);
     });
   });
   styles.push('Style: TBox,Arial,20,&H00000000,&H00000000,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1');
