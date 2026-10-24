@@ -43,3 +43,13 @@ test('16:9 → 9:16: V0 + Recortar + Transformar saem iguais à prévia', { time
   const p = psnr(exp, got);
   assert.ok(p > 30, `PSNR ${p}`);
 });
+
+test('Ajustar (Fit) por trecho: filtro só nos trechos, o resto segue o enquadramento', async () => {
+  const { withFitRanges, cleanFitRanges } = await import('../src/pipeline/render.js');
+  assert.deepEqual(cleanFitRanges([{ start: 2, end: 3 }, { start: 1, end: 1.01 }, null, { start: 0, end: 1 }]), [{ start: 0, end: 1 }, { start: 2, end: 3 }]);
+  const vf = withFitRanges('scale=3413:1920,crop=1080:1920:1166:0', [{ start: 1, end: 2 }], 1080, 1920);
+  assert.match(vf, /force_original_aspect_ratio=decrease,pad=1080:1920/);
+  assert.match(vf, /enable='between\(t,1\.000,2\.000\)'/);
+  assert.equal(withFitRanges('split[a][b];[a]x[c]', [{ start: 1, end: 2 }], 1080, 1920), null, 'filtro com rótulos fica como está');
+  assert.equal(withFitRanges('scale=1:1', [], 1080, 1920), null);
+});

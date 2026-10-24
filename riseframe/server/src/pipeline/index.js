@@ -559,6 +559,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       // Velocidade por trecho e congelar quadro: do tempo original para o vídeo cortado.
       if (Array.isArray(options.speedRanges)) options.speedRanges = options.speedRanges.map((r) => ({ ...r, start: +remapTime(Number(r.start), keep).toFixed(3), end: +remapTime(Number(r.end), keep).toFixed(3) })).filter((r) => r.end - r.start >= 0.05);
       if (Array.isArray(options.freezes)) options.freezes = options.freezes.map((f) => ({ ...f, t: +remapTime(Number(f.t), keep).toFixed(3) }));
+      if (Array.isArray(options.fitRanges)) options.fitRanges = options.fitRanges.map((r) => ({ start: +remapTime(Number(r.start), keep).toFixed(3), end: +remapTime(Number(r.end), keep).toFixed(3) })).filter((r) => r.end - r.start >= 0.05);
       if (Array.isArray(options.cropRanges)) options.cropRanges = cleanCropRanges(options.cropRanges).map((r) => ({ ...r, start: +remapTime(r.start, keep).toFixed(3), end: +remapTime(r.end, keep).toFixed(3) })).filter((r) => r.end - r.start >= 0.05);
       if (Array.isArray(options.transformKeys)) options.transformKeys = options.transformKeys.map((k) => ({ ...k, t: +remapTime(Number(k.t), keep).toFixed(3) }));
       if (Array.isArray(options.sfxMoments)) options.sfxMoments = options.sfxMoments.map((m) => ({ ...m, t: +remapTime(Number(m.t), keep).toFixed(3) }));

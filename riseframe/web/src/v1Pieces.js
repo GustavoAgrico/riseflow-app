@@ -1,0 +1,34 @@
+/**
+ * Pedaços da faixa V1 (cada um com Transformar/Recortar próprios), como os clipes do
+ * Premiere: o vídeo se separa nos começos dos clipes da montagem, na navalha e em cada
+ * trecho cortado (pausa, erro, Delete). Antes só a navalha separava, e o ajuste de "um
+ * trecho" num vídeo sem navalha ia para o vídeo inteiro. Puro.
+ * @param clips [{ start, end }] clipes da montagem
+ * @param splits tempos da navalha
+ * @param gaps [[a, b]] trechos cortados
+ * @returns [{ a, b, va, vb, clip }] — a/b: limites; va/vb: a parte que aparece
+ */
+export function v1PiecesOf(clips, splits, gaps, dur) {
+  if (!clips?.length) return [];
+  const pg = [];
+  for (const [a0, b0] of [...(gaps || [])].sort((x, y) => x[0] - y[0])) {
+    const last = pg[pg.length - 1];
+    if (last && a0 <= last[1] + 0.01) last[1] = Math.max(last[1], b0); else pg.push([a0, b0]);
+  }
+  const pts = [...new Set([0, dur, ...clips.map((c) => c.start), ...(splits || []), ...pg.flat()].map((x) => +(+x).toFixed(3)))]
+    .filter((x) => x >= 0 && x <= dur).sort((a, b) => a - b);
+  const out = [];
+  for (let k = 0; k + 1 < pts.length; k++) {
+    const a = pts[k];
+    const b = pts[k + 1];
+    if (b - a < 0.05) continue;
+    let va = a;
+    let vb = b;
+    for (const [g0, g1] of pg) if (g0 <= va + 0.01 && g1 > va) va = g1;
+    for (let gi = pg.length - 1; gi >= 0; gi--) { const [g0, g1] = pg[gi]; if (g1 >= vb - 0.01 && g0 < vb) vb = g0; }
+    if (vb - va < 0.03) continue; // pedaço inteiro cortado
+    const clip = clips.find((c) => a >= c.start - 0.01 && a < c.end - 0.01) || clips[0];
+    out.push({ a, b, va, vb, clip });
+  }
+  return out;
+}
