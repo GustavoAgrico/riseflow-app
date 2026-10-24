@@ -39,6 +39,28 @@ export function upscaleVf(fromW, toW, W, H) {
   return `scale=${W}:${H}:flags=lanczos`;
 }
 
+/** Trechos com Ajustar (Fit): [{ start, end }] válidos, ordenados. Puro. */
+export function cleanFitRanges(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((r) => ({ start: Number(r?.start), end: Number(r?.end) }))
+    .filter((r) => Number.isFinite(r.start) && Number.isFinite(r.end) && r.start >= 0 && r.end - r.start >= 0.05)
+    .map((r) => ({ start: +r.start.toFixed(3), end: +r.end.toFixed(3) }))
+    .sort((a, b) => a.start - b.start)
+    .slice(0, 200);
+}
+
+/**
+ * Ajustar (Fit) nos trechos: ali o vídeo entra INTEIRO no formato, com faixas pretas (como o
+ * Fit do Premiere); no resto, o enquadramento normal (vf). null quando não dá para montar.
+ */
+export function withFitRanges(vf, ranges, W, H) {
+  const list = cleanFitRanges(ranges);
+  if (!list.length || /[;[]/.test(vf)) return null;
+  const en = list.map((r) => `between(t,${r.start.toFixed(3)},${r.end.toFixed(3)})`).join('+');
+  return `split=2[fita][fitb];[fita]${vf}[fitc];[fitb]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p[fitf];[fitc][fitf]overlay=0:0:enable='${en}',format=yuv420p`;
+}
+
 /** O vídeo já está na proporção do formato pedido? */
 export function matchesAspect(meta, target) {
   return Boolean(target && meta?.width && meta?.height && Math.abs(meta.width / meta.height - target.w / target.h) < 0.01);
@@ -106,6 +128,8 @@ export async function convertAspect(input, work, meta, options, trackInput, onPr
     vf = `${upscaleVf(meta.width, target.w, target.w, target.h)},setsar=1,format=yuv420p`;
   } else {
     ({ vf, reframe } = await aspectVf(input, meta, target, options, trackInput || input));
+    const fit = withFitRanges(vf, options.fitRanges, target.w, target.h);
+    if (fit) vf = fit;
     // Fonte bem menor que o quadro final (ex.: 464p → 4K): limpa o ruído antes e dá nitidez depois.
     const k = Math.min(target.w / meta.width, target.h / meta.height);
     if (QUALITIES[options.quality] && k > 1.25 && !['fit', 'split'].includes(options.reframeMode)) vf = `hqdn3d=1.5:1.5:4:4,${vf},unsharp=5:5:0.6:3:3:0`;

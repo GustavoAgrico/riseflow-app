@@ -13,6 +13,7 @@ import { CaptionOverlay } from './CaptionPreview.jsx';
 import SnapGuides, { snapCenter, setUserGuides } from './SnapGuides.jsx';
 import MonitorGuides, { GUIDE_TEMPLATES, withIds } from './MonitorGuides.jsx';
 import KeyframeLanes, { layerRows } from './KeyframeLanes.jsx';
+import { v1PiecesOf } from '../v1Pieces.js';
 import { loadAutosave, saveAutosave, markAutosaveSubmitted, clearAutosave, packState, unpackState } from '../autosave.js';
 import CaptionGallery, { FontPicker, ColorSwatches, TextStyleBar } from './CaptionGallery.jsx';
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
@@ -318,6 +319,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Recorte só de um pedaço da V1 (como o Crop do clipe no Premiere): [{start,end,l,t,r,b}]
   // no tempo da timeline; dentro do pedaço vale no lugar do recorte geral.
   const [cropRanges, setCropRanges] = useState(() => (Array.isArray(options?.cropRanges) ? options.cropRanges : []));
+  // Ajustar (Fit) do Premiere: trechos em que o vídeo aparece INTEIRO no formato (com faixas
+  // pretas) em vez de preencher o quadro. [{ start, end }] no tempo do vídeo.
+  const [fitRanges, setFitRanges] = useState(() => (Array.isArray(options?.fitRanges) ? options.fitRanges : []));
   /** Recorte que vale no tempo t (o do pedaço, se tiver; senão o geral). */
   function cropAt(t) {
     const r = (Array.isArray(cropRanges) ? cropRanges : []).find((x) => t >= x.start - 0.001 && t < x.end);
@@ -699,12 +703,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const visXcaps = laneHide.xcap ? [] : extraCaps;
   const overlaySegs = useMemo(() => mergeExtraCaptions(capSegments, visXcaps), [capSegments, visXcaps]);
   const histState = {
-    segments, cuts, keptPauses, keptNoises, gains, videoCrop, cropRanges, blanks, projMediaIds, avLinked, media, brollReview, brollOn, zoomMoments, headline, cover,
+    segments, cuts, keptPauses, keptNoises, gains, videoCrop, cropRanges, fitRanges, blanks, projMediaIds, avLinked, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs, brollLayoutSel, imageSource, volKeys, pauseAuto, aiCleaned, lead, v1Gaps,
     aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
   };
   const histSet = {
-    segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, cropRanges: setCropRanges, blanks: setBlanks, projMediaIds: setProjMediaIds, avLinked: setAvLinked, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
+    segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, cropRanges: setCropRanges, fitRanges: setFitRanges, blanks: setBlanks, projMediaIds: setProjMediaIds, avLinked: setAvLinked, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
     brollReview: setBrollReview, brollOn: setBrollOn, zoomMoments: setZoomMoments, headline: setHeadline,
     cover: setCover, colorLook: setColorLook, colorAdj: setColorAdj, cap: setCap, fx: setFx, voice: setVoice,
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths, brollLayoutSel: setBrollLayoutSel, imageSource: setImageSource, volKeys: setVolKeys, pauseAuto: setPauseAuto, aiCleaned: setAiCleaned, lead: setLead, v1Gaps: setV1Gaps,
@@ -2317,6 +2321,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function partAt(e) {
     const box = e.currentTarget.getBoundingClientRect();
     const t = Math.max(0, Math.min(dur, srcOf((e.clientX - box.left) / pps)));
+    // o pedaço (entre cortes) clicado — o mesmo que o Transformar/Recortar usa
+    const pc = v1Pieces.find((q) => t >= q.va - 0.01 && t <= q.vb + 0.01);
+    if (pc) return { a: pc.a, b: pc.b };
     const p = videoParts([...vsplits, ...v1Clips.map((c) => c.start)], dur).find((q) => t >= q.start && t <= q.end);
     return p ? { a: p.start, b: p.end } : null;
   }
@@ -3177,6 +3184,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         audioVolume: +Number(audioVolume).toFixed(2),
         ...((volKeys || []).length ? { audioVolKeys: cleanVolKeys(volKeys) } : {}),
         ...(videoCrop.l + videoCrop.t + videoCrop.r + videoCrop.b > 0.001 ? { videoCrop } : {}),
+        ...((fitRanges || []).length ? { fitRanges: fitRanges.map((x) => ({ start: +x.start.toFixed(3), end: +x.end.toFixed(3) })) } : {}),
         ...((cropRanges || []).length ? { cropRanges: cropRanges.map((x) => ({ start: +x.start.toFixed(3), end: +x.end.toFixed(3), l: x.l || 0, t: x.t || 0, r: x.r || 0, b: x.b || 0 })) } : {}),
         ...(exportFps ? { fps: exportFps } : {}),
         ...(exportStreams !== 'av' ? { streams: exportStreams } : {}),
@@ -3259,7 +3267,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const st = (r) => ({ ...r, t: sh(r.t) });
     const map = (a, f) => (Array.isArray(a) ? a.map(f) : a);
     const out = { ...o, padStart: L, padEnd: T, ...(G.length ? { padGaps: G.map((g) => ({ at: +g.at.toFixed(3), dur: +g.dur.toFixed(3) })) } : {}) };
-    for (const k of ['silenceCuts', 'keptPauses', 'keptNoises', 'zoomMoments', 'videoCuts', 'cropRanges', 'noCutRanges', 'videoBlanks', 'audioGains', 'speedRanges', 'fxMoments', 'textLayers', 'extraCaptions', 'brollPlan']) {
+    for (const k of ['silenceCuts', 'keptPauses', 'keptNoises', 'zoomMoments', 'videoCuts', 'cropRanges', 'fitRanges', 'noCutRanges', 'videoBlanks', 'audioGains', 'speedRanges', 'fxMoments', 'textLayers', 'extraCaptions', 'brollPlan']) {
       if (o[k] != null) out[k] = map(o[k], se);
     }
     for (const k of ['transformKeys', 'audioVolKeys', 'freezes', 'transitions', 'sfxMoments']) if (o[k] != null) out[k] = map(o[k], st);
@@ -4038,6 +4046,26 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
         )}
         <PropSection title="Transformar" onReset={resetV}>
+          {aspectSel !== 'original' && (() => {
+            // Preencher (Fill) / Ajustar (Fit), como no Premiere — no pedaço selecionado ou no vídeo todo
+            const fa = piece ? piece.a : 0;
+            const fb = piece ? piece.b : dur;
+            const isFit = (fitRanges || []).some((r) => r.start <= fa + 0.01 && r.end >= fb - 0.01);
+            const setFit = (on) => setFitRanges((l) => {
+              const rest = (l || []).flatMap((r) => {
+                if (r.end <= fa + 0.001 || r.start >= fb - 0.001) return [r];
+                return [r.start < fa ? { start: r.start, end: fa } : null, r.end > fb ? { start: fb, end: r.end } : null].filter(Boolean);
+              });
+              return on ? [...rest, { start: +fa.toFixed(3), end: +fb.toFixed(3) }].sort((x, y) => x.start - y.start) : rest;
+            });
+            return (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button onClick={() => setFit(false)} title="Preencher o quadro (corta as sobras)" style={miniBtn(!isFit, false)}><Icon name="maximize" size={12} strokeWidth={2} /> Preencher</button>
+                <button onClick={() => setFit(true)} title="Ajustar: o vídeo aparece inteiro, com faixas pretas" style={miniBtn(isFit, false)}><Icon name="crop" size={12} strokeWidth={2} /> Ajustar</button>
+                <span style={{ fontSize: 10.5, color: C.faint }}>{piece ? `só no pedaço ${pieceIdx + 1}` : 'no vídeo todo'}</span>
+              </div>
+            );
+          })()}
           <PropRow label="Posição" kf={v1KfV}>
             <span style={{ display: 'inline-flex', gap: 10 }}>
               <ScrubNum value={(0.5 + KV.x) * FW} step={2} suffix=" X" onChange={(v) => setV1V('x', +Math.max(-1, Math.min(1, v / FW - 0.5)).toFixed(4))} />
@@ -4455,7 +4483,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     width: '100%', height: '100%', objectFit: 'cover', display: 'block',
     objectPosition: `${side * 100}% 40%`, transform: 'scale(1.9)', transformOrigin: `${side * 100}% 40%`, filter: videoFilterFx,
   });
+  const fitNow = (fitRanges || []).some((r) => cur >= r.start - 0.001 && cur < r.end);
   const personCropStyle = (() => {
+    if (fitNow && !fitMode && aspectSel !== 'original') return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx };
     if (fitMode) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilterFx };
     const sd = vdim || (vbox?.vw ? { w: vbox.vw, h: vbox.vh } : null);
     if (!sd || !pbox?.w || !pbox?.h) {
@@ -5067,22 +5097,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // pedaços da V1: entre os limites dos clipes e as divisões (navalha), sem a parte cortada
   const v1Pieces = useMemo(() => {
     if (!v1Clips.length) return [];
-    const pts = [...new Set([0, dur, ...v1Clips.map((c) => c.start), ...vsplits].map((x) => +(+x).toFixed(3)))].filter((x) => x >= 0 && x <= dur).sort((a, b) => a - b);
-    const out = [];
-    for (let k = 0; k + 1 < pts.length; k++) {
-      const a = pts[k];
-      const b = pts[k + 1];
-      if (b - a < 0.05) continue;
-      let va = a;
-      let vb = b;
-      for (const [g0, g1] of allGaps) if (g0 <= va + 0.01 && g1 > va) va = g1;
-      for (let gi = allGaps.length - 1; gi >= 0; gi--) { const [g0, g1] = allGaps[gi]; if (g1 >= vb - 0.01 && g0 < vb) vb = g0; }
-      if (vb - va < 0.03) continue; // pedaço inteiro cortado
-      const clip = v1Clips.find((c) => a >= c.start - 0.01 && a < c.end - 0.01) || v1Clips[0];
-      out.push({ a, b, va, vb, clip });
-    }
-    return out;
-  }, [v1Clips, vsplits, allGaps, dur]);
+    return v1PiecesOf(v1Clips, vsplits, [...allGaps, ...gaps], dur);
+  }, [v1Clips, vsplits, allGaps, gaps, dur]);
 
   /** Plano para remontar: cada pedaço vira clipe(s) da montagem com os cortes grandes já aplicados. */
   function v1Plan({ restore = null } = {}) {
@@ -9882,8 +9898,8 @@ const FX_ANIM_CSS = `
 // Meia duração de cada transição (igual ao servidor) e textura de grão para a prévia.
 const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3 };
 const TRANS_DUR = Object.fromEntries(Object.entries(TRANS_HALF).map(([k, h]) => [k, +(h * 2).toFixed(2)]));
-// Cursor da navalha (C), como o do Premiere: lâmina; o corte acontece no centro (ponta 12,12).
-const RAZOR_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><g transform='rotate(-35 12 12)'><path d='M4 8.5h16v7H4z' fill='white' stroke='black' stroke-width='1.2' stroke-linejoin='round'/><path d='M4 15.5h16' stroke='black' stroke-width='2'/><rect x='9' y='10.6' width='6' height='2' rx='1' fill='black'/></g><path d='M12 1v22' stroke='black' stroke-width='0.01'/></svg>")}") 12 12, crosshair`;
+// Cursor da navalha (C), como o do Premiere: uma lâmina; o corte acontece no ponto laranja (9,27).
+const RAZOR_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><g transform='rotate(-40 18 13)'><path d='M7.5 8h21a1.5 1.5 0 0 1 1.5 1.5V15H6V9.5A1.5 1.5 0 0 1 7.5 8z' fill='#F4F6F9' stroke='#0B0C10' stroke-width='1.3'/><path d='M6 15h24v3.2H6z' fill='#A9B1BD' stroke='#0B0C10' stroke-width='1.3'/><path d='M6.6 17.4h22.8' stroke='#FFFFFF' stroke-width='0.9'/><rect x='12.5' y='10.4' width='11' height='2.6' rx='1.3' fill='#0B0C10'/><circle cx='10' cy='11.7' r='1.2' fill='#0B0C10'/><circle cx='26' cy='11.7' r='1.2' fill='#0B0C10'/></g><circle cx='9' cy='27' r='2.2' fill='#FF6B35' stroke='#0B0C10' stroke-width='1'/></svg>")}") 9 27, crosshair`;
 const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch', 'whiteout', 'iris']);
 /**
  * Transições de câmera na prévia (as mesmas contas do render): zoom, deslizar, giro e

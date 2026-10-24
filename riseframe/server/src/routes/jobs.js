@@ -22,7 +22,7 @@ import { markFillers } from '../pipeline/cleanup.js';
 import { preciseRemovals, audioAnalysis, detectNoises } from '../pipeline/cutRefine.js';
 import { CLIP_GOALS } from '../pipeline/clipSelect.js';
 import { sanitizeHeadline, sanitizeCover, makeCover } from '../pipeline/headline.js';
-import { outputTarget } from '../pipeline/render.js';
+import { outputTarget, cleanFitRanges } from '../pipeline/render.js';
 import { brollCandidates, resolveSource, googleConfig, googleReady } from '../pipeline/broll.js';
 import { freesoundKey, searchFreesound, okSfxUrl, onlineSfxFile } from '../pipeline/sfxOnline.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
@@ -665,6 +665,7 @@ export function parseOptions(raw) {
     // Recorte (Crop) do vídeo principal: quanto sai de cada lado (fração).
     ...(cleanCrop(o.videoCrop) ? { videoCrop: cleanCrop(o.videoCrop) } : {}),
     ...(cleanCropRanges(o.cropRanges).length ? { cropRanges: cleanCropRanges(o.cropRanges) } : {}),
+    ...(cleanFitRanges(o.fitRanges).length ? { fitRanges: cleanFitRanges(o.fitRanges) } : {}),
     // Espaços vazios no vídeo principal (Excluir sem fechar o buraco), tempo original.
     ...(cleanBlanks(o.videoBlanks).length ? { videoBlanks: cleanBlanks(o.videoBlanks) } : {}),
     // espaço vazio antes do vídeo principal / depois do fim (timeline): segundos de preto
