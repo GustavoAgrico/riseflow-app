@@ -91,3 +91,14 @@ test('videoFxVf: cada efeito só na janela dele; desconhecido sai', () => {
   assert.ok(vf.startsWith("hue=s=0:enable='between(t,1.000,2.000)'"));
   assert.equal(vf.split("enable='between(t,3.000,4.000)'").length, 3, 'moldura = 2 faixas na mesma janela');
 });
+
+test('texto com máquina de escrever / palavra por palavra: cada pedaço aparece na sua vez', async () => {
+  const { revealPlan } = await import('../../shared/textLayers.js');
+  const plan = revealPlan({ animIn: 'words', start: 0, end: 5 }, ['Olá mundo', 'dois']);
+  assert.deepEqual(plan.map((ln) => ln.filter((p) => p.t != null).map((p) => p.u)), [['Olá', 'mundo'], ['dois']]);
+  assert.ok(plan[1][0].t > plan[0][2].t);
+  assert.equal(revealPlan({ animIn: 'fade' }, ['x']), null);
+  const ass = buildTextAss([{ key: 'a', text: 'Oi', start: 0, end: 3, x: 0.5, y: 0.5, size: 0.05, color: '#FFFFFF', animIn: 'typewriter' }], { width: 1080, height: 1920 });
+  // 3 s de texto → revela em 1,8 s; 2 letras: a 1ª em 0 ms, a 2ª em 900 ms
+  assert.match(ass, /\{\\1a&HFF&\\3a&HFF&\\t\(0,1,\\1a&H00&\\3a&H[0-9A-F]{2}&\)\}O\{\\1a&HFF&\\3a&HFF&\\t\(900,901,/);
+});

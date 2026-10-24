@@ -20,7 +20,7 @@ import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, playSfxUrl, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
 import { keyAt, cleanKeys, keysChangeAnything, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
-import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES } from '../../../shared/textLayers.js';
+import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
 import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
@@ -1320,12 +1320,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           }
           const E = best ? best.e : 0;
           const tm = !best ? transMotion(t, L.trans) : null; // borrão de movimento das de câmera
-          const glitch = best?.type === 'glitch';
+          const glitch = best?.type === 'glitch' || best?.type === 'rgbsplit';
+          const leak = best?.type === 'lightleak';
+          const stat = best?.type === 'static';
           const iris = best?.type === 'iris';
           tro.style.opacity = E > 0 ? String(best.type === 'flash' ? 0.9 * E : best.type === 'dip' ? 0.95 * E : best.type === 'whiteout' ? E : iris ? 1 : best.type === 'glow' ? 0.4 * E : glitch ? (Math.sin(t * 90) > 0 ? 0.8 : 0.35) : 1) : tm?.blur ? '1' : '0';
-          tro.style.background = iris ? `radial-gradient(circle at center, transparent ${Math.max(0, 75 * (1 - E)).toFixed(1)}%, #000 ${Math.max(8, 75 * (1 - E) + 18).toFixed(1)}%)` : best?.type === 'dip' ? '#000' : glitch ? 'linear-gradient(90deg, rgba(255,0,90,0.35), transparent 40%, transparent 60%, rgba(0,220,255,0.35))' : best && best.type !== 'blur' ? '#fff' : 'transparent';
-          tro.style.mixBlendMode = best?.type === 'glow' || glitch ? 'screen' : 'normal';
-          tro.style.backdropFilter = best?.type === 'blur' ? `blur(${(10 * E).toFixed(1)}px)` : glitch ? 'hue-rotate(40deg) saturate(1.6)' : tm?.blur ? `blur(${tm.blur}px)` : 'none';
+          if (leak) {
+            // vazamento de luz: clarão laranja por cima (tela)
+            tro.style.background = 'radial-gradient(circle at 30% 40%, rgba(255,170,60,0.95), rgba(255,90,40,0.55) 45%, transparent 75%)';
+            tro.style.mixBlendMode = 'screen'; tro.style.backdropFilter = 'none'; tro.style.opacity = String(0.9 * E);
+          } else if (stat) {
+            // estática de TV: chuvisco cinza e sem cor
+            tro.style.background = `url("${GRAIN_SVG}"), rgba(128,128,128,0.35)`;
+            tro.style.mixBlendMode = 'normal'; tro.style.backdropFilter = 'saturate(0.25)'; tro.style.opacity = String(Math.min(1, 1.2 * E));
+          } else {
+            tro.style.background = iris ? `radial-gradient(circle at center, transparent ${Math.max(0, 75 * (1 - E)).toFixed(1)}%, #000 ${Math.max(8, 75 * (1 - E) + 18).toFixed(1)}%)` : best?.type === 'dip' ? '#000' : glitch ? 'linear-gradient(90deg, rgba(255,0,90,0.35), transparent 40%, transparent 60%, rgba(0,220,255,0.35))' : best && best.type !== 'blur' ? '#fff' : 'transparent';
+            tro.style.mixBlendMode = best?.type === 'glow' || glitch ? 'screen' : 'normal';
+            tro.style.backdropFilter = best?.type === 'blur' ? `blur(${(10 * E).toFixed(1)}px)` : glitch ? 'hue-rotate(40deg) saturate(1.6)' : tm?.blur ? `blur(${tm.blur}px)` : 'none';
+          }
         }
         // Efeitos de vídeo do momento: camadas (vinheta, moldura, grão, flash) por cima.
         const fxo = fxOverlayRef.current;
@@ -1336,11 +1348,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             fxo.dataset.fx = ef;
             fxo.style.background = ef === 'vignette' || ef === 'nostalgic' ? 'radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.75) 100%)'
               : ef === 'film' ? 'linear-gradient(#000 0 11%, transparent 11% 89%, #000 89%)'
-              : ef === 'grain' || ef === 'vhs' || ef === 'retro' || ef === 'glitch' ? `url("${GRAIN_SVG}")` : 'transparent';
+              : ef === 'grain' || ef === 'vhs' || ef === 'retro' || ef === 'glitch' || ef === 'noisehard' || ef === 'static' ? `url("${GRAIN_SVG}")` : FX_OVERLAY_BG[ef] || 'transparent';
           }
           fxo.style.opacity = ef === 'strobe' ? (Math.sin(2 * Math.PI * t * 4) > 0.55 ? '1' : '0') : '1';
           if (ef === 'strobe') fxo.style.background = 'rgba(255,255,255,0.45)';
-          L.fxTransform = ef === 'mirror' ? 'scaleX(-1)' : ef === 'vflip' ? 'scaleY(-1)' : ef === 'tilt' ? 'rotate(-4deg)' : ef === 'fisheye' ? 'scale(1.06)' : ef === 'shake' ? `rotate(${(2 * Math.sin(57 * t)).toFixed(2)}deg)` : '';
+          if (ef === 'pulse') fxo.style.background = `rgba(255,255,255,${(0.18 * Math.abs(Math.sin(2 * Math.PI * t * 1.5))).toFixed(3)})`;
+          // o mesmo movimento do render (rotate/perspective do FFmpeg), aproximado em CSS
+          const deg = (rad) => `rotate(${((rad * 180) / Math.PI).toFixed(2)}deg)`;
+          L.fxTransform = ef === 'mirror' ? 'scaleX(-1)' : ef === 'vflip' ? 'scaleY(-1)' : ef === 'tilt' ? 'rotate(-4deg)' : ef === 'tiltr' ? 'rotate(4deg)' : ef === 'fisheye' ? 'scale(1.06)'
+            : ef === 'shake' ? `rotate(${(2 * Math.sin(57 * t)).toFixed(2)}deg)` : ef === 'shakehard' ? deg(0.07 * Math.sin(41 * t))
+              : ef === 'sway' ? deg(0.05 * Math.sin(2 * Math.PI * t * 0.8)) : ef === 'handheld' ? deg(0.012 * Math.sin(7 * t) + 0.008 * Math.sin(13 * t))
+                : FX_THUMB_TF[ef] && ['zoomfix', 'zoomfix2', 'persp3d', 'wideangle'].includes(ef) ? FX_THUMB_TF[ef] : '';
         }
         lastT = v.paused ? null : t;
       }
@@ -4812,15 +4830,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     { id: 'ruido', label: 'Ruído e granulação', icon: '⁘' },
     { id: 'perspectiva', label: 'Perspectiva', icon: '◇' },
     { id: 'estilo', label: 'Estilizar', icon: '✎' },
+    { id: 'transformar', label: 'Transformar', icon: '⤡' },
+    { id: 'utilitario', label: 'Utilitário', icon: '⚙' },
+    { id: 'texto', label: 'Texto', icon: 'T' },
     { id: 'tempo', label: 'Tempo', icon: '⏱' },
     { id: 'som', label: 'Sons', icon: '♪' },
   ];
-  const VFX_GROUP = { bw: 'cor', nostalgic: 'cor', cold: 'cor', warm: 'cor', saturated: 'cor', negative: 'imagem', retro: 'estilo', vhs: 'distorcao', glitch: 'distorcao', shake: 'distorcao', pixel: 'distorcao', mirror: 'distorcao', strobe: 'luz', glow: 'luz', grain: 'ruido', vignette: 'gerar', film: 'gerar', blur: 'nitidez', blursoft: 'nitidez', bokeh: 'nitidez', chblur: 'nitidez', motionblur: 'nitidez', sharpen: 'nitidez', faded: 'cor', contrast: 'cor', tealorange: 'cor', cinematic: 'cor', desat: 'cor', tint: 'cor', brighten: 'imagem', darken: 'imagem', exposure: 'imagem', vflip: 'distorcao', fisheye: 'distorcao', tilt: 'perspectiva', posterize: 'estilo', edges: 'estilo', sketch: 'estilo', emboss: 'estilo', noisehard: 'ruido', goldlight: 'luz' };
+  const VFX_GROUP = { bw: 'cor', nostalgic: 'cor', cold: 'cor', warm: 'cor', saturated: 'cor', negative: 'imagem', retro: 'estilo', vhs: 'distorcao', glitch: 'distorcao', shake: 'transformar', pixel: 'distorcao', mirror: 'distorcao', strobe: 'luz', glow: 'luz', grain: 'ruido', vignette: 'gerar', film: 'gerar', blur: 'nitidez', blursoft: 'nitidez', bokeh: 'nitidez', chblur: 'nitidez', motionblur: 'nitidez', sharpen: 'nitidez', faded: 'cor', contrast: 'cor', tealorange: 'cor', cinematic: 'cor', desat: 'cor', tint: 'cor', brighten: 'imagem', darken: 'imagem', exposure: 'imagem', vflip: 'distorcao', fisheye: 'distorcao', tilt: 'perspectiva', posterize: 'estilo', edges: 'estilo', sketch: 'estilo', emboss: 'estilo', noisehard: 'ruido', goldlight: 'luz', zoomfix: 'transformar', zoomfix2: 'transformar', sway: 'transformar', handheld: 'transformar', shakehard: 'transformar', persp3d: 'perspectiva', tiltr: 'perspectiva', wideangle: 'distorcao', rgbsplit: 'distorcao', pixelbig: 'distorcao', grid3: 'gerar', frame: 'gerar', black: 'utilitario', white: 'utilitario', letterbox: 'utilitario', pillarbox: 'utilitario', pulse: 'luz', coolglow: 'luz', scanlines: 'ruido', static: 'ruido', summer: 'cor', winter: 'cor', matrix: 'cor', noir: 'estilo', popart: 'estilo' };
   const shortLabel = (l) => String(l).replace(/\s*\(.*\)\s*$/, '');
   const fxLibrary = [
     ...transOpts.map((o) => ({ cat: 'trans', kind: 'trans', id: o.id, label: shortLabel(o.label), anim: `tr-${o.id}` })),
     ...Object.entries(MOMENT_EFFECTS).map(([id, label]) => ({ cat: 'camera', kind: 'zoom', id, label: shortLabel(label), anim: `cam-${id}` })),
     ...Object.entries(VIDEO_FX).map(([id, label]) => ({ cat: VFX_GROUP[id] || 'luz', kind: 'vfx', id, label: shortLabel(label), anim: `fx-${id}` })),
+    ...Object.entries(TEXT_ANIMS_IN).filter(([id]) => id !== 'none').map(([id, label]) => ({ cat: 'texto', kind: 'textanim', id, label, anim: `txt-${id}` })),
     { cat: 'tempo', kind: 'speed', id: '0.5', label: 'Câmera lenta 0,5×', anim: 'tm-slow' },
     { cat: 'tempo', kind: 'speed', id: '0.25', label: 'Super lenta 0,25×', anim: 'tm-slow' },
     { cat: 'tempo', kind: 'speed', id: '2', label: 'Acelerar 2×', anim: 'tm-fast' },
@@ -4842,6 +4864,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const fxQ = norm(fxQuery.trim());
   // Sons (como a biblioteca do CapCut): subcategorias dentro de "Sons"
   const [sfxCat, setSfxCat] = useState('');
+  const [transCat, setTransCat] = useState(''); // grupo das transições (como o Film Impact)
   const SFX_COLORS = { transicao: ['rgba(59,130,246,0.45)', 'rgba(14,165,233,0.25)'], impacto: ['rgba(220,38,38,0.45)', 'rgba(249,115,22,0.25)'], interface: ['rgba(16,185,129,0.4)', 'rgba(20,184,166,0.22)'], divertido: ['rgba(168,85,247,0.45)', 'rgba(236,72,153,0.25)'], clima: ['rgba(234,179,8,0.4)', 'rgba(255,107,53,0.22)'], notificacao: ['rgba(34,197,94,0.4)', 'rgba(59,130,246,0.22)'], conquista: ['rgba(250,204,21,0.45)', 'rgba(168,85,247,0.25)'], dinheiro: ['rgba(16,185,129,0.45)', 'rgba(234,179,8,0.25)'], meus: ['rgba(124,58,237,0.45)', 'rgba(255,107,53,0.25)'], online: ['rgba(14,165,233,0.4)', 'rgba(124,58,237,0.3)'] };
   // Biblioteca online (Freesound, só sons CC0 — uso livre): busca dentro de "Sons" → "Online"
   const [sfxOnQ, setSfxOnQ] = useState('');
@@ -4880,7 +4903,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   }
   useEffect(() => { if (sfxOnline && sfxOn.q == null && !sfxOn.busy) runSfxSearch(''); }, [sfxOnline]); // eslint-disable-line react-hooks/exhaustive-deps
   const sfxOnItems = sfxOn.list.map((r) => ({ cat: 'som', kind: 'sfx', id: 'online', uid: `online:${r.id}`, label: r.name || 'Som', scat: 'online', sdur: r.dur || 1, online: { url: r.preview, name: r.name || 'Som', dur: r.dur || 1 } }));
-  const fxShown = sfxOnline ? sfxOnItems : sfxMine ? mySoundItems : fxLibrary.filter((x) => (fxQ ? norm(x.label).includes(fxQ) : fxCat === 'fav' ? fxFavs.includes(x.uid) : x.cat === fxCat && (fxCat !== 'som' || !sfxCat || x.scat === sfxCat)));
+  const fxShown = sfxOnline ? sfxOnItems : sfxMine ? mySoundItems : fxLibrary.filter((x) => (fxQ ? norm(x.label).includes(fxQ) : fxCat === 'fav' ? fxFavs.includes(x.uid) : x.cat === fxCat && (fxCat !== 'som' || !sfxCat || x.scat === sfxCat) && (fxCat !== 'trans' || !transCat || TRANS_GROUP_OF[x.id] === transCat)));
   /** Coloca o efeito na timeline no instante t (tempo original do vídeo). */
   function addEffectAt(item, t0) {
     const t = Math.max(0, Math.min(dur - 0.2, Number(t0) || 0));
@@ -4913,6 +4936,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setFreezes((l) => [...l, f].sort((x, y) => x.t - y.t));
       setSelFreeze(f.key);
       setSelKind('freeze');
+    } else if (item.kind === 'textanim') {
+      // animação de texto: vale no texto selecionado; sem texto selecionado, cria um com ela
+      if (selTextItem && selTextItem.kind !== 'shape') updateText(selTextItem.key, { animIn: item.id });
+      else {
+        const { label: _l, ...tpl } = TEXT_TEMPLATES.simples;
+        const nt = { key: `t${Date.now()}`, ...tpl, text: item.id === 'typewriter' ? 'Efeito máquina de escrever' : 'Seu texto aqui', animIn: item.id, start: +t.toFixed(2), end: +Math.min(dur, t + 3).toFixed(2) };
+        setTextLayers((l) => [...l, nt].sort((a, b) => a.start - b.start));
+        setSelText(nt.key);
+        setSelKind('text');
+      }
     } else if (item.kind === 'mysound') {
       addMediaItem(item.lib, { start: t }); // som importado: camada de áudio (dá para cortar, volume, fade)
     } else if (item.kind === 'sfx') {
@@ -5864,6 +5897,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           })}
         </div>
         <div style={{ padding: 8, overflowY: 'auto', maxHeight: isMobile ? 300 : 360 }}>
+          {fxCat === 'trans' && !fxQ && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+              {[['', 'Todas'], ...TRANS_GROUPS.map(([id, label]) => [id, label])].map(([id, label]) => (
+                <button key={id || 'all'} onClick={() => setTransCat(id)} aria-pressed={transCat === id}
+                  style={{ height: 24, padding: '0 10px', borderRadius: 999, border: `1px solid ${transCat === id ? C.orange : C.border}`, background: transCat === id ? 'rgba(255,107,53,0.16)' : 'transparent', color: transCat === id ? C.text : C.muted, fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>{label}</button>
+              ))}
+            </div>
+          )}
           {fxCat === 'som' && !fxQ && (catalog?.sfxCategories || []).length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
               {[{ id: '', label: 'Todos' }, ...catalog.sfxCategories, { id: 'meus', label: '📁 Meus sons' }, { id: 'online', label: '🌐 Online' }].map((c) => (
@@ -5921,7 +5962,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     ) : (
                       <>
                         <div className={`rf-fxi a-${x.anim}`} style={{ position: 'absolute', inset: 0, ...thumbFrame, filter: x.kind === 'vfx' ? VIDEO_FX_CSS[x.id] || undefined : undefined, transform: FX_THUMB_TF[x.id] }} />
-                        <div className={`rf-fxo o-${x.anim}`} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
+                        {x.kind === 'textanim' && <div className={`rf-txs t-${x.id}`}><span>{x.id === 'words' ? <><i>Seu</i> <i>texto</i> <i>aqui</i></> : 'Seu texto'}</span></div>}
+                        <div className={`rf-fxo o-${x.anim}`} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', ...(x.kind === 'vfx' && FX_OVERLAY_BG[x.id] ? { background: FX_OVERLAY_BG[x.id], opacity: 1 } : null) }} />
                         {x.kind === 'speed' || x.kind === 'freeze' ? <span style={{ position: 'absolute', right: 4, bottom: 3, fontSize: 10, fontWeight: 800, color: '#fff', textShadow: '0 1px 3px #000' }}>{x.kind === 'freeze' ? `❄ ${x.id}s` : `${x.id.replace('.', ',')}×`}</span> : null}
                       </>
                     )}
@@ -9768,6 +9810,7 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
         // mesma conta do render (textBoxMetrics/textLook)
         const g = textBoxMetrics(l);
         const lines = textShown(l).split('\n');
+        const plan = L.smallCaps ? null : revealPlan(l, lines);
         const rgba = (hex, a) => { const h = String(hex).replace('#', ''); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; };
         // contorno "fora" = a borda inteira por fora (o CSS desenha metade de cada lado)
         const sw = L.stroke ? L.strokeW * box.h * (L.strokePos === 'center' ? 1 : 2) : 0;
@@ -9790,7 +9833,10 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
                   ...(j > 0 && L.leading ? { marginTop: L.leading * box.h } : null), // entrelinha (pode ser negativa)
                   ...(L.bg && g.block ? null : L.bg && ln.trim() ? { background: rgba(L.bgColor, L.bgOpacity), padding: `${g.padY * px}px ${g.padX * px}px`, borderRadius: g.r * px, ...(sh ? { boxShadow: `${sh.dx}px ${sh.dy}px ${sh.b}px ${sh.c}` } : null) } : L.bg ? { padding: `${g.padY * px}px 0` } : null),
                   ...(sh && !L.bg ? { textShadow: `${sh.dx}px ${sh.dy}px ${sh.b}px ${sh.c}` } : null),
-                  WebkitTextStroke: sw ? `${Math.max(0.5, sw)}px ${L.strokeColor}` : undefined, paintOrder: 'stroke fill' }}>{ln || ' '}</div>
+                  WebkitTextStroke: sw ? `${Math.max(0.5, sw)}px ${L.strokeColor}` : undefined, paintOrder: 'stroke fill' }}>{plan
+                    // máquina de escrever / palavra por palavra: o que ainda não chegou fica invisível (mesmo lugar)
+                    ? plan[j].map((p, k) => <span key={k} style={p.t != null && cur - l.start < p.t ? { opacity: 0 } : undefined}>{p.u}</span>)
+                    : ln || ' '}</div>
               );
             })}
           </div>
@@ -9872,6 +9918,20 @@ const FX_ANIM_CSS = `
 .o-tr-flash { background: #fff; opacity: 0; animation-name: rfFlash; } @keyframes rfFlash { 0%, 30%, 70%, 100% { opacity: 0; } 50% { opacity: 1; } }
 .o-tr-dip { background: #000; opacity: 0; animation-name: rfFlash; }
 .o-tr-whiteout { background: #fff; opacity: 0; animation-name: rfFlash; }
+.rf-txs { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.rf-txs span { font: 800 13px/1.1 Poppins, sans-serif; color: #fff; background: rgba(10,14,40,0.85); padding: 3px 7px; border-radius: 5px; white-space: nowrap; overflow: hidden; display: inline-block; }
+.rf-txs i { font-style: normal; }
+.rf-fxc:hover .t-typewriter span { animation: rfType 1.6s steps(9) infinite; } @keyframes rfType { 0% { max-width: 0; } 80%, 100% { max-width: 120px; } }
+.rf-fxc:hover .t-words i { animation: rfWord 1.8s infinite; opacity: 0; } .rf-fxc:hover .t-words i:nth-child(2) { animation-delay: .3s; } .rf-fxc:hover .t-words i:nth-child(3) { animation-delay: .6s; } @keyframes rfWord { 0% { opacity: 0; } 15%, 100% { opacity: 1; } }
+.rf-fxc:hover .t-fade span { animation: rfTFade 1.4s infinite; } @keyframes rfTFade { 0% { opacity: 0; } 50%, 100% { opacity: 1; } }
+.rf-fxc:hover .t-pop span { animation: rfTPop 1.2s infinite; } @keyframes rfTPop { 0% { transform: scale(0); } 30% { transform: scale(1.15); } 45%, 100% { transform: scale(1); } }
+.rf-fxc:hover .t-zoom span { animation: rfTZoom 1.2s infinite; } @keyframes rfTZoom { 0% { transform: scale(0.6); opacity: 0; } 50%, 100% { transform: scale(1); opacity: 1; } }
+.rf-fxc:hover .t-slide-up span { animation: rfTUp 1.2s infinite; } @keyframes rfTUp { 0% { transform: translateY(14px); opacity: 0; } 50%, 100% { transform: none; opacity: 1; } }
+.rf-fxc:hover .t-slide-left span { animation: rfTLeft 1.2s infinite; } @keyframes rfTLeft { 0% { transform: translateX(40px); opacity: 0; } 50%, 100% { transform: none; opacity: 1; } }
+.o-tr-lightleak { background: radial-gradient(circle at 30% 40%, rgba(255,170,60,0.95), rgba(255,90,40,0.55) 45%, transparent 75%); mix-blend-mode: screen; opacity: 0; animation-name: rfFlash; }
+.o-tr-static { background-color: rgba(128,128,128,0.6); opacity: 0; animation-name: rfFlash; }
+.a-tr-static { animation-name: rfTrStatic; } @keyframes rfTrStatic { 0%, 100% { filter: none; } 50% { filter: saturate(0.2) contrast(1.4); } }
+.a-tr-rgbsplit { animation-name: rfGlitch; animation-duration: 0.6s !important; animation-timing-function: steps(1) !important; }
 .o-tr-iris { opacity: 1; animation-name: rfIris; } @keyframes rfIris { 0%, 100% { background: radial-gradient(circle, transparent 75%, #000 93%); } 50% { background: radial-gradient(circle, transparent 0%, #000 8%); } }
 .a-tr-zoomin { animation-name: rfTrZin; } @keyframes rfTrZin { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.5); filter: blur(2px); } }
 .a-tr-zoomout { animation-name: rfTrZout; } @keyframes rfTrZout { 0%, 45% { transform: scale(1.05); } 50% { transform: scale(1.5); filter: blur(2px); } 100% { transform: scale(1); } }
@@ -9893,13 +9953,34 @@ const FX_ANIM_CSS = `
 `;
 
 // Meia duração de cada transição (igual ao servidor) e textura de grão para a prévia.
-const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3 };
+const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3, lightleak: 0.35, static: 0.2, rgbsplit: 0.2 };
 const TRANS_DUR = Object.fromEntries(Object.entries(TRANS_HALF).map(([k, h]) => [k, +(h * 2).toFixed(2)]));
+// Camadas por cima do vídeo na prévia (molduras, faixas, grade, linhas de TV…)
+const FX_OVERLAY_BG = {
+  letterbox: 'linear-gradient(#000 0 16%, transparent 16% 84%, #000 84%)',
+  pillarbox: 'linear-gradient(90deg, #000 0 12%, transparent 12% 88%, #000 88%)',
+  black: '#000',
+  white: '#fff',
+  grid3: 'linear-gradient(to right, rgba(255,255,255,0.55) 2px, transparent 2px) 0 0 / 33.333% 33.333%, linear-gradient(to bottom, rgba(255,255,255,0.55) 2px, transparent 2px) 0 0 / 33.333% 33.333%',
+  frame: 'linear-gradient(#fff,#fff) top / 100% 1.5% no-repeat, linear-gradient(#fff,#fff) bottom / 100% 1.5% no-repeat, linear-gradient(#fff,#fff) left / 2.6% 100% no-repeat, linear-gradient(#fff,#fff) right / 2.6% 100% no-repeat',
+  scanlines: 'repeating-linear-gradient(rgba(0,0,0,0.35) 0 1px, transparent 1px 3px)',
+  noir: 'radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.75) 100%)',
+};
 // Prévia (miniatura) dos efeitos que mexem na geometria do quadro
-const FX_THUMB_TF = { mirror: 'scaleX(-1)', vflip: 'scaleY(-1)', tilt: 'rotate(-4deg) scale(1.1)', fisheye: 'scale(1.08)' };
+const FX_THUMB_TF = { mirror: 'scaleX(-1)', vflip: 'scaleY(-1)', tilt: 'rotate(-4deg) scale(1.1)', tiltr: 'rotate(4deg) scale(1.1)', fisheye: 'scale(1.08)', zoomfix: 'scale(1.25)', zoomfix2: 'scale(1.5)', persp3d: 'perspective(300px) rotateX(12deg)', wideangle: 'scale(0.94)' };
 // Cursor da navalha (C), como o do Premiere: uma lâmina; o corte acontece no ponto laranja (9,27).
 const RAZOR_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><g transform='rotate(-40 18 13)'><path d='M7.5 8h21a1.5 1.5 0 0 1 1.5 1.5V15H6V9.5A1.5 1.5 0 0 1 7.5 8z' fill='#F4F6F9' stroke='#0B0C10' stroke-width='1.3'/><path d='M6 15h24v3.2H6z' fill='#A9B1BD' stroke='#0B0C10' stroke-width='1.3'/><path d='M6.6 17.4h22.8' stroke='#FFFFFF' stroke-width='0.9'/><rect x='12.5' y='10.4' width='11' height='2.6' rx='1.3' fill='#0B0C10'/><circle cx='10' cy='11.7' r='1.2' fill='#0B0C10'/><circle cx='26' cy='11.7' r='1.2' fill='#0B0C10'/></g><circle cx='9' cy='27' r='2.2' fill='#FF6B35' stroke='#0B0C10' stroke-width='1'/></svg>")}") 9 27, crosshair`;
-const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch', 'whiteout', 'iris']);
+const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch', 'whiteout', 'iris', 'lightleak', 'static', 'rgbsplit']);
+// Grupos das transições, como o painel do Film Impact
+const TRANS_GROUPS = [
+  ['dissolver', 'Dissolver', ['dip', 'whiteout']],
+  ['luzes', 'Luzes e desfoques', ['flash', 'glow', 'blur', 'lightleak']],
+  ['deslizar', 'Deslizar', ['slideleft', 'slideright', 'slideup', 'slidedown']],
+  ['transformadores', 'Transformadores', ['zoomin', 'zoomout', 'spin']],
+  ['grunge', 'Grunge e distorção', ['glitch', 'shake', 'static', 'rgbsplit']],
+  ['abertura', 'Abertura', ['iris']],
+];
+const TRANS_GROUP_OF = Object.fromEntries(TRANS_GROUPS.flatMap(([g, , ids]) => ids.map((id) => [id, g])));
 /**
  * Transições de câmera na prévia (as mesmas contas do render): zoom, deslizar, giro e
  * tremor perto de cada ponto. → { z (zoom extra), x, y (% da tela), r (graus), blur } | null

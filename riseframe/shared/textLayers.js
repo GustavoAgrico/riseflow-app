@@ -2,7 +2,23 @@
 // Compartilhado pelo site (editor + prévia) e pelo servidor (render).
 
 /** Animações de entrada e saída de um texto. */
-export const TEXT_ANIMS_IN = { none: 'Nenhuma', fade: 'Fade', pop: 'Pop', zoom: 'Zoom', 'slide-up': 'Subir', 'slide-left': 'Entrar da direita' };
+export const TEXT_ANIMS_IN = { none: 'Nenhuma', fade: 'Fade', pop: 'Pop', zoom: 'Zoom', 'slide-up': 'Subir', 'slide-left': 'Entrar da direita', typewriter: 'Máquina de escrever', words: 'Palavra por palavra' };
+/** Entradas que revelam o texto aos poucos (letra a letra / palavra a palavra). */
+export const REVEAL_ANIMS = ['typewriter', 'words'];
+/**
+ * Quando cada pedaço do texto aparece (máquina de escrever / palavra por palavra): para cada
+ * linha, [{ u: texto, t: segundos desde o começo do texto | null (espaço) }]. A mesma conta
+ * na prévia e no render. null quando o texto não tem essa entrada. Puro.
+ */
+export function revealPlan(l, lines) {
+  if (!REVEAL_ANIMS.includes(l?.animIn)) return null;
+  const dur = Math.max(0.2, Number(l.end) - Number(l.start) || 3);
+  const total = Math.min(2, dur * 0.6);
+  const units = lines.map((ln) => (l.animIn === 'words' ? String(ln).split(/(\s+)/).filter(Boolean) : [...String(ln)]));
+  const count = units.flat().filter((u) => u.trim()).length || 1;
+  let k = 0;
+  return units.map((us) => us.map((u) => ({ u, t: u.trim() ? +((k++ * total) / count).toFixed(3) : null })));
+}
 export const TEXT_ANIMS_OUT = { none: 'Nenhuma', fade: 'Fade', zoom: 'Encolher' };
 /** Fundo do texto: só contorno, caixa sólida ou nada. */
 export const TEXT_BOXES = { outline: 'Contorno', box: 'Caixa', none: 'Sem fundo' };
@@ -87,6 +103,31 @@ export const VIDEO_FX = {
   emboss: 'Relevo',
   noisehard: 'Ruído forte',
   goldlight: 'Luz dourada',
+  zoomfix: 'Aumentar (zoom 125%)',
+  zoomfix2: 'Aproximar forte (zoom 150%)',
+  sway: 'Balançar',
+  handheld: 'Câmera na mão',
+  shakehard: 'Tremor forte',
+  persp3d: 'Perspectiva 3D',
+  tiltr: 'Inclinar para a direita',
+  wideangle: 'Grande-angular',
+  rgbsplit: 'Divisão RGB',
+  pixelbig: 'Pixelado forte',
+  grid3: 'Grade (terços)',
+  frame: 'Moldura branca',
+  black: 'Tela preta',
+  white: 'Tela branca',
+  letterbox: 'Faixas de cinema 2.35',
+  pillarbox: 'Faixas laterais',
+  pulse: 'Pulso de luz',
+  coolglow: 'Brilho frio',
+  scanlines: 'Linhas de TV',
+  static: 'Estática',
+  summer: 'Verão',
+  winter: 'Inverno',
+  matrix: 'Matrix (verde)',
+  noir: 'Noir',
+  popart: 'Pop art',
 };
 /** Aproximação do efeito na prévia do editor (CSS). O render usa FFmpeg. */
 export const VIDEO_FX_CSS = {
@@ -131,6 +172,31 @@ export const VIDEO_FX_CSS = {
   emboss: 'grayscale(1) contrast(1.6)',
   noisehard: 'contrast(1.1)',
   goldlight: 'sepia(0.3) brightness(1.08) saturate(1.25)',
+  zoomfix: '',
+  zoomfix2: '',
+  sway: '',
+  handheld: '',
+  shakehard: '',
+  persp3d: '',
+  tiltr: '',
+  wideangle: 'contrast(1.02)',
+  rgbsplit: 'saturate(1.4) hue-rotate(6deg)',
+  pixelbig: '',
+  grid3: '',
+  frame: '',
+  black: 'brightness(0)',
+  white: 'brightness(0) invert(1)',
+  letterbox: 'contrast(1.05)',
+  pillarbox: '',
+  pulse: 'brightness(1.12)',
+  coolglow: 'hue-rotate(-14deg) brightness(1.08) saturate(1.1)',
+  scanlines: 'contrast(1.05)',
+  static: 'saturate(0.3) contrast(1.2)',
+  summer: 'sepia(0.2) saturate(1.4) brightness(1.04)',
+  winter: 'hue-rotate(-18deg) saturate(0.75)',
+  matrix: 'hue-rotate(60deg) saturate(1.2) contrast(1.15)',
+  noir: 'grayscale(1) contrast(1.5) brightness(0.95)',
+  popart: 'saturate(2.2) contrast(1.4)',
 };
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;

@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { fontsDirArg, jobFontsDir } from './captions.js';
 import { fontById } from '../../../shared/captionStyle.js';
-import { textBoxMetrics, textLook, textEm, textShown, lineAlign } from '../../../shared/textLayers.js';
+import { textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan } from '../../../shared/textLayers.js';
 import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
 import { makeLogger } from '../logger.js';
 
@@ -125,6 +125,9 @@ export function buildTextAss(layers, meta) {
     };
     const clean = (t) => String(t).replace(/[{}]/g, '').replace(/\\/g, '');
     const lines = clean(textShown(l)).split('\n');
+    // máquina de escrever / palavra por palavra: cada pedaço fica invisível até a sua vez
+    const plan = L.smallCaps ? null : revealPlan(l, lines);
+    const revealAss = (j, a1, a3) => plan[j].map(({ u, t }) => (t == null ? u : `{\\1a&HFF&\\3a&HFF&\\t(${Math.round(t * 1000)},${Math.round(t * 1000) + 1},\\1a${a1}\\3a${a3})}${u}`)).join('');
     // versalete: minúsculas viram maiúsculas menores (78%)
     const SC = 0.78;
     const runs = (line) => (L.smallCaps ? line.match(/[a-zà-ÿ]+|[^a-zà-ÿ]+/g) || [] : [line]);
@@ -164,12 +167,12 @@ export function buildTextAss(layers, meta) {
         const blur = (L.shadowBlur * H).toFixed(1);
         const sa = alpha(L.shadowOpacity * L.opacity);
         if (shape) events.push(`Dialogue: ${i * 4},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${tagsAt(cx + sh.dx, cy + sh.dy, [org[0] + sh.dx, org[1] + sh.dy])}\\bord0\\shad0\\blur${blur}\\1c${bgr(L.shadowColor)}&\\1a${sa}\\p1}${shape}`);
-        else events.push(`Dialogue: ${i * 4},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${tagsAt(cx + sh.dx, ty + sh.dy, [org[0] + sh.dx, org[1] + sh.dy])}\\blur${blur}\\1c${bgr(L.shadowColor)}&\\3c${bgr(L.shadowColor)}&\\1a${sa}\\3a${sa}}${lineAss(line)}`);
+        else events.push(`Dialogue: ${i * 4},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${tagsAt(cx + sh.dx, ty + sh.dy, [org[0] + sh.dx, org[1] + sh.dy])}\\blur${blur}\\1c${bgr(L.shadowColor)}&\\3c${bgr(L.shadowColor)}&\\1a${sa}\\3a${sa}}${plan ? revealAss(j, sa, sa) : lineAss(line)}`);
       }
       if (shape) {
         events.push(`Dialogue: ${i * 4 + 1},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${tagsAt(cx, cy, org)}\\bord0\\shad0\\1c${bgr(L.bgColor)}&\\1a${alpha(L.bgOpacity * L.opacity)}\\p1}${shape}`);
       }
-      events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${tagsAt(cx, ty, org)}\\1a${fillA}\\3a${alpha(L.opacity)}}${lineAss(line)}`);
+      events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${tagsAt(cx, ty, org)}\\1a${fillA}\\3a${alpha(L.opacity)}}${plan ? revealAss(j, fillA, alpha(L.opacity)) : lineAss(line)}`);
     });
   });
   styles.push('Style: TBox,Arial,20,&H00000000,&H00000000,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1');
