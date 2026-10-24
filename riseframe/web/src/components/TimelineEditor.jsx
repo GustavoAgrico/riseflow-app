@@ -2806,6 +2806,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setTplMsg(e.message);
     }
   }
+  /** Grava o vídeo atual POR CIMA de um modelo já salvo (mesmo nome, mesmo "padrão"). Um
+   *  modelo só de legenda continua só de legenda. */
+  async function updateTemplate(t) {
+    const capOnly = t.data && Object.keys(t.data).length === 1 && t.data.cap;
+    if (!window.confirm(`Atualizar o modelo "${t.name}" com ${capOnly ? 'o estilo de legenda' : 'o estilo'} deste vídeo? O que estava salvo nele é substituído.`)) return;
+    try {
+      const r = await saveTemplateApi({ id: t.id, name: t.name, data: capOnly ? { cap } : templateData() });
+      setTemplates(r.templates);
+      setTplMsg(`Modelo "${r.template.name}" atualizado com este vídeo.`);
+    } catch (e) {
+      setTplMsg(e.message);
+    }
+  }
   /** Aplica um modelo neste vídeo: troca o estilo e acrescenta as mídias e textos dele. */
   function applyTemplate(t) {
     const d = t?.data || {};
@@ -3940,8 +3953,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     // vídeo principal (V1). Como no Premiere, o Transformar é do CLIPE: com o vídeo dividido
     // (navalha ou montagem), vale só no pedaço selecionado (ou o do ponteiro). Por baixo são
     // os mesmos quadros-chave da faixa QUADROS, com quadros de borda que seguram o resto.
+    // pedaço clicado: pelo começo; se o começo dele foi cortado (pausa), pelo que se sobrepõe
+    // ao clipe; senão o do ponteiro. Nunca cai para o vídeo inteiro sem querer (antes o ajuste
+    // de um pedaço mudava o vídeo todo quando o começo não batia).
+    const pieceOfSel = () => {
+      const s0 = Number(selVideo.start);
+      const s1 = Number.isFinite(Number(selVideo.end)) ? Number(selVideo.end) : s0 + 0.05;
+      let i = v1Pieces.findIndex((p) => Math.abs(p.a - s0) < 0.02);
+      if (i < 0) i = v1Pieces.findIndex((p) => p.b > s0 + 0.01 && p.a < s1 - 0.01);
+      return i;
+    };
+    const pieceAtCur = () => { const i = v1Pieces.findIndex((p) => cur >= p.a - 0.02 && cur < p.b); return i >= 0 ? i : v1Pieces.findIndex((p) => p.a > cur); };
     const pieceIdx = v1Pieces.length > 1 && v1Scope === 'piece'
-      ? (selKind === 'video' && selVideo ? v1Pieces.findIndex((p) => Math.abs(p.a - selVideo.start) < 0.02) : v1Pieces.findIndex((p) => cur >= p.a && cur < p.b))
+      ? (() => { const i = selKind === 'video' && selVideo ? pieceOfSel() : -1; return i >= 0 ? i : pieceAtCur(); })()
       : -1;
     const piece = pieceIdx >= 0 ? v1Pieces[pieceIdx] : null;
     const G = 0.034; // ~1 quadro: a troca na borda do pedaço
@@ -6312,7 +6336,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </label>
         <button onClick={saveTemplateNow} style={{ height: 34, borderRadius: 9, border: 'none', background: GRAD, color: '#fff', fontWeight: 700, fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' }}>Salvar este vídeo como modelo</button>
       </div>
-      {tplMsg && <div style={{ fontSize: 12, color: /salvo|aplicado/.test(tplMsg) ? '#7EE2A8' : '#FCA5B4' }}>{tplMsg}</div>}
+      {tplMsg && <div style={{ fontSize: 12, color: /salvo|aplicado|atualizado/.test(tplMsg) ? '#7EE2A8' : '#FCA5B4' }}>{tplMsg}</div>}
       {templates === null ? <div style={{ fontSize: 12, color: C.faint }}>Carregando…</div> : templates.length === 0 ? (
         <div style={{ fontSize: 12, color: C.faint }}>Nenhum modelo ainda.</div>
       ) : templates.map((t) => (
@@ -6322,12 +6346,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {t.isDefault && <span style={{ fontSize: 10.5, color: '#FBBF24', fontWeight: 700 }}>★ padrão</span>}
           </div>
           <div style={{ fontSize: 11, color: C.faint }}>
-            {[t.data?.cap ? 'legenda' : null, t.data?.media?.length ? `${t.data.media.length} mídia(s)` : null, t.data?.textLayers?.length ? `${t.data.textLayers.length} texto(s)` : null, t.data?.colorLook && t.data.colorLook !== 'auto' ? 'cor' : null].filter(Boolean).join(' · ') || 'estilo'}
+            {t.updatedAt ? `atualizado ${new Date(t.updatedAt).toLocaleDateString('pt-BR')} · ` : ''}{[t.data?.cap ? 'legenda' : null, t.data?.media?.length ? `${t.data.media.length} mídia(s)` : null, t.data?.textLayers?.length ? `${t.data.textLayers.length} texto(s)` : null, t.data?.colorLook && t.data.colorLook !== 'auto' ? 'cor' : null].filter(Boolean).join(' · ') || 'estilo'}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={() => applyTemplate(t)} style={{ ...miniBtn(true, false), flex: 1, height: 30 }}>Aplicar</button>
-            <button onClick={() => toggleDefault(t)} title={t.isDefault ? 'Deixar de usar nos vídeos novos' : 'Usar sempre nos vídeos novos'} style={{ ...miniBtn(false, false), height: 30 }}>{t.isDefault ? '☆ Tirar padrão' : '★ Padrão'}</button>
-            <button onClick={() => removeTemplate(t)} style={{ ...miniBtn(false, false), height: 30, color: C.red }}>Apagar</button>
+            <button onClick={() => updateTemplate(t)} title="Salvar o que está neste vídeo agora por cima deste modelo" style={{ ...miniBtn(false, false), height: 30 }}>⟳ Atualizar</button>
+            <button onClick={() => toggleDefault(t)} title={t.isDefault ? 'Deixar de usar nos vídeos novos' : 'Usar sempre nos vídeos novos'} style={{ ...miniBtn(false, false), height: 30 }}>{t.isDefault ? '☆' : '★'} Padrão</button>
+            <button onClick={() => removeTemplate(t)} title="Apagar este modelo" aria-label="Apagar" style={{ ...miniBtn(false, false), height: 30, color: C.red }}><Icon name="trash" size={13} strokeWidth={2} /></button>
           </div>
         </div>
       ))}
@@ -8634,11 +8659,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div onMouseMove={(e) => setRazorT(timeAtClientX(e.clientX))} onMouseLeave={() => setRazorT(null)}
                 onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
                 onClick={(e) => { e.stopPropagation(); razorCut(timeAtClientX(e.clientX)); }}
-                title="Navalha: clique para cortar aqui (vídeo e legenda) · V volta para a seleção"
-                style={{ position: 'absolute', left: 0, right: 0, top: LANE.ruler, bottom: 0, zIndex: 18, cursor: 'crosshair' }} />
+                style={{ position: 'absolute', left: 0, right: 0, top: LANE.ruler, bottom: 0, zIndex: 18, cursor: RAZOR_CURSOR }} />
             )}
             {razorTool && razorT != null && (
-              <div style={{ position: 'absolute', left: X(razorT), top: LANE.ruler, bottom: 0, width: 0, borderLeft: '1.5px dashed #FF6B35', pointerEvents: 'none', zIndex: 19 }} />
+              // linha fina no ponto do corte (como a navalha do Premiere)
+              <div style={{ position: 'absolute', left: X(razorT), top: LANE.ruler, bottom: 0, width: 0, borderLeft: '1px solid rgba(255,255,255,0.9)', boxShadow: '0 0 0 0.5px rgba(0,0,0,0.6)', pointerEvents: 'none', zIndex: 19 }} />
             )}
             {rangeTool && !isMobile && (
               <div onMouseDown={(e) => startRangeSel(e)} title="Arraste para selecionar o trecho em todas as faixas · Delete corta vídeo, áudio e legenda · Esc sai"
@@ -8908,7 +8933,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               onMouseDown={(e) => { if (!startV1BodyDrag(e)) startCutDraw(e); }}
               onContextMenu={(e) => { const p = partAt(e); if (p) openPieceMenu(e, 'video', p); else e.preventDefault(); }}
               title="Arraste o clipe para movê-lo · clique seleciona o pedaço · Shift+arrastar (ou a ferramenta R) marca um trecho · solte uma mídia da biblioteca aqui para pôr no vídeo principal"
-              style={{ position: 'relative', height: LANE.video, marginTop: 4, borderRadius: 6, overflow: 'hidden', ...LANE_ROW, cursor: 'crosshair', ...lk('vid'), ...(libDrop?.v1 ? { boxShadow: '0 0 0 2px #3B82F6, 0 0 18px rgba(59,130,246,0.55)' } : null) }}
+              style={{ position: 'relative', height: LANE.video, marginTop: 4, borderRadius: 6, overflow: 'hidden', ...LANE_ROW, cursor: 'default', ...lk('vid'), ...(libDrop?.v1 ? { boxShadow: '0 0 0 2px #3B82F6, 0 0 18px rgba(59,130,246,0.55)' } : null) }}
             >
               {vidSpans.map(([a, b]) => (
                 <div key={a} style={{ position: 'absolute', top: 0, bottom: 0, left: X(a), width: W(a, b), backgroundColor: 'rgba(0,0,0,0.45)', backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: `${dur * pps}px 100%`, backgroundPosition: `${-a * pps}px 0`, backgroundRepeat: 'no-repeat', boxShadow: `inset 0 0 0 1px ${isMobile ? C.border : '#3B6FD6'}`, borderRadius: 4 }} />
@@ -9857,6 +9882,8 @@ const FX_ANIM_CSS = `
 // Meia duração de cada transição (igual ao servidor) e textura de grão para a prévia.
 const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3 };
 const TRANS_DUR = Object.fromEntries(Object.entries(TRANS_HALF).map(([k, h]) => [k, +(h * 2).toFixed(2)]));
+// Cursor da navalha (C), como o do Premiere: lâmina; o corte acontece no centro (ponta 12,12).
+const RAZOR_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><g transform='rotate(-35 12 12)'><path d='M4 8.5h16v7H4z' fill='white' stroke='black' stroke-width='1.2' stroke-linejoin='round'/><path d='M4 15.5h16' stroke='black' stroke-width='2'/><rect x='9' y='10.6' width='6' height='2' rx='1' fill='black'/></g><path d='M12 1v22' stroke='black' stroke-width='0.01'/></svg>")}") 12 12, crosshair`;
 const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch', 'whiteout', 'iris']);
 /**
  * Transições de câmera na prévia (as mesmas contas do render): zoom, deslizar, giro e
