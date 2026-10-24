@@ -362,6 +362,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const trackRef = useRef(null);
   const dragRef = useRef(null); // { si, edge: 'left'|'right' }
   const mediaDragRef = useRef(null); // { key, mode: 'move'|'left'|'right', x0, start0, dur0 }
+  const [vTracksWanted, setVTracksWanted] = useState(0); // faixas de vídeo pedidas no "+ Faixa de vídeo"
   const [cur, setCur] = useState(0);
   const curRef = useRef(0); // o playhead atual para funções chamadas fora do render (arrastar na prévia)
   curRef.current = cur;
@@ -1421,7 +1422,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         setSnapLine(sn.line);
         const duration = d.dur0;
         // Arrastar para cima/baixo troca de camada (cima = por cima no vídeo).
-        const layer = d.under ? d.layer0 : Math.max(0, Math.min(d.maxLayer + 1, d.layer0 + Math.round((d.y0 - e.clientY) / LANE.midias)));
+        // (áudio: as faixas A2, A3… crescem para BAIXO)
+        const layer = d.under ? d.layer0 : Math.max(0, Math.min(d.maxLayer + 1, d.layer0 + Math.round(((d.kind === 'audio' ? e.clientY - d.y0 : d.y0 - e.clientY)) / LANE.midias)));
         updateMedia(d.key, { start: +start.toFixed(2), duration: +duration.toFixed(2), layer });
         d.x1 = e.clientX;
         d.y1 = e.clientY;
@@ -1460,7 +1462,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             m = list.find((x) => x.key === d.key);
           }
           if (m?.under) return list;
-          const clash = m && list.some((x) => x.key !== m.key && !x.under && (x.layer || 0) === (m.layer || 0) && x.start < m.start + m.duration && x.start + x.duration > m.start);
+          const clash = m && list.some((x) => x.key !== m.key && !x.under && (x.kind === 'audio') === (m.kind === 'audio') && (x.layer || 0) === (m.layer || 0) && x.start < m.start + m.duration && x.start + x.duration > m.start);
           const next = clash ? list.map((x) => (x.key === m.key ? { ...x, layer: (m.layer || 0) + ((m.layer || 0) >= d.layer0 ? 0.5 : -0.5) } : x)) : list;
           return normalizeLayers(next);
         });
@@ -2447,7 +2449,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       return normalizeLayers(list.map((x) => (x.key === key ? { ...x, layer: to } : !x.under && (x.layer || 0) === to ? { ...x, layer: from } : x)));
     });
   }
-  const mediaRows = topMedia.reduce((mx, m) => Math.max(mx, (m.layer || 0) + 1), 1);
+  // Como no Premiere: as camadas de VÍDEO/imagem ficam acima da V1 (M1, M2…) e os ÁUDIOS
+  // importados descem para as faixas A2, A3… abaixo do áudio do vídeo.
+  const topVis = topMedia.filter((m) => m.kind !== 'audio');
+  const topAud = topMedia.filter((m) => m.kind === 'audio');
+  const visLayers = [...new Set(topVis.map((m) => m.layer || 0))].sort((a, b) => b - a); // de cima para baixo
+  const mediaRows = Math.max(visLayers.length, vTracksWanted);
+  const emptyTop = mediaRows - visLayers.length; // faixas criadas no "+ Faixa de vídeo", ainda vazias
+  const rowLayers = [...Array.from({ length: emptyTop }, (_, i) => (visLayers[0] ?? -1) + emptyTop - i), ...visLayers];
+  const audLayers = [...new Set(topAud.map((m) => m.layer || 0))].sort((a, b) => a - b);
+  const audRows = audLayers.length;
   /** Bloco de uma mídia na timeline (camadas M1, M2… ou V0, por baixo do vídeo). */
   function mediaChip(m) {
     const left = X(m.start);
@@ -2461,7 +2472,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         onClick={(e) => { e.stopPropagation(); setSelMedia(m.key); setSelKind('media'); seek(m.start); }}
         title={m.under ? `${m.filename} — por baixo do vídeo (V0): arraste para os lados (tempo) ou para as camadas (por cima); pontas ajustam a duração` : `${m.filename} — arraste para os lados (tempo), para cima/baixo (camada) ou até a V0 (por baixo do vídeo); pontas ajustam a duração`}
         style={{
-          position: 'absolute', left, top: m.under ? 0 : (mediaRows - 1 - (m.layer || 0)) * LANE.midias, width: w, height: 28, borderRadius: 7, overflow: 'hidden',
+          position: 'absolute', left, top: m.under ? 0 : (m.kind === 'audio' ? audLayers.indexOf(m.layer || 0) : rowLayers.indexOf(m.layer || 0)) * LANE.midias, width: w, height: 28, borderRadius: 7, overflow: 'hidden',
           cursor: 'grab', display: 'flex', alignItems: 'center', gap: 5, padding: '0 9px',
           background: m.offline ? 'rgba(240,82,107,0.18)' : `${col}2b`, border: m.offline ? `1px dashed ${C.red}` : isSelM ? '1.5px solid #fff' : `1px solid ${col}`, boxShadow: isSelM ? `0 0 0 2px ${col}66` : 'none', color: C.text, userSelect: 'none',
           ...(laneHide[m.under ? 'v0' : `m${m.layer || 0}`] ? LANE_HIDDEN : null), ...lk(m.under ? 'v0' : `m${m.layer || 0}`),
@@ -4339,6 +4350,45 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function razorCut(t) {
     const at = +Math.max(0.05, Math.min(dur - 0.05, t)).toFixed(2);
     setVsplits((l) => (l.some((x) => Math.abs(x - at) < 0.05) ? l : [...l, at].sort((a, b) => a - b)));
+  }
+  /**
+   * Navalha como no Premiere: corta só a FAIXA embaixo do cursor (texto, camada, B-roll,
+   * legenda…). Vídeo e áudio vinculados (V1/A1) cortam juntos. Shift = todas as faixas.
+   */
+  function razorHit(e) {
+    const content = contentRef.current;
+    if (!content) return null;
+    const cr = content.getBoundingClientRect();
+    const el = document.elementsFromPoint(e.clientX, e.clientY).find((x) => x.dataset?.lane && content.contains(x));
+    const lane = el?.dataset.lane || null;
+    const seg = (x) => { const r = x.getBoundingClientRect(); return { top: r.top - cr.top, h: r.height }; };
+    const linked = lane === 'v1' || lane === 'a1';
+    const segs = e.shiftKey ? [{ top: LANE.ruler, h: cr.height - LANE.ruler }]
+      : linked ? ['v1', 'a1'].map((id) => content.querySelector(`[data-lane="${id}"]`)).filter(Boolean).map(seg)
+        : el ? [seg(el)] : [];
+    return { t: timeAtClientX(e.clientX), lane, y: el ? e.clientY - el.getBoundingClientRect().top : null, segs };
+  }
+  function razorAt(h, all = false) {
+    const t = +h.t.toFixed(2);
+    const inside = (a, b) => t > a + 0.2 && t < b - 0.2;
+    const doLane = (lane, y) => {
+      if (lane === 'v1' || lane === 'a1') razorCut(t);
+      else if (lane === 'legenda') splitAtPlayhead(t);
+      else if (lane === 'txt') {
+        const row = y == null ? null : Math.min(txtRows.n - 1, Math.floor(y / (txtH / txtRows.n)));
+        textLayers.filter((l) => inside(l.start, l.end) && (row == null || (txtRows.rows[l.key] || 0) === row)).forEach((l) => splitRange(setTextLayers, l.key, t));
+      } else if (lane === 'midias' || lane === 'aux') {
+        const rows = lane === 'aux' ? audLayers : rowLayers;
+        const layer = y == null ? null : rows[Math.floor(y / LANE.midias)];
+        (lane === 'aux' ? topAud : topVis).filter((m) => (layer == null || (m.layer || 0) === layer) && inside(m.start, m.start + m.duration)).forEach((m) => splitMedia(m.key, t));
+      } else if (lane === 'v0') underMedia.filter((m) => inside(m.start, m.start + m.duration)).forEach((m) => splitMedia(m.key, t));
+      else if (lane === 'broll') (brollReview?.moments || []).filter((m) => inside(m.start, m.end)).forEach((m) => splitRange(setBrollMoments, m.key, t));
+      else if (lane === 'xcap') extraCaps.filter((c) => inside(c.start, c.end)).forEach((c) => splitXcap(c.key, t));
+      else if (lane === 'vfx') fxMoments.filter((m) => inside(m.start, m.end)).forEach((m) => splitRange(setFxMoments, m.key, t));
+      else if (lane === 'zoom') (zoomMoments || []).filter((m) => inside(m.start, m.end)).forEach((m) => splitRange(setZoomMoments, m.key, t));
+    };
+    if (all) ['v1', 'legenda', 'txt', 'midias', 'aux', 'v0', 'broll', 'xcap', 'vfx', 'zoom'].forEach((l) => doLane(l, null));
+    else doLane(h.lane, h.y);
   }
   /** Pontos de edição (como no Premiere): começo, fim, divisões e bordas dos cortes. */
   const editPoints = () => [...new Set([0, dur, ...vsplits, ...cuts.flatMap((c) => [c.start, c.end])].map((x) => +x.toFixed(2)))].sort((a, b) => a - b);
@@ -8648,10 +8698,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <div className="rf-tl-tools" style={{ position: 'absolute', inset: 0, overflowY: 'auto', scrollbarWidth: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '8px 0' }}>
               {/* Ferramentas (como no Premiere): escolha a ferramenta, depois aja na timeline */}
               <ToolIcon title="Seleção (V) — clique para selecionar, arraste para mover" active={!razorTool && !rangeTool} onClick={() => pickTool('select')}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 8-6 1.6L10 19z" /></svg>
+                <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2.6v16.6l4.2-4 2.9 6.6 2.9-1.3-2.9-6.5h5.9z" fill="currentColor" stroke="rgba(0,0,0,0.45)" strokeWidth="0.9" strokeLinejoin="round" /></svg>
               </ToolIcon>
-              <ToolIcon title="Navalha (C) — clique na timeline para dividir o vídeo ali (a legenda fica inteira)" active={razorTool} onClick={() => pickTool(razorTool ? 'select' : 'razor')}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20l9-9M13 11l7-7v6l-4 4M8 4l3 3" /><circle cx="6" cy="18" r="2" /></svg>
+              <ToolIcon title="Navalha (C) — corta a faixa embaixo do cursor (vídeo + áudio juntos; texto, camada, B-roll, legenda…) · Shift corta todas" active={razorTool} onClick={() => pickTool(razorTool ? 'select' : 'razor')}>
+                <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(-40 12 12)"><path d="M4.2 7.4h15.6a1.3 1.3 0 0 1 1.3 1.3v4.1H2.9V8.7a1.3 1.3 0 0 1 1.3-1.3z" fill="currentColor" /><path d="M2.9 12.8h18.2v2.6H2.9z" fill="currentColor" opacity="0.55" /><rect x="8" y="9.1" width="8" height="2" rx="1" fill="#17181C" /><circle cx="5.6" cy="10.1" r="0.95" fill="#17181C" /><circle cx="18.4" cy="10.1" r="0.95" fill="#17181C" /></g></svg>
               </ToolIcon>
               <ToolIcon title="Seleção de trecho (R) — arraste para marcar o trecho em todas as faixas · I/O marcam entrada/saída" active={rangeTool} onClick={() => pickTool(rangeTool ? 'select' : 'range')}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M4 4v16M20 4v16" /><rect x="7.5" y="7" width="9" height="10" rx="1.5" strokeDasharray="2.5 2" /></svg>
@@ -8690,8 +8740,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {showChapLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('capitulos', e)} onResetSize={() => resetLane('capitulos')} h={LANE.capitulos} gap={4} code="CH" nome="Capítulos" />}
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('legenda', e)} onResetSize={() => resetLane('legenda')} h={legH} gap={6} code="C1" nome="Legenda" onMenu={(e) => openTrackMenu(e, 'legenda')} hidden={cap.captions === false} onEye={() => setCap((c) => ({ ...c, captions: c.captions === false }))} locked={laneLock.leg} onLock={() => togLock('leg')} />
             {extraCaps.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('xcap', e)} onResetSize={() => resetLane('xcap')} h={LANE.xcap} gap={4} code="C2" nome="Suas legendas" onMenu={(e) => openTrackMenu(e, 'xcap')} hidden={laneHide.xcap} onEye={() => togHide('xcap')} locked={laneLock.xcap} onLock={() => togLock('xcap')} />}
-            {topMedia.length > 0 && Array.from({ length: mediaRows }, (_, r) => mediaRows - 1 - r).map((l) => (
-              <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('midias', e)} onResetSize={() => resetLane('midias')} key={l} h={LANE.midias} gap={l === mediaRows - 1 ? 4 : 0} code={`M${l + 1}`} nome={`Camada ${l + 1}`} onMenu={(e) => openTrackMenu(e, `m${l}`)} hidden={laneHide[`m${l}`]} onEye={() => togHide(`m${l}`)} locked={laneLock[`m${l}`]} onLock={() => togLock(`m${l}`)} />
+            {mediaRows > 0 && rowLayers.map((l, r) => (
+              <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('midias', e)} onResetSize={() => resetLane('midias')} key={`m${r}`} h={LANE.midias} gap={r === 0 ? 4 : 0} code={`M${mediaRows - r}`} nome={`Camada ${mediaRows - r}`} onMenu={(e) => openTrackMenu(e, `m${l}`)} hidden={laneHide[`m${l}`]} onEye={() => togHide(`m${l}`)} locked={laneLock[`m${l}`]} onLock={() => togLock(`m${l}`)} />
             ))}
             {textLayers.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('txt', e)} onResetSize={() => resetLane('txt')} h={txtH} gap={4} code="T1" nome="Textos" onMenu={(e) => openTrackMenu(e, 'txt')} hidden={laneHide.txt} onEye={() => togHide('txt')} locked={laneLock.txt} onLock={() => togLock('txt')} />}
             {fxMoments.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('vfx', e)} onResetSize={() => resetLane('vfx')} h={LANE.vfx} gap={4} code="FX" nome="Efeitos" onMenu={(e) => openTrackMenu(e, 'vfx')} hidden={laneHide.vfx} onEye={() => togHide('vfx')} locked={laneLock.vfx} onLock={() => togLock('vfx')} />}
@@ -8700,26 +8750,33 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('video', e)} onResetSize={() => resetLane('video')} h={LANE.video} gap={4} code="V1" active nome={avLinked ? 'Vídeo' : 'Vídeo · solto'} onMenu={(e) => openTrackMenu(e, 'video')} locked={laneLock.vid} onLock={() => togLock('vid')} />
             {showV0 && <TrackHead h={v0H} gap={4} code="V0" nome="Por baixo" onMenu={(e) => openTrackMenu(e, 'v0')} hidden={laneHide.v0} onEye={() => togHide('v0')} locked={laneLock.v0} onLock={() => togLock('v0')} />}
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('audio', e)} onResetSize={() => resetLane('audio')} h={LANE.audio} gap={4} code="A1" active nome={avLinked ? 'Áudio' : 'Áudio · solto'} onMenu={(e) => openTrackMenu(e, 'audio')} muted={audioMute} onMute={() => setAudioMute((v) => !v)} locked={laneLock.aud} onLock={() => togLock('aud')} />
+            {audLayers.map((l, r) => (
+              <TrackHead key={`a${l}`} h={LANE.midias} gap={r === 0 ? 4 : 0} code={`A${r + 2}`} nome={`Áudio ${r + 2}`} onMenu={(e) => openTrackMenu(e, `m${l}`)} hidden={laneHide[`m${l}`]} onEye={() => togHide(`m${l}`)} locked={laneLock[`m${l}`]} onLock={() => togLock(`m${l}`)} />
+            ))}
             {showSfxLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('sfx', e)} onResetSize={() => resetLane('sfx')} h={LANE.sfx} gap={4} code="S1" nome="Efeitos sonoros" />}
             {showPauses && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('pausas', e)} onResetSize={() => resetLane('pausas')} h={LANE.pausas} gap={4} code="P" nome="Pausas" locked={laneLock.pau} onLock={() => togLock('pau')} />}
+            {!isMobile && (
+              <button onClick={() => setVTracksWanted(mediaRows + 1)} title="Nova faixa de vídeo acima (como no Premiere): arraste uma mídia para ela"
+                style={{ margin: '8px 6px 0', width: 'calc(100% - 12px)', height: 24, borderRadius: 6, border: `1px dashed ${PR.line}`, background: 'transparent', color: PR.dim, fontSize: 11, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer' }}>+ Faixa de vídeo</button>
+            )}
           </div>
           <div ref={trackRef} onClick={onTrackClick} onScroll={onTrackScroll}
             onMouseDownCapture={() => { const a = document.activeElement; if (a && a !== document.body && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(a.tagName)) a.blur(); }}
             onMouseDown={(e) => { if (e.target === e.currentTarget) startMarquee(e); }} onTouchStart={onTrackTouchStart} onTouchMove={onTrackTouchMove} onTouchEnd={onTrackTouchEnd}
             style={{ position: 'relative', overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0, paddingBottom: 6, ...(isMobile ? { display: 'flex', scrollbarWidth: 'none' } : {}) }}>
             {isMobile && <div style={{ flex: '0 0 50%' }} />}
-            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setDropT(null); setLibDrop(null); } }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + txtH : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (showSfxLane ? 4 + LANE.sfx : 0) + (isMobile || !showPauses ? 0 : 4 + LANE.pausas) + (topMedia.length ? 4 + LANE.midias * mediaRows : 0) + (showV0 ? 4 + v0H : 0) }}>
+            <div ref={contentRef} onMouseDown={startMarquee} onDragOver={onTimelineDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setDropT(null); setLibDrop(null); } }} onDrop={onTimelineDrop} style={{ position: 'relative', flex: '0 0 auto', width, height: LANE.ruler + (showChapLane ? 4 + LANE.capitulos : 0) + 6 + legH + (extraCaps.length ? 4 + LANE.xcap : 0) + 4 + LANE.video + (showZoomLane ? 4 + LANE.zoom : 0) + (showBrollLane ? 4 + LANE.broll : 0) + (textLayers.length ? 4 + txtH : 0) + (fxMoments.length ? 4 + LANE.vfx : 0) + 4 + LANE.audio + (showSfxLane ? 4 + LANE.sfx : 0) + (isMobile || !showPauses ? 0 : 4 + LANE.pausas) + (mediaRows ? 4 + LANE.midias * mediaRows : 0) + (audRows ? 4 + LANE.midias * audRows : 0) + (showV0 ? 4 + v0H : 0) }}>
             {/* ferramenta de seleção: arrastar em qualquer faixa marca o trecho (todas as faixas) */}
             {razorTool && !isMobile && (
-              <div onMouseMove={(e) => setRazorT(timeAtClientX(e.clientX))} onMouseLeave={() => setRazorT(null)}
+              <div onMouseMove={(e) => setRazorT(razorHit(e))} onMouseLeave={() => setRazorT(null)}
                 onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-                onClick={(e) => { e.stopPropagation(); razorCut(timeAtClientX(e.clientX)); }}
+                onClick={(e) => { e.stopPropagation(); const h = razorHit(e); if (h) razorAt(h, e.shiftKey); }}
                 style={{ position: 'absolute', left: 0, right: 0, top: LANE.ruler, bottom: 0, zIndex: 18, cursor: RAZOR_CURSOR }} />
             )}
-            {razorTool && razorT != null && (
-              // linha fina no ponto do corte (como a navalha do Premiere)
-              <div style={{ position: 'absolute', left: X(razorT), top: LANE.ruler, bottom: 0, width: 0, borderLeft: '1px solid rgba(255,255,255,0.9)', boxShadow: '0 0 0 0.5px rgba(0,0,0,0.6)', pointerEvents: 'none', zIndex: 19 }} />
-            )}
+            {razorTool && razorT != null && razorT.segs.map((g, i) => (
+              // linha fina no ponto do corte, só na(s) faixa(s) que a navalha vai cortar (como no Premiere)
+              <div key={i} style={{ position: 'absolute', left: X(razorT.t), top: g.top, height: g.h, width: 0, borderLeft: '1px solid rgba(255,255,255,0.95)', boxShadow: '0 0 6px rgba(255,107,53,0.9)', pointerEvents: 'none', zIndex: 19 }} />
+            ))}
             {rangeTool && !isMobile && (
               <div onMouseDown={(e) => startRangeSel(e)} title="Arraste para selecionar o trecho em todas as faixas · Delete corta vídeo, áudio e legenda · Esc sai"
                 style={{ position: 'absolute', left: 0, right: 0, top: LANE.ruler, bottom: 0, zIndex: 18, cursor: 'col-resize', background: 'rgba(59,130,246,0.04)' }} />
@@ -8871,12 +8928,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               </div>
             )}
             {/* Lane das minhas mídias — arraste para mover, pontas para redimensionar */}
-            {topMedia.length > 0 && (
+            {mediaRows > 0 && (
               <div data-lane="midias" style={{ position: 'relative', height: LANE.midias * mediaRows, marginTop: 4 }}>
                 {Array.from({ length: mediaRows - 1 }, (_, r) => (
                   <div key={r} style={{ position: 'absolute', left: 0, right: 0, top: (r + 1) * LANE.midias - 1, borderTop: `1px dashed ${C.border}`, pointerEvents: 'none' }} />
                 ))}
-                {topMedia.map(mediaChip)}
+                {topVis.map(mediaChip)}
               </div>
             )}
             {/* Faixa TEXTOS: textos livres (arraste para mover, pontas mudam o tempo) */}
@@ -9222,6 +9279,15 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 );
               })}
             </div>
+            {/* Faixas A2, A3…: os áudios importados (músicas, narração), abaixo do áudio do vídeo */}
+            {audRows > 0 && (
+              <div data-lane="aux" style={{ position: 'relative', height: LANE.midias * audRows, marginTop: 4 }}>
+                {Array.from({ length: audRows - 1 }, (_, r) => (
+                  <div key={r} style={{ position: 'absolute', left: 0, right: 0, top: (r + 1) * LANE.midias - 1, borderTop: `1px dashed ${C.border}`, pointerEvents: 'none' }} />
+                ))}
+                {topAud.map(mediaChip)}
+              </div>
+            )}
             {/* Faixa S1: efeitos sonoros (os colocados à mão arrastam; os automáticos vêm da aba Efeitos) */}
             {showSfxLane && (
               <div data-lane="sfx" style={{ position: 'relative', height: LANE.sfx, marginTop: 4, ...LANE_ROW }}>
@@ -9969,7 +10035,7 @@ const FX_OVERLAY_BG = {
 // Prévia (miniatura) dos efeitos que mexem na geometria do quadro
 const FX_THUMB_TF = { mirror: 'scaleX(-1)', vflip: 'scaleY(-1)', tilt: 'rotate(-4deg) scale(1.1)', tiltr: 'rotate(4deg) scale(1.1)', fisheye: 'scale(1.08)', zoomfix: 'scale(1.25)', zoomfix2: 'scale(1.5)', persp3d: 'perspective(300px) rotateX(12deg)', wideangle: 'scale(0.94)' };
 // Cursor da navalha (C), como o do Premiere: uma lâmina; o corte acontece no ponto laranja (9,27).
-const RAZOR_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><g transform='rotate(-40 18 13)'><path d='M7.5 8h21a1.5 1.5 0 0 1 1.5 1.5V15H6V9.5A1.5 1.5 0 0 1 7.5 8z' fill='#F4F6F9' stroke='#0B0C10' stroke-width='1.3'/><path d='M6 15h24v3.2H6z' fill='#A9B1BD' stroke='#0B0C10' stroke-width='1.3'/><path d='M6.6 17.4h22.8' stroke='#FFFFFF' stroke-width='0.9'/><rect x='12.5' y='10.4' width='11' height='2.6' rx='1.3' fill='#0B0C10'/><circle cx='10' cy='11.7' r='1.2' fill='#0B0C10'/><circle cx='26' cy='11.7' r='1.2' fill='#0B0C10'/></g><circle cx='9' cy='27' r='2.2' fill='#FF6B35' stroke='#0B0C10' stroke-width='1'/></svg>")}") 9 27, crosshair`;
+const RAZOR_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><defs><linearGradient id='b' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#FFFFFF'/><stop offset='1' stop-color='#C3C9D2'/></linearGradient></defs><g transform='rotate(-40 18 13)' filter=''><path d='M7.5 8h21a1.5 1.5 0 0 1 1.5 1.5V15H6V9.5A1.5 1.5 0 0 1 7.5 8z' fill='url(#b)' stroke='#0B0C10' stroke-width='1.3'/><path d='M6 15h24v3.2H6z' fill='#8E97A4' stroke='#0B0C10' stroke-width='1.3'/><path d='M6.6 17.4h22.8' stroke='#FFFFFF' stroke-width='0.9'/><rect x='12.5' y='10.4' width='11' height='2.6' rx='1.3' fill='#0B0C10'/><circle cx='10' cy='11.7' r='1.2' fill='#0B0C10'/><circle cx='26' cy='11.7' r='1.2' fill='#0B0C10'/></g><circle cx='9' cy='27' r='2.4' fill='#FF6B35' stroke='#FFFFFF' stroke-width='1.1'/></svg>")}") 9 27, crosshair`;
 const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch', 'whiteout', 'iris', 'lightleak', 'static', 'rgbsplit']);
 // Grupos das transições, como o painel do Film Impact
 const TRANS_GROUPS = [
