@@ -37,7 +37,7 @@ const PROPS = ['scale', 'x', 'y', 'rot'];
 const LIMITS = { scale: [0.5, 3], x: [-1, 1], y: [-1, 1], rot: [-180, 180] };
 
 /** Normaliza quadros-chave: números válidos, dentro dos limites, ordenados, sem tempos repetidos. */
-export function cleanKeys(raw, max = 60) {
+export function cleanKeys(raw, max = 400) {
   if (!Array.isArray(raw)) return [];
   const out = [];
   for (const k of raw) {
@@ -53,7 +53,16 @@ export function cleanKeys(raw, max = 60) {
     out.push(item);
   }
   out.sort((a, b) => a.t - b.t);
-  const dedup = out.filter((k, i) => i === 0 || k.t - out[i - 1].t >= 0.02);
+  // Dois quadros no mesmo instante (ex.: depois de cortar a pausa entre dois pedaços, o fim
+  // de um e o começo do outro caem juntos): vale o ÚLTIMO — o valor que segue dali em diante.
+  // Antes ficava o primeiro (o valor antigo) e o pedaço deslizava até o valor dele.
+  const dedup = [];
+  for (const k of out) {
+    if (dedup.length && k.t - dedup[dedup.length - 1].t < 0.02) dedup[dedup.length - 1] = k;
+    else dedup.push(k);
+  }
+  // muitos pedaços com Transformar próprio (4 quadros cada): o teto antigo (60) cortava os
+  // do fim do vídeo
   return dedup.slice(0, max);
 }
 

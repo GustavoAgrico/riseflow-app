@@ -99,20 +99,29 @@ export function momentsZoomVf(windows, meta, intensity = 'medio') {
 }
 
 /** Expressão de interpolação linear de uma propriedade entre os quadros-chave (tempo T). */
-function keyExpr(keys, prop, T) {
-  const v = (k) => Number(k[prop]).toFixed(4);
-  if (keys.length === 1) return v(keys[0]);
-  let expr = v(keys[keys.length - 1]);
-  for (let i = keys.length - 2; i >= 0; i--) {
+export function keyExpr(keys, prop, T) {
+  const v = (k) => Number(k[prop]);
+  const f4 = (n) => n.toFixed(4);
+  if (keys.length === 1) return f4(v(keys[0]));
+  // Soma de degraus (sem if aninhado): valor = 1º + Σ (próximo − atual) × progresso do trecho.
+  // O FFmpeg só aceita ~100 níveis de expressão aninhada — com muitos pedaços ajustados o
+  // filtro antigo (um if dentro do outro) quebrava.
+  const terms = [f4(v(keys[0]))];
+  for (let i = 0; i < keys.length - 1; i++) {
     const a = keys[i];
     const b = keys[i + 1];
-    const q = `clip((${T}-${a.t.toFixed(3)})/${Math.max(0.001, b.t - a.t).toFixed(3)}\\,0\\,1)`;
-    // interpolação do quadro (a mesma conta da prévia: keyCurve)
-    const qq = a.eo && b.ei ? `(${q}*${q}*(3-2*${q}))` : a.eo ? `(${q}*${q})` : b.ei ? `(${q}*(2-${q}))` : q;
-    const seg = a.hold ? v(a) : `${v(a)}+(${v(b)}-${v(a)})*${qq}`;
-    expr = `if(lt(${T}\\,${b.t.toFixed(3)})\\,${seg}\\,${expr})`;
+    const d = v(b) - v(a);
+    if (Math.abs(d) < 1e-5) continue;
+    let q;
+    if (a.hold) q = `gte(${T}\\,${b.t.toFixed(3)})`;
+    else {
+      const l = `clip((${T}-${a.t.toFixed(3)})/${Math.max(0.001, b.t - a.t).toFixed(3)}\\,0\\,1)`;
+      // interpolação do quadro (a mesma conta da prévia: keyCurve)
+      q = a.eo && b.ei ? `(${l}*${l}*(3-2*${l}))` : a.eo ? `(${l}*${l})` : b.ei ? `(${l}*(2-${l}))` : l;
+    }
+    terms.push(`${d < 0 ? '-' : '+'}${f4(Math.abs(d))}*${q}`);
   }
-  return expr;
+  return `(${terms.join('')})`;
 }
 
 /**
@@ -124,8 +133,12 @@ function keyExpr(keys, prop, T) {
 export function keyframesVf(rawKeys, meta, { alpha = false } = {}) {
   // alpha: o que sobra em volta fica TRANSPARENTE (mostra o fundo por baixo do vídeo)
   const bg = alpha ? 'black@0' : 'black';
-  const keys = cleanKeys(rawKeys);
-  if (!keysChangeAnything(keys)) return null;
+  const all = cleanKeys(rawKeys);
+  if (!keysChangeAnything(all)) return null;
+  // quadros do meio iguais aos dois vizinhos não mudam nada: saem (expressão menor e mais
+  // rápida com muitos pedaços ajustados)
+  const same = (a, b) => ['scale', 'x', 'y', 'rot'].every((p) => Math.abs(a[p] - b[p]) < 1e-4);
+  const keys = all.filter((k, i) => i === 0 || i === all.length - 1 || k.hold || k.ei || k.eo || !same(all[i - 1], k) || !same(k, all[i + 1]));
   const W = meta.width || 1080;
   const H = meta.height || 1920;
   const fps = Math.max(1, Math.round(meta.fps || 30));
