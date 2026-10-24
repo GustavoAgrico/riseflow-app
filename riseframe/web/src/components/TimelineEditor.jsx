@@ -3129,7 +3129,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // Formato do vídeo final + enquadramento no formato (escolhidos na aba Enquadramento).
         aspect: aspectSel,
         quality: hdAllowed ? quality : 'original',
-        reframeMode,
+        // A prévia mostra o enquadramento PARADO (foco + zoom). Se a pessoa ajustou o
+        // enquadramento ou usou o Transformar, o vídeo final fica parado igual — seguir o rosto
+        // fazia o vídeo "andar sozinho" e sair diferente do editor.
+        reframeMode: reframeMode === 'auto' && (framingMode === 'manual' && (Math.abs(focus.x - 0.5) > 0.004 || Math.abs(focus.y - 0.4) > 0.004 || zoom > 1.001 || keysChangeAnything(cleanKeys(transformKeys))))
+          ? 'manual' : reframeMode,
         splitSwap,
         ...(framingMode === 'manual'
           ? { personFocusX: +focus.x.toFixed(3), personFocusY: +focus.y.toFixed(3) }
