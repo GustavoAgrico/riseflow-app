@@ -362,7 +362,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const trackRef = useRef(null);
   const dragRef = useRef(null); // { si, edge: 'left'|'right' }
   const mediaDragRef = useRef(null); // { key, mode: 'move'|'left'|'right', x0, start0, dur0 }
-  const [vTracksWanted, setVTracksWanted] = useState(0); // faixas de vídeo pedidas no "+ Faixa de vídeo"
+  const [vTracksWanted, setVTracksWanted] = useState(0);
+  // Miniaturas da V1, como no Premiere: 'head' = uma no começo de cada clipe (as emendas e
+  // os cortes ficam visíveis) · 'all' = tira contínua
+  const [thumbMode, setThumbModeRaw] = useState(() => { try { return localStorage.getItem('rf_thumbs') === 'all' ? 'all' : 'head'; } catch { return 'head'; } });
+  const setThumbMode = (v) => { setThumbModeRaw(v); try { localStorage.setItem('rf_thumbs', v); } catch { /* sem armazenamento */ } }; // faixas de vídeo pedidas no "+ Faixa de vídeo"
   const [cur, setCur] = useState(0);
   const curRef = useRef(0); // o playhead atual para funções chamadas fora do render (arrastar na prévia)
   curRef.current = cur;
@@ -2291,6 +2295,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       video: ['Vídeo (V1)', [
         linkItem(),
         { sep: true },
+        { label: `${thumbMode === 'head' ? '✓ ' : ''}Miniatura só no começo de cada clipe (como no Premiere)`, act: () => setThumbMode('head') },
+        { label: `${thumbMode === 'all' ? '✓ ' : ''}Miniaturas contínuas (tira de quadros)`, act: () => setThumbMode('all') },
+        { sep: true },
         { label: 'Excluir faixa: tirar a IMAGEM do vídeo todo (fica só o som)', danger: true, act: () => { if (ask('Deixar o vídeo todo sem imagem (tela preta) e manter o som?')) addBlank(0, dur, { audio: false }); } },
         { label: 'Restaurar a imagem (tirar os trechos sem imagem)', off: !blanks.some((b) => b.audio === false), act: () => setBlanks((l) => l.filter((b) => b.audio !== false)) },
       ]],
@@ -3658,7 +3665,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     let [ow, oh] = AR ? (AR[0] <= AR[1] ? [1080, Math.round((1080 * AR[1]) / AR[0])] : [Math.round((1080 * AR[0]) / AR[1]), 1080]) : [src.w, src.h];
     if (hdAllowed && quality !== 'original') { const k = Number(quality) / Math.min(ow, oh); ow = Math.round((ow * k) / 2) * 2; oh = Math.round((oh * k) / 2) * 2; }
     const scopeK = exportRange ? Math.max(0, keptIn(exportRange.a, exportRange.b)) / Math.max(0.01, keptIn(0, dur)) : 1;
-    const secs = Math.max(0, ((stats.keptSec + retimeDelta) * scopeK) / speed);
+    // a mesma conta do "Duração final" da timeline (com os espaços vazios, antes e depois do
+    // vídeo): antes ficavam de fora e a estimativa saía menor que o vídeo exportado
+    const secs = exportRange ? Math.max(0, ((stats.keptSec + retimeDelta) * scopeK) / speed) : Math.max(0, (stats.keptSec + retimeDelta) / speed + lead + gapSum + tail);
     const hasRange = !!range && range.b - range.a >= 0.3;
     const mbps = (Math.min(ow, oh) >= 2000 ? 35 : Math.min(ow, oh) >= 1000 ? 10 : 5) * (exportFps >= 100 ? 2.2 : exportFps >= 50 ? 1.5 : 1);
     const onlyAudio = exportStreams === 'audio';
@@ -3681,7 +3690,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8, marginBottom: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>Exportar</div>
                 <div role="radiogroup" aria-label="Exportar" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
-                  {[['all', 'Linha toda', `todo o vídeo · ${fmtDuration(dur)}`], ['range', 'Do trecho (entrada → saída)', hasRange ? `${fmtDuration(range.a)} → ${fmtDuration(range.b)}` : 'marque com I e O']].map(([id, label, sub]) => (
+                  {[['all', 'Linha toda', `vídeo final · ${fmtDuration(Math.max(0, (stats.keptSec + retimeDelta) / speed + lead + gapSum + tail))}`], ['range', 'Do trecho (entrada → saída)', hasRange ? `${fmtDuration(range.a)} → ${fmtDuration(range.b)}` : 'marque com I e O']].map(([id, label, sub]) => (
                     <button key={id} role="radio" aria-checked={exportScope === id} disabled={id === 'range' && !hasRange} onClick={() => setExportScope(id)}
                       style={{ ...framingTab(exportScope === id && (id === 'all' || hasRange)), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px', opacity: id === 'range' && !hasRange ? 0.5 : 1, cursor: id === 'range' && !hasRange ? 'not-allowed' : 'pointer' }}>
                       <span style={{ fontSize: 12.5, fontWeight: 800 }}>{label}</span>
@@ -8816,7 +8825,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             )}
             {razorTool && razorT != null && razorT.segs.map((g, i) => (
               // linha fina no ponto do corte, só na(s) faixa(s) que a navalha vai cortar (como no Premiere)
-              <div key={i} style={{ position: 'absolute', left: X(razorT.t), top: g.top, height: g.h, width: 0, borderLeft: '1px solid rgba(255,255,255,0.95)', boxShadow: '0 0 6px rgba(255,107,53,0.9)', pointerEvents: 'none', zIndex: 19 }} />
+              <div key={i} style={{ position: 'absolute', left: X(razorT.t) - 1, top: g.top, height: g.h, width: 2, background: '#fff', boxShadow: '0 0 0 1px rgba(0,0,0,0.75), 0 0 8px rgba(255,107,53,0.95)', borderRadius: 1, pointerEvents: 'none', zIndex: 19 }} />
             ))}
             {rangeTool && !isMobile && (
               <div onMouseDown={(e) => startRangeSel(e)} title="Arraste para selecionar o trecho em todas as faixas · Delete corta vídeo, áudio e legenda · Esc sai"
@@ -9089,9 +9098,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               title="Arraste o clipe para movê-lo · clique seleciona o pedaço · Shift+arrastar (ou a ferramenta R) marca um trecho · solte uma mídia da biblioteca aqui para pôr no vídeo principal"
               style={{ position: 'relative', height: LANE.video, marginTop: 4, borderRadius: 6, overflow: 'hidden', ...LANE_ROW, cursor: 'default', ...lk('vid'), ...(libDrop?.v1 ? { boxShadow: '0 0 0 2px #3B82F6, 0 0 18px rgba(59,130,246,0.55)' } : null) }}
             >
-              {vidSpans.map(([a, b]) => (
-                <div key={a} style={{ position: 'absolute', top: 0, bottom: 0, left: X(a), width: W(a, b), backgroundColor: 'rgba(0,0,0,0.45)', backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: `${dur * pps}px 100%`, backgroundPosition: `${-a * pps}px 0`, backgroundRepeat: 'no-repeat', boxShadow: `inset 0 0 0 1px ${isMobile ? C.border : '#3B6FD6'}`, borderRadius: 4 }} />
-              ))}
+              {vidSpans.map(([a, b]) => (thumbMode === 'head' && !isMobile
+                ? <div key={a} style={{ position: 'absolute', top: 0, bottom: 0, left: X(a), width: W(a, b), background: 'linear-gradient(180deg, #2C6CA6, #1F5486)', boxShadow: 'inset 0 0 0 1px #4B8FD0', borderRadius: 4 }} />
+                : <div key={a} style={{ position: 'absolute', top: 0, bottom: 0, left: X(a), width: W(a, b), backgroundColor: 'rgba(0,0,0,0.45)', backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: `${dur * pps}px 100%`, backgroundPosition: `${-a * pps}px 0`, backgroundRepeat: 'no-repeat', boxShadow: `inset 0 0 0 1px ${isMobile ? C.border : '#3B6FD6'}`, borderRadius: 4 }} />))}
+              {/* Premiere: uma miniatura no começo de cada clipe (quadro do 1º instante visível) */}
+              {thumbMode === 'head' && !isMobile && v1Pieces.map((p) => {
+                if (p.clip.kind === 'blank' || !spanShown(vidSpans, p.va, p.vb)) return null;
+                const w = W(p.va, p.vb);
+                const th = LANE.video - 17;
+                const tw = Math.min(Math.round((th * 16) / 9), Math.max(0, w - 4));
+                if (tw < 12) return null;
+                const idx = Math.max(0, Math.min(119, Math.floor((p.va / Math.max(0.01, dur)) * 120)));
+                return <div key={`th${p.a}`} style={{ position: 'absolute', left: X(p.va) + 2, top: 16, width: tw, height: th, borderRadius: 3, backgroundImage: `url(${filmstripUrl(sourceId)})`, backgroundSize: `${120 * tw}px 100%`, backgroundPosition: `${-idx * tw}px 0`, backgroundRepeat: 'no-repeat', boxShadow: '0 0 0 1px rgba(0,0,0,0.35)', pointerEvents: 'none', zIndex: 1 }} />;
+              })}
               {speedRanges.map((r) => {
                 const on = selKind === 'speed' && selSpeed === r.key;
                 return (
@@ -9186,7 +9205,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 const longer = trim && (v1Drag.kind === 'L' ? trim.v < v0 : trim.v > v0);
                 return (
                   <React.Fragment key={`v1p${k}-${p.a}`}>
-                    {k > 0 && <div style={{ position: 'absolute', left: left - 1, top: 0, bottom: 0, width: 2, background: 'rgba(0,0,0,0.9)', pointerEvents: 'none', zIndex: 3 }} />}
+                    {k > 0 && <div style={{ position: 'absolute', left: left - 1, top: 0, bottom: 0, width: 2, background: 'rgba(0,0,0,0.9)', boxShadow: '1px 0 0 rgba(255,255,255,0.18)', pointerEvents: 'none', zIndex: 3 }} />}
                     {showGrip && w > 24 && (
                       <div className="rf-v1grip" onMouseDown={(e) => startV1Drag('move', k, e)}
                         title={`${k + 1}. ${p.clip.filename || 'clipe'} — arraste para os lados para mover (abre espaço antes) ou passe de outro clipe para mudar a ordem · clique seleciona`}
@@ -9299,6 +9318,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </svg>}
                 </div>
               ))}
+              {/* emendas dos clipes também no áudio (como no Premiere: cada corte separa o clipe) */}
+              {!isMobile && v1Pieces.map((p, k) => (k > 0 && spanShown(audSpans, p.va, p.vb)
+                ? <div key={`ae${p.a}`} style={{ position: 'absolute', left: X(p.va) - 1, top: 0, bottom: 0, width: 2, background: 'rgba(0,0,0,0.85)', boxShadow: '1px 0 0 rgba(255,255,255,0.15)', pointerEvents: 'none', zIndex: 3 }} />
+                : null))}
               {/* pedaço selecionado no A1 (ou o da V1, quando estão vinculados) */}
               {((selKind === 'audio' && selAudio) || (avLinked && selKind === 'video' && selVideo)) && (() => {
                 const sp = selKind === 'audio' ? selAudio : selVideo;
@@ -10331,7 +10354,7 @@ function TrackHead({ h, gap, code, nome, active, hidden, onEye, locked, onLock, 
 
 const LANE_M = { kf: 20, txt: 24, xcap: 26, vfx: 22, ruler: 26, capitulos: 28, legenda: 36, video: 44, zoom: 24, broll: 26, audio: 34, sfx: 22, pausas: 24, midias: 30 };
 // Computador: faixas compactas como no Premiere (cabe tudo na janela, sem rolar).
-const LANE_D = { ...LANE_M, ruler: 24, capitulos: 22, legenda: 34, video: 48, audio: 38, pausas: 20, zoom: 22, broll: 26, midias: 28 };
+const LANE_D = { ...LANE_M, ruler: 24, capitulos: 22, legenda: 34, video: 48, audio: 58, pausas: 20, zoom: 22, broll: 26, midias: 28 };
 
 const LANE_RESIZABLE = ['capitulos', 'legenda', 'xcap', 'midias', 'txt', 'vfx', 'broll', 'zoom', 'kf', 'video', 'audio', 'pausas'];
 const LANE_MIN = { legenda: 22, video: 24, audio: 20, midias: 20, broll: 20 };
@@ -10347,8 +10370,13 @@ function Rotulo({ h, gap, nome, dica }) {
 }
 
 /** Caminho SVG do envelope do áudio (espelhado), em viewBox 0..n por 0..100. */
-function wavePath(peaks) {
-  if (!peaks.length) return '';
+function wavePath(peaks0) {
+  if (!peaks0.length) return '';
+  // onda cheia como no Premiere: a fala normal (95% dos picos) ocupa a faixa toda — um pico
+  // isolado (palma, batida) não encolhe todo o resto
+  const sorted = [...peaks0].sort((x, y) => x - y);
+  const ref = Math.max(0.05, sorted[Math.floor(sorted.length * 0.95)] || 1);
+  const peaks = peaks0.map((v) => Math.min(1, v / ref));
   const top = peaks.map((v, i) => `${i === 0 ? 'M' : 'L'} ${i} ${50 - v * 46}`).join(' ');
   const bottom = peaks.map((_, i) => { const j = peaks.length - 1 - i; return `L ${j} ${50 + peaks[j] * 46}`; }).join(' ');
   return `${top} ${bottom} Z`;

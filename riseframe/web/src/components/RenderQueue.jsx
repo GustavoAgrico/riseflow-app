@@ -77,7 +77,9 @@ export function useRenderWatch(every = 5000) {
           // só vídeos finais/cortes (o "preparando o editor" abre na hora no próprio editor)
           const fresh = jobs.filter((j) => j.mode !== 'transcribe' && ['queued', 'processing', 'paused'].includes(prev.get(j.id)) && (j.status === 'done' || (j.status === 'error' && j.stage !== 'canceled')));
           if (fresh.length) {
-            setNotices((l) => [...l, ...fresh.map((j) => ({ id: j.id, title: j.filename || 'Vídeo', ok: j.status === 'done', error: j.error || '' }))].slice(-4));
+            // um aviso por vídeo: o mesmo nome (exportou de novo) troca o aviso antigo em vez de empilhar
+            const add = fresh.map((j) => ({ id: j.id, title: j.filename || 'Vídeo', ok: j.status === 'done', error: j.error || '' }));
+            setNotices((l) => [...l.filter((n) => !add.some((x) => x.id === n.id || (x.title === n.title && x.ok === n.ok))), ...add.filter((x, i) => add.findIndex((y) => y.title === x.title && y.ok === x.ok) === i)].slice(-4));
             for (const j of fresh) {
               try {
                 if (document.hidden && window.Notification && Notification.permission === 'granted') new Notification('Riseframe', { body: `${j.filename || 'Seu vídeo'} ${j.status === 'done' ? 'ficou pronto!' : 'não deu certo.'}` });
