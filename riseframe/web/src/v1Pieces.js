@@ -1,3 +1,5 @@
+import { keyAt, cleanKeys } from '../../shared/transform.js';
+
 /**
  * Pedaços da faixa V1 (cada um com Transformar/Recortar próprios), como os clipes do
  * Premiere: o vídeo se separa nos começos dos clipes da montagem, na navalha e em cada
@@ -37,4 +39,27 @@ export function v1PiecesOf(clips, splits, gaps, dur) {
   }
   if (carry != null && out.length) out[out.length - 1].b = dur;
   return out;
+}
+
+/**
+ * Quadros-chave do vídeo principal com o Transformar de UM pedaço [a, b] trocado por `ks`
+ * (os quadros do pedaço; vazio = o pedaço sem quadros próprios). Os outros pedaços não
+ * mudam: os valores das bordas vêm dos quadros de ANTES (antes vinham só do que sobrava e o
+ * pedaço seguinte, nunca ajustado, herdava o valor deste — o resto do vídeo saía
+ * deslocado), e a troca na borda é seca (Manter): sem o quadro "misturado" no fim de cada
+ * pedaço. G = ~1 quadro. Puro.
+ */
+export function pieceKeys(keys, a, b, ks0, dur, G = 0.034) {
+  const near = (t, x) => Math.abs(t - x) < 0.006;
+  const pick = (k) => ({ scale: k.scale, x: k.x, y: k.y, rot: k.rot });
+  const list = (keys || []).filter((k) => k.t < a - G - 0.006 || k.t > b + 0.006);
+  const ks = [...(ks0 || [])].sort((x, y) => x.t - y.t);
+  if (ks.length) {
+    if (a - G > 0.001) list.push({ t: a - G, ...keyAt(keys, a - G), hold: true });
+    list.push({ t: a, ...pick(ks[0]) });
+    list.push(...ks.filter((k) => k.t > a + 0.006 && k.t < b - G - 0.006));
+    list.push({ t: b - G, ...pick(ks[ks.length - 1]), hold: true });
+    if (b < dur - 0.001) list.push((keys || []).find((k) => near(k.t, b)) || { t: b, ...keyAt(keys, b) });
+  }
+  return cleanKeys(list);
 }
