@@ -1340,7 +1340,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           }
           fxo.style.opacity = ef === 'strobe' ? (Math.sin(2 * Math.PI * t * 4) > 0.55 ? '1' : '0') : '1';
           if (ef === 'strobe') fxo.style.background = 'rgba(255,255,255,0.45)';
-          L.fxTransform = ef === 'mirror' ? 'scaleX(-1)' : ef === 'shake' ? `rotate(${(2 * Math.sin(57 * t)).toFixed(2)}deg)` : '';
+          L.fxTransform = ef === 'mirror' ? 'scaleX(-1)' : ef === 'vflip' ? 'scaleY(-1)' : ef === 'tilt' ? 'rotate(-4deg)' : ef === 'fisheye' ? 'scale(1.06)' : ef === 'shake' ? `rotate(${(2 * Math.sin(57 * t)).toFixed(2)}deg)` : '';
         }
         lastT = v.paused ? null : t;
       }
@@ -4802,13 +4802,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     { id: 'fav', label: 'Favoritos', icon: '★' },
     { id: 'trans', label: 'Transições', icon: '⧓' },
     { id: 'camera', label: 'Câmera', icon: '⤢' },
-    { id: 'cor', label: 'Cor e look', icon: '◐' },
-    { id: 'distorcao', label: 'Glitch e distorção', icon: '≋' },
-    { id: 'luz', label: 'Luz e textura', icon: '✦' },
+    // efeitos de vídeo nas categorias do Premiere (como o painel do Film Impact)
+    { id: 'nitidez', label: 'Desfoque e nitidez', icon: '◌' },
+    { id: 'cor', label: 'Correção de cor', icon: '◐' },
+    { id: 'distorcao', label: 'Distorcer', icon: '≋' },
+    { id: 'gerar', label: 'Gerar', icon: '▣' },
+    { id: 'imagem', label: 'Controle de imagem', icon: '☀' },
+    { id: 'luz', label: 'Luzes e brilhos', icon: '✦' },
+    { id: 'ruido', label: 'Ruído e granulação', icon: '⁘' },
+    { id: 'perspectiva', label: 'Perspectiva', icon: '◇' },
+    { id: 'estilo', label: 'Estilizar', icon: '✎' },
     { id: 'tempo', label: 'Tempo', icon: '⏱' },
     { id: 'som', label: 'Sons', icon: '♪' },
   ];
-  const VFX_GROUP = { bw: 'cor', retro: 'cor', nostalgic: 'cor', cold: 'cor', warm: 'cor', saturated: 'cor', negative: 'cor', vhs: 'distorcao', glitch: 'distorcao', shake: 'distorcao', strobe: 'distorcao', pixel: 'distorcao', mirror: 'distorcao', grain: 'luz', vignette: 'luz', film: 'luz', blur: 'luz', glow: 'luz' };
+  const VFX_GROUP = { bw: 'cor', nostalgic: 'cor', cold: 'cor', warm: 'cor', saturated: 'cor', negative: 'imagem', retro: 'estilo', vhs: 'distorcao', glitch: 'distorcao', shake: 'distorcao', pixel: 'distorcao', mirror: 'distorcao', strobe: 'luz', glow: 'luz', grain: 'ruido', vignette: 'gerar', film: 'gerar', blur: 'nitidez', blursoft: 'nitidez', bokeh: 'nitidez', chblur: 'nitidez', motionblur: 'nitidez', sharpen: 'nitidez', faded: 'cor', contrast: 'cor', tealorange: 'cor', cinematic: 'cor', desat: 'cor', tint: 'cor', brighten: 'imagem', darken: 'imagem', exposure: 'imagem', vflip: 'distorcao', fisheye: 'distorcao', tilt: 'perspectiva', posterize: 'estilo', edges: 'estilo', sketch: 'estilo', emboss: 'estilo', noisehard: 'ruido', goldlight: 'luz' };
   const shortLabel = (l) => String(l).replace(/\s*\(.*\)\s*$/, '');
   const fxLibrary = [
     ...transOpts.map((o) => ({ cat: 'trans', kind: 'trans', id: o.id, label: shortLabel(o.label), anim: `tr-${o.id}` })),
@@ -5840,7 +5847,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             style={{ width: '100%', boxSizing: 'border-box', height: 28, padding: '0 8px 0 27px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 12, fontFamily: 'inherit' }} />
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '128px minmax(0, 1fr)', minHeight: 230 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '158px minmax(0, 1fr)', minHeight: 230 }}>
         <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', overflowX: isMobile ? 'auto' : 'visible', borderRight: isMobile ? 'none' : `1px solid ${C.border}`, borderBottom: isMobile ? `1px solid ${C.border}` : 'none', padding: 4, gap: 2 }}>
           {FX_CATS.map((c) => {
             const on = !fxQ && fxCat === c.id;
@@ -5850,7 +5857,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11.5, fontWeight: on ? 700 : 500, whiteSpace: 'nowrap', textAlign: 'left',
                   background: on ? 'rgba(255,255,255,0.1)' : 'transparent', color: on ? C.text : C.muted }}>
                 <span style={{ width: 14, textAlign: 'center', color: c.id === 'fav' ? '#FACC15' : C.orangeSoft }}>{c.icon}</span>
-                <span style={{ flex: 1 }}>{c.label}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }} title={c.label}>{c.label}</span>
                 <span style={{ fontSize: 10, color: C.faint }}>{n}</span>
               </button>
             );
@@ -5894,7 +5901,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </div>
           )}
           {fxShown.length === 0 && !(sfxOnline && (sfxOn.busy || sfxOn.err)) && <div style={{ fontSize: 11.5, color: C.faint, padding: 16, textAlign: 'center' }}>{fxCat === 'fav' && !fxQ ? 'Clique na ★ de um efeito para guardar aqui.' : sfxOnline ? 'Nenhum som encontrado — tente outra palavra (em inglês acha mais).' : sfxMine ? (library == null ? 'Carregando…' : 'Você ainda não importou sons. Clique em “+ Importar sons”.') : 'Nenhum efeito encontrado.'}</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${['trans', 'camera', 'tempo', 'som', 'fav'].includes(fxCat) || fxQ ? 104 : 132}px, 1fr))`, gap: 8 }}>
             {fxShown.map((x) => {
               const fav = fxFavs.includes(x.uid);
               return (
@@ -5913,7 +5920,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       </div>
                     ) : (
                       <>
-                        <div className={`rf-fxi a-${x.anim}`} style={{ position: 'absolute', inset: 0, ...thumbFrame, filter: x.kind === 'vfx' ? VIDEO_FX_CSS[x.id] || undefined : undefined, transform: x.id === 'mirror' ? 'scaleX(-1)' : undefined }} />
+                        <div className={`rf-fxi a-${x.anim}`} style={{ position: 'absolute', inset: 0, ...thumbFrame, filter: x.kind === 'vfx' ? VIDEO_FX_CSS[x.id] || undefined : undefined, transform: FX_THUMB_TF[x.id] }} />
                         <div className={`rf-fxo o-${x.anim}`} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
                         {x.kind === 'speed' || x.kind === 'freeze' ? <span style={{ position: 'absolute', right: 4, bottom: 3, fontSize: 10, fontWeight: 800, color: '#fff', textShadow: '0 1px 3px #000' }}>{x.kind === 'freeze' ? `❄ ${x.id}s` : `${x.id.replace('.', ',')}×`}</span> : null}
                       </>
@@ -9888,6 +9895,8 @@ const FX_ANIM_CSS = `
 // Meia duração de cada transição (igual ao servidor) e textura de grão para a prévia.
 const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3 };
 const TRANS_DUR = Object.fromEntries(Object.entries(TRANS_HALF).map(([k, h]) => [k, +(h * 2).toFixed(2)]));
+// Prévia (miniatura) dos efeitos que mexem na geometria do quadro
+const FX_THUMB_TF = { mirror: 'scaleX(-1)', vflip: 'scaleY(-1)', tilt: 'rotate(-4deg) scale(1.1)', fisheye: 'scale(1.08)' };
 // Cursor da navalha (C), como o do Premiere: uma lâmina; o corte acontece no ponto laranja (9,27).
 const RAZOR_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><g transform='rotate(-40 18 13)'><path d='M7.5 8h21a1.5 1.5 0 0 1 1.5 1.5V15H6V9.5A1.5 1.5 0 0 1 7.5 8z' fill='#F4F6F9' stroke='#0B0C10' stroke-width='1.3'/><path d='M6 15h24v3.2H6z' fill='#A9B1BD' stroke='#0B0C10' stroke-width='1.3'/><path d='M6.6 17.4h22.8' stroke='#FFFFFF' stroke-width='0.9'/><rect x='12.5' y='10.4' width='11' height='2.6' rx='1.3' fill='#0B0C10'/><circle cx='10' cy='11.7' r='1.2' fill='#0B0C10'/><circle cx='26' cy='11.7' r='1.2' fill='#0B0C10'/></g><circle cx='9' cy='27' r='2.2' fill='#FF6B35' stroke='#0B0C10' stroke-width='1'/></svg>")}") 9 27, crosshair`;
 const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch', 'whiteout', 'iris']);
