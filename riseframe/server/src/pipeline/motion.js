@@ -133,11 +133,13 @@ export function keyframesVf(rawKeys, meta, { alpha = false } = {}) {
   if (keys.some((k) => Math.abs(k.rot) > 1e-3)) {
     parts.push(`rotate=a='(${keyExpr(keys, 'rot', 't')})*PI/180':c=${bg}`);
   }
-  // zoompan só amplia (zoom ≥ 1): para encolher, o quadro ganha uma moldura preta do
-  // tamanho certo (pad 2×) e o zoom passa a valer o dobro.
-  const shrink = keys.some((k) => k.scale < 1);
-  const f = shrink ? 2 : 1;
-  if (shrink) parts.push(`pad=iw*2:ih*2:iw/2:ih/2:${bg}`);
+  // zoompan só amplia (zoom ≥ 1) e não deixa a janela sair do quadro: para encolher ou
+  // mover além da sobra do zoom (como a prévia deixa), o quadro ganha uma moldura vazia do
+  // tamanho que precisa (f×) e o zoom passa a valer f vezes mais. Sem isso o vídeo "parava"
+  // na borda e saía em outro lugar.
+  const need = Math.max(1, ...keys.map((k) => (1 + 2 * Math.max(Math.abs(k.x), Math.abs(k.y))) / Math.max(0.05, k.scale)));
+  const f = need > 1.0001 ? Math.ceil(need * 4) / 4 : 1;
+  if (f > 1) parts.push(`pad=trunc(iw*${f}/2)*2:trunc(ih*${f}/2)*2:(ow-iw)/2:(oh-ih)/2:${bg}`);
   const T = `on/${fps}`;
   const S = `(${f}*(${keyExpr(keys, 'scale', T)}))`;
   const X = `(${keyExpr(keys, 'x', T)})`;

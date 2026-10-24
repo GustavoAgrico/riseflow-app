@@ -11,7 +11,7 @@ import { silenceRemovalRanges } from './silence.js';
 import { preciseRemovals, wordGapRanges, dropSlivers } from './cutRefine.js';
 import { remapKf } from '../../../shared/layerKeys.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, unmapTime } from './timeline.js';
-import { insertBroll } from './broll.js';
+import { insertBroll, faceCropGeometry } from './broll.js';
 import { applyManualFrame, applyVideoCrop, cleanCrop, cleanCropRanges, hasCrop, applyVideoBlanks, cleanBlanks } from './frame.js';
 import { applyUnderlay, hasUnderlay } from './underlay.js';
 import { applyUserMedia } from './overlay.js';
@@ -32,7 +32,7 @@ import { applyVideoFx } from './videofx.js';
 import { burnTexts } from './texts.js';
 import { applyWatermark } from './watermark.js';
 import { colorFilter, hasColorAdjust } from './color.js';
-import { convertAspect, finalRender, outputTarget, speedFilters } from './render.js';
+import { convertAspect, finalRender, outputTarget, speedFilters, matchesAspect } from './render.js';
 import { retimePieces, retimeTime } from './retime.js';
 import { burnHeadline, makeCover } from './headline.js';
 import { generateClips } from './clips.js';
@@ -594,14 +594,28 @@ export async function runPipeline(job, onUpdate = () => {}) {
   }
 
   // 4a. Mídias por baixo do vídeo principal (V0) + recorte + movimento, numa passada.
+  let underlayFrame = null; // montado já no formato final (o reenquadramento já foi feito)
   if (has('underlay')) {
     const st = enter('underlay');
     const blanksNow = cleanBlanks(options.videoBlanks)
       .map((b) => (cutKeep ? { start: remapTime(b.start, cutKeep), end: remapTime(b.end, cutKeep) } : b))
       .filter((b) => b.end - b.start > 0.04);
-    const r = await applyUnderlay(input, work, meta, options, st.onProgress, transcript.segments, blanksNow);
+    // Formato diferente do vídeo (ex.: 16:9 → 9:16): monta o fundo, o recorte e o Transformar
+    // já no quadro final, com o mesmo enquadramento da prévia (foco + zoom). Antes era tudo
+    // montado no quadro do vídeo e só depois cortado para 9:16 — posição e recorte mudavam.
+    const target = outputTarget(meta, { aspect: options.aspect });
+    if (target && !matchesAspect(meta, target) && !['fit', 'split'].includes(options.reframeMode)) {
+      const focus = Number.isFinite(Number(options.personFocusX))
+        ? { x: Number(options.personFocusX), y: Number.isFinite(Number(options.personFocusY)) ? Number(options.personFocusY) : 0.4 }
+        : { x: 0.5, y: 0.4 };
+      const zoom = Math.min(2.5, Math.max(1, Number(options.personZoom) || 1));
+      underlayFrame = { w: target.w, h: target.h, geo: faceCropGeometry(meta.width, meta.height, target.w, target.h, focus, zoom) };
+    }
+    const r = await applyUnderlay(input, work, meta, options, st.onProgress, transcript.segments, blanksNow, underlayFrame);
     input = r.output;
     trackInput = r.output;
+    if (r.applied && underlayFrame) meta = { ...meta, ...(await probeSummary(input)) };
+    else underlayFrame = null;
     report.underlay = { applied: r.applied, count: r.count };
     st.record(report.underlay);
     st.onProgress(1);
@@ -624,7 +638,12 @@ export async function runPipeline(job, onUpdate = () => {}) {
   // Transformar/zoom no tamanho da metade (como a prévia)
   let preMotionInput = null;
   let personMotion = null;
-  if (has('motion')) {
+  // Formato diferente do vídeo (ex.: 16:9 → 9:16): o Transformar vale no quadro FINAL, como na
+  // prévia (que mexe no vídeo já no 9:16). Antes ampliava/movia o vídeo horizontal e depois
+  // cortava: a posição e o tamanho saíam diferentes do editor.
+  const motionTarget = outputTarget(meta, { aspect: options.aspect });
+  const motionAfterAspect = has('motion') && has('aspect') && Boolean(motionTarget) && !matchesAspect(meta, motionTarget) && options.reframeMode !== 'split';
+  const runMotion = async () => {
     const st = enter('motion');
     const before = input;
     const r = await applyMotion(input, work, meta, options, st.onProgress, transcript.segments);
@@ -634,17 +653,18 @@ export async function runPipeline(job, onUpdate = () => {}) {
     }
     input = r.output;
     trackInput = r.output;
-    report.motion = { effect: r.motion, intensity: options.motionIntensity || 'medio', moments: r.moments, keyframes: r.keyframes };
+    report.motion = { effect: r.motion, intensity: options.motionIntensity || 'medio', moments: r.moments, keyframes: r.keyframes, ...(motionAfterAspect ? { finalFrame: true } : {}) };
     st.record(report.motion);
     st.onProgress(1);
-  }
+  };
+  if (has('motion') && !motionAfterAspect) await runMotion();
 
   // 5b. Reenquadramento manual (zoom + foco no rosto) do VÍDEO INTEIRO — antes do B-roll,
   // para valer no vídeo todo (inclusive fora dos momentos de B-roll) e nunca cortar o
   // B-roll. Na tela dividida, a metade da pessoa usa a fonte SEM este reenquadramento
   // (preFrameInput) e aplica o mesmo foco/zoom no tamanho da metade — como na prévia.
   let preFrameInput = null;
-  if (has('frame')) {
+  if (has('frame') && !underlayFrame) {
     const st = enter('frame');
     preFrameInput = input;
     const r = await applyManualFrame(input, work, meta, options, st.onProgress);
@@ -678,6 +698,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.record({ applied: r.applied, mode: options.reframeMode || 'auto' });
     st.onProgress(1);
   }
+  if (motionAfterAspect) await runMotion();
 
   // 6. B-roll
   let brollWindows = []; // momentos do B-roll em tela dividida (timeline deste vídeo) — a legenda centraliza neles
@@ -685,7 +706,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
     const st = enter('broll');
     // Tela dividida: a pessoa vem da fonte sem o reenquadramento e sem o formato (recorta
     // a metade direto do vídeo original, como a prévia faz).
-    const personInput = preMotionInput || preFrameInput || preAspectInput;
+    // (Transformar depois do formato: a pessoa sai do vídeo de antes do formato, sem movimento)
+    const personInput = motionAfterAspect ? preFrameInput || preAspectInput || preMotionInput : preMotionInput || preFrameInput || preAspectInput;
     const personMeta = personInput ? await probeSummary(personInput) : null;
     const r = await insertBroll(input, work, meta, analysis, { ...options, personInput, personMeta, personMotion: preMotionInput ? personMotion : null }, st.onProgress);
     input = r.output;

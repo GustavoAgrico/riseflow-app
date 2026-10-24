@@ -22,9 +22,14 @@ export const hasUnderlay = (o) => Array.isArray(o?.userMedia) && o.userMedia.som
  * `blanks` = espaços vazios já no tempo do vídeo cortado ([{start,end}]): ali o vídeo
  * principal some e o fundo aparece. → { output, applied, count }
  */
-export async function applyUnderlay(input, work, meta, options, onProgress, segments, blanks = []) {
-  const W = meta.width;
-  const H = meta.height;
+export async function applyUnderlay(input, work, meta, options, onProgress, segments, blanks = [], frame = null) {
+  // frame: monta já no formato final (9:16…), como a prévia — { w, h, geo } com o recorte do
+  // vídeo principal no quadro (faceCropGeometry). Sem ele, no tamanho do próprio vídeo.
+  const W0 = meta.width;
+  const H0 = meta.height;
+  const W = frame ? frame.w : W0;
+  const H = frame ? frame.h : H0;
+  const outMeta = { ...meta, width: W, height: H };
   const dur = meta.duration;
   const fps = Math.max(1, Math.round(meta.fps || 30));
   const vis = (options.userMedia || [])
@@ -50,19 +55,21 @@ export async function applyUnderlay(input, work, meta, options, onProgress, segm
   const cr = cleanCrop(options.videoCrop);
   if (cleanCropRanges(options.cropRanges).length) {
     // recorte por pedaço: as bordas ficam transparentes só no tempo de cada pedaço
-    const boxes = cropBoxesVf(W, H, cr, options.cropRanges, { alpha: true });
+    const boxes = cropBoxesVf(W0, H0, cr, options.cropRanges, { alpha: true });
     if (boxes) chain += `,${boxes}`;
   } else if (cr) {
-    const r = cropRect(W, H, cr);
-    chain += `,crop=${r.w}:${r.h}:${r.x}:${r.y},pad=${W}:${H}:${r.x}:${r.y}:color=black@0`;
+    const r = cropRect(W0, H0, cr);
+    chain += `,crop=${r.w}:${r.h}:${r.x}:${r.y},pad=${W0}:${H0}:${r.x}:${r.y}:color=black@0`;
   }
   const holes = (blanks || []).filter((b) => b.end - b.start > 0.04);
   if (holes.length) chain += `,colorchannelmixer=aa=0:enable='${blanksEnable(holes)}'`;
-  const kVf = keyframesVf(options.transformKeys, meta, { alpha: true });
+  // o recorte (Crop) vale no quadro do vídeo; o Transformar, no quadro final — igual à prévia
+  if (frame) chain += `,scale=${frame.geo.scaledW}:${frame.geo.scaledH}:flags=bicubic,crop=${W}:${H}:${frame.geo.cropX}:${frame.geo.cropY},setsar=1`;
+  const kVf = keyframesVf(options.transformKeys, outMeta, { alpha: true });
   if (kVf) chain += `,${kVf}`;
   const kind = MOTIONS.includes(options.videoMotion) ? options.videoMotion : 'none';
   if (kind !== 'none') {
-    const mVf = momentsZoomVf(dynamicZoomWindows(segments, meta, options.zoomMoments, defaultMomentEffect(kind)), meta, options.motionIntensity);
+    const mVf = momentsZoomVf(dynamicZoomWindows(segments, outMeta, options.zoomMoments, defaultMomentEffect(kind)), outMeta, options.motionIntensity);
     if (mVf) chain += `,${mVf}`;
   }
   parts.push(`${chain}[mv]`, '[bg][mv]overlay=0:0:format=auto,format=yuv420p[vout]');

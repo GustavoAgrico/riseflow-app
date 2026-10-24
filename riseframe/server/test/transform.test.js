@@ -26,7 +26,10 @@ test('keyframesVf: nada a fazer → null; giro e encolher entram no filtro', () 
   assert.match(grow, /^zoompan=z='\(1\*\(/);
   assert.doesNotMatch(grow, /rotate|pad/);
   const both = keyframesVf([{ t: 0, scale: 1 }, { t: 2, scale: 0.5, rot: 30 }], meta);
-  assert.match(both, /^rotate=a='.*\*PI\/180':c=black,pad=iw\*2:ih\*2:iw\/2:ih\/2:black,zoompan=z='\(2\*/);
+  assert.match(both, /^rotate=a='.*\*PI\/180':c=black,pad=trunc\(iw\*2\/2\)\*2:trunc\(ih\*2\/2\)\*2:\(ow-iw\)\/2:\(oh-ih\)\/2:black,zoompan=z='\(2\*/);
+  // mover além da sobra do zoom: moldura grande o bastante (a prévia deixa passar da borda)
+  const moved = keyframesVf([{ t: 0, scale: 1.219, x: 0.1, y: 0.15 }], meta);
+  assert.match(moved, /^pad=trunc\(iw\*1\.25\/2\)\*2:.*zoompan=z='\(1\.25\*/);
 });
 
 test('momentos: cada efeito só dentro da janela; padrão vem do efeito geral', () => {
