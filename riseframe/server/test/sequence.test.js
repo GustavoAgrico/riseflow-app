@@ -58,7 +58,7 @@ test('um vídeo inteiro entra original (sem recodificar)', { timeout: 60000 }, a
   const v = { kind: 'video', in: 0, out: 3, _dur: 3, _w: 360, _h: 640 };
   assert.equal(canCopyWhole([v], null, 'auto'), true);
   assert.equal(canCopyWhole([v], null, '9:16'), true, 'mesma proporção');
-  assert.equal(canCopyWhole([v], null, '16:9'), false, 'outro formato: monta de novo');
+  assert.equal(canCopyWhole([v], null, '16:9'), true, 'outro formato: entra original (o formato é aplicado depois)');
   assert.equal(canCopyWhole([{ ...v, in: 1 }], null, 'auto'), false, 'aparado: monta de novo');
   assert.equal(canCopyWhole([v], { file: 'x.mp3' }, 'auto'), false, 'com música: monta de novo');
   assert.equal(canCopyWhole([v, v], null, 'auto'), false);

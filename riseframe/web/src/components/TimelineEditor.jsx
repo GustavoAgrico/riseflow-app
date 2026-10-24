@@ -4258,7 +4258,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const showZoomLane = fx.videoMotion !== 'none';
   const showChapLane = chapters.length > 0 && !isMobile;
   const legH = isMobile ? 44 : LANE.legenda;
-  const showBrollLane = !!brollReview?.moments?.length;
 
   const selSeg = segments[sel];
 
@@ -5100,6 +5099,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return v1PiecesOf(v1Clips, vsplits, [...allGaps, ...gaps], dur);
   }, [v1Clips, vsplits, allGaps, gaps, dur]);
 
+  // Faixa V2 (B-roll): só os que vão entrar no vídeo — sem os desligados, sem os de trechos
+  // excluídos e nada quando a V1 está vazia (excluiu o vídeo). Os desligados continuam na
+  // aba B-roll para voltar.
+  const brollLaneItems = !v1Clips.length ? [] : (brollReview?.moments || []).map((m, i) => ({ m, i })).filter(({ m }) => !m.removed
+    && ![...allGaps, ...gaps].some(([a, b]) => m.start >= a - 0.02 && m.end <= b + 0.02)
+    && !blanks.some((x) => m.start >= x.start - 0.02 && m.end <= x.end + 0.02));
+  const showBrollLane = brollLaneItems.length > 0;
   /** Plano para remontar: cada pedaço vira clipe(s) da montagem com os cortes grandes já aplicados. */
   function v1Plan({ restore = null } = {}) {
     // pausas curtas a transcrição nova acha e corta de novo; o servidor aceita até 80 clipes
@@ -8885,7 +8891,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {/* Faixa B-ROLL: momentos revisados (clique abre o ajuste; arraste move) */}
             {showBrollLane && (
               <div data-lane="broll" style={{ position: 'relative', height: LANE.broll, marginTop: 4, ...LANE_ROW, opacity: brollOn ? 1 : 0.35, ...lk('broll') }} title={brollOn ? undefined : 'B-roll desligado (aba B-roll)'}>
-                {brollReview.moments.map((m, i) => {
+                {brollLaneItems.map(({ m, i }) => {
                   const isSel = i === selBroll;
                   const th = thumbOf(m);
                   return (
