@@ -51,3 +51,12 @@ test('transições de câmera (zoom, deslizar, giro, tremor) e glitch: o FFmpeg 
   const r = spawnSync(ffmpegPath, ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=30:d=3', '-vf', `${cam},${gl},${wo},${ir}`, '-f', 'null', '-']);
   assert.equal(r.status, 0, r.stderr.toString());
 });
+
+test('transições novas (vazamento de luz, estática, divisão RGB): o FFmpeg aceita o filtro', { timeout: 60000 }, async () => {
+  const { ffmpegPath } = await import('../src/pipeline/ffmpeg.js');
+  const { spawnSync } = await import('node:child_process');
+  const vf = ['lightleak', 'static', 'rgbsplit'].map((t, i) => transitionVf(t, [0.6 + i * 0.7], 3)).join(',');
+  assert.match(vf, /gamma_r=/);
+  const r = spawnSync(ffmpegPath, ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=30:d=3', '-vf', vf, '-f', 'null', '-']);
+  assert.equal(r.status, 0, r.stderr.toString());
+});
