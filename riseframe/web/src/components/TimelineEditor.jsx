@@ -2310,7 +2310,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
     if (/^m\d+$/.test(id)) {
       const layer = Number(id.slice(1));
-      L[id] = [`Camada ${layer + 1} (M${layer + 1})`, [
+      L[id] = [`Faixa de vídeo (camada ${layer + 1})`, [
         { label: laneHide[id] ? 'Mostrar a faixa' : 'Ocultar a faixa', act: () => togHide(id) },
         { sep: true },
         { label: 'Excluir faixa (apagar as mídias desta camada)', danger: true, act: () => { if (ask(`Apagar todas as mídias da camada ${layer + 1}?`)) setMedia((l) => normalizeLayers(l.filter((m) => m.under || (m.layer || 0) !== layer))); } },
@@ -8740,13 +8740,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {showChapLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('capitulos', e)} onResetSize={() => resetLane('capitulos')} h={LANE.capitulos} gap={4} code="CH" nome="Capítulos" />}
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('legenda', e)} onResetSize={() => resetLane('legenda')} h={legH} gap={6} code="C1" nome="Legenda" onMenu={(e) => openTrackMenu(e, 'legenda')} hidden={cap.captions === false} onEye={() => setCap((c) => ({ ...c, captions: c.captions === false }))} locked={laneLock.leg} onLock={() => togLock('leg')} />
             {extraCaps.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('xcap', e)} onResetSize={() => resetLane('xcap')} h={LANE.xcap} gap={4} code="C2" nome="Suas legendas" onMenu={(e) => openTrackMenu(e, 'xcap')} hidden={laneHide.xcap} onEye={() => togHide('xcap')} locked={laneLock.xcap} onLock={() => togLock('xcap')} />}
-            {mediaRows > 0 && rowLayers.map((l, r) => (
-              <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('midias', e)} onResetSize={() => resetLane('midias')} key={`m${r}`} h={LANE.midias} gap={r === 0 ? 4 : 0} code={`M${mediaRows - r}`} nome={`Camada ${mediaRows - r}`} onMenu={(e) => openTrackMenu(e, `m${l}`)} hidden={laneHide[`m${l}`]} onEye={() => togHide(`m${l}`)} locked={laneLock[`m${l}`]} onLock={() => togLock(`m${l}`)} />
-            ))}
             {textLayers.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('txt', e)} onResetSize={() => resetLane('txt')} h={txtH} gap={4} code="T1" nome="Textos" onMenu={(e) => openTrackMenu(e, 'txt')} hidden={laneHide.txt} onEye={() => togHide('txt')} locked={laneLock.txt} onLock={() => togLock('txt')} />}
             {fxMoments.length > 0 && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('vfx', e)} onResetSize={() => resetLane('vfx')} h={LANE.vfx} gap={4} code="FX" nome="Efeitos" onMenu={(e) => openTrackMenu(e, 'vfx')} hidden={laneHide.vfx} onEye={() => togHide('vfx')} locked={laneLock.vfx} onLock={() => togLock('vfx')} />}
-            {showBrollLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('broll', e)} onResetSize={() => resetLane('broll')} h={LANE.broll} gap={4} code="V2" nome="B-roll" onMenu={(e) => openTrackMenu(e, 'broll')} hidden={!brollOn} onEye={() => setBrollOn((v) => !v)} locked={laneLock.broll} onLock={() => togLock('broll')} />}
             {showZoomLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('zoom', e)} onResetSize={() => resetLane('zoom')} h={LANE.zoom} gap={4} code="ZM" nome="Zoom" onMenu={(e) => openTrackMenu(e, 'zoom')} locked={laneLock.zoom} onLock={() => togLock('zoom')} />}
+            {mediaRows > 0 && rowLayers.map((l, r) => (
+              <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('midias', e)} onResetSize={() => resetLane('midias')} key={`m${r}`} h={LANE.midias} gap={r === 0 ? 4 : 0} code={`V${mediaRows - r + (showBrollLane ? 2 : 1)}`} nome={`Vídeo ${mediaRows - r + (showBrollLane ? 2 : 1)}`} onMenu={(e) => openTrackMenu(e, `m${l}`)} hidden={laneHide[`m${l}`]} onEye={() => togHide(`m${l}`)} locked={laneLock[`m${l}`]} onLock={() => togLock(`m${l}`)} />
+            ))}
+            {showBrollLane && <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('broll', e)} onResetSize={() => resetLane('broll')} h={LANE.broll} gap={4} code="V2" nome="B-roll" onMenu={(e) => openTrackMenu(e, 'broll')} hidden={!brollOn} onEye={() => setBrollOn((v) => !v)} locked={laneLock.broll} onLock={() => togLock('broll')} />}
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('video', e)} onResetSize={() => resetLane('video')} h={LANE.video} gap={4} code="V1" active nome={avLinked ? 'Vídeo' : 'Vídeo · solto'} onMenu={(e) => openTrackMenu(e, 'video')} locked={laneLock.vid} onLock={() => togLock('vid')} />
             {showV0 && <TrackHead h={v0H} gap={4} code="V0" nome="Por baixo" onMenu={(e) => openTrackMenu(e, 'v0')} hidden={laneHide.v0} onEye={() => togHide('v0')} locked={laneLock.v0} onLock={() => togLock('v0')} />}
             <TrackHead onResize={isMobile ? undefined : (e) => startLaneResize('audio', e)} onResetSize={() => resetLane('audio')} h={LANE.audio} gap={4} code="A1" active nome={avLinked ? 'Áudio' : 'Áudio · solto'} onMenu={(e) => openTrackMenu(e, 'audio')} muted={audioMute} onMute={() => setAudioMute((v) => !v)} locked={laneLock.aud} onLock={() => togLock('aud')} />
@@ -8927,15 +8927,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 })}
               </div>
             )}
-            {/* Lane das minhas mídias — arraste para mover, pontas para redimensionar */}
-            {mediaRows > 0 && (
-              <div data-lane="midias" style={{ position: 'relative', height: LANE.midias * mediaRows, marginTop: 4 }}>
-                {Array.from({ length: mediaRows - 1 }, (_, r) => (
-                  <div key={r} style={{ position: 'absolute', left: 0, right: 0, top: (r + 1) * LANE.midias - 1, borderTop: `1px dashed ${C.border}`, pointerEvents: 'none' }} />
-                ))}
-                {topVis.map(mediaChip)}
-              </div>
-            )}
             {/* Faixa TEXTOS: textos livres (arraste para mover, pontas mudam o tempo) */}
             {textLayers.length > 0 && (
               <div data-lane="txt" style={{ position: 'relative', height: txtH, marginTop: 4, ...LANE_ROW, ...(laneHide.txt ? LANE_HIDDEN : null), ...lk('txt') }}>
@@ -8978,6 +8969,42 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 })}
               </div>
             )}
+            {/* Faixa ZOOM: momentos-chave do movimento (editáveis) */}
+            {showZoomLane && (
+              <div data-lane="zoom" style={{ position: 'relative', height: LANE.zoom, marginTop: 4, ...LANE_ROW, ...lk('zoom') }}>
+                {(zoomMoments || []).map((z) => {
+                  const isSel = z.key === selZoom;
+                  return (
+                    <div
+                      key={z.key}
+                      title={`Zoom ${Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}× — clique para ajustar, arraste para mover`}
+                      onMouseDown={(e) => { setSelZoom(z.key); setSelKind('zoom'); startRangeDrag(setZoomMoments, z, 'move', e); }}
+                      onClick={(e) => { e.stopPropagation(); setSelZoom(z.key); setSelKind('zoom'); setTab('efeitos'); seek(z.start); }}
+                      style={{
+                        position: 'absolute', left: X(z.start), width: Math.max(14, W(z.start, z.end) - 1), top: 0, bottom: 0, borderRadius: 5,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
+                        border: `1px solid ${isSel ? '#fff' : C.orange}`, background: isSel ? 'rgba(255,107,53,0.5)' : 'rgba(255,107,53,0.25)',
+                        fontSize: 10, fontWeight: 700, color: C.text,
+                      }}
+                    >
+                      <Icon name="search" size={10} strokeWidth={2.4} /> {Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}×
+                      <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'left', e)} style={handleStyle('left')} />
+                      <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'right', e)} style={handleStyle('right')} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {/* Faixas de vídeo V2, V3… (camadas): logo acima da V1, como as faixas do Premiere — arraste para mover, pontas redimensionam */}
+            {mediaRows > 0 && (
+              <div data-lane="midias" style={{ position: 'relative', height: LANE.midias * mediaRows, marginTop: 4 }}>
+                {/* cada faixa (V2, V3…) com o fundo de faixa, como no Premiere */}
+                {Array.from({ length: mediaRows }, (_, r) => (
+                  <div key={r} style={{ position: 'absolute', left: 0, right: 0, top: r * LANE.midias + 1, height: LANE.midias - 2, ...LANE_ROW, pointerEvents: 'none' }} />
+                ))}
+                {topVis.map(mediaChip)}
+              </div>
+            )}
             {/* Faixa B-ROLL: momentos revisados (clique abre o ajuste; arraste move) */}
             {showBrollLane && (
               <div data-lane="broll" style={{ position: 'relative', height: LANE.broll, marginTop: 4, ...LANE_ROW, opacity: brollOn ? 1 : 0.35, ...lk('broll') }} title={brollOn ? undefined : 'B-roll desligado (aba B-roll)'}>
@@ -9008,32 +9035,6 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: m.removed ? 'line-through' : 'none' }}>{m.term}</span>
                       <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'left', e)} style={handleStyle('left')} />
                       <div onMouseDown={(e) => startRangeDrag(setBrollMoments, m, 'right', e)} style={handleStyle('right')} />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {/* Faixa ZOOM: momentos-chave do movimento (editáveis) */}
-            {showZoomLane && (
-              <div data-lane="zoom" style={{ position: 'relative', height: LANE.zoom, marginTop: 4, ...LANE_ROW, ...lk('zoom') }}>
-                {(zoomMoments || []).map((z) => {
-                  const isSel = z.key === selZoom;
-                  return (
-                    <div
-                      key={z.key}
-                      title={`Zoom ${Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}× — clique para ajustar, arraste para mover`}
-                      onMouseDown={(e) => { setSelZoom(z.key); setSelKind('zoom'); startRangeDrag(setZoomMoments, z, 'move', e); }}
-                      onClick={(e) => { e.stopPropagation(); setSelZoom(z.key); setSelKind('zoom'); setTab('efeitos'); seek(z.start); }}
-                      style={{
-                        position: 'absolute', left: X(z.start), width: Math.max(14, W(z.start, z.end) - 1), top: 0, bottom: 0, borderRadius: 5,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'grab', overflow: 'hidden', whiteSpace: 'nowrap',
-                        border: `1px solid ${isSel ? '#fff' : C.orange}`, background: isSel ? 'rgba(255,107,53,0.5)' : 'rgba(255,107,53,0.25)',
-                        fontSize: 10, fontWeight: 700, color: C.text,
-                      }}
-                    >
-                      <Icon name="search" size={10} strokeWidth={2.4} /> {Number(z.scale || MOTION_Z[fx.motionIntensity] || 1.12).toFixed(2)}×
-                      <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'left', e)} style={handleStyle('left')} />
-                      <div onMouseDown={(e) => startRangeDrag(setZoomMoments, z, 'right', e)} style={handleStyle('right')} />
                     </div>
                   );
                 })}
