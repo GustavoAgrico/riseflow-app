@@ -18,17 +18,23 @@ export function v1PiecesOf(clips, splits, gaps, dur) {
   const pts = [...new Set([0, dur, ...clips.map((c) => c.start), ...(splits || []), ...pg.flat()].map((x) => +(+x).toFixed(3)))]
     .filter((x) => x >= 0 && x <= dur).sort((a, b) => a - b);
   const out = [];
+  // o trecho cortado entre dois pedaços fica com o pedaço SEGUINTE (o do começo do vídeo, com
+  // o primeiro; o do fim, com o último): o pedaço cobre tudo e nenhum quadro fica sem dono
+  let carry = null;
   for (let k = 0; k + 1 < pts.length; k++) {
-    const a = pts[k];
+    const a0 = pts[k];
     const b = pts[k + 1];
-    if (b - a < 0.05) continue;
-    let va = a;
+    if (b - a0 < 0.05) { if (carry == null) carry = a0; continue; }
+    let va = a0;
     let vb = b;
     for (const [g0, g1] of pg) if (g0 <= va + 0.01 && g1 > va) va = g1;
     for (let gi = pg.length - 1; gi >= 0; gi--) { const [g0, g1] = pg[gi]; if (g1 >= vb - 0.01 && g0 < vb) vb = g0; }
-    if (vb - va < 0.03) continue; // pedaço inteiro cortado
-    const clip = clips.find((c) => a >= c.start - 0.01 && a < c.end - 0.01) || clips[0];
+    if (vb - va < 0.03) { if (carry == null) carry = a0; continue; } // pedaço inteiro cortado
+    const a = carry ?? a0;
+    carry = null;
+    const clip = clips.find((c) => va >= c.start - 0.01 && va < c.end - 0.01) || clips[0];
     out.push({ a, b, va, vb, clip });
   }
+  if (carry != null && out.length) out[out.length - 1].b = dur;
   return out;
 }

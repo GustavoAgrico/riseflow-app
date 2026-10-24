@@ -11,4 +11,8 @@ test('V1: cada trecho cortado separa o vídeo em pedaços (como os clipes do Pre
   const q = v1PiecesOf(clips, [12], [[11, 12], [12, 12.5]], 20);
   assert.deepEqual(q.map((x) => [x.va, x.vb]), [[0, 11], [12.5, 20]]);
   assert.deepEqual(v1PiecesOf([], [], [], 10), []);
+  // começo e fim cortados: ficam com o primeiro/último pedaço (nenhum quadro sem dono)
+  const r = v1PiecesOf(clips, [], [[0, 1], [6, 7], [18, 20]], 20);
+  assert.deepEqual(r.map((x) => [x.a, x.b, x.va, x.vb]), [[0, 6, 1, 6], [6, 20, 7, 18]]);
+  assert.equal(r[r.length - 1].b, 20);
 });
