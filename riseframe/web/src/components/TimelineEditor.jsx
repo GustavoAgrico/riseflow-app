@@ -13,13 +13,13 @@ import { CaptionOverlay } from './CaptionPreview.jsx';
 import SnapGuides, { snapCenter, setUserGuides } from './SnapGuides.jsx';
 import MonitorGuides, { GUIDE_TEMPLATES, withIds } from './MonitorGuides.jsx';
 import KeyframeLanes, { layerRows } from './KeyframeLanes.jsx';
-import { v1PiecesOf } from '../v1Pieces.js';
+import { v1PiecesOf, pieceKeys } from '../v1Pieces.js';
 import { loadAutosave, saveAutosave, markAutosaveSubmitted, clearAutosave, packState, unpackState } from '../autosave.js';
 import CaptionGallery, { FontPicker, ColorSwatches, TextStyleBar } from './CaptionGallery.jsx';
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, playSfxUrl, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
-import { keyAt, cleanKeys, keysChangeAnything, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
+import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
 import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
@@ -2327,6 +2327,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       { label: avLinked ? 'Excluir (deixar vazio: imagem e som)' : 'Excluir só a imagem (o som fica)', danger: true, act: () => addBlank(piece.a, piece.b, { audio: avLinked }) },
       { label: 'Excluir e fechar o espaço (imagem e som)', act: () => closeRange(piece.a, piece.b) },
       { label: 'Dividir no ponteiro', off: !(cur > piece.a + 0.05 && cur < piece.b - 0.05), act: () => razorCut(cur) },
+      { label: 'Subir o vídeo por cima das faixas V2, V3… (neste clipe)', act: () => v1RaiseTo(piece.a, piece.b) },
       { sep: true },
       linkItem(),
     ] : [
@@ -3844,7 +3845,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // cronômetro ligado, o valor é fixo no vídeo todo (um quadro só).
   const [v1KfOn, setV1KfOn] = useState(false);
   const [v1Scope, setV1Scope] = useState('piece'); // Transformar: só o pedaço ou o vídeo inteiro
-  const v1Anim = v1KfOn || transformKeys.length > 1;
+  // true = cronômetro ligado no vídeo inteiro; um número = ligado só no pedaço que começa ali
+  const v1Anim = v1KfOn === true || transformKeys.length > 1;
   const setV1 = (prop, v) => { if (v1Anim) setKeyValue(prop, v); else setTransformKeys(cleanKeys([{ t: 0, ...K, [prop]: v }])); };
   const v1Kf = {
     on: v1Anim,
@@ -4019,28 +4021,28 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const rest = transformKeys.filter((k) => k.t < a - G - 0.006 || k.t > b + 0.006);
       const inner = transformKeys.filter((k) => k.t > a + 0.006 && k.t < b - G - 0.006);
       const holdA = transformKeys.find((k) => near(k.t, a)) || null;
-      const tP = Math.min(Math.max(cur, a), b - G);
+      // o trecho cortado antes do pedaço não aparece: o quadro vai no 1º instante visível
+      const tP = Math.min(Math.max(cur, piece.va ?? a), b - G);
       KV = keyAt(transformKeys, tP);
       const writePiece = (keys) => {
-        const list = [...rest];
-        const ks = [...keys].sort((x, y) => x.t - y.t);
-        if (ks.length) {
-          if (a - G > 0.001) list.push({ t: a - G, ...keyAt(rest, a - G) });
-          list.push({ t: a, ...pick(ks[0]) });
-          list.push(...ks.filter((k) => k.t > a + 0.006 && k.t < b - G - 0.006));
-          list.push({ t: b - G, ...pick(ks[ks.length - 1]) });
-          if (b < dur - 0.001) list.push({ t: b, ...keyAt(rest, b) });
-        }
-        setTransformKeys(cleanKeys(list));
+        const next = pieceKeys(transformKeys, a, b, keys, dur);
+        setTransformKeys(keysChangeAnything(next) ? next : []);
       };
       const real = inner.length ? inner : holdA ? [holdA] : [];
-      const anim = v1KfOn || inner.length > 0;
+      // o cronômetro ligado vale só para ESTE pedaço (antes ficava ligado nos outros e o 1º
+      // ajuste neles virava uma animação saindo do valor antigo — o começo "pulava")
+      const anim = v1KfOn === a || inner.length > 0;
       const upsert = (list, t, k) => [...list.filter((x) => Math.abs(x.t - t) >= 0.04), { t, ...k }];
       v1AnimV = anim;
       setV1V = (prop, v) => {
         if (!anim) { writePiece([{ t: a, ...KV, [prop]: v }]); return; }
-        const t = +tP.toFixed(3);
-        writePiece(upsert(real.length ? real : [{ t: a, ...KV }], t, { ...KV, [prop]: v }));
+        // perto de um quadro (até 0,2 s): muda o próprio quadro — não cria sem querer uma
+        // animação de 1 ou 2 quadros saindo do valor antigo
+        const ck = [...real].sort((x, y) => Math.abs(x.t - tP) - Math.abs(y.t - tP))[0];
+        if (ck && Math.abs(ck.t - tP) <= 0.2) { writePiece(real.map((k) => (k === ck ? { ...k, [prop]: v } : k))); return; }
+        // sem quadro ainda: só o de agora (antes, do começo do pedaço até aqui ele animava
+        // a partir do valor antigo)
+        writePiece(upsert(real, +tP.toFixed(3), { ...KV, [prop]: v }));
       };
       const here = real.some((k) => Math.abs(k.t - tP) < 0.04);
       const marks = [...real].sort((x, y) => x.t - y.t);
@@ -4050,16 +4052,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         on: anim,
         here,
         onToggle: () => {
-          if (!anim) { setV1KfOn(true); writePiece(upsert(real.length ? real : [], +tP.toFixed(3), KV)); return; }
+          if (!anim) { setV1KfOn(a); writePiece(upsert(real.length ? real : [], +tP.toFixed(3), KV)); return; }
           if (inner.length > 0 && !window.confirm('Desligar a animação apaga os quadros-chave deste pedaço. Ele fica parado no valor de agora. Continuar?')) return;
-          writePiece(keysChangeAnything([KV]) ? [{ t: a, ...KV }] : []);
+          writePiece([{ t: a, ...(keysChangeAnything([KV]) ? KV : NEUTRAL_KEY) }]);
           setV1KfOn(false);
         },
         onKey: () => writePiece(here ? real.filter((k) => Math.abs(k.t - tP) >= 0.04) : upsert(real, +tP.toFixed(3), KV)),
         onPrev: prevK ? () => seek(prevK.t) : null,
         onNext: nextK ? () => seek(nextK.t) : null,
       };
-      resetV = () => { writePiece([]); setV1KfOn(false); };
+      // Redefinir: o pedaço volta ao normal (antes só apagava os quadros e ele herdava o vizinho)
+      resetV = () => { writePiece([{ t: a, ...NEUTRAL_KEY }]); setV1KfOn(false); };
     }
     return (
       <div style={{ display: 'grid', gap: 10 }}>
@@ -4125,13 +4128,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             const inR = (k) => k.t >= a0 - 0.001 && k.t <= b0 + 0.001;
             const keysIn = transformKeys.filter(inR).map((k) => ({ ...k, t: +(k.t - a0).toFixed(3) }));
             const write = (list) => setTransformKeys(cleanKeys([...transformKeys.filter((k) => !inR(k)), ...list.map((k) => ({ ...k, t: +(k.t + a0).toFixed(3) }))]));
-            const ids = [...new Set(keysIn.map(kfInterpOf))];
+            // as bordas do pedaço (troca seca para o vizinho) não entram na interpolação
+            const ids = [...new Set(keysIn.filter((k) => !piece || k.t < b0 - a0 - 0.04).map(kfInterpOf))];
             return (
               <>
                 <KeyframeLanes start={a0} duration={b0 - a0} rows={[{ id: 'v1', label: 'Movimento', keys: keysIn, onChange: write }]} cur={cur} onSeek={seek} />
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>
                   Interpolação de todos os quadros
-                  <select value={ids.length === 1 ? ids[0] : ''} onChange={(e) => { const id = e.target.value; if (id) write(keysIn.map((k) => withInterp(k, id))); }}
+                  <select value={ids.length === 1 ? ids[0] : ''} onChange={(e) => { const id = e.target.value; if (id) write(keysIn.map((k) => (piece && k.t >= b0 - a0 - 0.04 ? k : withInterp(k, id)))); }}
                     style={{ height: 28, borderRadius: 7, border: `1px solid ${C.border}`, background: '#101016', color: C.text, fontSize: 12, fontFamily: 'inherit' }}>
                     <option value="">— misturada —</option>
                     {Object.entries(KF_INTERPS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
@@ -5634,7 +5638,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     e.stopPropagation();
     e.preventDefault();
     // off: onde pegou dentro do pedaço (a ordem nova segue a posição do mouse)
-    v1DragRef.current = { kind, k, x0: e.clientX, dx: 0, off: e.clientX - e.currentTarget.getBoundingClientRect().left + (kind === 'move' ? 10 : 0) };
+    v1DragRef.current = { kind, k, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, off: e.clientX - e.currentTarget.getBoundingClientRect().left + (kind === 'move' ? 10 : 0) };
     setV1Drag(v1DragRef.current);
     document.body.style.userSelect = 'none';
   }
@@ -5651,7 +5655,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (blanks.some((b) => t >= b.start && t < b.end)) return false; // espaço vazio: clique seleciona ele
     e.stopPropagation();
     e.preventDefault();
-    v1DragRef.current = { kind: 'move', k, x0: e.clientX, dx: 0, off: e.clientX - (left + X(v1Pieces[k].va)) };
+    v1DragRef.current = { kind: 'move', k, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, off: e.clientX - (left + X(v1Pieces[k].va)) };
     setV1Drag(v1DragRef.current);
     document.body.style.userSelect = 'none';
     return true;
@@ -5737,7 +5741,43 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const d = v1DragRef.current;
     if (!d) return;
     d.dx = e.clientX - d.x0;
+    d.dy = e.clientY - (d.y0 ?? e.clientY);
+    d.cx = e.clientX;
+    d.cy = e.clientY;
     setV1Drag({ ...d });
+  }
+  /** Arrastou o clipe da V1 para CIMA (como subir o clipe de faixa no Premiere)? */
+  const v1Raising = (d) => !!d && d.kind === 'move' && d.dy < -LANE.video * 0.5 && Math.abs(d.dy) > Math.abs(d.dx);
+  /**
+   * Subir o vídeo principal de faixa: soltando numa faixa V2, V3… (ou acima de todas), as
+   * imagens/vídeos dessa faixa e das de baixo, no tempo deste clipe, passam para POR BAIXO
+   * dele (V0) — o vídeo fica por cima delas, como no Premiere ao subir o clipe para a V3.
+   * A ordem entre elas continua a mesma (a de cima continua por cima).
+   */
+  function v1RaiseOver(p, x, y) {
+    const el = document.elementFromPoint(x, y)?.closest?.('[data-lane]');
+    const lane = el?.dataset?.lane;
+    if (lane === 'v1' || lane === 'v0' || lane === 'a1' || lane === 'aux' || lane === 'sfx' || lane === 'pausas') return;
+    let maxL = Infinity; // camadas até esta (inclusive) vão para baixo do vídeo
+    if (lane === 'midias') {
+      const r = Math.floor((y - el.getBoundingClientRect().top) / LANE.midias);
+      maxL = rowLayers[Math.max(0, Math.min(rowLayers.length - 1, r))] ?? Infinity;
+    } else if (lane === 'broll') maxL = -1; // logo acima da V1: não passa por cima de nada
+    v1RaiseTo(p.va, p.vb, maxL);
+  }
+  function v1RaiseTo(a, b, maxL = Infinity) {
+    const goes = topVis.filter((m) => (m.layer || 0) <= maxL && m.start < b - 0.01 && m.start + m.duration > a + 0.01);
+    if (!goes.length) {
+      flashNote(mediaRows ? 'Solte o clipe numa faixa V2, V3… (ou acima delas): o vídeo passa por cima do que estiver nela e nas de baixo.' : 'Não há imagem nem vídeo acima do vídeo principal neste trecho: ele já está por cima de tudo.');
+      return;
+    }
+    const ids = new Set(goes.map((m) => m.key));
+    setMedia((list) => {
+      const base = list.reduce((mx, m) => (m.under ? Math.max(mx, Number(m.layer) || 0) : mx), 0) + 1;
+      return normalizeLayers(list.map((m) => (ids.has(m.key) ? { ...m, under: true, layer: base + (m.layer || 0) } : m)));
+    });
+    const names = [...new Set(goes.map((m) => m.filename || 'mídia'))];
+    flashNote(`O vídeo subiu: ${names.slice(0, 3).join(', ')}${names.length > 3 ? '…' : ''} ${goes.length > 1 ? 'ficam' : 'fica'} por baixo dele (V0) — Ctrl+Z desfaz.`);
   }
   function v1DragUp() {
     const d = v1DragRef.current;
@@ -5748,6 +5788,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const p = v1Pieces[d.k];
     if (!p) return;
     if (d.kind === 'move') {
+      if (v1Raising(d)) { v1RaiseOver(p, d.cx, d.cy); return; }
       if (Math.abs(d.dx) < 4) { // clique: seleciona o pedaço
         setSelKind('video');
         setSelVideo({ start: p.a, end: p.b });
@@ -9134,7 +9175,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 const left = X(p.va);
                 const w = W(p.va, p.vb);
                 const dragging = v1Drag && v1Drag.k === k;
-                const moving = dragging && v1Drag.kind === 'move' && Math.abs(v1Drag.dx) >= 4;
+                const raising = dragging && v1Raising(v1Drag);
+                const moving = dragging && v1Drag.kind === 'move' && Math.abs(v1Drag.dx) >= 4 && !raising;
                 const trim = dragging && v1Drag.kind !== 'move' ? v1TrimInfo(v1Drag) : null;
                 if (p.clip.kind === 'blank') return null; // pedaço vazio: sem alças nem nome
                 if (!spanShown(vidSpans, p.va, p.vb) && !spanShown(audSpans, p.va, p.vb)) return null; // excluído: a faixa fica limpa
@@ -9156,6 +9198,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                       style={{ position: 'absolute', left, width: 8, top: 15, bottom: 0, zIndex: 5, cursor: 'ew-resize' }} />
                     <div className="rf-v1trim r" onMouseDown={(e) => startV1Drag('R', k, e)} title="Arraste para aparar o fim deste clipe · para a direita, por cima do que foi cortado ou excluído, traz aquele pedaço de volta"
                       style={{ position: 'absolute', left: left + w - 8, width: 8, top: 15, bottom: 0, zIndex: 5, cursor: 'ew-resize' }} />
+                    {raising && (
+                      <div style={{ position: 'absolute', left, width: w, top: 0, bottom: 0, border: '2px dashed #22D3EE', background: 'rgba(34,211,238,0.16)', borderRadius: 4, pointerEvents: 'none', zIndex: 6 }}>
+                        <span style={{ position: 'sticky', left: 4, display: 'inline-block', marginTop: 16, whiteSpace: 'nowrap', fontSize: 10, fontWeight: 800, color: '#03222a', background: '#22D3EE', borderRadius: 4, padding: '0 5px' }}>
+                          ↑ solte numa faixa V2, V3… — o vídeo fica por cima dela
+                        </span>
+                      </div>
+                    )}
                     {moving && (
                       <div style={{ position: 'absolute', left, width: w, top: 0, bottom: 0, transform: `translateX(${v1Drag.dx}px)`, border: '2px dashed #FACC15', background: 'rgba(250,204,21,0.14)', borderRadius: 4, pointerEvents: 'none', zIndex: 6 }}>
                         {v1MoveTarget(v1Drag) === k && (
@@ -9178,7 +9227,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </React.Fragment>
                 );
               })}
-              {!isMobile && v1Drag?.kind === 'move' && Math.abs(v1Drag.dx) >= 4 && (() => {
+              {!isMobile && v1Drag?.kind === 'move' && Math.abs(v1Drag.dx) >= 4 && !v1Raising(v1Drag) && (() => {
                 const others = v1Pieces.filter((_, i) => i !== v1Drag.k);
                 if (!others.length) return null;
                 const to = v1MoveTarget(v1Drag);

@@ -79,7 +79,7 @@ export function keyAt(keys, t) {
     const a = keys[i];
     const b = keys[i + 1];
     if (t >= a.t && t <= b.t) {
-      if (a.hold) return pick(a);
+      if (a.hold) return t >= b.t ? pick(b) : pick(a); // Manter: troca seca no próximo quadro
       const q = keyCurve(a, b, (t - a.t) / Math.max(1e-6, b.t - a.t));
       const v = {};
       for (const p of PROPS) v[p] = a[p] + (b[p] - a[p]) * q;
