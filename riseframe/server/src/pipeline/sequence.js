@@ -46,10 +46,10 @@ export function canCopyWhole(list, music, aspect) {
   const c = list[0];
   if (c.kind !== 'video' || !(c._dur > 0) || !(c._w > 0) || !(c._h > 0)) return false;
   if ((Number(c.in) || 0) > 0.05 || Math.abs((Number(c.out) || c._dur) - c._dur) > 0.15) return false;
-  if (SIZES[aspect]) {
-    const [w, h] = SIZES[aspect];
-    if (Math.abs(w / h - c._w / c._h) > 0.01) return false;
-  }
+  // O formato (9:16…) não importa aqui: o editor e o vídeo final enquadram depois (Preencher/
+  // Ajustar, foco). Antes um vídeo horizontal num projeto 9:16 era recodificado inteiro só
+  // para entrar na timeline — minutos esperando em "Colocando na timeline".
+  void aspect;
   return true;
 }
 
@@ -74,11 +74,16 @@ export function sequenceParts(clips, { W, H, fps = 30, music = null, musicIdx = 
   clips.forEach((c, i) => {
     const d = clipDuration(c);
     total += d;
-    parts.push(
+    // mesmo formato do quadro: só ajusta o tamanho (o fundo desfocado é a parte mais lenta)
+    const same = c._w > 0 && c._h > 0 && Math.abs(c._w / c._h - W / H) < 0.01;
+    parts.push(...(same ? [
+      `[${i}:v]fps=${fps},scale=${W}:${H},setsar=1,format=yuv420p,trim=duration=${f3(d)},setpts=PTS-STARTPTS[v${i}]`,
+    ] : [
       `[${i}:v]fps=${fps},setsar=1,split=2[bg${i}][fg${i}]`,
       `[bg${i}]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=24:3,eq=brightness=-0.08[bb${i}]`,
       `[fg${i}]scale=${W}:${H}:force_original_aspect_ratio=decrease[ff${i}]`,
       `[bb${i}][ff${i}]overlay=x=(W-w)/2:y=(H-h)/2,setsar=1,format=yuv420p,trim=duration=${f3(d)},setpts=PTS-STARTPTS[v${i}]`,
+    ]),
       c._hasAudio
         ? `[${i}:a]aformat=sample_rates=48000:channel_layouts=stereo,atrim=duration=${f3(d)},apad=whole_dur=${f3(d)},asetpts=PTS-STARTPTS[a${i}]`
         : `anullsrc=r=48000:cl=stereo,atrim=duration=${f3(d)},asetpts=PTS-STARTPTS[a${i}]`,
