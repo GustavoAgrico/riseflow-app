@@ -4046,7 +4046,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           </div>
         )}
         <PropSection title="Transformar" onReset={resetV}>
-          {aspectSel !== 'original' && (() => {
+          {(() => {
             // Preencher (Fill) / Ajustar (Fit), como no Premiere — no pedaço selecionado ou no vídeo todo
             const fa = piece ? piece.a : 0;
             const fb = piece ? piece.b : dur;
@@ -4066,6 +4066,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               </div>
             );
           })()}
+          {aspectSel === 'original' && (
+            // no formato do próprio vídeo os dois dão o mesmo resultado: escolher o formato aqui
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 11, color: C.faint }}>
+              Formato do vídeo final:
+              {[['9:16', 'Vertical 9:16'], ['1:1', 'Quadrado 1:1'], ['16:9', 'Horizontal 16:9']].map(([id, label]) => (
+                <button key={id} onClick={() => setAspectSel(id)} style={{ ...miniBtn(false, false), height: 24, fontSize: 11 }}>{label}</button>
+              ))}
+              <span>— no formato original, Preencher e Ajustar ficam iguais.</span>
+            </div>
+          )}
           <PropRow label="Posição" kf={v1KfV}>
             <span style={{ display: 'inline-flex', gap: 10 }}>
               <ScrubNum value={(0.5 + KV.x) * FW} step={2} suffix=" X" onChange={(v) => setV1V('x', +Math.max(-1, Math.min(1, v / FW - 0.5)).toFixed(4))} />
@@ -5172,10 +5182,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const mapT = lead > 0.05 ? (x) => +(mapT0(x) + lead).toFixed(2) : mapT0;
     if (clips.length > 80) throw new Error('O vídeo principal ficaria com clipes demais (máximo 80). Junte alguns na aba Projeto.');
     setV1Busy('Montando o vídeo principal…');
+    // o formato da montagem antiga vira o formato do vídeo final (o vídeo continua saindo nele)
+    if (aspectSel === 'original' && ['9:16', '1:1', '16:9'].includes(v1Job?.sequenceAspect) && !v1Job?.blankTimeline) setAspectSel(v1Job.sequenceAspect);
     const job = await createSequence({
       ...(transcribeNew ? {} : { transcribeNew: false }),
       title: projectTitle || 'Timeline',
-      aspect: v1Job?.sequenceAspect && !v1Job.blankTimeline ? v1Job.sequenceAspect : 'auto',
+      // vídeos no tamanho deles (sem "encaixar" no 9:16 com fundo desfocado): o formato vem
+      // depois, com Preencher/Ajustar por pedaço — como uma sequência do Premiere
+      aspect: 'auto',
       options,
       clips: withClipWords(clips, clips.map((c) => (c.kind === 'blank' ? { blank: true, duration: +c.duration.toFixed(2) } : c.sourceId
         ? { sourceId: c.sourceId, filename: c.filename, in: +c.in.toFixed(2), out: +c.out.toFixed(2) }
