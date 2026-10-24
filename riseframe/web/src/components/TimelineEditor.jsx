@@ -4184,40 +4184,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       )}
       {selTextItem && selTextItem.kind !== 'shape' && (
         <div style={{ border: '1px solid #E8A020', borderRadius: 10, padding: 10, display: 'grid', gap: 8 }}>
-          <textarea value={selTextItem.text} rows={2} onChange={(e) => updateText(selTextItem.key, { text: e.target.value })}
-            style={{ width: '100%', boxSizing: 'border-box', background: '#13131B', color: C.text, border: `1px solid ${C.border}`, borderRadius: 9, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
-          {/* as mesmas fontes da legenda, inclusive as que você adicionou (Minhas fontes) */}
-          <CapRow label="Fonte"><FontPicker value={selTextItem.font} fonts={CAPTION_FONT_LIST.filter((f) => f.id !== 'auto')} onChange={(v) => updateText(selTextItem.key, { font: v })} compact /></CapRow>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
-            <span style={{ width: 58 }}>Tamanho</span>
-            <input type="range" min="0.015" max="0.2" step="0.002" value={selTextItem.size} onChange={(e) => updateText(selTextItem.key, { size: Number(e.target.value) })} style={{ flex: 1 }} />
-            <span style={{ width: 36, textAlign: 'right' }}>{Math.round(selTextItem.size * 1000) / 10}</span>
-          </label>
-          <CapRow label="Cor do texto"><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{CAPTION_COLOR_LIST.map((c) => swatch(c.hex, selTextItem.color.toUpperCase() === c.hex.toUpperCase(), () => updateText(selTextItem.key, { color: c.hex })))}{swatch('#111111', selTextItem.color === '#111111', () => updateText(selTextItem.key, { color: '#111111' }))}<ColorField value={selTextItem.color} title="Cor do texto" size={22} onChange={(h) => updateText(selTextItem.key, { color: h })} /></div></CapRow>
-          <CapRow label="Fundo">
-            <div style={{ display: 'flex', gap: 6 }}>{Object.entries(TEXT_BOXES).map(([id, label]) => (<button key={id} onClick={() => updateText(selTextItem.key, { box: id })} style={framingTab(selTextItem.box === id)}>{label}</button>))}</div>
-          </CapRow>
-          {selTextItem.box !== 'none' && (
-            <CapRow label={selTextItem.box === 'box' ? 'Cor da caixa' : 'Cor do contorno'}><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{['#000000', '#111111', '#FFFFFF', ...CAPTION_COLOR_LIST.map((c) => c.hex).filter((h) => h !== '#FFFFFF')].map((hex) => swatch(hex, selTextItem.boxColor.toUpperCase() === hex.toUpperCase(), () => updateText(selTextItem.key, { boxColor: hex })))}<ColorField value={selTextItem.boxColor} title={selTextItem.box === 'box' ? 'Cor da caixa' : 'Cor do contorno'} size={22} onChange={(h) => updateText(selTextItem.key, { boxColor: h })} /></div></CapRow>
-          )}
-          {selTextItem.box === 'box' && [
-            ['pad', 'Tamanho do fundo', 0.04, 1.2, 0.02, selTextItem.pad ?? TEXT_PAD_DEFAULT],
-            ['radius', 'Arredondar cantos', 0, 1, 0.02, selTextItem.radius ?? 0],
-          ].map(([k, label, min, max, step, v]) => (
-            <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}
-              title={k === 'pad' ? 'Folga da caixa em volta do texto' : '0% = canto reto · 100% = pontas todas redondas (pílula)'}>
-              <span style={{ width: 58, lineHeight: 1.15 }}>{label}</span>
-              <input type="range" min={min} max={max} step={step} value={v} onChange={(e) => updateText(selTextItem.key, { [k]: Number(e.target.value) })} style={{ flex: 1 }} />
-              <span style={{ width: 36, textAlign: 'right' }}>{Math.round(v * 100)}%</span>
-            </label>
-          ))}
-          {[['x', 'Posição X'], ['y', 'Posição Y']].map(([k, label]) => (
-            <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
-              <span style={{ width: 58 }}>{label}</span>
-              <input type="range" min="0" max="1" step="0.01" value={selTextItem[k]} onChange={(e) => updateText(selTextItem.key, { [k]: Number(e.target.value) })} style={{ flex: 1 }} />
-              <span style={{ width: 36, textAlign: 'right' }}>{Math.round(selTextItem[k] * 100)}%</span>
-            </label>
-          ))}
+          {/* o mesmo painel das Propriedades (como o Essential Graphics do Premiere): texto,
+              transformar e Aparência (preenchimento, contorno, fundo com opacidade/tamanho/
+              cantos e sombra) */}
+          <TextProps l={selTextItem} FW={FW} FH={FH} head={() => null} up={(patch) => updateText(selTextItem.key, patch)} hidden={!!laneHide.txt} onEye={() => togHide('txt')} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
             <CapRow label="Entrada"><Sel value={selTextItem.animIn} opts={Object.entries(TEXT_ANIMS_IN).map(([id, label]) => ({ id, label }))} onChange={(v) => updateText(selTextItem.key, { animIn: v })} /></CapRow>
             <CapRow label="Saída"><Sel value={selTextItem.animOut} opts={Object.entries(TEXT_ANIMS_OUT).map(([id, label]) => ({ id, label }))} onChange={(v) => updateText(selTextItem.key, { animOut: v })} /></CapRow>
@@ -10381,9 +10351,9 @@ function TextProps({ l, FW, FH, head, up, hidden, onEye, order = null }) {
     </label>
   );
   const slider = (label, value, min, max, step, onChange, shown) => (
-    <div style={{ display: 'grid', gridTemplateColumns: '92px 1fr 58px', alignItems: 'center', gap: 8 }}>
-      <span style={{ fontSize: 11.5, color: C.faint }}>{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)} />
+    <div style={{ display: 'grid', gridTemplateColumns: `${typeof label === 'string' ? 92 : 22}px 1fr 58px`, alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 11.5, color: C.faint, display: 'inline-flex' }}>{label}</span>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)} style={{ accentColor: '#2D8CFF' }} />
       <span style={{ textAlign: 'right' }}><ScrubNum value={shown.v} step={shown.step ?? 1} min={shown.min ?? -Infinity} max={shown.max ?? Infinity} decimals={shown.d ?? 0} suffix={shown.suffix || ''} onChange={shown.set} /></span>
     </div>
   );
@@ -10482,18 +10452,17 @@ function TextProps({ l, FW, FH, head, up, hidden, onEye, order = null }) {
             {check(L.bg, (v) => up({ bg: v }), '')}
             <ColorField value={L.bgColor} title="Cor do fundo" size={20} onChange={(h) => up({ bgColor: h, bg: true })} />
           </div>
-          {L.bg && (
-            <>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {[['block', 'Forma inteira', 'Uma forma atrás do bloco todo (a entrelinha não mexe nela)'], ['lines', 'Por linha', 'Uma caixa em cada linha, junto com o texto']].map(([k, label, t]) => (
-                  <button key={k} onClick={() => up({ bgMode: k })} aria-pressed={L.bgMode === k} title={t} style={{ ...tb(L.bgMode === k), flex: 1 }}>{label}</button>
-                ))}
-              </div>
-              {slider('Opacidade', L.bgOpacity, 0, 1, 0.01, (v) => up({ bgOpacity: v }), { v: L.bgOpacity * 100, min: 0, max: 100, set: (v) => up({ bgOpacity: +(v / 100).toFixed(3) }) })}
-              {slider('Tamanho', l.pad ?? TEXT_PAD_DEFAULT, 0, 1.2, 0.01, (v) => up({ pad: v }), { v: (l.pad ?? TEXT_PAD_DEFAULT) * px(l.size || 0.05), d: 1, step: 0.2, set: (v) => up({ pad: +Math.max(0, Math.min(1.2, v / px(l.size || 0.05))).toFixed(3) }) })}
-              {slider('Cantos', l.radius ?? 0, 0, 1, 0.01, (v) => up({ radius: v }), { v: (l.radius ?? 0) * 100, min: 0, max: 100, set: (v) => up({ radius: +(v / 100).toFixed(3) }) })}
-            </>
-          )}
+          {/* sempre à mostra, como no Premiere (mexer liga o fundo): opacidade, tamanho e cantos */}
+          <div style={{ display: 'grid', gap: 6, opacity: L.bg ? 1 : 0.5 }}>
+            {slider(<PrIcon kind="opacity" title="Opacidade do fundo" />, L.bgOpacity, 0, 1, 0.01, (v) => up({ bgOpacity: v, bg: true }), { v: L.bgOpacity * 100, min: 0, max: 100, set: (v) => up({ bgOpacity: +(v / 100).toFixed(3), bg: true }) })}
+            {slider(<PrIcon kind="size" title="Tamanho do fundo (folga em volta do texto)" />, l.pad ?? TEXT_PAD_DEFAULT, 0, 1.2, 0.01, (v) => up({ pad: v, bg: true }), { v: (l.pad ?? TEXT_PAD_DEFAULT) * px(l.size || 0.05), d: 1, step: 0.2, set: (v) => up({ pad: +Math.max(0, Math.min(1.2, v / px(l.size || 0.05))).toFixed(3), bg: true }) })}
+            {slider(<PrIcon kind="corner" title="Arredondar os cantos" />, l.radius ?? 0, 0, 1, 0.01, (v) => up({ radius: v, bg: true }), { v: (l.radius ?? 0) * 100, min: 0, max: 100, set: (v) => up({ radius: +(v / 100).toFixed(3), bg: true }) })}
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[['block', 'Forma inteira', 'Uma forma atrás do bloco todo (a entrelinha não mexe nela)'], ['lines', 'Por linha', 'Uma caixa em cada linha, junto com o texto']].map(([k, label, t]) => (
+                <button key={k} onClick={() => up({ bgMode: k, bg: true })} aria-pressed={L.bgMode === k} title={t} style={{ ...tb(L.bgMode === k), flex: 1 }}>{label}</button>
+              ))}
+            </div>
+          </div>
         </div>
         <div style={{ display: 'grid', gap: 6, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
           <b style={{ fontSize: 12 }}>Sombra</b>
@@ -10501,17 +10470,37 @@ function TextProps({ l, FW, FH, head, up, hidden, onEye, order = null }) {
             {check(L.shadow, (v) => up({ shadow: v }), '')}
             <ColorField value={L.shadowColor} title="Cor da sombra" size={20} onChange={(h) => up({ shadowColor: h, shadow: true })} />
           </div>
-          {L.shadow && (
-            <>
-              {slider('Opacidade', L.shadowOpacity, 0, 1, 0.01, (v) => up({ shadowOpacity: v }), { v: L.shadowOpacity * 100, min: 0, max: 100, set: (v) => up({ shadowOpacity: +(v / 100).toFixed(3) }) })}
-              {slider('Ângulo', L.shadowAngle, -180, 180, 1, (v) => up({ shadowAngle: v }), { v: L.shadowAngle, suffix: '°', set: (v) => up({ shadowAngle: Math.round(v) }) })}
-              {slider('Distância', L.shadowDist, 0, 0.05, 0.0005, (v) => up({ shadowDist: v }), { v: px(L.shadowDist), d: 1, step: 0.2, min: 0, max: px(0.1), set: (v) => up({ shadowDist: +(v / FH).toFixed(5) }) })}
-              {slider('Desfoque', L.shadowBlur, 0, 0.03, 0.0005, (v) => up({ shadowBlur: v }), { v: px(L.shadowBlur), d: 1, step: 0.2, min: 0, max: px(0.05), set: (v) => up({ shadowBlur: +(v / FH).toFixed(5) }) })}
-            </>
-          )}
+          <div style={{ display: 'grid', gap: 6, opacity: L.shadow ? 1 : 0.5 }}>
+            {slider(<PrIcon kind="opacity" title="Opacidade da sombra" />, L.shadowOpacity, 0, 1, 0.01, (v) => up({ shadowOpacity: v, shadow: true }), { v: L.shadowOpacity * 100, min: 0, max: 100, set: (v) => up({ shadowOpacity: +(v / 100).toFixed(3), shadow: true }) })}
+            {slider(<PrIcon kind="angle" title="Ângulo da sombra" />, L.shadowAngle, -180, 180, 1, (v) => up({ shadowAngle: v, shadow: true }), { v: L.shadowAngle, suffix: '°', set: (v) => up({ shadowAngle: Math.round(v), shadow: true }) })}
+            {slider(<PrIcon kind="distance" title="Distância da sombra" />, L.shadowDist, 0, 0.05, 0.0005, (v) => up({ shadowDist: v, shadow: true }), { v: px(L.shadowDist), d: 1, step: 0.2, min: 0, max: px(0.1), set: (v) => up({ shadowDist: +(v / FH).toFixed(5), shadow: true }) })}
+            {slider(<PrIcon kind="blur" title="Desfoque da sombra" />, L.shadowBlur, 0, 0.03, 0.0005, (v) => up({ shadowBlur: v, shadow: true }), { v: px(L.shadowBlur), d: 1, step: 0.2, min: 0, max: px(0.05), set: (v) => up({ shadowBlur: +(v / FH).toFixed(5), shadow: true }) })}
+          </div>
         </div>
       </PropSection>
     </div>
+  );
+}
+/** Ícones das linhas da Aparência (como os do painel do Premiere). */
+function PrIcon({ kind, title }) {
+  const s = { width: 16, height: 16, display: 'block' };
+  const g = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.4 };
+  return (
+    <span title={title} aria-label={title} style={{ color: '#B7BCC6', display: 'inline-flex' }}>
+      {kind === 'opacity' ? (
+        <svg viewBox="0 0 16 16" style={s}><rect x="1.5" y="1.5" width="13" height="13" {...g} />{[0, 1, 2, 3].flatMap((r) => [0, 1, 2, 3].map((c) => ((r + c) % 2 ? null : <rect key={`${r}${c}`} x={2 + c * 3} y={2 + r * 3} width="3" height="3" fill="currentColor" />)))}</svg>
+      ) : kind === 'size' ? (
+        <svg viewBox="0 0 16 16" style={s}><rect x="1.5" y="1.5" width="13" height="13" {...g} /><rect x="5" y="5" width="6" height="6" fill="currentColor" /></svg>
+      ) : kind === 'corner' ? (
+        <svg viewBox="0 0 16 16" style={s}><path d="M2 14V8a6 6 0 0 1 6-6h6" {...g} strokeWidth="1.8" /></svg>
+      ) : kind === 'angle' ? (
+        <svg viewBox="0 0 16 16" style={s}><circle cx="8" cy="8" r="6.5" {...g} /><path d="M8 8l4.5-3" {...g} /></svg>
+      ) : kind === 'distance' ? (
+        <svg viewBox="0 0 16 16" style={s}><rect x="1.5" y="1.5" width="8" height="8" {...g} /><rect x="6.5" y="6.5" width="8" height="8" fill="currentColor" opacity="0.6" /></svg>
+      ) : (
+        <svg viewBox="0 0 16 16" style={s}><circle cx="8" cy="8" r="6.5" fill="currentColor" opacity="0.35" /><circle cx="8" cy="8" r="3.5" fill="currentColor" /></svg>
+      )}
+    </span>
   );
 }
 /** Propriedades de uma forma (retângulo/elipse), como no Premiere. */
