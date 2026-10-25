@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2, MonitorPlay, User, Plus, Square, CheckSquare, X, ChevronUp, ChevronDown, Layers, Flame, Snowflake, CloudSun, Clock, CalendarCheck } from 'lucide-react'
+import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2, MonitorPlay, User, Plus, Square, CheckSquare, X, ChevronUp, ChevronDown, Layers, Flame, Snowflake, CloudSun, Clock, CalendarCheck, Pencil, Building2 } from 'lucide-react'
 import api from '@services/api'
 import { useAuth } from '@context/AuthContext'
 import { LeadScorePanel } from '@components/LeadScorePanel'
@@ -41,6 +41,13 @@ const ini = n => n.split(' ').slice(0, 2).map(w => w[0]).join('')
 
 /* tempo relativo curto para o card ("2h", "3d") */
 const rel = t => { if (!t) return 'agora'; const m = Math.max(1, Math.round((Date.now() - new Date(t)) / 60000)); return m < 60 ? `${m}min` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d` }
+/* Valor digitado em R$: aceita "1.500,50", "50.000", "99.90" e "50000". */
+const parseMoney = (v) => {
+  let s = String(v ?? '').trim().replace(/[R$\s]/g, '')
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.')
+  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '')
+  return Math.max(0, Number(s) || 0)
+}
 /* linha da tabela clients -> formato do card do CRM */
 const mapRow = r => ({ id: r.id, name: r.name || '', phone: r.phone || '', email: r.email || '', company: r.company || '', value: Number(r.value) || 0, stage: r.stage || 'lead', tags: r.tags || [], lastMsg: r.last_message || '', time: rel(r.created_at), assignedTo: r.assigned_to || '' })
 
@@ -158,9 +165,32 @@ const deriveTemp = (tags, updatedAt) => {
 }
 const TEMP_MAP = { hot: { Icon: Flame, label: 'Quente', color: '#FF6B35' }, warm: { Icon: CloudSun, label: 'Morno', color: '#EAB308' }, cold: { Icon: Snowflake, label: 'Frio', color: '#38BDF8' } }
 
-const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, onAssign, members = [], stages = DEFAULT_STAGES, userId, mobile }) => {
+const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, onAssign, onEdit, members = [], stages = DEFAULT_STAGES, userId, mobile }) => {
   const st = stageAt(stages, contact.stage)
   const navigate = useNavigate()
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [editErr, setEditErr] = useState(null)
+  const startEdit = () => {
+    setForm({ name: contact.name, company: contact.company, phone: contact.phone, email: contact.email, value: String(contact.value || '') })
+    setEditErr(null)
+    setEditing(true)
+  }
+  const saveEdit = async () => {
+    if (!form.name.trim()) { setEditErr('O nome é obrigatório.'); return }
+    setSaving(true)
+    const err = await onEdit(contact.id, {
+      name: form.name.trim(),
+      company: form.company.trim(),
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+      value: parseMoney(form.value),
+    })
+    setSaving(false)
+    if (err) setEditErr(err)
+    else setEditing(false)
+  }
   const [msgs, setMsgs] = useState(null)
   const [nextTask, setNextTask] = useState(null)
   const [timeline, setTimeline] = useState(null)
@@ -238,10 +268,42 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, o
           )
         })()}
 
-        <p style={{ fontSize: 12, fontWeight: 700, color: C.tx, marginBottom: 8 }}>Informações</p>
-        {[[Phone, contact.phone], [Mail, contact.email], [DollarSign, `R$ ${contact.value.toLocaleString('pt-BR')}`]].map(([Ic, val]) => (
-          <p key={val} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.tx, marginBottom: 6 }}><Ic size={14} color={C.mut} /><span>{val}</span></p>
-        ))}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: C.tx, margin: 0 }}>Informações</p>
+          {!editing && (
+            <button onClick={startEdit} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: `1px solid ${C.bd}`, borderRadius: 7, padding: '4px 10px', color: C.tx, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <Pencil size={12} /> Editar
+            </button>
+          )}
+        </div>
+        {editing ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 4 }}>
+            {[
+              ['name', 'Nome *', 'text', 'Nome do lead'],
+              ['company', 'Empresa', 'text', 'Empresa'],
+              ['phone', 'Telefone / WhatsApp', 'tel', '5511999999999'],
+              ['email', 'E-mail', 'email', 'email@empresa.com'],
+              ['value', 'Valor do negócio (R$)', 'text', 'Ex: 1.500,00'],
+            ].map(([key, label, type, ph]) => (
+              <div key={key}>
+                <label style={S.label}>{label}</label>
+                <input type={type} inputMode={key === 'value' ? 'decimal' : undefined} value={form[key]} placeholder={ph}
+                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditing(false) }}
+                  style={S.input} />
+              </div>
+            ))}
+            {editErr && <p style={{ margin: 0, fontSize: 12, color: '#F87171' }}>{editErr}</p>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={saveEdit} disabled={saving} style={{ ...S.btn('linear-gradient(135deg,#FF6B35,#E55100)'), flex: 1, opacity: saving ? 0.6 : 1 }}>{saving ? 'Salvando…' : 'Salvar'}</button>
+              <button onClick={() => setEditing(false)} disabled={saving} style={{ ...S.btn('transparent', C.mut), border: `1px solid ${C.bd}` }}>Cancelar</button>
+            </div>
+          </div>
+        ) : (
+          [[Building2, contact.company], [Phone, contact.phone], [Mail, contact.email], [DollarSign, `R$ ${contact.value.toLocaleString('pt-BR')}`]].map(([Ic, val], i) => (
+            <p key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: val ? C.tx : C.mut, marginBottom: 6 }}><Ic size={14} color={C.mut} /><span>{val || '—'}</span></p>
+          ))
+        )}
         <LeadScorePanel contactId={contact.id} userId={userId} />
         <div style={{ marginBottom: 14, marginTop: 14 }}>
           <label style={S.label}>Etapa</label>
@@ -491,6 +553,30 @@ export function CRM() {
     catch (e) { console.warn('[CRM] erro ao atualizar tags:', e?.response?.data?.error ?? e?.message ?? e) }
   }
 
+  /* Edita dados do lead — otimista; volta ao anterior se o servidor recusar.
+     Retorna a mensagem de erro (ou null) para o painel exibir. */
+  const updateContact = async (id, fields) => {
+    const before = contacts.find(c => c.id === id)
+    setContacts(p => p.map(c => c.id === id ? { ...c, ...fields } : c))
+    if (selected?.id === id) setSelected(p => ({ ...p, ...fields }))
+    if (isDemoMode) return null
+    try {
+      await api.patch(`/clients/${id}`, {
+        name: fields.name,
+        company: fields.company || null,
+        phone: fields.phone || null,
+        email: fields.email || null,
+        value: fields.value,
+      })
+      logger.log(user?.id, 'contact_updated', { category: 'crm', description: 'Lead editado: ' + fields.name })
+      return null
+    } catch (e) {
+      setContacts(p => p.map(c => c.id === id ? before : c))
+      if (selected?.id === id) setSelected(before)
+      return 'Não foi possível salvar: ' + (e?.response?.data?.error ?? e?.message ?? 'erro desconhecido')
+    }
+  }
+
   /* Exclui contato — remove de clients + estado local + loga. */
   const deleteContact = async (contact) => {
     if (!window.confirm(`Excluir "${contact.name}" do pipeline?\n\nEsta ação não pode ser desfeita.`)) return
@@ -611,7 +697,7 @@ export function CRM() {
             )
           })}
         </div>
-        {selected && <DetailPanel key={selected.id} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} onDelete={deleteContact} onAssign={assignOwner} members={members} stages={stages} userId={ownerUserId} mobile={isMobile} />}
+        {selected && <DetailPanel key={selected.id} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} onDelete={deleteContact} onAssign={assignOwner} onEdit={updateContact} members={members} stages={stages} userId={ownerUserId} mobile={isMobile} />}
       </div>
       {modal && <NewContactModal onSave={addContact} onClose={() => setModal(false)} stages={stages} />}
       {stagesOpen && <StageEditor stages={stages} ownerUserId={ownerUserId} isDemoMode={isDemoMode} onClose={() => setStagesOpen(false)} onSaved={reloadStages} />}
