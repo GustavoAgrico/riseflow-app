@@ -283,14 +283,18 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, o
               ['company', 'Empresa', 'text', 'Empresa'],
               ['phone', 'Telefone / WhatsApp', 'tel', '5511999999999'],
               ['email', 'E-mail', 'email', 'email@empresa.com'],
-              ['value', 'Valor do negócio (R$)', 'text', 'Ex: 1.500,00'],
+              ['value', 'Valor do negócio (R$)', 'number', '0,00'],
             ].map(([key, label, type, ph]) => (
               <div key={key}>
                 <label style={S.label}>{label}</label>
-                <input type={type} inputMode={key === 'value' ? 'decimal' : undefined} value={form[key]} placeholder={ph}
-                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                  onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditing(false) }}
-                  style={S.input} />
+                <div style={{ position: 'relative' }}>
+                  {key === 'value' && <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: C.mut, pointerEvents: 'none' }}>R$</span>}
+                  <input type={type} value={form[key]} placeholder={ph}
+                    {...(key === 'value' ? { min: 0, step: '0.01', inputMode: 'decimal' } : {})}
+                    onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditing(false) }}
+                    style={key === 'value' ? { ...S.input, paddingLeft: 32 } : S.input} />
+                </div>
               </div>
             ))}
             {editErr && <p style={{ margin: 0, fontSize: 12, color: '#F87171' }}>{editErr}</p>}
