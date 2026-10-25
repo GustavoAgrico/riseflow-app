@@ -8,7 +8,7 @@ import path from 'node:path';
 import { runFfmpeg, x264Fast, probeSummary } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 import { visualLayerParts, LAYER_ANIMATIONS } from './overlay.js';
-import { cleanCrop, cropRect, blanksEnable, cleanCropRanges, cropBoxesVf } from './frame.js';
+import { cleanCrop, cropRect, blanksEnable, cleanCropRanges, cropBoxesVf, geoVf } from './frame.js';
 import { keyframesVf, momentsZoomVf, dynamicZoomWindows, MOTIONS } from './motion.js';
 import { defaultMomentEffect } from '../../../shared/transform.js';
 
@@ -64,7 +64,7 @@ export async function applyUnderlay(input, work, meta, options, onProgress, segm
   const holes = (blanks || []).filter((b) => b.end - b.start > 0.04);
   if (holes.length) chain += `,colorchannelmixer=aa=0:enable='${blanksEnable(holes)}'`;
   // o recorte (Crop) vale no quadro do vídeo; o Transformar, no quadro final — igual à prévia
-  if (frame) chain += `,scale=${frame.geo.scaledW}:${frame.geo.scaledH}:flags=bicubic,crop=${W}:${H}:${frame.geo.cropX}:${frame.geo.cropY},setsar=1`;
+  if (frame) chain += `,${geoVf(W0, H0, frame.geo, W, H)}`;
   const kVf = keyframesVf(options.transformKeys, outMeta, { alpha: true });
   if (kVf) chain += `,${kVf}`;
   const kind = MOTIONS.includes(options.videoMotion) ? options.videoMotion : 'none';

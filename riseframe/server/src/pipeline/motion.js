@@ -143,6 +143,26 @@ export function keyframesVf(rawKeys, meta, { alpha = false } = {}) {
   const H = meta.height || 1920;
   const fps = Math.max(1, Math.round(meta.fps || 30));
   const parts = [];
+  // Caminho rápido (o caso comum: mover o vídeo, sem girar nem animar o tamanho): escala
+  // uma vez, moldura vazia em volta e um recorte que anda (crop avalia x/y a cada quadro).
+  // O mesmo resultado do zoompan, várias vezes mais rápido — o zoompan reescala o quadro
+  // inteiro (com a moldura) a cada quadro.
+  const s0 = keys[0].scale;
+  if (!keys.some((k) => Math.abs(k.rot) > 1e-3) && keys.every((k) => Math.abs(k.scale - s0) < 1e-4)) {
+    const ev = (n) => Math.max(2, Math.ceil(n / 2) * 2);
+    const sw = ev(W * s0);
+    const sh = ev(H * s0);
+    const mx = Math.max(...keys.map((k) => Math.abs(k.x)));
+    const my = Math.max(...keys.map((k) => Math.abs(k.y)));
+    const PW = ev(Math.max(sw, W) + 2 * mx * W + 4);
+    const PH = ev(Math.max(sh, H) + 2 * my * H + 4);
+    if (Math.abs(s0 - 1) > 1e-4) parts.push(`scale=${sw}:${sh}:flags=bicubic`);
+    parts.push(`pad=${PW}:${PH}:${(PW - sw) / 2}:${(PH - sh) / 2}:${bg}`);
+    const X = keyExpr(keys, 'x', 't');
+    const Y = keyExpr(keys, 'y', 't');
+    parts.push(`crop=${W}:${H}:x='${(PW - W) / 2}-${X}*${W}':y='${(PH - H) / 2}-${Y}*${H}'`, 'setsar=1');
+    return parts.join(',');
+  }
   if (keys.some((k) => Math.abs(k.rot) > 1e-3)) {
     parts.push(`rotate=a='(${keyExpr(keys, 'rot', 't')})*PI/180':c=${bg}`);
   }

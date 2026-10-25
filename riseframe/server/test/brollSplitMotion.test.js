@@ -24,8 +24,9 @@ test('tela dividida: o Transformar do vídeo vale na metade da pessoa, depois do
   });
   assert.equal(r.inserted, 1);
   const script = fs.readFileSync(path.join(tmp, 'broll_filter.txt'), 'utf8');
-  // zoompan no tamanho da METADE (360x320), aplicado na pessoa já recortada
-  assert.match(script, /\[ph0\]zoompan=z='\(1\*\([^']*1\.219[^']*\)\)'[^\n]*s=360x320/);
+  // Transformar no tamanho da METADE (360x320), aplicado na pessoa já recortada (escala fixa:
+  // caminho rápido — escala uma vez e o recorte anda)
+  assert.match(script, /\[ph0\]scale=440:392:flags=bicubic,pad=[^\n]*crop=360:320:/);
   assert.match(script, /\[phm0\]overlay=x=0:y=320/);
   const m = await probeSummary(r.output);
   assert.equal(m.width, 360);

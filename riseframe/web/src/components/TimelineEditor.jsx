@@ -3110,14 +3110,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Monta o plano de B-roll travado para enviar no render (a partir da revisão).
   function brollPlanForRender() {
     if (!brollReview) return null;
-    return brollReview.moments.map((m) => {
-      if (m.removed) return { start: m.start, end: m.end, remove: true };
+    // o vídeo final usa SÓ o que está na faixa B-roll da timeline: momentos escondidos dela
+    // (dentro de um trecho cortado/excluído) não entram
+    const onLane = new Set(brollLaneItems.map(({ i }) => i));
+    return brollReview.moments.map((m, i) => {
+      if (m.removed || !onLane.has(i)) return { start: m.start, end: m.end, remove: true };
       const frame = { zoom: +Number(m.zoom || 1).toFixed(2), fx: +Number(m.fx ?? 0.5).toFixed(3), fy: +Number(m.fy ?? 0.5).toFixed(3) };
       if (m.myMediaId) return { start: m.start, end: m.end, mediaId: m.myMediaId, kind: m.myKind, query: m.term, ...frame };
       const c = m.candidates[m.pick];
       if (!c) return { start: m.start, end: m.end, remove: true };
       return { start: m.start, end: m.end, url: c.link, thumb: c.thumb || undefined, kind: c.kind, ...(c.logo ? { logo: true } : {}), query: m.term, credit: c.credit || null, ...frame };
     });
+  }
+
+  /** B-roll do vídeo final = o da faixa B-roll (nada na faixa → nada no vídeo, nem automático). */
+  function brollRenderOpts() {
+    const plan = brollOn && brollReview ? brollPlanForRender() : null;
+    return plan && plan.some((p) => !p.remove) ? { broll: true, brollPlan: plan } : { broll: false, brollPlan: [] };
   }
 
   // Desliga, só neste render, um recurso que o plano não libera.
@@ -3268,7 +3277,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // Efeitos sonoros colocados à mão (tempo original; o servidor remapeia após os cortes).
         sfxMoments: sfxMoments.map((m) => ({ t: +m.t.toFixed(2), type: m.type, ...(m.type === 'online' ? { url: m.url } : {}), ...(m.volume != null && m.volume !== 1 ? { volume: +Number(m.volume).toFixed(2) } : {}) })),
         // B-roll revisado: trava o que entra em cada momento (e liga o B-roll).
-        ...(!brollOn ? { broll: false, brollPlan: [] } : brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}),
+        // sem B-roll na timeline, o vídeo final também não busca imagens sozinho (o que sai é o
+        // que está na timeline)
+        ...brollRenderOpts(),
         headline: headline.on && headline.text.trim() ? { text: headline.text.trim(), seconds: headline.seconds, style: headline.style, color: headline.color, position: headline.position } : null,
         cover: cover.on ? { t: cover.t ?? 0, text: (cover.text || headline.text || '').trim(), position: cover.position, intro: cover.intro, fx: framingMode === 'manual' ? focus.x : 0.5 } : null,
         // Layout do B-roll escolhido aqui (tela cheia ou tela dividida).
@@ -4509,7 +4520,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Prévia da composição 9:16 (sua metade interativa + metade do B-roll). Fica ao
   // lado do vídeo (mesma linha) quando o enquadramento é manual.
   // B-roll escolhido no instante atual (mostrado sobre o vídeo, como no render).
-  const brollMoment = brollOn ? (brollReview?.moments || []).find((m) => !m.removed && cur >= m.start && cur < m.end) : null;
+  // momento de B-roll que está na faixa (o mesmo filtro da faixa e do vídeo final)
+  const brollVisible = (m) => !m.removed && ![...allGaps, ...gaps].some(([a, b]) => m.start >= a - 0.02 && m.end <= b + 0.02)
+    && !blanks.some((x) => m.start >= x.start - 0.02 && m.end <= x.end + 0.02);
+  const brollMoment = brollOn ? (brollReview?.moments || []).find((m) => brollVisible(m) && cur >= m.start && cur < m.end) : null;
   const thumbOf = (m) => (m && !m.removed ? (m.myThumb || m.candidates?.[m.pick]?.thumb || null) : null);
   const brollNow = thumbOf(brollMoment);
   // Na prévia 9:16 mostra o B-roll do momento atual ou, se nenhum, o selecionado na aba.
@@ -5185,9 +5199,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Faixa V2 (B-roll): só os que vão entrar no vídeo — sem os desligados, sem os de trechos
   // excluídos e nada quando a V1 está vazia (excluiu o vídeo). Os desligados continuam na
   // aba B-roll para voltar.
-  const brollLaneItems = !v1Clips.length ? [] : (brollReview?.moments || []).map((m, i) => ({ m, i })).filter(({ m }) => !m.removed
-    && ![...allGaps, ...gaps].some(([a, b]) => m.start >= a - 0.02 && m.end <= b + 0.02)
-    && !blanks.some((x) => m.start >= x.start - 0.02 && m.end <= x.end + 0.02));
+  const brollLaneItems = !v1Clips.length ? [] : (brollReview?.moments || []).map((m, i) => ({ m, i })).filter(({ m }) => brollVisible(m));
   const showBrollLane = brollLaneItems.length > 0;
   /** Plano para remontar: cada pedaço vira clipe(s) da montagem com os cortes grandes já aplicados. */
   function v1Plan({ restore = null } = {}) {
@@ -9496,7 +9508,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <CostLine
           mode="render"
           sourceId={sourceId}
-          options={{ ...options, ...renderOff, ...cap, ...(!brollOn ? { broll: false } : brollReview ? { broll: true, brollPlan: brollPlanForRender() } : {}) }}
+          options={{ ...options, ...renderOff, ...cap, ...brollRenderOpts() }}
           onDisable={disableFeature}
           style={{ marginTop: 18 }}
         />

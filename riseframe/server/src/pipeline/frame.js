@@ -30,7 +30,7 @@ export async function applyManualFrame(input, work, meta, options, onProgress) {
   }
   const g = faceCropGeometry(W, H, W, H, focus, zoom);
   const out = path.join(work, 'frame.mp4');
-  const args = ['-i', input, '-vf', `scale=${g.scaledW}:${g.scaledH}:flags=bicubic,crop=${W}:${H}:${g.cropX}:${g.cropY},setsar=1`];
+  const args = ['-i', input, '-vf', geoVf(W, H, g, W, H)];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push(...x264Fast(), '-movflags', '+faststart', '-y', out);
 
@@ -43,6 +43,21 @@ export async function applyManualFrame(input, work, meta, options, onProgress) {
  * Recorte (Crop, como no Premiere): quanto tirar de cada lado, em fração (0–0,45).
  * → { l, t, r, b } ou null quando não recorta nada. Puro.
  */
+/**
+ * Ampliar + cortar (geometria do faceCropGeometry) na ordem barata: corta no vídeo de
+ * origem só o pedaço que aparece e amplia esse pedaço — antes ampliava o quadro inteiro
+ * (ex.: 3413×1920) para jogar a maior parte fora. Mesmo enquadramento. Puro.
+ */
+export function geoVf(W0, H0, g, W, H) {
+  const kx = W0 / g.scaledW;
+  const ky = H0 / g.scaledH;
+  const cw = Math.max(2, Math.min(W0, Math.round(W * kx)));
+  const ch = Math.max(2, Math.min(H0, Math.round(H * ky)));
+  const cx = Math.max(0, Math.min(W0 - cw, Math.round(g.cropX * kx)));
+  const cy = Math.max(0, Math.min(H0 - ch, Math.round(g.cropY * ky)));
+  return `crop=${cw}:${ch}:${cx}:${cy},scale=${W}:${H}:flags=bicubic,setsar=1`;
+}
+
 export function cleanCrop(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const c = (v) => Math.max(0, Math.min(0.45, Number(v) || 0));

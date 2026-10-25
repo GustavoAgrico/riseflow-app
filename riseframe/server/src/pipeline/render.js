@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast, x264Final } from './ffmpeg.js';
 import { faceCropGeometry } from './broll.js';
+import { geoVf } from './frame.js';
 import { smartReframeVf, TARGETS } from './reframe.js';
 import { makeLogger } from '../logger.js';
 
@@ -96,7 +97,7 @@ export async function aspectVf(input, meta, target, options = {}, trackInput = i
     }
     const g = faceCropGeometry(meta.width, meta.height, W, H, focus, 1);
     return {
-      vf: `scale=${g.scaledW}:${g.scaledH}:flags=bicubic,crop=${W}:${H}:${g.cropX}:${g.cropY},setsar=1,format=yuv420p`,
+      vf: `${geoVf(meta.width, meta.height, g, W, H)},format=yuv420p`,
       reframe: { tracked: false, axis: null, source: 'manual' },
     };
   }
