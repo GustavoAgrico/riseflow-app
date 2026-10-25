@@ -605,12 +605,18 @@ export async function runPipeline(job, onUpdate = () => {}) {
     // já no quadro final, com o mesmo enquadramento da prévia (foco + zoom). Antes era tudo
     // montado no quadro do vídeo e só depois cortado para 9:16 — posição e recorte mudavam.
     const target = outputTarget(meta, { aspect: options.aspect });
+    const focus = Number.isFinite(Number(options.personFocusX))
+      ? { x: Number(options.personFocusX), y: Number.isFinite(Number(options.personFocusY)) ? Number(options.personFocusY) : 0.4 }
+      : { x: 0.5, y: 0.4 };
+    const zoom = Math.min(2.5, Math.max(1, Number(options.personZoom) || 1));
     if (target && !matchesAspect(meta, target) && !['fit', 'split'].includes(options.reframeMode)) {
-      const focus = Number.isFinite(Number(options.personFocusX))
-        ? { x: Number(options.personFocusX), y: Number.isFinite(Number(options.personFocusY)) ? Number(options.personFocusY) : 0.4 }
-        : { x: 0.5, y: 0.4 };
-      const zoom = Math.min(2.5, Math.max(1, Number(options.personZoom) || 1));
       underlayFrame = { w: target.w, h: target.h, geo: faceCropGeometry(meta.width, meta.height, target.w, target.h, focus, zoom) };
+    } else if (zoom > 1.001 && !['fit', 'split'].includes(options.reframeMode)) {
+      // Mesmo formato, com zoom no rosto (Enquadramento): o zoom vale SÓ no vídeo principal,
+      // como na prévia. Antes a etapa "Reenquadrando" vinha depois e ampliava o quadro
+      // inteiro — o fundo da V0 junto (a imagem saía maior e mais alta, e o corte descia
+      // sobre a cabeça).
+      underlayFrame = { w: meta.width, h: meta.height, geo: faceCropGeometry(meta.width, meta.height, meta.width, meta.height, focus, zoom) };
     }
     const r = await applyUnderlay(input, work, meta, options, st.onProgress, transcript.segments, blanksNow, underlayFrame);
     input = r.output;

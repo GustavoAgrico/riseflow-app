@@ -219,7 +219,10 @@ function MobileTabBar({ view, onView }) {
 
 /** Área logada: acompanha a fila da conta (contador da aba "Renderizando"). */
 function LoggedShell({ children, onLibrary }) {
-  const { count, notices, dismiss } = useRenderWatch(5000);
+  const { count, notices: all, dismiss } = useRenderWatch(5000);
+  // "Ficou pronto!" não aparece mais na tela (o vídeo pronto já está na aba Projetos e o
+  // aviso do sistema sai quando o app está em segundo plano); só o erro fica, para não passar batido
+  const notices = all.filter((n) => !n.ok);
   return (
     <>
       {children(count)}

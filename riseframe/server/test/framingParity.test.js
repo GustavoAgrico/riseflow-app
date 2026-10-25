@@ -44,6 +44,39 @@ test('16:9 → 9:16: V0 + Recortar + Transformar saem iguais à prévia', { time
   assert.ok(p > 30, `PSNR ${p}`);
 });
 
+// Vídeo vertical no formato original com zoom no rosto (Enquadramento): o zoom vale só no
+// vídeo principal — o fundo da V0 fica como está (antes a etapa de reenquadrar ampliava o
+// quadro inteiro, fundo junto).
+test('9:16 original + zoom no rosto: o fundo da V0 não é ampliado (como a prévia)', { timeout: 240000 }, async () => {
+  const { faceCropGeometry } = await import('../src/pipeline/broll.js');
+  const src = path.join(tmp, 'src916.mp4');
+  const under = path.join(tmp, 'under2.png');
+  ff(['-f', 'lavfi', '-i', 'testsrc2=s=540x960:d=1.5:r=30', '-f', 'lavfi', '-i', 'sine=d=1.5', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', src]);
+  ff(['-f', 'lavfi', '-i', 'color=c=green:s=1024x1024,drawgrid=w=64:h=64:t=4:c=white', '-frames:v', '1', under]);
+  const job = {
+    id: 'parity916', mode: 'render', inputPath: src, workDir: tmp, outputsDir: tmp, editedTranscript: { segments: [] },
+    options: {
+      aspect: 'original', captions: false, colorLook: 'none', cutSilence: false, manualSilence: true, broll: false,
+      reframeMode: 'manual', personFocusX: 0.5, personFocusY: 0.4, personZoom: 1.3,
+      transformKeys: [{ t: 0, scale: 1, x: 0, y: 0.25, rot: 0 }],
+      userMedia: [{ kind: 'image', file: under, start: 0, duration: 1.5, mode: 'cover', under: true, scale: 1, opacity: 1, layer: 0 }],
+    },
+  };
+  await runPipeline(job, () => {});
+  const out = path.join(tmp, 'parity916.mp4');
+  assert.ok(fs.existsSync(out), 'vídeo final gerado');
+  const got = path.join(tmp, 'got916.png');
+  const exp = path.join(tmp, 'exp916.png');
+  ff(['-ss', '0.5', '-i', out, '-frames:v', '1', '-vf', 'scale=270:480', got]);
+  // a conta da prévia: fundo "cobre" o quadro; vídeo ampliado no foco (só ele) e descido 25%
+  const g = faceCropGeometry(540, 960, 540, 960, { x: 0.5, y: 0.4 }, 1.3);
+  ff(['-ss', '0.5', '-i', src, '-i', under, '-filter_complex',
+    `[1:v]scale=960:960,crop=540:960:210:0[bg];[0:v]scale=${g.scaledW}:${g.scaledH},crop=540:960:${g.cropX}:${g.cropY}[v];[bg][v]overlay=x=0:y=240,scale=270:480`,
+    '-frames:v', '1', exp]);
+  const p = psnr(exp, got);
+  assert.ok(p > 28, `PSNR ${p}`);
+});
+
 test('Ajustar (Fit) por trecho: filtro só nos trechos, o resto segue o enquadramento', async () => {
   const { withFitRanges, cleanFitRanges } = await import('../src/pipeline/render.js');
   assert.deepEqual(cleanFitRanges([{ start: 2, end: 3 }, { start: 1, end: 1.01 }, null, { start: 0, end: 1 }]), [{ start: 0, end: 1 }, { start: 2, end: 3 }]);
