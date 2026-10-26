@@ -33,13 +33,14 @@ test('chave da Deepgram recusada: mensagem amigável ao cliente, status para o a
   );
   assert.equal(config.transcribe.keyCheck.ok, false);
   assert.match(config.transcribe.keyCheck.error, /chave da Deepgram foi recusada/);
-  await new Promise((r) => setTimeout(r, 30));
+  // o e-mail sai em segundo plano: espera ele chegar (o CI pode ser lento) em vez de um tempo fixo
+  for (let i = 0; i < 150 && !mails.some((m) => /transcrição parada/i.test(m.subject)); i++) await new Promise((r) => setTimeout(r, 20));
   const alert = mails.find((m) => /transcrição parada/i.test(m.subject));
   assert.ok(alert, 'admin avisado');
   assert.match(alert.html, /DEEPGRAM_API_KEY/);
   // outro vídeo logo depois não manda outro e-mail (no máximo 1 a cada 6 h)
   await assert.rejects(transcribe(wav, dir, { duration: 2, hasAudio: true }, () => {}));
-  await new Promise((r) => setTimeout(r, 30));
+  await new Promise((r) => setTimeout(r, 300));
   assert.equal(mails.filter((m) => /transcrição parada/i.test(m.subject)).length, 1);
 });
 
