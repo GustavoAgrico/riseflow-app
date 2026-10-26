@@ -2478,6 +2478,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         key={m.key}
         onMouseDown={(e) => startMediaDrag(m, 'move', e)}
         onClick={(e) => { e.stopPropagation(); setSelMedia(m.key); setSelKind('media'); seek(m.start); }}
+        onContextMenu={(e) => {
+          setSelMedia(m.key); setSelKind('media');
+          // vídeo: até onde o arquivo vai; imagem: o que quiser
+          const room = m.kind === 'image' || !m.srcDuration ? Infinity : Math.max(0.3, m.srcDuration - (Number(m.offset) || 0));
+          const toEnd = +Math.max(0.3, Math.min(room, dur - m.start)).toFixed(2);
+          openCtx(e, m.filename || 'Mídia', [
+            { label: 'Esticar até o fim do vídeo', off: Math.abs(toEnd - m.duration) < 0.05, act: () => updateMedia(m.key, { duration: toEnd }) },
+            { label: 'Do começo ao fim do vídeo', off: m.start < 0.05 && Math.abs(toEnd - m.duration) < 0.05, act: () => updateMedia(m.key, { start: 0, duration: +Math.max(0.3, Math.min(room, dur)).toFixed(2) }) },
+            { sep: true },
+            { label: 'Excluir', danger: true, act: () => setMedia((l) => normalizeLayers(l.filter((x) => x.key !== m.key))) },
+          ]);
+        }}
         title={m.under ? `${m.filename} — por baixo do vídeo (V0): arraste para os lados (tempo) ou para as camadas (por cima); pontas ajustam a duração` : `${m.filename} — arraste para os lados (tempo), para cima/baixo (camada) ou até a V0 (por baixo do vídeo); pontas ajustam a duração`}
         style={{
           position: 'absolute', left, top: m.under ? 0 : (m.kind === 'audio' ? audLayers.indexOf(m.layer || 0) : rowLayers.indexOf(m.layer || 0)) * LANE.midias, width: w, height: 28, borderRadius: 7, overflow: 'hidden',
@@ -4035,6 +4047,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     let setV1V = setV1;
     let v1AnimV = v1Anim;
     let resetV = () => { setTransformKeys([]); setV1KfOn(false); };
+    if (!piece && v1Pieces.length > 1 && v1KfOn !== true) {
+      // "Vídeo inteiro" com o vídeo em pedaços (cada pausa cortada separa um): mudar um valor
+      // vale para o vídeo TODO, parado. Antes virava um quadro-chave animado no ponteiro e o
+      // resto continuava com os valores de cada pedaço.
+      v1AnimV = false;
+      setV1V = (prop, v) => setTransformKeys(cleanKeys([{ t: 0, ...K, [prop]: v }]));
+      v1KfV = { ...v1Kf, on: false };
+    }
     if (piece) {
       const a = piece.a;
       const b = piece.b;

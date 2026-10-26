@@ -57,9 +57,25 @@ export function cleanKeys(raw, max = 400) {
   // de um e o começo do outro caem juntos): vale o ÚLTIMO — o valor que segue dali em diante.
   // Antes ficava o primeiro (o valor antigo) e o pedaço deslizava até o valor dele.
   const dedup = [];
+  const same = (a, b) => PROPS.every((p) => Math.abs(a[p] - b[p]) < 1e-4);
   for (const k of out) {
-    if (dedup.length && k.t - dedup[dedup.length - 1].t < 0.02) dedup[dedup.length - 1] = k;
-    else dedup.push(k);
+    const last = dedup[dedup.length - 1];
+    if (!last || k.t - last.t >= 0.02) { dedup.push(k); continue; }
+    // Fim de um pedaço (Manter) e começo do outro no mesmo instante — acontece quando um
+    // corte entre os dois some no vídeo final: o "Manter" recua ~1 quadro e a troca continua
+    // seca. Antes ficava só o último e o pedaço inteiro virava uma animação lenta até o valor
+    // do outro (o vídeo ia "subindo" sozinho).
+    if (last.hold && !same(last, k)) {
+      const prev = dedup[dedup.length - 2];
+      const back = +(k.t - 0.034).toFixed(3);
+      if (back >= 0 && (!prev || back - prev.t >= 0.02)) {
+        dedup[dedup.length - 1] = { ...last, t: back };
+        dedup.push(k);
+        continue;
+      }
+      if (prev && same(prev, last)) dedup[dedup.length - 2] = { ...prev, hold: true };
+    }
+    dedup[dedup.length - 1] = k;
   }
   // muitos pedaços com Transformar próprio (4 quadros cada): o teto antigo (60) cortava os
   // do fim do vídeo

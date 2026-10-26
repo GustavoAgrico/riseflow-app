@@ -170,7 +170,7 @@ class JobQueue extends EventEmitter {
       report: job.report,
       // Opções da edição (sem chaves de API) e a transcrição editada: a demo/simulador
       // e a reabertura na timeline precisam delas depois de um reinício do servidor.
-      options: Object.fromEntries(Object.entries(job.options || {}).filter(([k]) => !/key|token|secret/i.test(k))),
+      options: Object.fromEntries(Object.entries(job.options || {}).filter(([k]) => !/(key|token|secret|password)$/i.test(k))),
       editedTranscript: job.editedTranscript || null,
       // a montagem da timeline (clipes da V1): sem ela, depois de reabrir o app a V1 virava um
       // clipe só com o vídeo antigo inteiro — e ele entrava junto ao pôr outro clipe
@@ -192,7 +192,7 @@ class JobQueue extends EventEmitter {
   _persistRunning(job) {
     const snap = {
       id: job.id, mode: job.mode, filename: job.filename, inputPath: job.inputPath,
-      options: Object.fromEntries(Object.entries(job.options || {}).filter(([k]) => !/key|token|secret/i.test(k))),
+      options: Object.fromEntries(Object.entries(job.options || {}).filter(([k]) => !/(key|token|secret|password)$/i.test(k))),
       editedTranscript: job.editedTranscript || null, sourceId: job.sourceId || null,
       ...(job.sequence ? { sequence: job.sequence } : {}),
       hold: job.hold || null, createdAt: job.createdAt, attempts: job.attempts || 0, ownerId: job.ownerId || null,
