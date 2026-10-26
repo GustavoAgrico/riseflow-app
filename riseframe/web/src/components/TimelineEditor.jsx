@@ -3201,9 +3201,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         reframeMode: reframeMode === 'auto' && (framingMode === 'manual' && (Math.abs(focus.x - 0.5) > 0.004 || Math.abs(focus.y - 0.4) > 0.004 || zoom > 1.001 || keysChangeAnything(cleanKeys(transformKeys))))
           ? 'manual' : reframeMode,
         splitSwap,
-        ...(framingMode === 'manual'
-          ? { personFocusX: +focus.x.toFixed(3), personFocusY: +focus.y.toFixed(3) }
-          : {}),
+        // o foco que a PRÉVIA usa vai sempre (também no automático): sem ele o servidor achava
+        // o rosto sozinho e centralizava nele — a pessoa saía mais alta/baixa que no editor
+        personFocusX: +focus.x.toFixed(3),
+        personFocusY: +focus.y.toFixed(3),
         // Ajustes de legenda escolhidos aqui na timeline (sobrepõem os das opções).
         ...cap,
         // Zoom, efeitos sonoros e cor escolhidos nas abas Efeitos e Cor.
