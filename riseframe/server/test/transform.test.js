@@ -87,3 +87,21 @@ test('keyExpr: a conta do render dá o mesmo valor da prévia (keyAt), com easin
     }
   }
 });
+
+// Caso real: o fim do pedaço (Manter) e o começo do seguinte caem no mesmo instante depois
+// dos cortes. Antes ficava só o último quadro e o pedaço inteiro deslizava até o valor do
+// seguinte (o vídeo ia "subindo" ao longo de 12 s); agora a troca é seca no lugar certo.
+test('cleanKeys: Manter e o quadro seguinte no mesmo instante → troca seca', () => {
+  const raw = [
+    { t: 0, scale: 1, x: 0, y: 0.2541, rot: 0 },
+    { t: 11.867, hold: true, scale: 1, x: 0, y: 0.2541, rot: 0 },
+    { t: 11.867, scale: 1, x: 0, y: 0, rot: 0 },
+  ];
+  const keys = cleanKeys(raw);
+  assert.equal(keyAt(keys, 6).y, 0.2541, 'o meio do pedaço fica parado');
+  assert.equal(keyAt(keys, 11.8).y, 0.2541);
+  assert.equal(keyAt(keys, 11.9).y, 0, 'o pedaço seguinte começa normal');
+  const vf = keyframesVf(raw, meta);
+  assert.match(vf, /gte\(t\\,11\.867\)/, 'troca seca no render');
+  assert.doesNotMatch(vf, /clip\(\(t-0\.000\)/, 'sem rampa desde o começo');
+});
