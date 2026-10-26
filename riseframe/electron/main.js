@@ -266,7 +266,20 @@ function stopServer() {
   serverProcess = null;
 }
 
+// Uma cópia só do app: abrir de novo só traz a janela que já está aberta. Duas cópias = dois
+// servidores na mesma pasta de dados (a fila era processada em dobro, avisos repetidos e
+// erro de porta no registro).
+const gotLock = isDev || app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
+app.on('second-instance', () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
+
 app.on('ready', async () => {
+  if (!gotLock) return;
   ensureKeysFile();
   buildMenu();
   // Em dev, o `npm run dev:all` já sobe o servidor; só abrimos a janela.

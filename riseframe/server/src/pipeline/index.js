@@ -142,6 +142,9 @@ function buildPlan(mode, options) {
       { key: 'transcribe', label: 'Transcrevendo a fala', weight: 15, enabled: mode !== 'render' },
       { key: 'voicefx', label: 'Aplicando o modificador de voz', weight: 6, enabled: voiceActive(options, 'fx') },
       { key: 'cut', label: 'Aplicando cortes na timeline', weight: 20, enabled: hasRemoval },
+      // vídeo bem maior que o final (ex.: 4K → 1080p): reduz UMA vez, e as etapas seguintes
+      // trabalham com 4× menos pixels
+      { key: 'prescale', label: 'Preparando o vídeo no tamanho final', weight: 6, enabled: mode === 'render' && Boolean(outputTarget({ width: 1080, height: 1920 }, { aspect: options.aspect, quality: options.quality })) },
       { key: 'analyze', label: 'Analisando temas', weight: 3, enabled: true },
       // mídia por baixo do vídeo (V0): o recorte e o movimento entram na mesma passada
       { key: 'underlay', label: 'Montando o fundo (por baixo do vídeo)', weight: 12, enabled: hasUnderlay(options) },
@@ -576,6 +579,33 @@ export async function runPipeline(job, onUpdate = () => {}) {
       report.cut = { removedSeconds: 0, kept: keep.length };
     }
     st.record(report.cut);
+    st.onProgress(1);
+  }
+
+  // 3z. Vídeo bem maior que o quadro final (ex.: gravado em 4K, exportando em 1080p): reduz
+  // uma vez aqui, e todas as etapas seguintes (fundo, B-roll, legendas…) trabalham no tamanho
+  // final — antes cada uma recodificava o 4K inteiro e só o render final reduzia. Fica a folga
+  // do zoom no rosto e do Transformar (ampliar depois não perde nitidez).
+  if (has('prescale')) {
+    const st = enter('prescale');
+    const target = outputTarget(meta, { aspect: options.aspect, quality: options.quality });
+    const room = Math.min(2.5, Math.max(1, Number(options.personZoom) || 1, ...((options.transformKeys || []).map((k) => Number(k?.scale) || 1))));
+    const s = target ? Math.max(target.w / meta.width, target.h / meta.height) * room : 1;
+    if (s < 0.8 && meta.width && meta.height) {
+      const ev = (x) => Math.max(2, Math.round(x / 2) * 2);
+      const w = ev(meta.width * s);
+      const h = ev(meta.height * s);
+      const out = path.join(work, 'prescale.mp4');
+      const args = ['-i', input, '-vf', `scale=${w}:${h}:flags=lanczos,setsar=1`, ...x264Fast()];
+      if (meta.hasAudio) args.push('-c:a', 'copy');
+      args.push('-movflags', '+faststart', '-y', out);
+      await runFfmpeg(args, { label: 'prescale', totalDuration: meta.duration, onProgress: st.onProgress });
+      log.ok(`vídeo reduzido para o tamanho final: ${meta.width}x${meta.height} → ${w}x${h}`);
+      report.prescale = { from: [meta.width, meta.height], to: [w, h] };
+      input = out;
+      trackInput = out;
+      meta = { ...meta, ...(await probeSummary(out)) };
+    }
     st.onProgress(1);
   }
 
