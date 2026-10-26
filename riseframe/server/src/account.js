@@ -29,12 +29,24 @@ const OFFLINE_GRACE_MS = 3 * 24 * 3600 * 1000; // sem internet: vale o último l
 // reinicia ou faz deploy: tenta de novo algumas vezes antes de desistir.
 const WAKE_RETRIES = [4000, 8000, 15000, 20000];
 const isWaking = (status) => status === 502 || status === 503 || status === 504;
+// 429 (pedidos demais): espera o que o site pedir (Retry-After, até 10 s) e tenta de novo, 2 vezes
+const RATE_RETRIES = 2;
+const RATE_MSG = 'Muitas tentativas seguidas no servidor da sua conta. Aguarde 1 minuto e tente entrar de novo.';
 const WAKE_MSG = 'O servidor da sua conta está fora do ar ou acordando agora (pode levar 1 minuto). Tente de novo em instantes.';
 export async function fetchWaking(url, init = {}) {
   const { timeoutMs = TIMEOUT_MS, ...rest } = init;
   let r;
-  for (let i = 0; ; i++) {
+  for (let i = 0, rl = 0; ; i++) {
     r = await fetch(url, { ...rest, signal: AbortSignal.timeout(timeoutMs) });
+    if (r.status === 429 && rl < RATE_RETRIES) {
+      rl++;
+      i--;
+      const wait = Math.min(10, Math.max(2, Number(r.headers.get('retry-after')) || 3 * rl)) * 1000;
+      log.warn(`servidor da conta pediu para esperar (429); tentando de novo em ${wait / 1000}s`);
+      await r.arrayBuffer().catch(() => {});
+      await new Promise((x) => setTimeout(x, wait));
+      continue;
+    }
     if (!isWaking(r.status) || i >= WAKE_RETRIES.length) return r;
     log.warn(`servidor da conta respondeu ${r.status}; tentando de novo em ${WAKE_RETRIES[i] / 1000}s`);
     await r.arrayBuffer().catch(() => {});
@@ -68,7 +80,7 @@ export async function accountFetch(apiPath, { method = 'GET', token = '', body, 
     throw new AccountError(503, { error: 'sem conexão com o servidor da sua conta — confira a internet e tente de novo', offline: true, detail: err.message });
   }
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new AccountError(r.status, data.error ? data : isWaking(r.status) ? { error: WAKE_MSG, offline: true } : data);
+  if (!r.ok) throw new AccountError(r.status, data.error ? data : isWaking(r.status) ? { error: WAKE_MSG, offline: true } : r.status === 429 ? { error: RATE_MSG } : data);
   return data;
 }
 
@@ -106,6 +118,23 @@ export async function remoteUser(token) {
   const key = tokenKey(token);
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < USER_TTL_MS) return hit.user;
+  if (denied.has(key) && Date.now() - denied.get(key) < DENIED_TTL_MS) return null;
+  // site pediu para esperar (429): não insiste — usa o último login confirmado enquanto isso
+  if (Date.now() < coolUntil) {
+    const old = hit || readDiskCache()[key];
+    if (old && Date.now() - old.at < OFFLINE_GRACE_MS) return old.user;
+  }
+  // vários pedidos ao mesmo tempo (fila, biblioteca, miniaturas…) = UMA conferência no site
+  if (inflight.has(key)) return inflight.get(key);
+  const p = checkRemoteUser(token, key, hit).finally(() => inflight.delete(key));
+  inflight.set(key, p);
+  return p;
+}
+const inflight = new Map(); // hash do token → Promise da conferência em andamento
+const denied = new Map(); // hash do token → quando o site recusou (401/403)
+const DENIED_TTL_MS = 30_000;
+let coolUntil = 0; // site respondeu 429: espera antes de conferir de novo
+async function checkRemoteUser(token, key, hit) {
   try {
     const { user } = await accountFetch('/auth/me', { token });
     if (!user?.id) return null;
@@ -118,8 +147,11 @@ export async function remoteUser(token) {
   } catch (err) {
     if (err.status === 401 || err.status === 403) {
       cache.delete(key);
+      denied.set(key, Date.now());
+      if (denied.size > 200) denied.delete(denied.keys().next().value);
       return null;
     }
+    if (err.status === 429) coolUntil = Date.now() + 60_000;
     const old = hit || readDiskCache()[key];
     if (old && Date.now() - old.at < OFFLINE_GRACE_MS) {
       log.warn(`site fora do ar (${err.message}); usando o último login de ${old.user.email}`);
@@ -249,7 +281,7 @@ export function accountProxy() {
       // Erro do site sem JSON (página do Render de "fora do ar"): mensagem clara em vez de "erro 503"
       if (!r.ok && !type.includes('json')) {
         await r.arrayBuffer().catch(() => {});
-        return res.status(r.status).json({ error: isWaking(r.status) ? WAKE_MSG : `o servidor da sua conta respondeu ${r.status} — tente de novo em instantes`, offline: isWaking(r.status) });
+        return res.status(r.status).json({ error: isWaking(r.status) ? WAKE_MSG : r.status === 429 ? RATE_MSG : `o servidor da sua conta respondeu ${r.status} — tente de novo em instantes`, offline: isWaking(r.status) });
       }
       res.status(r.status);
       if (type) res.type(type);
