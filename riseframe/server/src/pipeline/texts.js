@@ -195,16 +195,25 @@ export function buildTextAss(layers, meta) {
   ].join('\n');
 }
 
-/** Queima os textos livres no vídeo (por cima das legendas). */
-export async function burnTexts(input, work, meta, layers, onProgress) {
-  if (!layers?.length) return { output: input, count: 0 };
+/**
+ * Filtro dos textos livres (escreve o texts.ass na pasta do job): entra na MESMA passada
+ * das legendas (uma recodificação do vídeo inteiro a menos). Rodar com cwd = work.
+ */
+export async function textsVf(work, meta, layers) {
+  if (!layers?.length) return null;
   const NAME = 'texts.ass';
   await fs.writeFile(path.join(work, NAME), buildTextAss(layers, meta), 'utf8');
   const own = layers.map((l) => l.fontFile).filter(Boolean);
   const fontsRel = own.length ? await fontsDirArg(work, await jobFontsDir(work, own)) : await fontsDirArg(work);
+  return `subtitles=${NAME}:fontsdir=${fontsRel}`;
+}
+
+/** Queima os textos livres no vídeo (por cima das legendas). */
+export async function burnTexts(input, work, meta, layers, onProgress) {
+  if (!layers?.length) return { output: input, count: 0 };
   const output = path.join(work, 'texts.mp4');
   // cwd = pasta do job e o .ass pelo nome relativo (igual às legendas: sem drive/espaços).
-  const args = ['-i', input, '-vf', `subtitles=${NAME}:fontsdir=${fontsRel}`, ...x264Fast()];
+  const args = ['-i', input, '-vf', await textsVf(work, meta, layers), ...x264Fast()];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push('-movflags', '+faststart', '-y', output);
   await runFfmpeg(args, { label: 'texts', totalDuration: meta.duration, onProgress, cwd: work });

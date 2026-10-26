@@ -17,7 +17,7 @@ import { settingsRouter } from './routes/settings.js';
 import { billingRouter } from './routes/billing.js';
 import { publicRouter } from './routes/public.js';
 import { startRenewTimer } from './auth/billing.js';
-import { ffmpegPath } from './pipeline/ffmpeg.js';
+import { ffmpegPath, detectHwEncoder } from './pipeline/ffmpeg.js';
 import { whisperLocalAvailable } from './pipeline/transcribe/providers.js';
 import { checkTranscribeKey } from './pipeline/transcribe/index.js';
 import { log } from './logger.js';
@@ -141,6 +141,8 @@ const server = app.listen(config.port, () => {
   log.info(`CORS: ${config.corsOrigin.join(', ')}`);
   probeWhisper(); // teste do Whisper em segundo plano, sem atrasar a abertura da porta
   checkTranscribeKey().catch(() => {}); // a chave da Deepgram funciona? (avisa o admin se não)
+  // App de PC/Mac: usa a placa de vídeo nas etapas intermediárias, se houver (em segundo plano)
+  if (process.env.RISEFRAME_DESKTOP === '1' || process.env.FFMPEG_HWENC) detectHwEncoder().catch(() => {});
 });
 // Vídeos grandes (até dezenas de GB) levam bem mais que os 5 min padrão do Node para
 // subir: sem isto a conexão cai no meio do upload.
