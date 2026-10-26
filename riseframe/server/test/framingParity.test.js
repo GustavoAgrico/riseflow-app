@@ -77,6 +77,38 @@ test('9:16 original + zoom no rosto: o fundo da V0 não é ampliado (como a pré
   assert.ok(p > 28, `PSNR ${p}`);
 });
 
+// Tela dividida com B-roll + fundo da V0 + zoom no rosto: a metade da pessoa recebe o zoom
+// UMA vez (antes vinha do vídeo já montado com o zoom e ampliava de novo: ~25% maior).
+test('tela dividida + V0 + zoom no rosto: pessoa do mesmo tamanho da prévia', { timeout: 240000 }, async () => {
+  const { faceCropGeometry } = await import('../src/pipeline/broll.js');
+  const src = path.join(tmp, 'srcsplit.mp4');
+  const under = path.join(tmp, 'under3.png');
+  const brollImg = path.join(tmp, 'broll3.png');
+  ff(['-f', 'lavfi', '-i', 'testsrc2=s=540x960:d=2:r=30', '-f', 'lavfi', '-i', 'sine=d=2', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', src]);
+  ff(['-f', 'lavfi', '-i', 'color=c=green:s=1024x1024', '-frames:v', '1', under]);
+  ff(['-f', 'lavfi', '-i', 'smptebars=s=640x480', '-frames:v', '1', brollImg]);
+  const job = {
+    id: 'paritysplit', mode: 'render', inputPath: src, workDir: tmp, outputsDir: tmp, editedTranscript: { segments: [] },
+    options: {
+      aspect: 'original', captions: false, colorLook: 'none', cutSilence: false, manualSilence: true,
+      reframeMode: 'manual', personFocusX: 0.5, personFocusY: 0.4, personZoom: 1.3,
+      broll: true, brollLayout: 'top', brollPlan: [{ start: 0.2, end: 1.8, file: brollImg, kind: 'image' }],
+      userMedia: [{ kind: 'image', file: under, start: 0, duration: 2, mode: 'cover', under: true, scale: 1, opacity: 1, layer: 0 }],
+    },
+  };
+  await runPipeline(job, () => {});
+  const out = path.join(tmp, 'paritysplit.mp4');
+  const got = path.join(tmp, 'gotsplit.png');
+  const exp = path.join(tmp, 'expsplit.png');
+  // metade de baixo (a pessoa) no meio do momento
+  ff(['-ss', '1.0', '-i', out, '-frames:v', '1', '-vf', 'crop=540:480:0:480', got]);
+  const g = faceCropGeometry(540, 960, 540, 480, { x: 0.5, y: 0.4 }, 1.3);
+  ff(['-ss', '1.0', '-i', src, '-frames:v', '1', '-vf', `scale=${g.scaledW}:${g.scaledH},crop=540:480:${g.cropX}:${g.cropY}`, exp]);
+  const p = psnr(exp, got);
+  // o vídeo de teste tem partes que andam a cada quadro: ~24 dB com o tamanho certo, ~9 com o zoom dobrado
+  assert.ok(p > 20, `PSNR ${p}`);
+});
+
 test('Ajustar (Fit) por trecho: filtro só nos trechos, o resto segue o enquadramento', async () => {
   const { withFitRanges, cleanFitRanges } = await import('../src/pipeline/render.js');
   assert.deepEqual(cleanFitRanges([{ start: 2, end: 3 }, { start: 1, end: 1.01 }, null, { start: 0, end: 1 }]), [{ start: 0, end: 1 }, { start: 2, end: 3 }]);

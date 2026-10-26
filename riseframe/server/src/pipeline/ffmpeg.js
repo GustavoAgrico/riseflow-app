@@ -29,7 +29,53 @@ export { ffmpegPath, ffprobePath };
  * vídeo inteiro, então isto é o que mais pesa no tempo total de edição.
  */
 export function x264Fast() {
-  return ['-c:v', 'libx264', '-preset', config.encode.preset, '-crf', String(config.encode.crf)];
+  if (hwEnc) return hwArgs(hwEnc);
+  return cpuFast();
+}
+const cpuFast = () => ['-c:v', 'libx264', '-preset', config.encode.preset, '-crf', String(config.encode.crf)];
+
+// ── Placa de vídeo (app de PC/Mac) ──
+// As etapas intermediárias recodificam o vídeo inteiro várias vezes; com o codificador da
+// placa (NVIDIA/Intel/AMD/Apple) isso fica várias vezes mais rápido. O arquivo final
+// continua no libx264 (mesma qualidade e tamanho de sempre). Se a placa falhar numa etapa,
+// ela é refeita no processador e a placa fica desligada até reabrir o app.
+const HW_ARGS = {
+  h264_nvenc: ['-c:v', 'h264_nvenc', '-preset', 'p2', '-rc', 'vbr', '-cq', '17', '-b:v', '0'],
+  h264_qsv: ['-c:v', 'h264_qsv', '-preset', 'veryfast', '-global_quality', '18'],
+  h264_amf: ['-c:v', 'h264_amf', '-quality', 'speed', '-rc', 'cqp', '-qp_i', '16', '-qp_p', '18', '-qp_b', '20'],
+  h264_videotoolbox: ['-c:v', 'h264_videotoolbox', '-b:v', '30M', '-allow_sw', '1'],
+};
+const hwArgs = (name) => HW_ARGS[name] || ['-c:v', name];
+let hwEnc = null;
+/** Codificador da placa em uso (ou null = processador). */
+export const hwEncoder = () => hwEnc;
+/** Liga/desliga o codificador da placa (testes e detecção). */
+export function setHwEncoder(name) { hwEnc = name || null; }
+
+/**
+ * Procura um codificador da placa que funcione neste computador (codifica um vídeo de
+ * teste curto com cada um). FFMPEG_HWENC=off desliga; =h264_nvenc (etc.) força um.
+ */
+export async function detectHwEncoder() {
+  const want = String(process.env.FFMPEG_HWENC || 'auto').toLowerCase();
+  if (want === 'off' || want === '0' || want === 'false') return null;
+  const list = want !== 'auto' ? [want]
+    : process.platform === 'darwin' ? ['h264_videotoolbox']
+      : process.platform === 'win32' ? ['h264_nvenc', 'h264_qsv', 'h264_amf']
+        : ['h264_nvenc'];
+  for (const name of list) {
+    try {
+      await Promise.race([
+        runFfmpeg(['-f', 'lavfi', '-i', 'testsrc2=s=1080x1920:d=0.5:r=30', '-pix_fmt', 'yuv420p', ...hwArgs(name), '-f', 'null', '-'], { label: `teste ${name}`, quiet: true }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('demorou demais')), 20_000)),
+      ]);
+      hwEnc = name;
+      log.ok(`placa de vídeo: usando ${name} nas etapas intermediárias`);
+      return name;
+    } catch { /* não tem / não funciona: tenta o próximo */ }
+  }
+  log.info('placa de vídeo: nenhum codificador disponível — usando o processador');
+  return null;
 }
 
 /**
@@ -71,7 +117,23 @@ export function hmsToSeconds(hms) {
  * @returns {Promise<{stderr:string}>}
  */
 export function runFfmpeg(args, opts = {}) {
-  const { totalDuration, onProgress, label = 'run', cwd } = opts;
+  const hw = hwEnc && !opts.quiet ? hwEnc : null;
+  const i = hw ? args.indexOf(hw) : -1;
+  if (i < 1 || args[i - 1] !== '-c:v') return runOnce(args, opts);
+  // etapa com a placa de vídeo: se falhar, refaz no processador (e desliga a placa)
+  return runOnce(args, opts).catch((err) => {
+    if (hwEnc === hw) {
+      hwEnc = null;
+      log.warn(`placa de vídeo (${hw}) falhou em "${opts.label || 'run'}"; seguindo no processador`);
+    }
+    const n = hwArgs(hw).length;
+    const cpu = [...args.slice(0, i - 1), ...cpuFast(), ...args.slice(i - 1 + n)];
+    if (cpu.length === args.length - n + cpuFast().length) return runOnce(cpu, opts);
+    throw err;
+  });
+}
+function runOnce(args, opts = {}) {
+  const { totalDuration, onProgress, label = 'run', cwd, quiet } = opts;
   return new Promise((resolve, reject) => {
     const proc = trackChild(spawn(ffmpegPath, ['-hide_banner', '-nostdin', ...args], cwd ? { cwd } : undefined));
     let stderr = '';
@@ -98,7 +160,7 @@ export function runFfmpeg(args, opts = {}) {
       if (code === 0) resolve({ stderr });
       else {
         const tail = stderr.split('\n').slice(-12).join('\n');
-        log.error(`ffmpeg[${label}] exit ${code}`);
+        if (!quiet) log.error(`ffmpeg[${label}] exit ${code}`);
         reject(new Error(`ffmpeg (${label}) falhou (code ${code}):\n${tail}`));
       }
     });

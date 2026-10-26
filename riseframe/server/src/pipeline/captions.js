@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -524,8 +525,12 @@ export async function jobFontsDir(work, files) {
     if (!/\.(ttf|otf)$/i.test(f)) continue;
     await fs.link(path.join(FONTS_DIR, f), path.join(dir, f)).catch(() => fs.copyFile(path.join(FONTS_DIR, f), path.join(dir, f)).catch(() => {}));
   }
-  let i = 0;
-  for (const file of [...new Set(files)]) await fs.copyFile(file, path.join(dir, `custom${i++}${path.extname(file)}`)).catch(() => {});
+  // nome pelo caminho (não pela ordem): legendas e textos usam a mesma pasta na mesma
+  // passada, e uma fonte não pode sobrescrever a outra
+  for (const file of [...new Set(files)]) {
+    const tag = crypto.createHash('sha1').update(String(file)).digest('hex').slice(0, 10);
+    await fs.copyFile(file, path.join(dir, `custom-${tag}${path.extname(file)}`)).catch(() => {});
+  }
   return dir;
 }
 
@@ -538,7 +543,7 @@ export async function fontsDirArg(work, fontsDir = FONTS_DIR) {
 }
 
 /** Escreve o .ass e queima as legendas no vídeo. */
-export async function burnCaptions(input, work, meta, transcript, style, onProgress) {
+export async function burnCaptions(input, work, meta, transcript, style, onProgress, extraVf = null) {
   if (!transcript?.segments?.length) {
     log.warn('sem transcrição; pulando legendas');
     return { output: input, count: 0 };
@@ -557,7 +562,8 @@ export async function burnCaptions(input, work, meta, transcript, style, onProgr
   const fontsRel = style.customFont?.file
     ? await fontsDirArg(work, await jobFontsDir(work, [style.customFont.file]))
     : await fontsDirArg(work);
-  const vf = `subtitles=${ASS_NAME}:fontsdir=${fontsRel}`;
+  // extraVf: os textos livres por cima, na mesma passada (rodam com cwd = work também)
+  const vf = [`subtitles=${ASS_NAME}:fontsdir=${fontsRel}`, extraVf].filter(Boolean).join(',');
   const args = ['-i', input, '-vf', vf, ...x264Fast()];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push('-movflags', '+faststart', '-y', output);

@@ -29,7 +29,7 @@ import { captionCues, toSrt, toVtt, toTxt } from '../../../shared/captionExport.
 import { applySoundEffects } from './sfx.js';
 import { transitionVf, motionTransitionVf, cutJoins } from './transitions.js';
 import { applyVideoFx } from './videofx.js';
-import { burnTexts } from './texts.js';
+import { burnTexts, textsVf } from './texts.js';
 import { applyWatermark } from './watermark.js';
 import { colorFilter, hasColorAdjust } from './color.js';
 import { convertAspect, finalRender, outputTarget, speedFilters, matchesAspect } from './render.js';
@@ -596,6 +596,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
   // 4a. Mídias por baixo do vídeo principal (V0) + recorte + movimento, numa passada.
   let underlayFrame = null; // montado já no formato final (o reenquadramento já foi feito)
+  let preUnderlayInput = null; // vídeo antes do fundo: a metade da pessoa (tela dividida) sai dele
   if (has('underlay')) {
     const st = enter('underlay');
     const blanksNow = cleanBlanks(options.videoBlanks)
@@ -619,6 +620,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       underlayFrame = { w: meta.width, h: meta.height, geo: faceCropGeometry(meta.width, meta.height, meta.width, meta.height, focus, zoom) };
     }
     const r = await applyUnderlay(input, work, meta, options, st.onProgress, transcript.segments, blanksNow, underlayFrame);
+    if (r.applied) preUnderlayInput = input;
     input = r.output;
     trackInput = r.output;
     if (r.applied && underlayFrame) meta = { ...meta, ...(await probeSummary(input)) };
@@ -714,9 +716,13 @@ export async function runPipeline(job, onUpdate = () => {}) {
     // Tela dividida: a pessoa vem da fonte sem o reenquadramento e sem o formato (recorta
     // a metade direto do vídeo original, como a prévia faz).
     // (Transformar depois do formato: a pessoa sai do vídeo de antes do formato, sem movimento)
-    const personInput = motionAfterAspect ? preFrameInput || preAspectInput || preMotionInput : preMotionInput || preFrameInput || preAspectInput;
+    // Com fundo (V0): o vídeo montado já tem o zoom no rosto e o Transformar; a pessoa sai do
+    // vídeo de ANTES do fundo e recebe o zoom e o Transformar uma vez só, na metade dela (como
+    // a prévia). Antes saía do montado e o zoom valia duas vezes (pessoa ~25% maior).
+    const personInput = preUnderlayInput || (motionAfterAspect ? preFrameInput || preAspectInput || preMotionInput : preMotionInput || preFrameInput || preAspectInput);
     const personMeta = personInput ? await probeSummary(personInput) : null;
-    const r = await insertBroll(input, work, meta, analysis, { ...options, personInput, personMeta, personMotion: preMotionInput ? personMotion : null }, st.onProgress);
+    const underlayMotion = preUnderlayInput ? { keys: options.transformKeys, windows: [], intensity: options.motionIntensity } : null;
+    const r = await insertBroll(input, work, meta, analysis, { ...options, personInput, personMeta, personMotion: underlayMotion || (preMotionInput ? personMotion : null) }, st.onProgress);
     input = r.output;
     // só na tela dividida: a legenda centraliza na linha entre as duas metades
     brollWindows = r.layout && r.layout !== 'fullscreen' ? (r.items || []).map((it) => ({ start: it.start, end: it.end })) : [];
@@ -766,6 +772,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
   // 6. Legendas (transcrição sincronizada)
   let captionStyle = null; // o estilo usado também decide os sons da legenda (6b)
+  let textsDone = false; // textos livres já queimados junto com as legendas
   let cueSegments = null; // a legenda no tempo do vídeo final (vira .srt/.vtt/.txt no fim)
   if (has('captions')) {
     const st = enter('captions');
@@ -827,8 +834,12 @@ export async function runPipeline(job, onUpdate = () => {}) {
       }
     }
     cueSegments = captionTranscript.segments;
-    const r = await burnCaptions(input, work, meta, captionTranscript, style, st.onProgress);
+    // os textos livres entram na mesma passada (por cima das legendas, como antes)
+    const tVf = has('texts') ? await textsVf(work, meta, options.textLayers) : null;
+    const before = input;
+    const r = await burnCaptions(input, work, meta, captionTranscript, style, st.onProgress, tVf);
     input = r.output;
+    if (tVf && r.output !== before) textsDone = true;
     report.captions = { segments: r.count, template: style.template, color: style.color, ...(translation ? { translation } : {}) };
     st.record(report.captions);
   }
@@ -836,9 +847,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
   // 6-b. Textos livres (modelos de texto da timeline), por cima das legendas.
   if (has('texts')) {
     const st = enter('texts');
-    const r = await burnTexts(input, work, meta, options.textLayers, st.onProgress);
+    const r = textsDone ? { output: input, count: options.textLayers.length } : await burnTexts(input, work, meta, options.textLayers, st.onProgress);
     input = r.output;
-    report.texts = { count: r.count };
+    report.texts = { count: r.count, ...(textsDone ? { withCaptions: true } : {}) };
     st.record(report.texts);
     st.onProgress(1);
   }
