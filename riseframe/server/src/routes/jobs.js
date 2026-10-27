@@ -24,7 +24,7 @@ import { CLIP_GOALS } from '../pipeline/clipSelect.js';
 import { sanitizeHeadline, sanitizeCover, makeCover } from '../pipeline/headline.js';
 import { outputTarget, cleanFitRanges } from '../pipeline/render.js';
 import { brollCandidates, resolveSource, googleConfig, googleReady } from '../pipeline/broll.js';
-import { freesoundKey, searchFreesound, okSfxUrl, onlineSfxFile } from '../pipeline/sfxOnline.js';
+import { freesoundKey, searchFreesound, searchOpenverse, okSfxUrl, onlineSfxFile } from '../pipeline/sfxOnline.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
 import { analyzeAndGrade } from '../pipeline/autoColor.js';
 import { CAPTION_TEMPLATES, CAPTION_FONTS } from '../pipeline/captions.js';
@@ -1298,22 +1298,34 @@ jobsRouter.post('/remote/broll-search', requireAuth, requireVerified, requireApp
   }
 });
 
-// ── Biblioteca online de sons (Freesound, só CC0) ──
-// GET /api/sfx-online/search?q=&page= → { results } · sem chave aqui, busca pela conta do site
+// ── Biblioteca online de sons (Openverse sem chave + Freesound; só CC0/domínio público) ──
+// GET /api/sfx-online/search?q=&page=&src=openverse|freesound → { results, src }
+// Openverse: busca aberta, funciona até no app de PC sem a conta do site. Freesound: com
+// a chave aqui ou pela conta do site. Se uma fonte falhar, tenta a outra.
 jobsRouter.get('/sfx-online/search', requireAuth, async (req, res) => {
   const q = String(req.query.q || '').slice(0, 80);
   const page = Number(req.query.page) || 1;
-  try {
-    if (freesoundKey()) return res.json({ results: await searchFreesound(q, { page }) });
+  const want = req.query.src === 'freesound' ? 'freesound' : 'openverse';
+  const freesound = async () => {
+    if (freesoundKey()) return searchFreesound(q, { page });
     if (remoteAccount()) {
       const auth = String(req.headers.authorization || '');
       const data = await accountFetch('/remote/sfx-search', { method: 'POST', token: auth.startsWith('Bearer ') ? auth.slice(7) : '', body: { q, page }, ip: req.ip });
-      return res.json({ results: Array.isArray(data.results) ? data.results.filter((x) => okSfxUrl(x.preview)) : [] });
+      return Array.isArray(data.results) ? data.results.filter((x) => okSfxUrl(x.preview)).map((x) => ({ ...x, src: 'freesound' })) : [];
     }
-    res.status(501).json({ error: 'A biblioteca online de sons ainda não foi ligada neste servidor (falta a chave gratuita do Freesound: FREESOUND_API_KEY).' });
-  } catch (err) {
-    res.status(err.status || 502).json({ error: err.body?.error || err.message || 'falha na busca de sons' });
+    throw Object.assign(new Error('A busca no Freesound precisa da chave gratuita do Freesound no servidor (FREESOUND_API_KEY). Use a fonte Openverse, que não precisa de chave.'), { status: 501 });
+  };
+  const order = want === 'freesound' ? [['freesound', freesound], ['openverse', () => searchOpenverse(q, { page })]] : [['openverse', () => searchOpenverse(q, { page })], ['freesound', freesound]];
+  let first = null;
+  for (const [src, run] of order) {
+    try {
+      return res.json({ results: await run(), src });
+    } catch (err) {
+      first = first || err;
+      if (src === want) console.warn(`[sfx-online] ${src}: ${err.message}`);
+    }
   }
+  res.status(first?.status || 502).json({ error: first?.body?.error || first?.message || 'falha na busca de sons' });
 });
 // POST /api/remote/sfx-search { q, page } → { results } (para o app de PC sem chave)
 jobsRouter.post('/remote/sfx-search', requireAuth, requireVerified, requireAppPlan, async (req, res) => {
@@ -1325,7 +1337,7 @@ jobsRouter.post('/remote/sfx-search', requireAuth, requireVerified, requireAppPl
     res.status(502).json({ error: err.message || 'falha na busca de sons' });
   }
 });
-// GET /api/sfx-online/preview?u=<prévia do Freesound> → o mp3 (do cache), para ouvir no editor
+// GET /api/sfx-online/preview?u=<som do Freesound/Wikimedia> → o mp3 (do cache), para ouvir no editor
 jobsRouter.get('/sfx-online/preview', async (req, res) => {
   const u = String(req.query.u || '');
   if (!okSfxUrl(u)) return res.status(400).json({ error: 'endereço de som inválido' });
