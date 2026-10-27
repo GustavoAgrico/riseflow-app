@@ -5023,7 +5023,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     try { localStorage.setItem('rf_sfx_style', st); } catch { /* sem armazenamento */ }
   }
   function placeAutoSfx(style = autoSfxStyle) {
-    const keep = sfxMoments.filter((m) => !m.smart);
+    const keep = sfxMoments.filter((m) => !m.smart || m.motion); // os sons dos motions ficam
     // o que os sons automáticos da aba Efeitos já cobrem não ganha outro som
     const covered = fx.soundEffects;
     const list = suggestSfx({
@@ -5044,8 +5044,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     sayAuto(list.length ? `${list.length} sons colocados nos momentos certos — veja na faixa S1` : 'Não achei momentos para som nesse trecho.');
   }
   function clearAutoSfx() {
-    const n = sfxMoments.filter((m) => m.smart).length;
-    setSfxMoments((l) => l.filter((m) => !m.smart));
+    const n = sfxMoments.filter((m) => m.smart && !m.motion).length;
+    setSfxMoments((l) => l.filter((m) => !m.smart || m.motion));
     sayAuto(n ? `${n} sons automáticos tirados` : 'Não havia sons automáticos.');
   }
   function placeAutoMotions() {
