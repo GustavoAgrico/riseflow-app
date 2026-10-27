@@ -26,7 +26,10 @@ import { burnCaptions, captionSfxEvents } from './captions.js';
 import { translateTranscript } from './translate.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import { captionCues, toSrt, toVtt, toTxt } from '../../../shared/captionExport.js';
-import { applySoundEffects } from './sfx.js';
+import { applySoundEffects, SFX_LIBRARY } from './sfx.js';
+import { kineticPlan } from '../../../shared/kinetic.js';
+import { cleanTextLayers } from '../../../shared/textLayers.js';
+import { CAPTION_FONTS } from '../../../shared/captionStyle.js';
 import { transitionVf, motionTransitionVf, cutJoins } from './transitions.js';
 import { applyVideoFx } from './videofx.js';
 import { burnTexts, textsVf } from './texts.js';
@@ -156,10 +159,10 @@ function buildPlan(mode, options) {
       { key: 'vfx', label: 'Aplicando efeitos de vídeo', weight: 8, enabled: Array.isArray(options.fxMoments) && options.fxMoments.length > 0 },
       { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: Array.isArray(options.userMedia) && options.userMedia.length > 0 },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
-      { key: 'texts', label: 'Colocando os textos', weight: 8, enabled: Array.isArray(options.textLayers) && options.textLayers.length > 0 },
+      { key: 'texts', label: 'Colocando os textos', weight: 8, enabled: (Array.isArray(options.textLayers) && options.textLayers.length > 0) || (options.kinetic === true && mode !== 'render') },
       { key: 'headline', label: 'Colocando o título (headline)', weight: 6, enabled: Boolean(options.headline?.text) },
       { key: 'watermark', label: 'Aplicando o seu logo', weight: 6, enabled: Boolean(options.watermark?.file) },
-      { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true || (Array.isArray(options.sfxMoments) && options.sfxMoments.length > 0) },
+      { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true || (Array.isArray(options.sfxMoments) && options.sfxMoments.length > 0) || (options.kinetic === true && mode !== 'render') },
       { key: 'color', label: 'Analisando as cores', weight: 3, enabled: (options.colorLook || 'teal-orange') !== 'none' || hasColorAdjust(options.colorAdjust) },
       { key: 'render', label: 'Renderização final', weight: 18, enabled: true },
     ].filter((s) => s.enabled);
@@ -580,6 +583,26 @@ export async function runPipeline(job, onUpdate = () => {}) {
     }
     st.record(report.cut);
     st.onProgress(1);
+  }
+
+  // 3y. Motion tipográfico escolhido no começo (modo automático, sem abrir a timeline): as
+  // cenas saem da fala JÁ cortada (tempo final), com os sons e a legenda escondida durante
+  // cada cena. No render da timeline elas já vêm prontas do editor (camadas de texto).
+  if (options.kinetic === true && mode !== 'render') {
+    const out = outputTarget(meta, { aspect: options.aspect });
+    const W = out?.w || meta.width || 1080;
+    const H = out?.h || meta.height || 1920;
+    const plan = kineticPlan({
+      segments: transcript.segments, dur: meta.duration, aspect: W / H,
+      theme: options.kineticTheme, amount: options.kineticAmount, available: new Set(Object.keys(SFX_LIBRARY)),
+    });
+    if (plan.scenes.length) {
+      options.textLayers = cleanTextLayers([...(options.textLayers || []), ...plan.layers], Object.keys(CAPTION_FONTS), 400);
+      options.sfxMoments = [...(options.sfxMoments || []), ...plan.sfx];
+      const inScene = (w) => plan.scenes.some((sc) => (w.start + w.end) / 2 >= sc.start && (w.start + w.end) / 2 <= sc.end);
+      transcript = { ...transcript, segments: transcript.segments.map((sg) => (sg.words?.length ? { ...sg, words: sg.words.map((w) => (inScene(w) ? { ...w, hidden: true } : w)) } : sg)) };
+    }
+    report.kinetic = { scenes: plan.scenes.length, sounds: plan.sfx.length };
   }
 
   // 3z. Vídeo bem maior que o quadro final (ex.: gravado em 4K, exportando em 1080p): reduz

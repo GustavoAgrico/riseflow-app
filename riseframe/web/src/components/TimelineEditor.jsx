@@ -19,7 +19,8 @@ import CaptionGallery, { FontPicker, ColorSwatches, TextStyleBar } from './Capti
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, playSfxUrl, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
-import { suggestSfx, suggestMotions, sfxFor, SFX_STYLES } from '../../../shared/autoMoments.js';
+import { suggestSfx, SFX_STYLES } from '../../../shared/autoMoments.js';
+import { kineticPlan, KINETIC_THEMES, KINETIC_AMOUNT } from '../../../shared/kinetic.js';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
 import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
@@ -29,7 +30,7 @@ import ShadowPanel from './ShadowPanel.jsx';
 import ColorField from './ColorPicker.jsx';
 import { customFontFamily, useCustomFonts } from '../customFonts.js';
 import { shadowParams } from '../../../shared/captionShadow.js';
-import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById } from '../../../shared/captionStyle.js';
+import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById, fontStyles } from '../../../shared/captionStyle.js';
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 import { captionCues, toSrt, toVtt, toTxt, skipMapper } from '../../../shared/captionExport.js';
 import { layerAt, upsertKey, shiftKf, KF_INTERPS, kfInterpOf, withInterp, cleanVolKeys, volDbAt, VOL_DB_MIN, VOL_DB_MAX } from '../../../shared/layerKeys.js';
@@ -808,6 +809,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [cloudSavedAt, setCloudSavedAt] = useState(null);
   const [cloudErr, setCloudErr] = useState('');
   const [restored, setRestored] = useState(false);
+  const freshRef = useRef(false);
   const dirtyRef = useRef(true); // salva logo na abertura: todo projeto fica na lista
   const firstStateRef = useRef(true);
   useEffect(() => {
@@ -850,6 +852,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       try {
         const doc = await loadProject(sourceId);
         if (alive && !doc?.state && !loadAutosave(sourceId)?.state) {
+          freshRef.current = true; // vídeo novo (sem projeto salvo)
           let carried = null;
           try { carried = JSON.parse(sessionStorage.getItem('rf_carry_style') || 'null'); sessionStorage.removeItem('rf_carry_style'); } catch { /* ignora */ }
           if (carried) {
@@ -5010,20 +5013,25 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     runSfxSearch(sfxOnQ.trim(), src);
   }
 
-  // ── Sons e motions automáticos nos momentos certos (shared/autoMoments.js) ──
-  // Viram itens normais da faixa SFX / TEXTO: dá para mover, trocar e apagar, e o vídeo
-  // final sai igual à prévia. `smart` marca os que vieram daqui (para refazer/tirar).
-  const [autoSfxStyle, setAutoSfxStyle] = useState(() => { try { return SFX_STYLES[localStorage.getItem('rf_sfx_style')] ? localStorage.getItem('rf_sfx_style') : 'cinematic'; } catch { return 'cinematic'; } });
+  // ── Sons nos momentos certos (shared/autoMoments.js) e motion tipográfico (shared/kinetic.js) ──
+  // Viram itens normais das faixas SFX / TEXTO: dá para mover, trocar e apagar, e o vídeo
+  // final sai igual à prévia. `smart` marca os que vieram daqui (para refazer/tirar);
+  // `motion` marca os sons que entraram junto com o motion tipográfico.
+  const [autoSfxStyle, setAutoSfxStyle] = useState(() => { try { return SFX_STYLES[localStorage.getItem('rf_sfx_style2')] ? localStorage.getItem('rf_sfx_style2') : 'premium'; } catch { return 'premium'; } });
+  const [kinTheme, setKinTheme] = useState(() => (KINETIC_THEMES[options?.kineticTheme] ? options.kineticTheme : 'auto'));
+  const [kinAmount, setKinAmount] = useState(() => (KINETIC_AMOUNT[options?.kineticAmount] ? options.kineticAmount : 'chave'));
+  const [kinSfx, setKinSfx] = useState(true);
   const [autoNote, setAutoNote] = useState('');
-  const sayAuto = (msg) => { setAutoNote(msg); setTimeout(() => setAutoNote(''), 3500); };
+  const sayAuto = (msg) => { setAutoNote(msg); setTimeout(() => setAutoNote(''), 4000); };
   const smartSegments = () => (cuts.length ? segments.map((sg) => markCut(sg, cuts)) : segments);
-  const sfxAvailable = () => new Set((catalog?.sfxTypes || []).map((o) => o.id).filter((id) => id !== 'none'));
+  // null = catálogo ainda não chegou (vale qualquer som do servidor)
+  const sfxAvailable = () => (catalog?.sfxTypes?.length ? new Set(catalog.sfxTypes.map((o) => o.id).filter((id) => id !== 'none')) : null);
   function pickAutoSfxStyle(st) {
     setAutoSfxStyle(st);
-    try { localStorage.setItem('rf_sfx_style', st); } catch { /* sem armazenamento */ }
+    try { localStorage.setItem('rf_sfx_style2', st); } catch { /* sem armazenamento */ }
   }
   function placeAutoSfx(style = autoSfxStyle) {
-    const keep = sfxMoments.filter((m) => !m.smart || m.motion); // os sons dos motions ficam
+    const keep = sfxMoments.filter((m) => !m.smart || m.motion); // os sons do motion ficam
     // o que os sons automáticos da aba Efeitos já cobrem não ganha outro som
     const covered = fx.soundEffects;
     const list = suggestSfx({
@@ -5036,11 +5044,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         broll: covered && fx.sfxBrollType !== 'none' ? [] : brollOn ? (brollReview?.moments || []).filter((m) => brollVisible(m)).map((m) => Number(m.start)) : [],
         transition: transitions.map((x) => Number(x.t)),
         zoom: (covered && fx.sfxZoomType !== 'none') || fx.videoMotion === 'none' ? [] : (zoomMoments || []).map((z) => Number(z.start)),
-        text: textLayers.filter((l) => l.kind !== 'shape').map((l) => Number(l.start)),
+        text: textLayers.filter((l) => l.kind !== 'shape' && !l.smart).map((l) => Number(l.start)),
       },
     });
     const now = Date.now();
-    setSfxMoments([...keep, ...list.map((m, i) => ({ key: `s${now}_${i}`, t: m.t, type: m.type, smart: true, why: m.why }))].sort((a, b) => a.t - b.t));
+    setSfxMoments([...keep, ...list.map((m, i) => ({ key: `s${now}_${i}`, t: m.t, type: m.type, ...(m.volume != null ? { volume: m.volume } : {}), smart: true, why: m.why }))].sort((a, b) => a.t - b.t));
     sayAuto(list.length ? `${list.length} sons colocados nos momentos certos — veja na faixa S1` : 'Não achei momentos para som nesse trecho.');
   }
   function clearAutoSfx() {
@@ -5048,47 +5056,55 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setSfxMoments((l) => l.filter((m) => !m.smart || m.motion));
     sayAuto(n ? `${n} sons automáticos tirados` : 'Não havia sons automáticos.');
   }
-  function placeAutoMotions() {
+  /** Motion tipográfico: cenas de tipografia cinética nos momentos da fala (com os sons). */
+  function placeKinetic() {
     const keep = textLayers.filter((l) => !l.smart);
-    const list = suggestMotions({ segments: smartSegments(), dur, existing: keep });
+    const aspect = (FMT_WH[aspectSel]?.[0] || vdim?.w || 1080) / (FMT_WH[aspectSel]?.[1] || vdim?.h || 1920);
+    const plan = kineticPlan({ segments: smartSegments(), dur, aspect, theme: kinTheme, amount: kinAmount, existing: keep.filter((l) => l.end - l.start < dur * 0.8), available: sfxAvailable() });
     const now = Date.now();
-    const avail = sfxAvailable();
-    const n = {};
-    const layers = list.map(({ kind, ...m }, i) => ({ key: `t${now}_${i}`, ...m, smart: true, why: kind }));
-    setTextLayers([...keep, ...layers].sort((a, b) => a.start - b.start));
-    // cada motion entra com o som do assunto (se ainda não tem som ali)
+    const layers = plan.layers.map((l, i) => ({ key: `t${now}_${i}`, ...l, smart: true }));
+    // a ordem do desenho é a da lista: o fundo de cada cena vem antes das palavras dela
+    setTextLayers([...keep, ...layers]);
     const keepSfx = sfxMoments.filter((m) => !(m.smart && m.motion));
-    const sfx = [];
-    list.forEach((m, i) => {
-      if (keepSfx.some((x) => Math.abs(x.t - m.start) < 0.4)) return;
-      const type = sfxFor(m.kind, autoSfxStyle, avail, (n[m.kind] = (n[m.kind] ?? -1) + 1));
-      if (type) sfx.push({ key: `s${now}_m${i}`, t: +(m.start + 0.05).toFixed(3), type, smart: true, motion: true, why: 'motion' });
-    });
+    const sfx = kinSfx ? plan.sfx.filter((m) => !keepSfx.some((x) => Math.abs(x.t - m.t) < 0.12)).map((m, i) => ({ key: `s${now}_k${i}`, t: m.t, type: m.type, volume: m.volume, smart: true, motion: true, why: m.why })) : [];
     setSfxMoments([...keepSfx, ...sfx].sort((a, b) => a.t - b.t));
+    // a legenda some enquanto a cena está na tela (a frase já está no motion) e volta ao tirar
+    const inScene = (w) => plan.scenes.some((sc) => (w.start + w.end) / 2 >= sc.start && (w.start + w.end) / 2 <= sc.end);
+    setSegments((prev) => prev.map((sg) => ({ ...sg, words: sg.words.map((w) => (w.khid && !inScene(w) ? { ...w, hidden: false, khid: false } : !w.hidden && inScene(w) ? { ...w, hidden: true, khid: true } : w)) })));
     if (laneHide.txt) setLaneHide((h) => ({ ...h, txt: false }));
-    sayAuto(layers.length ? `${layers.length} motions nos momentos-chave — clique num deles para editar` : 'Não achei momentos-chave com destaque (números, dinheiro, conquistas, alertas).');
+    sayAuto(plan.scenes.length ? `${plan.scenes.length} cenas de motion — dê play para ver; cada palavra é um texto que dá para editar` : 'Não achei frases com destaque para o motion. Tente "Quase o vídeo todo".');
   }
-  function clearAutoMotions() {
-    const n = textLayers.filter((l) => l.smart).length;
+  function clearKinetic() {
+    const n = new Set(textLayers.filter((l) => l.smart && l.scene).map((l) => l.scene)).size;
     setTextLayers((l) => l.filter((x) => !x.smart));
     setSfxMoments((l) => l.filter((m) => !(m.smart && m.motion)));
-    sayAuto(n ? `${n} motions tirados` : 'Não havia motions automáticos.');
+    setSegments((prev) => prev.map((sg) => (sg.words.some((w) => w.khid) ? { ...sg, words: sg.words.map((w) => (w.khid ? { ...w, hidden: false, khid: false } : w)) } : sg)));
+    sayAuto(n ? `${n} cenas de motion tiradas (a legenda voltou)` : 'Não havia motion tipográfico.');
   }
+  // "Motion tipográfico" marcado no começo: o vídeo novo já abre com as cenas montadas
+  const kinAutoRef = useRef(false);
+  useEffect(() => {
+    if (!restored || kinAutoRef.current) return;
+    kinAutoRef.current = true;
+    if (options?.kinetic === true && freshRef.current && !textLayers.some((l) => l.smart)) placeKinetic();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restored]);
   const smartSfxN = sfxMoments.filter((m) => m.smart && !m.motion).length;
-  const smartMotionN = textLayers.filter((l) => l.smart).length;
+  const kineticN = new Set(textLayers.filter((l) => l.smart).map((l) => l.scene || l.key)).size;
   const autoCardStyle = { display: 'grid', gap: 7, padding: 10, borderRadius: 10, border: '1px solid rgba(124,58,237,0.45)', background: 'linear-gradient(135deg, rgba(124,58,237,0.16), rgba(255,107,53,0.08))', marginBottom: 8 };
+  const chip = (on, onClick, label, key) => (
+    <button key={key ?? label} type="button" onClick={onClick} aria-pressed={on}
+      style={{ height: 22, padding: '0 9px', borderRadius: 999, border: `1px solid ${on ? C.orange : C.border}`, background: on ? 'rgba(255,107,53,0.16)' : 'transparent', color: on ? C.text : C.muted, fontSize: 10.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>{label}</button>
+  );
   const autoSfxCard = (
     <div style={autoCardStyle}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <b style={{ fontSize: 12.5 }}>✨ Sons nos momentos certos</b>
         <span style={{ fontSize: 10.5, color: C.faint }}>lê a fala e a timeline</span>
       </div>
-      <span style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.35 }}>Põe o som certo no início da palavra: dinheiro → compra, conquista → vitória, erro/cuidado → alerta, pergunta → notificação, números, ideia nova, B-roll, transições e textos. Fica tudo na faixa S1 para mover, trocar ou apagar.</span>
+      <span style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.35 }}>Põe o som no início da palavra que pede efeito (números, dinheiro, conquistas, alertas, ideia nova) e nas entradas de B-roll, transições e textos. <b>Premium</b>: batida grave suave, passagem de ar e tecla — discretos, abaixo da voz. Fica tudo na faixa S1 para mover, trocar ou apagar.</span>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-        {Object.entries(SFX_STYLES).map(([id, label]) => (
-          <button key={id} type="button" onClick={() => pickAutoSfxStyle(id)} aria-pressed={autoSfxStyle === id}
-            style={{ height: 22, padding: '0 9px', borderRadius: 999, border: `1px solid ${autoSfxStyle === id ? C.orange : C.border}`, background: autoSfxStyle === id ? 'rgba(255,107,53,0.16)' : 'transparent', color: autoSfxStyle === id ? C.text : C.muted, fontSize: 10.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>{label}</button>
-        ))}
+        {Object.entries(SFX_STYLES).map(([id, label]) => chip(autoSfxStyle === id, () => pickAutoSfxStyle(id), label, id))}
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
         <button type="button" onClick={() => placeAutoSfx()} style={{ ...miniBtn(true, false), flex: 1 }}>{smartSfxN ? 'Refazer os sons' : 'Colocar sons'}</button>
@@ -5100,14 +5116,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const autoMotionCard = (
     <div style={{ ...autoCardStyle, marginBottom: 0 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-        <b style={{ fontSize: 13.5 }}>✨ Motions nos momentos-chave</b>
-        <span style={{ fontSize: 11.5, color: C.faint }}>textos animados com som, onde a fala pede destaque</span>
+        <b style={{ fontSize: 13.5 }}>✨ Motion tipográfico</b>
+        <span style={{ fontSize: 11.5, color: C.faint }}>tipografia cinética editorial, palavra por palavra no ritmo da fala</span>
       </div>
-      <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Acha os momentos fortes da fala — valores (“R$ 5.000”), números (“3 DICAS”), conquistas, alertas e perguntas curtas — e põe um título animado no ponto exato, com o som do estilo <b>{SFX_STYLES[autoSfxStyle]}</b>. Cada um vira um texto normal na timeline: dá para mudar o texto, a cor, a posição e a animação.</span>
+      <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Monta a frase em camadas: palavras de ligação pequenas em itálico, palavras-chave grandes, números em tarja — cada uma entra no instante em que é falada, em cenas de fundo (papel, holofote, cinema com luz laranja) ou sobre o vídeo. Com sons premium em cada entrada. A legenda some durante a cena e volta ao tirar.</span>
+      <div style={{ display: 'grid', gap: 5 }}>
+        <span style={{ fontSize: 10.5, color: C.faint, fontWeight: 700 }}>Visual</span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{Object.entries(KINETIC_THEMES).map(([id, label]) => chip(kinTheme === id, () => setKinTheme(id), label, id))}</div>
+        <span style={{ fontSize: 10.5, color: C.faint, fontWeight: 700 }}>Quanto</span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+          {Object.entries(KINETIC_AMOUNT).map(([id, label]) => chip(kinAmount === id, () => setKinAmount(id), label, id))}
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: C.muted, marginLeft: 6, cursor: 'pointer' }}>
+            <input type="checkbox" checked={kinSfx} onChange={(e) => setKinSfx(e.target.checked)} /> com sons premium
+          </label>
+        </div>
+      </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <button type="button" onClick={placeAutoMotions} style={{ ...miniBtn(true, false) }}>{smartMotionN ? 'Refazer os motions' : 'Colocar motions'}</button>
-        {smartMotionN > 0 && <button type="button" onClick={clearAutoMotions} style={{ ...miniBtn(false, false) }}>Tirar ({smartMotionN})</button>}
-        <button type="button" onClick={() => placeAutoSfx()} style={{ ...miniBtn(false, false) }}>+ Sons nos momentos certos</button>
+        <button type="button" onClick={placeKinetic} style={{ ...miniBtn(true, false) }}>{kineticN ? 'Refazer o motion' : 'Criar motion'}</button>
+        {kineticN > 0 && <button type="button" onClick={clearKinetic} style={{ ...miniBtn(false, false) }}>Tirar ({kineticN} {kineticN === 1 ? 'cena' : 'cenas'})</button>}
       </div>
       {autoNote && <span style={{ fontSize: 11.5, color: C.text }}>{autoNote}</span>}
     </div>
@@ -10093,7 +10119,7 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
             </div>
           );
         }
-        const f = textFontOf(l.font);
+        const f = textFontOf(l.font, l.fontStyle);
         const px = textEm(l) * box.h; // tamanho efetivo (escala, sobrescrito/subscrito)
         const emBase = (Number(l.size) || 0.05) * L.scale * box.h;
         const on = editable && selText === l.key;
@@ -10317,8 +10343,10 @@ function freeLayer(list, start, duration) {
   return l;
 }
 /** Fonte de um texto: da lista ou "custom:<id>" (fonte que a pessoa enviou). */
-function textFontOf(font) {
-  return String(font || '').startsWith('custom:') ? { family: customFontFamily(String(font).slice(7)), bold: false } : fontById(font);
+function textFontOf(font, style = null) {
+  if (String(font || '').startsWith('custom:')) return { family: customFontFamily(String(font).slice(7)), bold: false };
+  const st = style ? fontStyles(font).find((x) => x.id === style) : null;
+  return st ? { family: st.family, bold: false } : fontById(font);
 }
 /** Renumera as camadas em 0, 1, 2… mantendo a ordem (tira as camadas vazias). A V0 não conta. */
 function normalizeLayers(list) {
@@ -10781,13 +10809,19 @@ function TextProps({ l, FW, FH, head, up, hidden, onEye, order = null }) {
         <PropRow label="Opacidade"><ScrubNum value={L.opacity * 100} step={0.5} min={0} max={100} decimals={1} suffix=" %" onChange={(v) => up({ opacity: +(v / 100).toFixed(4) })} /></PropRow>
       </PropSection>
       <PropSection title="Texto" onReset={() => up({ bold: false, italic: false, caps: false, smallCaps: false, underline: false, script: null, align: 'center', valign: 'center', tracking: 0, leading: 0, baseline: 0 })}>
-        <select value={curF.fam} onChange={(e) => { const f = all.find((x) => x.fam === e.target.value); if (f) up({ font: f.id }); }} style={sel} aria-label="Fonte">
+        <select value={curF.fam} onChange={(e) => { const f = all.find((x) => x.fam === e.target.value); if (f) up({ font: f.id, fontStyle: null }); }} style={sel} aria-label="Fonte">
           {families.map((f) => <option key={f.fam} value={f.fam}>{f.fam}</option>)}
         </select>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          <select value={curF.id} onChange={(e) => up({ font: e.target.value })} disabled={styles.length < 2} style={{ ...sel, width: 'auto', flex: '1 1 140px' }} aria-label="Estilo da fonte">
-            {styles.map((f) => <option key={f.id} value={f.id}>{f.style}</option>)}
-          </select>
+          {fontStyles(curF.id).length > 1 ? (
+            <select value={l.fontStyle || ''} onChange={(e) => up({ fontStyle: e.target.value || null })} style={{ ...sel, width: 'auto', flex: '1 1 140px' }} aria-label="Estilo da fonte">
+              {fontStyles(curF.id).map((st) => <option key={st.id || 'padrao'} value={st.id}>{st.label}</option>)}
+            </select>
+          ) : (
+            <select value={curF.id} onChange={(e) => up({ font: e.target.value, fontStyle: null })} disabled={styles.length < 2} style={{ ...sel, width: 'auto', flex: '1 1 140px' }} aria-label="Estilo da fonte">
+              {styles.map((f) => <option key={f.id} value={f.id}>{f.style}</option>)}
+            </select>
+          )}
           <button onClick={() => up({ bold: !L.bold })} aria-pressed={L.bold} title="Negrito falso" style={{ ...tb(L.bold), fontWeight: 900 }}>T</button>
           <button onClick={() => up({ italic: !L.italic })} aria-pressed={L.italic} title="Itálico falso" style={{ ...tb(L.italic), fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>T</button>
           <button onClick={() => up({ caps: !L.caps, smallCaps: false })} aria-pressed={L.caps} title="Todas maiúsculas" style={tb(L.caps)}>TT</button>

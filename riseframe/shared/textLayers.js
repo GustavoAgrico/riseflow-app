@@ -1,5 +1,6 @@
 // Texto livre na timeline (como o "Texto" do CapCut) e efeitos de vídeo por momento.
 // Compartilhado pelo site (editor + prévia) e pelo servidor (render).
+import { isFontStyle } from './captionStyle.js';
 
 /** Animações de entrada e saída de um texto. */
 export const TEXT_ANIMS_IN = { none: 'Nenhuma', fade: 'Fade', pop: 'Pop', zoom: 'Zoom', 'slide-up': 'Subir', 'slide-left': 'Entrar da direita', typewriter: 'Máquina de escrever', words: 'Palavra por palavra' };
@@ -317,6 +318,8 @@ export function cleanTextLayers(raw, fonts = null, max = 30) {
       end: Math.min(start + 600, end),
       // fonte da lista ou "custom:<id>" (fonte enviada pela pessoa — o servidor confere o dono)
       font: typeof l.font === 'string' && ((!fonts || fonts.includes(l.font)) || /^custom:[\w-]{1,40}$/.test(l.font)) ? l.font : 'poppins',
+      // estilo do arquivo da fonte (Regular, Itálico, Black…), como nas legendas
+      ...(typeof l.fontStyle === 'string' && l.fontStyle && isFontStyle(l.font, l.fontStyle) ? { fontStyle: l.fontStyle } : {}),
       size: num(l.size, 0.015, 0.2, 0.05),
       color: HEX.test(l.color) ? l.color : '#FFFFFF',
       box: pickOf(TEXT_BOXES, l.box, 'outline'),

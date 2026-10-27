@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { fontsDirArg, jobFontsDir } from './captions.js';
-import { fontById } from '../../../shared/captionStyle.js';
+import { fontById, fontStyles } from '../../../shared/captionStyle.js';
 import { textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan } from '../../../shared/textLayers.js';
 import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
 import { makeLogger } from '../logger.js';
@@ -90,7 +90,8 @@ export function buildTextAss(layers, meta) {
       return;
     }
     const custom = l.fontFile && l.fontFamily;
-    const f = custom ? { family: l.fontFamily, bold: false } : fontById(l.font);
+    const st = !custom && l.fontStyle ? fontStyles(l.font).find((x) => x.id === l.fontStyle) : null;
+    const f = custom ? { family: l.fontFamily, bold: false } : st ? { family: st.family, bold: false } : fontById(l.font);
     const FM = custom ? fontMetricsFile(l.fontFile) : fontMetrics(f.family);
     const em = textEm(l) * H; // = font-size do CSS, em px do quadro
     const emBase = (Number(l.size) || 0.05) * L.scale * H;

@@ -106,6 +106,37 @@ export function tickTrackWav(times, durationSec, { rate = 44100, gain = 0.5, sam
  * - src/af: entrada lavfi e cadeia de filtros que geram o som.
  */
 export const SFX_LIBRARY = {
+  // ── Kit premium (edição de agência): sons discretos, graves e com ar, nada de "joguinho".
+  // Pensados para tipografia cinética: passagem nas cenas, batida grave nas palavras-chave,
+  // tecla real nas palavras pequenas, brilho suave nas conquistas.
+  'pr-air': {
+    label: 'Passagem de ar (premium)', base: 'whoosh', gain: 0.8, lead: 0.28,
+    src: 'anoisesrc=d=0.62:c=pink:a=0.8:r=44100',
+    af: ['highpass=f=260', 'lowpass=f=4200', 'equalizer=f=1400:t=q:w=1.2:g=3', 'afade=t=in:st=0:d=0.36:curve=qsin',
+      'afade=t=out:st=0.36:d=0.26:curve=exp', 'aecho=0.7:0.5:28:0.2', 'volume=3.6', 'aformat=channel_layouts=stereo', 'apulsator=hz=1.4:amount=0.55'],
+  },
+  'pr-out': {
+    label: 'Saída suave (premium)', base: 'whoosh', gain: 0.6, lead: 0,
+    src: 'anoisesrc=d=0.45:c=pink:a=0.8:r=44100',
+    af: ['highpass=f=500', 'lowpass=f=5200', 'afade=t=in:st=0:d=0.05', 'afade=t=out:st=0.05:d=0.4:curve=exp',
+      'aecho=0.7:0.45:40:0.25', 'volume=4.5', 'aformat=channel_layouts=stereo', 'apulsator=hz=2.2:amount=0.6'],
+  },
+  'pr-hit': {
+    label: 'Batida grave suave (premium)', base: 'pop', gain: 1.05, lead: 0,
+    // sub-grave que cai de tom + corpo curto: o "tum" das edições de agência
+    src: "aevalsrc='0.95*sin(2*PI*(46*t+5.5*(1-exp(-t*16))))*exp(-t*7)+0.25*sin(2*PI*110*t)*exp(-t*22)+0.08*(random(0)*2-1)*exp(-t*70)':d=0.7:s=44100",
+    af: ['lowpass=f=1100', 'aecho=0.6:0.35:55:0.18', 'afade=t=out:st=0.5:d=0.2', 'volume=2.8', 'aformat=channel_layouts=stereo'],
+  },
+  'pr-shine': {
+    label: 'Brilho suave (premium)', base: 'pop', gain: 0.6, lead: 0,
+    src: "aevalsrc='0.3*sin(2*PI*1568*t)*exp(-t*5)+0.22*sin(2*PI*2093*t)*exp(-t*6)+0.16*sin(2*PI*2637*t)*exp(-t*7)+0.1*sin(2*PI*3136*t)*exp(-t*8)':d=0.9:s=44100",
+    af: ['afade=t=in:st=0:d=0.012', 'aecho=0.8:0.6:70|110:0.3|0.2', 'volume=1.8', 'aformat=channel_layouts=stereo'],
+  },
+  'pr-rise': {
+    label: 'Subida suave (premium)', base: 'whoosh', gain: 0.55, lead: 1.1,
+    src: "aevalsrc='(0.6*(random(0)*2-1)+0.25*sin(2*PI*(220*t+180*t*t)))*pow(t/1.2,2.2)':d=1.2:s=44100",
+    af: ['highpass=f=300', 'lowpass=f=5000', 'afade=t=out:st=1.1:d=0.1', 'aecho=0.7:0.5:35:0.25', 'volume=2', 'aformat=channel_layouts=stereo'],
+  },
   whoosh: {
     label: 'Whoosh (passagem)', base: 'whoosh', gain: 1, lead: 0.3,
     // Ruído marrom (grave, macio) com subida longa e queda rápida, passando de um lado
@@ -291,6 +322,7 @@ export const SFX_LIBRARY = {
 
 /** Categorias da biblioteca (como as do CapCut). */
 export const SFX_CATEGORIES = {
+  premium: 'Premium (agência)',
   transicao: 'Transição',
   impacto: 'Impacto',
   interface: 'Interface e redes',
@@ -301,6 +333,7 @@ export const SFX_CATEGORIES = {
   dinheiro: 'Compras e dinheiro',
 };
 const SFX_CAT = {
+  'pr-air': 'premium', 'pr-out': 'premium', 'pr-hit': 'premium', 'pr-shine': 'premium', 'pr-rise': 'premium', 'pr-key': 'premium',
   whoosh: 'transicao', swoosh: 'transicao', riser: 'transicao', whooshdown: 'transicao', swipe: 'transicao', rewind: 'transicao',
   impact: 'impacto', kick: 'impacto', boom: 'impacto', thud: 'impacto', bassdrop: 'impacto',
   shutter: 'interface', click: 'interface', typing: 'interface', pop: 'interface', bubble: 'interface', ding: 'interface', notify: 'interface', clock: 'interface',
@@ -346,6 +379,9 @@ export function loadSfxPack(dir = SFX_PACK_DIR) {
   }
   return added;
 }
+// tecla de verdade (gravação), discreta — para as palavras pequenas da tipografia cinética
+const PR_KEY = path.join(SFX_DIR, 'tecla-03.wav');
+if (fsSync.existsSync(PR_KEY)) SFX_LIBRARY['pr-key'] = { label: 'Tecla real (premium)', file: PR_KEY, base: 'pop', gain: 1.1, lead: 0, cat: 'premium', dur: 0.12 };
 const packIds = loadSfxPack();
 if (packIds.length) log.info(`pacote de sons: ${packIds.length} sons em arquivo`);
 
@@ -405,7 +441,7 @@ export function buildSfxMix(events, opts = {}) {
     .filter((e) => e && Number.isFinite(e.t) && e.t >= 0 && (isType(e.type) || e.file))
     .map((e) => ({ ...e, at: Math.max(0, e.t - (e.file ? 0 : SFX_LIBRARY[e.type].lead)) }))
     .sort((a, b) => a.at - b.at)
-    .slice(0, opts.max ?? 80);
+    .slice(0, opts.max ?? 150);
   // Os cliques (tick) chegam prontos numa faixa só (opts.tickTrack), como mais uma entrada.
   if (!list.length && !opts.tickTrack) return null;
 
