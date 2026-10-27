@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { suggestSfx, suggestMotions, momentOf, sfxFor } from '../../shared/autoMoments.js';
+import { suggestSfx, momentOf, sfxFor, premiumSfx } from '../../shared/autoMoments.js';
 
 // frase com palavras de 0,35 s cada
 const mk = (t0, text) => {
@@ -46,7 +46,7 @@ test('palavras cortadas não ganham som; sem o pacote usa os sons sintetizados',
   const segs = SEGS.map((s, i) => (i === 1 ? { ...s, words: s.words.map((w) => ({ ...w, removed: true })) } : s));
   assert.ok(!suggestSfx({ segments: segs, dur: 25 }).some((x) => x.kind === 'money'));
   const synth = new Set(['whoosh', 'swoosh', 'cash', 'success', 'error', 'ding', 'bling', 'pop', 'impact']);
-  const out = suggestSfx({ segments: SEGS, dur: 25, available: synth });
+  const out = suggestSfx({ segments: SEGS, dur: 25, available: synth, style: 'cinematic' });
   assert.ok(out.length >= 5);
   assert.ok(out.every((x) => synth.has(x.type)));
   assert.equal(sfxFor('money', 'arcade', synth), 'cash');
@@ -54,15 +54,13 @@ test('palavras cortadas não ganham som; sem o pacote usa os sons sintetizados',
   assert.notEqual(sfxFor('money', 'glass', null, 0), sfxFor('money', 'glass', null, 1));
 });
 
-test('motions: título curto no ponto exato, espaçados e sem cobrir outro texto', () => {
-  const m = suggestMotions({ segments: SEGS, dur: 25 });
-  assert.ok(m.length >= 2);
-  const money = m.find((x) => x.kind === 'money');
-  assert.equal(money.text, 'R$ 5000');
-  assert.ok(Math.abs(money.start - 3.8) < 1e-6);
-  assert.ok(m.some((x) => x.text === '3 DICAS'));
-  for (let i = 1; i < m.length; i++) assert.ok(m[i].start - m[i - 1].start >= 5);
-  for (const x of m) assert.ok(x.end - x.start >= 1.3 && x.font && x.animIn);
-  const busy = suggestMotions({ segments: SEGS, dur: 25, existing: [{ start: 3, end: 7 }] });
-  assert.ok(!busy.some((x) => x.start < 7 && x.end > 3));
+test('estilo premium (padrão): sons discretos de agência, com volume, sem "joguinho"', () => {
+  const out = suggestSfx({ segments: SEGS, dur: 25 });
+  assert.ok(out.length >= 4);
+  assert.ok(out.every((x) => x.type.startsWith('pr-') && x.volume > 0 && x.volume <= 1));
+  assert.equal(out.find((x) => x.kind === 'win').type, 'pr-shine');
+  for (let i = 1; i < out.length; i++) assert.ok(out[i].t - out[i - 1].t >= 1.1);
+  // sem o kit premium no servidor: cai nos sintetizados equivalentes
+  assert.equal(premiumSfx('money', new Set(['thud'])).type, 'thud');
+  assert.equal(premiumSfx('money', new Set(['cash'])), null);
 });

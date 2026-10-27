@@ -1,6 +1,7 @@
-// Sons e motions automáticos nos momentos certos (como os "auto SFX" do Opus/CapCut).
-// Compartilhado pelo editor (que põe os itens na faixa SFX / TEXTO, editáveis) e pelos
-// testes. Tudo vira item normal da timeline: a prévia e o vídeo final usam o mesmo.
+// Sons automáticos nos momentos certos (como os "auto SFX" do Opus/CapCut).
+// Compartilhado pelo editor (que põe os itens na faixa SFX, editáveis), pelo motion
+// tipográfico (shared/kinetic.js) e pelos testes. Tudo vira item normal da timeline: a
+// prévia e o vídeo final usam o mesmo.
 //
 // Onde entra som:
 // - na palavra que dispara o assunto (dinheiro, conquista, alerta, pergunta, número,
@@ -11,9 +12,7 @@
 // conquista/subiu de nível, alerta → alerta/erro...), no estilo escolhido
 // (Cinema, Arcade, Cristal...), alternando as variações para não repetir o mesmo som.
 
-import { emphasisScore } from './keyMoments.js';
-
-export const SFX_STYLES = { cinematic: 'Cinema', arcade: 'Arcade', glass: 'Cristal', scifi: 'Sci-fi', dreamy: 'Sonho', rubber: 'Borracha' };
+export const SFX_STYLES = { premium: 'Premium (agência)', cinematic: 'Cinema', arcade: 'Arcade', glass: 'Cristal', scifi: 'Sci-fi', dreamy: 'Sonho', rubber: 'Borracha' };
 
 const W = (re) => new RegExp(`(?<!\\p{L})(?:${re})(?!\\p{L})`, 'iu');
 const KINDS = [
@@ -22,10 +21,8 @@ const KINDS = [
   ['alert', W('erro|erros|errado|errada|cuidado|aten[cç][aã]o|problema|problemas|perigo|nunca|pare|evite|n[aã]o fa[cç]a|golpe|falha|falhou|alerta|proibido|risco')],
 ];
 const STRONG = W('sempre|todos|nada|ningu[eé]m|agora|segredo|verdade|importante|melhor|pior|maior|menor|r[aá]pido|f[aá]cil|imposs[ií]vel|primeiro|[uú]nico|jamais|olha|simples|exatamente|absurdo');
-const STOP = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'que', 'em', 'no', 'na', 'um', 'uma', 'por', 'pra', 'para', 'com', 'é', 'eu', 'se', 'mais', 'só']);
 
 const clean = (w) => String(w?.word ?? '').trim();
-const bare = (w) => clean(w).replace(/[^\p{L}\p{N}$%]/gu, '');
 function wordsOf(seg) {
   const ws = seg?.words?.length ? seg.words : [{ start: seg.start, end: seg.end, word: seg.text || '' }];
   return ws.filter((w) => !w.removed && clean(w)).map((w) => ({ ...w, start: Number(w.start), end: Number(w.end) })).filter((w) => Number.isFinite(w.start));
@@ -67,6 +64,21 @@ const FAMILY = {
 const PRIORITY = { hook: 6, money: 5, win: 5, alert: 5, broll: 4, transition: 4, number: 4, question: 3, text: 3, zoom: 2, strong: 2, idea: 1 };
 export const SFX_WHY = { hook: 'gancho do começo', money: 'fala de dinheiro', win: 'conquista/resultado', alert: 'alerta/erro', number: 'número em destaque', question: 'pergunta', strong: 'palavra forte', idea: 'ideia nova depois de pausa', broll: 'entrada do B-roll', transition: 'transição', zoom: 'zoom', text: 'texto aparecendo' };
 
+// Kit premium (sons discretos de agência, sintetizados no servidor + tecla gravada):
+// [som, volume, reserva]. Sem "joguinho": batida grave, ar, brilho suave, tecla.
+const PREMIUM = {
+  money: ['pr-hit', 0.85, 'thud'], win: ['pr-shine', 0.8, 'bling'], alert: ['pr-hit', 0.9, 'thud'], question: ['pr-key', 0.7, 'click'],
+  number: ['pr-hit', 0.85, 'thud'], strong: ['pr-hit', 0.65, 'thud'], idea: ['pr-air', 0.75, 'whoosh'], hook: ['pr-hit', 1, 'impact'],
+  broll: ['pr-air', 0.85, 'whoosh'], transition: ['pr-air', 0.85, 'swoosh'], zoom: ['pr-air', 0.6, 'whoosh'], text: ['pr-key', 0.6, 'click'],
+};
+/** Som e volume do kit premium para um assunto (ou null). */
+export function premiumSfx(kind, available) {
+  const [id, volume, alt] = PREMIUM[kind] || PREMIUM.strong;
+  const has = (x) => !available || available.has(x);
+  if (has(id)) return { type: id, volume };
+  return has(alt) ? { type: alt, volume: Math.min(1, volume) * 0.8 } : null;
+}
+
 const packId = (rel, style) => `p-${`${rel}-${style}`.replace(/\//g, '-')}`;
 
 /** Escolhe o som de um assunto entre os disponíveis, alternando as variações (n = vez). */
@@ -95,7 +107,8 @@ export function sfxFor(kind, style, available, n = 0) {
  * @param {number} [p.every] no máximo um som a cada `every` segundos, em média
  * @returns {Array<{t:number,type:string,why:string,kind:string}>}
  */
-export function suggestSfx({ segments, dur, available = null, style = 'cinematic', events = {}, existing = [], minGap = 1.1, every = 2.6 } = {}) {
+export function suggestSfx({ segments, dur, available = null, style = 'premium', events = {}, existing = [], minGap = 1.1, every = null } = {}) {
+  if (every == null) every = style === 'premium' ? 3.2 : 2.6; // premium: menos sons, mais elegante
   const total = Number(dur) || 0;
   const segs = (segments || []).map((s) => ({ ...s, ws: wordsOf(s) })).filter((s) => s.ws.length).sort((a, b) => a.ws[0].start - b.ws[0].start);
   const cand = [];
@@ -126,78 +139,13 @@ export function suggestSfx({ segments, dur, available = null, style = 'cinematic
   const n = {};
   const out = [];
   for (const p of picked) {
+    if (style === 'premium') {
+      const s = premiumSfx(p.kind, available);
+      if (s) out.push({ t: +p.t.toFixed(3), type: s.type, volume: s.volume, kind: p.kind, why: SFX_WHY[p.kind] });
+      continue;
+    }
     const type = sfxFor(p.kind, style, available, (n[p.kind] = (n[p.kind] ?? -1) + 1));
     if (type) out.push({ t: +p.t.toFixed(3), type, kind: p.kind, why: SFX_WHY[p.kind] });
   }
   return out;
-}
-
-// ── Motions nos momentos-chave: textos animados (o render já faz igual à prévia) ──
-export const MOTION_LOOKS = {
-  money: { font: 'archivo', size: 0.085, color: '#22C55E', box: 'outline', boxColor: '#03180B', animIn: 'zoom', animOut: 'fade' },
-  win: { font: 'anton', size: 0.08, color: '#FACC15', box: 'outline', boxColor: '#000000', animIn: 'pop', animOut: 'zoom' },
-  alert: { font: 'bebas', size: 0.08, color: '#FFFFFF', box: 'box', boxColor: '#DC2626', animIn: 'pop', animOut: 'fade' },
-  number: { font: 'archivo', size: 0.09, color: '#FF6B35', box: 'outline', boxColor: '#FFFFFF', animIn: 'zoom', animOut: 'fade' },
-  question: { font: 'montserrat', size: 0.052, color: '#111111', box: 'box', boxColor: '#FFFFFF', animIn: 'slide-up', animOut: 'fade' },
-  strong: { font: 'anton', size: 0.078, color: '#FFFFFF', box: 'outline', boxColor: '#000000', animIn: 'pop', animOut: 'zoom' },
-};
-
-/** Texto curto do motion de uma frase (ou '' se não rende um bom destaque). */
-export function motionText(words, m) {
-  const up = (s) => s.toLocaleUpperCase('pt-BR');
-  const i = m.index;
-  if (m.kind === 'number' || (m.kind === 'money' && words.some((w) => /\d/.test(clean(w))))) {
-    const k = words.findIndex((w) => /\d/.test(clean(w)));
-    const parts = [];
-    if (k > 0 && /^r\$$/i.test(bare(words[k - 1]))) parts.push('R$');
-    parts.push(clean(words[k]).replace(/[^\p{N}.,%$]/gu, ''));
-    const next = words[k + 1];
-    if (next && bare(next).length >= 3 && !STOP.has(bare(next).toLowerCase())) parts.push(bare(next));
-    else if (next && /^(mil|milh(ão|ões)|reais|%)$/i.test(bare(next))) parts.push(bare(next));
-    return up(parts.join(' ').trim());
-  }
-  if (m.kind === 'question') {
-    if (words.length > 6) return '';
-    return up(words.map(clean).join(' ').replace(/\s+([?!])/g, '$1'));
-  }
-  const w = bare(words[i]);
-  if (!w) return '';
-  // "não faça" / "deu certo": leva a palavra seguinte junto
-  const two = i + 1 < words.length && /^(n[aã]o|deu|mil)$/i.test(w) ? `${w} ${bare(words[i + 1])}` : w;
-  return up(two) + (m.kind === 'alert' || m.kind === 'win' ? '!' : '');
-}
-
-/**
- * Sugere motions (textos animados) nos momentos-chave.
- * @returns {Array<{text,start,end,x,y,font,size,color,box,boxColor,animIn,animOut,kind}>}
- */
-export function suggestMotions({ segments, dur, existing = [], minGap = 5, y = 0.2, max = 10 } = {}) {
-  const total = Number(dur) || 0;
-  const segs = (segments || []).map((s) => ({ ...s, ws: wordsOf(s) })).filter((s) => s.ws.length).sort((a, b) => a.ws[0].start - b.ws[0].start);
-  const cand = [];
-  segs.forEach((s, i) => {
-    const m = momentOf(s.ws);
-    if (!m) return;
-    const text = motionText(s.ws, m);
-    if (!text || text.length > 28) return;
-    const score = emphasisScore({ ...s, words: s.ws, start: s.ws[0].start }, i > 0 ? segs[i - 1].ws[segs[i - 1].ws.length - 1].end : NaN, i)
-      + (m.kind === 'money' || m.kind === 'win' || m.kind === 'alert' ? 2 : m.kind === 'number' ? 1 : 0);
-    const start = Math.max(0, m.word.start - 0.05);
-    const segEnd = s.ws[s.ws.length - 1].end;
-    const end = Math.min(total || Infinity, Math.max(start + 1.3, Math.min(segEnd + 0.2, start + 2.4)));
-    cand.push({ score, start, end, text, kind: m.kind });
-  });
-  const busy = (existing || []).filter((l) => Number.isFinite(Number(l.start)));
-  const picked = [];
-  const limit = Math.min(max, Math.max(1, Math.floor((total || 30) / minGap)));
-  for (const c of [...cand].sort((a, b) => b.score - a.score || a.start - b.start)) {
-    if (picked.length >= limit) break;
-    if (c.score < 2) continue;
-    if (picked.some((p) => Math.abs(p.start - c.start) < minGap)) continue;
-    if (busy.some((l) => c.start < Number(l.end) && c.end > Number(l.start))) continue;
-    picked.push(c);
-  }
-  return picked.sort((a, b) => a.start - b.start).map((c) => ({
-    text: c.text, start: +c.start.toFixed(2), end: +c.end.toFixed(2), x: 0.5, y, kind: c.kind, ...MOTION_LOOKS[c.kind],
-  }));
 }

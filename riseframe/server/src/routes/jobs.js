@@ -560,6 +560,10 @@ export function parseOptions(raw) {
     captionKeys: o.captionKeys === 'todas' ? 'todas' : 'ritmo',
     autoClean: o.autoClean === true, // corta muletas/hesitações e gagueiras da fala
     soundEffects: o.soundEffects === true, // pop na legenda + whoosh no B-roll
+    // motion tipográfico escolhido no começo (o modo automático monta as cenas no servidor)
+    kinetic: o.kinetic === true,
+    kineticTheme: ['auto', 'papel', 'holofote', 'cinema', 'video'].includes(o.kineticTheme) ? o.kineticTheme : 'auto',
+    kineticAmount: o.kineticAmount === 'muitos' ? 'muitos' : 'chave',
     sfxIntensity: ['suave', 'medio', 'forte'].includes(o.sfxIntensity) ? o.sfxIntensity : 'medio',
     captions: o.captions !== false,
     captionTemplate: CAPTION_TEMPLATE_IDS.includes(o.captionTemplate) ? o.captionTemplate : 'clean',
@@ -642,7 +646,7 @@ export function parseOptions(raw) {
     transformKeys: cleanKeys(o.transformKeys),
     // Efeitos de vídeo nos momentos e textos livres (tempo original).
     fxMoments: cleanFxMoments(o.fxMoments),
-    textLayers: cleanTextLayers(o.textLayers, Object.keys(CAPTION_FONTS)),
+    textLayers: cleanTextLayers(o.textLayers, Object.keys(CAPTION_FONTS), 400),
     // Legendas adicionadas à mão na timeline (tempo original), no estilo das automáticas.
     extraCaptions: cleanExtraCaptions(o.extraCaptions),
     // ── Restaurados (tinham sumido numa atualização e o servidor descartava: cortes da
@@ -745,7 +749,7 @@ export function parseOptions(raw) {
     sfxMoments: Array.isArray(o.sfxMoments)
       ? o.sfxMoments
           .filter((m) => m && Number.isFinite(Number(m.t)) && Number(m.t) >= 0 && (Object.hasOwn(SFX_LIBRARY, m.type) || (m.type === 'online' && okSfxUrl(m.url))))
-          .slice(0, 60)
+          .slice(0, 150)
           .map((m) => ({ t: Number(m.t), type: m.type, ...(m.type === 'online' ? { url: m.url } : {}), ...(m.volume != null && Number.isFinite(Number(m.volume)) && Number(m.volume) !== 1 ? { volume: Math.max(0, Math.min(2, Number(m.volume))) } : {}) }))
       : [],
     // Transições (flash/esmaecer/brilho/blur) nos cortes e/ou nas entradas de B-roll.
