@@ -19,6 +19,7 @@ import CaptionGallery, { FontPicker, ColorSwatches, TextStyleBar } from './Capti
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, playSfxUrl, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
+import { suggestSfx, suggestMotions, sfxFor, SFX_STYLES } from '../../../shared/autoMoments.js';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
 import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
@@ -4967,12 +4968,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Biblioteca online (Freesound, só sons CC0 — uso livre): busca dentro de "Sons" → "Online"
   const [sfxOnQ, setSfxOnQ] = useState('');
   const [sfxOn, setSfxOn] = useState({ busy: false, err: '', list: [], q: null });
+  // fonte da busca: Openverse (sem chave, padrão) ou Freesound
+  const [sfxSrc, setSfxSrc] = useState(() => { try { return localStorage.getItem('rf_sfx_src') === 'freesound' ? 'freesound' : 'openverse'; } catch { return 'openverse'; } });
   const sfxOnSeq = useRef(0);
-  async function runSfxSearch(q) {
+  async function runSfxSearch(q, src = sfxSrc) {
     const n = ++sfxOnSeq.current;
     setSfxOn((o) => ({ ...o, busy: true, err: '', q }));
     try {
-      const list = await searchSfxOnline(q || 'whoosh');
+      const list = await searchSfxOnline(q || 'whoosh', 1, src);
       if (n === sfxOnSeq.current) setSfxOn({ busy: false, err: '', list, q });
     } catch (e) {
       if (n === sfxOnSeq.current) setSfxOn({ busy: false, err: e.message || 'Não deu para buscar os sons.', list: [], q });
@@ -5000,7 +5003,115 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
   }
   useEffect(() => { if (sfxOnline && sfxOn.q == null && !sfxOn.busy) runSfxSearch(''); }, [sfxOnline]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sfxOnItems = sfxOn.list.map((r) => ({ cat: 'som', kind: 'sfx', id: 'online', uid: `online:${r.id}`, label: r.name || 'Som', scat: 'online', sdur: r.dur || 1, online: { url: r.preview, name: r.name || 'Som', dur: r.dur || 1 } }));
+  const sfxOnItems = sfxOn.list.map((r) => ({ cat: 'som', kind: 'sfx', id: 'online', uid: `online:${r.src || ''}:${r.id}`, label: r.name || 'Som', scat: 'online', sdur: r.dur || 1, online: { url: r.preview, name: r.name || 'Som', dur: r.dur || 1 } }));
+  function pickSfxSrc(src) {
+    setSfxSrc(src);
+    try { localStorage.setItem('rf_sfx_src', src); } catch { /* sem armazenamento */ }
+    runSfxSearch(sfxOnQ.trim(), src);
+  }
+
+  // ── Sons e motions automáticos nos momentos certos (shared/autoMoments.js) ──
+  // Viram itens normais da faixa SFX / TEXTO: dá para mover, trocar e apagar, e o vídeo
+  // final sai igual à prévia. `smart` marca os que vieram daqui (para refazer/tirar).
+  const [autoSfxStyle, setAutoSfxStyle] = useState(() => { try { return SFX_STYLES[localStorage.getItem('rf_sfx_style')] ? localStorage.getItem('rf_sfx_style') : 'cinematic'; } catch { return 'cinematic'; } });
+  const [autoNote, setAutoNote] = useState('');
+  const sayAuto = (msg) => { setAutoNote(msg); setTimeout(() => setAutoNote(''), 3500); };
+  const smartSegments = () => (cuts.length ? segments.map((sg) => markCut(sg, cuts)) : segments);
+  const sfxAvailable = () => new Set((catalog?.sfxTypes || []).map((o) => o.id).filter((id) => id !== 'none'));
+  function pickAutoSfxStyle(st) {
+    setAutoSfxStyle(st);
+    try { localStorage.setItem('rf_sfx_style', st); } catch { /* sem armazenamento */ }
+  }
+  function placeAutoSfx(style = autoSfxStyle) {
+    const keep = sfxMoments.filter((m) => !m.smart || m.motion); // os sons dos motions ficam
+    // o que os sons automáticos da aba Efeitos já cobrem não ganha outro som
+    const covered = fx.soundEffects;
+    const list = suggestSfx({
+      segments: smartSegments(),
+      dur,
+      style,
+      available: sfxAvailable(),
+      existing: keep,
+      events: {
+        broll: covered && fx.sfxBrollType !== 'none' ? [] : brollOn ? (brollReview?.moments || []).filter((m) => brollVisible(m)).map((m) => Number(m.start)) : [],
+        transition: transitions.map((x) => Number(x.t)),
+        zoom: (covered && fx.sfxZoomType !== 'none') || fx.videoMotion === 'none' ? [] : (zoomMoments || []).map((z) => Number(z.start)),
+        text: textLayers.filter((l) => l.kind !== 'shape').map((l) => Number(l.start)),
+      },
+    });
+    const now = Date.now();
+    setSfxMoments([...keep, ...list.map((m, i) => ({ key: `s${now}_${i}`, t: m.t, type: m.type, smart: true, why: m.why }))].sort((a, b) => a.t - b.t));
+    sayAuto(list.length ? `${list.length} sons colocados nos momentos certos — veja na faixa S1` : 'Não achei momentos para som nesse trecho.');
+  }
+  function clearAutoSfx() {
+    const n = sfxMoments.filter((m) => m.smart && !m.motion).length;
+    setSfxMoments((l) => l.filter((m) => !m.smart || m.motion));
+    sayAuto(n ? `${n} sons automáticos tirados` : 'Não havia sons automáticos.');
+  }
+  function placeAutoMotions() {
+    const keep = textLayers.filter((l) => !l.smart);
+    const list = suggestMotions({ segments: smartSegments(), dur, existing: keep });
+    const now = Date.now();
+    const avail = sfxAvailable();
+    const n = {};
+    const layers = list.map(({ kind, ...m }, i) => ({ key: `t${now}_${i}`, ...m, smart: true, why: kind }));
+    setTextLayers([...keep, ...layers].sort((a, b) => a.start - b.start));
+    // cada motion entra com o som do assunto (se ainda não tem som ali)
+    const keepSfx = sfxMoments.filter((m) => !(m.smart && m.motion));
+    const sfx = [];
+    list.forEach((m, i) => {
+      if (keepSfx.some((x) => Math.abs(x.t - m.start) < 0.4)) return;
+      const type = sfxFor(m.kind, autoSfxStyle, avail, (n[m.kind] = (n[m.kind] ?? -1) + 1));
+      if (type) sfx.push({ key: `s${now}_m${i}`, t: +(m.start + 0.05).toFixed(3), type, smart: true, motion: true, why: 'motion' });
+    });
+    setSfxMoments([...keepSfx, ...sfx].sort((a, b) => a.t - b.t));
+    if (laneHide.txt) setLaneHide((h) => ({ ...h, txt: false }));
+    sayAuto(layers.length ? `${layers.length} motions nos momentos-chave — clique num deles para editar` : 'Não achei momentos-chave com destaque (números, dinheiro, conquistas, alertas).');
+  }
+  function clearAutoMotions() {
+    const n = textLayers.filter((l) => l.smart).length;
+    setTextLayers((l) => l.filter((x) => !x.smart));
+    setSfxMoments((l) => l.filter((m) => !(m.smart && m.motion)));
+    sayAuto(n ? `${n} motions tirados` : 'Não havia motions automáticos.');
+  }
+  const smartSfxN = sfxMoments.filter((m) => m.smart && !m.motion).length;
+  const smartMotionN = textLayers.filter((l) => l.smart).length;
+  const autoCardStyle = { display: 'grid', gap: 7, padding: 10, borderRadius: 10, border: '1px solid rgba(124,58,237,0.45)', background: 'linear-gradient(135deg, rgba(124,58,237,0.16), rgba(255,107,53,0.08))', marginBottom: 8 };
+  const autoSfxCard = (
+    <div style={autoCardStyle}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <b style={{ fontSize: 12.5 }}>✨ Sons nos momentos certos</b>
+        <span style={{ fontSize: 10.5, color: C.faint }}>lê a fala e a timeline</span>
+      </div>
+      <span style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.35 }}>Põe o som certo no início da palavra: dinheiro → compra, conquista → vitória, erro/cuidado → alerta, pergunta → notificação, números, ideia nova, B-roll, transições e textos. Fica tudo na faixa S1 para mover, trocar ou apagar.</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {Object.entries(SFX_STYLES).map(([id, label]) => (
+          <button key={id} type="button" onClick={() => pickAutoSfxStyle(id)} aria-pressed={autoSfxStyle === id}
+            style={{ height: 22, padding: '0 9px', borderRadius: 999, border: `1px solid ${autoSfxStyle === id ? C.orange : C.border}`, background: autoSfxStyle === id ? 'rgba(255,107,53,0.16)' : 'transparent', color: autoSfxStyle === id ? C.text : C.muted, fontSize: 10.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>{label}</button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button type="button" onClick={() => placeAutoSfx()} style={{ ...miniBtn(true, false), flex: 1 }}>{smartSfxN ? 'Refazer os sons' : 'Colocar sons'}</button>
+        {smartSfxN > 0 && <button type="button" onClick={clearAutoSfx} style={{ ...miniBtn(false, false), flex: 'none' }}>Tirar ({smartSfxN})</button>}
+      </div>
+      {autoNote && <span style={{ fontSize: 11, color: C.text }}>{autoNote}</span>}
+    </div>
+  );
+  const autoMotionCard = (
+    <div style={{ ...autoCardStyle, marginBottom: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <b style={{ fontSize: 13.5 }}>✨ Motions nos momentos-chave</b>
+        <span style={{ fontSize: 11.5, color: C.faint }}>textos animados com som, onde a fala pede destaque</span>
+      </div>
+      <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Acha os momentos fortes da fala — valores (“R$ 5.000”), números (“3 DICAS”), conquistas, alertas e perguntas curtas — e põe um título animado no ponto exato, com o som do estilo <b>{SFX_STYLES[autoSfxStyle]}</b>. Cada um vira um texto normal na timeline: dá para mudar o texto, a cor, a posição e a animação.</span>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <button type="button" onClick={placeAutoMotions} style={{ ...miniBtn(true, false) }}>{smartMotionN ? 'Refazer os motions' : 'Colocar motions'}</button>
+        {smartMotionN > 0 && <button type="button" onClick={clearAutoMotions} style={{ ...miniBtn(false, false) }}>Tirar ({smartMotionN})</button>}
+        <button type="button" onClick={() => placeAutoSfx()} style={{ ...miniBtn(false, false) }}>+ Sons nos momentos certos</button>
+      </div>
+      {autoNote && <span style={{ fontSize: 11.5, color: C.text }}>{autoNote}</span>}
+    </div>
+  );
   const fxShown = sfxOnline ? sfxOnItems : sfxMine ? mySoundItems : fxLibrary.filter((x) => (fxQ ? norm(x.label).includes(fxQ) : fxCat === 'fav' ? fxFavs.includes(x.uid) : x.cat === fxCat && (fxCat !== 'som' || !sfxCat || x.scat === sfxCat) && (fxCat !== 'trans' || !transCat || TRANS_GROUP_OF[x.id] === transCat)));
   /** Coloca o efeito na timeline no instante t (tempo original do vídeo). */
   function addEffectAt(item, t0) {
@@ -6038,6 +6149,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               ))}
             </div>
           )}
+          {fxCat === 'som' && !fxQ && !sfxOnline && !sfxMine && autoSfxCard}
           {fxCat === 'som' && !fxQ && (catalog?.sfxCategories || []).length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
               {[{ id: '', label: 'Todos' }, ...catalog.sfxCategories, { id: 'meus', label: '📁 Meus sons' }, { id: 'online', label: '🌐 Online' }].map((c) => (
@@ -6049,7 +6161,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {sfxOnline && (
             <form onSubmit={(e) => { e.preventDefault(); runSfxSearch(sfxOnQ.trim()); }} style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
               <div style={{ display: 'flex', gap: 6 }}>
-                <input value={sfxOnQ} onChange={(e) => setSfxOnQ(e.target.value)} placeholder="Buscar som (em inglês acha mais: whoosh, pop, click, boom…)"
+                <input value={sfxOnQ} onChange={(e) => setSfxOnQ(e.target.value)} placeholder="Buscar som (dinheiro, aplauso, whoosh, pop…)"
                   style={{ flex: 1, minWidth: 0, height: 28, padding: '0 8px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.35)', color: C.text, fontSize: 12, fontFamily: 'inherit' }} />
                 <button type="submit" disabled={sfxOn.busy} style={{ ...miniBtn(true, false), flex: 'none' }}>{sfxOn.busy ? 'Buscando…' : 'Buscar'}</button>
               </div>
@@ -6059,7 +6171,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                     style={{ height: 20, padding: '0 8px', borderRadius: 999, border: `1px solid ${C.border}`, background: 'transparent', color: C.muted, fontSize: 10.5, fontFamily: 'inherit', cursor: 'pointer' }}>{w}</button>
                 ))}
               </div>
-              <span style={{ fontSize: 10.5, color: C.faint }}>Sons do Freesound.org com licença CC0 (domínio público): pode usar em qualquer vídeo, até comercial, sem dar crédito.</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 10.5, color: C.faint }}>Fonte:</span>
+                {[['openverse', 'Openverse'], ['freesound', 'Freesound']].map(([id, label]) => (
+                  <button key={id} type="button" onClick={() => pickSfxSrc(id)} aria-pressed={sfxSrc === id}
+                    style={{ height: 20, padding: '0 8px', borderRadius: 999, border: `1px solid ${sfxSrc === id ? C.orange : C.border}`, background: sfxSrc === id ? 'rgba(255,107,53,0.16)' : 'transparent', color: sfxSrc === id ? C.text : C.muted, fontSize: 10.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>{label}</button>
+                ))}
+              </div>
+              <span style={{ fontSize: 10.5, color: C.faint }}>{sfxSrc === 'openverse' ? 'Openverse (WordPress): milhares de efeitos sonoros do Freesound e do Wikimedia Commons, só os de domínio público (CC0/PDM).' : 'Freesound.org, só sons CC0.'} Pode usar em qualquer vídeo, até comercial, sem dar crédito.</span>
               {sfxOn.err && <span style={{ fontSize: 11.5, color: C.red }}>{sfxOn.err}</span>}
             </form>
           )}
@@ -8158,7 +8277,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           )}
 
           {tab === 'texto' && textBlock}
-          {tab === 'graficos' && graficosBlock}
+          {tab === 'graficos' && <div style={{ display: 'grid', gap: 12 }}>{autoMotionCard}{graficosBlock}</div>}
           {tab === 'propriedades' && propsBlockFn()}
 
           {tab === 'cor' && (
@@ -9401,7 +9520,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   const on = selKind === 'sfx' && selSfx === m.key;
                   const label = sfxName(m);
                   return (
-                    <div key={m.key} title={m.auto ? `${label} (automático: ${m.auto}) — ajuste na aba Efeitos` : `${label} em ${fmtDuration(m.t)} — arraste para mover, Delete apaga, botão direito para trocar`}
+                    <div key={m.key} title={m.auto ? `${label} (automático: ${m.auto}) — ajuste na aba Efeitos` : `${label} em ${fmtDuration(m.t)}${m.why ? ` (${m.why})` : ''} — arraste para mover, Delete apaga, botão direito para trocar`}
                       onMouseDown={m.auto ? (e) => e.stopPropagation() : (e) => startSfxDrag(m, e)}
                       onClick={(e) => { e.stopPropagation(); setTab('efeitos'); if (m.auto) return; setSelSfx(m.key); setSelKind('sfx'); }}
                       onContextMenu={m.auto ? undefined : (e) => { setSelSfx(m.key); setSelKind('sfx'); openCtx(e, `Efeito sonoro (${fmtDuration(m.t)})`, [
