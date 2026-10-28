@@ -3,7 +3,43 @@
 import { isFontStyle } from './captionStyle.js';
 
 /** Animações de entrada e saída de um texto. */
-export const TEXT_ANIMS_IN = { none: 'Nenhuma', fade: 'Fade', pop: 'Pop', zoom: 'Zoom', 'slide-up': 'Subir', 'slide-left': 'Entrar da direita', typewriter: 'Máquina de escrever', words: 'Palavra por palavra' };
+export const TEXT_ANIMS_IN = {
+  none: 'Nenhuma', fade: 'Fade', pop: 'Pop', zoom: 'Zoom', 'slide-up': 'Subir', 'slide-left': 'Entrar da direita', typewriter: 'Máquina de escrever', words: 'Palavra por palavra',
+  'letras-subir': 'Letras subindo', 'letras-pop': 'Letras pulando', 'letras-desfoque': 'Letras entrando do desfoque',
+};
+/** Animações por letra: cada letra entra no seu tempo (escalonado), como os motion de agência. */
+export const LETTER_ANIMS = ['letras-subir', 'letras-pop', 'letras-desfoque'];
+/** Duração de cada letra (s) e o espaçamento entre as letras, pela duração do texto. */
+export function letterTiming(l, count) {
+  const dur = Math.max(0.2, Number(l.end) - Number(l.start) || 3);
+  const d = Math.min(0.42, dur * 0.3);
+  const total = Math.min(1.4, dur * 0.5);
+  const stagger = Math.max(0.02, Math.min(0.07, (total - d) / Math.max(1, count - 1)));
+  return { d: +d.toFixed(3), stagger: +stagger.toFixed(4) };
+}
+/**
+ * Quando cada letra entra (animações por letra). Para cada linha: [{ u, t, d }] — t = segundos
+ * desde o começo do texto (null nos espaços). A mesma conta na prévia e no render. Puro.
+ */
+export function letterPlan(l, lines) {
+  if (!LETTER_ANIMS.includes(l?.animIn)) return null;
+  const units = lines.map((ln) => [...String(ln)]);
+  const count = units.flat().filter((u) => u.trim()).length || 1;
+  const { d, stagger } = letterTiming(l, count);
+  let k = 0;
+  return units.map((us) => us.map((u) => (u.trim() ? { u, t: +(k++ * stagger).toFixed(4), d } : { u, t: null, d })));
+}
+/** Progresso de uma letra no tempo `tRel` (0..1) e os valores da animação. Puro: prévia e render. */
+export function letterFrame(anim, p) {
+  const e = 1 - (1 - p) * (1 - p) * (1 - p); // ease-out cúbico
+  if (anim === 'letras-subir') return { dy: (1 - e) * 0.06, scale: 1, blur: 0, alpha: e };
+  if (anim === 'letras-pop') {
+    // 0 → 115% → 100%, em dois trechos lineares (como os \t do libass)
+    const s = p < 0.6 ? (p / 0.6) * 1.15 : 1.15 - ((p - 0.6) / 0.4) * 0.15;
+    return { dy: 0, scale: Math.max(0, s), blur: 0, alpha: Math.min(1, p * 3) };
+  }
+  return { dy: 0, scale: 1, blur: (1 - e) * 0.012, alpha: e }; // desfoque: fração da altura
+}
 /** Entradas que revelam o texto aos poucos (letra a letra / palavra a palavra). */
 export const REVEAL_ANIMS = ['typewriter', 'words'];
 /**

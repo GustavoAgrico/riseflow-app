@@ -23,7 +23,7 @@ import { keyZoomMoments } from '../../../shared/keyMoments.js';
 import { suggestSfx, SFX_STYLES } from '../../../shared/autoMoments.js';
 import { kineticPlan, KINETIC_THEMES, KINETIC_AMOUNT } from '../../../shared/kinetic.js';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
-import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan } from '../../../shared/textLayers.js';
+import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
 import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
@@ -10168,6 +10168,8 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
         const g = textBoxMetrics(l);
         const lines = textShown(l).split('\n');
         const plan = L.smallCaps ? null : revealPlan(l, lines);
+        // animações por letra: cada letra recebe o seu progresso no tempo atual (igual ao render)
+        const letters = L.smallCaps ? null : letterPlan(l, lines);
         const rgba = (hex, a) => { const h = String(hex).replace('#', ''); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; };
         // contorno "fora" = a borda inteira por fora (o CSS desenha metade de cada lado)
         const sw = L.stroke ? L.strokeW * box.h * (L.strokePos === 'center' ? 1 : 2) : 0;
@@ -10190,7 +10192,14 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
                   ...(j > 0 && L.leading ? { marginTop: L.leading * box.h } : null), // entrelinha (pode ser negativa)
                   ...(L.bg && g.block ? null : L.bg && ln.trim() ? { background: rgba(L.bgColor, L.bgOpacity), padding: `${g.padY * px}px ${g.padX * px}px`, borderRadius: g.r * px, ...(sh ? { boxShadow: `${sh.dx}px ${sh.dy}px ${sh.b}px ${sh.c}` } : null) } : L.bg ? { padding: `${g.padY * px}px 0` } : null),
                   ...(sh && !L.bg ? { textShadow: `${sh.dx}px ${sh.dy}px ${sh.b}px ${sh.c}` } : null),
-                  WebkitTextStroke: sw ? `${Math.max(0.5, sw)}px ${L.strokeColor}` : undefined, paintOrder: 'stroke fill' }}>{plan
+                  WebkitTextStroke: sw ? `${Math.max(0.5, sw)}px ${L.strokeColor}` : undefined, paintOrder: 'stroke fill' }}>{letters
+                    ? letters[j].map((p, k) => {
+                      if (p.t == null) return <span key={k}>{p.u}</span>;
+                      const f = letterFrame(l.animIn, Math.max(0, Math.min(1, (cur - l.start - p.t) / p.d)));
+                      const tr = [f.dy ? `translateY(${f.dy * box.h}px)` : '', f.scale !== 1 ? `scale(${f.scale})` : ''].filter(Boolean).join(' ');
+                      return <span key={k} style={{ display: 'inline-block', opacity: cur - l.start < p.t ? 0 : f.alpha, transform: tr || undefined, filter: f.blur ? `blur(${f.blur * box.h}px)` : undefined }}>{p.u}</span>;
+                    })
+                    : plan
                     // máquina de escrever / palavra por palavra: o que ainda não chegou fica invisível (mesmo lugar)
                     ? plan[j].map((p, k) => <span key={k} style={p.t != null && cur - l.start < p.t ? { opacity: 0 } : undefined}>{p.u}</span>)
                     : ln || ' '}</div>

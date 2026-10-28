@@ -37,7 +37,7 @@ test('cada palavra entra no instante falado; cenas não se sobrepõem; fundo ant
   const words = sc1.filter((l) => l.kind !== 'shape');
   const shapes = sc1.filter((l) => l.kind === 'shape');
   assert.equal(plan.scenes[0].theme, 'cinema');
-  assert.ok(shapes.length >= 2 && sc1.indexOf(shapes[0]) < sc1.indexOf(words[0]));
+  assert.ok(shapes.length >= 1 && sc1.indexOf(shapes[0]) < sc1.indexOf(words[0]));
   const agora = words.find((l) => l.text === 'agora');
   assert.ok(Math.abs(agora.start - (0.54 - 0.04)) < 0.011);
   assert.equal(agora.font, 'inter');

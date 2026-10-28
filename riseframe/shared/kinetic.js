@@ -112,11 +112,7 @@ export function sceneBackdrop(theme, start, end, aspect) {
     const d = 0.92;
     return [full('#09090A'), { kind: 'shape', shape: 'ellipse', x: 0.5, y: 0.47, w: d, h: +(d * aspect).toFixed(4), color: '#F1F1EE', shadow: true, shadowColor: '#FFFFFF', shadowOpacity: 0.55, shadowDist: 0, shadowBlur: 0.03, start, end, animIn: 'zoom', animOut: 'fade' }];
   }
-  if (theme === 'cinema') {
-    // fundo quase preto e dois feixes de luz laranja inclinados, com brilho
-    const beam = (x, rot, w, op) => ({ kind: 'shape', shape: 'rect', x, y: 0.5, w, h: 1.5, color: '#FF7A1A', radius: 1, rot, opacity: op, shadow: true, shadowColor: '#FF5A00', shadowOpacity: 0.9, shadowDist: 0, shadowBlur: 0.012, start, end, animIn: 'slide-left', animOut: 'fade' });
-    return [full('#060708'), beam(0.82, 16, 0.006, 0.95), beam(0.12, -22, 0.0035, 0.7)];
-  }
+  if (theme === 'cinema') return [full('#060708')]; // fundo escuro, sem linhas
   return [];
 }
 
@@ -152,12 +148,13 @@ export function sceneLayers(words, { theme, start, end, aspect }) {
     const base = { text: l.text, x: 0.5, y: +(y + h / 2).toFixed(4), size: l.size, start: +at.toFixed(2), end: +end.toFixed(2), align: 'center', animOut: 'fade' };
     const sh = T.shadow ? { shadow: true, shadowColor: T.shadowColor, shadowOpacity: theme === 'cinema' ? 0.55 : 0.7, shadowDist: 0, shadowBlur: theme === 'cinema' ? 0.01 : 0.006 } : {};
     if (l.role === 'small') {
-      layers.push({ ...base, font: 'garamond', fontStyle: '400i', color: T.small, box: 'none', stroke: false, animIn: 'fade', ...sh });
+      layers.push({ ...base, font: 'garamond', fontStyle: '400i', color: T.small, box: 'none', stroke: false, animIn: 'letras-desfoque', ...sh });
     } else if (l.role === 'num') {
       layers.push({ ...base, font: 'inter', fontStyle: '900', color: T.num, box: 'box', boxColor: T.numBg, bg: true, bgColor: T.numBg, bgMode: 'lines', pad: 0.16, radius: 0.08, stroke: false, tracking: -20, animIn: 'pop' });
     } else {
       const accent = l === star && T.accent;
-      layers.push({ ...base, font: 'inter', fontStyle: accent ? '900i' : '900', color: accent || T.big, box: 'none', stroke: false, tracking: -30, animIn: 'zoom', ...sh,
+      // palavras-chave: as letras pulam ou sobem, alternando (o que faz a tipografia "mexer")
+      layers.push({ ...base, font: 'inter', fontStyle: accent ? '900i' : '900', color: accent || T.big, box: 'none', stroke: false, tracking: -30, animIn: sized.indexOf(l) % 3 === 1 ? 'letras-subir' : 'letras-pop', ...sh,
         ...(accent ? { shadow: true, shadowColor: accent, shadowOpacity: 0.6, shadowDist: 0, shadowBlur: 0.012 } : {}) });
     }
     y += h + gap;
