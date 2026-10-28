@@ -80,7 +80,9 @@ export function pickOpenverseHit(items, usedIds) {
 export function brollFrameVf(regionW, regionH, c = {}) {
   const z = Math.min(2.5, Math.max(1, Number(c.zoom) || 1));
   const fx = Math.min(1, Math.max(0, Number.isFinite(Number(c.fx)) ? Number(c.fx) : 0.5));
-  const fy = Math.min(1, Math.max(0, Number.isFinite(Number(c.fy)) ? Number(c.fy) : 0.5));
+  // Sem foco definido: com zoom, o recorte fica um pouco acima do centro (folga de cabeça).
+  // Centro (0,5) cortava o topo da cabeça de quem aparece no B-roll quando há zoom.
+  const fy = Math.min(1, Math.max(0, Number.isFinite(Number(c.fy)) ? Number(c.fy) : (z > 1 ? 0.3 : 0.5)));
   const even = (n) => Math.max(2, Math.round(n / 2) * 2);
   const sw = even(regionW * z);
   const sh = even(regionH * z);
