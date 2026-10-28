@@ -131,7 +131,7 @@ function waitForServer(port, timeoutMs = 90_000) {
 function accountServer() {
   const v = String(process.env.RISEFRAME_ACCOUNT_SERVER || '').trim();
   if (v.toLowerCase() === 'off') return '';
-  return (v || 'https://riseframe.onrender.com').replace(/\/+$/, '');
+  return (v || 'https://www.riseframe.com.br').replace(/\/+$/, '');
 }
 
 async function startServer() {
