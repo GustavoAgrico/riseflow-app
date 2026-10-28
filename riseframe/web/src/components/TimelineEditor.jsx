@@ -3136,7 +3136,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const onLane = new Set(brollLaneItems.map(({ i }) => i));
     return brollReview.moments.map((m, i) => {
       if (m.removed || !onLane.has(i)) return { start: m.start, end: m.end, remove: true };
-      const frame = { zoom: +Number(m.zoom || 1).toFixed(2), fx: +Number(m.fx ?? 0.5).toFixed(3), fy: +Number(m.fy ?? 0.5).toFixed(3) };
+      // mesmo padrão do render (broll.js): com zoom, o recorte tem folga de cabeça (fy 0,3)
+      const frame = { zoom: +Number(m.zoom || 1).toFixed(2), fx: +Number(m.fx ?? 0.5).toFixed(3), fy: +Number(m.fy ?? (Number(m.zoom) > 1 ? 0.3 : 0.5)).toFixed(3) };
       if (m.myMediaId) return { start: m.start, end: m.end, mediaId: m.myMediaId, kind: m.myKind, query: m.term, ...frame };
       const c = m.candidates[m.pick];
       if (!c) return { start: m.start, end: m.end, remove: true };
@@ -4564,8 +4565,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     width: '100%', height: '100%', objectFit: 'contain', display: 'block', boxSizing: 'border-box', padding: '17%', background: '#F5F5F7', filter: videoFilterFx,
   } : {
     width: '100%', height: '100%', objectFit: 'cover', display: 'block',
-    objectPosition: `${(m?.fx ?? 0.5) * 100}% ${(m?.fy ?? 0.5) * 100}%`,
-    transform: `scale(${m?.zoom || 1})`, transformOrigin: `${(m?.fx ?? 0.5) * 100}% ${(m?.fy ?? 0.5) * 100}%`,
+    objectPosition: `${(m?.fx ?? 0.5) * 100}% ${(m?.fy ?? (m?.zoom > 1 ? 0.3 : 0.5)) * 100}%`,
+    transform: `scale(${m?.zoom || 1})`, transformOrigin: `${(m?.fx ?? 0.5) * 100}% ${(m?.fy ?? (m?.zoom > 1 ? 0.3 : 0.5)) * 100}%`,
     filter: videoFilterFx,
   });
 
