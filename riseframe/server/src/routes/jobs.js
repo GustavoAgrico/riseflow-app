@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import os from 'node:os';
 import { nanoid } from 'nanoid';
 import { config } from '../config.js';
@@ -1736,7 +1737,7 @@ jobsRouter.get('/jobs/:id/color-frame', async (req, res) => {
     const job = queue.get(req.params.id);
     if (!job?.inputPath || !fs.existsSync(job.inputPath)) return res.status(404).json({ error: 'vídeo não encontrado' });
     const look = ALLOWED_LOOKS.has(String(req.query.look)) ? String(req.query.look) : 'auto';
-    const adj = sanitizeColorAdjust({ brightness: req.query.b, contrast: req.query.c, saturation: req.query.s, temperature: req.query.tp });
+    const adj = colorAdjustFromQuery(req.query);
     const t = Math.max(0, Math.min(100000, Number(req.query.t) || 0));
 
     let vf;
@@ -1754,8 +1755,8 @@ jobsRouter.get('/jobs/:id/color-frame', async (req, res) => {
 
     const dir = path.join(config.paths.cache, 'colorframes');
     fs.mkdirSync(dir, { recursive: true });
-    const key = `${job.id}_${Math.round(t * 10)}_${look}_${adj.brightness}_${adj.contrast}_${adj.saturation}_${adj.temperature}`;
-    const out = path.join(dir, `${key.replace(/[^A-Za-z0-9_-]/g, '')}.jpg`);
+    const key = `${job.id}_${Math.round(t * 10)}_${look}_${crypto.createHash('sha1').update(JSON.stringify(adj)).digest('hex').slice(0, 16)}`;
+    const out = path.join(dir, `${key}.jpg`);
     if (!fs.existsSync(out)) {
       await runFfmpeg([
         '-ss', t.toFixed(2), '-i', job.inputPath, '-frames:v', '1',
@@ -1767,6 +1768,52 @@ jobsRouter.get('/jobs/:id/color-frame', async (req, res) => {
     res.type('image/jpeg').sendFile(path.resolve(out));
   } catch (err) {
     res.status(500).json({ error: err.message || 'falha na prévia de cor' });
+  }
+});
+
+// Ajuste de cor da URL: `adj` = JSON (rodas, tint, matiz…); os parâmetros antigos (b, c, s, tp) continuam.
+function colorAdjustFromQuery(q) {
+  let raw = { brightness: q.b, contrast: q.c, saturation: q.s, temperature: q.tp };
+  if (q.adj) {
+    try { raw = { ...raw, ...JSON.parse(String(q.adj)) }; } catch { /* JSON ruim: fica só com os antigos */ }
+  }
+  return sanitizeColorAdjust(raw);
+}
+
+// GET /api/jobs/:id/color-scope?t=&look=&adj= → scopes (waveform) do mesmo quadro, com a cor
+// final. Mesma cadeia do render: o que o cliente vê nos scopes é o que sai no vídeo.
+jobsRouter.get('/jobs/:id/color-scope', async (req, res) => {
+  try {
+    const job = queue.get(req.params.id);
+    if (!job?.inputPath || !fs.existsSync(job.inputPath)) return res.status(404).json({ error: 'vídeo não encontrado' });
+    const look = ALLOWED_LOOKS.has(String(req.query.look)) ? String(req.query.look) : 'auto';
+    const adj = colorAdjustFromQuery(req.query);
+    const t = Math.max(0, Math.min(100000, Number(req.query.t) || 0));
+    let vf;
+    if (look === 'auto') {
+      if (!autoGradeCache.has(job.id)) autoGradeCache.set(job.id, (await analyzeAndGrade(job.inputPath)).vf);
+      vf = fastColorChain([autoGradeCache.get(job.id), manualAdjustVf(adj)].filter(Boolean).join(','));
+    } else {
+      vf = (await colorFilter(job.inputPath, { colorLook: look, colorAdjust: adj })).vf;
+    }
+    if (!sourceMetaCache.has(job.id)) sourceMetaCache.set(job.id, await probeSummary(job.inputPath));
+    const toSdr = sdrVf(sourceMetaCache.get(job.id));
+    if (toSdr) vf = [toSdr, vf].filter(Boolean).join(',');
+    const dir = path.join(config.paths.cache, 'colorframes');
+    fs.mkdirSync(dir, { recursive: true });
+    const key = `scope_${job.id}_${Math.round(t * 10)}_${look}_${crypto.createHash('sha1').update(JSON.stringify(adj)).digest('hex').slice(0, 16)}`;
+    const out = path.join(dir, `${key}.png`);
+    if (!fs.existsSync(out)) {
+      await runFfmpeg([
+        '-ss', t.toFixed(2), '-i', job.inputPath, '-frames:v', '1',
+        '-vf', [vf, 'scale=-2:360', 'waveform=mode=column:display=overlay:components=7:graticule=green,scale=720:-2'].filter(Boolean).join(','),
+        '-y', out,
+      ], { label: 'color-scope' });
+    }
+    res.set('Cache-Control', 'private, max-age=600');
+    res.type('image/png').sendFile(path.resolve(out));
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'falha nos scopes' });
   }
 });
 

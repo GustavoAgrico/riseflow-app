@@ -28,14 +28,75 @@ export const LOOKS = {
     'colorbalance=bs=0.06:rh=0.03',
 };
 
-/** Ajuste manual (-100..100 cada) → valores de filtro. Mesmo mapeamento da prévia no site. */
+/** Rodas de cor (como no DaVinci): cada uma tem um disco (x,y, −1..1) e um controle geral (m, −1..1). */
+export const WHEELS = ['lift', 'gamma', 'gain', 'offset'];
+
+const unit = (v) => Math.max(-1, Math.min(1, Number(v) || 0));
+function sanitizeWheel(w) {
+  const x = unit(w?.x);
+  const y = unit(w?.y);
+  const mag = Math.hypot(x, y);
+  const k = mag > 1 ? 1 / mag : 1; // o disco não passa da borda
+  return { x: +(x * k).toFixed(3), y: +(y * k).toFixed(3), m: +unit(w?.m).toFixed(3) };
+}
+const wheelIsZero = (w) => !w.x && !w.y && !w.m;
+
+/** Ajuste manual → valores válidos. Mesmo mapeamento da prévia no site e do render. */
 export function sanitizeColorAdjust(raw) {
   const pick = (v) => Math.max(-100, Math.min(100, Math.round(Number(v) || 0)));
   const a = raw && typeof raw === 'object' ? raw : {};
-  return { brightness: pick(a.brightness), contrast: pick(a.contrast), saturation: pick(a.saturation), temperature: pick(a.temperature) };
+  const wheels = {};
+  for (const k of WHEELS) wheels[k] = sanitizeWheel(a.wheels?.[k]);
+  return {
+    brightness: pick(a.brightness), contrast: pick(a.contrast), saturation: pick(a.saturation), temperature: pick(a.temperature),
+    tint: pick(a.tint), hue: pick(a.hue), wheels,
+  };
 }
 
-export const hasColorAdjust = (a) => Boolean(a && (a.brightness || a.contrast || a.saturation || a.temperature));
+export const hasColorAdjust = (a) => Boolean(a && (a.brightness || a.contrast || a.saturation || a.temperature || a.tint || a.hue
+  || (a.wheels && WHEELS.some((k) => !wheelIsZero(a.wheels[k] || {})))));
+
+/**
+ * Rodas de cor → uma curva por canal (`curves`). Cada canal começa com o controle geral da
+ * roda e recebe a cor do disco: a direção do disco diz para qual canal a roda puxa (como o
+ * disco de cor do DaVinci), sem mudar o brilho total. Lift levanta as sombras, Gamma mexe
+ * nos médios, Gain escala as altas luzes, Offset soma no todo.
+ */
+const CH_PHASE = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3];
+export function wheelCurves(wheels, tint = 0) {
+  const shift = (w, c) => {
+    if (!w.x && !w.y) return 0;
+    const mag = Math.hypot(w.x, w.y);
+    return 0.5 * mag * Math.cos(Math.atan2(w.y, w.x) - CH_PHASE[c]);
+  };
+  const curveFor = (c) => {
+    const lift = 0.3 * wheels.lift.m + 0.3 * shift(wheels.lift, c);
+    const gammaExp = 2 ** -(wheels.gamma.m + shift(wheels.gamma, c) * 2);
+    const gain = 1 + 0.5 * wheels.gain.m + shift(wheels.gain, c) * 0.8;
+    // tint: magenta (+) tira verde e põe vermelho/azul; verde (−) faz o contrário
+    const tintShift = [0.05, -0.1, 0.05][c] * tint;
+    const offset = 0.1 * wheels.offset.m + shift(wheels.offset, c) * 0.2 + tintShift;
+    const pts = [];
+    for (let i = 0; i <= 16; i += 1) {
+      const x = i / 16;
+      let v = x + lift * (1 - x);
+      v = Math.max(0, v) ** gammaExp;
+      v = clamp01(v * gain + offset);
+      pts.push(`${x}/${Number(v.toFixed(3))}`);
+    }
+    return pts.join(' ');
+  };
+  return `curves=r='${curveFor(0)}':g='${curveFor(1)}':b='${curveFor(2)}'`;
+}
+
+/** Filtros das rodas, tint e matiz (depois do ajuste de brilho/contraste). Puro/testável. */
+export function wheelVf(raw) {
+  const a = sanitizeColorAdjust(raw);
+  const parts = [];
+  if (a.hue) parts.push(`hue=h=${Number((a.hue * 0.6).toFixed(2))}`);
+  if (a.tint || WHEELS.some((k) => !wheelIsZero(a.wheels[k]))) parts.push(wheelCurves(a.wheels, a.tint / 100));
+  return parts.length ? parts.join(',') : null;
+}
 
 /** Cadeia FFmpeg do ajuste manual (depois do look), ou null se tudo em zero. Puro/testável. */
 export function manualAdjustVf(raw) {
@@ -50,6 +111,8 @@ export function manualAdjustVf(raw) {
     const k = a.temperature / 100; // >0 quente (laranja), <0 frio (azul)
     parts.push(`colorbalance=rs=${f(0.08 * k)}:bs=${f(-0.08 * k)}:rm=${f(0.1 * k)}:bm=${f(-0.1 * k)}:rh=${f(0.06 * k)}:bh=${f(-0.06 * k)}`);
   }
+  const wv = wheelVf(a);
+  if (wv) parts.push(wv);
   return parts.join(',');
 }
 

@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { fontsDirArg, jobFontsDir } from './captions.js';
 import { fontById, fontStyles } from '../../../shared/captionStyle.js';
-import { textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan } from '../../../shared/textLayers.js';
+import { textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan, letterPlan, letterTiming, LETTER_ANIMS } from '../../../shared/textLayers.js';
 import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
 import { makeLogger } from '../logger.js';
 
@@ -48,6 +48,20 @@ function ellipse(W, H) {
   const ry = H / 2;
   return `m ${q(rx)} 0 b ${q(rx + rx * k)} 0 ${q(W)} ${q(ry - ry * k)} ${q(W)} ${q(ry)} b ${q(W)} ${q(ry + ry * k)} ${q(rx + rx * k)} ${q(H)} ${q(rx)} ${q(H)} `
     + `b ${q(rx - rx * k)} ${q(H)} 0 ${q(ry + ry * k)} 0 ${q(ry)} b 0 ${q(ry - ry * k)} ${q(rx - rx * k)} 0 ${q(rx)} 0`;
+}
+
+/**
+ * Tags de uma letra (evento próprio, \\an5 no centro dela). Os tempos são de dentro do evento
+ * (a letra começa no seu instante). Mesma conta da prévia: letrFrame em shared/textLayers.js.
+ */
+function letterTags(anim, px, py, dMs, off, col, outCol) {
+  const base = `\\an5\\bord0\\shad0\\1c${col}&\\3c${outCol}&`;
+  if (anim === 'letras-subir') return `${base}\\move(${px},${py + off},${px},${py},0,${Math.round(dMs)})\\alpha&HFF&\\t(0,${Math.round(dMs)},\\alpha&H00&)`;
+  if (anim === 'letras-pop') {
+    const d1 = Math.round(dMs * 0.6);
+    return `${base}\\pos(${px},${py})\\fscx0\\fscy0\\t(0,${d1},\\fscx115\\fscy115)\\t(${d1},${Math.round(dMs)},\\fscx100\\fscy100)`;
+  }
+  return `${base}\\pos(${px},${py})\\blur8\\alpha&HFF&\\t(0,${Math.round(dMs)},\\blur0\\alpha&H00&)`;
 }
 
 /**
@@ -128,6 +142,7 @@ export function buildTextAss(layers, meta) {
     const lines = clean(textShown(l)).split('\n');
     // máquina de escrever / palavra por palavra: cada pedaço fica invisível até a sua vez
     const plan = L.smallCaps ? null : revealPlan(l, lines);
+    const letters = L.smallCaps ? null : letterPlan(l, lines);
     const revealAss = (j, a1, a3) => plan[j].map(({ u, t }) => (t == null ? u : `{\\1a&HFF&\\3a&HFF&\\t(${Math.round(t * 1000)},${Math.round(t * 1000) + 1},\\1a${a1}\\3a${a3})}${u}`)).join('');
     // versalete: minúsculas viram maiúsculas menores (78%)
     const SC = 0.78;
@@ -172,6 +187,20 @@ export function buildTextAss(layers, meta) {
       }
       if (shape) {
         events.push(`Dialogue: ${i * 4 + 1},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${tagsAt(cx, cy, org)}\\bord0\\shad0\\1c${bgr(L.bgColor)}&\\1a${alpha(L.bgOpacity * L.opacity)}\\p1}${shape}`);
+      }
+      if (letters) {
+        // animação por letra: cada letra é um evento com a sua posição e o seu tempo
+        const lx = cx - lineW(line) / 2;
+        let pre = '';
+        [...line].forEach((ch, k) => {
+          const adv = FM.width(ch) * em;
+          const cxk = lx + FM.width(pre) * em + sp * [...pre].length + adv / 2;
+          pre += ch;
+          const c = letters[j][k];
+          if (!c || c.t == null || !ch.trim()) return;
+          events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t)},${assTime(l.end)},T${i},,0,0,0,,{${letterTags(l.animIn, Math.round(cxk), Math.round(ty), c.d * 1000, Math.round(H * 0.06), bgr(L.fillColor), L.stroke ? bgr(L.strokeColor) : bgr(L.fillColor))}}${clean(ch)}`);
+        });
+        return;
       }
       events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${tagsAt(cx, ty, org)}\\1a${fillA}\\3a${alpha(L.opacity)}}${plan ? revealAss(j, fillA, alpha(L.opacity)) : lineAss(line)}`);
     });

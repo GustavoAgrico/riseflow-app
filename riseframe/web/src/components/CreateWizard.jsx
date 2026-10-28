@@ -4,7 +4,7 @@ import Icon from './Icon.jsx';
 import { Spinner } from './ui.jsx';
 import Uploader from './Uploader.jsx';
 import CaptionPreview from './CaptionPreview.jsx';
-import CaptionGallery, { presetPatch } from './CaptionGallery.jsx';
+import CaptionGallery, { presetPatch, currentPreset, CAPTION_PRESETS } from './CaptionGallery.jsx';
 import CostLine from './CostLine.jsx';
 import { FORMATS } from '../formats.js';
 import { listBrands, loadBrand, activeBrandId, setActiveBrand, brandOptions } from '../brandKit.js';
@@ -16,6 +16,17 @@ const STEPS = [
 ];
 
 const HIGHLIGHT = ['premium', 'keyword', 'duo', 'karaoke', 'marker'];
+
+// Agrupa as melhorias por assunto, para o cliente achar sem ler a lista inteira.
+const TASK_GROUPS = [
+  ['Cortes e fala', ['cut', 'clean', 'short', 'moments']],
+  ['Legendas', ['captions', 'highlight']],
+  ['Imagem', ['reframe', 'color', 'zoom', 'broll']],
+  ['Som e destaques', ['audio', 'sfx', 'kinetic']],
+  ['Depois de criar', ['review']],
+];
+// O "recomendado" liga só o essencial: corta o tempo morto, limpa a fala, legenda e corrige a cor.
+const RECOMMENDED = ['cut', 'clean', 'captions', 'reframe', 'color'];
 
 /**
  * O que a IA faz, em linguagem simples. Cada item lê/escreve as opções do vídeo (e o
@@ -45,7 +56,7 @@ function aiTasks({ options, mode, caps }) {
     { id: 'color', icon: 'palette', title: 'Corrigir luz e cor', desc: 'Acerta a cor e clareia vídeo escuro', on: (options.colorLook || 'auto') !== 'none', set: (v) => ({ colorLook: v ? 'auto' : 'none' }) },
     { id: 'zoom', icon: 'zap', title: 'Zoom nos momentos-chave', desc: 'Aproxima nas frases mais fortes', on: options.videoMotion === 'dynamic', set: (v) => ({ videoMotion: v ? 'dynamic' : 'none' }), off: notClips },
     { id: 'broll', icon: 'image', title: 'Imagens de apoio (B-roll)', desc: 'Ilustra o que você fala com imagens e vídeos', on: options.broll === true, set: (v) => ({ broll: v }), off: notClips || (!brollOk ? 'indisponível no servidor' : null) },
-    { id: 'kinetic', icon: 'sparkles', title: 'Motion tipográfico', desc: 'Frases animadas palavra por palavra, estilo agência, com sons premium', on: options.kinetic === true, set: (v) => ({ kinetic: v }), off: notClips },
+    { id: 'kinetic', icon: 'sparkles', title: 'Motion tipográfico', desc: 'Frases animadas palavra por palavra, com sons', on: options.kinetic === true, set: (v) => ({ kinetic: v }), off: notClips },
     { id: 'sfx', icon: 'volume', title: 'Efeitos sonoros', desc: 'Teclas na legenda e whoosh nas transições', on: options.soundEffects === true, set: (v) => ({ soundEffects: v }), off: notClips },
     { id: 'short', icon: 'zap', title: 'Transformar em um vídeo curto', desc: 'A IA monta UM vídeo com o essencial: gancho, ideia principal e conclusão', on: Number(options.shortTarget) > 0, set: (v) => ({ shortTarget: v ? 60 : 0 }), off: notClips },
     { id: 'moments', icon: 'film', title: 'Detectar melhores momentos', desc: 'Gera vários cortes curtos com os trechos mais fortes', on: isClips, mode: (v) => (v ? 'clips' : 'auto') },
@@ -127,6 +138,7 @@ export default function CreateWizard({
 }) {
   const [step, setStep] = useState(formatId ? 1 : 0);
   const [advanced, setAdvanced] = useState(false);
+  const [styleOpen, setStyleOpen] = useState(true);
   // Marca (cliente) deste vídeo: a ativa do Brand Kit, outra, ou nenhuma.
   const [brands] = useState(() => listBrands().filter((b) => b.name || b.logo || b.preset));
   const [brandSel, setBrandSel] = useState(() => (options.brandOff ? '' : activeBrandId()));
@@ -164,6 +176,18 @@ export default function CreateWizard({
     if (t.mode) onMode(t.mode(!t.on));
     else set(t.set(!t.on));
   };
+  const activeCount = tasks.filter((t) => t.on && !t.off).length;
+  const selectableCount = tasks.filter((t) => !t.off).length;
+  const styleName = CAPTION_PRESETS.find((p) => p.id === currentPreset(options))?.label || 'Personalizado';
+  // Liga o recomendado e desliga o resto (exceto os de modo, que o cliente escolhe à parte).
+  function applyRecommended() {
+    let patch = {};
+    for (const t of tasks) {
+      if (!t.set || t.off || t.id === 'highlight') continue;
+      patch = { ...patch, ...t.set(RECOMMENDED.includes(t.id)) };
+    }
+    set(patch);
+  }
   const previewAspect = mode === 'clips' ? options.clipAspect || '9:16' : options.aspect || 'original';
   const ctaLabel = mode === 'clips' ? 'Gerar meus cortes' : mode === 'editor' ? 'Abrir no editor' : 'Criar meu vídeo';
 
@@ -241,37 +265,59 @@ export default function CreateWizard({
           <h2 style={h2}>O que você quer que a IA faça?</h2>
           <p style={lead}>Escolha as melhorias. Dá para ajustar cada detalhe em “Ajustes avançados”.</p>
           <div className="rf-ai-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, 1fr)', gap: 22, alignItems: 'start' }}>
-            <div style={{ display: 'grid', gap: 8 }}>
-              {tasks.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => toggle(t)}
-                  disabled={!!t.off}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 13, width: '100%', textAlign: 'left', fontFamily: 'inherit', color: C.text,
-                    padding: '12px 14px', borderRadius: 13, cursor: t.off ? 'not-allowed' : 'pointer', opacity: t.off ? 0.5 : 1,
-                    background: t.on && !t.off ? 'rgba(255,107,53,0.07)' : 'rgba(255,255,255,0.03)',
-                    border: `1px solid ${t.on && !t.off ? 'rgba(255,107,53,0.32)' : C.border}`, transition: 'all .15s',
-                  }}
-                >
-                  <span style={{ width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,0.05)', color: t.on && !t.off ? C.orangeSoft : C.muted, flexShrink: 0 }}>
-                    <Icon name={t.icon} size={18} strokeWidth={1.9} />
-                  </span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontWeight: 650, fontSize: 14 }}>{t.title}</span>
-                    <span style={{ display: 'block', fontSize: 12, color: C.faint, marginTop: 2 }}>{t.off || t.desc}</span>
-                  </span>
-                  <Check on={t.on} disabled={!!t.off} />
+            <div style={{ display: 'grid', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}` }}>
+                <span style={{ fontSize: 13, color: C.muted }}><b style={{ color: C.text }}>{activeCount}</b> de {selectableCount} melhorias ativas</span>
+                <button type="button" onClick={applyRecommended} style={{ border: `1px solid ${C.border}`, background: 'transparent', color: C.text, borderRadius: 999, padding: '6px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  ✨ Usar o recomendado
                 </button>
-              ))}
+              </div>
+              {TASK_GROUPS.map(([groupName, ids]) => {
+                const list = tasks.filter((t) => ids.includes(t.id));
+                if (!list.length) return null;
+                return (
+                  <div key={groupName} style={{ display: 'grid', gap: 7 }}>
+                    <div style={{ fontSize: 11.5, color: C.faint, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', padding: '0 2px' }}>{groupName}</div>
+                    {list.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => toggle(t)}
+                        disabled={!!t.off}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 13, width: '100%', textAlign: 'left', fontFamily: 'inherit', color: C.text,
+                          padding: '12px 14px', borderRadius: 13, cursor: t.off ? 'not-allowed' : 'pointer', opacity: t.off ? 0.5 : 1,
+                          background: t.on && !t.off ? 'rgba(255,107,53,0.07)' : 'rgba(255,255,255,0.03)',
+                          border: `1px solid ${t.on && !t.off ? 'rgba(255,107,53,0.32)' : C.border}`, transition: 'all .15s',
+                        }}
+                      >
+                        <span style={{ width: 36, height: 36, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'rgba(255,255,255,0.05)', color: t.on && !t.off ? C.orangeSoft : C.muted, flexShrink: 0 }}>
+                          <Icon name={t.icon} size={18} strokeWidth={1.9} />
+                        </span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontWeight: 650, fontSize: 14 }}>{t.title}</span>
+                          <span style={{ display: 'block', fontSize: 12, color: C.faint, marginTop: 2 }}>{t.off || t.desc}</span>
+                        </span>
+                        <Check on={t.on} disabled={!!t.off} />
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
             <div className="rf-ai-side" style={{ position: 'sticky', top: 16, display: 'grid', gap: 14 }}>
               <CaptionPreview options={{ ...options, aspect: previewAspect }} videoUrl={videoUrl}
                 onFocus={framingManual && mode !== 'clips' ? (x, y) => set({ personFocusX: x, personFocusY: y }) : null} />
               {options.captions !== false && (
-                <div>
-                  <div style={{ fontSize: 12, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>ESTILO DA LEGENDA</div>
-                  <CaptionGallery options={options} onApply={(p) => set(p)} compact />
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <button type="button" onClick={() => setStyleOpen((o) => !o)} aria-expanded={styleOpen}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, width: '100%', border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)', color: C.text, borderRadius: 12, padding: '10px 12px', fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
+                    <span style={{ fontSize: 12, color: C.faint, fontWeight: 700, letterSpacing: 0.8 }}>ESTILO DA LEGENDA</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13.5, fontWeight: 700 }}>
+                      {styleName}
+                      <span style={{ fontSize: 12, color: C.orangeSoft, fontWeight: 600 }}>{styleOpen ? 'fechar' : 'trocar'}</span>
+                    </span>
+                  </button>
+                  {styleOpen && <CaptionGallery options={options} onApply={(p) => set(p)} compact />}
                 </div>
               )}
             </div>

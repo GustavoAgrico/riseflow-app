@@ -600,8 +600,11 @@ export const captionsDownloadUrl = (id, fmt = 'srt') => `${BASE}/jobs/${id}/capt
 /** Capa (JPG): quadro do vídeo original no segundo `t`, no formato final, com o título. */
 export const coverUrl = (id, { t = 0, text = '', style = 'box', color = 'FF6B35', pos = 'center', aspect = 'original', quality = 'original', fx = 0.5, full = false } = {}) =>
   `${BASE}/jobs/${id}/cover?${new URLSearchParams({ t: Number(t || 0).toFixed(1), text, style, color, pos, aspect, quality, fx: Number(fx).toFixed(2), ...(full ? { full: '1' } : {}) })}`;
-export const colorFrameUrl = (id, t, look, a = {}) =>
-  `${BASE}/jobs/${id}/color-frame?t=${Number(t || 0).toFixed(1)}&look=${encodeURIComponent(look || 'auto')}&b=${a.brightness || 0}&c=${a.contrast || 0}&s=${a.saturation || 0}&tp=${a.temperature || 0}`;
+/** Ajuste de cor na URL: os 4 controles antigos + o JSON (rodas, tint, matiz). */
+const colorQuery = (look, a = {}) => `look=${encodeURIComponent(look || 'auto')}&b=${a.brightness || 0}&c=${a.contrast || 0}&s=${a.saturation || 0}&tp=${a.temperature || 0}&adj=${encodeURIComponent(JSON.stringify(a))}`;
+export const colorFrameUrl = (id, t, look, a = {}) => `${BASE}/jobs/${id}/color-frame?t=${Number(t || 0).toFixed(1)}&${colorQuery(look, a)}`;
+/** Scopes (waveform) do mesmo quadro com a cor final. */
+export const colorScopeUrl = (id, t, look, a = {}) => `${BASE}/jobs/${id}/color-scope?t=${Number(t || 0).toFixed(1)}&${colorQuery(look, a)}`;
 /** Tira de miniaturas da faixa de vídeo da timeline. */
 export const filmstripUrl = (id) => `${BASE}/jobs/${id}/filmstrip`;
 /** Picos de áudio (0..1) para desenhar a forma de onda. */
