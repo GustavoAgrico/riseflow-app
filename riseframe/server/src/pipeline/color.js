@@ -2,6 +2,7 @@ import path from 'node:path';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { analyzeAndGrade } from './autoColor.js';
 import { makeLogger } from '../logger.js';
+import { wheelCurvePoints } from '../../../shared/colorWheels.js';
 
 const log = makeLogger('color');
 
@@ -62,31 +63,11 @@ export const hasColorAdjust = (a) => Boolean(a && (a.brightness || a.contrast ||
  * disco de cor do DaVinci), sem mudar o brilho total. Lift levanta as sombras, Gamma mexe
  * nos médios, Gain escala as altas luzes, Offset soma no todo.
  */
-const CH_PHASE = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3];
+/** Curva FFmpeg das rodas + tint (os pontos vêm de shared/colorWheels.js — mesma conta da prévia). */
 export function wheelCurves(wheels, tint = 0) {
-  const shift = (w, c) => {
-    if (!w.x && !w.y) return 0;
-    const mag = Math.hypot(w.x, w.y);
-    return 0.5 * mag * Math.cos(Math.atan2(w.y, w.x) - CH_PHASE[c]);
-  };
-  const curveFor = (c) => {
-    const lift = 0.3 * wheels.lift.m + 0.3 * shift(wheels.lift, c);
-    const gammaExp = 2 ** -(wheels.gamma.m + shift(wheels.gamma, c) * 2);
-    const gain = 1 + 0.5 * wheels.gain.m + shift(wheels.gain, c) * 0.8;
-    // tint: magenta (+) tira verde e põe vermelho/azul; verde (−) faz o contrário
-    const tintShift = [0.05, -0.1, 0.05][c] * tint;
-    const offset = 0.1 * wheels.offset.m + shift(wheels.offset, c) * 0.2 + tintShift;
-    const pts = [];
-    for (let i = 0; i <= 16; i += 1) {
-      const x = i / 16;
-      let v = x + lift * (1 - x);
-      v = Math.max(0, v) ** gammaExp;
-      v = clamp01(v * gain + offset);
-      pts.push(`${x}/${Number(v.toFixed(3))}`);
-    }
-    return pts.join(' ');
-  };
-  return `curves=r='${curveFor(0)}':g='${curveFor(1)}':b='${curveFor(2)}'`;
+  const pts = wheelCurvePoints(wheels, tint);
+  const str = (ys) => ys.map((y, i) => `${i / 16}/${y}`).join(' ');
+  return `curves=r='${str(pts.r)}':g='${str(pts.g)}':b='${str(pts.b)}'`;
 }
 
 /** Filtros das rodas, tint e matiz (depois do ajuste de brilho/contraste). Puro/testável. */
