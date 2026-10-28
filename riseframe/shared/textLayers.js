@@ -330,6 +330,8 @@ function cleanShape(l) {
     radius: num(l.radius, 0, 1, 0),
     animIn: pickOf(TEXT_ANIMS_IN, l.animIn, 'fade'),
     animOut: pickOf(TEXT_ANIMS_OUT, l.animOut, 'fade'),
+    // câmera da forma: escala de camFrom a camTo na duração (1 = parada)
+    ...(l.camFrom != null || l.camTo != null ? { camFrom: num(l.camFrom, 0.5, 2, 1), camTo: num(l.camTo, 0.5, 2, 1) } : {}),
     ...pickLook({ ...l, bg: undefined }),
   };
 }

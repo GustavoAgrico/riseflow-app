@@ -10144,12 +10144,17 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
           const bh = l.h * box.h;
           const rgba = (hex, a) => { const h = String(hex).replace('#', ''); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; };
           const sw = L.stroke ? L.strokeW * box.h : 0;
+          // câmera (camFrom → camTo, linear na duração da forma): mesma conta do render
+          const camF = Number(l.camFrom) || 1;
+          const camT = Number(l.camTo) || 1;
+          const camP = Math.max(0, Math.min(1, (cur - l.start) / Math.max(0.01, l.end - l.start)));
+          const camS = camF + (camT - camF) * camP;
           const shadows = [];
           if (sw) shadows.push(`0 0 0 ${sw}px ${L.strokeColor}`); // contorno por fora
           if (L.shadow) shadows.push(`${-Math.cos((L.shadowAngle * Math.PI) / 180) * L.shadowDist * box.h}px ${Math.sin((L.shadowAngle * Math.PI) / 180) * L.shadowDist * box.h}px ${L.shadowBlur * box.h * 2}px ${rgba(L.shadowColor, L.shadowOpacity)}`);
           return (
             <div key={l.key} onPointerDown={(e) => start(e, { kind: 'text', key: l.key, ox: l.x, oy: l.y })}
-              style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, width: bw, height: bh, transform: `translate(-50%, -50%)${L.rot ? ` rotate(${L.rot}deg)` : ''}`, opacity: L.opacity,
+              style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, width: bw, height: bh, transform: `translate(-50%, -50%)${camS !== 1 ? ` scale(${camS})` : ''}${L.rot ? ` rotate(${L.rot}deg)` : ''}`, opacity: L.opacity,
                 background: L.fill ? L.fillColor : 'transparent', borderRadius: l.shape === 'ellipse' ? '50%' : (Number(l.radius) || 0) * Math.min(bw, bh) / 2, boxShadow: shadows.join(', ') || undefined,
                 pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: on ? '2px dashed #E8A020' : 'none', outlineOffset: 4 + sw }}>
               {on && (
