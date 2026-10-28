@@ -5,7 +5,7 @@ import { DEFAULT_COSTS } from '../../shared/credits.js';
 
 // Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
 // para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v1.69';
+export const APP_VERSION = 'v1.70';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -113,7 +113,7 @@ export const config = {
   },
 
   // Conta central (app de PC/Mac): login, planos e créditos ficam no servidor do site
-  // (ACCOUNT_SERVER, ex.: https://riseframe.onrender.com); o vídeo é processado aqui.
+  // (ACCOUNT_SERVER, ex.: https://www.riseframe.com.br); o vídeo é processado aqui.
   // Vazio = este servidor é a própria conta (site) ou um app local sem cobrança.
   account: {
     server: String(process.env.ACCOUNT_SERVER || '').trim().replace(/\/+$/, ''),
@@ -139,7 +139,7 @@ export const config = {
     emailVerify: String(process.env.EMAIL_VERIFY || 'auto').toLowerCase(),
     // Máximo de contas novas por conexão (IP) em 24 h — contra contas em massa.
     signupsPerIpDay: num(process.env.SIGNUPS_PER_IP_DAY, 3),
-    // URL pública do app (para montar o link de recuperação). Ex.: https://riseframe.onrender.com
+    // URL pública do app (para montar o link de recuperação). Ex.: https://www.riseframe.com.br
     appUrl: process.env.APP_URL || '',
   },
 
