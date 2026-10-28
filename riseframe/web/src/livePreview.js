@@ -4,6 +4,7 @@ import { volDbAt } from '../../shared/layerKeys.js';
 // aproximada, só no navegador — o render final continua sendo feito pelo FFmpeg.
 
 import { momentEffectAt, defaultMomentEffect } from '../../shared/transform.js';
+import { wheelCurvePoints, WHEEL_KEYS } from '../../shared/colorWheels.js';
 
 /** Intensidade → zoom máximo (igual ao servidor). */
 export const MOTION_Z = { suave: 1.06, medio: 1.12, forte: 1.2 };
@@ -158,10 +159,45 @@ export function playWhoosh(intensity = 'medio') {
   }
 }
 
-/** Ajuste fino de cor (brilho/contraste/saturação/temperatura) como filtro CSS + véu. */
+// Rodas de cor e tint na prévia que toca: um filtro SVG com as MESMAS curvas do render
+// (shared/colorWheels.js). O filtro é reescrito só quando os valores mudam.
+let wheelKey = '';
+const SVG_NS = 'http://www.w3.org/2000/svg';
+export function wheelFilterId(a = {}) {
+  const w = a.wheels || {};
+  const tint = (Number(a.tint) || 0) / 100;
+  const used = WHEEL_KEYS.some((k) => w[k] && (w[k].x || w[k].y || w[k].m)) || tint;
+  if (!used || typeof document === 'undefined') return null;
+  const wheels = Object.fromEntries(WHEEL_KEYS.map((k) => [k, { x: Number(w[k]?.x) || 0, y: Number(w[k]?.y) || 0, m: Number(w[k]?.m) || 0 }]));
+  const pts = wheelCurvePoints(wheels, tint);
+  const key = JSON.stringify(pts);
+  if (key !== wheelKey) {
+    wheelKey = key;
+    let svg = document.getElementById('rf-color-svg');
+    if (!svg) {
+      svg = document.createElementNS(SVG_NS, 'svg');
+      svg.setAttribute('id', 'rf-color-svg');
+      svg.setAttribute('aria-hidden', 'true');
+      svg.style.cssText = 'position:absolute;width:0;height:0;pointer-events:none';
+      document.body.appendChild(svg);
+    }
+    svg.innerHTML = `<defs><filter id="rfColorWheels" color-interpolation-filters="sRGB"><feComponentTransfer>`
+      + `<feFuncR type="table" tableValues="${pts.r.join(' ')}"/><feFuncG type="table" tableValues="${pts.g.join(' ')}"/><feFuncB type="table" tableValues="${pts.b.join(' ')}"/>`
+      + `</feComponentTransfer></filter></defs>`;
+  }
+  return 'url(#rfColorWheels)';
+}
+
+/** Ajuste de cor como filtro CSS + véu (aproximado ao vivo; o pausado usa o quadro exato do render). */
 export function colorAdjustCss(a = {}) {
   const b = Number(a.brightness) || 0, c = Number(a.contrast) || 0, s = Number(a.saturation) || 0, t = Number(a.temperature) || 0;
-  const filter = b || c || s ? `brightness(${1 + (b / 100) * 0.25}) contrast(${1 + (c / 100) * 0.35}) saturate(${1 + (s / 100) * 0.8})` : undefined;
+  const hue = Number(a.hue) || 0;
+  const parts = [];
+  if (b || c || s) parts.push(`brightness(${1 + (b / 100) * 0.25}) contrast(${1 + (c / 100) * 0.35}) saturate(${1 + (s / 100) * 0.8})`);
+  if (hue) parts.push(`hue-rotate(${(hue * 0.6).toFixed(1)}deg)`);
+  const wheel = wheelFilterId(a);
+  if (wheel) parts.push(wheel);
+  const filter = parts.length ? parts.join(' ') : undefined;
   const tint = t ? { background: t > 0 ? '#ff8a3d' : '#3d8bff', mixBlendMode: 'soft-light', opacity: (Math.abs(t) / 100) * 0.55 } : null;
   return { filter, tint };
 }

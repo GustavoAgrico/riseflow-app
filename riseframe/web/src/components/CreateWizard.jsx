@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { C, GRAD, glass, FONT_DISPLAY } from '../theme.js';
 import Icon from './Icon.jsx';
 import { Spinner } from './ui.jsx';
@@ -8,6 +8,7 @@ import CaptionGallery, { presetPatch, currentPreset, CAPTION_PRESETS } from './C
 import CostLine from './CostLine.jsx';
 import { FORMATS } from '../formats.js';
 import { listBrands, loadBrand, activeBrandId, setActiveBrand, brandOptions } from '../brandKit.js';
+import { listTemplatesApi } from '../api.js';
 
 const STEPS = [
   { id: 'format', label: 'Formato' },
@@ -139,6 +140,18 @@ export default function CreateWizard({
   const [step, setStep] = useState(formatId ? 1 : 0);
   const [advanced, setAdvanced] = useState(false);
   const [styleOpen, setStyleOpen] = useState(true);
+  // Modelo salvo (Modelos da conta) aplicado ANTES da edição: o editor abre com ele.
+  const [templates, setTemplates] = useState([]);
+  const [templateId, setTemplateId] = useState('');
+  useEffect(() => { listTemplatesApi().then((t) => setTemplates(t)).catch(() => setTemplates([])); }, []);
+  function pickTemplate(id) {
+    setTemplateId(id);
+    const t = templates.find((x) => x.id === id);
+    try {
+      if (t?.data) sessionStorage.setItem('rf_carry_style', JSON.stringify(t.data));
+      else sessionStorage.removeItem('rf_carry_style');
+    } catch { /* sem armazenamento: começa do padrão */ }
+  }
   // Marca (cliente) deste vídeo: a ativa do Brand Kit, outra, ou nenhuma.
   const [brands] = useState(() => listBrands().filter((b) => b.name || b.logo || b.preset));
   const [brandSel, setBrandSel] = useState(() => (options.brandOff ? '' : activeBrandId()));
@@ -264,6 +277,17 @@ export default function CreateWizard({
         <div className="rf-anim">
           <h2 style={h2}>O que você quer que a IA faça?</h2>
           <p style={lead}>Escolha as melhorias. Dá para ajustar cada detalhe em “Ajustes avançados”.</p>
+          {templates.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 16, padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 13, color: C.muted }}>Usar um modelo salvo:</span>
+              <select value={templateId} onChange={(e) => pickTemplate(e.target.value)} aria-label="Modelo salvo"
+                style={{ height: 32, borderRadius: 8, border: `1px solid ${C.border}`, background: '#0E0E14', color: C.text, padding: '0 8px', fontSize: 13, fontFamily: 'inherit', minWidth: 200 }}>
+                <option value="">Nenhum (começar do padrão)</option>
+                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.isDefault ? ' (padrão)' : ''}</option>)}
+              </select>
+              <span style={{ fontSize: 12, color: C.faint }}>Legenda, cor, efeitos e marca já entram no vídeo novo.</span>
+            </div>
+          )}
           <div className="rf-ai-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, 1fr)', gap: 22, alignItems: 'start' }}>
             <div style={{ display: 'grid', gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}` }}>
