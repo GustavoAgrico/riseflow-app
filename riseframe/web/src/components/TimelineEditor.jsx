@@ -452,7 +452,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // dividida com o B-roll em cima (você embaixo) ou embaixo (você em cima).
   // Fonte das imagens/vídeos do B-roll (igual à escolha do início, editável aqui).
   const [imageSource, setImageSource] = useState(BROLL_SOURCES.some((b) => b.id === options?.imageSource) ? options.imageSource : 'mix');
-  const [brollLayoutSel, setBrollLayoutSel] = useState(['fullscreen', 'top', 'bottom'].includes(options?.brollLayout) ? options.brollLayout : 'fullscreen');
+  const [brollLayoutSel, setBrollLayoutSel] = useState(['fullscreen', 'top', 'bottom', 'cartoes'].includes(options?.brollLayout) ? options.brollLayout : 'fullscreen');
   const personSide = brollLayoutSel === 'top' ? 'bottom' : 'top';
   const setPersonSide = (fn) => {
     const next = typeof fn === 'function' ? fn(personSide) : fn;
@@ -4572,7 +4572,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
 
   // Prévia 9:16 = o que sai no vídeo naquele instante: com B-roll ativo, tela dividida
   // (ou B-roll em tela cheia); sem B-roll, o VÍDEO INTEIRO com o enquadramento.
-  const brollLayout = brollLayoutSel === 'fullscreen' ? 'fullscreen' : 'split';
+  const brollLayout = brollLayoutSel === 'top' || brollLayoutSel === 'bottom' ? 'split' : 'fullscreen';
   // Tela dividida com B-roll: a legenda centraliza (linha entre as metades) — como no render.
   const capCenterWins = brollOn && brollLayout === 'split' && cap.captionBrollCenter !== false
     ? (brollReview?.moments || []).filter((m) => !m.removed && (m.myMediaId || m.candidates?.[m.pick])).map((m) => ({ start: m.start, end: m.end }))
@@ -7640,7 +7640,24 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <HeadlineOverlay h={headline} box={vbox} />
                 )}
                 {vbox && colorCss.tint && <div style={{ position: 'absolute', left: vbox.x, top: vbox.y, width: vbox.w, height: vbox.h, pointerEvents: 'none', ...colorCss.tint }} />}
-                {vbox && brollNow && (
+                {vbox && brollNow && brollLayoutSel === 'cartoes' && (() => {
+                  // Cartões: mesmas contas do render (broll.js, layout 'cartoes'): 72% da largura,
+                  // 4:5, cantos de 8%, inclinação alternada, sombra e entrada em 0,4 s com escala.
+                  const cardW = vbox.w * 0.72;
+                  const ang = (brollShownIdx % 2 ? 0.045 : -0.055) * (180 / Math.PI);
+                  const p = Math.max(0, Math.min(1, (cur - (brollMoment?.start ?? cur)) / 0.4));
+                  const E = 1 - (1 - p) ** 3;
+                  const sc = 0.8 + 0.2 * E;
+                  return (
+                    <div style={{ position: 'absolute', left: vbox.x + vbox.w / 2, top: vbox.y + vbox.h / 2, width: cardW, height: Math.min(cardW * 1.25, vbox.h * 0.8), pointerEvents: 'none',
+                      transform: `translate(-50%, calc(-50% + ${(1 - E) * vbox.h * 0.04}px)) rotate(${ang.toFixed(2)}deg) scale(${sc.toFixed(3)})`,
+                      borderRadius: cardW * 0.08, overflow: 'hidden', boxShadow: `${vbox.w * 0.017}px ${vbox.w * 0.022}px ${vbox.w * 0.04}px rgba(0,0,0,0.55)` }}>
+                      <img src={brollNow} alt="" style={{ ...brollImgStyle(brollMoment), height: '100%' }} />
+                      <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 10, fontWeight: 700, background: 'rgba(0,0,0,0.6)', color: '#fff', borderRadius: 6, padding: '2px 6px' }}>B-roll</span>
+                    </div>
+                  );
+                })()}
+                {vbox && brollNow && brollLayoutSel !== 'cartoes' && (
                   <div style={{
                     position: 'absolute', left: vbox.x, width: vbox.w, pointerEvents: 'none', overflow: 'hidden',
                     // Tela dividida: o B-roll ocupa só a metade dele (em cima ou embaixo).

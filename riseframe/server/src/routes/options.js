@@ -99,6 +99,7 @@ optionsRouter.get('/options', async (_req, res) => {
       { id: 'fullscreen', label: 'Tela cheia' },
       { id: 'top', label: 'Apoio em cima' },
       { id: 'bottom', label: 'Apoio embaixo' },
+      { id: 'cartoes', label: 'Cartões (inclinado, sombra)' },
     ],
     personCrops: [
       { id: 'top', label: 'Topo' },
