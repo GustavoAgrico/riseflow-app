@@ -5,7 +5,7 @@ import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import Processing from './Processing.jsx';
 import { pickExportTarget, setPendingExport } from '../exportTarget.js';
-import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
+import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -18,6 +18,7 @@ import { loadAutosave, saveAutosave, markAutosaveSubmitted, clearAutosave, packS
 import CaptionGallery, { FontPicker, ColorSwatches, TextStyleBar } from './CaptionGallery.jsx';
 import VoicePanel, { voiceOf } from './VoicePanel.jsx';
 import { MOTION_Z, motionAt, demoMotion, volumeAt, playWhoosh, playSfxUrl, LOOK_CSS, colorAdjustCss } from '../livePreview.js';
+import { colorAdjFresh, normColorAdj } from '../colorAdj.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
 import { suggestSfx, SFX_STYLES } from '../../../shared/autoMoments.js';
 import { kineticPlan, KINETIC_THEMES, KINETIC_AMOUNT } from '../../../shared/kinetic.js';
@@ -215,7 +216,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [selBroll, setSelBroll] = useState(null); // momento de B-roll selecionado (índice)
   const [badThumbs, setBadThumbs] = useState(() => new Set()); // miniaturas que não carregaram
   const [colorLook, setColorLook] = useState(cap0.colorLook || 'auto');
-  const [colorAdj, setColorAdj] = useState({ brightness: 0, contrast: 0, saturation: 0, temperature: 0, ...(cap0.colorAdjust || {}) });
+  const [colorAdj, setColorAdj] = useState(() => normColorAdj(cap0.colorAdjust));
+  const colorAdjKey = JSON.stringify(colorAdj);
   const colorCss = colorPreviewCss(colorAdj);
   const [showSource, setShowSource] = useState(false); // comparar com o vídeo original ao lado
   // Réguas e guias do monitor (como no Premiere: View › Mostrar réguas / guias / travar /
@@ -1142,16 +1144,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // Prévia de cor EXATA (quadro gerado pelo servidor com o mesmo filtro do render),
   // mostrada na aba Cor com o vídeo pausado. Tocando, vale a prévia aproximada (CSS).
   const [colorFrame, setColorFrame] = useState(null); // { url, loaded }
+  const [colorScope, setColorScope] = useState(null); // { url, loaded } — scopes do mesmo quadro
   const [previewCuts, setPreviewCuts] = useState(true); // prévia pula os cortes ao tocar
   const curTenth = Math.round(cur * 10);
   useEffect(() => {
-    if (tab !== 'cor' || playing || !sourceId) { setColorFrame(null); return undefined; }
+    if (tab !== 'cor' || playing || !sourceId) { setColorFrame(null); setColorScope(null); return undefined; }
     const id = setTimeout(() => {
       const url = colorFrameUrl(sourceId, curTenth / 10, colorLook, colorAdj);
       setColorFrame((f) => (f?.url === url ? f : { url, loaded: false }));
+      const sUrl = colorScopeUrl(sourceId, curTenth / 10, colorLook, colorAdj);
+      setColorScope((f) => (f?.url === sUrl ? f : { url: sUrl, loaded: false }));
     }, 350);
     return () => clearTimeout(id);
-  }, [tab, playing, sourceId, curTenth, colorLook, colorAdj.brightness, colorAdj.contrast, colorAdj.saturation, colorAdj.temperature]);
+  }, [tab, playing, sourceId, curTenth, colorLook, colorAdjKey]);
 
   // Tamanho do quadro da pessoa na prévia 9:16 (para recortar igual ao servidor).
   const [pbox, setPbox] = useState(null);
@@ -4961,6 +4966,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     return next;
   });
   const [dragFx, setDragFx] = useState(null); // efeito sendo arrastado
+  const [fxWhere, setFxWhere] = useState('playhead'); // efeito de vídeo: no ponto do playhead ou no vídeo inteiro
   const [dropT, setDropT] = useState(null); // onde ele vai entrar na timeline
   const [fxNote, setFxNote] = useState('');
   const fxQ = norm(fxQuery.trim());
@@ -5139,8 +5145,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     </div>
   );
   const fxShown = sfxOnline ? sfxOnItems : sfxMine ? mySoundItems : fxLibrary.filter((x) => (fxQ ? norm(x.label).includes(fxQ) : fxCat === 'fav' ? fxFavs.includes(x.uid) : x.cat === fxCat && (fxCat !== 'som' || !sfxCat || x.scat === sfxCat) && (fxCat !== 'trans' || !transCat || TRANS_GROUP_OF[x.id] === transCat)));
+  /** Efeito de vídeo no clipe inteiro: clicar de novo tira (um efeito por vez, empilhável). */
+  function toggleClipFx(item) {
+    const whole = (m) => m.effect === item.id && m.start <= 0.01 && m.end >= dur - 0.05;
+    if (fxMoments.some(whole)) { setFxMoments((l) => l.filter((m) => !whole(m))); return; }
+    setFxMoments((l) => [...l, { key: `f${Date.now()}`, start: 0, end: +dur.toFixed(2), effect: item.id }].sort((a, b) => a.start - b.start));
+    setSelKind('vfx');
+  }
   /** Coloca o efeito na timeline no instante t (tempo original do vídeo). */
   function addEffectAt(item, t0) {
+    if (item.kind === 'vfx' && fxWhere === 'clip') { toggleClipFx(item); setFxNote(`${item.label} no vídeo inteiro`); setTimeout(() => setFxNote(''), 2200); return; }
     const t = Math.max(0, Math.min(dur - 0.2, Number(t0) || 0));
     const end = (len) => +Math.min(dur, t + len).toFixed(2);
     if (item.kind === 'trans') {
@@ -6142,8 +6156,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const fxBrowser = (
     <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden', background: 'rgba(0,0,0,0.25)' }}>
       <style>{FX_ANIM_CSS}</style>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: 0.2 }}>Efeitos</span>
+        <div role="radiogroup" aria-label="Onde o efeito entra" style={{ display: 'inline-flex', border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden', flex: 'none' }}>
+          {[['playhead', 'No ponto'], ['clip', 'No vídeo inteiro']].map(([id, label]) => (
+            <button key={id} role="radio" aria-checked={fxWhere === id} onClick={() => setFxWhere(id)}
+              style={{ border: 'none', padding: '4px 9px', fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', background: fxWhere === id ? 'rgba(255,107,53,0.2)' : 'transparent', color: fxWhere === id ? C.text : C.muted }}>{label}</button>
+          ))}
+        </div>
         <div style={{ position: 'relative', flex: 1 }}>
           <span style={{ position: 'absolute', left: 8, top: 7, color: C.faint, display: 'flex' }}><Icon name="search" size={13} strokeWidth={2} /></span>
           <input value={fxQuery} onChange={(e) => setFxQuery(e.target.value)} placeholder="Buscar efeito"
@@ -8307,10 +8327,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {tab === 'propriedades' && propsBlockFn()}
 
           {tab === 'cor' && (
-            <div style={{ display: 'grid', gap: 12, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+            <div style={{ display: 'grid', gap: 14, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
               <CapRow label="Look (estilo de cor)">
                 <Sel value={colorLook} opts={catalog?.colorLooks} onChange={setColorLook} />
               </CapRow>
+              <div>
+                <div style={{ fontSize: 11.5, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>RODAS DE COR</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 12 }}>
+                  {COLOR_WHEELS.map((w) => (
+                    <ColorWheel key={w.id} label={w.label} value={colorAdj.wheels[w.id]}
+                      onChange={(v) => setColorAdj((a) => ({ ...a, wheels: { ...a.wheels, [w.id]: v } }))} />
+                  ))}
+                </div>
+              </div>
               {COLOR_SLIDERS.map((sl) => (
                 <CapRow key={sl.id} label={sl.hint ? `${sl.label} (${sl.hint})` : sl.label}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -8320,11 +8349,22 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </div>
                 </CapRow>
               ))}
+              <div>
+                <div style={{ fontSize: 11.5, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>SCOPES · COR FINAL</div>
+                <div style={{ borderRadius: 10, overflow: 'hidden', background: '#050505', border: `1px solid ${C.border}`, minHeight: 90, display: 'grid', placeItems: 'center' }}>
+                  {colorScope ? (
+                    <img src={colorScope.url} alt="Scopes da cor" onLoad={() => setColorScope((f) => (f ? { ...f, loaded: true } : f))} onError={() => setColorScope(null)}
+                      style={{ width: '100%', display: 'block', opacity: colorScope.loaded ? 1 : 0.35, transition: 'opacity .15s' }} />
+                  ) : (
+                    <span style={{ padding: 22, fontSize: 12, color: C.faint, textAlign: 'center' }}>Pause o vídeo para ver os scopes da cor final.</span>
+                  )}
+                </div>
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 11.5, color: C.faint, flex: 1, minWidth: 200 }}>
-                  Com o vídeo <b>pausado</b>, a prévia mostra a <b>cor exata</b> do vídeo final (gerada com o mesmo filtro do render). Tocando, a cor é uma aproximação rápida.
+                  Com o vídeo <b>pausado</b>, a prévia mostra a <b>cor exata</b> do vídeo final (gerada com o mesmo filtro do render). Tocando, a cor é uma aproximação rápida. Duplo clique numa roda zera a roda.
                 </div>
-                <button onClick={() => setColorAdj({ brightness: 0, contrast: 0, saturation: 0, temperature: 0 })} style={miniBtn(false, false)}>Zerar ajustes</button>
+                <button onClick={() => setColorAdj(colorAdjFresh())} style={miniBtn(false, false)}>Zerar ajustes</button>
               </div>
             </div>
           )}
@@ -10704,7 +10744,48 @@ const COLOR_SLIDERS = [
   { id: 'contrast', label: 'Contraste' },
   { id: 'saturation', label: 'Saturação' },
   { id: 'temperature', label: 'Temperatura', hint: 'frio ← → quente' },
+  { id: 'tint', label: 'Tint', hint: 'verde ← → magenta' },
+  { id: 'hue', label: 'Matiz', hint: 'gira as cores' },
 ];
+const COLOR_WHEELS = [
+  { id: 'lift', label: 'Sombras (Lift)' },
+  { id: 'gamma', label: 'Médios (Gamma)' },
+  { id: 'gain', label: 'Altas luzes (Gain)' },
+  { id: 'offset', label: 'Geral (Offset)' },
+];
+
+/** Roda de cor: arraste o ponto no disco (a direção é a cor que a roda puxa), e o controle geral embaixo. */
+function ColorWheel({ label, value, onChange }) {
+  const ref = useRef(null);
+  const setFromPointer = (e) => {
+    const r = ref.current.getBoundingClientRect();
+    let x = ((e.clientX - r.left) / r.width) * 2 - 1;
+    let y = ((e.clientY - r.top) / r.height) * 2 - 1; // tela: y cresce para baixo
+    const mag = Math.hypot(x, y);
+    if (mag > 1) { x /= mag; y /= mag; }
+    onChange({ ...value, x: +x.toFixed(3), y: +(-y).toFixed(3) });
+  };
+  const px = 50 + value.x * 50;
+  const py = 50 - value.y * 50;
+  return (
+    <div style={{ display: 'grid', gap: 6, justifyItems: 'center' }}>
+      <span style={{ fontSize: 11.5, color: C.muted, textAlign: 'center' }}>{label}</span>
+      <div ref={ref} role="slider" aria-label={label} aria-valuetext={`${value.x.toFixed(2)}, ${value.y.toFixed(2)}`}
+        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setFromPointer(e); }}
+        onPointerMove={(e) => { if (e.buttons) setFromPointer(e); }}
+        onDoubleClick={() => onChange({ ...value, x: 0, y: 0 })}
+        style={{ position: 'relative', width: 92, height: 92, borderRadius: '50%', cursor: 'crosshair', touchAction: 'none',
+          background: 'conic-gradient(#ff3b30, #ffd60a, #34c759, #32ade6, #5856d6, #ff2d92, #ff3b30)', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.12)' }}>
+        <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'radial-gradient(circle, #6b6b6b 0%, rgba(107,107,107,0.85) 35%, rgba(107,107,107,0) 70%)' }} />
+        <span style={{ position: 'absolute', left: '50%', top: '50%', width: 1, height: '100%', background: 'rgba(255,255,255,0.12)', transform: 'translate(-50%, -50%)' }} />
+        <span style={{ position: 'absolute', left: '50%', top: '50%', width: '100%', height: 1, background: 'rgba(255,255,255,0.12)', transform: 'translate(-50%, -50%)' }} />
+        <span style={{ position: 'absolute', left: `${px}%`, top: `${py}%`, width: 12, height: 12, borderRadius: '50%', background: '#fff', border: '2px solid #111', transform: 'translate(-50%, -50%)', boxShadow: '0 0 0 1px rgba(0,0,0,0.4)' }} />
+      </div>
+      <input type="range" min="-1" max="1" step="0.01" value={value.m} aria-label={`${label} geral`}
+        onChange={(e) => onChange({ ...value, m: +e.target.value })} onDoubleClick={() => onChange({ ...value, m: 0 })} style={{ width: '90%', accentColor: '#2D8CFF' }} />
+    </div>
+  );
+}
 
 /** Prévia aproximada do ajuste manual (mesmas proporções do filtro do servidor). */
 /** Mesma conta do faceCropGeometry do servidor (pipeline/broll.js), em px da prévia. */

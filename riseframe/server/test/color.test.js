@@ -78,7 +78,8 @@ test('manualAdjustVf: tudo em zero → sem filtro; valores viram eq + colorbalan
   assert.ok(vf.includes('eq=brightness=0.06:contrast=1.35:saturation=0.2'), vf);
   assert.ok(vf.includes('colorbalance=rs=0.08:bs=-0.08'), 'quente puxa vermelho e tira azul');
   assert.ok(manualAdjustVf({ temperature: -50 }).includes('rs=-0.04:bs=0.04'), 'frio faz o contrário');
-  assert.deepEqual(sanitizeColorAdjust({ brightness: 999, contrast: 'x' }), { brightness: 100, contrast: 0, saturation: 0, temperature: 0 });
+  const clean = sanitizeColorAdjust({ brightness: 999, contrast: 'x' });
+  assert.deepEqual([clean.brightness, clean.contrast, clean.saturation, clean.temperature], [100, 0, 0, 0]);
 });
 
 test('fastColorChain: troca colorbalance/colorchannelmixer (lentos) por uma curves', async () => {
