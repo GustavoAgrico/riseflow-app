@@ -89,7 +89,7 @@ export function brollFrameVf(regionW, regionH, c = {}) {
   return `scale=${sw}:${sh}:force_original_aspect_ratio=increase,crop=${regionW}:${regionH}:(iw-ow)*${fx.toFixed(3)}:(ih-oh)*${fy.toFixed(3)}`;
 }
 
-export function faceCropGeometry(inW, inH, regionW, regionH, focus = {}, zoom = 1) {
+export function faceCropGeometry(inW, inH, regionW, regionH, focus = {}, zoom = 1, headroom = 0) {
   const base = Math.max(regionW / inW, regionH / inH);
   const s = base * Math.min(2.5, Math.max(1, zoom));
   const scaledW = Math.max(regionW, Math.round(inW * s));
@@ -97,7 +97,8 @@ export function faceCropGeometry(inW, inH, regionW, regionH, focus = {}, zoom = 
   const fx = Math.min(1, Math.max(0, Number.isFinite(focus.x) ? focus.x : 0.5));
   const fy = Math.min(1, Math.max(0, Number.isFinite(focus.y) ? focus.y : 0.4));
   const cropX = Math.round(Math.min(Math.max(fx * scaledW - regionW / 2, 0), scaledW - regionW));
-  const cropY = Math.round(Math.min(Math.max(fy * scaledH - regionH / 2, 0), scaledH - regionH));
+  // headroom: fração da metade a mais de espaço acima do foco (o centro do rosto fica abaixo da cabeça)
+  const cropY = Math.round(Math.min(Math.max(fy * scaledH - regionH / 2 - headroom * regionH, 0), scaledH - regionH));
   return { scaledW, scaledH, cropX, cropY };
 }
 
@@ -591,7 +592,8 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     // geometria da metade da pessoa sobre a fonte dela (o vídeo antes do formato, quando houver)
     const pW = options.personInput && options.personMeta?.width ? options.personMeta.width : W;
     const pH = options.personInput && options.personMeta?.height ? options.personMeta.height : H;
-    const g = personFocus ? faceCropGeometry(pW, pH, regionW, regionH, personFocus, personZoom) : null;
+    // folga de cabeça: o centro médio do rosto fica abaixo do topo da cabeça
+    const g = personFocus ? faceCropGeometry(pW, pH, regionW, regionH, personFocus, personZoom, 0.12) : null;
     // A metade da pessoa vem da fonte SEM o reenquadramento do vídeo inteiro (quando houver),
     // para o foco/zoom não ser aplicado duas vezes. O resto do vídeo usa a entrada 0.
     const personIdx = options.personInput ? clips.length + 1 : 0;
