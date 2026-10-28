@@ -469,11 +469,15 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
 
   // Layout: tela cheia (padrão) OU tela dividida (metade a metade) com o vídeo da
   // pessoa em uma metade e o B-roll na outra (o usuário escolhe em cima/embaixo).
-  const layout = ['fullscreen', 'top', 'bottom'].includes(options.brollLayout) ? options.brollLayout : 'fullscreen';
-  const isSplit = layout !== 'fullscreen';
+  const layout = ['fullscreen', 'top', 'bottom', 'cartoes'].includes(options.brollLayout) ? options.brollLayout : 'fullscreen';
+  const isSplit = layout === 'top' || layout === 'bottom';
   const even = (n) => Math.max(2, Math.round(n / 2) * 2);
   const regionW = W;
-  const regionH = layout === 'fullscreen' ? H : even(H / 2);
+  const regionH = isSplit ? even(H / 2) : H;
+  // Cartões: o B-roll vira um cartão 4:5 arredondado, inclinado e com sombra sobre o vídeo
+  const cardH0 = Math.min(even(H * 0.8), even((W * 0.72) * 1.25));
+  const cardH = layout === 'cartoes' ? cardH0 : regionH;
+  const cardW = layout === 'cartoes' ? even(cardH / 1.25) : regionW;
   const ovY = layout === 'bottom' ? H - regionH : 0; // Y da metade do B-roll
   const personY = layout === 'top' ? regionH : 0; // pessoa fica na metade oposta
   // Posição vertical da pessoa dentro da metade dela (topo/centro/base). Na tela
@@ -578,7 +582,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
       return;
     }
     parts.push(
-      `[${i + 1}:v]${brollFrameVf(regionW, regionH, c)},setsar=1,` +
+      `[${i + 1}:v]${brollFrameVf(cardW, cardH, c)},setsar=1,` +
         `trim=0:${dur},setpts=PTS-STARTPTS+${c.start.toFixed(3)}/TB[b${i}]`,
     );
   });
@@ -640,6 +644,31 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
       parts.push(`${last}${ph(i)}overlay=x=0:y=${personY}:${win}${mid}`);
       parts.push(`${mid}[b${i}]overlay=x=0:y=${ovY}:${win}${i === n - 1 ? '[outv]' : `[o${i}]`}`);
       last = i === n - 1 ? '[outv]' : `[o${i}]`;
+    });
+  } else if (layout === 'cartoes') {
+    // Cartões: o quadro do vídeo fica por baixo; cada B-roll é um cartão arredondado (máscara
+    // com cantos), inclinado alternando para os dois lados, com sombra projetada e entrada
+    // com escala e subida suave (0,4 s). Tudo no tempo do momento (enable).
+    const R = Math.round(cardW * 0.08);
+    const dx = Math.round(W * 0.017);
+    const dy = Math.round(W * 0.022);
+    const M = (w, h) => `geq=r='r(X\\,Y)':g='g(X\\,Y)':b='b(X\\,Y)':a='if(lte(hypot(max(0\\,max(${R}-X\\,X-(${w - 1}-${R})))\\,max(0\\,max(${R}-Y\\,Y-(${h - 1}-${R}))))\\,${R})\\,255\\,0)'`;
+    last = '[0:v]';
+    clips.forEach((c, i) => {
+      const ang = i % 2 ? 0.045 : -0.055;
+      const S = c.start.toFixed(3);
+      const E = `(1-pow(1-min(1\\,(t-${S})/0.4)\\,3))`;
+      parts.push(`[b${i}]split=2[bc${i}][bs${i}]`);
+      const card = `[bc${i}]format=rgba,${M(cardW, cardH)},rotate=a=${ang}:ow=rotw(${ang}):oh=roth(${ang}):c=0x00000000,` +
+        `scale=w='iw*(0.8+0.2*${E})':h='ih*(0.8+0.2*${E})':eval=frame[card${i}]`;
+      const sh = `[bs${i}]format=rgba,${M(cardW, cardH)},colorchannelmixer=rr=0:gg=0:bb=0,boxblur=${Math.max(6, Math.round(W * 0.013))}:2,` +
+        `rotate=a=${ang}:ow=rotw(${ang}):oh=roth(${ang}):c=0x00000000,scale=w='iw*(0.8+0.2*${E})':h='ih*(0.8+0.2*${E})':eval=frame[sh${i}]`;
+      parts.push(card, sh);
+      const win = `enable='between(t,${S},${c.end.toFixed(3)})'`;
+      const out = i === clips.length - 1 ? '[outv]' : `[o${i}]`;
+      parts.push(`${last}[sh${i}]overlay=x=(W-w)/2+${dx}:y=(H-h)/2+${dy}+(1-${E})*${Math.round(H * 0.04)}:${win}[s${i}]`);
+      parts.push(`[s${i}][card${i}]overlay=x=(W-w)/2:y=(H-h)/2+(1-${E})*${Math.round(H * 0.04)}:${win}${out}`);
+      last = `[o${i}]`;
     });
   } else {
     // Tela cheia: o B-roll cobre o quadro inteiro durante o momento.

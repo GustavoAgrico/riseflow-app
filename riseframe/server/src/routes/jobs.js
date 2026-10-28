@@ -622,7 +622,7 @@ export function parseOptions(raw) {
     broll: o.broll === true,
     // Layout do B-roll: tela cheia OU tela dividida (metade a metade) com o vídeo
     // da pessoa em cima/baixo e o B-roll na outra metade.
-    brollLayout: ['fullscreen', 'top', 'bottom'].includes(o.brollLayout) ? o.brollLayout : 'fullscreen',
+    brollLayout: ['fullscreen', 'top', 'bottom', 'cartoes'].includes(o.brollLayout) ? o.brollLayout : 'fullscreen',
     // Posição vertical da pessoa na tela dividida (fallback quando não há enquadramento).
     personCrop: ['top', 'center', 'bottom'].includes(o.personCrop) ? o.personCrop : 'center',
     // Enquadramento no rosto (tela dividida): foco X/Y em 0–1 e zoom 1–2.5. Sem foco
