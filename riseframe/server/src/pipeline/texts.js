@@ -92,7 +92,18 @@ export function buildTextAss(layers, meta) {
       const fin = ['fade', 'slide-up', 'slide-left', 'zoom'].includes(l.animIn) ? a : 0;
       const fout = l.animOut === 'fade' ? a : 0;
       const rotT = L.rot ? `\\org(${Math.round(cx)},${Math.round(cy)})\\frz${(-L.rot).toFixed(2)}` : '';
-      const base = (px, py) => `\\an7\\pos(${Math.round(px - bw / 2)},${Math.round(py - bh / 2)})${rotT}${fin || fout ? `\\fad(${fin},${fout})` : ''}\\shad0`;
+      // câmera: a forma escala em torno do centro (camFrom → camTo, linear, na duração da cena)
+      const camF = Number(l.camFrom) || 1;
+      const camT = Number(l.camTo) || 1;
+      const cam = camF !== 1 || camT !== 1;
+      const camTags = (px, py) => {
+        const x0 = Math.round(px - (bw * camF) / 2);
+        const y0 = Math.round(py - (bh * camF) / 2);
+        const x1 = Math.round(px - (bw * camT) / 2);
+        const y1 = Math.round(py - (bh * camT) / 2);
+        return `\\move(${x0},${y0},${x1},${y1},0,${durMs})\\fscx${(camF * 100).toFixed(2)}\\fscy${(camF * 100).toFixed(2)}\\t(0,${durMs},\\fscx${(camT * 100).toFixed(2)}\\fscy${(camT * 100).toFixed(2)})`;
+      };
+      const base = (px, py) => `\\an7${cam ? camTags(px, py) : `\\pos(${Math.round(px - bw / 2)},${Math.round(py - bh / 2)})`}${rotT}${fin || fout ? `\\fad(${fin},${fout})` : ''}\\shad0`;
       const bord = L.stroke ? +(L.strokeW * H).toFixed(2) : 0;
       if (L.shadow) {
         const dx = -Math.cos((L.shadowAngle * Math.PI) / 180) * L.shadowDist * H;

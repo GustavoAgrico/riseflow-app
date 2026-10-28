@@ -97,8 +97,10 @@ const THEME_LOOK = {
   holofote: { big: '#121212', small: '#4A4A4A', num: '#FFFFFF', numBg: '#111111', shadow: false, accent: null },
   cinema: { big: '#FFFFFF', small: '#B9B9B9', num: '#0B0B0B', numBg: '#FF7A1A', shadow: true, shadowColor: '#FF7A1A', accent: '#FF9A4D' },
   video: { big: '#FFFFFF', small: '#F2F2F2', num: '#111111', numBg: '#FFFFFF', shadow: true, shadowColor: '#000000', accent: '#4DA3FF' },
+  // papel milimetrado com tinta preta e marca-texto amarelo (como o estilo de referência)
+  grade: { big: '#111111', small: '#4A4A4A', num: '#111111', numBg: '#FFE24B', shadow: false, accent: null, mark: '#FFE24B' },
 };
-const ROTATION = ['cinema', 'video', 'papel', 'video', 'holofote', 'video'];
+const ROTATION = ['cinema', 'grade', 'video', 'papel', 'grade', 'holofote', 'video'];
 
 /** Formas do fundo de uma cena (camadas de forma da timeline). */
 export function sceneBackdrop(theme, start, end, aspect) {
@@ -113,6 +115,16 @@ export function sceneBackdrop(theme, start, end, aspect) {
     return [full('#09090A'), { kind: 'shape', shape: 'ellipse', x: 0.5, y: 0.47, w: d, h: +(d * aspect).toFixed(4), color: '#F1F1EE', shadow: true, shadowColor: '#FFFFFF', shadowOpacity: 0.55, shadowDist: 0, shadowBlur: 0.03, start, end, animIn: 'zoom', animOut: 'fade' }];
   }
   if (theme === 'cinema') return [full('#060708')]; // fundo escuro, sem linhas
+  if (theme === 'grade') {
+    // papel + grade fina. Plano de fundo parado; a grade (mais perto da câmera) chega com zoom
+    // maior e volta ao normal: profundidade e movimento de câmera (camFrom → camTo).
+    const lines = [];
+    const thin = (x, y, w, h, camFrom) => ({ kind: 'shape', shape: 'rect', x, y, w, h, color: '#C9C9C3', radius: 0, camFrom, camTo: 1, start, end, animIn: 'fade', animOut: 'fade' });
+    for (let i = 1; i < 12; i += 1) lines.push(thin(i / 12, 0.5, 0.0022, 1.1, 1.22));
+    const rows = Math.round(12 / aspect);
+    for (let j = 1; j < rows; j += 1) lines.push(thin(0.5, j / rows, 1.1, 0.0022, 1.22));
+    return [full('#EDEDEA'), ...lines];
+  }
   return [];
 }
 
@@ -154,7 +166,9 @@ export function sceneLayers(words, { theme, start, end, aspect }) {
     } else {
       const accent = l === star && T.accent;
       // palavras-chave: as letras pulam ou sobem, alternando (o que faz a tipografia "mexer")
-      layers.push({ ...base, font: 'inter', fontStyle: accent ? '900i' : '900', color: accent || T.big, box: 'none', stroke: false, tracking: -30, animIn: sized.indexOf(l) % 3 === 1 ? 'letras-subir' : 'letras-pop', ...sh,
+      // marca-texto (tema grade): a palavra-chave ganha uma tarja amarela atrás
+      const mark = T.mark ? { bg: true, bgColor: T.mark, bgMode: 'lines', pad: 0.12, radius: 0.05 } : {};
+      layers.push({ ...base, font: 'inter', fontStyle: accent ? '900i' : '900', color: accent || T.big, box: T.mark ? 'box' : 'none', ...mark, stroke: false, tracking: -30, animIn: sized.indexOf(l) % 3 === 1 ? 'letras-subir' : 'letras-pop', ...sh,
         ...(accent ? { shadow: true, shadowColor: accent, shadowOpacity: 0.6, shadowDist: 0, shadowBlur: 0.012 } : {}) });
     }
     y += h + gap;
