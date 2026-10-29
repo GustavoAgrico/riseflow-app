@@ -597,7 +597,9 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     const pW = options.personInput && options.personMeta?.width ? options.personMeta.width : W;
     const pH = options.personInput && options.personMeta?.height ? options.personMeta.height : H;
     // folga de cabeça: o centro médio do rosto fica abaixo do topo da cabeça
-    const g = personFocus ? faceCropGeometry(pW, pH, regionW, regionH, personFocus, personZoom, 0.12) : null;
+    // Sem zoom manual, a pessoa inteira fica contida sobre o fundo desfocado (a cabeça nunca sai);
+    // o recorte no rosto só vale quando a pessoa escolheu zoom acima de 1.
+    const g = personFocus && personZoom > 1.001 ? faceCropGeometry(pW, pH, regionW, regionH, personFocus, personZoom, 0.12) : null;
     // A metade da pessoa vem da fonte SEM o reenquadramento do vídeo inteiro (quando houver),
     // para o foco/zoom não ser aplicado duas vezes. O resto do vídeo usa a entrada 0.
     const personIdx = options.personInput ? clips.length + 1 : 0;

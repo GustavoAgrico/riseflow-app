@@ -4589,9 +4589,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     objectPosition: `${side * 100}% 40%`, transform: 'scale(1.9)', transformOrigin: `${side * 100}% 40%`, filter: videoFilterFx,
   });
   const fitNow = (fitRanges || []).some((r) => cur >= r.start - 0.001 && cur < r.end);
+  // Tela dividida sem zoom: a pessoa inteira contida sobre o fundo desfocado (como o render)
+  const splitContain = previewMode === 'split' && !podSplit && zoom <= 1.001;
   const personCropStyle = (() => {
     if (fitNow && !fitMode && aspectSel !== 'original') return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx };
-    if (fitMode) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilterFx };
+    if (fitMode || splitContain) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilterFx };
     const sd = vdim || (vbox?.vw ? { w: vbox.vw, h: vbox.vh } : null);
     if (!sd || !pbox?.w || !pbox?.h) {
       return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, filter: videoFilterFx };
@@ -4618,7 +4620,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       }}
       style={{ position: 'relative', height: previewMode === 'split' ? '50%' : previewMode === 'video' ? '100%' : '0%', display: previewMode === 'broll' ? 'none' : 'block', overflow: 'hidden', cursor: 'grab', touchAction: 'none', boxShadow: `inset 0 0 0 2px ${C.orange}` }}
     >
-      {fitMode && (
+      {(fitMode || splitContain) && (
         <video ref={bgVideoRef} src={srcUrl} muted playsInline preload="auto" aria-hidden="true"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.12)', filter: `${videoFilter && videoFilter !== 'none' ? `${videoFilter} ` : ''}blur(9px) brightness(0.88)` }} />
       )}
