@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { letterFrame, letterSegments, LETTER_ANIMS, LETTER_SAMPLED, TEXT_ANIMS_IN, cleanTextLayers, TEXT_TEMPLATES } from '../../shared/textLayers.js';
+import { letterFrame, letterSegments, letterTiming, LETTER_ANIMS, LETTER_SAMPLED, TEXT_ANIMS_IN, cleanTextLayers, TEXT_TEMPLATES } from '../../shared/textLayers.js';
 import { buildTextAss } from '../src/pipeline/texts.js';
 import { ffmpegPath } from '../src/pipeline/ffmpeg.js';
 
@@ -62,4 +62,21 @@ test('ASS: cada letra vira vários eventos (um por passo) e o libass aceita o ar
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('parâmetros: overshoot 0 não passa do ponto; 1 passa mais', () => {
+  const peak = (o) => { let m = 0; for (let p = 0; p <= 1; p += 0.01) m = Math.max(m, letterFrame('letras-mola', p, { overshoot: o }).scale); return m; };
+  assert.ok(peak(0) <= 1.0001, `sem overshoot: ${peak(0).toFixed(3)}`);
+  assert.ok(peak(1) > peak(0.5) + 0.05, 'mais overshoot passa mais');
+});
+
+test('parâmetros: distância muda o deslocamento da queda e da subida', () => {
+  assert.ok(Math.abs(letterFrame('letras-queda', 0, { letterDist: 0.2 }).dy + 0.2) < 1e-9, 'queda começa a 20% da altura');
+  assert.ok(Math.abs(letterFrame('letras-subir', 0, { letterDist: 0.15 }).dy - 0.15) < 1e-9, 'subida começa a 15%');
+});
+
+test('parâmetros: duração e atraso por letra entram no tempo', () => {
+  const t = letterTiming({ start: 0, end: 4, letterDur: 0.8, letterGap: 0.1 }, 5);
+  assert.equal(t.d, 0.8);
+  assert.equal(t.stagger, 0.1);
 });
