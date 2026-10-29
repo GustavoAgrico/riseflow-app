@@ -147,6 +147,13 @@ export default function CreateWizard({
   function pickTemplate(id) {
     setTemplateId(id);
     const t = templates.find((x) => x.id === id);
+    // legenda e cor do modelo entram nas opções do vídeo: a prévia e o render usam essas opções
+    const capPatch = Object.fromEntries(Object.entries(t?.data?.cap || {}).filter(([k]) => k === 'captions' || k.startsWith('caption')));
+    const lookPatch = {
+      ...(t?.data?.colorLook !== undefined ? { colorLook: t.data.colorLook } : null),
+      ...(t?.data?.colorAdj ? { colorAdjust: t.data.colorAdj } : null),
+    };
+    if (t?.data) set({ ...capPatch, ...lookPatch });
     try {
       if (t?.data) sessionStorage.setItem('rf_carry_style', JSON.stringify(t.data));
       else sessionStorage.removeItem('rf_carry_style');
