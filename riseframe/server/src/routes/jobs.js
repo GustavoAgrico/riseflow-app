@@ -39,6 +39,7 @@ import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
 import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
 import { brandIn, entityQuery } from '../pipeline/entities.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
+import { cleanEase } from '../../../shared/easing.js';
 import { cleanCrop, cleanCropRanges, cleanBlanks } from '../pipeline/frame.js';
 import { transcribeRange } from '../pipeline/seqTranscript.js';
 import { editSourceStatus, editSourcePath } from '../pipeline/editSource.js';
@@ -449,6 +450,7 @@ function sanitizeUserMedia(raw) {
       animIn: Object.hasOwn(LAYER_ANIMATIONS, m.animIn) ? m.animIn : 'none',
       animOut: Object.hasOwn(LAYER_ANIMATIONS, m.animOut) ? m.animOut : 'none',
       animDur: clampNum(m.animDur, 0.15, 2, 0.4),
+      animEase: cleanEase(m.animEase),
       blend: Object.hasOwn(BLEND_MODES, m.blend) ? m.blend : 'normal',
       // Camada (0 = mais embaixo) e ponto de início no arquivo (aparar/dividir).
       layer: Math.round(clampNum(m.layer, 0, 20, 0)),

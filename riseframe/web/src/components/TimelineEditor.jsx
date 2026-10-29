@@ -8795,6 +8795,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 8 }}>
                                 <CapRow label="Entrada"><Sel value={m.animIn || 'none'} opts={catalog.layerAnimations} onChange={(v) => updateMedia(m.key, { animIn: v })} /></CapRow>
                                 <CapRow label="Saída"><Sel value={m.animOut || 'none'} opts={catalog.layerAnimations} onChange={(v) => updateMedia(m.key, { animOut: v })} /></CapRow>
+                                {(m.animIn || 'none') !== 'none' || (m.animOut || 'none') !== 'none' ? <CapRow label="Curva"><Sel value={m.animEase || 'out'} opts={catalog.layerEases || []} onChange={(v) => updateMedia(m.key, { animEase: v })} /></CapRow> : null}
                               </div>
                             )}
                             {catalog?.blendModes && m.mode !== 'pip' && (
