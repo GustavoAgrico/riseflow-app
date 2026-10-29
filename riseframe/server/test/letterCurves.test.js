@@ -24,6 +24,7 @@ test('letras novas: terminam no quadro final (sem deslocar, sem desfocar, opacas
     assert.ok(Math.abs(f.scale - 1) < 1e-9, `${id} escala`);
     assert.ok(Math.abs(f.blur) < 1e-9, `${id} desfoque`);
     assert.ok(Math.abs(f.alpha - 1) < 1e-9, `${id} alfa`);
+    assert.ok(Math.abs(f.dx ?? 0) < 1e-9, `${id} deslocamento lateral`);
   }
 });
 
@@ -79,4 +80,23 @@ test('parâmetros: duração e atraso por letra entram no tempo', () => {
   const t = letterTiming({ start: 0, end: 4, letterDur: 0.8, letterGap: 0.1 }, 5);
   assert.equal(t.d, 0.8);
   assert.equal(t.stagger, 0.1);
+});
+
+test('empurrão lateral: chega de 5% da largura e assenta no lugar, sem passar', () => {
+  assert.ok(Math.abs(letterFrame('letras-empurrao', 0).dx - 0.05) < 1e-9, 'começa a 5% da largura');
+  for (let p = 0; p <= 1; p += 0.05) assert.ok(letterFrame('letras-empurrao', p).dx >= -1e-9, 'nunca passa do lugar');
+  assert.ok(Math.abs(letterFrame('letras-empurrao', 0, { letterDist: 0.2 }).dx - 0.2) < 1e-9, 'distância muda o empurrão');
+});
+
+test('ASS do empurrão lateral: o libass aceita o arquivo', () => {
+  const [l] = cleanTextLayers([{ ...TEXT_TEMPLATES.nome, text: 'Oi', start: 1, end: 4, animIn: 'letras-empurrao' }]);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-letter-'));
+  try {
+    const f = path.join(dir, 'empurrao.ass');
+    fs.writeFileSync(f, buildTextAss([l], meta));
+    const r = spawnSync(ffmpegPath, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=1080x1920:d=4', '-vf', `ass=${f}`, '-f', 'null', '-']);
+    assert.equal(r.status, 0, r.stderr.toString());
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

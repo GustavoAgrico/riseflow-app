@@ -10,10 +10,11 @@ export const TEXT_ANIMS_IN = {
   'letras-subir': 'Letras subindo', 'letras-pop': 'Letras pulando', 'letras-desfoque': 'Letras entrando do desfoque',
   'letras-desfoque-subir': 'Letras subindo do desfoque', 'letras-mola': 'Letras com mola (passa do ponto)',
   'letras-queda': 'Letras caindo e quicando', 'letras-escala': 'Letras assentando (zoom suave)',
+  'letras-empurrao': 'Letras empurradas (quase sem inércia)',
 };
 /** Animações por letra: cada letra entra no seu tempo (escalonado), como os motion de agência. */
 /** Animações por letra que são amostradas em passos no render (curva com overshoot ou desfoque). */
-export const LETTER_SAMPLED = ['letras-desfoque-subir', 'letras-mola', 'letras-queda', 'letras-escala'];
+export const LETTER_SAMPLED = ['letras-desfoque-subir', 'letras-mola', 'letras-queda', 'letras-escala', 'letras-empurrao'];
 export const LETTER_ANIMS = ['letras-subir', 'letras-pop', 'letras-desfoque', ...LETTER_SAMPLED];
 /** Duração de cada letra (s) e o espaçamento entre as letras, pela duração do texto. */
 export function letterTiming(l, count) {
@@ -51,6 +52,8 @@ export function letterFrame(anim, p, l = {}) {
   if (anim === 'letras-queda') return { dy: (1 - easeBack(p, over)) * -dist(0.1), scale: 1, blur: 0, alpha: Math.min(1, p * 2.5) };
   // assenta de uma escala maior, sem deslocar
   if (anim === 'letras-escala') return { dy: 0, scale: 1.35 - 0.35 * e, blur: 0, alpha: e };
+  // empurrão lateral curto, quase sem inércia: chega da direita com desaceleração forte (dx em fração da largura)
+  if (anim === 'letras-empurrao') return { dx: (1 - p) ** 5 * dist(0.05), dy: 0, scale: 1, blur: 0, alpha: Math.min(1, p * 4) };
   if (anim === 'letras-pop') {
     // 0 → 115% → 100%, em dois trechos lineares (como os \t do libass)
     const s = p < 0.6 ? (p / 0.6) * 1.15 : 1.15 - ((p - 0.6) / 0.4) * 0.15;

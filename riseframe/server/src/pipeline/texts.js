@@ -55,10 +55,10 @@ function ellipse(W, H) {
  * (a letra começa no seu instante). Mesma conta da prévia: letrFrame em shared/textLayers.js.
  */
 /** Pose de uma letra num passo amostrado (posição, escala, alfa e desfoque do quadro). */
-function letterPose(f, px, py, H, col, outCol) {
+function letterPose(f, px, py, H, W, col, outCol) {
   const a = Math.round((1 - f.alpha) * 255).toString(16).toUpperCase().padStart(2, '0');
   const sc = Math.round(f.scale * 100);
-  return `\\an5\\bord0\\shad0\\1c${col}&\\3c${outCol}&\\pos(${px},${Math.round(py + f.dy * H)})\\fscx${sc}\\fscy${sc}\\alpha&H${a}&\\blur${Math.round(f.blur * H)}`;
+  return `\\an5\\bord0\\shad0\\1c${col}&\\3c${outCol}&\\pos(${Math.round(px + (f.dx || 0) * W)},${Math.round(py + f.dy * H)})\\fscx${sc}\\fscy${sc}\\alpha&H${a}&\\blur${Math.round(f.blur * H)}`;
 }
 function letterTags(anim, px, py, dMs, off, col, outCol) {
   const base = `\\an5\\bord0\\shad0\\1c${col}&\\3c${outCol}&`;
@@ -221,7 +221,7 @@ export function buildTextAss(layers, meta) {
             // curva amostrada em passos (overshoot, desfoque): um evento por passo, com a pose do instante
             for (const st of letterSegments(l.animIn, c.d, 10, l)) {
               const t1 = st.t1 == null ? l.end : l.start + c.t + st.t1;
-              events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${letterPose(st.f, Math.round(cxk), Math.round(ty), H, fillC, outC)}}${clean(ch)}`);
+              events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${letterPose(st.f, Math.round(cxk), Math.round(ty), H, W, fillC, outC)}}${clean(ch)}`);
             }
           } else {
             events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t)},${assTime(l.end)},T${i},,0,0,0,,{${letterTags(l.animIn, Math.round(cxk), Math.round(ty), c.d * 1000, Math.round(H * 0.06), fillC, outC)}}${clean(ch)}`);

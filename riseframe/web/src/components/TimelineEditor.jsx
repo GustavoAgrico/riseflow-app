@@ -4289,7 +4289,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               {[
                 ['letterDur', 'Duração por letra', 0.1, 1.5, 0.05, 0.4, 's'],
                 ['letterGap', 'Atraso entre letras', 0, 0.2, 0.01, 0.05, 's'],
-                ['letterDist', 'Distância', 0, 0.3, 0.01, selTextItem.animIn === 'letras-queda' ? 0.1 : selTextItem.animIn === 'letras-desfoque-subir' ? 0.05 : 0.06, ''],
+                ['letterDist', 'Distância', 0, 0.3, 0.01, selTextItem.animIn === 'letras-queda' ? 0.1 : selTextItem.animIn === 'letras-desfoque-subir' || selTextItem.animIn === 'letras-empurrao' ? 0.05 : 0.06, ''],
                 ['overshoot', 'Overshoot', 0, 1, 0.05, 0.5, ''],
               ].map(([key, label, min, max, step, def, unit]) => {
                 const v = selTextItem[key] ?? def;
@@ -10247,7 +10247,7 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
                     ? letters[j].map((p, k) => {
                       if (p.t == null) return <span key={k}>{p.u}</span>;
                       const f = letterFrame(l.animIn, Math.max(0, Math.min(1, (cur - l.start - p.t) / p.d)), l);
-                      const tr = [f.dy ? `translateY(${f.dy * box.h}px)` : '', f.scale !== 1 ? `scale(${f.scale})` : ''].filter(Boolean).join(' ');
+                      const tr = [f.dx ? `translateX(${f.dx * box.w}px)` : '', f.dy ? `translateY(${f.dy * box.h}px)` : '', f.scale !== 1 ? `scale(${f.scale})` : ''].filter(Boolean).join(' ');
                       return <span key={k} style={{ display: 'inline-block', opacity: cur - l.start < p.t ? 0 : f.alpha, transform: tr || undefined, filter: f.blur ? `blur(${f.blur * box.h}px)` : undefined }}>{p.u}</span>;
                     })
                     : plan
