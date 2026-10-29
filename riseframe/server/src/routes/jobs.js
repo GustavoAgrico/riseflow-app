@@ -574,7 +574,7 @@ export function parseOptions(raw) {
     captionColor: isCaptionColor(o.captionColor) ? String(o.captionColor) : 'white',
     // fonte embutida, ou "custom:<id>" = fonte própria do usuário (resolvida em optionsForUser)
     captionFont: o.captionFont === 'auto' || CAPTION_FONTS[o.captionFont] || /^custom:[A-Za-z0-9_-]{8,24}$/.test(String(o.captionFont || '')) ? o.captionFont : 'auto',
-    captionAnimation: ['auto', 'fade', 'pop', 'bounce', 'zoom', 'pop-rot', 'shake', 'none'].includes(o.captionAnimation) ? o.captionAnimation : 'auto',
+    captionAnimation: ['auto', 'fade', 'pop', 'bounce', 'zoom', 'zoomblur', 'typewriter', 'pop-rot', 'shake', 'none'].includes(o.captionAnimation) ? o.captionAnimation : 'auto',
     captionBackground: ['auto', 'shadow', 'box', 'bar', 'glow', 'none', 'clean'].includes(o.captionBackground) ? o.captionBackground : 'auto',
     captionPosition: ['auto', 'top', 'center', 'bottom'].includes(o.captionPosition) ? o.captionPosition : 'auto',
     // Estilo da fonte (arquivo próprio: Regular, Itálico, Negrito, Black…), itálico
