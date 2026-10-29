@@ -8,6 +8,8 @@ export const MOMENT_EFFECTS = {
   'zoom-out': 'Zoom out (afasta)',
   'ken-burns': 'Ken Burns (zoom + pan)',
   pulse: 'Pulse (respiração)',
+  push: 'Avanço de câmera (push, desacelera)',
+  pull: 'Recuo de câmera (pull, desacelera)',
 };
 
 /** O efeito geral escolhido vira o efeito padrão dos momentos ('dynamic' = punch-in). */
@@ -27,6 +29,9 @@ export function momentEffectAt(effect, p, k) {
     case 'zoom-out': return { dz: k * (1 - q), pan: null };
     case 'ken-burns': return { dz: k * q, pan: q };
     case 'pulse': return { dz: k * 0.6 * (0.5 - 0.5 * Math.cos(2 * Math.PI * q)), pan: null };
+    // push: arranca rápido e desacelera até parar; pull: o contrário, começa perto e recua
+    case 'push': return { dz: k * (1 - (1 - q) ** 3), pan: null };
+    case 'pull': return { dz: k * (1 - q) ** 3, pan: null };
     default: return { dz: k, pan: null }; // punch: zoom fixo no momento inteiro
   }
 }
