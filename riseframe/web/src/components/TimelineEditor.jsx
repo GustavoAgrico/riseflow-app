@@ -858,13 +858,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           let carried = null;
           try { carried = JSON.parse(sessionStorage.getItem('rf_carry_style') || 'null'); sessionStorage.removeItem('rf_carry_style'); } catch { /* ignora */ }
           if (carried) {
-            applyTemplate({ name: 'do vídeo anterior', data: carried }); // vídeo principal remontado: mantém o estilo
+            setTplPending({ name: 'do vídeo anterior', data: carried }); // vídeo principal remontado: mantém o estilo
             if (Array.isArray(carried.projMediaIds)) setProjMediaIds(carried.projMediaIds); // e os arquivos do projeto
           }
           else {
             // vídeo novo: entra o modelo marcado como padrão ("usar sempre nos vídeos novos")
             const def = (await listTemplatesApi().catch(() => [])).find((t) => t.isDefault);
-            if (alive && def) { setTemplates(null); applyTemplate(def); }
+            if (alive && def) { setTemplates(null); setTplPending(def); }
           }
         }
         if (!alive || !doc?.state) return;
@@ -2849,6 +2849,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [tplName, setTplName] = useState('');
   const [tplDefault, setTplDefault] = useState(false);
   const [tplMsg, setTplMsg] = useState('');
+  // Modelo que espera a duração do vídeo: as camadas e a logo são encaixadas no tempo real
+  // (antes disso a duração seria 1 s e tudo do modelo encolheria).
+  const [tplPending, setTplPending] = useState(null);
+  useEffect(() => {
+    if (!tplPending || !(durationSec > 0)) return;
+    setTplPending(null);
+    applyTemplate(tplPending);
+  }, [tplPending, durationSec]);
   const tplLoad = () => listTemplatesApi().then(setTemplates).catch((e) => { setTemplates((t) => t || []); setTplMsg(e.message); });
   useEffect(() => { if (tplOpen && !templates) tplLoad(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [tplOpen]);
   /** O "estilo" do vídeo atual. Mídias que cobrem quase o vídeo todo (ex.: logo) viram "o vídeo inteiro". */
