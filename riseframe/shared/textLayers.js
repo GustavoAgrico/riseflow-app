@@ -1,3 +1,4 @@
+import { easeValue } from './easing.js';
 // Texto livre na timeline (como o "Texto" do CapCut) e efeitos de vídeo por momento.
 // Compartilhado pelo site (editor + prévia) e pelo servidor (render).
 import { isFontStyle } from './captionStyle.js';
@@ -6,9 +7,13 @@ import { isFontStyle } from './captionStyle.js';
 export const TEXT_ANIMS_IN = {
   none: 'Nenhuma', fade: 'Fade', pop: 'Pop', zoom: 'Zoom', 'slide-up': 'Subir', 'slide-left': 'Entrar da direita', typewriter: 'Máquina de escrever', words: 'Palavra por palavra',
   'letras-subir': 'Letras subindo', 'letras-pop': 'Letras pulando', 'letras-desfoque': 'Letras entrando do desfoque',
+  'letras-desfoque-subir': 'Letras subindo do desfoque', 'letras-mola': 'Letras com mola (passa do ponto)',
+  'letras-queda': 'Letras caindo e quicando', 'letras-escala': 'Letras assentando (zoom suave)',
 };
 /** Animações por letra: cada letra entra no seu tempo (escalonado), como os motion de agência. */
-export const LETTER_ANIMS = ['letras-subir', 'letras-pop', 'letras-desfoque'];
+/** Animações por letra que são amostradas em passos no render (curva com overshoot ou desfoque). */
+export const LETTER_SAMPLED = ['letras-desfoque-subir', 'letras-mola', 'letras-queda', 'letras-escala'];
+export const LETTER_ANIMS = ['letras-subir', 'letras-pop', 'letras-desfoque', ...LETTER_SAMPLED];
 /** Duração de cada letra (s) e o espaçamento entre as letras, pela duração do texto. */
 export function letterTiming(l, count) {
   const dur = Math.max(0.2, Number(l.end) - Number(l.start) || 3);
@@ -33,12 +38,33 @@ export function letterPlan(l, lines) {
 export function letterFrame(anim, p) {
   const e = 1 - (1 - p) * (1 - p) * (1 - p); // ease-out cúbico
   if (anim === 'letras-subir') return { dy: (1 - e) * 0.06, scale: 1, blur: 0, alpha: e };
+  // sobe do desfoque: sobe, desfoca e aumenta junto, e assenta
+  if (anim === 'letras-desfoque-subir') return { dy: (1 - e) * 0.05, scale: 1.12 - 0.12 * e, blur: (1 - e) * 0.012, alpha: e };
+  // mola: passa do ponto (overshoot) e assenta; dy/escala seguem a mesma curva "back"
+  if (anim === 'letras-mola') return { dy: 0, scale: Math.max(0, easeValue('back', p)), blur: 0, alpha: Math.min(1, p * 3) };
+  // queda: entra de cima acelerando, ultrapassa a linha e volta
+  if (anim === 'letras-queda') return { dy: (1 - easeValue('back', p)) * -0.1, scale: 1, blur: 0, alpha: Math.min(1, p * 2.5) };
+  // assenta de uma escala maior, sem deslocar
+  if (anim === 'letras-escala') return { dy: 0, scale: 1.35 - 0.35 * e, blur: 0, alpha: e };
   if (anim === 'letras-pop') {
     // 0 → 115% → 100%, em dois trechos lineares (como os \t do libass)
     const s = p < 0.6 ? (p / 0.6) * 1.15 : 1.15 - ((p - 0.6) / 0.4) * 0.15;
     return { dy: 0, scale: Math.max(0, s), blur: 0, alpha: Math.min(1, p * 3) };
   }
   return { dy: 0, scale: 1, blur: (1 - e) * 0.012, alpha: e }; // desfoque: fração da altura
+}
+/**
+ * Passos de uma animação por letra amostrada: [{ t0, t1, f }] — `f` é o quadro (letterFrame) de
+ * t0 a t1 (segundos desde o começo da letra). O último passo vai de `d` até o fim (t1 = null).
+ * O render usa estes passos (ASS não tem curvas); a prévia usa letterFrame direto. Puro.
+ */
+export function letterSegments(anim, d, steps = 10) {
+  const out = [];
+  for (let k = 0; k <= steps; k++) {
+    const p = k / steps;
+    out.push({ t0: +(d * p).toFixed(4), t1: k < steps ? +(d * (k + 1) / steps).toFixed(4) : null, f: letterFrame(anim, p) });
+  }
+  return out;
 }
 /** Entradas que revelam o texto aos poucos (letra a letra / palavra a palavra). */
 export const REVEAL_ANIMS = ['typewriter', 'words'];

@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { fontsDirArg, jobFontsDir } from './captions.js';
 import { fontById, fontStyles } from '../../../shared/captionStyle.js';
-import { textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan, letterPlan, letterTiming, LETTER_ANIMS } from '../../../shared/textLayers.js';
+import { textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan, letterPlan, letterTiming, letterSegments, LETTER_ANIMS, LETTER_SAMPLED } from '../../../shared/textLayers.js';
 import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
 import { makeLogger } from '../logger.js';
 
@@ -54,6 +54,12 @@ function ellipse(W, H) {
  * Tags de uma letra (evento próprio, \\an5 no centro dela). Os tempos são de dentro do evento
  * (a letra começa no seu instante). Mesma conta da prévia: letrFrame em shared/textLayers.js.
  */
+/** Pose de uma letra num passo amostrado (posição, escala, alfa e desfoque do quadro). */
+function letterPose(f, px, py, H, col, outCol) {
+  const a = Math.round((1 - f.alpha) * 255).toString(16).toUpperCase().padStart(2, '0');
+  const sc = Math.round(f.scale * 100);
+  return `\\an5\\bord0\\shad0\\1c${col}&\\3c${outCol}&\\pos(${px},${Math.round(py + f.dy * H)})\\fscx${sc}\\fscy${sc}\\alpha&H${a}&\\blur${Math.round(f.blur * H)}`;
+}
 function letterTags(anim, px, py, dMs, off, col, outCol) {
   const base = `\\an5\\bord0\\shad0\\1c${col}&\\3c${outCol}&`;
   if (anim === 'letras-subir') return `${base}\\move(${px},${py + off},${px},${py},0,${Math.round(dMs)})\\alpha&HFF&\\t(0,${Math.round(dMs)},\\alpha&H00&)`;
@@ -209,7 +215,17 @@ export function buildTextAss(layers, meta) {
           pre += ch;
           const c = letters[j][k];
           if (!c || c.t == null || !ch.trim()) return;
-          events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t)},${assTime(l.end)},T${i},,0,0,0,,{${letterTags(l.animIn, Math.round(cxk), Math.round(ty), c.d * 1000, Math.round(H * 0.06), bgr(L.fillColor), L.stroke ? bgr(L.strokeColor) : bgr(L.fillColor))}}${clean(ch)}`);
+          const fillC = bgr(L.fillColor);
+          const outC = L.stroke ? bgr(L.strokeColor) : fillC;
+          if (LETTER_SAMPLED.includes(l.animIn)) {
+            // curva amostrada em passos (overshoot, desfoque): um evento por passo, com a pose do instante
+            for (const st of letterSegments(l.animIn, c.d)) {
+              const t1 = st.t1 == null ? l.end : l.start + c.t + st.t1;
+              events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${letterPose(st.f, Math.round(cxk), Math.round(ty), H, fillC, outC)}}${clean(ch)}`);
+            }
+          } else {
+            events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t)},${assTime(l.end)},T${i},,0,0,0,,{${letterTags(l.animIn, Math.round(cxk), Math.round(ty), c.d * 1000, Math.round(H * 0.06), fillC, outC)}}${clean(ch)}`);
+          }
         });
         return;
       }
