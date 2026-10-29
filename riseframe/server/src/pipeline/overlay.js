@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { runFfmpeg, x264Fast, probeSummary } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 import { cleanLayerKf, kfExpr, kfMax } from '../../../shared/layerKeys.js';
+import { cleanEase, easeExpr } from '../../../shared/easing.js';
 
 const log = makeLogger('usermedia');
 
@@ -81,10 +82,8 @@ const f3 = (n) => Number(n).toFixed(3);
 /** Progresso 0→1 da entrada e 1→0 da saída (expressões em t). */
 const progIn = (m, a) => `min(1,max(0,(t-${f3(m.start)})/${f3(a)}))`;
 const progOut = (m, a) => `min(1,max(0,(${f3(m.end)}-t)/${f3(a)}))`;
-/** Desaceleração (ease-out cúbica). */
-const ease = (p) => `(1-pow(1-${p},3))`;
 /** Fator de escala da animação: zoom cresce de 60%; pop passa de 112% e assenta em 100%. */
-function scaleFactor(anim, p) {
+function scaleFactor(anim, p, ease) {
   if (anim === 'zoom') return `(0.6+0.4*${ease(p)})`;
   if (anim === 'pop') return `max(0.05,if(lt(${p},0.7),1.12*${p}/0.7,1.12-0.12*(${p}-0.7)/0.3))`;
   return null;
@@ -117,6 +116,8 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     const blend = m.mode !== 'pip' && BLEND_MODES[m.blend]?.neutral ? m.blend : 'normal';
     const pi = progIn(m, a);
     const po = progOut(m, a);
+    // curva de movimento da camada (zoom e deslizar); a padrão é a suave de sempre
+    const ease = (p) => easeExpr(cleanEase(m.animEase), p);
 
     // Recorte (Crop) da camada, como no Premiere: as bordas somem (ficam transparentes) e o
     // resto continua do mesmo tamanho e no mesmo lugar.
@@ -154,7 +155,7 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     // Camada animada (quadros-chave, zoom/pop): um quadro da camada para cada quadro do vídeo.
     // Sem isso a imagem (25 qps) mudava de tamanho/giro em outro ritmo e o movimento saía aos
     // trancos, parando e pulando.
-    if (kf || scaleFactor(animIn, pi) || scaleFactor(animOut, po)) chain += `,fps=${f3(fps)}`;
+    if (kf || scaleFactor(animIn, pi, ease) || scaleFactor(animOut, po, ease)) chain += `,fps=${f3(fps)}`;
 
     // Transparência: opacidade fixa (no modo normal) + fades com alpha.
     const fades = [];
@@ -182,8 +183,8 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     }
 
     // Escala animada (zoom/pop), por quadro.
-    const sIn = scaleFactor(animIn, pi);
-    const sOut = scaleFactor(animOut, po);
+    const sIn = scaleFactor(animIn, pi, ease);
+    const sOut = scaleFactor(animOut, po, ease);
     const sKf = kf?.scale ? `(${kfExpr(kf.scale, { start: m.start })})/${f3(scaleBase)}` : null;
     const S = [sIn, sOut, sKf].filter(Boolean).join('*');
     if (S) {

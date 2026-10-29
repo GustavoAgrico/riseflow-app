@@ -15,6 +15,7 @@ const hexOf = (v) => `#${colorHex(v)}`;
 const ANIM_CSS = {
   fade: 'rf-fade .5s ease both', pop: 'rf-pop .35s ease both', bounce: 'rf-bounce .5s ease both',
   zoom: 'rf-zoom .4s ease both', 'pop-rot': 'rf-pop-rot .45s ease both', shake: 'rf-shake .5s ease both', none: 'none',
+  zoomblur: 'rf-zoomblur .26s ease both', typewriter: 'rf-fade .12s ease both',
 };
 
 // Largura de um texto (em "em") na fonte já carregada — para o auto-ajuste da palavra
@@ -596,12 +597,33 @@ export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, 
     return undefined;
   };
 
+  // Máquina de escrever: as palavras futuras ficam escondidas (ocupam o espaço, como no
+  // render); a da vez digita letra a letra no tempo da palavra; o cursor pisca no fim.
+  const typing = look.animKind === 'typewriter';
+  const cur = still ? words.length : wi;
+  // cursor depois de cada palavra: pisca só na palavra da vez; fora dela fica escondido (mesmo espaço)
+  const cursorOf = (k) => (k === cur && !still
+    ? <span style={{ animation: 'rf-blink 1s steps(1) infinite' }}>|</span>
+    : <span style={{ visibility: 'hidden' }}>|</span>);
+  const typeWord = (w, k) => {
+    if (k > cur) return <>{<span style={{ visibility: 'hidden' }}>{up(w.word)}</span>}{cursorOf(k)}</>;
+    if (k < cur) return <>{up(w.word)}{cursorOf(k)}</>;
+    const chars = [...up(w.word)];
+    const dur = Math.max(0, (k + 1 < words.length ? words[k + 1].start : w.end) - w.start);
+    return (
+      <>
+        {chars.map((c, ci) => <span key={`${wi}-${ci}`} style={{ animation: 'rf-tw .01s linear both', animationDelay: `${((dur * ci) / chars.length).toFixed(3)}s` }}>{c}</span>)}
+        {cursorOf(k)}
+      </>
+    );
+  };
+
   return (
     <span key={`${keyId}-${look.animKind}`} style={{ ...style, ...base, maxWidth: still ? '90%' : 'none', whiteSpace: still ? 'normal' : 'nowrap', textAlign: 'center' }}>
       {words.map((w, k) => (
         <React.Fragment key={k}>
           {k > 0 ? (breakAt(k) ? <br /> : ' ') : ''}
-          <span style={wordStyle(w, k)}>{up(w.word)}</span>
+          <span style={wordStyle(w, k)}>{typing ? typeWord(w, k) : up(w.word)}</span>
         </React.Fragment>
       ))}
     </span>

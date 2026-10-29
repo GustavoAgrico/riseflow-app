@@ -14,6 +14,7 @@ import { SFX_LIBRARY, SFX_CATEGORIES, sfxInfo, sfxPreviewFile } from '../pipelin
 import { config as appConfig } from '../config.js';
 import { TRANSITIONS, TRANSITION_TARGETS } from '../pipeline/transitions.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
+import { EASINGS } from '../../../shared/easing.js';
 
 export const optionsRouter = Router();
 
@@ -62,6 +63,7 @@ optionsRouter.get('/options', async (_req, res) => {
     transitions: Object.entries(TRANSITIONS).map(([id, label]) => ({ id, label })),
     transitionTargets: Object.entries(TRANSITION_TARGETS).map(([id, label]) => ({ id, label })),
     layerAnimations: Object.entries(LAYER_ANIMATIONS).map(([id, label]) => ({ id, label })),
+    layerEases: Object.entries(EASINGS).map(([id, label]) => ({ id, label })),
     blendModes: Object.entries(BLEND_MODES).map(([id, x]) => ({ id, label: x.label })),
     musicDuckings: [
       { id: 'off', label: 'Desligado' },

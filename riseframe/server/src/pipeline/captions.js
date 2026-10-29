@@ -70,6 +70,8 @@ export const CAPTION_ANIMATIONS = {
   pop: 'Pop (escala)',
   bounce: 'Bounce (pula)',
   zoom: 'Zoom in',
+  zoomblur: 'Zoom com desfoque',
+  typewriter: 'Máquina de escrever (cursor)',
   'pop-rot': 'Pop girando',
   shake: 'Tremer (impacto)',
   none: 'Sem animação',
@@ -85,6 +87,13 @@ function animTag(anim) {
       return '\\fad(40,40)\\fscx68\\fscy68\\t(0,90,\\fscx113\\fscy113)\\t(90,150,\\fscx95\\fscy95)\\t(150,215,\\fscx100\\fscy100)';
     case 'zoom':
       return '\\fad(40,40)\\fscx55\\fscy55\\t(0,180,\\fscx100\\fscy100)';
+    // entra grande e desfocado e assenta (como o Zoom do motion de agência)
+    case 'zoomblur':
+      return '\\fad(40,40)\\fscx150\\fscy150\\be8\\t(0,260,\\fscx100\\fscy100\\be0)';
+    // fade no começo; no modo frase, cada letra aparece no tempo da palavra (typeOut) e o
+    // cursor vem em cursorAt
+    case 'typewriter':
+      return '\\fad(60,60)';
     case 'pop-rot':
       return '\\fad(40,40)\\fscx70\\fscy70\\frz-6\\t(0,160,\\fscx104\\fscy104\\frz0)\\t(160,230,\\fscx100\\fscy100)';
     case 'shake':
@@ -98,6 +107,33 @@ function animTag(anim) {
 }
 /** Só o fade da animação (para as caixas desenhadas atrás do texto). */
 const fadeOf = (tag) => (/\\fad\([^)]*\)/.exec(tag) || [''])[0];
+
+/**
+ * Máquina de escrever: cada letra de `raw` aparece entre `s` e `e` (segundos do vídeo), no
+ * mesmo tempo que a prévia usa. `t0` = começo do evento (os tempos do ASS são relativos a ele).
+ */
+function typeOut(raw, s, e, t0) {
+  const chars = [...String(raw)];
+  const typed = chars.map((ch, k) => {
+    const at = Math.round((s + ((e - s) * k) / chars.length - t0) * 1000);
+    return at <= 0 ? `{\\alpha&H00&}${escapeAss(ch)}` : `{\\alpha&HFF&\\t(${at},${at + 1},\\alpha&H00&)}${escapeAss(ch)}`;
+  }).join('');
+  return typed + cursorAt(s, e, t0);
+}
+/**
+ * Cursor da máquina de escrever: pisca a cada 0,5 s entre `s` e `e` (segundos do vídeo), logo
+ * após a palavra. Sempre presente (escondido fora da vez), para o texto não pular de lugar.
+ */
+function cursorAt(s, e, t0) {
+  const a = Math.round((s - t0) * 1000);
+  const b = Math.round((e - t0) * 1000);
+  const tags = [`\\alpha&HFF&\\t(${a},${a + 1},\\alpha&H00&)`];
+  for (let t = a + 500, k = 1; t < b; t += 500, k++) tags.push(`\\t(${t},${t + 1},\\alpha&H${k % 2 ? 'FF' : '00'}&)`);
+  tags.push(`\\t(${b},${b + 1},\\alpha&HFF&)`);
+  return `{${tags.join('')}}|{\\alpha&H00&}`;
+}
+/** Cursor escondido (fora da vez): ocupa o mesmo espaço e devolve a opacidade ao texto. */
+const CURSOR_HIDDEN = '{\\alpha&HFF&}|{\\alpha&H00&}';
 
 /** Mistura uma cor com o branco (t = 0 → cor, 1 → branco). */
 function tint(hex, t) {
@@ -253,6 +289,8 @@ export function buildAss(segments, meta, style = {}) {
 
   const animKind = style.animation && style.animation !== 'auto' && CAPTION_ANIMATIONS[style.animation] ? style.animation : T.anim;
   const anim = animTag(animKind);
+  // máquina de escrever: letra a letra nas legendas por frase (a palavra por vez fica com fade)
+  const typing = animKind === 'typewriter' && mode !== 'word';
   const glow = glowOn ? '\\blur3' : '';
   const lines = [];
   const ev = (layer, t0, t1, styleName, text) => lines.push(`Dialogue: ${layer},${assTime(t0)},${assTime(t1)},${styleName},,0,0,0,,${text}`);
@@ -451,13 +489,15 @@ export function buildAss(segments, meta, style = {}) {
       const emPart = (wd, t) => `{${emHex(wd) ? `\\1a&H00&\\c${assColor(emHex(wd))}` : ''}${wd.emBig ? '\\fscx130\\fscy130' : ''}}${t}{\\fscx100\\fscy100\\c${fill}${T.hollow ? '\\1a&HFF&' : ''}}`;
       const kwPart = (t) => (glowOn ? `{${kwBig()}}${t}{\\fscx100\\fscy100}` : `{${kwBig()}\\c${accent}${T.hollow ? hollowOn : ''}}${t}{\\fscx100\\fscy100\\c${fill}${hollowOff}}`);
 
+      // fim da palavra j: onde começa a próxima (a última vai até o fim do cartão)
+      const wordEnd = (j) => (j + 1 < words.length ? words[j + 1].start : endAll);
       if (!highlight) {
         // Legenda normal: a frase inteira, sem destacar a palavra falada (a palavra-chave
         // continua realçada nos estilos de palavra-chave).
         phraseBox(words[0].start, endAll, g);
         const partOf = (j) => {
           const wd = words[j];
-          const t = escapeAss(up(wd.word));
+          const t = typing ? typeOut(up(wd.word), wd.start, wordEnd(j), words[0].start) : escapeAss(up(wd.word));
           if (hasEm(wd)) return emPart(wd, t);
           return j === kw ? kwPart(t) : t;
         };
@@ -483,7 +523,9 @@ export function buildAss(segments, meta, style = {}) {
           }
           const partOf = (j) => {
             const wd = words[j];
-            const t = escapeAss(up(wd.word));
+            // máquina de escrever: as próximas palavras ainda não apareceram; a da vez digita
+            if (typing && j > i) return `{\\alpha&HFF&}${escapeAss(up(wd.word))}`;
+            const t = typing && j === i ? typeOut(up(wd.word), wd.start, wordEnd(j), start) : escapeAss(up(wd.word));
             if (hasEm(wd)) return `{\\alpha&H00&}${emPart(wd, t)}`;
             if (j === kw) return glowOn ? `{\\alpha&H00&${kwBig()}}${t}{\\fscx100\\fscy100}` : `{\\alpha&H00&}${kwPart(t)}`;
             if (j === i) {
@@ -499,7 +541,9 @@ export function buildAss(segments, meta, style = {}) {
             if ((hl === 'color' && accentIsWhite) || T.dimOthers) return `{${dim}}${t}{\\alpha&H00&}`;
             return t;
           };
-          emitLines(1, start, end, g, `${a1}${glow}${base}`, partOf, words, kw);
+          // cursor: só na palavra da vez (as outras levam o cursor escondido, sem mudar o espaço)
+          const partWithCursor = (j) => (typing && j !== i ? partOf(j) + CURSOR_HIDDEN : partOf(j));
+          emitLines(1, start, end, g, `${a1}${glow}${base}`, partWithCursor, words, kw);
         }
       }
     }

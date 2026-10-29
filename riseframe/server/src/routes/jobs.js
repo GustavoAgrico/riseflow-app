@@ -39,6 +39,7 @@ import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
 import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
 import { brandIn, entityQuery } from '../pipeline/entities.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
+import { cleanEase } from '../../../shared/easing.js';
 import { cleanCrop, cleanCropRanges, cleanBlanks } from '../pipeline/frame.js';
 import { transcribeRange } from '../pipeline/seqTranscript.js';
 import { editSourceStatus, editSourcePath } from '../pipeline/editSource.js';
@@ -449,6 +450,7 @@ function sanitizeUserMedia(raw) {
       animIn: Object.hasOwn(LAYER_ANIMATIONS, m.animIn) ? m.animIn : 'none',
       animOut: Object.hasOwn(LAYER_ANIMATIONS, m.animOut) ? m.animOut : 'none',
       animDur: clampNum(m.animDur, 0.15, 2, 0.4),
+      animEase: cleanEase(m.animEase),
       blend: Object.hasOwn(BLEND_MODES, m.blend) ? m.blend : 'normal',
       // Camada (0 = mais embaixo) e ponto de início no arquivo (aparar/dividir).
       layer: Math.round(clampNum(m.layer, 0, 20, 0)),
@@ -572,7 +574,7 @@ export function parseOptions(raw) {
     captionColor: isCaptionColor(o.captionColor) ? String(o.captionColor) : 'white',
     // fonte embutida, ou "custom:<id>" = fonte própria do usuário (resolvida em optionsForUser)
     captionFont: o.captionFont === 'auto' || CAPTION_FONTS[o.captionFont] || /^custom:[A-Za-z0-9_-]{8,24}$/.test(String(o.captionFont || '')) ? o.captionFont : 'auto',
-    captionAnimation: ['auto', 'fade', 'pop', 'bounce', 'zoom', 'pop-rot', 'shake', 'none'].includes(o.captionAnimation) ? o.captionAnimation : 'auto',
+    captionAnimation: ['auto', 'fade', 'pop', 'bounce', 'zoom', 'zoomblur', 'typewriter', 'pop-rot', 'shake', 'none'].includes(o.captionAnimation) ? o.captionAnimation : 'auto',
     captionBackground: ['auto', 'shadow', 'box', 'bar', 'glow', 'none', 'clean'].includes(o.captionBackground) ? o.captionBackground : 'auto',
     captionPosition: ['auto', 'top', 'center', 'bottom'].includes(o.captionPosition) ? o.captionPosition : 'auto',
     // Estilo da fonte (arquivo próprio: Regular, Itálico, Negrito, Black…), itálico
