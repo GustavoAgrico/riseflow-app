@@ -28,6 +28,7 @@ import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import { captionCues, toSrt, toVtt, toTxt } from '../../../shared/captionExport.js';
 import { applySoundEffects, SFX_LIBRARY } from './sfx.js';
 import { kineticPlan } from '../../../shared/kinetic.js';
+import { elementFile } from './elements.js';
 import { cleanTextLayers } from '../../../shared/textLayers.js';
 import { CAPTION_FONTS } from '../../../shared/captionStyle.js';
 import { transitionVf, motionTransitionVf, cutJoins } from './transitions.js';
@@ -157,9 +158,11 @@ function buildPlan(mode, options) {
       { key: 'aspect', label: QUALITY_STAGE[options.quality] || 'Ajustando ao formato', weight: QUALITY_STAGE[options.quality] ? 12 : 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) || Boolean(QUALITY_STAGE[options.quality]) },
       { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
       { key: 'vfx', label: 'Aplicando efeitos de vídeo', weight: 8, enabled: Array.isArray(options.fxMoments) && options.fxMoments.length > 0 },
-      { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: Array.isArray(options.userMedia) && options.userMedia.length > 0 },
+      { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: (Array.isArray(options.userMedia) && options.userMedia.some((m) => m?.above !== true)) || (options.kinetic === true && mode !== 'render') },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'texts', label: 'Colocando os textos', weight: 8, enabled: (Array.isArray(options.textLayers) && options.textLayers.length > 0) || (options.kinetic === true && mode !== 'render') },
+      // objetos 3D e rabiscos das cenas de motion: por cima das legendas e dos textos
+      { key: 'elements', label: 'Animando os elementos', weight: 8, enabled: (Array.isArray(options.userMedia) && options.userMedia.some((m) => m?.above === true)) || (options.kinetic === true && mode !== 'render') },
       { key: 'headline', label: 'Colocando o título (headline)', weight: 6, enabled: Boolean(options.headline?.text) },
       { key: 'watermark', label: 'Aplicando o seu logo', weight: 6, enabled: Boolean(options.watermark?.file) },
       { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true || (Array.isArray(options.sfxMoments) && options.sfxMoments.length > 0) || (options.kinetic === true && mode !== 'render') },
@@ -599,10 +602,13 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (plan.scenes.length) {
       options.textLayers = cleanTextLayers([...(options.textLayers || []), ...plan.layers], Object.keys(CAPTION_FONTS), 400);
       options.sfxMoments = [...(options.sfxMoments || []), ...plan.sfx];
+      // objetos 3D e rabiscos das cenas (arquivos que vão com o app)
+      const els = (plan.elements || []).map((e) => ({ ...e, file: elementFile(e.element) })).filter((e) => e.file);
+      if (els.length) options.userMedia = [...(options.userMedia || []), ...els];
       const inScene = (w) => plan.scenes.some((sc) => (w.start + w.end) / 2 >= sc.start && (w.start + w.end) / 2 <= sc.end);
       transcript = { ...transcript, segments: transcript.segments.map((sg) => (sg.words?.length ? { ...sg, words: sg.words.map((w) => (inScene(w) ? { ...w, hidden: true } : w)) } : sg)) };
     }
-    report.kinetic = { scenes: plan.scenes.length, sounds: plan.sfx.length };
+    report.kinetic = { scenes: plan.scenes.length, sounds: plan.sfx.length, elements: (plan.elements || []).length };
   }
 
   // 3z. Vídeo bem maior que o quadro final (ex.: gravado em 4K, exportando em 1080p): reduz
@@ -904,6 +910,16 @@ export async function runPipeline(job, onUpdate = () => {}) {
     input = r.output;
     report.texts = { count: r.count, ...(textsDone ? { withCaptions: true } : {}) };
     st.record(report.texts);
+    st.onProgress(1);
+  }
+
+  // 6-c. Elementos por cima de tudo (objetos 3D e rabiscos das cenas de motion).
+  if (has('elements')) {
+    const st = enter('elements');
+    const r = await applyUserMedia(input, work, meta, options, st.onProgress, { above: true });
+    if (r.applied) input = r.output;
+    report.elements = { applied: r.applied, count: r.visual };
+    st.record(report.elements);
     st.onProgress(1);
   }
 

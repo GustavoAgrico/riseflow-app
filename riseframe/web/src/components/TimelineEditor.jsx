@@ -5,7 +5,7 @@ import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import Processing from './Processing.jsx';
 import { pickExportTarget, setPendingExport } from '../exportTarget.js';
-import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
+import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, elementUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -3300,7 +3300,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         audioGains: gains.map((g) => ({ start: +g.start.toFixed(2), end: +g.end.toFixed(2), volume: +Number(g.volume).toFixed(2) })),
         // Minhas mídias colocadas na timeline (imagens/vídeos/músicas próprias).
         userMedia: visMedia.map((m) => ({
-          mediaId: m.mediaId,
+          ...(m.element ? { element: m.element } : { mediaId: m.mediaId }),
           kind: m.kind,
           start: +Number(m.start).toFixed(2),
           duration: +Number(m.duration).toFixed(2),
@@ -3322,6 +3322,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           ...(m.kind !== 'audio' && Math.abs(Number(m.rot) || 0) > 0.05 ? { rot: +Number(m.rot).toFixed(1) } : {}),
           ...(m.kind !== 'audio' && m.crop ? { crop: m.crop } : {}),
           ...(m.kind !== 'audio' && m.kf ? { kf: m.kf } : {}),
+          ...(m.kind !== 'audio' && m.motion && m.motion !== 'none' ? { motion: m.motion, motionSpeed: +Number(m.motionSpeed ?? 1).toFixed(2), motionAmp: +Number(m.motionAmp ?? 1).toFixed(2) } : {}),
+          ...(m.animEase ? { animEase: m.animEase } : {}),
+          ...(m.animDur ? { animDur: +Number(m.animDur).toFixed(2) } : {}),
+          ...(m.kind !== 'audio' && m.tint ? { tint: m.tint } : {}),
+          ...(m.kind !== 'audio' && m.above ? { above: true } : {}),
           ...(m.kind === 'audio' ? { fadeIn: +Number(m.fadeIn || 0).toFixed(2), fadeOut: +Number(m.fadeOut || 0).toFixed(2) } : {}),
         })),
         // Velocidade por trecho e congelar quadro (tempo original; o servidor remapeia).
@@ -5183,6 +5188,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const layers = plan.layers.map((l, i) => ({ key: `t${now}_${i}`, ...l, smart: true }));
     // a ordem do desenho é a da lista: o fundo de cada cena vem antes das palavras dela
     setTextLayers([...keep, ...layers]);
+    // objetos 3D e rabiscos das cenas: camadas de imagem por cima de tudo (editáveis)
+    setMedia((prev) => {
+      const rest = prev.filter((m) => !m.kinetic);
+      const top = rest.reduce((a, m) => Math.max(a, Number(m.layer) || 0), 0) + 1;
+      const els = (plan.elements || []).map((e, i) => ({
+        key: `k${now}_${i}`, kind: 'image', filename: e.element.replace('doodles/', 'rabisco: ').replace('backgrounds/', 'fundo: '), previewUrl: elementUrl(e.element),
+        srcDuration: 600, volume: 0, opacity: 1, blend: 'normal', offset: 0, fadeIn: 0, fadeOut: 0, px: 0.5, py: 0.5,
+        // fundo por baixo dos textos (por cima das suas mídias); rabiscos e objetos por cima de tudo
+        ...e, layer: e.above ? top + (e.element.startsWith('doodles/') ? 1 : 2) : top, kinetic: true,
+      }));
+      return [...rest, ...els];
+    });
     const keepSfx = sfxMoments.filter((m) => !(m.smart && m.motion));
     const sfx = kinSfx ? plan.sfx.filter((m) => !keepSfx.some((x) => Math.abs(x.t - m.t) < 0.12)).map((m, i) => ({ key: `s${now}_k${i}`, t: m.t, type: m.type, volume: m.volume, smart: true, motion: true, why: m.why })) : [];
     setSfxMoments([...keepSfx, ...sfx].sort((a, b) => a.t - b.t));
@@ -5195,6 +5212,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function clearKinetic() {
     const n = new Set(textLayers.filter((l) => l.smart && l.scene).map((l) => l.scene)).size;
     setTextLayers((l) => l.filter((x) => !x.smart));
+    setMedia((l) => l.filter((m) => !m.kinetic));
     setSfxMoments((l) => l.filter((m) => !(m.smart && m.motion)));
     setSegments((prev) => prev.map((sg) => (sg.words.some((w) => w.khid) ? { ...sg, words: sg.words.map((w) => (w.khid ? { ...w, hidden: false, khid: false } : w)) } : sg)));
     sayAuto(n ? `${n} cenas de motion tiradas (a legenda voltou)` : 'Não havia motion tipográfico.');
@@ -5237,7 +5255,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <b style={{ fontSize: 13.5 }}>✨ Motion tipográfico</b>
         <span style={{ fontSize: 11.5, color: C.faint }}>tipografia cinética editorial, palavra por palavra no ritmo da fala</span>
       </div>
-      <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Monta a frase em camadas: palavras de ligação pequenas em itálico, palavras-chave grandes, números em tarja — cada uma entra no instante em que é falada, em cenas de fundo (papel, holofote, cinema com luz laranja) ou sobre o vídeo. Com sons premium em cada entrada. A legenda some durante a cena e volta ao tirar.</span>
+      <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Monta a frase em camadas: palavras de ligação pequenas em itálico, palavras-chave grandes, números em tarja — cada uma entra no instante em que é falada, em cenas de fundo (escuro premium, branco com objetos recortados, roxo com vidro) ou sobre o vídeo, com objetos 3D do assunto. Com sons premium em cada entrada. A legenda some durante a cena e volta ao tirar.</span>
       <div style={{ display: 'grid', gap: 5 }}>
         <span style={{ fontSize: 10.5, color: C.faint, fontWeight: 700 }}>Visual</span>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{Object.entries(KINETIC_THEMES).map(([id, label]) => chip(kinTheme === id, () => setKinTheme(id), label, id))}</div>
@@ -10209,7 +10227,9 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
   }, []);
   // Camada com quadros-chave: tocando, o tempo vem do <video> a cada quadro (o `cur` do
   // editor só muda umas 4 vezes por segundo — a animação ia aos pulos na prévia).
-  const animated = part !== 'texts' && (media || []).some((m) => m.kf || (m.motion && m.motion !== 'none'));
+  // na parte dos textos só entram as camadas "por cima" (objetos/rabiscos das cenas)
+  const ofPart = (m) => (part === 'texts' ? m.above === true : part === 'media' ? !m.above : true);
+  const animated = (media || []).some((m) => ofPart(m) && (m.kf || (m.motion && m.motion !== 'none') || (m.animIn && m.animIn !== 'none')));
   const [liveT, setLiveT] = useState(null);
   useEffect(() => {
     if (!animated) { setLiveT(null); return undefined; }
@@ -10228,69 +10248,77 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
   }, [animated, videoRef]);
   const T = liveT ?? cur;
   if (!box || box.h < 10) return null;
-  const visible = (part === 'texts' ? [] : media || [])
-    .filter((m) => m.kind !== 'audio' && m.previewUrl && T >= m.start && T < m.start + m.duration)
+  const visible = (media || [])
+    .filter((m) => ofPart(m) && m.kind !== 'audio' && m.previewUrl && T >= m.start && T < m.start + m.duration)
     .map((m) => layerAt(m, T)) // quadros-chave: posição/escala/giro/opacidade deste instante
     .sort((a, b) => (a.layer || 0) - (b.layer || 0));
   const liveTexts = (part === 'media' ? [] : texts || []).filter((l) => cur >= l.start && cur < l.end);
   if (!visible.length && !liveTexts.length) return null;
   const start = (e, d) => { if (!editable) return; e.preventDefault(); e.stopPropagation(); dragRef.current = { ...d, x0: e.clientX, y0: e.clientY }; document.body.style.userSelect = 'none'; };
+  const drawMedia = (m) => {
+    const adj = layerCss(m);
+    const el = (style0) => { const style = { ...style0, ...adj }; return (m.kind === 'video'
+      ? <SyncedVideo m={m} mainRef={videoRef} style={style} onAspect={(r) => setAspect((a) => (a[m.key] === r ? a : { ...a, [m.key]: r }))} />
+      : m.tint
+        // rabisco branco pintado na cor escolhida (o render faz o mesmo: PNG × cor)
+        ? <div style={{ ...style, background: m.tint, WebkitMaskImage: `url(${m.previewUrl})`, maskImage: `url(${m.previewUrl})`, WebkitMaskSize: 'contain', maskSize: 'contain', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskPosition: 'center', maskPosition: 'center' }}>
+            <img src={m.previewUrl} alt="" style={{ display: 'none' }} onLoad={(e) => { const i = e.currentTarget; if (i.naturalWidth) setAspect((a) => ({ ...a, [m.key]: i.naturalHeight / i.naturalWidth })); }} />
+          </div>
+        : <img src={m.previewUrl} alt="" draggable={false} style={style} onLoad={(e) => { const i = e.currentTarget; if (i.naturalWidth) setAspect((a) => ({ ...a, [m.key]: i.naturalHeight / i.naturalWidth })); }} />); };
+    const ar = aspect[m.key] || 0.5625;
+    if (m.mode !== 'pip') {
+      // Tela cheia: ao arrastar, vira camada livre do tamanho da tela e segue o mouse.
+      return (
+        <div key={m.key} onPointerDown={(e) => { if (!editable) return; onMedia(m.key, { mode: 'pip', scale: 1, cx: 0.5, cy: 0.5 }); start(e, { kind: 'move', key: m.key, cx: 0.5, cy: 0.5 }); }}
+          title={editable ? 'Arraste para posicionar (vira camada livre)' : undefined}
+          style={{ position: 'absolute', inset: 0, ...layerRot(m), opacity: m.opacity ?? 1, pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: editable && selMedia === m.key ? '2px solid #22D3EE' : 'none', outlineOffset: -2 }}>
+          {el({ width: '100%', height: '100%', objectFit: 'cover', display: 'block' })}
+        </div>
+      );
+    }
+    const w = box.w * (m.scale || 0.4);
+    const h = w * ar;
+    // centro da camada (cx/cy); itens antigos (px/py = canto) são convertidos
+    const cx = m.cx ?? ((box.w - w) * (m.px ?? 0.62) + w / 2) / box.w;
+    const cy = m.cy ?? ((box.h - h) * (m.py ?? 0.06) + h / 2) / box.h;
+    const on = editable && selMedia === m.key;
+    let moDx = 0, moDy = 0, moScale = 1, moRot = 0, moAlpha = 1;
+    if (m.motion && m.motion !== 'none') {
+      const tRel = Math.max(0, T - m.start);
+      const mo = elemMotionAt(m.motion, tRel, { speed: m.motionSpeed ?? 1, amp: m.motionAmp ?? 1 });
+      moDx = (mo.dx || 0) * box.w; moDy = (mo.dy || 0) * box.h;
+      moScale = mo.scale || 1; moRot = mo.rot || 0; moAlpha = mo.alpha ?? 1;
+    }
+    let anScale = 1, anAlpha = 1, anDx = 0, anDy = 0, anRot = 0;
+    const animDur = Math.min(Number(m.animDur) || 0.4, m.duration / 2);
+    if (m.animIn === 'fade' && T - m.start < animDur) anAlpha *= Math.max(0, (T - m.start) / animDur);
+    if (m.animOut === 'fade' && m.start + m.duration - T < animDur) anAlpha *= Math.max(0, (m.start + m.duration - T) / animDur);
+    if (m.animIn && m.animIn !== 'none' && m.animIn !== 'fade' && m.animIn !== 'zoom' && m.animIn !== 'pop' && (T - m.start) < animDur) {
+      const p = Math.min(1, Math.max(0, (T - m.start) / animDur));
+      const f = elemAnimFrame(m.animIn, p);
+      anScale = f.scale; anAlpha *= f.alpha; anDx = (f.dx || 0) * box.w; anDy = (f.dy || 0) * box.h; anRot = f.rot || 0;
+    }
+    const totalRot = (Number(m.rot) || 0) + moRot + anRot;
+    const totalOpacity = (m.opacity ?? 1) * moAlpha * anAlpha;
+    const xforms = [];
+    if (Math.abs(totalRot) > 0.05) xforms.push(`rotate(${totalRot}deg)`);
+    if (Math.abs(moScale * anScale - 1) > 0.005) xforms.push(`scale(${(moScale * anScale).toFixed(3)})`);
+    return (
+      <div key={m.key} onPointerDown={(e) => start(e, { kind: 'move', key: m.key, cx, cy })}
+        title={editable ? 'Arraste para posicionar · puxe o canto para mudar o tamanho' : undefined}
+        style={{ position: 'absolute', left: cx * box.w - w / 2 + moDx + anDx, top: cy * box.h - h / 2 + moDy + anDy, width: w, height: h, transform: xforms.length ? xforms.join(' ') : undefined, opacity: totalOpacity, pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: on ? '2px solid #22D3EE' : editable ? '1px dashed rgba(255,255,255,0.6)' : 'none' }}>
+        {el({ width: '100%', height: '100%', objectFit: 'contain', display: 'block' })}
+        {editable && ['nw', 'ne', 'sw', 'se'].map((c) => (
+          <div key={c} onPointerDown={(e) => start(e, { kind: 'resize', key: m.key, w0: w, cx, cy, dir: c })}
+            style={{ position: 'absolute', [c[0] === 'n' ? 'top' : 'bottom']: -6, [c[1] === 'w' ? 'left' : 'right']: -6, width: 12, height: 12, borderRadius: 3, background: '#22D3EE', border: '2px solid #fff', cursor: c === 'nw' || c === 'se' ? 'nwse-resize' : 'nesw-resize', transform: c[1] === 'w' ? 'scaleX(-1)' : undefined }} />
+        ))}
+      </div>
+    );
+  };
   return (
     <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', pointerEvents: 'none', zIndex: z }}>
       {guides && <SnapGuides x={guides.x} y={guides.y} />}
-      {visible.map((m) => {
-        const adj = layerCss(m);
-        const el = (style0) => { const style = { ...style0, ...adj }; return (m.kind === 'video'
-          ? <SyncedVideo m={m} mainRef={videoRef} style={style} onAspect={(r) => setAspect((a) => (a[m.key] === r ? a : { ...a, [m.key]: r }))} />
-          : <img src={m.previewUrl} alt="" draggable={false} style={style} onLoad={(e) => { const i = e.currentTarget; if (i.naturalWidth) setAspect((a) => ({ ...a, [m.key]: i.naturalHeight / i.naturalWidth })); }} />); };
-        const ar = aspect[m.key] || 0.5625;
-        if (m.mode !== 'pip') {
-          // Tela cheia: ao arrastar, vira camada livre do tamanho da tela e segue o mouse.
-          return (
-            <div key={m.key} onPointerDown={(e) => { if (!editable) return; onMedia(m.key, { mode: 'pip', scale: 1, cx: 0.5, cy: 0.5 }); start(e, { kind: 'move', key: m.key, cx: 0.5, cy: 0.5 }); }}
-              title={editable ? 'Arraste para posicionar (vira camada livre)' : undefined}
-              style={{ position: 'absolute', inset: 0, ...layerRot(m), opacity: m.opacity ?? 1, pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: editable && selMedia === m.key ? '2px solid #22D3EE' : 'none', outlineOffset: -2 }}>
-              {el({ width: '100%', height: '100%', objectFit: 'cover', display: 'block' })}
-            </div>
-          );
-        }
-        const w = box.w * (m.scale || 0.4);
-        const h = w * ar;
-        // centro da camada (cx/cy); itens antigos (px/py = canto) são convertidos
-        const cx = m.cx ?? ((box.w - w) * (m.px ?? 0.62) + w / 2) / box.w;
-        const cy = m.cy ?? ((box.h - h) * (m.py ?? 0.06) + h / 2) / box.h;
-        const on = editable && selMedia === m.key;
-        let moDx = 0, moDy = 0, moScale = 1, moRot = 0, moAlpha = 1;
-        if (m.motion && m.motion !== 'none') {
-          const tRel = Math.max(0, T - m.start);
-          const mo = elemMotionAt(m.motion, tRel, { speed: m.motionSpeed ?? 1, amp: m.motionAmp ?? 1 });
-          moDx = (mo.dx || 0) * box.w; moDy = (mo.dy || 0) * box.h;
-          moScale = mo.scale || 1; moRot = mo.rot || 0; moAlpha = mo.alpha ?? 1;
-        }
-        let anScale = 1, anAlpha = 1, anDx = 0, anDy = 0, anRot = 0;
-        const animDur = 0.4;
-        if (m.animIn && m.animIn !== 'none' && m.animIn !== 'fade' && m.animIn !== 'zoom' && m.animIn !== 'pop' && (T - m.start) < animDur) {
-          const p = Math.min(1, Math.max(0, (T - m.start) / animDur));
-          const f = elemAnimFrame(m.animIn, p);
-          anScale = f.scale; anAlpha = f.alpha; anDx = (f.dx || 0) * box.w; anDy = (f.dy || 0) * box.h; anRot = f.rot || 0;
-        }
-        const totalRot = (Number(m.rot) || 0) + moRot + anRot;
-        const totalOpacity = (m.opacity ?? 1) * moAlpha * anAlpha;
-        const xforms = [];
-        if (Math.abs(totalRot) > 0.05) xforms.push(`rotate(${totalRot}deg)`);
-        if (Math.abs(moScale * anScale - 1) > 0.005) xforms.push(`scale(${(moScale * anScale).toFixed(3)})`);
-        return (
-          <div key={m.key} onPointerDown={(e) => start(e, { kind: 'move', key: m.key, cx, cy })}
-            title={editable ? 'Arraste para posicionar · puxe o canto para mudar o tamanho' : undefined}
-            style={{ position: 'absolute', left: cx * box.w - w / 2 + moDx + anDx, top: cy * box.h - h / 2 + moDy + anDy, width: w, height: h, transform: xforms.length ? xforms.join(' ') : undefined, opacity: totalOpacity, pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: on ? '2px solid #22D3EE' : editable ? '1px dashed rgba(255,255,255,0.6)' : 'none' }}>
-            {el({ width: '100%', height: '100%', objectFit: 'contain', display: 'block' })}
-            {editable && ['nw', 'ne', 'sw', 'se'].map((c) => (
-              <div key={c} onPointerDown={(e) => start(e, { kind: 'resize', key: m.key, w0: w, cx, cy, dir: c })}
-                style={{ position: 'absolute', [c[0] === 'n' ? 'top' : 'bottom']: -6, [c[1] === 'w' ? 'left' : 'right']: -6, width: 12, height: 12, borderRadius: 3, background: '#22D3EE', border: '2px solid #fff', cursor: c === 'nw' || c === 'se' ? 'nwse-resize' : 'nesw-resize', transform: c[1] === 'w' ? 'scaleX(-1)' : undefined }} />
-            ))}
-          </div>
-        );
-      })}
+      {visible.filter((m) => !m.above).map(drawMedia)}
       {liveTexts.map((l) => {
         const L = textLook(l);
         if (l.kind === 'shape') {
@@ -10377,6 +10405,8 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
           </div>
         );
       })}
+      {/* objetos e rabiscos das cenas de motion: por cima dos textos (como no render) */}
+      {visible.filter((m) => m.above).map(drawMedia)}
     </div>
   );
 }

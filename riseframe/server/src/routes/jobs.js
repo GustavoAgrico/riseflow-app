@@ -36,6 +36,9 @@ const CAPTION_TEMPLATE_IDS = Object.keys(CAPTION_TEMPLATES);
 import { CAPTION_LANGUAGES } from '../pipeline/translate.js';
 import { MOMENT_EFFECTS, cleanKeys } from '../../../shared/transform.js';
 import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
+import { ELEMENT_MOTIONS } from '../../../shared/elementMotion.js';
+import { KINETIC_THEMES } from '../../../shared/kinetic.js';
+import { cleanElementId, elementFile } from '../pipeline/elements.js';
 import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
 import { brandIn, entityQuery } from '../pipeline/entities.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
@@ -86,6 +89,8 @@ function optionsForUser(req) {
   if (o.userMedia?.length) {
     o.userMedia = o.userMedia
       .map((m) => {
+        // elemento pronto do app (objeto 3D / rabisco): o arquivo vem dos assets
+        if (m.element) { const file = elementFile(m.element); return file ? { ...m, kind: 'image', file } : null; }
         const found = resolveMedia(m.mediaId);
         if (!found) return null;
         return { ...m, kind: m.kind || found.kind, file: found.path };
@@ -431,10 +436,11 @@ function sanitizeUserMedia(raw) {
   if (!Array.isArray(raw)) return [];
   const out = [];
   for (const m of raw) {
-    if (!m || typeof m.mediaId !== 'string' || !m.mediaId) continue;
-    const kind = ['image', 'video', 'audio'].includes(m.kind) ? m.kind : null;
+    const element = cleanElementId(m?.element);
+    if (!m || ((typeof m.mediaId !== 'string' || !m.mediaId) && !element)) continue;
+    const kind = element ? 'image' : ['image', 'video', 'audio'].includes(m.kind) ? m.kind : null;
     const item = {
-      mediaId: m.mediaId,
+      ...(element ? { element } : { mediaId: m.mediaId }),
       kind,
       start: clampNum(m.start, 0, 100000, 0),
       duration: clampNum(m.duration, 0.2, 100000, kind === 'image' ? 4 : 5),
@@ -471,9 +477,15 @@ function sanitizeUserMedia(raw) {
       ...(cleanLayerKf(m.kf) ? { kf: cleanLayerKf(m.kf) } : {}),
       // V0: por baixo do vídeo principal (aparece onde ele não cobre: diminuído, recortado, vazio)
       ...(m.under === true && kind !== 'audio' ? { under: true } : {}),
+      // por cima das legendas e textos (objetos e rabiscos das cenas de motion)
+      ...(m.above === true && kind !== 'audio' && !m.under ? { above: true } : {}),
+      // movimento contínuo (flutuar, pulsar...) e cor (rabiscos brancos)
+      ...(kind !== 'audio' && Object.hasOwn(ELEMENT_MOTIONS, m.motion) && m.motion !== 'none'
+        ? { motion: m.motion, motionSpeed: clampNum(m.motionSpeed, 0.2, 5, 1), motionAmp: clampNum(m.motionAmp, 0.1, 3, 1) } : {}),
+      ...(kind !== 'audio' && /^#[0-9a-f]{6}$/i.test(String(m.tint || '')) ? { tint: m.tint } : {}),
     };
     out.push(item);
-    if (out.length >= 40) break; // teto de segurança
+    if (out.length >= 160) break; // teto de segurança
   }
   return out;
 }
@@ -565,7 +577,7 @@ export function parseOptions(raw) {
     soundEffects: o.soundEffects === true, // pop na legenda + whoosh no B-roll
     // motion tipográfico escolhido no começo (o modo automático monta as cenas no servidor)
     kinetic: o.kinetic === true,
-    kineticTheme: ['auto', 'papel', 'holofote', 'cinema', 'video'].includes(o.kineticTheme) ? o.kineticTheme : 'auto',
+    kineticTheme: Object.hasOwn(KINETIC_THEMES, o.kineticTheme) ? o.kineticTheme : 'auto',
     kineticAmount: o.kineticAmount === 'muitos' ? 'muitos' : 'chave',
     sfxIntensity: ['suave', 'medio', 'forte'].includes(o.sfxIntensity) ? o.sfxIntensity : 'medio',
     captions: o.captions !== false,

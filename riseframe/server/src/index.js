@@ -105,6 +105,8 @@ app.get('/api/sample', async (_req, res) => {
 
 // Fontes das legendas (para a prévia no navegador via @font-face). Público e cacheável.
 app.use('/api/fonts', express.static(path.join(__dirname, '..', 'assets', 'fonts'), { maxAge: '7d', immutable: true }));
+// objetos 3D e rabiscos das cenas de motion (prévia do editor)
+app.use('/api/elements', express.static(path.join(__dirname, '..', 'assets', 'elements'), { maxAge: '7d', immutable: true }));
 
 // App de PC/Mac com conta central: login, cadastro e planos são os da conta do site.
 if (remoteAccount()) app.use('/api', accountProxy());

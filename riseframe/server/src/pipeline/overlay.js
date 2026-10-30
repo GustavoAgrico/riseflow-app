@@ -173,6 +173,12 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     }
     chain += layerAdjustVf(m);
     let rgba = false;
+    // cor dos rabiscos (PNG branco × cor escolhida)
+    if (/^#[0-9a-f]{6}$/i.test(String(m.tint || ''))) {
+      const [r, g, b] = [1, 3, 5].map((k) => f3(parseInt(m.tint.slice(k, k + 2), 16) / 255));
+      chain += `,format=rgba,colorchannelmixer=rr=${r}:gg=${g}:bb=${b}`;
+      rgba = true;
+    }
     if (hasCrop) {
       const kx = f3(1 - cr.l - cr.r);
       const ky = f3(1 - cr.t - cr.b);
@@ -349,8 +355,9 @@ export function videoSoundParts(vidLabels, { mixed, dur }) {
  *
  * @returns {{output:string, applied:boolean, visual:number, audio:number}}
  */
-export async function applyUserMedia(input, work, meta, options, onProgress = () => {}) {
-  const items = (options.userMedia || []).filter((m) => m && m.file && fs.existsSync(m.file));
+export async function applyUserMedia(input, work, meta, options, onProgress = () => {}, { above = false } = {}) {
+  // `above`: só as camadas que vão por cima das legendas/textos (passada separada, depois deles)
+  const items = (options.userMedia || []).filter((m) => m && m.file && fs.existsSync(m.file) && (m.kind !== 'audio' && m.above === true) === above);
   if (!items.length) return { output: input, applied: false, visual: 0, audio: 0 };
 
   const W = meta.width;
@@ -459,10 +466,11 @@ export async function applyUserMedia(input, work, meta, options, onProgress = ()
 
   if (!vis.length && !wantAudioRebuild) return { output: input, applied: false, visual: 0, audio: 0 };
 
-  const scriptPath = path.join(work, 'usermedia_filter.txt');
+  const tag = above ? 'elements' : 'usermedia';
+  const scriptPath = path.join(work, `${tag}_filter.txt`);
   fs.writeFileSync(scriptPath, parts.join(';\n'), 'utf8');
 
-  const output = path.join(work, 'usermedia.mp4');
+  const output = path.join(work, `${tag}.mp4`);
   const args = ['-i', input];
   for (const m of inputs) {
     if (m.kind === 'image') {
@@ -482,7 +490,7 @@ export async function applyUserMedia(input, work, meta, options, onProgress = ()
   else if (meta.hasAudio) args.push('-map', '0:a', '-c:a', 'copy');
   args.push(...x264Fast(), '-movflags', '+faststart', '-t', dur.toFixed(3), '-y', output);
 
-  await runFfmpeg(args, { label: 'usermedia', totalDuration: dur, onProgress });
+  await runFfmpeg(args, { label: tag, totalDuration: dur, onProgress });
   log.ok(`mídias do usuário aplicadas: ${vis.length} visuais, ${music.length} música(s)${vidLabels.length ? `, som de ${vidLabels.length} vídeo(s)` : ''}`);
   return { output, applied: true, visual: vis.length, audio: music.length };
 }
