@@ -207,11 +207,14 @@ function splitLayers({ sp, layers, elements, aspect, index }) {
   const rowH = 0.05;
   const cardH = Math.max(0.1, items.length * rowH + 0.05);
   const cardCy = cardTop + cardH / 2;
-  if (cardTop + cardH > 0.49) return;
-  layers.push({ kind: 'shape', shape: 'rect', x: 0.5, y: r3(cardCy), w: 0.82, h: r3(cardH), color: VSL_COLORS.fundo, opacity: 0.8, radius: 0.18,
-    stroke: true, strokeColor: VSL_COLORS.destaque, strokeW: 0.0012, shadow: true, shadowColor: VSL_COLORS.destaque, shadowOpacity: 0.3, shadowDist: 0, shadowBlur: 0.015,
-    start: r3(at0 + 0.1), end: r3(end), animIn: 'zoom', animOut: 'fade' });
-  items.forEach((l, k) => {
+  const fits = items.length > 0 && cardTop + cardH <= 0.49;
+  // o card entra junto com o 1º item falado (nunca vazio na tela)
+  if (fits) {
+    layers.push({ kind: 'shape', shape: 'rect', x: 0.5, y: r3(cardCy), w: 0.82, h: r3(cardH), color: VSL_COLORS.fundo, opacity: 0.8, radius: 0.18,
+      stroke: true, strokeColor: VSL_COLORS.destaque, strokeW: 0.0012, shadow: true, shadowColor: VSL_COLORS.destaque, shadowOpacity: 0.3, shadowDist: 0, shadowBlur: 0.015,
+      start: r3(Math.max(at0 + 0.1, items[0].words[0].start - 0.2)), end: r3(end), animIn: 'zoom', animOut: 'fade' });
+  }
+  if (fits) items.forEach((l, k) => {
     const t = tidy(l.role === 'num' && l.unit ? `${l.text} ${l.unit}` : l.text);
     const label = `→  ${t}`;
     const size = Math.min(0.034, (0.56 * aspect) / textWidthEm(label, 'inter-700', 0));
@@ -223,7 +226,7 @@ function splitLayers({ sp, layers, elements, aspect, index }) {
     const scale = 0.17;
     elements.push({
       kind: 'image', mode: 'pip', above: true, layer: 12, element: concept.element,
-      cx: 0.78, cy: r3(Math.max(cardTop + 0.02, cardCy - 0.01)), scale, rot: 8,
+      cx: 0.78, cy: r3(fits ? Math.max(cardTop + 0.02, cardCy - 0.01) : Math.min(0.42, cardTop + 0.08)), scale, rot: 8,
       start: r3(Math.max(at0, concept.word.start - 0.06)), duration: r3(Math.max(0.3, end - Math.max(at0, concept.word.start - 0.06))),
       animIn: 'elastic', animOut: 'fade', animDur: 0.45, motion: 'float-rotate', motionSpeed: 1, motionAmp: 0.9,
     });

@@ -580,6 +580,7 @@ export function parseOptions(raw) {
     soundEffects: o.soundEffects === true, // pop na legenda + whoosh no B-roll
     // motion tipográfico escolhido no começo (o modo automático monta as cenas no servidor)
     kinetic: o.kinetic === true,
+    vsl: o.vsl === true, // Reel VSL (interface animada, vídeo vertical)
     kineticTheme: Object.hasOwn(KINETIC_THEMES, o.kineticTheme) ? o.kineticTheme : 'auto',
     kineticAmount: o.kineticAmount === 'muitos' ? 'muitos' : 'chave',
     sfxIntensity: ['suave', 'medio', 'forte'].includes(o.sfxIntensity) ? o.sfxIntensity : 'medio',
