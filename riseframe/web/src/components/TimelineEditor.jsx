@@ -23,7 +23,7 @@ import { keyZoomMoments } from '../../../shared/keyMoments.js';
 import { suggestSfx, SFX_STYLES } from '../../../shared/autoMoments.js';
 import { kineticPlan, KINETIC_THEMES, KINETIC_AMOUNT } from '../../../shared/kinetic.js';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
-import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS } from '../../../shared/textLayers.js';
+import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
 import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
@@ -4284,6 +4284,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <CapRow label="Entrada"><Sel value={selTextItem.animIn} opts={Object.entries(TEXT_ANIMS_IN).map(([id, label]) => ({ id, label }))} onChange={(v) => updateText(selTextItem.key, { animIn: v })} /></CapRow>
             <CapRow label="Saída"><Sel value={selTextItem.animOut} opts={Object.entries(TEXT_ANIMS_OUT).map(([id, label]) => ({ id, label }))} onChange={(v) => updateText(selTextItem.key, { animOut: v })} /></CapRow>
           </div>
+          {countTarget(selTextItem.text) != null && (
+            <CapRow label="Contador"><label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}><input type="checkbox" checked={!!selTextItem.count} onChange={(e) => updateText(selTextItem.key, { count: e.target.checked })} />Número sobe até o valor</label></CapRow>
+          )}
           {LETTER_ANIMS.includes(selTextItem.animIn) && (
             <div style={{ display: 'grid', gap: 6 }}>
               {[
@@ -10217,7 +10220,7 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
         // uma caixa por linha (do tamanho do texto), com a folga e os cantos escolhidos — a
         // mesma conta do render (textBoxMetrics/textLook)
         const g = textBoxMetrics(l);
-        const lines = textShown(l).split('\n');
+        const lines = textShown(l.count ? { ...l, text: countText(l, cur - l.start) } : l).split('\n');
         const plan = L.smallCaps ? null : revealPlan(l, lines);
         // animações por letra: cada letra recebe o seu progresso no tempo atual (igual ao render)
         const letters = L.smallCaps ? null : letterPlan(l, lines);

@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { fontsDirArg, jobFontsDir } from './captions.js';
 import { fontById, fontStyles } from '../../../shared/captionStyle.js';
-import { textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan, letterPlan, letterTiming, letterSegments, LETTER_ANIMS, LETTER_SAMPLED } from '../../../shared/textLayers.js';
+import { textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan, letterPlan, letterTiming, letterSegments, LETTER_ANIMS, LETTER_SAMPLED, expandCounterLayers } from '../../../shared/textLayers.js';
 import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
 import { makeLogger } from '../logger.js';
 
@@ -77,7 +77,8 @@ function letterTags(anim, px, py, dMs, off, col, outCol) {
  * do tamanho do texto (larguras reais das letras), com a folga e os cantos escolhidos.
  * Animações com \fad, \t e \move — o mesmo motor (libass) e as mesmas fontes das legendas.
  */
-export function buildTextAss(layers, meta) {
+export function buildTextAss(rawLayers, meta) {
+  const layers = expandCounterLayers(rawLayers);
   const W = meta.width || 1080;
   const H = meta.height || 1920;
   const styles = [];

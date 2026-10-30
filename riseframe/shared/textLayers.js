@@ -332,6 +332,44 @@ export function textEm(l) {
   return num(l?.size, 0.015, 0.2, 0.05) * L.scale * (L.script ? 0.62 : 1);
 }
 /** Texto que aparece (TODAS MAIÚSCULAS). */
+/**
+ * Contador: o número do texto (inteiro) sobe do zero até o valor, com desaceleração, nos primeiros
+ * 70% da camada (até 2,5 s). Mesma conta na prévia (countText) e no render (expandCounterLayers).
+ */
+const fmtThousands = (v) => String(v).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+export function countTarget(text) {
+  const m = String(text ?? '').match(/\d[\d.,]*/);
+  if (!m) return null;
+  const n = Number(m[0].replace(/[.,]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+export function countDur(l) {
+  return Math.min(2.5, Math.max(0.4, (Number(l.end) - Number(l.start) || 3) * 0.7));
+}
+/** Texto da camada `t` segundos depois do começo (contador). Sem número, o texto é o mesmo. */
+export function countText(l, t) {
+  const target = countTarget(l.text);
+  if (target == null) return String(l.text ?? '');
+  const p = Math.max(0, Math.min(1, t / countDur(l)));
+  const v = Math.round(target * (1 - (1 - p) ** 3));
+  return String(l.text).replace(/\d[\d.,]*/, fmtThousands(v));
+}
+/** Troca cada camada de contador por passos (uma camada por passo, com o número daquele instante). */
+export function expandCounterLayers(layers, steps = 12) {
+  const out = [];
+  for (const l of layers) {
+    if (!l.count || l.kind === 'shape' || countTarget(l.text) == null) { out.push(l); continue; }
+    const dur = Number(l.end) - Number(l.start);
+    const d = countDur(l);
+    for (let k = 0; k <= steps; k++) {
+      const t0 = Math.min(dur, (d * k) / steps);
+      const t1 = k < steps ? Math.min(dur, (d * (k + 1)) / steps) : dur;
+      if (t1 - t0 < 0.02) continue;
+      out.push({ ...l, count: false, text: countText(l, t0), start: +(l.start + t0).toFixed(3), end: +(l.start + t1).toFixed(3) });
+    }
+  }
+  return out;
+}
 export function textShown(l) {
   const t = String(l?.text ?? '');
   return textLook(l).caps ? t.toUpperCase() : t;
@@ -404,6 +442,7 @@ export function cleanTextLayers(raw, fonts = null, max = 30) {
       y: num(l.y, 0, 1, 0.5),
       animIn: pickOf(TEXT_ANIMS_IN, l.animIn, 'fade'),
       animOut: pickOf(TEXT_ANIMS_OUT, l.animOut, 'fade'),
+      ...(l.count === true && countTarget(text) != null ? { count: true } : {}),
       // animação por letra: duração, atraso, distância e overshoot (só quando a pessoa mexeu)
       ...(hasNum(l.letterDur) ? { letterDur: num(l.letterDur, 0.1, 1.5, 0.4) } : {}),
       ...(hasNum(l.letterGap) ? { letterGap: num(l.letterGap, 0, 0.2, 0.05) } : {}),
