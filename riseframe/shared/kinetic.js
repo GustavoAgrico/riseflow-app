@@ -11,25 +11,37 @@
 
 import { emphasisScore } from './keyMoments.js';
 import { premiumSfx } from './autoMoments.js';
-import { sceneElements } from './sceneElements.js';
+import { sceneElements, ANIMATED_BACKGROUNDS } from './sceneElements.js';
+import { KINETIC_CHARS, KINETIC_WIDTHS } from './kineticWidths.js';
+
+const CHAR_IX = new Map([...KINETIC_CHARS].map((c, i) => [c, i]));
+/** Largura do texto em em, com a medida real das letras da fonte (+ espaçamento em milésimos de em). */
+export function textWidthEm(text, font, tracking = 0) {
+  const tbl = KINETIC_WIDTHS[font] || KINETIC_WIDTHS['inter-900'];
+  let w = 0;
+  let n = 0;
+  for (const c of String(text)) { const i = CHAR_IX.get(c); w += i == null ? 600 : tbl[i]; n += 1; }
+  return w / 1000 + (tracking / 1000) * n;
+}
 
 export const KINETIC_THEMES = {
   auto: 'Alternar',
+  'preto-raios': 'Preto com raios',
+  'grade-ondulada': 'Grade ondulada',
+  'azul-grade': 'Azul com grade e estrelas',
+  'cinza-manchas': 'Cinza com manchas',
+  'holofote-cone': 'Feixe de luz',
+  lampada: 'Lâmpada',
+  'azul-orbita': 'Azul-noite com órbitas',
+  'lilas-flor': 'Lilás com flor',
   escuro: 'Escuro premium',
   branco: 'Branco com recortes',
   vsl: 'Roxo vidro (VSL)',
-  'azul-grade': 'Azul com grade',
-  'azul-orbita': 'Azul-noite com órbitas',
-  'roxo-ondas': 'Roxo com ondas',
-  'preto-linha': 'Preto minimalista',
-  'holofote-cone': 'Feixe de luz',
   'azul-claro': 'Azul-claro',
   'papel-cinza': 'Papel cinza',
   'branco-zigzag': 'Branco com zigzag',
-  'preto-raios': 'Preto com raios',
-  'cinza-rasgado': 'Cinza rasgado',
-  'branco-grade': 'Branco pontilhado',
   video: 'Sobre o vídeo',
+  legenda: 'Legenda em bloco (o vídeo todo)',
 };
 export const KINETIC_AMOUNT = { chave: 'Momentos-chave', muitos: 'Quase o vídeo todo' };
 
@@ -71,7 +83,16 @@ export function phraseChunks(segments, max = 8) {
     const flush = () => { if (cur.length) out.push(cur); cur = []; };
     ws.forEach((w, i) => {
       const prev = ws[i - 1];
-      if (cur.length && (cur.length >= max || (prev && w.start - prev.end >= 0.45))) flush();
+      if (cur.length && prev && w.start - prev.end >= 0.45) flush();
+      else if (cur.length >= max) {
+        // corte pelo tamanho: o pedaço não termina em palavra de ligação ("… sempre o | tempo")
+        let k = cur.length;
+        while (k > 1 && wordRole(cur[k - 1], k - 1, cur) === 'small' && SMALL.has(bare(cur[k - 1]))) k -= 1;
+        const carry = cur.slice(k);
+        cur = cur.slice(0, k);
+        flush();
+        cur = carry;
+      }
       cur.push(w);
       if (/[.!?;:]$/.test(clean(w)) && cur.length >= 3) flush();
     });
@@ -111,25 +132,36 @@ const L = (big, small, num, numBg, accent, doodle, shadowColor = null, extra = {
   big, small, num, numBg, accent, doodle, shadow: Boolean(shadowColor), shadowColor: shadowColor || '#000000', bg: true, ...extra,
 });
 const THEME_LOOK = {
+  'preto-raios': L('#FFFFFF', '#A6A6A6', '#000000', '#FFFFFF', '#FFE14D', '#FFFFFF', '#000000'),
+  'grade-ondulada': L('#111111', '#555555', '#FFFFFF', '#111111', '#2F5BFF', '#111111', null, { light: true }),
+  'azul-grade': L('#FFFFFF', '#C9D2FF', '#1F35E0', '#FFFFFF', '#FFE14D', '#FFE14D', '#0B1890'),
+  'cinza-manchas': L('#111111', '#3A3A3A', '#FFFFFF', '#111111', '#E10600', '#111111', null, { light: true }),
+  'holofote-cone': L('#FFFFFF', '#BDBDBD', '#000000', '#FFFFFF', '#FFD27A', '#FFD27A', '#000000'),
+  lampada: L('#FFFFFF', '#9A9A9A', '#000000', '#FFFFFF', '#FFE9A8', '#FFFFFF', '#000000'),
+  'azul-orbita': L('#FFFFFF', '#9FB6E8', '#0B2463', '#FFFFFF', '#7CC4FF', '#7CC4FF', '#000000'),
+  'lilas-flor': L('#FFFFFF', '#F1E8FF', '#FFFFFF', '#3B2FD6', '#FFE38A', '#FFE38A', '#1A0E45'),
   escuro: L('#FFFFFF', '#A6A6A6', '#0B0B0B', '#FF6B35', '#FF7A2E', '#FF7A2E', '#000000'),
   branco: L('#111111', '#6E6E6E', '#FFFFFF', '#111111', '#FF5A1F', '#FF5A1F', null, { light: true }),
   vsl: L('#FFFFFF', '#A59CC4', '#FFFFFF', '#8B5CF6', '#B9A3FF', '#B9A3FF', null, { glass: true }),
-  'azul-grade': L('#FFFFFF', '#C9D2FF', '#1F35E0', '#FFFFFF', '#FFE14D', '#FFE14D', '#0B1890'),
-  'azul-orbita': L('#FFFFFF', '#9FB6E8', '#0B2463', '#FFFFFF', '#7CC4FF', '#7CC4FF', '#000000'),
-  'roxo-ondas': L('#FFFFFF', '#E4DBFF', '#FFFFFF', '#6B4EFF', '#FFE38A', '#FFE38A', '#1A0E45'),
-  'preto-linha': L('#FFFFFF', '#9A9A9A', '#000000', '#FFFFFF', '#FF7A2E', '#FFFFFF', '#000000'),
-  'holofote-cone': L('#FFFFFF', '#BDBDBD', '#000000', '#FFFFFF', '#FFD27A', '#FFD27A', '#000000'),
   'azul-claro': L('#0D1B3D', '#5B6B8C', '#FFFFFF', '#2F7BFF', '#2F7BFF', '#2F7BFF', null, { light: true }),
   'papel-cinza': L('#111111', '#4E4A44', '#FFFFFF', '#111111', '#B3261E', '#111111', null, { light: true }),
   'branco-zigzag': L('#111111', '#6E6E6E', '#FFFFFF', '#E10600', '#E10600', '#111111', null, { light: true }),
-  'preto-raios': L('#FFFFFF', '#A6A6A6', '#000000', '#FFFFFF', '#FFE14D', '#FFFFFF', '#000000'),
-  'cinza-rasgado': L('#111111', '#3A3A3A', '#FFFFFF', '#111111', '#FF5A1F', '#111111', null, { light: true }),
-  'branco-grade': L('#111111', '#6E6E6E', '#FFFFFF', '#2F7BFF', '#2F7BFF', '#2F7BFF', null, { light: true }),
   video: { big: '#FFFFFF', small: '#F2F2F2', num: '#111111', numBg: '#FFFFFF', shadow: true, shadowColor: '#000000', accent: '#4DA3FF', doodle: '#FFD23F' },
 };
 /** Temas com fundo próprio (= imagens em assets/elements/backgrounds). */
 export const SCENE_BACKGROUNDS = Object.keys(THEME_LOOK).filter((k) => THEME_LOOK[k].bg);
-const ROTATION = ['escuro', 'azul-grade', 'branco', 'roxo-ondas', 'holofote-cone', 'azul-claro', 'preto-raios', 'papel-cinza', 'vsl', 'azul-orbita', 'branco-zigzag', 'preto-linha', 'cinza-rasgado', 'branco-grade'];
+const ROTATION = ['preto-raios', 'azul-grade', 'grade-ondulada', 'lilas-flor', 'holofote-cone', 'cinza-manchas', 'azul-orbita', 'lampada', 'escuro', 'branco', 'vsl', 'azul-claro', 'papel-cinza', 'branco-zigzag'];
+
+/** Fundo próprio (mídia da pessoa) cobrindo o quadro; vídeo em loop e sem som. */
+function customBackground(cb, start, end, aspect) {
+  const ar = Number(cb.ar) > 0 ? Number(cb.ar) : 16 / 9;
+  const cover = Math.max(1, 1 / (aspect * ar)) * 1.04;
+  return {
+    kind: cb.kind === 'video' ? 'video' : 'image', mode: 'pip', custom: cb.ref, cx: 0.5, cy: 0.5, scale: +cover.toFixed(3),
+    start: +start.toFixed(2), duration: +(end - start).toFixed(2), animIn: 'fade', animOut: 'fade', animDur: 0.3,
+    ...(cb.kind === 'video' ? { loop: true, muted: true, volume: 0 } : { motion: 'drift', motionSpeed: 1, motionAmp: 0.6 }), layer: 10,
+  };
+}
 
 /**
  * Fundo de uma cena: camada de imagem que cobre o quadro (um pouco maior, para o movimento
@@ -138,10 +170,12 @@ const ROTATION = ['escuro', 'azul-grade', 'branco', 'roxo-ondas', 'holofote-cone
 export function sceneBackground(theme, start, end, aspect) {
   if (!THEME_LOOK[theme]?.bg) return null;
   const cover = Math.max(1, (9 / 16) / aspect) * 1.07; // largura do quadro que cobre tudo
+  const anim = ANIMATED_BACKGROUNDS.has(theme);
   return {
-    kind: 'image', mode: 'pip', element: `backgrounds/${theme}`, cx: 0.5, cy: 0.5, scale: +cover.toFixed(3),
+    kind: anim ? 'video' : 'image', mode: 'pip', element: `backgrounds/${theme}`, cx: 0.5, cy: 0.5, scale: +cover.toFixed(3),
     start: +start.toFixed(2), duration: +(end - start).toFixed(2), animIn: 'fade', animOut: 'fade', animDur: 0.3,
-    motion: 'drift', motionSpeed: 1, motionAmp: 0.6, layer: 10,
+    // fundo animado: vídeo em loop, sem som; o fixo ganha um leve movimento de câmera
+    ...(anim ? { loop: true, muted: true, volume: 0 } : { motion: 'drift', motionSpeed: 1, motionAmp: 0.6 }), layer: 10,
   };
 }
 
@@ -150,57 +184,74 @@ export function sceneBackground(theme, start, end, aspect) {
  * @param {Array} words palavras (com start/end) do pedaço
  * @param {{theme:string,start:number,end:number,aspect:number}} o
  */
-export function sceneLayers(words, { theme, start, end, aspect }) {
+export function sceneLayers(words, { theme, start, end, aspect, index = 0 }) {
   const T = THEME_LOOK[theme] || THEME_LOOK.video;
   const lines = composeLines(words);
-  const maxW = (T.glass ? 0.74 : 0.84) * aspect; // largura útil, em frações da ALTURA
+  // Bloco tipográfico: coluna de largura fixa; as palavras-chave crescem até ocupar a mesma
+  // largura (medida real das letras, a mesma do render), com teto de tamanho. Linhas
+  // alinhadas pela mesma borda e ritmo vertical constante.
+  const col = (T.glass ? 0.7 : 0.8) * aspect; // largura da coluna, em frações da ALTURA
+  const KEY_MAX = 0.105;
+  const NUM_PAD = 0.16;
+  const fontOf = (l, accent) => (l.role === 'small' ? 'garamond-400i' : accent ? 'inter-900i' : 'inter-900');
+  const trackOf = (l) => (l.role === 'small' ? 0 : l.role === 'num' ? -20 : -30);
+  const keys0 = lines.filter((l) => l.role === 'key');
+  const star = keys0.length ? keys0.reduce((a, b) => (STRONG.test(b.text) || b.text.length > a.text.length ? b : a)) : null;
+  const texts = lines.map((ln) => (ln.role === 'num' && ln.unit ? `${ln.text} ${ln.unit}` : ln.text));
+  const em = (k) => textWidthEm(texts[k], fontOf(lines[k], lines[k] === star && T.accent), trackOf(lines[k]));
+  // largura do bloco: a da coluna, ou menos quando todas as chaves são curtas
+  const bigW = lines.map((l, k) => (l.role === 'small' ? 0 : em(k) * (l.role === 'num' ? KEY_MAX * 0.9 : KEY_MAX) + (l.role === 'num' ? 2 * NUM_PAD * KEY_MAX * 0.9 : 0)));
+  const B = Math.min(col, Math.max(col * 0.55, ...bigW));
   const sized = lines.map((ln, k) => {
-    const text = ln.role === 'num' && ln.unit ? `${ln.text} ${ln.unit}` : ln.text;
-    const chars = Math.max(2, text.length);
-    if (ln.role === 'small') return { ...ln, text, size: Math.min(0.036, maxW / (chars * 0.42)) };
-    // tamanhos alternados dão o ar editorial (uma grande, outra um pouco menor)
-    const cap = (k % 2 ? 0.074 : 0.088) * (ln.role === 'num' ? 0.92 : 1);
-    return { ...ln, text, size: +Math.min(cap, maxW / (chars * 0.6)).toFixed(4) };
+    const w1 = em(k);
+    let size;
+    if (ln.role === 'small') size = Math.min(0.044, B / w1);
+    else if (ln.role === 'num') size = Math.min(KEY_MAX * 0.9, B / (w1 + 2 * NUM_PAD));
+    else size = Math.min(KEY_MAX, B / w1);
+    size = +size.toFixed(4);
+    const w = w1 * size + (ln.role === 'num' ? 2 * NUM_PAD * size : 0);
+    return { ...ln, text: texts[k], size, w: +w.toFixed(4) };
   });
-  const gap = 0.006;
-  const hOf = (l) => l.size * (l.role === 'small' ? 1.05 : 1.12) + (l.role === 'num' ? l.size * 0.3 : 0);
+  const gap = 0.007;
+  const hOf = (l) => l.size * (l.role === 'small' ? 1.3 : l.role === 'num' ? 1.42 : 1.04);
   const total = sized.reduce((a, l) => a + hOf(l), 0) + gap * (sized.length - 1);
   const cy = theme === 'video' ? 0.6 : 0.47;
+  const align = index % 2 ? 'center' : 'left';
+  const blockW = Math.max(...sized.map((l) => l.w)); // em frações da altura
+  const left = 0.5 - blockW / aspect / 2; // borda esquerda do bloco (fração da largura)
   let y = cy - total / 2;
   const layers = [];
   // VSL: card de vidro escuro atrás do bloco de texto (borda e brilho lilás)
   if (T.glass) {
-    layers.push({ kind: 'shape', shape: 'rect', x: 0.5, y: +cy.toFixed(4), w: 0.88, h: +(total + 0.07).toFixed(4), color: '#1F123D', opacity: 0.82, radius: 0.09,
+    layers.push({ kind: 'shape', shape: 'rect', x: 0.5, y: +cy.toFixed(4), w: +(blockW / aspect + 0.12).toFixed(4), h: +(total + 0.07).toFixed(4), color: '#1F123D', opacity: 0.82, radius: 0.09,
       stroke: true, strokeColor: '#8B5CF6', strokeW: 0.0016, shadow: true, shadowColor: '#8B5CF6', shadowOpacity: 0.35, shadowDist: 0, shadowBlur: 0.02,
       start: +start.toFixed(2), end, animIn: 'zoom', animOut: 'fade' });
   }
-  // a palavra mais forte da cena ganha a cor de destaque do tema (como o "ONE MORE" azul)
-  const keys = sized.filter((l) => l.role === 'key');
-  const star = keys.length ? keys.reduce((a, b) => (STRONG.test(b.text) || b.text.length > a.text.length ? b : a)) : null;
+  // uma animação só para as palavras-chave da cena (alterna entre cenas): mais limpo
+  const keyAnim = index % 2 ? 'letras-pop' : 'letras-subir';
+  const sh = T.shadow ? { shadow: true, shadowColor: T.shadowColor, shadowOpacity: theme === 'escuro' ? 0.55 : 0.7, shadowDist: 0, shadowBlur: theme === 'escuro' ? 0.01 : 0.006 } : {};
   for (const l of sized) {
     const h = hOf(l);
+    const x = align === 'left' ? left + l.w / aspect / 2 : 0.5;
+    l.x = +x.toFixed(4);
     l.y = +(y + h / 2).toFixed(4);
     l.h = +h.toFixed(4);
     const at = Math.max(start, l.words[0].start - 0.04);
-    const base = { text: l.text, x: 0.5, y: +(y + h / 2).toFixed(4), size: l.size, start: +at.toFixed(2), end: +end.toFixed(2), align: 'center', animOut: 'fade' };
-    const sh = T.shadow ? { shadow: true, shadowColor: T.shadowColor, shadowOpacity: theme === 'escuro' ? 0.55 : 0.7, shadowDist: 0, shadowBlur: theme === 'escuro' ? 0.01 : 0.006 } : {};
+    const base = { text: l.text, x: l.x, y: l.y, size: l.size, start: +at.toFixed(2), end: +end.toFixed(2), align: 'center', animOut: 'fade' };
     if (l.role === 'small') {
       layers.push({ ...base, font: 'garamond', fontStyle: '400i', color: T.small, box: 'none', stroke: false, animIn: 'letras-desfoque', ...sh });
     } else if (l.role === 'num') {
-      layers.push({ ...base, font: 'inter', fontStyle: '900', color: T.num, box: 'box', boxColor: T.numBg, bg: true, bgColor: T.numBg, bgMode: 'lines', pad: 0.16, radius: 0.08, stroke: false, tracking: -20, animIn: 'pop' });
+      layers.push({ ...base, font: 'inter', fontStyle: '900', color: T.num, box: 'box', boxColor: T.numBg, bg: true, bgColor: T.numBg, bgMode: 'lines', pad: NUM_PAD, radius: 0.08, stroke: false, tracking: -20, animIn: 'pop' });
     } else {
-      const accent = l === star && T.accent;
-      // palavras-chave: as letras pulam ou sobem, alternando (o que faz a tipografia "mexer");
       // a principal ganha a cor de destaque (e o rabisco/objeto da cena, em sceneElements)
-      // marca-texto (tema grade): a palavra-chave ganha uma tarja amarela atrás
-      const mark = T.mark ? { bg: true, bgColor: T.mark, bgMode: 'lines', pad: 0.12, radius: 0.05 } : {};
-      layers.push({ ...base, font: 'inter', fontStyle: accent ? '900i' : '900', color: accent || T.big, box: T.mark ? 'box' : 'none', ...mark, stroke: false, tracking: -30, animIn: sized.indexOf(l) % 3 === 1 ? 'letras-subir' : 'letras-pop', ...sh,
+      const accent = l === sized.find((x) => x.words === star?.words) && T.accent;
+      layers.push({ ...base, font: 'inter', fontStyle: accent ? '900i' : '900', color: accent || T.big, box: 'none', stroke: false, tracking: -30, animIn: keyAnim, ...sh,
         // brilho na cor do destaque só em fundo escuro (no claro fica borrado)
         ...(accent && !T.light ? { shadow: true, shadowColor: accent, shadowOpacity: 0.6, shadowDist: 0, shadowBlur: 0.012 } : {}) });
     }
     y += h + gap;
   }
-  return { layers, lines: sized, star };
+  return { layers, lines: sized, star: star ? sized.find((x) => x.words === star.words) : null };
 }
 
 /**
@@ -208,7 +259,10 @@ export function sceneLayers(words, { theme, start, end, aspect }) {
  * @returns {{scenes:Array<{start,end,theme,words}>, layers:Array, elements:Array, sfx:Array<{t,type,volume,why}>}}
  * `elements`: objetos 3D e rabiscos (camadas de imagem por cima das cenas, ver sceneElements.js).
  */
-export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', amount = 'chave', existing = [], available = null } = {}) {
+export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', amount = 'chave', existing = [], available = null, backgrounds = null } = {}) {
+  if (theme === 'legenda') return clusterCaptionPlan({ segments, dur, aspect, existing });
+  // fundos próprios (mídias da pessoa): [{ ref, kind: 'image'|'video', ar: altura/largura, light }]
+  const custom = Array.isArray(backgrounds) && backgrounds.length ? backgrounds : null;
   const total = Number(dur) || 0;
   const chunks = phraseChunks(segments, amount === 'muitos' ? 7 : 8).filter((c) => c.length >= 2);
   const scored = chunks.map((c, i) => ({
@@ -239,12 +293,14 @@ export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', am
     const start = Math.max(0, c.s - 0.08);
     const end = Math.min(total || Infinity, next ? next.s - 0.12 : Infinity, c.e + 0.45);
     if (end - start < 0.6) return;
-    const th = theme === 'auto' ? ROTATION[scenes.length % ROTATION.length] : (THEME_LOOK[theme] ? theme : 'video');
-    const { layers: ls, lines, star } = sceneLayers(c.words, { theme: th, start, end, aspect });
+    const cb = custom ? custom[scenes.length % custom.length] : null;
+    // fundo próprio: as cores do texto saem da paleta clara ou escura, pelo brilho dele
+    const th = cb ? (cb.light ? 'branco' : 'escuro') : theme === 'auto' ? ROTATION[scenes.length % ROTATION.length] : (THEME_LOOK[theme] ? theme : 'video');
+    const { layers: ls, lines, star } = sceneLayers(c.words, { theme: th, start, end, aspect, index: scenes.length });
     scenes.push({ start: +start.toFixed(2), end: +end.toFixed(2), theme: th, words: c.words.length });
     layers.push(...ls.map((l) => ({ ...l, scene: scenes.length })));
     const look = THEME_LOOK[th] || THEME_LOOK.video;
-    const bg = sceneBackground(th, Math.max(0, start - 0.1), end, aspect);
+    const bg = cb ? customBackground(cb, Math.max(0, start - 0.1), end, aspect) : sceneBackground(th, Math.max(0, start - 0.1), end, aspect);
     if (bg) elements.push({ ...bg, scene: scenes.length });
     const el = sceneElements({ words: c.words, lines, star, theme: th, start, end, aspect, index: scenes.length - 1, available, tint: look.doodle, glass: look.glass === true });
     elements.push(...el.elements.map((e) => ({ ...e, scene: scenes.length })));
@@ -278,4 +334,93 @@ export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', am
     clean.push(s);
   }
   return { scenes, layers, elements, sfx: clean };
+}
+
+/**
+ * "Legenda em bloco": a fala inteira vira blocos tipográficos sobre o vídeo — a palavra-chave
+ * grande e grossa; as pequenas encaixadas em volta (as de antes em cima, alinhadas à esquerda
+ * da chave, ou ao lado na mesma linha; as de depois embaixo, alinhadas à direita); cada palavra
+ * entra desfocando no instante em que é falada e o bloco se monta aos poucos.
+ */
+export function clusterCaptionPlan({ segments, dur, aspect = 9 / 16, existing = [] } = {}) {
+  const total = Number(dur) || 0;
+  const chunks = phraseChunks(segments, 5).filter((c) => c.length);
+  const busy = (existing || []).filter((l) => Number.isFinite(Number(l.start)));
+  const scenes = [];
+  const layers = [];
+  const KEY_MAX = 0.078;
+  const SM = 0.026; // tamanho das palavras pequenas
+  const col = 0.66 * aspect; // largura máxima do bloco (fração da altura)
+  const sh = { shadow: true, shadowColor: '#000000', shadowOpacity: 0.55, shadowDist: 0.002, shadowAngle: 90, shadowBlur: 0.008 };
+  const wOf = (t, font, tr) => textWidthEm(t, font, tr);
+  const r4 = (v) => +Number(v).toFixed(4);
+  chunks.forEach((c, i) => {
+    const s0 = c[0].start;
+    const e0 = c[c.length - 1].end;
+    if (busy.some((l) => s0 < Number(l.end) && e0 > Number(l.start))) return;
+    const next = chunks[i + 1];
+    const start = Math.max(0, s0 - 0.04);
+    const end = Math.min(total || Infinity, next ? next[0].start - 0.05 : e0 + 0.6, e0 + 1.2);
+    if (end - start < 0.3) return;
+    // grupos: cada palavra-chave (ou número) com as pequenas de antes (pre) e, na última, as de depois (post)
+    // chaves: as 2 palavras mais fortes que não são de ligação (curtas também: "amor", "time")
+    const score = (w) => (isNum(w) ? 20 : SMALL.has(bare(w)) || bare(w).length < 3 ? -1 : (STRONG.test(bare(w)) ? 10 : 0) + bare(w).length);
+    const top = c.map((w, k) => [score(w), k]).filter(([v]) => v >= 0).sort((x, y) => y[0] - x[0]).slice(0, 2).map(([, k]) => k);
+    if (!top.length) top.push(c.reduce((b, w, k) => (clean(w).length > clean(c[b]).length ? k : b), 0));
+    const roles = c.map((w, k) => (top.includes(k) ? 'key' : 'small'));
+    const groups = [];
+    let pre = [];
+    c.forEach((w, k) => {
+      if (roles[k] === 'small') { pre.push(w); return; }
+      if (groups.length >= 2) { groups[groups.length - 1].post.push(...pre, w); pre = []; return; }
+      groups.push({ key: w, pre, post: [] });
+      pre = [];
+    });
+    if (pre.length) groups[groups.length - 1].post.push(...pre);
+    const txt = (ws) => ws.map(clean).join(' ');
+    // tamanho de cada chave: ocupa a coluna, com teto
+    for (const g of groups) {
+      g.kt = clean(g.key);
+      g.ks = Math.min(KEY_MAX, col / wOf(g.kt, 'inter-900', -40));
+      g.kw = wOf(g.kt, 'inter-900', -40) * g.ks;
+      g.pt = txt(g.pre);
+      g.pw = g.pt ? wOf(g.pt, 'inter-700', -10) * SM : 0;
+      g.ot = txt(g.post);
+      g.ow = g.ot ? wOf(g.ot, 'inter-700', -10) * SM : 0;
+      // pequenas de antes ao lado (mesma linha) quando a chave não é a primeira e elas são curtas
+      g.inline = groups.indexOf(g) > 0 && g.pt && g.pt.length <= 10 && g.pw + g.kw + 0.012 <= col;
+    }
+    // altura do bloco
+    const rowH = (g) => (g.pt && !g.inline ? SM * 1.05 : 0) + g.ks * 0.98 + (g.ot ? SM * 1.05 : 0);
+    const H = groups.reduce((a, g) => a + rowH(g), 0);
+    let y = 0.62 - H / 2;
+    const at = (w) => +Math.max(start, w.start - 0.03).toFixed(2);
+    const push = (text, x, yy, size, font, fontStyle, tr, w0) => layers.push({
+      text, x: r4(x), y: r4(yy), size: r4(size), font, fontStyle, tracking: tr, color: '#FFFFFF', align: 'center', box: 'none', stroke: false,
+      start: at(w0), end: +end.toFixed(2), animIn: 'palavras-desfoque', animOut: 'fade', scene: scenes.length + 1, ...sh,
+    });
+    for (const g of groups) {
+      const rowW = g.inline ? g.pw + 0.012 + g.kw : g.kw;
+      const left = 0.5 - rowW / aspect / 2; // borda esquerda da linha da chave (fração da largura)
+      if (g.pt && !g.inline) {
+        push(g.pt, left + g.pw / aspect / 2, y + SM * 0.52, SM, 'inter', '700', -10, g.pre[0]);
+        y += SM * 1.05;
+      }
+      const ky = y + g.ks * 0.49;
+      if (g.inline) {
+        push(g.pt, left + g.pw / aspect / 2, ky + g.ks * 0.18, SM, 'inter', '700', -10, g.pre[0]);
+        push(g.kt, left + (g.pw + 0.012 + g.kw / 2) / aspect, ky, g.ks, 'inter', '900', -40, g.key);
+      } else {
+        push(g.kt, 0.5, ky, g.ks, 'inter', '900', -40, g.key);
+      }
+      y += g.ks * 0.98;
+      if (g.ot) {
+        const right = 0.5 + rowW / aspect / 2;
+        push(g.ot, right - g.ow / aspect / 2, y + SM * 0.45, SM, 'inter', '700', -10, g.post[0]);
+        y += SM * 1.05;
+      }
+    }
+    scenes.push({ start: +start.toFixed(2), end: +end.toFixed(2), theme: 'legenda', words: c.length });
+  });
+  return { scenes, layers, elements: [], sfx: [] };
 }

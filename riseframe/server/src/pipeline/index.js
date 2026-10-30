@@ -29,6 +29,9 @@ import { captionCues, toSrt, toVtt, toTxt } from '../../../shared/captionExport.
 import { applySoundEffects, SFX_LIBRARY } from './sfx.js';
 import { kineticPlan } from '../../../shared/kinetic.js';
 import { elementFile } from './elements.js';
+import { vslPlan } from '../../../shared/vslPlan.js';
+import { applyVslCamera, applyLoudness } from './vsl.js';
+import { averageSubjectCenter } from './reframe.js';
 import { cleanTextLayers } from '../../../shared/textLayers.js';
 import { CAPTION_FONTS } from '../../../shared/captionStyle.js';
 import { transitionVf, motionTransitionVf, cutJoins } from './transitions.js';
@@ -157,15 +160,17 @@ function buildPlan(mode, options) {
       { key: 'frame', label: 'Reenquadrando o vídeo', weight: 8, enabled: (Number(options.personZoom) || 1) > 1.001 },
       { key: 'aspect', label: QUALITY_STAGE[options.quality] || 'Ajustando ao formato', weight: QUALITY_STAGE[options.quality] ? 12 : 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) || Boolean(QUALITY_STAGE[options.quality]) },
       { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
+      // Reel VSL: câmera tela cheia ↔ tela dividida (card do apresentador), gancho com glitch
+      { key: 'vsl', label: 'Montando o Reel VSL', weight: 12, enabled: options.vsl === true && mode !== 'render' },
       { key: 'vfx', label: 'Aplicando efeitos de vídeo', weight: 8, enabled: Array.isArray(options.fxMoments) && options.fxMoments.length > 0 },
-      { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: (Array.isArray(options.userMedia) && options.userMedia.some((m) => m?.above !== true)) || (options.kinetic === true && mode !== 'render') },
+      { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: (Array.isArray(options.userMedia) && options.userMedia.some((m) => m?.above !== true)) || ((options.kinetic === true || options.vsl === true) && mode !== 'render') },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
-      { key: 'texts', label: 'Colocando os textos', weight: 8, enabled: (Array.isArray(options.textLayers) && options.textLayers.length > 0) || (options.kinetic === true && mode !== 'render') },
+      { key: 'texts', label: 'Colocando os textos', weight: 8, enabled: (Array.isArray(options.textLayers) && options.textLayers.length > 0) || ((options.kinetic === true || options.vsl === true) && mode !== 'render') },
       // objetos 3D e rabiscos das cenas de motion: por cima das legendas e dos textos
-      { key: 'elements', label: 'Animando os elementos', weight: 8, enabled: (Array.isArray(options.userMedia) && options.userMedia.some((m) => m?.above === true)) || (options.kinetic === true && mode !== 'render') },
+      { key: 'elements', label: 'Animando os elementos', weight: 8, enabled: (Array.isArray(options.userMedia) && options.userMedia.some((m) => m?.above === true)) || ((options.kinetic === true || options.vsl === true) && mode !== 'render') },
       { key: 'headline', label: 'Colocando o título (headline)', weight: 6, enabled: Boolean(options.headline?.text) },
       { key: 'watermark', label: 'Aplicando o seu logo', weight: 6, enabled: Boolean(options.watermark?.file) },
-      { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true || (Array.isArray(options.sfxMoments) && options.sfxMoments.length > 0) || (options.kinetic === true && mode !== 'render') },
+      { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true || (Array.isArray(options.sfxMoments) && options.sfxMoments.length > 0) || ((options.kinetic === true || options.vsl === true) && mode !== 'render') },
       { key: 'color', label: 'Analisando as cores', weight: 3, enabled: (options.colorLook || 'teal-orange') !== 'none' || hasColorAdjust(options.colorAdjust) },
       { key: 'render', label: 'Renderização final', weight: 18, enabled: true },
     ].filter((s) => s.enabled);
@@ -591,6 +596,31 @@ export async function runPipeline(job, onUpdate = () => {}) {
   // 3y. Motion tipográfico escolhido no começo (modo automático, sem abrir a timeline): as
   // cenas saem da fala JÁ cortada (tempo final), com os sons e a legenda escondida durante
   // cada cena. No render da timeline elas já vêm prontas do editor (camadas de texto).
+  // 3y'. Reel VSL (modo automático): textos, objetos e sons saem da fala já cortada; a câmera
+  // é montada na etapa "vsl" (depois do formato final). Só para vídeo vertical 9:16.
+  let vsl = null;
+  if (options.vsl === true && mode !== 'render') {
+    const out = outputTarget(meta, { aspect: options.aspect });
+    const W = out?.w || meta.width || 1080;
+    const H = out?.h || meta.height || 1920;
+    if (Math.abs(W / H - 9 / 16) > 0.02) {
+      log.warn('Reel VSL é para vídeo vertical 9:16; mantendo a edição normal');
+    } else {
+      vsl = vslPlan({ segments: transcript.segments, dur: meta.duration, aspect: W / H, available: new Set(Object.keys(SFX_LIBRARY)) });
+      options.kinetic = false; // o VSL já é o motion deste vídeo
+      options.textLayers = cleanTextLayers([...(options.textLayers || []), ...vsl.layers], Object.keys(CAPTION_FONTS), 400);
+      options.sfxMoments = [...(options.sfxMoments || []), ...vsl.sfx];
+      const els = vsl.elements.map((e) => ({ ...e, file: elementFile(e.element) })).filter((e) => e.file);
+      if (els.length) options.userMedia = [...(options.userMedia || []), ...els];
+      // legenda curta (1 linha) e escondida na tela dividida, nas trocas e nos letreiros
+      if (options.captionLines == null) options.captionLines = 1;
+      if (options.captionMaxChars == null) options.captionMaxChars = 16;
+      const hid = (w) => vsl.hide.some((h) => (w.start + w.end) / 2 >= h.start && (w.start + w.end) / 2 <= h.end);
+      transcript = { ...transcript, segments: transcript.segments.map((sg) => (sg.words?.length ? { ...sg, words: sg.words.map((w) => (hid(w) ? { ...w, hidden: true } : w)) } : sg)) };
+      report.vsl = { splits: vsl.splits.length, punches: vsl.punches.length, texts: vsl.layers.length, elements: vsl.elements.length, sounds: vsl.sfx.length };
+    }
+  }
+
   if (options.kinetic === true && mode !== 'render') {
     const out = outputTarget(meta, { aspect: options.aspect });
     const W = out?.w || meta.width || 1080;
@@ -803,6 +833,16 @@ export async function runPipeline(job, onUpdate = () => {}) {
   };
   const transitionAtCuts = () => ['cuts', 'both'].includes(options.transitionAt);
   const transitionAtBroll = () => (options.transitionAt || 'broll') !== 'cuts';
+
+  // 5y. Reel VSL: câmera (punch, tela dividida com o card, gancho com glitch), no formato final.
+  if (has('vsl') && vsl) {
+    const st = enter('vsl');
+    const focus = await averageSubjectCenter(input).catch(() => null);
+    const r = await applyVslCamera(input, work, meta, vsl, focus, st.onProgress);
+    input = r.output;
+    st.record({ splits: vsl.splits.length, focus: focus ? focus.source : 'centro' });
+    st.onProgress(1);
+  }
 
   // 5z. Efeitos de vídeo nos momentos (P&B, retrô, desfoque…) — no vídeo e no B-roll,
   // ANTES das mídias por cima (logo, PiP), das legendas e dos textos: nenhum deles é
@@ -1043,6 +1083,13 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (manual.length) report.transitions = manual.length;
     const vf = [colorVf, tVf, ...mVf].filter(Boolean).join(',') || null;
     const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf: vf, reframe: aspectReframe, coverFile: options.cover?.intro ? coverFile : null }, st.onProgress);
+    // Reel VSL: áudio final a -14 LUFS (sem recodificar a imagem)
+    if (vsl) {
+      try {
+        const loud = await applyLoudness(r.output, work, await probeSummary(r.output));
+        if (loud.applied) await fs.promises.copyFile(loud.output, r.output);
+      } catch (err) { log.warn(`não deu para ajustar o volume final: ${err.message}`); }
+    }
     // Exportar só o vídeo (sem som) ou só o áudio (MP3), como no Premiere
     const streamsOut = await exportStreams(r.output, job, options.streams, meta)
       .catch((err) => { log.warn(`não deu para separar vídeo/áudio: ${err.message}`); return null; });

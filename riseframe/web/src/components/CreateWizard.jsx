@@ -23,7 +23,7 @@ const TASK_GROUPS = [
   ['Cortes e fala', ['cut', 'clean', 'short', 'moments']],
   ['Legendas', ['captions', 'highlight']],
   ['Imagem', ['reframe', 'color', 'zoom', 'broll']],
-  ['Som e destaques', ['audio', 'sfx', 'kinetic']],
+  ['Som e destaques', ['audio', 'sfx', 'kinetic', 'vsl']],
   ['Depois de criar', ['review']],
 ];
 // O "recomendado" liga só o essencial: corta o tempo morto, limpa a fala, legenda e corrige a cor.
@@ -57,7 +57,14 @@ function aiTasks({ options, mode, caps }) {
     { id: 'color', icon: 'palette', title: 'Corrigir luz e cor', desc: 'Acerta a cor e clareia vídeo escuro', on: (options.colorLook || 'auto') !== 'none', set: (v) => ({ colorLook: v ? 'auto' : 'none' }) },
     { id: 'zoom', icon: 'zap', title: 'Zoom nos momentos-chave', desc: 'Aproxima nas frases mais fortes', on: options.videoMotion === 'dynamic', set: (v) => ({ videoMotion: v ? 'dynamic' : 'none' }), off: notClips },
     { id: 'broll', icon: 'image', title: 'Imagens de apoio (B-roll)', desc: 'Ilustra o que você fala com imagens e vídeos', on: options.broll === true, set: (v) => ({ broll: v }), off: notClips || (!brollOk ? 'indisponível no servidor' : null) },
-    { id: 'kinetic', icon: 'sparkles', title: 'Motion tipográfico', desc: 'Frases animadas palavra por palavra, com sons', on: options.kinetic === true, set: (v) => ({ kinetic: v }), off: notClips },
+    { id: 'kinetic', icon: 'sparkles', title: 'Motion tipográfico', desc: 'Frases animadas palavra por palavra, com sons', on: options.kinetic === true, set: (v) => ({ kinetic: v, ...(v ? { vsl: false } : {}) }), off: notClips },
+    {
+      id: 'vsl', icon: 'film', title: 'Reel VSL (interface animada)',
+      desc: 'Tela cheia com zoom ↔ tela dividida com painel de vidro, letreiros nas frases fortes e som enxuto (vertical 9:16)',
+      on: options.vsl === true,
+      set: (v) => ({ vsl: v, ...(v ? { aspect: '9:16', kinetic: false } : {}) }),
+      off: notClips || (mode === 'editor' ? 'por enquanto só no automático' : null),
+    },
     { id: 'sfx', icon: 'volume', title: 'Efeitos sonoros', desc: 'Teclas na legenda e whoosh nas transições', on: options.soundEffects === true, set: (v) => ({ soundEffects: v }), off: notClips },
     { id: 'short', icon: 'zap', title: 'Transformar em um vídeo curto', desc: 'A IA monta UM vídeo com o essencial: gancho, ideia principal e conclusão', on: Number(options.shortTarget) > 0, set: (v) => ({ shortTarget: v ? 60 : 0 }), off: notClips },
     { id: 'moments', icon: 'film', title: 'Detectar melhores momentos', desc: 'Gera vários cortes curtos com os trechos mais fortes', on: isClips, mode: (v) => (v ? 'clips' : 'auto') },

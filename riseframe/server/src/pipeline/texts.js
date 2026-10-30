@@ -130,6 +130,8 @@ export function buildTextAss(rawLayers, meta) {
     const size = Math.max(8, Math.round(em * FM.cell));
     const bold = f.bold === false && !L.bold ? 0 : -1; // negrito falso = o do libass
     const sp = (L.tracking / 1000) * em; // espaçamento entre letras (px)
+    // o libass ignora o Spacing do estilo: o espaçamento vai em cada evento (\fsp), como na prévia
+    const fsp = sp ? `\\fsp${sp.toFixed(2)}` : '';
     // contorno: "fora" = a borda inteira para fora da letra; "centro" = metade
     const bord = L.stroke ? +(L.strokeW * H * (L.strokePos === 'center' ? 0.5 : 1)).toFixed(2) : 0;
     styles.push(`Style: T${i},${f.family},${size},${assColor(L.fillColor)},${assColor(L.fillColor)},${assColor(L.strokeColor)},&H00000000,${bold},${L.italic ? -1 : 0},${L.underline ? -1 : 0},0,100,100,${sp ? sp.toFixed(2) : 0},0,1,${bord},0,5,0,0,0,1`);
@@ -202,7 +204,7 @@ export function buildTextAss(rawLayers, meta) {
         const blur = (L.shadowBlur * H).toFixed(1);
         const sa = alpha(L.shadowOpacity * L.opacity);
         if (shape) events.push(`Dialogue: ${i * 4},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${tagsAt(cx + sh.dx, cy + sh.dy, [org[0] + sh.dx, org[1] + sh.dy])}\\bord0\\shad0\\blur${blur}\\1c${bgr(L.shadowColor)}&\\1a${sa}\\p1}${shape}`);
-        else events.push(`Dialogue: ${i * 4},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${tagsAt(cx + sh.dx, ty + sh.dy, [org[0] + sh.dx, org[1] + sh.dy])}\\blur${blur}\\1c${bgr(L.shadowColor)}&\\3c${bgr(L.shadowColor)}&\\1a${sa}\\3a${sa}}${plan ? revealAss(j, sa, sa) : lineAss(line)}`);
+        else events.push(`Dialogue: ${i * 4},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${fsp}${tagsAt(cx + sh.dx, ty + sh.dy, [org[0] + sh.dx, org[1] + sh.dy])}\\blur${blur}\\1c${bgr(L.shadowColor)}&\\3c${bgr(L.shadowColor)}&\\1a${sa}\\3a${sa}}${plan ? revealAss(j, sa, sa) : lineAss(line)}`);
       }
       if (shape) {
         events.push(`Dialogue: ${i * 4 + 1},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${tagsAt(cx, cy, org)}\\bord0\\shad0\\1c${bgr(L.bgColor)}&\\1a${alpha(L.bgOpacity * L.opacity)}\\p1}${shape}`);
@@ -236,25 +238,28 @@ export function buildTextAss(rawLayers, meta) {
         const lx = cx - lineW(line) / 2;
         let pre = '';
         words[j].forEach((w) => {
+          // o espaço pode vir grudado no começo da palavra (" dinheiro"): conta antes dela
+          const lead = (w.u.match(/^\s*/) || [''])[0];
+          pre += lead;
           const wText = clean(w.u);
           const wW = FM.width(wText) * em + sp * [...wText].length;
           const cxw = lx + FM.width(pre) * em + sp * [...pre].length + wW / 2;
-          pre += w.u;
+          pre += w.u.slice(lead.length);
           if (w.t == null || !w.u.trim()) return;
           const fillC = bgr(L.fillColor);
           const outC = L.stroke ? bgr(L.strokeColor) : fillC;
           if (WORD_SAMPLED.includes(l.animIn)) {
             for (const st of wordSegments(l.animIn, w.d, 10, l)) {
               const t1 = st.t1 == null ? l.end : l.start + w.t + st.t1;
-              events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + w.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${letterPose(st.f, Math.round(cxw), Math.round(ty), H, W, fillC, outC)}}${wText}`);
+              events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + w.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${fsp}${letterPose(st.f, Math.round(cxw), Math.round(ty), H, W, fillC, outC)}}${wText}`);
             }
           } else {
-            events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + w.t)},${assTime(l.end)},T${i},,0,0,0,,{${letterTags(l.animIn.replace('palavras-', 'letras-'), Math.round(cxw), Math.round(ty), w.d * 1000, Math.round(H * 0.06), fillC, outC)}}${wText}`);
+            events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + w.t)},${assTime(l.end)},T${i},,0,0,0,,{${fsp}${letterTags(l.animIn.replace('palavras-', 'letras-'), Math.round(cxw), Math.round(ty), w.d * 1000, Math.round(H * 0.06), fillC, outC)}}${wText}`);
           }
         });
         return;
       }
-      events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${tagsAt(cx, ty, org)}\\1a${fillA}\\3a${alpha(L.opacity)}}${plan ? revealAss(j, fillA, alpha(L.opacity)) : lineAss(line)}`);
+      events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${fsp}${tagsAt(cx, ty, org)}\\1a${fillA}\\3a${alpha(L.opacity)}}${plan ? revealAss(j, fillA, alpha(L.opacity)) : lineAss(line)}`);
     });
   });
   styles.push('Style: TBox,Arial,20,&H00000000,&H00000000,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1');
