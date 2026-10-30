@@ -4,6 +4,7 @@ import { runFfmpeg, x264Fast, probeSummary } from './ffmpeg.js';
 import { makeLogger } from '../logger.js';
 import { cleanLayerKf, kfExpr, kfMax } from '../../../shared/layerKeys.js';
 import { cleanEase, easeExpr } from '../../../shared/easing.js';
+import { ELEMENT_ANIMS, elemMotionExpr } from '../../../shared/elementMotion.js';
 
 const log = makeLogger('usermedia');
 
@@ -63,6 +64,15 @@ export const LAYER_ANIMATIONS = {
   'slide-right': 'Deslizar →',
   'slide-up': 'Deslizar ↑',
   'slide-down': 'Deslizar ↓',
+  bounce: 'Quicar (mola)',
+  elastic: 'Elástico',
+  grow: 'Crescer do zero',
+  drop: 'Cair de cima',
+  'whip-left': 'Chicote da esquerda',
+  'whip-right': 'Chicote da direita',
+  'whip-up': 'Chicote de baixo',
+  'whip-down': 'Chicote de cima',
+  spin: 'Girar entrando',
 };
 
 /** Modos de mesclagem (só tela cheia). Cor neutra = a que não altera o vídeo de baixo. */
@@ -75,17 +85,36 @@ export const BLEND_MODES = {
   darken: { label: 'Escurecer', neutral: 'white' },
 };
 
-const ZOOMS = new Set(['zoom', 'pop']);
+const ZOOMS = new Set(['zoom', 'pop', 'bounce', 'elastic', 'grow', 'spin']);
 const SLIDES = { 'slide-left': [1, 0], 'slide-right': [-1, 0], 'slide-up': [0, 1], 'slide-down': [0, -1] };
+const WHIPS = { 'whip-left': [-1, 0], 'whip-right': [1, 0], 'whip-up': [0, -1], 'whip-down': [0, 1] };
 
 const f3 = (n) => Number(n).toFixed(3);
+const f4 = (n) => Number(n).toFixed(4);
 /** Progresso 0→1 da entrada e 1→0 da saída (expressões em t). */
 const progIn = (m, a) => `min(1,max(0,(t-${f3(m.start)})/${f3(a)}))`;
 const progOut = (m, a) => `min(1,max(0,(${f3(m.end)}-t)/${f3(a)}))`;
+
+/** easeOutBounce em expressão FFmpeg */
+const bounceExpr = (p) =>
+  `if(lt(${p},0.3636),7.5625*${p}*${p},if(lt(${p},0.7273),7.5625*(${p}-0.5455)*(${p}-0.5455)+0.75,if(lt(${p},0.9091),7.5625*(${p}-0.8182)*(${p}-0.8182)+0.9375,7.5625*(${p}-0.9545)*(${p}-0.9545)+0.984375)))`;
+/** easeOutBack em expressão FFmpeg (s=2.5 para whip) */
+const backExpr = (p, s = 1.70158) => {
+  const c = s + 1;
+  return `(1+${f4(c)}*(${p}-1)*(${p}-1)*(${p}-1)+${f4(s)}*(${p}-1)*(${p}-1))`;
+};
+/** easeOutElastic em expressão FFmpeg (simplificado com 3 bounces) */
+const elasticExpr = (p) =>
+  `if(lte(${p},0),0,if(gte(${p},1),1,pow(2,-10*${p})*sin((${p}*10-0.75)*2.094)+1))`;
+
 /** Fator de escala da animação: zoom cresce de 60%; pop passa de 112% e assenta em 100%. */
 function scaleFactor(anim, p, ease) {
   if (anim === 'zoom') return `(0.6+0.4*${ease(p)})`;
   if (anim === 'pop') return `max(0.05,if(lt(${p},0.7),1.12*${p}/0.7,1.12-0.12*(${p}-0.7)/0.3))`;
+  if (anim === 'bounce') return `max(0.05,${bounceExpr(p)})`;
+  if (anim === 'elastic') return `max(0.05,${elasticExpr(p)})`;
+  if (anim === 'grow') return `max(0.05,${ease(p)})`;
+  if (anim === 'spin') return `max(0.05,${ease(p)})`;
   return null;
 }
 
@@ -152,14 +181,18 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
       rgba = true;
     }
     chain += `,setpts=PTS-STARTPTS+${f3(m.start)}/TB`;
-    // Camada animada (quadros-chave, zoom/pop): um quadro da camada para cada quadro do vídeo.
-    // Sem isso a imagem (25 qps) mudava de tamanho/giro em outro ritmo e o movimento saía aos
-    // trancos, parando e pulando.
-    if (kf || scaleFactor(animIn, pi, ease) || scaleFactor(animOut, po, ease)) chain += `,fps=${f3(fps)}`;
+    // Movimento contínuo (float, pulse, wiggle…): expressões por quadro
+    const motion = m.motion && m.motion !== 'none' ? m.motion : null;
+    const motionOpts = { speed: clamp(m.motionSpeed, 0.2, 5, 1), amp: clamp(m.motionAmp, 0.1, 3, 1) };
+    const motionExpr = motion ? elemMotionExpr(motion, `(t-${f3(m.start)})`, motionOpts) : {};
+
+    // Camada animada (quadros-chave, zoom/pop, motion): um quadro da camada para cada quadro do vídeo.
+    if (kf || scaleFactor(animIn, pi, ease) || scaleFactor(animOut, po, ease) || motion) chain += `,fps=${f3(fps)}`;
 
     // Transparência: opacidade fixa (no modo normal) + fades com alpha.
+    const FADE_IN_ANIMS = new Set(['fade', 'bounce', 'elastic', 'grow', 'drop', 'whip-left', 'whip-right', 'whip-up', 'whip-down', 'spin', 'blur-in']);
     const fades = [];
-    if (animIn === 'fade') fades.push(`fade=t=in:st=${f3(m.start)}:d=${f3(a)}:alpha=1`);
+    if (FADE_IN_ANIMS.has(animIn)) fades.push(`fade=t=in:st=${f3(m.start)}:d=${f3(Math.min(a, a * 0.35))}:alpha=1`);
     if (animOut === 'fade') fades.push(`fade=t=out:st=${f3(m.end - a)}:d=${f3(a)}:alpha=1`);
     if (fades.length || (op < 0.999 && blend === 'normal') || kf?.opacity) {
       if (!rgba) chain += ',format=rgba';
@@ -172,21 +205,28 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     }
     // Giro (Rotation): os cantos ficam transparentes; no PiP a caixa cresce para caber.
     const rot = clamp(m.rot, -180, 180, 0);
-    const rotating = Boolean(kf?.rot) || Math.abs(rot) > 0.05;
+    const hasSpinIn = animIn === 'spin';
+    const hasMotionRot = Boolean(motionExpr.rot);
+    const rotating = Boolean(kf?.rot) || Math.abs(rot) > 0.05 || hasSpinIn || hasMotionRot;
     if (kf?.rot) {
-      // giro animado: caixa fixa do tamanho da diagonal (cabe em qualquer ângulo)
       const box = m.mode === 'pip' ? `:ow='hypot(iw,ih)':oh='hypot(iw,ih)'` : '';
       chain += `${rgba ? '' : ',format=rgba'},rotate=a='(${kfExpr(kf.rot, { start: m.start })})*PI/180'${box}:c=black@0`;
-    } else if (Math.abs(rot) > 0.05) {
-      const rad = f3((rot * Math.PI) / 180);
-      chain += `${rgba ? '' : ',format=rgba'},rotate=${rad}${m.mode === 'pip' ? `:ow=rotw(${rad}):oh=roth(${rad})` : ''}:c=black@0`;
+    } else if (hasSpinIn || hasMotionRot || Math.abs(rot) > 0.05) {
+      const rotParts = [];
+      if (Math.abs(rot) > 0.05) rotParts.push(f3((rot * Math.PI) / 180));
+      if (hasSpinIn) rotParts.push(`(1-${ease(pi)})*${f3(2 * Math.PI)}`);
+      if (hasMotionRot) rotParts.push(motionExpr.rot);
+      const rotExpr = rotParts.join('+');
+      const box = m.mode === 'pip' ? `:ow='hypot(iw,ih)':oh='hypot(iw,ih)'` : '';
+      chain += `${rgba ? '' : ',format=rgba'},rotate=a='${rotExpr}'${box}:c=black@0`;
     }
 
-    // Escala animada (zoom/pop), por quadro.
+    // Escala animada (zoom/pop/bounce/elastic/grow + motion pulse/breathe), por quadro.
     const sIn = scaleFactor(animIn, pi, ease);
     const sOut = scaleFactor(animOut, po, ease);
     const sKf = kf?.scale ? `(${kfExpr(kf.scale, { start: m.start })})/${f3(scaleBase)}` : null;
-    const S = [sIn, sOut, sKf].filter(Boolean).join('*');
+    const sMotion = motionExpr.scale || null;
+    const S = [sIn, sOut, sKf, sMotion].filter(Boolean).join('*');
     if (S) {
       // girando (caixa maior que a base) ou com escala animada: parte do tamanho que chega
       const base = rotating || sKf ? 'iw' : w0;
@@ -227,10 +267,20 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     }
     if (SLIDES[animOut]) {
       const [sx, sy] = SLIDES[animOut];
-      // sai na direção do movimento (deslizar ← sai pela esquerda)
       if (sx) dx.push(`${-sx}*W*(1-${ease(po)})`);
       if (sy) dy.push(`${-sy}*H*(1-${ease(po)})`);
     }
+    // Chicote (whip): desliza com overshoot (backExpr) a partir de fora da tela
+    if (WHIPS[animIn]) {
+      const [wx, wy] = WHIPS[animIn];
+      if (wx) dx.push(`${wx}*W*(1-${backExpr(pi, 2.5)})`);
+      if (wy) dy.push(`${wy}*H*(1-${backExpr(pi, 2.5)})`);
+    }
+    // Drop: cai de cima com bounce
+    if (animIn === 'drop') dy.push(`-H*0.5*(1-${bounceExpr(pi)})`);
+    // Movimento contínuo (float, wiggle, drift…)
+    if (motionExpr.dx) dx.push(`${motionExpr.dx}*${W}`);
+    if (motionExpr.dy) dy.push(`${motionExpr.dy}*${H}`);
     if (dx.length) x = `${x}+${dx.join('+')}`;
     if (dy.length) y = `${y}+${dy.join('+')}`;
     const win = `enable='between(t,${f3(m.start)},${f3(m.end)})'`;

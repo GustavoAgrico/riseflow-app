@@ -35,6 +35,7 @@ import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById, fontStyles } from '../
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 import { captionCues, toSrt, toVtt, toTxt, skipMapper } from '../../../shared/captionExport.js';
 import { layerAt, upsertKey, shiftKf, KF_INTERPS, kfInterpOf, withInterp, cleanVolKeys, volDbAt, VOL_DB_MIN, VOL_DB_MAX } from '../../../shared/layerKeys.js';
+import { ELEMENT_ANIMS, ELEMENT_MOTIONS, elemAnimFrame, elemMotionAt, DECORATIVE_STICKERS, STICKER_CATEGORIES, ELEMENT_PRESETS } from '../../../shared/elementMotion.js';
 
 // Tempo no formato do player: 00:12
 // Timecode como no Premiere (mm:ss:quadros, 30 fps): 00:56:23
@@ -2960,6 +2961,35 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setMediaErr(err.message || 'falha ao criar o sticker');
     }
   }
+  async function addDecorativeSticker(st, presetMotion) {
+    try {
+      const c = document.createElement('canvas');
+      c.width = 512; c.height = 512;
+      const g = c.getContext('2d');
+      const img = new Image();
+      const svgBlob = new Blob([st.svg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(svgBlob);
+      await new Promise((r, rej) => { img.onload = r; img.onerror = rej; img.src = url; });
+      const aspect = img.naturalWidth / img.naturalHeight;
+      let dw = 400, dh = 400;
+      if (aspect > 1) dh = 400 / aspect; else dw = 400 * aspect;
+      g.drawImage(img, (512 - dw) / 2, (512 - dh) / 2, dw, dh);
+      URL.revokeObjectURL(url);
+      const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+      if (!blob) throw new Error('falha ao criar o sticker');
+      const file = new File([blob], `element-${st.id}.png`, { type: 'image/png' });
+      const defaults = { mode: 'pip', scale: 0.22, cx: 0.5, cy: 0.42, duration: 3, animIn: 'pop', animOut: 'fade' };
+      if (presetMotion) {
+        defaults.animIn = presetMotion.animIn || 'pop';
+        defaults.motion = presetMotion.motion || 'none';
+        defaults.motionSpeed = 1;
+        defaults.motionAmp = presetMotion.motionAmp || 1;
+      }
+      await onPickMedia({ target: { files: [file], value: '' } }, defaults);
+    } catch (err) {
+      setMediaErr(err.message || 'falha ao criar o elemento');
+    }
+  }
   const updateMedia = (key, patch) => setMedia((prev) => prev.map((m) => (m.key === key ? { ...m, ...patch } : m)));
   /**
    * Muda propriedades de uma camada como no Premiere: a que tem quadros-chave (cronômetro
@@ -3634,6 +3664,40 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <button key={st.id} onClick={() => addSticker(st)} disabled={mediaBusy} title={st.label} aria-label={`Sticker ${st.label}`}
               style={{ height: 42, fontSize: 22, borderRadius: 9, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', lineHeight: 1, cursor: mediaBusy ? 'wait' : 'pointer', padding: 0 }}>{st.ch}</button>
           ))}
+        </div>
+      </div>
+      <div style={{ display: 'grid', gap: 8, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+        <b style={{ fontSize: 13.5 }}>Elementos decorativos</b>
+        <span style={{ fontSize: 11, color: C.faint }}>formas, setas e linhas com animação · clique para adicionar</span>
+        {STICKER_CATEGORIES.map((cat) => (
+          <div key={cat.id}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 4 }}>{cat.label}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(48px, 1fr))', gap: 6 }}>
+              {DECORATIVE_STICKERS.filter((s) => s.cat === cat.id).map((st) => (
+                <button key={st.id} onClick={() => addDecorativeSticker(st)} disabled={mediaBusy} title={st.label}
+                  style={{ width: 48, height: 48, borderRadius: 9, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.06)', cursor: mediaBusy ? 'wait' : 'pointer', padding: 4, display: 'grid', placeItems: 'center' }}>
+                  <div style={{ width: 36, height: 36 }} dangerouslySetInnerHTML={{ __html: st.svg }} />
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gap: 8, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+        <b style={{ fontSize: 13.5 }}>Presets de animação</b>
+        <span style={{ fontSize: 11, color: C.faint }}>elementos com movimento pré-configurado</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
+          {ELEMENT_PRESETS.map((pr) => {
+            const st = DECORATIVE_STICKERS.find((s) => s.id === pr.sticker);
+            if (!st) return null;
+            return (
+              <button key={pr.id} onClick={() => addDecorativeSticker(st, pr)} disabled={mediaBusy} title={pr.label}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 10, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', cursor: mediaBusy ? 'wait' : 'pointer', color: C.text, fontFamily: 'inherit', fontSize: 12, fontWeight: 600 }}>
+                <div style={{ width: 28, height: 28, flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: st.svg }} />
+                {pr.label}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -8843,6 +8907,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                                 {(m.animIn || 'none') !== 'none' || (m.animOut || 'none') !== 'none' ? <CapRow label="Curva"><Sel value={m.animEase || 'out'} opts={catalog.layerEases || []} onChange={(v) => updateMedia(m.key, { animEase: v })} /></CapRow> : null}
                               </div>
                             )}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 6 }}>
+                              <CapRow label="Movimento"><Sel value={m.motion || 'none'} opts={Object.entries(ELEMENT_MOTIONS).map(([k, v]) => ({ id: k, label: v }))} onChange={(v) => updateMedia(m.key, { motion: v })} /></CapRow>
+                              {m.motion && m.motion !== 'none' && <>
+                                <CapRow label="Vel."><ScrubNum value={m.motionSpeed ?? 1} decimals={1} step={0.1} min={0.2} max={5} onChange={(v) => updateMedia(m.key, { motionSpeed: v })} /></CapRow>
+                                <CapRow label="Ampl."><ScrubNum value={m.motionAmp ?? 1} decimals={1} step={0.1} min={0.1} max={3} onChange={(v) => updateMedia(m.key, { motionAmp: v })} /></CapRow>
+                              </>}
+                            </div>
                             {catalog?.blendModes && m.mode !== 'pip' && (
                               <div style={{ marginTop: 6 }}>
                                 <CapRow label="Mesclagem"><Sel value={m.blend || 'normal'} opts={catalog.blendModes} onChange={(v) => updateMedia(m.key, { blend: v })} /></CapRow>
@@ -10138,7 +10209,7 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
   }, []);
   // Camada com quadros-chave: tocando, o tempo vem do <video> a cada quadro (o `cur` do
   // editor só muda umas 4 vezes por segundo — a animação ia aos pulos na prévia).
-  const animated = part !== 'texts' && (media || []).some((m) => m.kf);
+  const animated = part !== 'texts' && (media || []).some((m) => m.kf || (m.motion && m.motion !== 'none'));
   const [liveT, setLiveT] = useState(null);
   useEffect(() => {
     if (!animated) { setLiveT(null); return undefined; }
@@ -10189,10 +10260,29 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
         const cx = m.cx ?? ((box.w - w) * (m.px ?? 0.62) + w / 2) / box.w;
         const cy = m.cy ?? ((box.h - h) * (m.py ?? 0.06) + h / 2) / box.h;
         const on = editable && selMedia === m.key;
+        let moDx = 0, moDy = 0, moScale = 1, moRot = 0, moAlpha = 1;
+        if (m.motion && m.motion !== 'none') {
+          const tRel = Math.max(0, T - m.start);
+          const mo = elemMotionAt(m.motion, tRel, { speed: m.motionSpeed ?? 1, amp: m.motionAmp ?? 1 });
+          moDx = (mo.dx || 0) * box.w; moDy = (mo.dy || 0) * box.h;
+          moScale = mo.scale || 1; moRot = mo.rot || 0; moAlpha = mo.alpha ?? 1;
+        }
+        let anScale = 1, anAlpha = 1, anDx = 0, anDy = 0, anRot = 0;
+        const animDur = 0.4;
+        if (m.animIn && m.animIn !== 'none' && m.animIn !== 'fade' && m.animIn !== 'zoom' && m.animIn !== 'pop' && (T - m.start) < animDur) {
+          const p = Math.min(1, Math.max(0, (T - m.start) / animDur));
+          const f = elemAnimFrame(m.animIn, p);
+          anScale = f.scale; anAlpha = f.alpha; anDx = (f.dx || 0) * box.w; anDy = (f.dy || 0) * box.h; anRot = f.rot || 0;
+        }
+        const totalRot = (Number(m.rot) || 0) + moRot + anRot;
+        const totalOpacity = (m.opacity ?? 1) * moAlpha * anAlpha;
+        const xforms = [];
+        if (Math.abs(totalRot) > 0.05) xforms.push(`rotate(${totalRot}deg)`);
+        if (Math.abs(moScale * anScale - 1) > 0.005) xforms.push(`scale(${(moScale * anScale).toFixed(3)})`);
         return (
           <div key={m.key} onPointerDown={(e) => start(e, { kind: 'move', key: m.key, cx, cy })}
             title={editable ? 'Arraste para posicionar · puxe o canto para mudar o tamanho' : undefined}
-            style={{ position: 'absolute', left: cx * box.w - w / 2, top: cy * box.h - h / 2, width: w, height: h, ...layerRot(m), opacity: m.opacity ?? 1, pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: on ? '2px solid #22D3EE' : editable ? '1px dashed rgba(255,255,255,0.6)' : 'none' }}>
+            style={{ position: 'absolute', left: cx * box.w - w / 2 + moDx + anDx, top: cy * box.h - h / 2 + moDy + anDy, width: w, height: h, transform: xforms.length ? xforms.join(' ') : undefined, opacity: totalOpacity, pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: on ? '2px solid #22D3EE' : editable ? '1px dashed rgba(255,255,255,0.6)' : 'none' }}>
             {el({ width: '100%', height: '100%', objectFit: 'contain', display: 'block' })}
             {editable && ['nw', 'ne', 'sw', 'se'].map((c) => (
               <div key={c} onPointerDown={(e) => start(e, { kind: 'resize', key: m.key, w0: w, cx, cy, dir: c })}
