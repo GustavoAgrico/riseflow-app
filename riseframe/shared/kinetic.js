@@ -10,6 +10,7 @@
 
 import { emphasisScore } from './keyMoments.js';
 import { premiumSfx } from './autoMoments.js';
+import { sceneElements } from './sceneElements.js';
 
 export const KINETIC_THEMES = {
   auto: 'Alternar (como a referência)',
@@ -93,8 +94,8 @@ export function composeLines(words) {
 
 // Aparência de cada tema: fundo (formas) e cores das palavras.
 const THEME_LOOK = {
-  papel: { big: '#141414', small: '#5A5A5A', num: '#FFFFFF', numBg: '#111111', shadow: false, accent: null },
-  holofote: { big: '#121212', small: '#4A4A4A', num: '#FFFFFF', numBg: '#111111', shadow: false, accent: null },
+  papel: { big: '#141414', small: '#5A5A5A', num: '#FFFFFF', numBg: '#111111', shadow: false, accent: '#FF5A1F' },
+  holofote: { big: '#121212', small: '#4A4A4A', num: '#FFFFFF', numBg: '#111111', shadow: false, accent: '#FF5A1F' },
   cinema: { big: '#FFFFFF', small: '#B9B9B9', num: '#0B0B0B', numBg: '#FF7A1A', shadow: true, shadowColor: '#FF7A1A', accent: '#FF9A4D' },
   video: { big: '#FFFFFF', small: '#F2F2F2', num: '#111111', numBg: '#FFFFFF', shadow: true, shadowColor: '#000000', accent: '#4DA3FF' },
   // papel milimetrado com tinta preta e marca-texto amarelo (como o estilo de referência)
@@ -153,9 +154,11 @@ export function sceneLayers(words, { theme, start, end, aspect }) {
   const layers = sceneBackdrop(theme, +(start - 0.1).toFixed(2), end, aspect);
   // a palavra mais forte da cena ganha a cor de destaque do tema (como o "ONE MORE" azul)
   const keys = sized.filter((l) => l.role === 'key');
-  const star = keys.length >= 2 ? keys.reduce((a, b) => (STRONG.test(b.text) || b.text.length > a.text.length ? b : a)) : null;
+  const star = keys.length ? keys.reduce((a, b) => (STRONG.test(b.text) || b.text.length > a.text.length ? b : a)) : null;
   for (const l of sized) {
     const h = hOf(l);
+    l.y = +(y + h / 2).toFixed(4);
+    l.h = +h.toFixed(4);
     const at = Math.max(start, l.words[0].start - 0.04);
     const base = { text: l.text, x: 0.5, y: +(y + h / 2).toFixed(4), size: l.size, start: +at.toFixed(2), end: +end.toFixed(2), align: 'center', animOut: 'fade' };
     const sh = T.shadow ? { shadow: true, shadowColor: T.shadowColor, shadowOpacity: theme === 'cinema' ? 0.55 : 0.7, shadowDist: 0, shadowBlur: theme === 'cinema' ? 0.01 : 0.006 } : {};
@@ -165,7 +168,8 @@ export function sceneLayers(words, { theme, start, end, aspect }) {
       layers.push({ ...base, font: 'inter', fontStyle: '900', color: T.num, box: 'box', boxColor: T.numBg, bg: true, bgColor: T.numBg, bgMode: 'lines', pad: 0.16, radius: 0.08, stroke: false, tracking: -20, animIn: 'pop' });
     } else {
       const accent = l === star && T.accent;
-      // palavras-chave: as letras pulam ou sobem, alternando (o que faz a tipografia "mexer")
+      // palavras-chave: as letras pulam ou sobem, alternando (o que faz a tipografia "mexer");
+      // a principal ganha a cor de destaque (e o rabisco/objeto da cena, em sceneElements)
       // marca-texto (tema grade): a palavra-chave ganha uma tarja amarela atrás
       const mark = T.mark ? { bg: true, bgColor: T.mark, bgMode: 'lines', pad: 0.12, radius: 0.05 } : {};
       layers.push({ ...base, font: 'inter', fontStyle: accent ? '900i' : '900', color: accent || T.big, box: T.mark ? 'box' : 'none', ...mark, stroke: false, tracking: -30, animIn: sized.indexOf(l) % 3 === 1 ? 'letras-subir' : 'letras-pop', ...sh,
@@ -178,7 +182,8 @@ export function sceneLayers(words, { theme, start, end, aspect }) {
 
 /**
  * Escolhe as cenas e devolve as camadas e os sons.
- * @returns {{scenes:Array<{start,end,theme,words}>, layers:Array, sfx:Array<{t,type,volume,why}>}}
+ * @returns {{scenes:Array<{start,end,theme,words}>, layers:Array, elements:Array, sfx:Array<{t,type,volume,why}>}}
+ * `elements`: objetos 3D e rabiscos (camadas de imagem por cima das cenas, ver sceneElements.js).
  */
 export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', amount = 'chave', existing = [], available = null } = {}) {
   const total = Number(dur) || 0;
@@ -204,6 +209,7 @@ export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', am
   picked.sort((a, b) => a.s - b.s);
   const scenes = [];
   const layers = [];
+  const elements = [];
   const sfx = [];
   picked.forEach((c, i) => {
     const next = picked[i + 1];
@@ -214,6 +220,9 @@ export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', am
     const { layers: ls, lines, star } = sceneLayers(c.words, { theme: th, start, end, aspect });
     scenes.push({ start: +start.toFixed(2), end: +end.toFixed(2), theme: th, words: c.words.length });
     layers.push(...ls.map((l) => ({ ...l, scene: scenes.length })));
+    const el = sceneElements({ words: c.words, lines, star, theme: th, start, end, aspect, index: scenes.length - 1, available });
+    elements.push(...el.elements.map((e) => ({ ...e, scene: scenes.length })));
+    sfx.push(...el.sfx);
     // sons premium: passagem de ar ao abrir a cena de fundo, batida grave nas palavras
     // grandes, tecla discreta nas pequenas, saída suave ao voltar para o vídeo
     const add = (t, kind, why, vol = 1) => {
@@ -242,5 +251,5 @@ export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', am
     if (last && s.t - last.t < 0.16) { if (s.volume > last.volume) clean[clean.length - 1] = s; continue; }
     clean.push(s);
   }
-  return { scenes, layers, sfx: clean };
+  return { scenes, layers, elements, sfx: clean };
 }
