@@ -11,11 +11,19 @@ export const TEXT_ANIMS_IN = {
   'letras-desfoque-subir': 'Letras subindo do desfoque', 'letras-mola': 'Letras com mola (passa do ponto)',
   'letras-queda': 'Letras caindo e quicando', 'letras-escala': 'Letras assentando (zoom suave)',
   'letras-empurrao': 'Letras empurradas (quase sem inércia)',
+  'palavras-subir': 'Palavras subindo', 'palavras-pop': 'Palavras pulando', 'palavras-desfoque': 'Palavras do desfoque',
+  'palavras-desfoque-subir': 'Palavras subindo do desfoque', 'palavras-mola': 'Palavras com mola',
+  'palavras-queda': 'Palavras caindo', 'palavras-escala': 'Palavras assentando',
+  'palavras-empurrao': 'Palavras empurradas',
 };
 /** Animações por letra: cada letra entra no seu tempo (escalonado), como os motion de agência. */
 /** Animações por letra que são amostradas em passos no render (curva com overshoot ou desfoque). */
 export const LETTER_SAMPLED = ['letras-desfoque-subir', 'letras-mola', 'letras-queda', 'letras-escala', 'letras-empurrao'];
 export const LETTER_ANIMS = ['letras-subir', 'letras-pop', 'letras-desfoque', ...LETTER_SAMPLED];
+/** Animações por palavra: cada palavra entra no seu tempo, mesmas curvas que as letras. */
+export const WORD_SAMPLED = ['palavras-desfoque-subir', 'palavras-mola', 'palavras-queda', 'palavras-escala', 'palavras-empurrao'];
+export const WORD_ANIMS = ['palavras-subir', 'palavras-pop', 'palavras-desfoque', ...WORD_SAMPLED];
+const wordToLetterAnim = (a) => a.replace('palavras-', 'letras-');
 /** Duração de cada letra (s) e o espaçamento entre as letras, pela duração do texto. */
 export function letterTiming(l, count) {
   const dur = Math.max(0.2, Number(l.end) - Number(l.start) || 3);
@@ -71,6 +79,36 @@ export function letterSegments(anim, d, steps = 10, l = {}) {
   for (let k = 0; k <= steps; k++) {
     const p = k / steps;
     out.push({ t0: +(d * p).toFixed(4), t1: k < steps ? +(d * (k + 1) / steps).toFixed(4) : null, f: letterFrame(anim, p, l) });
+  }
+  return out;
+}
+/** Progresso de uma palavra no tempo: delega à curva da letra equivalente. Puro. */
+export function wordFrame(anim, p, l = {}) {
+  return letterFrame(wordToLetterAnim(anim), p, l);
+}
+/** Duração e atraso de cada palavra (como letterTiming, mas mais lento). */
+export function wordTiming(l, count) {
+  const dur = Math.max(0.2, Number(l.end) - Number(l.start) || 3);
+  const d = hasNum(l.wordDur) && Number(l.wordDur) > 0 ? Number(l.wordDur) : Math.min(0.5, dur * 0.35);
+  const total = Math.min(2, dur * 0.6);
+  const stagger = hasNum(l.wordGap) ? Number(l.wordGap) : Math.max(0.05, Math.min(0.15, (total - d) / Math.max(1, count - 1)));
+  return { d: +d.toFixed(3), stagger: +stagger.toFixed(4) };
+}
+/** Quando cada palavra entra: [line][word]{u, t, d}. Mesma conta na prévia e no render. Puro. */
+export function wordPlan(l, lines) {
+  if (!WORD_ANIMS.includes(l?.animIn)) return null;
+  const units = lines.map((ln) => String(ln).split(/(\s+)/).filter(Boolean));
+  const count = units.flat().filter((u) => u.trim()).length || 1;
+  const { d, stagger } = wordTiming(l, count);
+  let k = 0;
+  return units.map((ws) => ws.map((u) => (u.trim() ? { u, t: +(k++ * stagger).toFixed(4), d } : { u, t: null, d })));
+}
+/** Passos amostrados de uma animação por palavra (como letterSegments). Puro. */
+export function wordSegments(anim, d, steps = 10, l = {}) {
+  const out = [];
+  for (let k = 0; k <= steps; k++) {
+    const p = k / steps;
+    out.push({ t0: +(d * p).toFixed(4), t1: k < steps ? +(d * (k + 1) / steps).toFixed(4) : null, f: wordFrame(anim, p, l) });
   }
   return out;
 }
@@ -448,6 +486,9 @@ export function cleanTextLayers(raw, fonts = null, max = 30) {
       ...(hasNum(l.letterGap) ? { letterGap: num(l.letterGap, 0, 0.2, 0.05) } : {}),
       ...(hasNum(l.letterDist) ? { letterDist: num(l.letterDist, 0, 0.3, 0.06) } : {}),
       ...(hasNum(l.overshoot) ? { overshoot: num(l.overshoot, 0, 1, 0.5) } : {}),
+      // animação por palavra: duração e atraso (distância e overshoot são os mesmos das letras)
+      ...(hasNum(l.wordDur) ? { wordDur: num(l.wordDur, 0.15, 2, 0.5) } : {}),
+      ...(hasNum(l.wordGap) ? { wordGap: num(l.wordGap, 0, 0.5, 0.1) } : {}),
     });
     if (out.length >= max) break;
   }

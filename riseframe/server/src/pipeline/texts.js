@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { fontsDirArg, jobFontsDir } from './captions.js';
 import { fontById, fontStyles } from '../../../shared/captionStyle.js';
-import { textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan, letterPlan, letterTiming, letterSegments, LETTER_ANIMS, LETTER_SAMPLED, expandCounterLayers } from '../../../shared/textLayers.js';
+import { textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan, letterPlan, letterTiming, letterSegments, LETTER_ANIMS, LETTER_SAMPLED, wordPlan, wordTiming, wordSegments, wordFrame, WORD_ANIMS, WORD_SAMPLED, expandCounterLayers } from '../../../shared/textLayers.js';
 import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
 import { makeLogger } from '../logger.js';
 
@@ -161,6 +161,7 @@ export function buildTextAss(rawLayers, meta) {
     // máquina de escrever / palavra por palavra: cada pedaço fica invisível até a sua vez
     const plan = L.smallCaps ? null : revealPlan(l, lines);
     const letters = L.smallCaps ? null : letterPlan(l, lines);
+    const words = L.smallCaps ? null : wordPlan(l, lines);
     const revealAss = (j, a1, a3) => plan[j].map(({ u, t }) => (t == null ? u : `{\\1a&HFF&\\3a&HFF&\\t(${Math.round(t * 1000)},${Math.round(t * 1000) + 1},\\1a${a1}\\3a${a3})}${u}`)).join('');
     // versalete: minúsculas viram maiúsculas menores (78%)
     const SC = 0.78;
@@ -226,6 +227,29 @@ export function buildTextAss(rawLayers, meta) {
             }
           } else {
             events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t)},${assTime(l.end)},T${i},,0,0,0,,{${letterTags(l.animIn, Math.round(cxk), Math.round(ty), c.d * 1000, Math.round(H * 0.06), fillC, outC)}}${clean(ch)}`);
+          }
+        });
+        return;
+      }
+      if (words) {
+        // animação por palavra: cada palavra é um evento com a sua posição e timing
+        const lx = cx - lineW(line) / 2;
+        let pre = '';
+        words[j].forEach((w) => {
+          const wText = clean(w.u);
+          const wW = FM.width(wText) * em + sp * [...wText].length;
+          const cxw = lx + FM.width(pre) * em + sp * [...pre].length + wW / 2;
+          pre += w.u;
+          if (w.t == null || !w.u.trim()) return;
+          const fillC = bgr(L.fillColor);
+          const outC = L.stroke ? bgr(L.strokeColor) : fillC;
+          if (WORD_SAMPLED.includes(l.animIn)) {
+            for (const st of wordSegments(l.animIn, w.d, 10, l)) {
+              const t1 = st.t1 == null ? l.end : l.start + w.t + st.t1;
+              events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + w.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${letterPose(st.f, Math.round(cxw), Math.round(ty), H, W, fillC, outC)}}${wText}`);
+            }
+          } else {
+            events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + w.t)},${assTime(l.end)},T${i},,0,0,0,,{${letterTags(l.animIn.replace('palavras-', 'letras-'), Math.round(cxw), Math.round(ty), w.d * 1000, Math.round(H * 0.06), fillC, outC)}}${wText}`);
           }
         });
         return;

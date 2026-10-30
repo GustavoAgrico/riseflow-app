@@ -23,7 +23,7 @@ import { keyZoomMoments } from '../../../shared/keyMoments.js';
 import { suggestSfx, SFX_STYLES } from '../../../shared/autoMoments.js';
 import { kineticPlan, KINETIC_THEMES, KINETIC_AMOUNT } from '../../../shared/kinetic.js';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
-import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
+import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, wordPlan, wordFrame, WORD_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
 import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
@@ -4293,6 +4293,23 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                 ['letterDur', 'Duração por letra', 0.1, 1.5, 0.05, 0.4, 's'],
                 ['letterGap', 'Atraso entre letras', 0, 0.2, 0.01, 0.05, 's'],
                 ['letterDist', 'Distância', 0, 0.3, 0.01, selTextItem.animIn === 'letras-queda' ? 0.1 : selTextItem.animIn === 'letras-desfoque-subir' || selTextItem.animIn === 'letras-empurrao' ? 0.05 : 0.06, ''],
+                ['overshoot', 'Overshoot', 0, 1, 0.05, 0.5, ''],
+              ].map(([key, label, min, max, step, def, unit]) => {
+                const v = selTextItem[key] ?? def;
+                return (
+                  <CapRow key={key} label={`${label} · ${Number(v).toFixed(2)}${unit ? ` ${unit}` : ''}`}>
+                    <input type="range" min={min} max={max} step={step} value={v} onChange={(e) => updateText(selTextItem.key, { [key]: Number(e.target.value) })} style={{ width: '100%', accentColor: '#FF6B35' }} />
+                  </CapRow>
+                );
+              })}
+            </div>
+          )}
+          {WORD_ANIMS.includes(selTextItem.animIn) && (
+            <div style={{ display: 'grid', gap: 6 }}>
+              {[
+                ['wordDur', 'Duração por palavra', 0.15, 2, 0.05, 0.5, 's'],
+                ['wordGap', 'Atraso entre palavras', 0, 0.5, 0.01, 0.1, 's'],
+                ['letterDist', 'Distância', 0, 0.3, 0.01, selTextItem.animIn === 'palavras-queda' ? 0.1 : selTextItem.animIn === 'palavras-desfoque-subir' || selTextItem.animIn === 'palavras-empurrao' ? 0.05 : 0.06, ''],
                 ['overshoot', 'Overshoot', 0, 1, 0.05, 0.5, ''],
               ].map(([key, label, min, max, step, def, unit]) => {
                 const v = selTextItem[key] ?? def;
@@ -10224,6 +10241,7 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
         const plan = L.smallCaps ? null : revealPlan(l, lines);
         // animações por letra: cada letra recebe o seu progresso no tempo atual (igual ao render)
         const letters = L.smallCaps ? null : letterPlan(l, lines);
+        const wordsP = L.smallCaps ? null : wordPlan(l, lines);
         const rgba = (hex, a) => { const h = String(hex).replace('#', ''); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; };
         // contorno "fora" = a borda inteira por fora (o CSS desenha metade de cada lado)
         const sw = L.stroke ? L.strokeW * box.h * (L.strokePos === 'center' ? 1 : 2) : 0;
@@ -10250,6 +10268,13 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
                     ? letters[j].map((p, k) => {
                       if (p.t == null) return <span key={k}>{p.u}</span>;
                       const f = letterFrame(l.animIn, Math.max(0, Math.min(1, (cur - l.start - p.t) / p.d)), l);
+                      const tr = [f.dx ? `translateX(${f.dx * box.w}px)` : '', f.dy ? `translateY(${f.dy * box.h}px)` : '', f.scale !== 1 ? `scale(${f.scale})` : ''].filter(Boolean).join(' ');
+                      return <span key={k} style={{ display: 'inline-block', opacity: cur - l.start < p.t ? 0 : f.alpha, transform: tr || undefined, filter: f.blur ? `blur(${f.blur * box.h}px)` : undefined }}>{p.u}</span>;
+                    })
+                    : wordsP
+                    ? wordsP[j].map((p, k) => {
+                      if (p.t == null) return <span key={k}>{p.u}</span>;
+                      const f = wordFrame(l.animIn, Math.max(0, Math.min(1, (cur - l.start - p.t) / p.d)), l);
                       const tr = [f.dx ? `translateX(${f.dx * box.w}px)` : '', f.dy ? `translateY(${f.dy * box.h}px)` : '', f.scale !== 1 ? `scale(${f.scale})` : ''].filter(Boolean).join(' ');
                       return <span key={k} style={{ display: 'inline-block', opacity: cur - l.start < p.t ? 0 : f.alpha, transform: tr || undefined, filter: f.blur ? `blur(${f.blur * box.h}px)` : undefined }}>{p.u}</span>;
                     })
