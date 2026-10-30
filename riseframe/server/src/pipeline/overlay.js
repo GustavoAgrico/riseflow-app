@@ -190,9 +190,10 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     if (kf || scaleFactor(animIn, pi, ease) || scaleFactor(animOut, po, ease) || motion) chain += `,fps=${f3(fps)}`;
 
     // Transparência: opacidade fixa (no modo normal) + fades com alpha.
-    const FADE_IN_ANIMS = new Set(['fade', 'bounce', 'elastic', 'grow', 'drop', 'whip-left', 'whip-right', 'whip-up', 'whip-down', 'spin', 'blur-in']);
+    const QUICK_FADE_IN = new Set(['bounce', 'elastic', 'grow', 'drop', 'whip-left', 'whip-right', 'whip-up', 'whip-down', 'spin', 'blur-in']);
     const fades = [];
-    if (FADE_IN_ANIMS.has(animIn)) fades.push(`fade=t=in:st=${f3(m.start)}:d=${f3(Math.min(a, a * 0.35))}:alpha=1`);
+    if (animIn === 'fade') fades.push(`fade=t=in:st=${f3(m.start)}:d=${f3(a)}:alpha=1`);
+    else if (QUICK_FADE_IN.has(animIn)) fades.push(`fade=t=in:st=${f3(m.start)}:d=${f3(a * 0.35)}:alpha=1`);
     if (animOut === 'fade') fades.push(`fade=t=out:st=${f3(m.end - a)}:d=${f3(a)}:alpha=1`);
     if (fades.length || (op < 0.999 && blend === 'normal') || kf?.opacity) {
       if (!rgba) chain += ',format=rgba';
@@ -211,7 +212,10 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     if (kf?.rot) {
       const box = m.mode === 'pip' ? `:ow='hypot(iw,ih)':oh='hypot(iw,ih)'` : '';
       chain += `${rgba ? '' : ',format=rgba'},rotate=a='(${kfExpr(kf.rot, { start: m.start })})*PI/180'${box}:c=black@0`;
-    } else if (hasSpinIn || hasMotionRot || Math.abs(rot) > 0.05) {
+    } else if (!hasSpinIn && !hasMotionRot && Math.abs(rot) > 0.05) {
+      const rad = f3((rot * Math.PI) / 180);
+      chain += `${rgba ? '' : ',format=rgba'},rotate=${rad}${m.mode === 'pip' ? `:ow=rotw(${rad}):oh=roth(${rad})` : ''}:c=black@0`;
+    } else if (hasSpinIn || hasMotionRot) {
       const rotParts = [];
       if (Math.abs(rot) > 0.05) rotParts.push(f3((rot * Math.PI) / 180));
       if (hasSpinIn) rotParts.push(`(1-${ease(pi)})*${f3(2 * Math.PI)}`);
@@ -281,8 +285,10 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     // Movimento contínuo (float, wiggle, drift…)
     if (motionExpr.dx) dx.push(`${motionExpr.dx}*${W}`);
     if (motionExpr.dy) dy.push(`${motionExpr.dy}*${H}`);
-    if (dx.length) x = `${x}+${dx.join('+')}`;
-    if (dy.length) y = `${y}+${dy.join('+')}`;
+    // o avaliador do FFmpeg recusa "+-H" / "+-(": termo negativo vai entre parênteses
+    const term = (s) => (s.startsWith('-') && !/^-\d/.test(s) ? `(${s})` : s);
+    if (dx.length) x = `${x}+${dx.map(term).join('+')}`;
+    if (dy.length) y = `${y}+${dy.map(term).join('+')}`;
     const win = `enable='between(t,${f3(m.start)},${f3(m.end)})'`;
     const pos = `x='round(${x})':y='round(${y})'`;
 
