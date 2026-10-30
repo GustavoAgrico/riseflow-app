@@ -129,28 +129,35 @@ export function sceneElements({ words, lines, star, start, end, aspect, index = 
     animOut: 'fade', animDur: 0.45, ...extra,
   });
 
-  // 1) objetos 3D dos assuntos (até 2 por cena): o principal grande, o segundo menor
+  // 1) objetos 3D dos assuntos (até 2 por cena): ficam no espaço livre acima/abaixo do bloco
+  //    (o maior para o principal), no tamanho que couber — nunca em cima do texto
   const concepts = conceptsIn(words).slice(0, 2);
   const ENTRIES = ['elastic', 'bounce', 'drop'];
+  const zones = [
+    { at: 'top', room: top - 0.06 },
+    { at: 'bottom', room: 0.94 - bottom - 0.03 },
+  ].sort((a, b) => b.room - a.room);
   concepts.forEach((c, k) => {
-    const scale = k === 0 ? 0.3 : 0.2;
-    const h = scale * aspect; // PNG quadrado: altura em fração da altura do quadro
     let cx;
     let cy;
+    let scale;
     if (glass) {
       // saindo do canto do card de vidro (em cima de um lado, embaixo do outro)
+      scale = k === 0 ? 0.26 : 0.18;
+      const h = scale * aspect;
       cx = 0.5 + (k === 0 ? 0.3 : -0.3) * side;
       cy = k === 0 ? top - 0.035 - h * 0.15 : bottom + 0.035 + h * 0.15;
-    } else if (k === 0) {
-      cx = 0.5 + [0, 0.17, -0.17][index % 3];
-      cy = top - h / 2 - 0.012;
-      if (cy - h / 2 < 0.07) cy = bottom + h / 2 + 0.012; // sem espaço em cima: vai para baixo
     } else {
-      cx = 0.5 - 0.3 * side;
-      cy = Math.min(0.9, bottom + h / 2 + 0.01);
+      const z = zones[k];
+      if (!z) return;
+      scale = Math.min(k === 0 ? 0.3 : 0.2, (z.room - 0.015) / aspect);
+      if (scale < 0.11) return; // sem espaço: melhor sem objeto do que em cima do texto
+      const h = scale * aspect;
+      cy = z.at === 'top' ? top - 0.012 - h / 2 : bottom + 0.03 + h / 2;
+      cx = k === 0 ? 0.5 + [0, 0.17, -0.17][index % 3] : 0.5 - 0.26 * side;
     }
     elements.push(base(c.word.start - 0.06, {
-      element: c.element, cx: r3(cx), cy: r3(cy), scale,
+      element: c.element, cx: r3(cx), cy: r3(cy), scale: r3(scale),
       rot: (k === 0 ? 9 : -12) * side,
       animIn: k === 0 ? ENTRIES[index % ENTRIES.length] : 'elastic',
       motion: k === 0 ? 'float-rotate' : 'float', motionSpeed: k === 0 ? 1 : 1.3, motionAmp: k === 0 ? 1.1 : 0.9,
@@ -163,19 +170,19 @@ export function sceneElements({ words, lines, star, start, end, aspect, index = 
   const keyLine = star || lines.find((l) => l.role === 'key');
   if (keyLine) {
     const id = index % 2 ? 'squiggle' : 'underline';
-    const lineW = Math.min(0.9, (keyLine.text.length * 0.6 * keyLine.size) / aspect);
-    const scale = r3(Math.max(0.25, lineW * 1.08));
+    const lineW = Math.min(0.9, (keyLine.w ?? keyLine.text.length * 0.6 * keyLine.size) / aspect);
+    const scale = r3(Math.max(0.25, lineW * 1.06));
     const h = scale * aspect * DOODLE_AR[id];
     elements.push(base(keyLine.words[keyLine.words.length - 1].end - 0.05, {
-      element: `doodles/${id}`, tint, cx: 0.5, cy: r3(keyLine.y + keyLine.h / 2 + h * 0.15),
+      element: `doodles/${id}`, tint, cx: r3(keyLine.x ?? 0.5), cy: r3(keyLine.y + keyLine.h / 2 + h * 0.1),
       scale, animIn: 'grow', animDur: 0.35, layer: 11,
     }));
   }
   const num = lines.find((l) => l.role === 'num');
   if (num) {
-    const lineW = Math.min(0.8, (num.text.length * 0.6 * num.size) / aspect);
+    const lineW = Math.min(0.8, (num.w ?? num.text.length * 0.6 * num.size) / aspect);
     elements.push(base(num.words[0].start + 0.1, {
-      element: 'doodles/sparkle', tint, cx: r3(Math.min(0.92, 0.5 + lineW / 2 + 0.07)), cy: r3(num.y - num.h * 0.2),
+      element: 'doodles/sparkle', tint, cx: r3(Math.min(0.94, (num.x ?? 0.5) + lineW / 2 + 0.035)), cy: r3(num.y - num.h * 0.32),
       scale: 0.09, animIn: 'spin', motion: 'pulse', motionSpeed: 1.4, motionAmp: 1.4,
     }));
   }

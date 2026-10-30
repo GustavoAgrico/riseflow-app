@@ -12,6 +12,17 @@
 import { emphasisScore } from './keyMoments.js';
 import { premiumSfx } from './autoMoments.js';
 import { sceneElements } from './sceneElements.js';
+import { KINETIC_CHARS, KINETIC_WIDTHS } from './kineticWidths.js';
+
+const CHAR_IX = new Map([...KINETIC_CHARS].map((c, i) => [c, i]));
+/** Largura do texto em em, com a medida real das letras da fonte (+ espaçamento em milésimos de em). */
+export function textWidthEm(text, font, tracking = 0) {
+  const tbl = KINETIC_WIDTHS[font] || KINETIC_WIDTHS['inter-900'];
+  let w = 0;
+  let n = 0;
+  for (const c of String(text)) { const i = CHAR_IX.get(c); w += i == null ? 600 : tbl[i]; n += 1; }
+  return w / 1000 + (tracking / 1000) * n;
+}
 
 export const KINETIC_THEMES = {
   auto: 'Alternar',
@@ -71,7 +82,16 @@ export function phraseChunks(segments, max = 8) {
     const flush = () => { if (cur.length) out.push(cur); cur = []; };
     ws.forEach((w, i) => {
       const prev = ws[i - 1];
-      if (cur.length && (cur.length >= max || (prev && w.start - prev.end >= 0.45))) flush();
+      if (cur.length && prev && w.start - prev.end >= 0.45) flush();
+      else if (cur.length >= max) {
+        // corte pelo tamanho: o pedaço não termina em palavra de ligação ("… sempre o | tempo")
+        let k = cur.length;
+        while (k > 1 && wordRole(cur[k - 1], k - 1, cur) === 'small' && SMALL.has(bare(cur[k - 1]))) k -= 1;
+        const carry = cur.slice(k);
+        cur = cur.slice(0, k);
+        flush();
+        cur = carry;
+      }
       cur.push(w);
       if (/[.!?;:]$/.test(clean(w)) && cur.length >= 3) flush();
     });
@@ -150,57 +170,74 @@ export function sceneBackground(theme, start, end, aspect) {
  * @param {Array} words palavras (com start/end) do pedaço
  * @param {{theme:string,start:number,end:number,aspect:number}} o
  */
-export function sceneLayers(words, { theme, start, end, aspect }) {
+export function sceneLayers(words, { theme, start, end, aspect, index = 0 }) {
   const T = THEME_LOOK[theme] || THEME_LOOK.video;
   const lines = composeLines(words);
-  const maxW = (T.glass ? 0.74 : 0.84) * aspect; // largura útil, em frações da ALTURA
+  // Bloco tipográfico: coluna de largura fixa; as palavras-chave crescem até ocupar a mesma
+  // largura (medida real das letras, a mesma do render), com teto de tamanho. Linhas
+  // alinhadas pela mesma borda e ritmo vertical constante.
+  const col = (T.glass ? 0.7 : 0.8) * aspect; // largura da coluna, em frações da ALTURA
+  const KEY_MAX = 0.105;
+  const NUM_PAD = 0.16;
+  const fontOf = (l, accent) => (l.role === 'small' ? 'garamond-400i' : accent ? 'inter-900i' : 'inter-900');
+  const trackOf = (l) => (l.role === 'small' ? 0 : l.role === 'num' ? -20 : -30);
+  const keys0 = lines.filter((l) => l.role === 'key');
+  const star = keys0.length ? keys0.reduce((a, b) => (STRONG.test(b.text) || b.text.length > a.text.length ? b : a)) : null;
+  const texts = lines.map((ln) => (ln.role === 'num' && ln.unit ? `${ln.text} ${ln.unit}` : ln.text));
+  const em = (k) => textWidthEm(texts[k], fontOf(lines[k], lines[k] === star && T.accent), trackOf(lines[k]));
+  // largura do bloco: a da coluna, ou menos quando todas as chaves são curtas
+  const bigW = lines.map((l, k) => (l.role === 'small' ? 0 : em(k) * (l.role === 'num' ? KEY_MAX * 0.9 : KEY_MAX) + (l.role === 'num' ? 2 * NUM_PAD * KEY_MAX * 0.9 : 0)));
+  const B = Math.min(col, Math.max(col * 0.55, ...bigW));
   const sized = lines.map((ln, k) => {
-    const text = ln.role === 'num' && ln.unit ? `${ln.text} ${ln.unit}` : ln.text;
-    const chars = Math.max(2, text.length);
-    if (ln.role === 'small') return { ...ln, text, size: Math.min(0.036, maxW / (chars * 0.42)) };
-    // tamanhos alternados dão o ar editorial (uma grande, outra um pouco menor)
-    const cap = (k % 2 ? 0.074 : 0.088) * (ln.role === 'num' ? 0.92 : 1);
-    return { ...ln, text, size: +Math.min(cap, maxW / (chars * 0.6)).toFixed(4) };
+    const w1 = em(k);
+    let size;
+    if (ln.role === 'small') size = Math.min(0.044, B / w1);
+    else if (ln.role === 'num') size = Math.min(KEY_MAX * 0.9, B / (w1 + 2 * NUM_PAD));
+    else size = Math.min(KEY_MAX, B / w1);
+    size = +size.toFixed(4);
+    const w = w1 * size + (ln.role === 'num' ? 2 * NUM_PAD * size : 0);
+    return { ...ln, text: texts[k], size, w: +w.toFixed(4) };
   });
-  const gap = 0.006;
-  const hOf = (l) => l.size * (l.role === 'small' ? 1.05 : 1.12) + (l.role === 'num' ? l.size * 0.3 : 0);
+  const gap = 0.007;
+  const hOf = (l) => l.size * (l.role === 'small' ? 1.3 : l.role === 'num' ? 1.42 : 1.04);
   const total = sized.reduce((a, l) => a + hOf(l), 0) + gap * (sized.length - 1);
   const cy = theme === 'video' ? 0.6 : 0.47;
+  const align = index % 2 ? 'center' : 'left';
+  const blockW = Math.max(...sized.map((l) => l.w)); // em frações da altura
+  const left = 0.5 - blockW / aspect / 2; // borda esquerda do bloco (fração da largura)
   let y = cy - total / 2;
   const layers = [];
   // VSL: card de vidro escuro atrás do bloco de texto (borda e brilho lilás)
   if (T.glass) {
-    layers.push({ kind: 'shape', shape: 'rect', x: 0.5, y: +cy.toFixed(4), w: 0.88, h: +(total + 0.07).toFixed(4), color: '#1F123D', opacity: 0.82, radius: 0.09,
+    layers.push({ kind: 'shape', shape: 'rect', x: 0.5, y: +cy.toFixed(4), w: +(blockW / aspect + 0.12).toFixed(4), h: +(total + 0.07).toFixed(4), color: '#1F123D', opacity: 0.82, radius: 0.09,
       stroke: true, strokeColor: '#8B5CF6', strokeW: 0.0016, shadow: true, shadowColor: '#8B5CF6', shadowOpacity: 0.35, shadowDist: 0, shadowBlur: 0.02,
       start: +start.toFixed(2), end, animIn: 'zoom', animOut: 'fade' });
   }
-  // a palavra mais forte da cena ganha a cor de destaque do tema (como o "ONE MORE" azul)
-  const keys = sized.filter((l) => l.role === 'key');
-  const star = keys.length ? keys.reduce((a, b) => (STRONG.test(b.text) || b.text.length > a.text.length ? b : a)) : null;
+  // uma animação só para as palavras-chave da cena (alterna entre cenas): mais limpo
+  const keyAnim = index % 2 ? 'letras-pop' : 'letras-subir';
+  const sh = T.shadow ? { shadow: true, shadowColor: T.shadowColor, shadowOpacity: theme === 'escuro' ? 0.55 : 0.7, shadowDist: 0, shadowBlur: theme === 'escuro' ? 0.01 : 0.006 } : {};
   for (const l of sized) {
     const h = hOf(l);
+    const x = align === 'left' ? left + l.w / aspect / 2 : 0.5;
+    l.x = +x.toFixed(4);
     l.y = +(y + h / 2).toFixed(4);
     l.h = +h.toFixed(4);
     const at = Math.max(start, l.words[0].start - 0.04);
-    const base = { text: l.text, x: 0.5, y: +(y + h / 2).toFixed(4), size: l.size, start: +at.toFixed(2), end: +end.toFixed(2), align: 'center', animOut: 'fade' };
-    const sh = T.shadow ? { shadow: true, shadowColor: T.shadowColor, shadowOpacity: theme === 'escuro' ? 0.55 : 0.7, shadowDist: 0, shadowBlur: theme === 'escuro' ? 0.01 : 0.006 } : {};
+    const base = { text: l.text, x: l.x, y: l.y, size: l.size, start: +at.toFixed(2), end: +end.toFixed(2), align: 'center', animOut: 'fade' };
     if (l.role === 'small') {
       layers.push({ ...base, font: 'garamond', fontStyle: '400i', color: T.small, box: 'none', stroke: false, animIn: 'letras-desfoque', ...sh });
     } else if (l.role === 'num') {
-      layers.push({ ...base, font: 'inter', fontStyle: '900', color: T.num, box: 'box', boxColor: T.numBg, bg: true, bgColor: T.numBg, bgMode: 'lines', pad: 0.16, radius: 0.08, stroke: false, tracking: -20, animIn: 'pop' });
+      layers.push({ ...base, font: 'inter', fontStyle: '900', color: T.num, box: 'box', boxColor: T.numBg, bg: true, bgColor: T.numBg, bgMode: 'lines', pad: NUM_PAD, radius: 0.08, stroke: false, tracking: -20, animIn: 'pop' });
     } else {
-      const accent = l === star && T.accent;
-      // palavras-chave: as letras pulam ou sobem, alternando (o que faz a tipografia "mexer");
       // a principal ganha a cor de destaque (e o rabisco/objeto da cena, em sceneElements)
-      // marca-texto (tema grade): a palavra-chave ganha uma tarja amarela atrás
-      const mark = T.mark ? { bg: true, bgColor: T.mark, bgMode: 'lines', pad: 0.12, radius: 0.05 } : {};
-      layers.push({ ...base, font: 'inter', fontStyle: accent ? '900i' : '900', color: accent || T.big, box: T.mark ? 'box' : 'none', ...mark, stroke: false, tracking: -30, animIn: sized.indexOf(l) % 3 === 1 ? 'letras-subir' : 'letras-pop', ...sh,
+      const accent = l === sized.find((x) => x.words === star?.words) && T.accent;
+      layers.push({ ...base, font: 'inter', fontStyle: accent ? '900i' : '900', color: accent || T.big, box: 'none', stroke: false, tracking: -30, animIn: keyAnim, ...sh,
         // brilho na cor do destaque só em fundo escuro (no claro fica borrado)
         ...(accent && !T.light ? { shadow: true, shadowColor: accent, shadowOpacity: 0.6, shadowDist: 0, shadowBlur: 0.012 } : {}) });
     }
     y += h + gap;
   }
-  return { layers, lines: sized, star };
+  return { layers, lines: sized, star: star ? sized.find((x) => x.words === star.words) : null };
 }
 
 /**
@@ -240,7 +277,7 @@ export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', am
     const end = Math.min(total || Infinity, next ? next.s - 0.12 : Infinity, c.e + 0.45);
     if (end - start < 0.6) return;
     const th = theme === 'auto' ? ROTATION[scenes.length % ROTATION.length] : (THEME_LOOK[theme] ? theme : 'video');
-    const { layers: ls, lines, star } = sceneLayers(c.words, { theme: th, start, end, aspect });
+    const { layers: ls, lines, star } = sceneLayers(c.words, { theme: th, start, end, aspect, index: scenes.length });
     scenes.push({ start: +start.toFixed(2), end: +end.toFixed(2), theme: th, words: c.words.length });
     layers.push(...ls.map((l) => ({ ...l, scene: scenes.length })));
     const look = THEME_LOOK[th] || THEME_LOOK.video;
