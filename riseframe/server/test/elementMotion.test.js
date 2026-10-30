@@ -246,3 +246,22 @@ test('todas as expressões FFmpeg de movimentos são strings válidas', () => {
     }
   }
 });
+
+test('o FFmpeg aceita cada animação nova e cada movimento numa camada PiP', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const { visualLayerParts } = await import('../src/pipeline/overlay.js');
+  const { ffmpegPath } = await import('../src/pipeline/ffmpeg.js');
+  const ctx = { W: 320, H: 180, fps: 15, dur: 2 };
+  const item = (m) => ({ _inIdx: 1, start: 0.2, end: 1.6, d: 1.4, mode: 'pip', scale: 0.4, cx: 0.5, cy: 0.5, opacity: 1, ...m });
+  const cases = [
+    ...['bounce', 'elastic', 'grow', 'drop', 'whip-left', 'whip-up', 'spin', 'blur-in'].map((animIn) => ({ animIn, animOut: 'fade' })),
+    ...Object.keys(ELEMENT_MOTIONS).filter((k) => k !== 'none').map((motion) => ({ motion, motionSpeed: 1.5, motionAmp: 1.2 })),
+    { animIn: 'spin', motion: 'sway', rot: 15 },
+  ];
+  for (const c of cases) {
+    const fc = visualLayerParts([item(c)], ctx).join(';');
+    const r = spawnSync(ffmpegPath, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=320x180:d=2:r=15', '-f', 'lavfi', '-i', 'color=c=red:s=160x90:d=2:r=15',
+      '-filter_complex', fc, '-map', '[vout]', '-frames:v', '20', '-f', 'null', '-']);
+    assert.equal(r.status, 0, `${JSON.stringify(c)}: ${r.stderr.toString().slice(0, 400)}`);
+  }
+});
