@@ -41,6 +41,7 @@ export const KINETIC_THEMES = {
   'papel-cinza': 'Papel cinza',
   'branco-zigzag': 'Branco com zigzag',
   video: 'Sobre o vídeo',
+  legenda: 'Legenda em bloco (o vídeo todo)',
 };
 export const KINETIC_AMOUNT = { chave: 'Momentos-chave', muitos: 'Quase o vídeo todo' };
 
@@ -259,6 +260,7 @@ export function sceneLayers(words, { theme, start, end, aspect, index = 0 }) {
  * `elements`: objetos 3D e rabiscos (camadas de imagem por cima das cenas, ver sceneElements.js).
  */
 export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', amount = 'chave', existing = [], available = null, backgrounds = null } = {}) {
+  if (theme === 'legenda') return clusterCaptionPlan({ segments, dur, aspect, existing });
   // fundos próprios (mídias da pessoa): [{ ref, kind: 'image'|'video', ar: altura/largura, light }]
   const custom = Array.isArray(backgrounds) && backgrounds.length ? backgrounds : null;
   const total = Number(dur) || 0;
@@ -332,4 +334,93 @@ export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', am
     clean.push(s);
   }
   return { scenes, layers, elements, sfx: clean };
+}
+
+/**
+ * "Legenda em bloco": a fala inteira vira blocos tipográficos sobre o vídeo — a palavra-chave
+ * grande e grossa; as pequenas encaixadas em volta (as de antes em cima, alinhadas à esquerda
+ * da chave, ou ao lado na mesma linha; as de depois embaixo, alinhadas à direita); cada palavra
+ * entra desfocando no instante em que é falada e o bloco se monta aos poucos.
+ */
+export function clusterCaptionPlan({ segments, dur, aspect = 9 / 16, existing = [] } = {}) {
+  const total = Number(dur) || 0;
+  const chunks = phraseChunks(segments, 5).filter((c) => c.length);
+  const busy = (existing || []).filter((l) => Number.isFinite(Number(l.start)));
+  const scenes = [];
+  const layers = [];
+  const KEY_MAX = 0.078;
+  const SM = 0.026; // tamanho das palavras pequenas
+  const col = 0.66 * aspect; // largura máxima do bloco (fração da altura)
+  const sh = { shadow: true, shadowColor: '#000000', shadowOpacity: 0.55, shadowDist: 0.002, shadowAngle: 90, shadowBlur: 0.008 };
+  const wOf = (t, font, tr) => textWidthEm(t, font, tr);
+  const r4 = (v) => +Number(v).toFixed(4);
+  chunks.forEach((c, i) => {
+    const s0 = c[0].start;
+    const e0 = c[c.length - 1].end;
+    if (busy.some((l) => s0 < Number(l.end) && e0 > Number(l.start))) return;
+    const next = chunks[i + 1];
+    const start = Math.max(0, s0 - 0.04);
+    const end = Math.min(total || Infinity, next ? next[0].start - 0.05 : e0 + 0.6, e0 + 1.2);
+    if (end - start < 0.3) return;
+    // grupos: cada palavra-chave (ou número) com as pequenas de antes (pre) e, na última, as de depois (post)
+    // chaves: as 2 palavras mais fortes que não são de ligação (curtas também: "amor", "time")
+    const score = (w) => (isNum(w) ? 20 : SMALL.has(bare(w)) || bare(w).length < 3 ? -1 : (STRONG.test(bare(w)) ? 10 : 0) + bare(w).length);
+    const top = c.map((w, k) => [score(w), k]).filter(([v]) => v >= 0).sort((x, y) => y[0] - x[0]).slice(0, 2).map(([, k]) => k);
+    if (!top.length) top.push(c.reduce((b, w, k) => (clean(w).length > clean(c[b]).length ? k : b), 0));
+    const roles = c.map((w, k) => (top.includes(k) ? 'key' : 'small'));
+    const groups = [];
+    let pre = [];
+    c.forEach((w, k) => {
+      if (roles[k] === 'small') { pre.push(w); return; }
+      if (groups.length >= 2) { groups[groups.length - 1].post.push(...pre, w); pre = []; return; }
+      groups.push({ key: w, pre, post: [] });
+      pre = [];
+    });
+    if (pre.length) groups[groups.length - 1].post.push(...pre);
+    const txt = (ws) => ws.map(clean).join(' ');
+    // tamanho de cada chave: ocupa a coluna, com teto
+    for (const g of groups) {
+      g.kt = clean(g.key);
+      g.ks = Math.min(KEY_MAX, col / wOf(g.kt, 'inter-900', -40));
+      g.kw = wOf(g.kt, 'inter-900', -40) * g.ks;
+      g.pt = txt(g.pre);
+      g.pw = g.pt ? wOf(g.pt, 'inter-700', -10) * SM : 0;
+      g.ot = txt(g.post);
+      g.ow = g.ot ? wOf(g.ot, 'inter-700', -10) * SM : 0;
+      // pequenas de antes ao lado (mesma linha) quando a chave não é a primeira e elas são curtas
+      g.inline = groups.indexOf(g) > 0 && g.pt && g.pt.length <= 10 && g.pw + g.kw + 0.012 <= col;
+    }
+    // altura do bloco
+    const rowH = (g) => (g.pt && !g.inline ? SM * 1.05 : 0) + g.ks * 0.98 + (g.ot ? SM * 1.05 : 0);
+    const H = groups.reduce((a, g) => a + rowH(g), 0);
+    let y = 0.62 - H / 2;
+    const at = (w) => +Math.max(start, w.start - 0.03).toFixed(2);
+    const push = (text, x, yy, size, font, fontStyle, tr, w0) => layers.push({
+      text, x: r4(x), y: r4(yy), size: r4(size), font, fontStyle, tracking: tr, color: '#FFFFFF', align: 'center', box: 'none', stroke: false,
+      start: at(w0), end: +end.toFixed(2), animIn: 'palavras-desfoque', animOut: 'fade', scene: scenes.length + 1, ...sh,
+    });
+    for (const g of groups) {
+      const rowW = g.inline ? g.pw + 0.012 + g.kw : g.kw;
+      const left = 0.5 - rowW / aspect / 2; // borda esquerda da linha da chave (fração da largura)
+      if (g.pt && !g.inline) {
+        push(g.pt, left + g.pw / aspect / 2, y + SM * 0.52, SM, 'inter', '700', -10, g.pre[0]);
+        y += SM * 1.05;
+      }
+      const ky = y + g.ks * 0.49;
+      if (g.inline) {
+        push(g.pt, left + g.pw / aspect / 2, ky + g.ks * 0.18, SM, 'inter', '700', -10, g.pre[0]);
+        push(g.kt, left + (g.pw + 0.012 + g.kw / 2) / aspect, ky, g.ks, 'inter', '900', -40, g.key);
+      } else {
+        push(g.kt, 0.5, ky, g.ks, 'inter', '900', -40, g.key);
+      }
+      y += g.ks * 0.98;
+      if (g.ot) {
+        const right = 0.5 + rowW / aspect / 2;
+        push(g.ot, right - g.ow / aspect / 2, y + SM * 0.45, SM, 'inter', '700', -10, g.post[0]);
+        y += SM * 1.05;
+      }
+    }
+    scenes.push({ start: +start.toFixed(2), end: +end.toFixed(2), theme: 'legenda', words: c.length });
+  });
+  return { scenes, layers, elements: [], sfx: [] };
 }
