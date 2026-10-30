@@ -37,6 +37,7 @@ import { CAPTION_LANGUAGES } from '../pipeline/translate.js';
 import { MOMENT_EFFECTS, cleanKeys } from '../../../shared/transform.js';
 import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
 import { ELEMENT_MOTIONS } from '../../../shared/elementMotion.js';
+import { KINETIC_THEMES } from '../../../shared/kinetic.js';
 import { cleanElementId, elementFile } from '../pipeline/elements.js';
 import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
 import { brandIn, entityQuery } from '../pipeline/entities.js';
@@ -576,7 +577,7 @@ export function parseOptions(raw) {
     soundEffects: o.soundEffects === true, // pop na legenda + whoosh no B-roll
     // motion tipográfico escolhido no começo (o modo automático monta as cenas no servidor)
     kinetic: o.kinetic === true,
-    kineticTheme: ['auto', 'papel', 'holofote', 'cinema', 'video'].includes(o.kineticTheme) ? o.kineticTheme : 'auto',
+    kineticTheme: Object.hasOwn(KINETIC_THEMES, o.kineticTheme) ? o.kineticTheme : 'auto',
     kineticAmount: o.kineticAmount === 'muitos' ? 'muitos' : 'chave',
     sfxIntensity: ['suave', 'medio', 'forte'].includes(o.sfxIntensity) ? o.sfxIntensity : 'medio',
     captions: o.captions !== false,

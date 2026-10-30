@@ -32,7 +32,7 @@ test('conceitos da fala: o assunto vira o objeto certo, na palavra certa', () =>
 test('cena: objeto entra na palavra, flutua, por cima, e o som combina com o assunto', () => {
   const ws = words('o tempo é o seu maior ativo', 2);
   const lines = [{ role: 'key', text: 'tempo', size: 0.08, y: 0.45, h: 0.09, words: [ws[1]] }];
-  const { elements, sfx } = sceneElements({ words: ws, lines, star: lines[0], theme: 'holofote', start: 1.9, end: 5, aspect: 9 / 16, available: new Set(Object.keys(SFX_LIBRARY)) });
+  const { elements, sfx } = sceneElements({ words: ws, lines, star: lines[0], theme: 'vsl', start: 1.9, end: 5, aspect: 9 / 16, available: new Set(Object.keys(SFX_LIBRARY)) });
   const obj = elements.find((e) => e.element === 'hourglass');
   assert.ok(obj && obj.above && obj.motion === 'float-rotate');
   assert.ok(Math.abs(obj.start - (ws[1].start - 0.06)) < 0.01);
@@ -42,7 +42,7 @@ test('cena: objeto entra na palavra, flutua, por cima, e o som combina com o ass
 
 test('motion tipográfico devolve os elementos das cenas', () => {
   const segs = [{ start: 0, end: 4, words: words('o segredo do dinheiro é o tempo investido') }, { start: 6, end: 9, words: words('3 erros que acabam com seu resultado', 6) }];
-  const plan = kineticPlan({ segments: segs, dur: 12, theme: 'holofote', amount: 'muitos' });
+  const plan = kineticPlan({ segments: segs, dur: 12, theme: 'vsl', amount: 'muitos' });
   assert.ok(plan.elements.length >= 2);
   for (const e of plan.elements) assert.ok(cleanElementId(e.element) && elementFile(e.element), e.element);
 });
@@ -65,4 +65,17 @@ test('o FFmpeg pinta o rabisco e anima o objeto 3D por cima', () => {
     '-loop', '1', '-t', '2', '-i', elementFile('doodles/underline'), '-loop', '1', '-t', '2', '-i', elementFile('hourglass'),
     '-filter_complex', fc, '-map', '[vout]', '-frames:v', '25', '-f', 'null', '-']);
   assert.equal(r.status, 0, r.stderr.toString().slice(0, 400));
+});
+
+test('cada tema com fundo tem a imagem no app e o "Alternar" passa por vários fundos', async () => {
+  const { SCENE_BACKGROUNDS, KINETIC_THEMES } = await import('../../shared/kinetic.js');
+  assert.ok(SCENE_BACKGROUNDS.length >= 14);
+  for (const b of SCENE_BACKGROUNDS) {
+    assert.ok(KINETIC_THEMES[b], b);
+    assert.ok(elementFile(`backgrounds/${b}`), b);
+  }
+  for (const old of ['holofote', 'papel', 'grade', 'cinema']) assert.equal(KINETIC_THEMES[old], undefined, `${old} saiu`);
+  const segs = Array.from({ length: 8 }, (_, i) => ({ start: i * 5, end: i * 5 + 3, words: words('o segredo do dinheiro é sempre o tempo', i * 5) }));
+  const plan = kineticPlan({ segments: segs, dur: 42, amount: 'muitos' });
+  assert.ok(new Set(plan.scenes.map((s) => s.theme)).size >= 5);
 });

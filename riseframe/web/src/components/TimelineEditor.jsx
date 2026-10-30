@@ -5193,9 +5193,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const rest = prev.filter((m) => !m.kinetic);
       const top = rest.reduce((a, m) => Math.max(a, Number(m.layer) || 0), 0) + 1;
       const els = (plan.elements || []).map((e, i) => ({
-        key: `k${now}_${i}`, kind: 'image', filename: e.element.replace('doodles/', 'rabisco: '), previewUrl: elementUrl(e.element),
+        key: `k${now}_${i}`, kind: 'image', filename: e.element.replace('doodles/', 'rabisco: ').replace('backgrounds/', 'fundo: '), previewUrl: elementUrl(e.element),
         srcDuration: 600, volume: 0, opacity: 1, blend: 'normal', offset: 0, fadeIn: 0, fadeOut: 0, px: 0.5, py: 0.5,
-        ...e, layer: top + (e.element.startsWith('doodles/') ? 0 : 1), kinetic: true,
+        // fundo por baixo dos textos (por cima das suas mídias); rabiscos e objetos por cima de tudo
+        ...e, layer: e.above ? top + (e.element.startsWith('doodles/') ? 1 : 2) : top, kinetic: true,
       }));
       return [...rest, ...els];
     });
@@ -5254,7 +5255,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         <b style={{ fontSize: 13.5 }}>✨ Motion tipográfico</b>
         <span style={{ fontSize: 11.5, color: C.faint }}>tipografia cinética editorial, palavra por palavra no ritmo da fala</span>
       </div>
-      <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Monta a frase em camadas: palavras de ligação pequenas em itálico, palavras-chave grandes, números em tarja — cada uma entra no instante em que é falada, em cenas de fundo (papel, holofote, cinema com luz laranja) ou sobre o vídeo. Com sons premium em cada entrada. A legenda some durante a cena e volta ao tirar.</span>
+      <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Monta a frase em camadas: palavras de ligação pequenas em itálico, palavras-chave grandes, números em tarja — cada uma entra no instante em que é falada, em cenas de fundo (escuro premium, branco com objetos recortados, roxo com vidro) ou sobre o vídeo, com objetos 3D do assunto. Com sons premium em cada entrada. A legenda some durante a cena e volta ao tirar.</span>
       <div style={{ display: 'grid', gap: 5 }}>
         <span style={{ fontSize: 10.5, color: C.faint, fontWeight: 700 }}>Visual</span>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{Object.entries(KINETIC_THEMES).map(([id, label]) => chip(kinTheme === id, () => setKinTheme(id), label, id))}</div>

@@ -94,8 +94,8 @@ export function conceptSfx(c, available) {
   return (c?.sfx || []).find((id) => !available || available.has(id)) || null;
 }
 
-// Cor dos rabiscos por tema (tinta da cena).
-const DOODLE_TINT = { papel: '#FF5A1F', holofote: '#FF5A1F', grade: '#111111', cinema: '#FF9A4D', video: '#FFD23F' };
+/** Extensão do arquivo de um elemento (fundos são JPG; objetos e rabiscos, PNG). */
+export const elementExt = (id) => (String(id).startsWith('backgrounds/') ? 'jpg' : 'png');
 // proporção altura/largura dos PNGs dos rabiscos usados aqui
 const DOODLE_AR = { underline: 30 / 160, squiggle: 40 / 160, sparkle: 1, 'star-4': 1 };
 const r3 = (v) => +Number(v).toFixed(3);
@@ -112,9 +112,11 @@ const r3 = (v) => +Number(v).toFixed(3);
  * @param {number} o.aspect largura/altura do quadro
  * @param {number} o.index número da cena (alterna lados e entradas)
  * @param {Set<string>} [o.available] sons existentes
+ * @param {string} [o.tint] cor dos rabiscos (a do tema)
+ * @param {boolean} [o.glass] cena com card de vidro (os objetos saem pelos cantos do card)
  * @returns {{elements:Array, sfx:Array}}
  */
-export function sceneElements({ words, lines, star, theme, start, end, aspect, index = 0, available = null }) {
+export function sceneElements({ words, lines, star, start, end, aspect, index = 0, available = null, tint = '#FF5A1F', glass = false }) {
   const elements = [];
   const sfx = [];
   if (!lines?.length) return { elements, sfx };
@@ -135,11 +137,10 @@ export function sceneElements({ words, lines, star, theme, start, end, aspect, i
     const h = scale * aspect; // PNG quadrado: altura em fração da altura do quadro
     let cx;
     let cy;
-    if (theme === 'holofote') {
-      // saindo da borda do círculo (em cima de um lado, embaixo do outro)
-      const ry = 0.46 * aspect;
-      cx = 0.5 + (k === 0 ? 0.24 : -0.25) * side;
-      cy = k === 0 ? 0.47 - ry + h * 0.32 : 0.47 + ry - h * 0.35;
+    if (glass) {
+      // saindo do canto do card de vidro (em cima de um lado, embaixo do outro)
+      cx = 0.5 + (k === 0 ? 0.3 : -0.3) * side;
+      cy = k === 0 ? top - 0.035 - h * 0.15 : bottom + 0.035 + h * 0.15;
     } else if (k === 0) {
       cx = 0.5 + [0, 0.17, -0.17][index % 3];
       cy = top - h / 2 - 0.012;
@@ -159,7 +160,6 @@ export function sceneElements({ words, lines, star, theme, start, end, aspect, i
   });
 
   // 2) rabisco colorido na palavra principal (sublinhado à mão) e brilho no número
-  const tint = DOODLE_TINT[theme] || DOODLE_TINT.video;
   const keyLine = star || lines.find((l) => l.role === 'key');
   if (keyLine) {
     const id = index % 2 ? 'squiggle' : 'underline';

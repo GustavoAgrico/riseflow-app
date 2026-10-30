@@ -29,15 +29,16 @@ test('hierarquia: ligação pequena, palavra-chave grande, número com a unidade
   assert.equal(phraseChunks([mk(0, 'a b c d e f g h i j')], 8).map((c) => c.length).join(), '8,2');
 });
 
-test('cada palavra entra no instante falado; cenas não se sobrepõem; fundo antes das palavras', () => {
+test('cada palavra entra no instante falado; cenas não se sobrepõem; fundo por baixo antes das palavras', () => {
   const plan = kineticPlan({ segments: SEGS, dur: 15, amount: 'muitos' });
   assert.ok(plan.scenes.length >= 4);
   for (let i = 1; i < plan.scenes.length; i++) assert.ok(plan.scenes[i].start >= plan.scenes[i - 1].end);
   const sc1 = plan.layers.filter((l) => l.scene === 1);
   const words = sc1.filter((l) => l.kind !== 'shape');
-  const shapes = sc1.filter((l) => l.kind === 'shape');
-  assert.equal(plan.scenes[0].theme, 'cinema');
-  assert.ok(shapes.length >= 1 && sc1.indexOf(shapes[0]) < sc1.indexOf(words[0]));
+  assert.equal(plan.scenes[0].theme, 'escuro');
+  // fundo da cena: imagem por baixo dos textos, cobrindo o quadro, entrando antes da 1ª palavra
+  const bg = plan.elements.find((e) => e.scene === 1 && e.element === 'backgrounds/escuro');
+  assert.ok(bg && !bg.above && bg.scale >= 1 && bg.start <= Math.min(...words.map((w) => w.start)));
   const agora = words.find((l) => l.text === 'agora');
   assert.ok(Math.abs(agora.start - (0.54 - 0.04)) < 0.011);
   assert.equal(agora.font, 'inter');

@@ -158,7 +158,7 @@ function buildPlan(mode, options) {
       { key: 'aspect', label: QUALITY_STAGE[options.quality] || 'Ajustando ao formato', weight: QUALITY_STAGE[options.quality] ? 12 : 8, enabled: ['9:16', '16:9', '1:1'].includes(options.aspect) || Boolean(QUALITY_STAGE[options.quality]) },
       { key: 'broll', label: 'Inserindo B-roll', weight: 14, enabled: options.broll === true },
       { key: 'vfx', label: 'Aplicando efeitos de vídeo', weight: 8, enabled: Array.isArray(options.fxMoments) && options.fxMoments.length > 0 },
-      { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: Array.isArray(options.userMedia) && options.userMedia.length > 0 },
+      { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: (Array.isArray(options.userMedia) && options.userMedia.some((m) => m?.above !== true)) || (options.kinetic === true && mode !== 'render') },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'texts', label: 'Colocando os textos', weight: 8, enabled: (Array.isArray(options.textLayers) && options.textLayers.length > 0) || (options.kinetic === true && mode !== 'render') },
       // objetos 3D e rabiscos das cenas de motion: por cima das legendas e dos textos
