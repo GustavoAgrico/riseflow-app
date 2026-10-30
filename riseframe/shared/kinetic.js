@@ -11,7 +11,7 @@
 
 import { emphasisScore } from './keyMoments.js';
 import { premiumSfx } from './autoMoments.js';
-import { sceneElements } from './sceneElements.js';
+import { sceneElements, ANIMATED_BACKGROUNDS } from './sceneElements.js';
 import { KINETIC_CHARS, KINETIC_WIDTHS } from './kineticWidths.js';
 
 const CHAR_IX = new Map([...KINETIC_CHARS].map((c, i) => [c, i]));
@@ -26,20 +26,20 @@ export function textWidthEm(text, font, tracking = 0) {
 
 export const KINETIC_THEMES = {
   auto: 'Alternar',
+  'preto-raios': 'Preto com raios',
+  'grade-ondulada': 'Grade ondulada',
+  'azul-grade': 'Azul com grade e estrelas',
+  'cinza-manchas': 'Cinza com manchas',
+  'holofote-cone': 'Feixe de luz',
+  lampada: 'Lâmpada',
+  'azul-orbita': 'Azul-noite com órbitas',
+  'lilas-flor': 'Lilás com flor',
   escuro: 'Escuro premium',
   branco: 'Branco com recortes',
   vsl: 'Roxo vidro (VSL)',
-  'azul-grade': 'Azul com grade',
-  'azul-orbita': 'Azul-noite com órbitas',
-  'roxo-ondas': 'Roxo com ondas',
-  'preto-linha': 'Preto minimalista',
-  'holofote-cone': 'Feixe de luz',
   'azul-claro': 'Azul-claro',
   'papel-cinza': 'Papel cinza',
   'branco-zigzag': 'Branco com zigzag',
-  'preto-raios': 'Preto com raios',
-  'cinza-rasgado': 'Cinza rasgado',
-  'branco-grade': 'Branco pontilhado',
   video: 'Sobre o vídeo',
 };
 export const KINETIC_AMOUNT = { chave: 'Momentos-chave', muitos: 'Quase o vídeo todo' };
@@ -131,25 +131,36 @@ const L = (big, small, num, numBg, accent, doodle, shadowColor = null, extra = {
   big, small, num, numBg, accent, doodle, shadow: Boolean(shadowColor), shadowColor: shadowColor || '#000000', bg: true, ...extra,
 });
 const THEME_LOOK = {
+  'preto-raios': L('#FFFFFF', '#A6A6A6', '#000000', '#FFFFFF', '#FFE14D', '#FFFFFF', '#000000'),
+  'grade-ondulada': L('#111111', '#555555', '#FFFFFF', '#111111', '#2F5BFF', '#111111', null, { light: true }),
+  'azul-grade': L('#FFFFFF', '#C9D2FF', '#1F35E0', '#FFFFFF', '#FFE14D', '#FFE14D', '#0B1890'),
+  'cinza-manchas': L('#111111', '#3A3A3A', '#FFFFFF', '#111111', '#E10600', '#111111', null, { light: true }),
+  'holofote-cone': L('#FFFFFF', '#BDBDBD', '#000000', '#FFFFFF', '#FFD27A', '#FFD27A', '#000000'),
+  lampada: L('#FFFFFF', '#9A9A9A', '#000000', '#FFFFFF', '#FFE9A8', '#FFFFFF', '#000000'),
+  'azul-orbita': L('#FFFFFF', '#9FB6E8', '#0B2463', '#FFFFFF', '#7CC4FF', '#7CC4FF', '#000000'),
+  'lilas-flor': L('#FFFFFF', '#F1E8FF', '#FFFFFF', '#3B2FD6', '#FFE38A', '#FFE38A', '#1A0E45'),
   escuro: L('#FFFFFF', '#A6A6A6', '#0B0B0B', '#FF6B35', '#FF7A2E', '#FF7A2E', '#000000'),
   branco: L('#111111', '#6E6E6E', '#FFFFFF', '#111111', '#FF5A1F', '#FF5A1F', null, { light: true }),
   vsl: L('#FFFFFF', '#A59CC4', '#FFFFFF', '#8B5CF6', '#B9A3FF', '#B9A3FF', null, { glass: true }),
-  'azul-grade': L('#FFFFFF', '#C9D2FF', '#1F35E0', '#FFFFFF', '#FFE14D', '#FFE14D', '#0B1890'),
-  'azul-orbita': L('#FFFFFF', '#9FB6E8', '#0B2463', '#FFFFFF', '#7CC4FF', '#7CC4FF', '#000000'),
-  'roxo-ondas': L('#FFFFFF', '#E4DBFF', '#FFFFFF', '#6B4EFF', '#FFE38A', '#FFE38A', '#1A0E45'),
-  'preto-linha': L('#FFFFFF', '#9A9A9A', '#000000', '#FFFFFF', '#FF7A2E', '#FFFFFF', '#000000'),
-  'holofote-cone': L('#FFFFFF', '#BDBDBD', '#000000', '#FFFFFF', '#FFD27A', '#FFD27A', '#000000'),
   'azul-claro': L('#0D1B3D', '#5B6B8C', '#FFFFFF', '#2F7BFF', '#2F7BFF', '#2F7BFF', null, { light: true }),
   'papel-cinza': L('#111111', '#4E4A44', '#FFFFFF', '#111111', '#B3261E', '#111111', null, { light: true }),
   'branco-zigzag': L('#111111', '#6E6E6E', '#FFFFFF', '#E10600', '#E10600', '#111111', null, { light: true }),
-  'preto-raios': L('#FFFFFF', '#A6A6A6', '#000000', '#FFFFFF', '#FFE14D', '#FFFFFF', '#000000'),
-  'cinza-rasgado': L('#111111', '#3A3A3A', '#FFFFFF', '#111111', '#FF5A1F', '#111111', null, { light: true }),
-  'branco-grade': L('#111111', '#6E6E6E', '#FFFFFF', '#2F7BFF', '#2F7BFF', '#2F7BFF', null, { light: true }),
   video: { big: '#FFFFFF', small: '#F2F2F2', num: '#111111', numBg: '#FFFFFF', shadow: true, shadowColor: '#000000', accent: '#4DA3FF', doodle: '#FFD23F' },
 };
 /** Temas com fundo próprio (= imagens em assets/elements/backgrounds). */
 export const SCENE_BACKGROUNDS = Object.keys(THEME_LOOK).filter((k) => THEME_LOOK[k].bg);
-const ROTATION = ['escuro', 'azul-grade', 'branco', 'roxo-ondas', 'holofote-cone', 'azul-claro', 'preto-raios', 'papel-cinza', 'vsl', 'azul-orbita', 'branco-zigzag', 'preto-linha', 'cinza-rasgado', 'branco-grade'];
+const ROTATION = ['preto-raios', 'azul-grade', 'grade-ondulada', 'lilas-flor', 'holofote-cone', 'cinza-manchas', 'azul-orbita', 'lampada', 'escuro', 'branco', 'vsl', 'azul-claro', 'papel-cinza', 'branco-zigzag'];
+
+/** Fundo próprio (mídia da pessoa) cobrindo o quadro; vídeo em loop e sem som. */
+function customBackground(cb, start, end, aspect) {
+  const ar = Number(cb.ar) > 0 ? Number(cb.ar) : 16 / 9;
+  const cover = Math.max(1, 1 / (aspect * ar)) * 1.04;
+  return {
+    kind: cb.kind === 'video' ? 'video' : 'image', mode: 'pip', custom: cb.ref, cx: 0.5, cy: 0.5, scale: +cover.toFixed(3),
+    start: +start.toFixed(2), duration: +(end - start).toFixed(2), animIn: 'fade', animOut: 'fade', animDur: 0.3,
+    ...(cb.kind === 'video' ? { loop: true, muted: true, volume: 0 } : { motion: 'drift', motionSpeed: 1, motionAmp: 0.6 }), layer: 10,
+  };
+}
 
 /**
  * Fundo de uma cena: camada de imagem que cobre o quadro (um pouco maior, para o movimento
@@ -158,10 +169,12 @@ const ROTATION = ['escuro', 'azul-grade', 'branco', 'roxo-ondas', 'holofote-cone
 export function sceneBackground(theme, start, end, aspect) {
   if (!THEME_LOOK[theme]?.bg) return null;
   const cover = Math.max(1, (9 / 16) / aspect) * 1.07; // largura do quadro que cobre tudo
+  const anim = ANIMATED_BACKGROUNDS.has(theme);
   return {
-    kind: 'image', mode: 'pip', element: `backgrounds/${theme}`, cx: 0.5, cy: 0.5, scale: +cover.toFixed(3),
+    kind: anim ? 'video' : 'image', mode: 'pip', element: `backgrounds/${theme}`, cx: 0.5, cy: 0.5, scale: +cover.toFixed(3),
     start: +start.toFixed(2), duration: +(end - start).toFixed(2), animIn: 'fade', animOut: 'fade', animDur: 0.3,
-    motion: 'drift', motionSpeed: 1, motionAmp: 0.6, layer: 10,
+    // fundo animado: vídeo em loop, sem som; o fixo ganha um leve movimento de câmera
+    ...(anim ? { loop: true, muted: true, volume: 0 } : { motion: 'drift', motionSpeed: 1, motionAmp: 0.6 }), layer: 10,
   };
 }
 
@@ -245,7 +258,9 @@ export function sceneLayers(words, { theme, start, end, aspect, index = 0 }) {
  * @returns {{scenes:Array<{start,end,theme,words}>, layers:Array, elements:Array, sfx:Array<{t,type,volume,why}>}}
  * `elements`: objetos 3D e rabiscos (camadas de imagem por cima das cenas, ver sceneElements.js).
  */
-export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', amount = 'chave', existing = [], available = null } = {}) {
+export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', amount = 'chave', existing = [], available = null, backgrounds = null } = {}) {
+  // fundos próprios (mídias da pessoa): [{ ref, kind: 'image'|'video', ar: altura/largura, light }]
+  const custom = Array.isArray(backgrounds) && backgrounds.length ? backgrounds : null;
   const total = Number(dur) || 0;
   const chunks = phraseChunks(segments, amount === 'muitos' ? 7 : 8).filter((c) => c.length >= 2);
   const scored = chunks.map((c, i) => ({
@@ -276,12 +291,14 @@ export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', am
     const start = Math.max(0, c.s - 0.08);
     const end = Math.min(total || Infinity, next ? next.s - 0.12 : Infinity, c.e + 0.45);
     if (end - start < 0.6) return;
-    const th = theme === 'auto' ? ROTATION[scenes.length % ROTATION.length] : (THEME_LOOK[theme] ? theme : 'video');
+    const cb = custom ? custom[scenes.length % custom.length] : null;
+    // fundo próprio: as cores do texto saem da paleta clara ou escura, pelo brilho dele
+    const th = cb ? (cb.light ? 'branco' : 'escuro') : theme === 'auto' ? ROTATION[scenes.length % ROTATION.length] : (THEME_LOOK[theme] ? theme : 'video');
     const { layers: ls, lines, star } = sceneLayers(c.words, { theme: th, start, end, aspect, index: scenes.length });
     scenes.push({ start: +start.toFixed(2), end: +end.toFixed(2), theme: th, words: c.words.length });
     layers.push(...ls.map((l) => ({ ...l, scene: scenes.length })));
     const look = THEME_LOOK[th] || THEME_LOOK.video;
-    const bg = sceneBackground(th, Math.max(0, start - 0.1), end, aspect);
+    const bg = cb ? customBackground(cb, Math.max(0, start - 0.1), end, aspect) : sceneBackground(th, Math.max(0, start - 0.1), end, aspect);
     if (bg) elements.push({ ...bg, scene: scenes.length });
     const el = sceneElements({ words: c.words, lines, star, theme: th, start, end, aspect, index: scenes.length - 1, available, tint: look.doodle, glass: look.glass === true });
     elements.push(...el.elements.map((e) => ({ ...e, scene: scenes.length })));

@@ -39,6 +39,7 @@ import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
 import { ELEMENT_MOTIONS } from '../../../shared/elementMotion.js';
 import { KINETIC_THEMES } from '../../../shared/kinetic.js';
 import { cleanElementId, elementFile } from '../pipeline/elements.js';
+import { elementExt } from '../../../shared/sceneElements.js';
 import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
 import { brandIn, entityQuery } from '../pipeline/entities.js';
 import { LAYER_ANIMATIONS, BLEND_MODES } from '../pipeline/overlay.js';
@@ -90,7 +91,7 @@ function optionsForUser(req) {
     o.userMedia = o.userMedia
       .map((m) => {
         // elemento pronto do app (objeto 3D / rabisco): o arquivo vem dos assets
-        if (m.element) { const file = elementFile(m.element); return file ? { ...m, kind: 'image', file } : null; }
+        if (m.element) { const file = elementFile(m.element); return file ? { ...m, kind: file.endsWith('.mp4') ? 'video' : 'image', file } : null; }
         const found = resolveMedia(m.mediaId);
         if (!found) return null;
         return { ...m, kind: m.kind || found.kind, file: found.path };
@@ -438,7 +439,7 @@ function sanitizeUserMedia(raw) {
   for (const m of raw) {
     const element = cleanElementId(m?.element);
     if (!m || ((typeof m.mediaId !== 'string' || !m.mediaId) && !element)) continue;
-    const kind = element ? 'image' : ['image', 'video', 'audio'].includes(m.kind) ? m.kind : null;
+    const kind = element ? (elementExt(element) === 'mp4' ? 'video' : 'image') : ['image', 'video', 'audio'].includes(m.kind) ? m.kind : null;
     const item = {
       ...(element ? { element } : { mediaId: m.mediaId }),
       kind,
@@ -483,6 +484,8 @@ function sanitizeUserMedia(raw) {
       ...(kind !== 'audio' && Object.hasOwn(ELEMENT_MOTIONS, m.motion) && m.motion !== 'none'
         ? { motion: m.motion, motionSpeed: clampNum(m.motionSpeed, 0.2, 5, 1), motionAmp: clampNum(m.motionAmp, 0.1, 3, 1) } : {}),
       ...(kind !== 'audio' && /^#[0-9a-f]{6}$/i.test(String(m.tint || '')) ? { tint: m.tint } : {}),
+      // vídeo em loop (fundo animado das cenas): repete até o fim da camada
+      ...(kind === 'video' && m.loop === true ? { loop: true } : {}),
     };
     out.push(item);
     if (out.length >= 160) break; // teto de segurança

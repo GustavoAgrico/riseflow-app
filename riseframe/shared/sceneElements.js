@@ -94,8 +94,14 @@ export function conceptSfx(c, available) {
   return (c?.sfx || []).find((id) => !available || available.has(id)) || null;
 }
 
-/** Extensão do arquivo de um elemento (fundos são JPG; objetos e rabiscos, PNG). */
-export const elementExt = (id) => (String(id).startsWith('backgrounds/') ? 'jpg' : 'png');
+/** Fundos animados (vídeo em loop de 6 s); os outros fundos são imagem. */
+export const ANIMATED_BACKGROUNDS = new Set(['preto-raios', 'grade-ondulada', 'azul-grade', 'cinza-manchas', 'holofote-cone', 'lampada', 'azul-orbita', 'lilas-flor']);
+/** Extensão do arquivo de um elemento (fundos: MP4 animado ou JPG; objetos e rabiscos: PNG). */
+export const elementExt = (id) => {
+  const s = String(id);
+  if (!s.startsWith('backgrounds/')) return 'png';
+  return ANIMATED_BACKGROUNDS.has(s.slice(12)) ? 'mp4' : 'jpg';
+};
 // proporção altura/largura dos PNGs dos rabiscos usados aqui
 const DOODLE_AR = { underline: 30 / 160, squiggle: 40 / 160, sparkle: 1, 'star-4': 1 };
 const r3 = (v) => +Number(v).toFixed(3);

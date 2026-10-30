@@ -129,6 +129,9 @@ function scaleFactor(anim, p, ease) {
  * - Mesclagem (tela cheia): a camada é posta sobre uma tela na cor neutra do modo e
  *   mesclada com blend — fora da janela e nos fades, a cor neutra não altera o vídeo.
  */
+// vídeo em loop: só a duração da camada (a entrada repete sem fim)
+const loopTrim = (m) => (m.loop === true && m.kind === 'video' ? `trim=duration=${Number(m.d || m.duration || 1).toFixed(3)},setpts=PTS-STARTPTS,` : '');
+
 export function visualLayerParts(vis, { W, H, fps, dur }) {
   const parts = [];
   let vlast = '[0:v]';
@@ -167,9 +170,9 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
       const scale = scaleBase;
       w0 = Math.max(2, Math.round((W * scale) / 2) * 2);
       h0 = aspect ? Math.round((w0 * aspect) / 2) * 2 : null;
-      chain = `${src}scale=${w0}:-2,setsar=1`;
+      chain = `${src}${loopTrim(m)}scale=${w0}:-2,setsar=1`;
     } else {
-      chain = `${src}scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`;
+      chain = `${src}${loopTrim(m)}scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`;
     }
     chain += layerAdjustVf(m);
     let rgba = false;
@@ -481,6 +484,7 @@ export async function applyUserMedia(input, work, meta, options, onProgress = ()
       // Vídeo/música aparado na ponta esquerda (ou dividido): começa deste ponto do arquivo.
       const offset = clamp(m.offset, 0, 100000, 0);
       if (offset > 0.01) args.push('-ss', offset.toFixed(3));
+      if (m.loop === true && m.kind === 'video') args.push('-stream_loop', '-1'); // fundo animado em loop
     }
     args.push('-i', m.file);
   }

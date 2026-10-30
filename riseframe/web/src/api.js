@@ -1,3 +1,5 @@
+import { elementExt } from '../../shared/sceneElements.js';
+
 // URL da API. Em produção com frontend e backend juntos (Render), deixe vazio
 // (mesma origem → '/api'). Na Netlify (só frontend), defina VITE_API_URL com a
 // URL do backend, ex.: https://riseframe-api.onrender.com  → vira '.../api'.
@@ -676,7 +678,7 @@ export async function addProjectMedia(file, onProgress) {
 }
 export const mediaFileUrl = (id, v = '') => `${BASE}/media/${id}/file${v ? `?v=${v}` : ''}`;
 /** PNG de um elemento pronto do app (objeto 3D ou rabisco das cenas de motion). */
-export const elementUrl = (id) => `${BASE}/elements/${id}.${String(id).startsWith('backgrounds/') ? 'jpg' : 'png'}`;
+export const elementUrl = (id) => `${BASE}/elements/${id}.${elementExt(id)}`;
 /** Vídeo que o navegador toca (H.264 leve quando o original é HEVC/ProRes/10 bits/HDR…). */
 export const mediaPreviewUrl = (id, v = '') => `${BASE}/media/${id}/preview${v ? `?v=${v}` : ''}`;
 export const mediaStatus = (id) => jsonReq('GET', `${BASE}/media/${id}/status`);

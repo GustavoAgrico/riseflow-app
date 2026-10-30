@@ -74,8 +74,20 @@ test('cada tema com fundo tem a imagem no app e o "Alternar" passa por vários f
     assert.ok(KINETIC_THEMES[b], b);
     assert.ok(elementFile(`backgrounds/${b}`), b);
   }
-  for (const old of ['holofote', 'papel', 'grade', 'cinema']) assert.equal(KINETIC_THEMES[old], undefined, `${old} saiu`);
+  for (const old of ['holofote', 'papel', 'grade', 'cinema', 'roxo-ondas', 'preto-linha', 'cinza-rasgado', 'branco-grade']) assert.equal(KINETIC_THEMES[old], undefined, `${old} saiu`);
   const segs = Array.from({ length: 8 }, (_, i) => ({ start: i * 5, end: i * 5 + 3, words: words('o segredo do dinheiro é sempre o tempo', i * 5) }));
   const plan = kineticPlan({ segments: segs, dur: 42, amount: 'muitos' });
   assert.ok(new Set(plan.scenes.map((s) => s.theme)).size >= 5);
+});
+
+test('fundo animado em loop: cena mais longa que o vídeo do fundo renderiza inteira no FFmpeg', () => {
+  const ctx = { W: 360, H: 640, fps: 15, dur: 9 };
+  const file = elementFile('backgrounds/lampada');
+  assert.ok(file && file.endsWith('.mp4'));
+  const vis = [{ _inIdx: 1, kind: 'video', loop: true, start: 0.5, end: 8.5, d: 8, mode: 'pip', scale: 1.07, cx: 0.5, cy: 0.5, animIn: 'fade', animOut: 'fade' }];
+  const fc = visualLayerParts(vis, ctx).join(';');
+  assert.match(fc, /trim=duration=8\.000/);
+  const r = spawnSync(ffmpegPath, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=360x640:d=9:r=15', '-stream_loop', '-1', '-i', file,
+    '-filter_complex', fc, '-map', '[vout]', '-t', '9', '-f', 'null', '-']);
+  assert.equal(r.status, 0, r.stderr.toString().slice(0, 400));
 });

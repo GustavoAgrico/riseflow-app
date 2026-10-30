@@ -35,10 +35,10 @@ test('cada palavra entra no instante falado; cenas não se sobrepõem; fundo por
   for (let i = 1; i < plan.scenes.length; i++) assert.ok(plan.scenes[i].start >= plan.scenes[i - 1].end);
   const sc1 = plan.layers.filter((l) => l.scene === 1);
   const words = sc1.filter((l) => l.kind !== 'shape');
-  assert.equal(plan.scenes[0].theme, 'escuro');
-  // fundo da cena: imagem por baixo dos textos, cobrindo o quadro, entrando antes da 1ª palavra
-  const bg = plan.elements.find((e) => e.scene === 1 && e.element === 'backgrounds/escuro');
-  assert.ok(bg && !bg.above && bg.scale >= 1 && bg.start <= Math.min(...words.map((w) => w.start)));
+  assert.equal(plan.scenes[0].theme, 'preto-raios');
+  // fundo da cena: vídeo animado em loop por baixo dos textos, cobrindo o quadro, antes da 1ª palavra
+  const bg = plan.elements.find((e) => e.scene === 1 && e.element === 'backgrounds/preto-raios');
+  assert.ok(bg && !bg.above && bg.kind === 'video' && bg.loop && bg.muted && bg.scale >= 1 && bg.start <= Math.min(...words.map((w) => w.start)));
   const agora = words.find((l) => l.text === 'agora');
   assert.ok(Math.abs(agora.start - (0.54 - 0.04)) < 0.011);
   assert.equal(agora.font, 'inter');
@@ -98,4 +98,17 @@ test('pedaços cortados pelo tamanho nunca terminam em palavra de ligação', ()
   const ws = 'o segredo do dinheiro é sempre o tempo que você tem'.split(' ').map((w, i) => ({ word: w, start: i * 0.3, end: i * 0.3 + 0.25 }));
   const chunks = phraseChunks([{ start: 0, end: 4, words: ws }], 7).map((c) => c.map((w) => w.word).join(' '));
   assert.deepEqual(chunks, ['o segredo do dinheiro é sempre', 'o tempo que você tem']);
+});
+
+test('fundos próprios: cada cena usa uma mídia da pessoa e a cor do texto segue o brilho dela', () => {
+  const backgrounds = [{ ref: 'm1', kind: 'video', ar: 16 / 9, light: false }, { ref: 'm2', kind: 'image', ar: 16 / 9, light: true }];
+  const plan = kineticPlan({ segments: SEGS, dur: 15, amount: 'muitos', backgrounds });
+  const bgs = plan.elements.filter((e) => e.custom);
+  assert.ok(bgs.length >= 2);
+  assert.deepEqual(bgs.slice(0, 2).map((e) => e.custom), ['m1', 'm2']);
+  assert.ok(bgs[0].loop && bgs[0].kind === 'video' && bgs[1].kind === 'image');
+  // vídeo 16:9 num quadro 9:16: cobre a altura inteira
+  assert.ok(bgs[0].scale * (9 / 16) * (16 / 9) >= 1);
+  assert.deepEqual(plan.scenes.slice(0, 2).map((s) => s.theme), ['escuro', 'branco']);
+  assert.ok(!plan.elements.some((e) => String(e.element || '').startsWith('backgrounds/')));
 });

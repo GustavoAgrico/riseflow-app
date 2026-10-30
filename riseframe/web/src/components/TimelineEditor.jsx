@@ -3327,6 +3327,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           ...(m.animDur ? { animDur: +Number(m.animDur).toFixed(2) } : {}),
           ...(m.kind !== 'audio' && m.tint ? { tint: m.tint } : {}),
           ...(m.kind !== 'audio' && m.above ? { above: true } : {}),
+          ...(m.kind === 'video' && m.loop ? { loop: true } : {}),
           ...(m.kind === 'audio' ? { fadeIn: +Number(m.fadeIn || 0).toFixed(2), fadeOut: +Number(m.fadeOut || 0).toFixed(2) } : {}),
         })),
         // Velocidade por trecho e congelar quadro (tempo original; o servidor remapeia).
@@ -5144,6 +5145,45 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [kinTheme, setKinTheme] = useState(() => (KINETIC_THEMES[options?.kineticTheme] ? options.kineticTheme : 'auto'));
   const [kinAmount, setKinAmount] = useState(() => (KINETIC_AMOUNT[options?.kineticAmount] ? options.kineticAmount : 'chave'));
   const [kinSfx, setKinSfx] = useState(true);
+  // fundos próprios das cenas (mídias da biblioteca): { ref, kind, ar, light, name }
+  const [kinBgs, setKinBgs] = useState([]);
+  const [kinBgOpen, setKinBgOpen] = useState(false);
+  const [kinBgBusy, setKinBgBusy] = useState(null);
+  /** Proporção e brilho de uma mídia (para cobrir o quadro e escolher texto claro/escuro). */
+  async function measureBg(it) {
+    const url = it.kind === 'video' ? mediaPreviewUrl(it.id) : mediaFileUrl(it.id);
+    const el = it.kind === 'video' ? document.createElement('video') : new Image();
+    el.crossOrigin = 'anonymous';
+    if (it.kind === 'video') { el.muted = true; el.preload = 'auto'; }
+    await new Promise((ok, bad) => { if (it.kind === 'video') { el.onloadeddata = ok; } else { el.onload = ok; } el.onerror = bad; el.src = url; });
+    if (it.kind === 'video') await new Promise((ok) => { el.onseeked = ok; setTimeout(ok, 1500); el.currentTime = Math.min(1, (el.duration || 2) / 2); });
+    const w = el.videoWidth || el.naturalWidth || 9;
+    const h = el.videoHeight || el.naturalHeight || 16;
+    let light = false;
+    try {
+      const c = document.createElement('canvas');
+      c.width = 24; c.height = 40;
+      const g = c.getContext('2d');
+      g.drawImage(el, 0, 0, 24, 40);
+      const d = g.getImageData(0, 0, 24, 40).data;
+      let sum = 0;
+      for (let i = 0; i < d.length; i += 4) sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+      light = sum / (d.length / 4) > 150;
+    } catch { /* sem leitura do quadro: texto claro */ }
+    return { ar: h / w, light };
+  }
+  async function toggleKinBg(it) {
+    if (kinBgs.some((b) => b.ref === it.id)) { setKinBgs((l) => l.filter((b) => b.ref !== it.id)); return; }
+    setKinBgBusy(it.id);
+    try {
+      const m = await measureBg(it);
+      setKinBgs((l) => [...l, { ref: it.id, kind: it.kind, ar: m.ar, light: m.light, name: it.filename || 'fundo' }]);
+    } catch {
+      setKinBgs((l) => [...l, { ref: it.id, kind: it.kind, ar: 16 / 9, light: false, name: it.filename || 'fundo' }]);
+    } finally {
+      setKinBgBusy(null);
+    }
+  }
   const [autoNote, setAutoNote] = useState('');
   const sayAuto = (msg) => { setAutoNote(msg); setTimeout(() => setAutoNote(''), 4000); };
   const smartSegments = () => (cuts.length ? segments.map((sg) => markCut(sg, cuts)) : segments);
@@ -5183,7 +5223,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   function placeKinetic() {
     const keep = textLayers.filter((l) => !l.smart);
     const aspect = (FMT_WH[aspectSel]?.[0] || vdim?.w || 1080) / (FMT_WH[aspectSel]?.[1] || vdim?.h || 1920);
-    const plan = kineticPlan({ segments: smartSegments(), dur, aspect, theme: kinTheme, amount: kinAmount, existing: keep.filter((l) => l.end - l.start < dur * 0.8), available: sfxAvailable() });
+    const plan = kineticPlan({ segments: smartSegments(), dur, aspect, theme: kinTheme, amount: kinAmount, existing: keep.filter((l) => l.end - l.start < dur * 0.8), available: sfxAvailable(),
+      backgrounds: kinBgs.length ? kinBgs.map(({ ref, kind, ar, light }) => ({ ref, kind, ar, light })) : null });
     const now = Date.now();
     const layers = plan.layers.map((l, i) => ({ key: `t${now}_${i}`, ...l, smart: true }));
     // a ordem do desenho é a da lista: o fundo de cada cena vem antes das palavras dela
@@ -5193,10 +5234,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const rest = prev.filter((m) => !m.kinetic);
       const top = rest.reduce((a, m) => Math.max(a, Number(m.layer) || 0), 0) + 1;
       const els = (plan.elements || []).map((e, i) => ({
-        key: `k${now}_${i}`, kind: 'image', filename: e.element.replace('doodles/', 'rabisco: ').replace('backgrounds/', 'fundo: '), previewUrl: elementUrl(e.element),
+        key: `k${now}_${i}`, kind: 'image',
+        // fundo próprio (mídia da biblioteca) ou elemento do app
+        ...(e.custom
+          ? { mediaId: e.custom, filename: `fundo: ${kinBgs.find((b) => b.ref === e.custom)?.name || 'meu fundo'}`, previewUrl: e.kind === 'video' ? mediaPreviewUrl(e.custom) : mediaFileUrl(e.custom) }
+          : { filename: e.element.replace('doodles/', 'rabisco: ').replace('backgrounds/', 'fundo: '), previewUrl: elementUrl(e.element) }),
         srcDuration: 600, volume: 0, opacity: 1, blend: 'normal', offset: 0, fadeIn: 0, fadeOut: 0, px: 0.5, py: 0.5,
         // fundo por baixo dos textos (por cima das suas mídias); rabiscos e objetos por cima de tudo
-        ...e, layer: e.above ? top + (e.element.startsWith('doodles/') ? 1 : 2) : top, kinetic: true,
+        ...e, layer: e.above ? top + (String(e.element).startsWith('doodles/') ? 1 : 2) : top, kinetic: true,
       }));
       return [...rest, ...els];
     });
@@ -5258,7 +5303,33 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Monta a frase em camadas: palavras de ligação pequenas em itálico, palavras-chave grandes, números em tarja — cada uma entra no instante em que é falada, em cenas de fundo (escuro premium, branco com objetos recortados, roxo com vidro) ou sobre o vídeo, com objetos 3D do assunto. Com sons premium em cada entrada. A legenda some durante a cena e volta ao tirar.</span>
       <div style={{ display: 'grid', gap: 5 }}>
         <span style={{ fontSize: 10.5, color: C.faint, fontWeight: 700 }}>Visual</span>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{Object.entries(KINETIC_THEMES).map(([id, label]) => chip(kinTheme === id, () => setKinTheme(id), label, id))}</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, opacity: kinBgs.length ? 0.45 : 1 }}>{Object.entries(KINETIC_THEMES).map(([id, label]) => chip(kinTheme === id && !kinBgs.length, () => { setKinTheme(id); setKinBgs([]); }, label, id))}</div>
+        <button type="button" onClick={() => { setKinBgOpen((o) => !o); if (library == null) loadLibrary(); }}
+          style={{ justifySelf: 'start', height: 24, padding: '0 10px', borderRadius: 999, border: `1px solid ${kinBgs.length ? C.orange : C.border}`, background: kinBgs.length ? 'rgba(255,107,53,0.16)' : 'transparent', color: C.text, fontSize: 10.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
+          {kinBgOpen ? '▾' : '▸'} Usar meus fundos{kinBgs.length ? ` (${kinBgs.length})` : ''}
+        </button>
+        {kinBgOpen && (
+          <div style={{ display: 'grid', gap: 5 }}>
+            <span style={{ fontSize: 10.5, color: C.faint, lineHeight: 1.4 }}>Escolha vídeos ou imagens da sua biblioteca (importe em Mídias). Cada cena usa um, em loop; a cor do texto segue o brilho do fundo.</span>
+            {library == null ? <span style={{ fontSize: 11, color: C.faint }}>Carregando…</span> : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(54px, 1fr))', gap: 5, maxHeight: 190, overflowY: 'auto' }}>
+                {library.filter((it) => (it.kind === 'video' || it.kind === 'image') && it.status === 'ok').map((it) => {
+                  const on = kinBgs.some((b) => b.ref === it.id);
+                  return (
+                    <button key={it.id} type="button" onClick={() => toggleKinBg(it)} disabled={kinBgBusy === it.id} title={it.filename}
+                      style={{ position: 'relative', aspectRatio: '9 / 16', borderRadius: 7, overflow: 'hidden', padding: 0, border: `2px solid ${on ? C.orange : C.border}`, background: '#000', cursor: kinBgBusy === it.id ? 'wait' : 'pointer' }}>
+                      {it.kind === 'video'
+                        ? <video src={mediaPreviewUrl(it.id)} muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        : <img src={mediaFileUrl(it.id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+                      {on && <span style={{ position: 'absolute', top: 3, right: 3, width: 16, height: 16, borderRadius: 999, background: C.orange, color: '#fff', fontSize: 10, fontWeight: 800, display: 'grid', placeItems: 'center' }}>{kinBgs.findIndex((b) => b.ref === it.id) + 1}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {library && !library.some((it) => (it.kind === 'video' || it.kind === 'image') && it.status === 'ok') && <span style={{ fontSize: 11, color: C.faint }}>Nenhum vídeo/imagem na biblioteca ainda.</span>}
+          </div>
+        )}
         <span style={{ fontSize: 10.5, color: C.faint, fontWeight: 700 }}>Quanto</span>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
           {Object.entries(KINETIC_AMOUNT).map(([id, label]) => chip(kinAmount === id, () => setKinAmount(id), label, id))}
@@ -10430,7 +10501,9 @@ function SyncedVideo({ m, mainRef, style, onAspect }) {
       const main = mainRef?.current;
       if (v && main && v.readyState >= 1) {
         const mm = mRef.current;
-        const target = Math.max(0, main.currentTime - mm.start + (Number(mm.offset) || 0));
+        const raw = Math.max(0, main.currentTime - mm.start + (Number(mm.offset) || 0));
+        // fundo animado em loop: volta ao começo a cada volta
+        const target = mm.loop && Number.isFinite(v.duration) && v.duration > 0 ? raw % v.duration : raw;
         const vol = Math.max(0, Math.min(1, mm.volume ?? 1));
         if (Math.abs(v.volume - vol) > 0.01) v.volume = vol;
         const muted = main.muted || mm.muted === true || vol < 0.005;
