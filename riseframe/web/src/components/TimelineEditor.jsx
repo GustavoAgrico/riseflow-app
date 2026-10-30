@@ -23,7 +23,7 @@ import { keyZoomMoments } from '../../../shared/keyMoments.js';
 import { suggestSfx, SFX_STYLES } from '../../../shared/autoMoments.js';
 import { kineticPlan, KINETIC_THEMES, KINETIC_AMOUNT } from '../../../shared/kinetic.js';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
-import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame } from '../../../shared/textLayers.js';
+import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, wordPlan, wordFrame, WORD_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
 import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
@@ -4284,6 +4284,43 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <CapRow label="Entrada"><Sel value={selTextItem.animIn} opts={Object.entries(TEXT_ANIMS_IN).map(([id, label]) => ({ id, label }))} onChange={(v) => updateText(selTextItem.key, { animIn: v })} /></CapRow>
             <CapRow label="Saída"><Sel value={selTextItem.animOut} opts={Object.entries(TEXT_ANIMS_OUT).map(([id, label]) => ({ id, label }))} onChange={(v) => updateText(selTextItem.key, { animOut: v })} /></CapRow>
           </div>
+          {countTarget(selTextItem.text) != null && (
+            <CapRow label="Contador"><label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}><input type="checkbox" checked={!!selTextItem.count} onChange={(e) => updateText(selTextItem.key, { count: e.target.checked })} />Número sobe até o valor</label></CapRow>
+          )}
+          {LETTER_ANIMS.includes(selTextItem.animIn) && (
+            <div style={{ display: 'grid', gap: 6 }}>
+              {[
+                ['letterDur', 'Duração por letra', 0.1, 1.5, 0.05, 0.4, 's'],
+                ['letterGap', 'Atraso entre letras', 0, 0.2, 0.01, 0.05, 's'],
+                ['letterDist', 'Distância', 0, 0.3, 0.01, selTextItem.animIn === 'letras-queda' ? 0.1 : selTextItem.animIn === 'letras-desfoque-subir' || selTextItem.animIn === 'letras-empurrao' ? 0.05 : 0.06, ''],
+                ['overshoot', 'Overshoot', 0, 1, 0.05, 0.5, ''],
+              ].map(([key, label, min, max, step, def, unit]) => {
+                const v = selTextItem[key] ?? def;
+                return (
+                  <CapRow key={key} label={`${label} · ${Number(v).toFixed(2)}${unit ? ` ${unit}` : ''}`}>
+                    <input type="range" min={min} max={max} step={step} value={v} onChange={(e) => updateText(selTextItem.key, { [key]: Number(e.target.value) })} style={{ width: '100%', accentColor: '#FF6B35' }} />
+                  </CapRow>
+                );
+              })}
+            </div>
+          )}
+          {WORD_ANIMS.includes(selTextItem.animIn) && (
+            <div style={{ display: 'grid', gap: 6 }}>
+              {[
+                ['wordDur', 'Duração por palavra', 0.15, 2, 0.05, 0.5, 's'],
+                ['wordGap', 'Atraso entre palavras', 0, 0.5, 0.01, 0.1, 's'],
+                ['letterDist', 'Distância', 0, 0.3, 0.01, selTextItem.animIn === 'palavras-queda' ? 0.1 : selTextItem.animIn === 'palavras-desfoque-subir' || selTextItem.animIn === 'palavras-empurrao' ? 0.05 : 0.06, ''],
+                ['overshoot', 'Overshoot', 0, 1, 0.05, 0.5, ''],
+              ].map(([key, label, min, max, step, def, unit]) => {
+                const v = selTextItem[key] ?? def;
+                return (
+                  <CapRow key={key} label={`${label} · ${Number(v).toFixed(2)}${unit ? ` ${unit}` : ''}`}>
+                    <input type="range" min={min} max={max} step={step} value={v} onChange={(e) => updateText(selTextItem.key, { [key]: Number(e.target.value) })} style={{ width: '100%', accentColor: '#FF6B35' }} />
+                  </CapRow>
+                );
+              })}
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.faint }}>
             {fmtDuration(selTextItem.start)} → {fmtDuration(selTextItem.end)} · arraste o texto no vídeo ou o bloco na faixa TEXTOS
             <button onClick={() => { setTextLayers((l) => l.filter((x) => x.key !== selTextItem.key)); setSelText(null); }} style={{ ...miniBtn(false, false), marginLeft: 'auto', color: C.red }}>Excluir</button>
@@ -10200,10 +10237,11 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
         // uma caixa por linha (do tamanho do texto), com a folga e os cantos escolhidos — a
         // mesma conta do render (textBoxMetrics/textLook)
         const g = textBoxMetrics(l);
-        const lines = textShown(l).split('\n');
+        const lines = textShown(l.count ? { ...l, text: countText(l, cur - l.start) } : l).split('\n');
         const plan = L.smallCaps ? null : revealPlan(l, lines);
         // animações por letra: cada letra recebe o seu progresso no tempo atual (igual ao render)
         const letters = L.smallCaps ? null : letterPlan(l, lines);
+        const wordsP = L.smallCaps ? null : wordPlan(l, lines);
         const rgba = (hex, a) => { const h = String(hex).replace('#', ''); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; };
         // contorno "fora" = a borda inteira por fora (o CSS desenha metade de cada lado)
         const sw = L.stroke ? L.strokeW * box.h * (L.strokePos === 'center' ? 1 : 2) : 0;
@@ -10229,8 +10267,15 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
                   WebkitTextStroke: sw ? `${Math.max(0.5, sw)}px ${L.strokeColor}` : undefined, paintOrder: 'stroke fill' }}>{letters
                     ? letters[j].map((p, k) => {
                       if (p.t == null) return <span key={k}>{p.u}</span>;
-                      const f = letterFrame(l.animIn, Math.max(0, Math.min(1, (cur - l.start - p.t) / p.d)));
-                      const tr = [f.dy ? `translateY(${f.dy * box.h}px)` : '', f.scale !== 1 ? `scale(${f.scale})` : ''].filter(Boolean).join(' ');
+                      const f = letterFrame(l.animIn, Math.max(0, Math.min(1, (cur - l.start - p.t) / p.d)), l);
+                      const tr = [f.dx ? `translateX(${f.dx * box.w}px)` : '', f.dy ? `translateY(${f.dy * box.h}px)` : '', f.scale !== 1 ? `scale(${f.scale})` : ''].filter(Boolean).join(' ');
+                      return <span key={k} style={{ display: 'inline-block', opacity: cur - l.start < p.t ? 0 : f.alpha, transform: tr || undefined, filter: f.blur ? `blur(${f.blur * box.h}px)` : undefined }}>{p.u}</span>;
+                    })
+                    : wordsP
+                    ? wordsP[j].map((p, k) => {
+                      if (p.t == null) return <span key={k}>{p.u}</span>;
+                      const f = wordFrame(l.animIn, Math.max(0, Math.min(1, (cur - l.start - p.t) / p.d)), l);
+                      const tr = [f.dx ? `translateX(${f.dx * box.w}px)` : '', f.dy ? `translateY(${f.dy * box.h}px)` : '', f.scale !== 1 ? `scale(${f.scale})` : ''].filter(Boolean).join(' ');
                       return <span key={k} style={{ display: 'inline-block', opacity: cur - l.start < p.t ? 0 : f.alpha, transform: tr || undefined, filter: f.blur ? `blur(${f.blur * box.h}px)` : undefined }}>{p.u}</span>;
                     })
                     : plan

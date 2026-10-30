@@ -83,9 +83,11 @@ export function momentsZoomVf(windows, meta, intensity = 'medio') {
       case 'zoom-out': dz = `${k}*(1-${p})`; break;
       case 'ken-burns': dz = `${k}*${p}`; break;
       case 'pulse': dz = `${k}*0.6*(0.5-0.5*cos(2*PI*${p}))`; break;
+      case 'push': dz = `${k}*(1-pow(1-${p},3))`; break;
+      case 'pull': dz = `${k}*pow(1-${p},3)`; break;
       default: dz = k; // punch
     }
-    zTerms.push(effect === 'zoom-in' || effect === 'zoom-out' || effect === 'ken-burns' || effect === 'pulse' ? `${inW}*${dz}` : `${dz}*${inW}`);
+    zTerms.push(['zoom-in', 'zoom-out', 'ken-burns', 'pulse', 'push', 'pull'].includes(effect) ? `${inW}*${dz}` : `${dz}*${inW}`);
     if (effect === 'ken-burns') {
       // anda na diagonal enquanto amplia (do canto de cima até o de baixo)
       panX.push(`${inW}*((iw-iw/zoom)*${p}-(iw/2-iw/zoom/2))`);

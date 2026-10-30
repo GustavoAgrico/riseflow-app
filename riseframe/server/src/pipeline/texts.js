@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { fontsDirArg, jobFontsDir } from './captions.js';
 import { fontById, fontStyles } from '../../../shared/captionStyle.js';
-import { textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan, letterPlan, letterTiming, LETTER_ANIMS } from '../../../shared/textLayers.js';
+import { textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan, letterPlan, letterTiming, letterSegments, LETTER_ANIMS, LETTER_SAMPLED, wordPlan, wordTiming, wordSegments, wordFrame, WORD_ANIMS, WORD_SAMPLED, expandCounterLayers } from '../../../shared/textLayers.js';
 import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
 import { makeLogger } from '../logger.js';
 
@@ -54,6 +54,12 @@ function ellipse(W, H) {
  * Tags de uma letra (evento próprio, \\an5 no centro dela). Os tempos são de dentro do evento
  * (a letra começa no seu instante). Mesma conta da prévia: letrFrame em shared/textLayers.js.
  */
+/** Pose de uma letra num passo amostrado (posição, escala, alfa e desfoque do quadro). */
+function letterPose(f, px, py, H, W, col, outCol) {
+  const a = Math.round((1 - f.alpha) * 255).toString(16).toUpperCase().padStart(2, '0');
+  const sc = Math.round(f.scale * 100);
+  return `\\an5\\bord0\\shad0\\1c${col}&\\3c${outCol}&\\pos(${Math.round(px + (f.dx || 0) * W)},${Math.round(py + f.dy * H)})\\fscx${sc}\\fscy${sc}\\alpha&H${a}&\\blur${Math.round(f.blur * H)}`;
+}
 function letterTags(anim, px, py, dMs, off, col, outCol) {
   const base = `\\an5\\bord0\\shad0\\1c${col}&\\3c${outCol}&`;
   if (anim === 'letras-subir') return `${base}\\move(${px},${py + off},${px},${py},0,${Math.round(dMs)})\\alpha&HFF&\\t(0,${Math.round(dMs)},\\alpha&H00&)`;
@@ -71,7 +77,8 @@ function letterTags(anim, px, py, dMs, off, col, outCol) {
  * do tamanho do texto (larguras reais das letras), com a folga e os cantos escolhidos.
  * Animações com \fad, \t e \move — o mesmo motor (libass) e as mesmas fontes das legendas.
  */
-export function buildTextAss(layers, meta) {
+export function buildTextAss(rawLayers, meta) {
+  const layers = expandCounterLayers(rawLayers);
   const W = meta.width || 1080;
   const H = meta.height || 1920;
   const styles = [];
@@ -154,6 +161,7 @@ export function buildTextAss(layers, meta) {
     // máquina de escrever / palavra por palavra: cada pedaço fica invisível até a sua vez
     const plan = L.smallCaps ? null : revealPlan(l, lines);
     const letters = L.smallCaps ? null : letterPlan(l, lines);
+    const words = L.smallCaps ? null : wordPlan(l, lines);
     const revealAss = (j, a1, a3) => plan[j].map(({ u, t }) => (t == null ? u : `{\\1a&HFF&\\3a&HFF&\\t(${Math.round(t * 1000)},${Math.round(t * 1000) + 1},\\1a${a1}\\3a${a3})}${u}`)).join('');
     // versalete: minúsculas viram maiúsculas menores (78%)
     const SC = 0.78;
@@ -209,7 +217,40 @@ export function buildTextAss(layers, meta) {
           pre += ch;
           const c = letters[j][k];
           if (!c || c.t == null || !ch.trim()) return;
-          events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t)},${assTime(l.end)},T${i},,0,0,0,,{${letterTags(l.animIn, Math.round(cxk), Math.round(ty), c.d * 1000, Math.round(H * 0.06), bgr(L.fillColor), L.stroke ? bgr(L.strokeColor) : bgr(L.fillColor))}}${clean(ch)}`);
+          const fillC = bgr(L.fillColor);
+          const outC = L.stroke ? bgr(L.strokeColor) : fillC;
+          if (LETTER_SAMPLED.includes(l.animIn)) {
+            // curva amostrada em passos (overshoot, desfoque): um evento por passo, com a pose do instante
+            for (const st of letterSegments(l.animIn, c.d, 10, l)) {
+              const t1 = st.t1 == null ? l.end : l.start + c.t + st.t1;
+              events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${letterPose(st.f, Math.round(cxk), Math.round(ty), H, W, fillC, outC)}}${clean(ch)}`);
+            }
+          } else {
+            events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t)},${assTime(l.end)},T${i},,0,0,0,,{${letterTags(l.animIn, Math.round(cxk), Math.round(ty), c.d * 1000, Math.round(H * 0.06), fillC, outC)}}${clean(ch)}`);
+          }
+        });
+        return;
+      }
+      if (words) {
+        // animação por palavra: cada palavra é um evento com a sua posição e timing
+        const lx = cx - lineW(line) / 2;
+        let pre = '';
+        words[j].forEach((w) => {
+          const wText = clean(w.u);
+          const wW = FM.width(wText) * em + sp * [...wText].length;
+          const cxw = lx + FM.width(pre) * em + sp * [...pre].length + wW / 2;
+          pre += w.u;
+          if (w.t == null || !w.u.trim()) return;
+          const fillC = bgr(L.fillColor);
+          const outC = L.stroke ? bgr(L.strokeColor) : fillC;
+          if (WORD_SAMPLED.includes(l.animIn)) {
+            for (const st of wordSegments(l.animIn, w.d, 10, l)) {
+              const t1 = st.t1 == null ? l.end : l.start + w.t + st.t1;
+              events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + w.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${letterPose(st.f, Math.round(cxw), Math.round(ty), H, W, fillC, outC)}}${wText}`);
+            }
+          } else {
+            events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + w.t)},${assTime(l.end)},T${i},,0,0,0,,{${letterTags(l.animIn.replace('palavras-', 'letras-'), Math.round(cxw), Math.round(ty), w.d * 1000, Math.round(H * 0.06), fillC, outC)}}${wText}`);
+          }
         });
         return;
       }

@@ -44,6 +44,10 @@ export function demoMotion(kind, intensity, e) {
       return { scale: 1 + (z - 1) * ramp, ox: ramp * 100, oy: ramp * 100 };
     case 'pulse':
       return { scale: 1 + (z - 1) * 0.6 * (0.5 - 0.5 * Math.cos((2 * Math.PI * e) / 1.6)), ox: 50, oy: 50 };
+    case 'push':
+      return { scale: 1 + (z - 1) * (1 - (1 - ramp) ** 3), ox: 50, oy: 50 };
+    case 'pull':
+      return { scale: 1 + (z - 1) * (1 - ramp) ** 3, ox: 50, oy: 50 };
     default:
       return NONE;
   }

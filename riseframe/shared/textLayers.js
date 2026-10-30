@@ -1,3 +1,5 @@
+import { easeValue, easeBack } from './easing.js';
+const hasNum = (v) => v != null && Number.isFinite(Number(v));
 // Texto livre na timeline (como o "Texto" do CapCut) e efeitos de vídeo por momento.
 // Compartilhado pelo site (editor + prévia) e pelo servidor (render).
 import { isFontStyle } from './captionStyle.js';
@@ -6,15 +8,29 @@ import { isFontStyle } from './captionStyle.js';
 export const TEXT_ANIMS_IN = {
   none: 'Nenhuma', fade: 'Fade', pop: 'Pop', zoom: 'Zoom', 'slide-up': 'Subir', 'slide-left': 'Entrar da direita', typewriter: 'Máquina de escrever', words: 'Palavra por palavra',
   'letras-subir': 'Letras subindo', 'letras-pop': 'Letras pulando', 'letras-desfoque': 'Letras entrando do desfoque',
+  'letras-desfoque-subir': 'Letras subindo do desfoque', 'letras-mola': 'Letras com mola (passa do ponto)',
+  'letras-queda': 'Letras caindo e quicando', 'letras-escala': 'Letras assentando (zoom suave)',
+  'letras-empurrao': 'Letras empurradas (quase sem inércia)',
+  'palavras-subir': 'Palavras subindo', 'palavras-pop': 'Palavras pulando', 'palavras-desfoque': 'Palavras do desfoque',
+  'palavras-desfoque-subir': 'Palavras subindo do desfoque', 'palavras-mola': 'Palavras com mola',
+  'palavras-queda': 'Palavras caindo', 'palavras-escala': 'Palavras assentando',
+  'palavras-empurrao': 'Palavras empurradas',
 };
 /** Animações por letra: cada letra entra no seu tempo (escalonado), como os motion de agência. */
-export const LETTER_ANIMS = ['letras-subir', 'letras-pop', 'letras-desfoque'];
+/** Animações por letra que são amostradas em passos no render (curva com overshoot ou desfoque). */
+export const LETTER_SAMPLED = ['letras-desfoque-subir', 'letras-mola', 'letras-queda', 'letras-escala', 'letras-empurrao'];
+export const LETTER_ANIMS = ['letras-subir', 'letras-pop', 'letras-desfoque', ...LETTER_SAMPLED];
+/** Animações por palavra: cada palavra entra no seu tempo, mesmas curvas que as letras. */
+export const WORD_SAMPLED = ['palavras-desfoque-subir', 'palavras-mola', 'palavras-queda', 'palavras-escala', 'palavras-empurrao'];
+export const WORD_ANIMS = ['palavras-subir', 'palavras-pop', 'palavras-desfoque', ...WORD_SAMPLED];
+const wordToLetterAnim = (a) => a.replace('palavras-', 'letras-');
 /** Duração de cada letra (s) e o espaçamento entre as letras, pela duração do texto. */
 export function letterTiming(l, count) {
   const dur = Math.max(0.2, Number(l.end) - Number(l.start) || 3);
-  const d = Math.min(0.42, dur * 0.3);
+  // duração e atraso por letra: o que a pessoa escolheu, ou o automático
+  const d = hasNum(l.letterDur) && Number(l.letterDur) > 0 ? Number(l.letterDur) : Math.min(0.42, dur * 0.3);
   const total = Math.min(1.4, dur * 0.5);
-  const stagger = Math.max(0.02, Math.min(0.07, (total - d) / Math.max(1, count - 1)));
+  const stagger = hasNum(l.letterGap) ? Number(l.letterGap) : Math.max(0.02, Math.min(0.07, (total - d) / Math.max(1, count - 1)));
   return { d: +d.toFixed(3), stagger: +stagger.toFixed(4) };
 }
 /**
@@ -30,15 +46,71 @@ export function letterPlan(l, lines) {
   return units.map((us) => us.map((u) => (u.trim() ? { u, t: +(k++ * stagger).toFixed(4), d } : { u, t: null, d })));
 }
 /** Progresso de uma letra no tempo `tRel` (0..1) e os valores da animação. Puro: prévia e render. */
-export function letterFrame(anim, p) {
+export function letterFrame(anim, p, l = {}) {
   const e = 1 - (1 - p) * (1 - p) * (1 - p); // ease-out cúbico
-  if (anim === 'letras-subir') return { dy: (1 - e) * 0.06, scale: 1, blur: 0, alpha: e };
+  // distância (fração da altura) e intensidade do overshoot: o que a pessoa escolheu, ou o padrão
+  const dist = (def) => (hasNum(l.letterDist) ? Number(l.letterDist) : def);
+  const over = hasNum(l.overshoot) ? Number(l.overshoot) : 0.5;
+  if (anim === 'letras-subir') return { dy: (1 - e) * dist(0.06), scale: 1, blur: 0, alpha: e };
+  // sobe do desfoque: sobe, desfoca e aumenta junto, e assenta
+  if (anim === 'letras-desfoque-subir') return { dy: (1 - e) * dist(0.05), scale: 1.12 - 0.12 * e, blur: (1 - e) * 0.012, alpha: e };
+  // mola: passa do ponto (overshoot) e assenta
+  if (anim === 'letras-mola') return { dy: 0, scale: Math.max(0, easeBack(p, over)), blur: 0, alpha: Math.min(1, p * 3) };
+  // queda: entra de cima acelerando, ultrapassa a linha e volta
+  if (anim === 'letras-queda') return { dy: (1 - easeBack(p, over)) * -dist(0.1), scale: 1, blur: 0, alpha: Math.min(1, p * 2.5) };
+  // assenta de uma escala maior, sem deslocar
+  if (anim === 'letras-escala') return { dy: 0, scale: 1.35 - 0.35 * e, blur: 0, alpha: e };
+  // empurrão lateral curto, quase sem inércia: chega da direita com desaceleração forte (dx em fração da largura)
+  if (anim === 'letras-empurrao') return { dx: (1 - p) ** 5 * dist(0.05), dy: 0, scale: 1, blur: 0, alpha: Math.min(1, p * 4) };
   if (anim === 'letras-pop') {
     // 0 → 115% → 100%, em dois trechos lineares (como os \t do libass)
     const s = p < 0.6 ? (p / 0.6) * 1.15 : 1.15 - ((p - 0.6) / 0.4) * 0.15;
     return { dy: 0, scale: Math.max(0, s), blur: 0, alpha: Math.min(1, p * 3) };
   }
   return { dy: 0, scale: 1, blur: (1 - e) * 0.012, alpha: e }; // desfoque: fração da altura
+}
+/**
+ * Passos de uma animação por letra amostrada: [{ t0, t1, f }] — `f` é o quadro (letterFrame) de
+ * t0 a t1 (segundos desde o começo da letra). O último passo vai de `d` até o fim (t1 = null).
+ * O render usa estes passos (ASS não tem curvas); a prévia usa letterFrame direto. Puro.
+ */
+export function letterSegments(anim, d, steps = 10, l = {}) {
+  const out = [];
+  for (let k = 0; k <= steps; k++) {
+    const p = k / steps;
+    out.push({ t0: +(d * p).toFixed(4), t1: k < steps ? +(d * (k + 1) / steps).toFixed(4) : null, f: letterFrame(anim, p, l) });
+  }
+  return out;
+}
+/** Progresso de uma palavra no tempo: delega à curva da letra equivalente. Puro. */
+export function wordFrame(anim, p, l = {}) {
+  return letterFrame(wordToLetterAnim(anim), p, l);
+}
+/** Duração e atraso de cada palavra (como letterTiming, mas mais lento). */
+export function wordTiming(l, count) {
+  const dur = Math.max(0.2, Number(l.end) - Number(l.start) || 3);
+  const d = hasNum(l.wordDur) && Number(l.wordDur) > 0 ? Number(l.wordDur) : Math.min(0.5, dur * 0.35);
+  const total = Math.min(2, dur * 0.6);
+  const stagger = hasNum(l.wordGap) ? Number(l.wordGap) : Math.max(0.05, Math.min(0.15, (total - d) / Math.max(1, count - 1)));
+  return { d: +d.toFixed(3), stagger: +stagger.toFixed(4) };
+}
+/** Quando cada palavra entra: [line][word]{u, t, d}. Mesma conta na prévia e no render. Puro. */
+export function wordPlan(l, lines) {
+  if (!WORD_ANIMS.includes(l?.animIn)) return null;
+  const units = lines.map((ln) => String(ln).split(/(\s+)/).filter(Boolean));
+  const count = units.flat().filter((u) => u.trim()).length || 1;
+  const { d, stagger } = wordTiming(l, count);
+  let k = 0;
+  return units.map((ws) => ws.map((u) => (u.trim() ? { u, t: +(k++ * stagger).toFixed(4), d } : { u, t: null, d })));
+}
+/** Passos amostrados de uma animação por palavra (como letterSegments). Puro. */
+export function wordSegments(anim, d, steps = 10, l = {}) {
+  const out = [];
+  for (let k = 0; k <= steps; k++) {
+    const p = k / steps;
+    out.push({ t0: +(d * p).toFixed(4), t1: k < steps ? +(d * (k + 1) / steps).toFixed(4) : null, f: wordFrame(anim, p, l) });
+  }
+  return out;
 }
 /** Entradas que revelam o texto aos poucos (letra a letra / palavra a palavra). */
 export const REVEAL_ANIMS = ['typewriter', 'words'];
@@ -298,6 +370,44 @@ export function textEm(l) {
   return num(l?.size, 0.015, 0.2, 0.05) * L.scale * (L.script ? 0.62 : 1);
 }
 /** Texto que aparece (TODAS MAIÚSCULAS). */
+/**
+ * Contador: o número do texto (inteiro) sobe do zero até o valor, com desaceleração, nos primeiros
+ * 70% da camada (até 2,5 s). Mesma conta na prévia (countText) e no render (expandCounterLayers).
+ */
+const fmtThousands = (v) => String(v).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+export function countTarget(text) {
+  const m = String(text ?? '').match(/\d[\d.,]*/);
+  if (!m) return null;
+  const n = Number(m[0].replace(/[.,]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+export function countDur(l) {
+  return Math.min(2.5, Math.max(0.4, (Number(l.end) - Number(l.start) || 3) * 0.7));
+}
+/** Texto da camada `t` segundos depois do começo (contador). Sem número, o texto é o mesmo. */
+export function countText(l, t) {
+  const target = countTarget(l.text);
+  if (target == null) return String(l.text ?? '');
+  const p = Math.max(0, Math.min(1, t / countDur(l)));
+  const v = Math.round(target * (1 - (1 - p) ** 3));
+  return String(l.text).replace(/\d[\d.,]*/, fmtThousands(v));
+}
+/** Troca cada camada de contador por passos (uma camada por passo, com o número daquele instante). */
+export function expandCounterLayers(layers, steps = 12) {
+  const out = [];
+  for (const l of layers) {
+    if (!l.count || l.kind === 'shape' || countTarget(l.text) == null) { out.push(l); continue; }
+    const dur = Number(l.end) - Number(l.start);
+    const d = countDur(l);
+    for (let k = 0; k <= steps; k++) {
+      const t0 = Math.min(dur, (d * k) / steps);
+      const t1 = k < steps ? Math.min(dur, (d * (k + 1)) / steps) : dur;
+      if (t1 - t0 < 0.02) continue;
+      out.push({ ...l, count: false, text: countText(l, t0), start: +(l.start + t0).toFixed(3), end: +(l.start + t1).toFixed(3) });
+    }
+  }
+  return out;
+}
 export function textShown(l) {
   const t = String(l?.text ?? '');
   return textLook(l).caps ? t.toUpperCase() : t;
@@ -370,6 +480,15 @@ export function cleanTextLayers(raw, fonts = null, max = 30) {
       y: num(l.y, 0, 1, 0.5),
       animIn: pickOf(TEXT_ANIMS_IN, l.animIn, 'fade'),
       animOut: pickOf(TEXT_ANIMS_OUT, l.animOut, 'fade'),
+      ...(l.count === true && countTarget(text) != null ? { count: true } : {}),
+      // animação por letra: duração, atraso, distância e overshoot (só quando a pessoa mexeu)
+      ...(hasNum(l.letterDur) ? { letterDur: num(l.letterDur, 0.1, 1.5, 0.4) } : {}),
+      ...(hasNum(l.letterGap) ? { letterGap: num(l.letterGap, 0, 0.2, 0.05) } : {}),
+      ...(hasNum(l.letterDist) ? { letterDist: num(l.letterDist, 0, 0.3, 0.06) } : {}),
+      ...(hasNum(l.overshoot) ? { overshoot: num(l.overshoot, 0, 1, 0.5) } : {}),
+      // animação por palavra: duração e atraso (distância e overshoot são os mesmos das letras)
+      ...(hasNum(l.wordDur) ? { wordDur: num(l.wordDur, 0.15, 2, 0.5) } : {}),
+      ...(hasNum(l.wordGap) ? { wordGap: num(l.wordGap, 0, 0.5, 0.1) } : {}),
     });
     if (out.length >= max) break;
   }

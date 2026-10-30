@@ -10,15 +10,22 @@ export const EASINGS = {
   back: 'Passa do ponto (overshoot)',
 };
 
+/**
+ * easeOutBack com intensidade k (0…1): k = 0 é a suave sem passar do ponto; k = 0,5 é a de
+ * sempre (sobe ~10% e assenta). Puro.
+ */
+export function easeBack(p, k = 0.5) {
+  const x = Math.min(1, Math.max(0, p));
+  const c = 1.70158 * 2 * k;
+  return 1 + (c + 1) * (x - 1) ** 3 + c * (x - 1) ** 2;
+}
+
 /** Valor da curva em p (0…1). */
 export function easeValue(id, p) {
   const x = Math.min(1, Math.max(0, p));
   if (id === 'linear') return x;
   if (id === 'inout') return x < 0.5 ? 4 * x ** 3 : 1 - (-2 * x + 2) ** 3 / 2;
-  if (id === 'back') {
-    const c = 1.70158; // easeOutBack: sobe até ~110% e assenta em 100%
-    return 1 + (c + 1) * (x - 1) ** 3 + c * (x - 1) ** 2;
-  }
+  if (id === 'back') return easeBack(x, 0.5);
   return 1 - (1 - x) ** 3;
 }
 
