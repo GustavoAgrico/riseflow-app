@@ -5228,16 +5228,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   /** Motion tipográfico: cenas de tipografia cinética nos momentos da fala (com os sons). */
   function placeKinetic() {
     const keep = textLayers.filter((l) => !l.smart);
-    if (kinTheme === 'explicativo') {
-      // motion explicativo: cada cena é uma camada desenhada (mesmo desenho na prévia e no render)
-      const plan = explainerPlan({ segments: smartSegments(), dur, amount: kinAmount, existing: keep.filter((l) => l.end - l.start < dur * 0.8) });
+    if (kinTheme === 'explicativo' || kinTheme === 'estrategia') {
+      // motion desenhado (explicativo / estratégia): cada cena é uma camada (mesmo desenho na prévia e no render)
+      const plan = explainerPlan({ segments: smartSegments(), dur, amount: kinAmount, existing: keep.filter((l) => l.end - l.start < dur * 0.8), style: kinTheme });
       const now = Date.now();
       setTextLayers(keep);
       setMedia((prev) => {
         const rest = prev.filter((m) => !m.kinetic);
         const top = rest.reduce((a, m) => Math.max(a, Number(m.layer) || 0), 0) + 1;
         return [...rest, ...plan.scenes.map((sc, i) => ({
-          key: `k${now}_${i}`, kind: 'video', filename: `motion explicativo ${i + 1}`, motionScene: sc, start: sc.start, duration: +(sc.end - sc.start).toFixed(2),
+          key: `k${now}_${i}`, kind: 'video', filename: `motion ${kinTheme} ${i + 1}`, motionScene: sc, start: sc.start, duration: +(sc.end - sc.start).toFixed(2),
           srcDuration: 600, mode: 'cover', volume: 0, muted: true, opacity: 1, blend: 'normal', offset: 0, fadeIn: 0, fadeOut: 0, px: 0.5, py: 0.5, scale: 1,
           animIn: 'none', animOut: 'none', layer: top, kinetic: true, scene: i + 1,
         }))];
@@ -5247,7 +5247,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setSfxMoments([...keepSfx, ...sfx].sort((a, b) => a.t - b.t));
       const inScene = (w) => plan.scenes.some((sc) => (w.start + w.end) / 2 >= sc.start && (w.start + w.end) / 2 <= sc.end);
       setSegments((prev) => prev.map((sg) => ({ ...sg, words: sg.words.map((w) => (w.khid && !inScene(w) ? { ...w, hidden: false, khid: false } : !w.hidden && inScene(w) ? { ...w, hidden: true, khid: true } : w)) })));
-      sayAuto(plan.scenes.length ? `${plan.scenes.length} cena(s) de motion explicativo — dê play para ver` : 'Não achei um trecho com frases suficientes (precisa de 3 ou mais frases seguidas). Tente "Quase o vídeo todo".');
+      sayAuto(plan.scenes.length ? `${plan.scenes.length} cena(s) de motion ${kinTheme === 'estrategia' ? 'estratégia' : 'explicativo'} — dê play para ver` : 'Não achei um trecho com frases suficientes (precisa de 3 ou mais frases seguidas). Tente "Quase o vídeo todo".');
       return;
     }
     const aspect = (FMT_WH[aspectSel]?.[0] || vdim?.w || 1080) / (FMT_WH[aspectSel]?.[1] || vdim?.h || 1920);

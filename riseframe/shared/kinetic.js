@@ -43,6 +43,7 @@ export const KINETIC_THEMES = {
   video: 'Sobre o vídeo',
   legenda: 'Legenda em bloco',
   explicativo: 'Explicativo (motion design)',
+  estrategia: 'Estratégia (cortes secos)',
 };
 export const KINETIC_AMOUNT = { chave: 'Momentos-chave', muitos: 'Quase o vídeo todo' };
 

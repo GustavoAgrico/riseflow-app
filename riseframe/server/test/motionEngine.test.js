@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createCanvas } from '@napi-rs/canvas';
-import { explainerPlan, drawExplainer, spring, EXPLAINER_BEATS } from '../../shared/motionEngine.js';
+import { explainerPlan, drawExplainer, spring, EXPLAINER_BEATS, STRATEGY_BEATS } from '../../shared/motionEngine.js';
+import { parseOptions } from '../src/routes/jobs.js';
 import { renderExplainerScene, explainerLayers } from '../src/pipeline/motionRender.js';
 import { probeSummary } from '../src/pipeline/ffmpeg.js';
 import { SFX_LIBRARY } from '../src/pipeline/sfx.js';
@@ -61,4 +62,45 @@ test('explicativo: render real vira vídeo do tamanho e duração da cena', asyn
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+const STRAT = explainerPlan({ segments: [seg(0.2, 'você tem as ideias'), seg(1.4, 'e o conteúdo'), seg(2.4, 'mas o seu crescimento'), seg(3.6, 'continua travado'),
+  seg(4.7, 'porque conteúdo sem público'), seg(6.0, 'é só barulho'), seg(6.9, 'e o seu público'), seg(8.0, 'valor alcance impacto resultado')], dur: 10, amount: 'muitos', style: 'estrategia' });
+const DARKS = new Set(['a-bubble', 'a-glow', 'a-object', 'a-cta']);
+
+test('estratégia: abre no gancho, alterna fundo claro/escuro e fecha no CTA ou na marca', () => {
+  const sc = STRAT.scenes[0];
+  assert.equal(sc.style, 'estrategia');
+  const types = sc.beats.map((b) => b.type);
+  assert.equal(types[0], 'a-hook');
+  assert.ok(['a-cta', 'a-brand'].includes(types[types.length - 1]), types.join());
+  for (const t of types) assert.ok(STRATEGY_BEATS.includes(t), t);
+  for (let i = 1; i < types.length; i++) assert.notEqual(DARKS.has(types[i]), DARKS.has(types[i - 1]), types.join());
+});
+
+test('estratégia: o texto de apoio nunca repete a palavra-chave', () => {
+  for (const b of STRAT.scenes[0].beats) {
+    const lead = b.data.small || b.data.after || '';
+    assert.ok(!lead.split(' ').includes(b.data.keyword), `${b.data.text} → ${lead} / ${b.data.keyword}`);
+  }
+});
+
+test('estratégia: corte seco pisca preto na troca de batida e desenha todos os tipos', () => {
+  const c = createCanvas(108, 192);
+  const ctx = c.getContext('2d');
+  const sc = STRAT.scenes[0];
+  const cut = sc.beats[1].start;
+  drawExplainer(ctx, sc, cut, { W: 108, H: 192 });
+  const px = ctx.getImageData(2, 2, 1, 1).data;
+  assert.ok(px[0] < 40 && px[1] < 40 && px[2] < 40, `pixel ${px}`);
+  const all = { ...sc, beats: STRATEGY_BEATS.map((type, i) => ({ type, start: sc.start + i, end: sc.start + i + 1, words: [], data: { text: 'texto de teste', keyword: 'teste', small: 'texto de', keys: ['um'] } })) };
+  for (let t = all.start - 0.5; t < all.start + 9; t += 0.11) drawExplainer(ctx, all, t, { W: 108, H: 192 });
+});
+
+test('estratégia: as cenas vindas do editor mantêm o estilo e descartam batidas de outro estilo', () => {
+  const sc = STRAT.scenes[0];
+  const o = parseOptions({ kinetic: true, kineticTheme: 'estrategia', motionScenes: [{ ...sc, beats: [...sc.beats, { type: 'hook', start: 9, end: 9.5, data: { text: 'x' } }] }] });
+  assert.equal(o.kineticTheme, 'estrategia');
+  assert.equal(o.motionScenes[0].style, 'estrategia');
+  assert.deepEqual(o.motionScenes[0].beats.map((b) => b.type), sc.beats.map((b) => b.type));
 });

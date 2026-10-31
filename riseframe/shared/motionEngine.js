@@ -14,6 +14,11 @@ export const EXPLAINER = {
   bars: [['#4FB8B0', '#7B4FD6'], ['#7B4FD6', '#E0508A'], ['#E0508A', '#F09A3B'], ['#F09A3B', '#4FB8B0']],
 };
 export const EXPLAINER_BEATS = ['hook', 'stat', 'support', 'counter', 'morph', 'chart', 'tags', 'negation', 'impact', 'end'];
+// Preset A ("Estratégia"): creme e preto alternando em corte seco, palavra-chave condensada vermelha
+export const STRATEGY = { cream: '#FBF6ED', black: '#000000', red: '#E0162B', purple: '#833AB4', ink: '#111111', white: '#FFFFFF', card: '#8C8988', arc: '#CFCBC4' };
+export const STRATEGY_BEATS = ['a-hook', 'a-bubble', 'a-glow', 'a-plain', 'a-object', 'a-card', 'a-brand', 'a-cta'];
+export const MOTION_STYLES = { explicativo: EXPLAINER_BEATS, estrategia: STRATEGY_BEATS };
+const DARK = new Set(['a-bubble', 'a-glow', 'a-object', 'a-cta']);
 
 // ─────────────────────────────── utilidades ───────────────────────────────
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -92,11 +97,42 @@ function beatsFor(chunks) {
   return out;
 }
 
+/** Batidas do preset A: creme e preto sempre alternando (corte seco a cada frase). */
+function strategyBeatsFor(chunks) {
+  const out = [];
+  const used = new Set();
+  const light = ['a-plain', 'a-brand'];
+  const dark = ['a-bubble', 'a-glow'];
+  let li = 0;
+  let di = 0;
+  chunks.forEach((c, i) => {
+    const prevDark = DARK.has(out[out.length - 1]?.type);
+    const keys = keysOf(c);
+    const concept = conceptsIn(c)[0] || null;
+    let type;
+    if (i === 0) type = 'a-hook';
+    else if (i === chunks.length - 1 && chunks.length >= 3) type = 'a-cta';
+    else if (!prevDark) type = concept && !used.has('a-object') ? 'a-object' : dark[di++ % dark.length];
+    else type = keys.length >= 3 && !used.has('a-card') ? 'a-card' : light[li++ % light.length];
+    // o fechamento também precisa alternar: se a anterior for escura, vira a palavra roxa no creme
+    if (type === 'a-cta' && prevDark) type = 'a-brand';
+    used.add(type);
+    // a chave é a ÚLTIMA palavra forte (a frase termina no golpe: "continua travado")
+    const big = keys.length ? keys[keys.length - 1] : c.reduce((a, b) => (clean(b).length > clean(a).length ? b : a));
+    const idx = c.indexOf(big);
+    out.push({ type, chunk: c, data: {
+      text: txt(c), keyword: tidy(clean(big)), small: txt(c.slice(0, Math.max(0, idx))), after: txt(c.slice(idx + 1)),
+      keys: keys.map((w) => tidy(clean(w))), element: concept?.element || null,
+    } });
+  });
+  return out;
+}
+
 /**
  * Cenas do motion explicativo a partir da fala.
  * @returns {{scenes:Array<{start,end,beats:Array}>, sfx:Array<{t,type,volume,why}>}}
  */
-export function explainerPlan({ segments, dur, amount = 'chave', existing = [] } = {}) {
+export function explainerPlan({ segments, dur, amount = 'chave', existing = [], style = 'explicativo' } = {}) {
   const total = Number(dur) || 0;
   const chunks = phraseChunks(segments, 6).filter((c) => c.length);
   const busy = (existing || []).filter((l) => Number.isFinite(Number(l.start)));
@@ -123,13 +159,13 @@ export function explainerPlan({ segments, dur, amount = 'chave', existing = [] }
     const last = g[g.length - 1];
     const end = Math.min(total || Infinity, last[last.length - 1].end + 0.7);
     if (end - start < 3 || !free(start, end)) continue;
-    const beats = beatsFor(g).map((b, k, all) => {
+    const beats = (style === 'estrategia' ? strategyBeatsFor(g) : beatsFor(g)).map((b, k, all) => {
       const s = Math.max(start, b.chunk[0].start - 0.05);
       const e = k < all.length - 1 ? all[k + 1].chunk[0].start - 0.05 : end;
       return { type: b.type, start: r2(s), end: r2(Math.max(s + 0.6, e)), words: b.chunk.map((w) => ({ w: clean(w), t: r2(w.start) })), data: b.data };
     });
-    scenes.push({ start: r2(start), end: r2(end), beats });
-    sfx.push(...explainerSfx(beats));
+    scenes.push({ start: r2(start), end: r2(end), style: style === 'estrategia' ? 'estrategia' : 'explicativo', beats });
+    sfx.push(...(style === 'estrategia' ? strategySfx(beats) : explainerSfx(beats)));
   }
   return { scenes, sfx };
 }
@@ -152,6 +188,17 @@ function explainerSfx(beats) {
   return out;
 }
 const impactHit = (b) => Math.min(0.7, (b.end - b.start) * 0.55);
+/** Preset A: um corte seco a cada frase (ar + batida curta na palavra-chave), som enxuto. */
+function strategySfx(beats) {
+  const out = [];
+  beats.forEach((b, i) => {
+    if (i) out.push({ t: r2(b.start), type: 'swoosh', volume: 0.4, why: 'corte' });
+    const kw = b.words.find((w) => tidy(w.w).toLowerCase() === String(b.data.keyword).toLowerCase());
+    if (kw && kw.t - b.start > 0.25) out.push({ t: r2(kw.t), type: 'pr-hit', volume: 0.5, why: 'palavra-chave' });
+    if (b.type === 'a-card') out.push({ t: r2(b.start + 0.35), type: 'thud', volume: 0.45, why: 'cartão' });
+  });
+  return out;
+}
 
 // ─────────────────────────────── desenho ───────────────────────────────
 const BW = 1080;
@@ -244,6 +291,7 @@ function noShadow(ctx) {
  * @param {{W:number,H:number,fonts?:object,image?:(id:string)=>any}} env
  */
 export function drawExplainer(ctx, scene, t, env) {
+  if (scene.style === 'estrategia') return drawStrategy(ctx, scene, t, env);
   const { W, H } = env;
   const F = { ...EXPLAINER_FONTS, ...(env.fonts || {}) };
   const C = EXPLAINER;
@@ -528,5 +576,154 @@ const DRAW = {
       ctx.fillRect(540 - r.width / 2, 1005, r.width * d, 16);
       ctx.restore();
     }
+  },
+};
+
+// ─────────────────────────────── preset A: "Estratégia" ───────────────────────────────
+/** Momento (dentro da batida) em que a palavra-chave é falada. */
+const kwAt = (b) => {
+  const w = (b.words || []).find((x) => tidy(x.w).toLowerCase() === String(b.data.keyword).toLowerCase());
+  return w ? Math.max(0, Math.min(0.9, w.t - b.start)) : 0.25;
+};
+
+function drawStrategy(ctx, scene, t, env) {
+  const { W, H } = env;
+  const F = { ...EXPLAINER_FONTS, ...(env.fonts || {}) };
+  const A = STRATEGY;
+  const k = Math.max(W / BW, H / BH);
+  const beat = [...scene.beats].reverse().find((b) => t >= b.start) || scene.beats[0];
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.filter = 'none';
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = DARK.has(beat.type) ? A.black : A.cream;
+  ctx.fillRect(0, 0, W, H);
+  const push = lerp(1, 1.03, clamp((t - beat.start) / Math.max(0.5, beat.end - beat.start)));
+  ctx.translate(W / 2, H / 2);
+  ctx.scale(k * push, k * push);
+  ctx.translate(-BW / 2, -BH / 2);
+  ADRAW[beat.type]?.(ctx, beat, t - beat.start, F, env);
+  ctx.restore();
+  // corte seco: flash preto bem curto em cada troca de frase
+  let f = 0;
+  for (const b of scene.beats.slice(1)) f = Math.max(f, clamp(1 - Math.abs(t - b.start) / 0.06));
+  if (f > 0) {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = f;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+}
+
+function objectImg(ctx, env, id, x, y, size, { alpha = 1, rot = 0 } = {}) {
+  const img = env.image?.(id || 'bulb');
+  if (!img) return;
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.shadowColor = 'rgba(0,0,0,0.25)';
+  ctx.shadowBlur = 40;
+  ctx.shadowOffsetY = 24;
+  ctx.drawImage(img, -size / 2, -size / 2, size, size);
+  ctx.restore();
+}
+// texto de apoio: o que vem antes da chave (ou, se ela abre a frase, o que vem depois)
+const lead = (b) => b.data.small || b.data.after || '';
+
+const ADRAW = {
+  'a-hook'(ctx, b, lt, F, env) {
+    const A = STRATEGY;
+    const e = outCubic(prog(lt, 0, 0.6));
+    objectImg(ctx, env, b.data.element, 250, 560 - (1 - e) * 120, 560, { alpha: e, rot: -0.12 });
+    words(ctx, lead(b), { x: 540, y: 900, size: 84, font: F.sans, color: A.ink, lt, stagger: 0.06, maxW: 960 });
+    words(ctx, b.data.keyword, { x: 540, y: 1110, size: 170, font: F.display, color: A.red, lt: lt - kwAt(b), stagger: 0.06, maxW: 980 });
+  },
+  'a-bubble'(ctx, b, lt, F) {
+    const A = STRATEGY;
+    const e = outBack(prog(lt, 0, 0.4));
+    ctx.save();
+    ctx.fillStyle = A.white;
+    ctx.beginPath();
+    ctx.arc(540, 670, 250 * Math.max(0, e), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // frase de entrada curta demais ("e o"): o balão leva a frase inteira em destaque
+    if (lead(b).length >= 8) {
+      words(ctx, lead(b), { x: 540, y: 690, size: 56, font: F.sans, color: A.ink, lt, stagger: 0.08, maxW: 420 });
+      words(ctx, b.data.keyword, { x: 540, y: 1160, size: 120, font: F.display, color: A.white, lt: lt - Math.max(0.4, kwAt(b)), stagger: 0.1, maxW: 960 });
+    } else {
+      words(ctx, b.data.text, { x: 540, y: 705, size: 90, font: F.display, color: A.ink, lt: lt - 0.1, stagger: 0.08, maxW: 400 });
+    }
+  },
+  'a-glow'(ctx, b, lt, F) {
+    const A = STRATEGY;
+    words(ctx, lead(b), { x: 540, y: 980, size: 96, font: F.sans, color: A.white, lt, glow: 30, gc: 'rgba(224,22,43,0.7)', maxW: 960 });
+    words(ctx, b.data.keyword, { x: 540, y: 1140, size: 110, font: F.display, color: A.red, lt: lt - Math.max(0.3, kwAt(b)), stagger: 0.08, maxW: 960 });
+  },
+  'a-plain'(ctx, b, lt, F, env) {
+    const A = STRATEGY;
+    words(ctx, b.data.keyword, { x: 540, y: 700, size: 130, font: F.display, color: A.ink, lt, stagger: 0.07, maxW: 960 });
+    words(ctx, lead(b) === b.data.keyword ? '' : lead(b), { x: 540, y: 820, size: 64, font: F.sans, color: A.ink, lt: lt - 0.1, maxW: 940 });
+    if (b.data.element) objectImg(ctx, env, b.data.element, 540, 1150, 360 * outBack(prog(lt, 0.15, 0.4)));
+  },
+  'a-object'(ctx, b, lt, F, env) {
+    const A = STRATEGY;
+    words(ctx, lead(b), { x: 540, y: 760, size: 100, font: F.sans, color: A.white, lt, maxW: 960 });
+    words(ctx, b.data.keyword, { x: 540, y: 950, size: 170, font: F.display, color: A.red, lt: lt - Math.max(0.15, kwAt(b)), stagger: 0.1, maxW: 980 });
+    const e = outBack(prog(lt, 0, 0.4));
+    objectImg(ctx, env, b.data.element, 540, 1260, 380 * lerp(0.8, 1, e), { alpha: clamp(e) });
+  },
+  'a-card'(ctx, b, lt, F) {
+    const A = STRATEGY;
+    // arco cinza deslizando
+    ctx.save();
+    ctx.strokeStyle = A.arc;
+    ctx.lineWidth = 60;
+    ctx.lineCap = 'round';
+    ctx.translate(lerp(-300, 0, inOutCubic(prog(lt, 0, 0.8))), 0);
+    ctx.beginPath();
+    ctx.moveTo(-200, 300);
+    ctx.quadraticCurveTo(560, 900, 1200, 1700);
+    ctx.stroke();
+    ctx.restore();
+    // cartão cinza cai com o alfinete vermelho
+    const e = outBack(prog(lt, 0, 0.5));
+    ctx.save();
+    ctx.translate(540, 940 + lerp(-500, 0, e));
+    ctx.rotate(-0.035);
+    ctx.shadowColor = 'rgba(0,0,0,0.25)';
+    ctx.shadowBlur = 30;
+    ctx.shadowOffsetY = 16;
+    ctx.fillStyle = A.card;
+    const w = 600;
+    const h = 640;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(-w / 2, -h / 2, w, h, 14) : ctx.rect(-w / 2, -h / 2, w, h);
+    ctx.fill();
+    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 4;
+    ctx.fillStyle = A.red;
+    ctx.beginPath();
+    ctx.arc(0, -h / 2 - 6, 20, 0, Math.PI * 2);
+    ctx.fill();
+    noShadow(ctx);
+    words(ctx, b.data.keyword, { x: 0, y: -h / 2 + 140, size: 110, font: F.sans, color: A.white, lt: lt - 0.2, maxW: 540 });
+    const list = b.data.keys.filter((x) => x.toLowerCase() !== String(b.data.keyword).toLowerCase()).slice(0, 3);
+    list.forEach((item, i) => words(ctx, item, { x: -w / 2 + 60, y: -h / 2 + 300 + i * 90, size: 56, font: F.sans, color: A.white, align: 'left', lt: lt - 0.35 - i * 0.12, maxW: 480 }));
+    ctx.restore();
+  },
+  'a-brand'(ctx, b, lt, F) {
+    const A = STRATEGY;
+    words(ctx, b.data.keyword, { x: 540, y: 720, size: 150, font: F.display, color: A.purple, lt, stagger: 0.08, maxW: 960 });
+    words(ctx, lead(b) === b.data.keyword ? '' : lead(b), { x: 540, y: 860, size: 88, font: F.sans, color: A.ink, lt: lt - 0.15, maxW: 960 });
+  },
+  'a-cta'(ctx, b, lt, F) {
+    const A = STRATEGY;
+    words(ctx, lead(b), { x: 540, y: 860, size: 96, font: F.sans, color: A.white, lt, maxW: 960 });
+    words(ctx, b.data.keyword, { x: 540, y: 1000, size: 120, font: F.display, color: A.red, lt: lt - Math.max(0.3, kwAt(b)), stagger: 0.1, glow: 30, gc: 'rgba(224,22,43,0.7)', maxW: 960 });
   },
 };

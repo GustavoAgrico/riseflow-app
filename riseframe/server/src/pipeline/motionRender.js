@@ -21,7 +21,7 @@ function registerFonts() {
 
 /** Imagens (objetos 3D) usadas pela cena, já carregadas. */
 async function sceneImages(scene) {
-  const ids = new Set(['brain']);
+  const ids = new Set(['brain', 'bulb']);
   for (const b of scene.beats) if (b.data?.element) ids.add(b.data.element);
   const out = new Map();
   for (const id of ids) {

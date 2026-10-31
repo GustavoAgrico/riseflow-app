@@ -624,8 +624,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
   }
 
   // motion explicativo (preset B) no automático: cenas desenhadas, com os sons e a legenda escondida
-  if (options.kinetic === true && mode !== 'render' && options.kineticTheme === 'explicativo') {
-    const plan = explainerPlan({ segments: transcript.segments, dur: meta.duration, amount: options.kineticAmount });
+  if (options.kinetic === true && mode !== 'render' && (options.kineticTheme === 'explicativo' || options.kineticTheme === 'estrategia')) {
+    const plan = explainerPlan({ segments: transcript.segments, dur: meta.duration, amount: options.kineticAmount, style: options.kineticTheme });
     options.kinetic = false;
     if (plan.scenes.length) {
       options.motionScenes = plan.scenes;
@@ -633,7 +633,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       const inScene = (w) => plan.scenes.some((sc) => (w.start + w.end) / 2 >= sc.start && (w.start + w.end) / 2 <= sc.end);
       transcript = { ...transcript, segments: transcript.segments.map((sg) => (sg.words?.length ? { ...sg, words: sg.words.map((w) => (inScene(w) ? { ...w, hidden: true } : w)) } : sg)) };
     }
-    report.kinetic = { scenes: plan.scenes.length, sounds: plan.sfx.length, style: 'explicativo' };
+    report.kinetic = { scenes: plan.scenes.length, sounds: plan.sfx.length, style: options.kineticTheme };
   }
 
   if (options.kinetic === true && mode !== 'render') {

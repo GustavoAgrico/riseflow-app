@@ -38,7 +38,7 @@ import { MOMENT_EFFECTS, cleanKeys } from '../../../shared/transform.js';
 import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
 import { ELEMENT_MOTIONS } from '../../../shared/elementMotion.js';
 import { KINETIC_THEMES } from '../../../shared/kinetic.js';
-import { EXPLAINER_BEATS } from '../../../shared/motionEngine.js';
+import { MOTION_STYLES } from '../../../shared/motionEngine.js';
 import { cleanElementId, elementFile } from '../pipeline/elements.js';
 import { elementExt } from '../../../shared/sceneElements.js';
 import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
@@ -442,18 +442,22 @@ function cleanMotionScenes(raw) {
     const start = clampNum(sc?.start, 0, 100000, NaN);
     const end = clampNum(sc?.end, 0, 100000, NaN);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < 1 || end - start > 60) continue;
-    const beats = (Array.isArray(sc.beats) ? sc.beats : []).slice(0, 14).map((b) => ({
-      type: EXPLAINER_BEATS.includes(b?.type) ? b.type : 'stat',
+    const style = Object.hasOwn(MOTION_STYLES, sc?.style) ? sc.style : 'explicativo';
+    const kinds = MOTION_STYLES[style];
+    // batida de outro estilo (ou desconhecida) é descartada, não convertida
+    const beats = (Array.isArray(sc.beats) ? sc.beats : []).filter((b) => kinds.includes(b?.type)).slice(0, 14).map((b) => ({
+      type: b.type,
+      words: (Array.isArray(b?.words) ? b.words : []).slice(0, 12).map((w) => ({ w: str(w?.w, 40), t: clampNum(w?.t, 0, 100000, 0) })),
       start: clampNum(b?.start, start, end, start),
       end: clampNum(b?.end, start, end + 2, end),
       data: {
-        text: str(b?.data?.text), keyword: str(b?.data?.keyword, 60), small: str(b?.data?.small), caption: str(b?.data?.caption),
+        text: str(b?.data?.text), keyword: str(b?.data?.keyword, 60), small: str(b?.data?.small), after: str(b?.data?.after), caption: str(b?.data?.caption),
         keys: (Array.isArray(b?.data?.keys) ? b.data.keys : []).slice(0, 4).map((k) => str(k, 40)),
         ...(Number.isFinite(Number(b?.data?.number)) ? { number: Math.max(0, Math.min(1e12, Math.round(Number(b.data.number)))) } : {}),
         ...(cleanElementId(b?.data?.element) ? { element: b.data.element } : {}),
       },
     }));
-    if (beats.length) out.push({ start, end, beats });
+    if (beats.length) out.push({ start, end, style, beats });
   }
   return out;
 }
