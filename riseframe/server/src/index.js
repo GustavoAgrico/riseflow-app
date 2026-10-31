@@ -18,6 +18,7 @@ import { billingRouter } from './routes/billing.js';
 import { publicRouter } from './routes/public.js';
 import { startRenewTimer } from './auth/billing.js';
 import { ffmpegPath, detectHwEncoder } from './pipeline/ffmpeg.js';
+import { resolveYtDlp } from './pipeline/youtube.js';
 import { whisperLocalAvailable } from './pipeline/transcribe/providers.js';
 import { checkTranscribeKey } from './pipeline/transcribe/index.js';
 import { log } from './logger.js';
@@ -38,6 +39,7 @@ await queue.restore(); // reabre na timeline vídeos processados antes deste res
 startCleanupTimer();
 startRenewTimer(); // renovação automática dos planos com assinatura
 ensureDemoSample().catch(() => {}); // gera o vídeo de exemplo em segundo plano
+resolveYtDlp().catch(() => {}); // vídeo pelo link do YouTube: confere o yt-dlp em segundo plano
 
 // Autoteste do whisper-local: roda em SEGUNDO PLANO (não bloqueia o app.listen).
 // Importar faster-whisper leva alguns segundos (mais ainda no Windows); se isto

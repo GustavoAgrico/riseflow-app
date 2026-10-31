@@ -26,9 +26,11 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
   const [health, setHealth] = useState(null);
   const [loadError, setLoadError] = useState(null);
 
+  // Vídeo escolhido: um arquivo (File) ou um link do YouTube ({ youtubeUrl, id, name }),
+  // que o servidor baixa na 1ª etapa do job.
   const [file, setFile] = useState(null);
   // Endereço local do vídeo escolhido: a prévia da legenda roda nele antes de editar.
-  const videoUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
+  const videoUrl = useMemo(() => (file instanceof Blob ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
   const [options, setOptions] = useState(null);
   const [editMode, setEditMode] = useState(intent === 'editor' ? 'editor' : template?.format === 'cortes' ? 'clips' : 'auto');
@@ -447,7 +449,9 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
       )}
 
       {phase === 'uploading' && (
-        <Processing title="Enviando seu vídeo" subtitle="Pode levar um pouco em arquivos grandes. Não feche esta tela." pct={uploadPct} />
+        file?.youtubeUrl
+          ? <Processing title="Enviando o link do YouTube" subtitle="O vídeo é baixado direto no servidor — você acompanha na próxima tela." />
+          : <Processing title="Enviando seu vídeo" subtitle="Pode levar um pouco em arquivos grandes. Não feche esta tela." pct={uploadPct} />
       )}
 
       {phase === 'transcribing' && (

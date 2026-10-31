@@ -15,6 +15,7 @@ import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../..
 import { registerMedia, resolveMedia, relinkMedia, mediaStatus, listLibrary, removeFromLibrary } from '../mediaStore.js';
 import { formatBytes, freeDiskBytes } from '../storage.js';
 import { startUpload, uploadStatus, receiveChunk, fromChunkedUpload } from '../chunkedUpload.js';
+import { parseYoutubeUrl, resolveYtDlp } from '../pipeline/youtube.js';
 import { saveCustomFont, listCustomFonts, resolveCustomFont, deleteCustomFont } from '../customFonts.js';
 import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
 import { analyze } from '../pipeline/analyze.js';
@@ -862,23 +863,23 @@ jobsRouter.get('/uploads/:id', requireAuth, (req, res) => {
 jobsRouter.put('/uploads/:id', requireAuth, receiveChunk);
 
 // POST /api/jobs  (multipart: file + options) → pipeline automático completo
-jobsRouter.post('/jobs', requireAuth, requireVerified, requireCredits('auto'), checkUploadSize, upload.single('file'), fromChunkedUpload, fromLocalPath, (req, res) => {
+jobsRouter.post('/jobs', requireAuth, requireVerified, requireCredits('auto'), checkUploadSize, upload.single('file'), fromChunkedUpload, fromLocalPath, fromYoutubeUrl, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'auto', {
     filename: fixName(req.file.originalname),
     inputPath: req.file.path,
-    options: optionsForUser(req),
+    options: withSourceUrl(req, optionsForUser(req)),
   });
 });
 
 // POST /api/transcribe  (multipart: file) → transcreve e para; o upload fica salvo
 // para depois ser reusado por /api/render com a transcrição editada.
-jobsRouter.post('/transcribe', requireAuth, requireVerified, requireCredits('transcribe'), checkUploadSize, upload.single('file'), fromChunkedUpload, fromLocalPath, (req, res) => {
+jobsRouter.post('/transcribe', requireAuth, requireVerified, requireCredits('transcribe'), checkUploadSize, upload.single('file'), fromChunkedUpload, fromLocalPath, fromYoutubeUrl, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'transcribe', {
     filename: fixName(req.file.originalname),
     inputPath: req.file.path,
-    options: optionsForUser(req),
+    options: withSourceUrl(req, optionsForUser(req)),
   });
 });
 
@@ -970,12 +971,12 @@ jobsRouter.post('/sequence', requireAuth, requireVerified, requireCredits('trans
 });
 
 // POST /api/clips  (multipart: file) → gera vários clipes curtos do vídeo longo
-jobsRouter.post('/clips', requireAuth, requireVerified, requireCredits('clips'), checkUploadSize, upload.single('file'), fromChunkedUpload, fromLocalPath, (req, res) => {
+jobsRouter.post('/clips', requireAuth, requireVerified, requireCredits('clips'), checkUploadSize, upload.single('file'), fromChunkedUpload, fromLocalPath, fromYoutubeUrl, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'nenhum arquivo enviado (campo "file")' });
   chargeAndQueue(req, res, 'clips', {
     filename: fixName(req.file.originalname),
     inputPath: req.file.path,
-    options: optionsForUser(req),
+    options: withSourceUrl(req, optionsForUser(req)),
   });
 });
 
@@ -1192,6 +1193,26 @@ function fromLocalPath(req, res, next) {
   if (!p) return next();
   req.file = { path: p, originalname: path.basename(p), size: fs.statSync(p).size, linked: true };
   next();
+}
+
+/**
+ * Vídeo pelo LINK do YouTube (Shorts, longo → curto, Podcast/Cortes): o job é criado já
+ * com o caminho onde o vídeo vai ficar, e a 1ª etapa do pipeline baixa (yt-dlp). Assim a
+ * pessoa acompanha o download na mesma tela de progresso, e se falhar os créditos voltam.
+ */
+function fromYoutubeUrl(req, res, next) {
+  if (req.file || !req.body?.youtubeUrl) return next();
+  const yt = parseYoutubeUrl(req.body.youtubeUrl);
+  if (!yt) return res.status(400).json({ error: 'link do YouTube inválido — cole o link de um vídeo (youtube.com/watch?v=…, youtu.be/… ou /shorts/…)' });
+  resolveYtDlp().then((tool) => {
+    if (!tool) return res.status(503).json({ error: 'importar pelo link do YouTube não está disponível neste servidor. Baixe o vídeo e envie o arquivo.' });
+    req.file = { path: path.join(config.paths.uploads, `yt_${yt.id}_${nanoid(8)}.mp4`), originalname: 'Vídeo do YouTube.mp4', size: 0, youtube: yt.url };
+    next();
+  }, (err) => res.status(500).json({ error: err.message }));
+}
+/** Opções do job + o link do YouTube (só o servidor põe — o cliente não manda isso nas opções). */
+function withSourceUrl(req, options) {
+  return req.file?.youtube ? { ...options, sourceUrl: req.file.youtube } : options;
 }
 
 function desktopPath(p) {

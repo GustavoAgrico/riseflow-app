@@ -5,3 +5,6 @@ faster-whisper==1.2.1
 # (numpy vem como dependência transitiva do opencv, já numa versão compatível.)
 opencv-python-headless==4.10.0.84
 
+# Vídeo pelo link do YouTube (Shorts, longo → curto, Podcast/Cortes): baixa com o yt-dlp.
+# Sem versão fixa: o YouTube muda sempre e só a versão nova continua baixando.
+yt-dlp

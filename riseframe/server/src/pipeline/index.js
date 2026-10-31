@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { assembleSequence } from './sequence.js';
+import { downloadYoutube } from './youtube.js';
 import { sequenceTranscript } from './seqTranscript.js';
 import { onlineSfxFile } from './sfxOnline.js';
 import { config } from '../config.js';
@@ -177,6 +178,8 @@ function buildPlan(mode, options) {
       { key: 'render', label: 'Renderização final', weight: 18, enabled: true },
     ].filter((s) => s.enabled);
   }
+  // Vídeo pelo link do YouTube: baixa antes de tudo (vira o vídeo de entrada do job).
+  if (options.sourceUrl) all.unshift({ key: 'download', label: 'Baixando o vídeo do YouTube', weight: mode === 'clips' ? 20 : 12 });
   const total = all.reduce((a, s) => a + s.weight, 0);
   let acc = 0;
   for (const s of all) {
@@ -286,6 +289,17 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
   // Etapas deste job (o site mostra só as que vão rodar, na ordem certa).
   emit({ steps: plan.map((s) => ({ key: s.key, label: s.label })) });
+
+  // 0. Link do YouTube: baixa o vídeo para o caminho de entrada do job (só uma vez — ao
+  // retomar/pausar, o arquivo já baixado é reaproveitado).
+  if (options.sourceUrl && has('download')) {
+    const st = enter('download');
+    if (!fs.existsSync(input)) {
+      const got = await downloadYoutube(options.sourceUrl, input, st.onProgress);
+      emit({ filename: got.filename });
+      report.source = { kind: 'youtube', url: options.sourceUrl, title: got.title };
+    }
+  }
 
   // 0. Timeline em branco: junta os clipes da trilha V1 num vídeo só (vira o vídeo do editor).
   if (job.sequence && has('sequence')) {
