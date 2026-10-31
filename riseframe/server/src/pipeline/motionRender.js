@@ -16,6 +16,7 @@ function registerFonts() {
   GlobalFonts.registerFromPath(path.join(FONTS_DIR, 'Anton-Regular.ttf'), EXPLAINER_FONTS.display);
   GlobalFonts.registerFromPath(path.join(FONTS_DIR, 'S-garamond-400i.ttf'), EXPLAINER_FONTS.serif);
   GlobalFonts.registerFromPath(path.join(FONTS_DIR, 'S-inter-700.ttf'), EXPLAINER_FONTS.sans);
+  GlobalFonts.registerFromPath(path.join(FONTS_DIR, 'S-inter-900.ttf'), EXPLAINER_FONTS.heavy);
   fontsReady = true;
 }
 

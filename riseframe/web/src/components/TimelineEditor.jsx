@@ -5148,7 +5148,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // final sai igual à prévia. `smart` marca os que vieram daqui (para refazer/tirar);
   // `motion` marca os sons que entraram junto com o motion tipográfico.
   const [autoSfxStyle, setAutoSfxStyle] = useState(() => { try { return SFX_STYLES[localStorage.getItem('rf_sfx_style2')] ? localStorage.getItem('rf_sfx_style2') : 'premium'; } catch { return 'premium'; } });
-  const [kinTheme, setKinTheme] = useState(() => (KINETIC_THEMES[options?.kineticTheme] ? options.kineticTheme : 'auto'));
+  const [kinTheme, setKinTheme] = useState(() => (KINETIC_THEMES[options?.kineticTheme] ? options.kineticTheme : 'estrategia'));
   const [kinAmount, setKinAmount] = useState(() => (KINETIC_AMOUNT[options?.kineticAmount] ? options.kineticAmount : 'chave'));
   const [kinSfx, setKinSfx] = useState(true);
   // fundos próprios das cenas (mídias da biblioteca): { ref, kind, ar, light, name }
@@ -10520,7 +10520,7 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
 let explainerFontsP = null;
 function loadExplainerFonts() {
   if (!explainerFontsP && typeof FontFace !== 'undefined') {
-    const files = [[EXPLAINER_FONTS.display, 'Anton-Regular.ttf'], [EXPLAINER_FONTS.serif, 'S-garamond-400i.ttf'], [EXPLAINER_FONTS.sans, 'S-inter-700.ttf']];
+    const files = [[EXPLAINER_FONTS.display, 'Anton-Regular.ttf'], [EXPLAINER_FONTS.serif, 'S-garamond-400i.ttf'], [EXPLAINER_FONTS.sans, 'S-inter-700.ttf'], [EXPLAINER_FONTS.heavy, 'S-inter-900.ttf']];
     explainerFontsP = Promise.all(files.map(([fam, f]) => new FontFace(fam, `url(/api/fonts/${f})`).load().then((ff) => document.fonts.add(ff)).catch(() => null)));
   }
   return explainerFontsP || Promise.resolve();

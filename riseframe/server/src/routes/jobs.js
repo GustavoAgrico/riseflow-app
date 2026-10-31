@@ -613,7 +613,8 @@ export function parseOptions(raw) {
     vsl: o.vsl === true, // Reel VSL (interface animada, vídeo vertical)
     // cenas do motion explicativo montadas no editor (desenhadas no render)
     ...(Array.isArray(o.motionScenes) && o.motionScenes.length ? { motionScenes: cleanMotionScenes(o.motionScenes) } : {}),
-    kineticTheme: Object.hasOwn(KINETIC_THEMES, o.kineticTheme) ? o.kineticTheme : 'auto',
+    // padrão: o estilo da referência (creme/preto, grotesca, chave vermelha)
+    kineticTheme: Object.hasOwn(KINETIC_THEMES, o.kineticTheme) ? o.kineticTheme : 'estrategia',
     kineticAmount: o.kineticAmount === 'muitos' ? 'muitos' : 'chave',
     sfxIntensity: ['suave', 'medio', 'forte'].includes(o.sfxIntensity) ? o.sfxIntensity : 'medio',
     captions: o.captions !== false,
