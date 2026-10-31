@@ -41,7 +41,8 @@ export const KINETIC_THEMES = {
   'papel-cinza': 'Papel cinza',
   'branco-zigzag': 'Branco com zigzag',
   video: 'Sobre o vídeo',
-  legenda: 'Legenda em bloco (o vídeo todo)',
+  legenda: 'Legenda em bloco',
+  explicativo: 'Explicativo (motion design)',
 };
 export const KINETIC_AMOUNT = { chave: 'Momentos-chave', muitos: 'Quase o vídeo todo' };
 
