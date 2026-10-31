@@ -80,8 +80,6 @@ export const REAL_OBJECTS = {
   alert: ['real/time-bomb'],
   travel: ['real/airplane'],
   stage: ['real/tv-stage'],
-  shout: ['real/mouth'],
-  talk: ['real/mouth'],
   past: ['real/clock-antique'],
 };
 const REAL_IDS = [...new Set(Object.values(REAL_OBJECTS).flat())];
