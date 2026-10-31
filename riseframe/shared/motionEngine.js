@@ -7,6 +7,7 @@
 import { phraseChunks, wordRole } from './kinetic.js';
 import { conceptsIn } from './sceneElements.js';
 import { emphasisScore } from './keyMoments.js';
+import { STYLE_BEATS, styleBeatsFor, styleSfx, drawStyle, STYLE_FONT_FILES } from './motionStyles.js';
 
 export const EXPLAINER = {
   bg: '#DADADE', indigo: '#2A0A9A', violet: '#7A1FD6', magenta: '#B0309E', orange: '#F5A623', lime: '#B8E03A',
@@ -17,7 +18,8 @@ export const EXPLAINER_BEATS = ['hook', 'stat', 'support', 'counter', 'morph', '
 // Preset A ("Estratégia"): creme e preto alternando em corte seco, palavra-chave vermelha em grotesca
 export const STRATEGY = { cream: '#F7F3EC', black: '#000000', red: '#E3161F', purple: '#833AB4', ink: '#111111', white: '#FFFFFF', card: '#8C8988', arc: '#CFCBC4' };
 export const STRATEGY_BEATS = ['a-hook', 'a-bubble', 'a-glow', 'a-plain', 'a-object', 'a-card', 'a-brand', 'a-cta'];
-export const MOTION_STYLES = { explicativo: EXPLAINER_BEATS, estrategia: STRATEGY_BEATS };
+// + os estilos das outras referências (editorial P&B, itálico bordô, cinema escuro): motionStyles.js
+export const MOTION_STYLES = { explicativo: EXPLAINER_BEATS, estrategia: STRATEGY_BEATS, ...STYLE_BEATS };
 const DARK = new Set(['a-bubble', 'a-glow', 'a-object', 'a-cta']);
 
 // ─────────────────────────────── utilidades ───────────────────────────────
@@ -161,13 +163,14 @@ export function explainerPlan({ segments, dur, amount = 'chave', existing = [], 
     const last = g[g.length - 1];
     const end = Math.min(total || Infinity, last[last.length - 1].end + 0.7);
     if (end - start < 3 || !free(start, end)) continue;
-    const beats = (style === 'estrategia' ? strategyBeatsFor(g) : beatsFor(g)).map((b, k, all) => {
+    const planned = style === 'estrategia' ? strategyBeatsFor(g) : STYLE_BEATS[style] ? styleBeatsFor(style, g) : beatsFor(g);
+    const beats = planned.map((b, k, all) => {
       const s = Math.max(start, b.chunk[0].start - 0.05);
       const e = k < all.length - 1 ? all[k + 1].chunk[0].start - 0.05 : end;
       return { type: b.type, start: r2(s), end: r2(Math.max(s + 0.6, e)), words: b.chunk.map((w) => ({ w: clean(w), t: r2(w.start) })), data: b.data };
     });
-    scenes.push({ start: r2(start), end: r2(end), style: style === 'estrategia' ? 'estrategia' : 'explicativo', beats });
-    sfx.push(...(style === 'estrategia' ? strategySfx(beats) : explainerSfx(beats)));
+    scenes.push({ start: r2(start), end: r2(end), style: Object.hasOwn(MOTION_STYLES, style) ? style : 'explicativo', beats });
+    sfx.push(...(style === 'estrategia' ? strategySfx(beats) : STYLE_BEATS[style] ? styleSfx(style, beats) : explainerSfx(beats)));
   }
   return { scenes, sfx };
 }
@@ -208,6 +211,14 @@ const BH = 1920;
 
 /** Fontes padrão (nomes de família registrados pelo chamador). */
 export const EXPLAINER_FONTS = { display: 'RF Anton', serif: 'RF Garamond Italic', sans: 'RF Inter 700', heavy: 'RF Inter 900' };
+/** Todas as fontes do motion desenhado: [família, arquivo em server/assets/fonts] (render e prévia). */
+export const EXPLAINER_FONT_FILES = [
+  [EXPLAINER_FONTS.display, 'Anton-Regular.ttf'],
+  [EXPLAINER_FONTS.serif, 'S-garamond-400i.ttf'],
+  [EXPLAINER_FONTS.sans, 'S-inter-700.ttf'],
+  [EXPLAINER_FONTS.heavy, 'S-inter-900.ttf'],
+  ...STYLE_FONT_FILES,
+];
 
 function words(ctx, text, { x, y, size, font, color, align = 'center', lt, stagger = 0.1, dur = 0.35, glow = 0, gc = null, maxW = 960, weight = '' }) {
   // ajusta o tamanho para caber em maxW
@@ -294,6 +305,7 @@ function noShadow(ctx) {
  */
 export function drawExplainer(ctx, scene, t, env) {
   if (scene.style === 'estrategia') return drawStrategy(ctx, scene, t, env);
+  if (STYLE_BEATS[scene.style]) return drawStyle(ctx, scene, t, env);
   const { W, H } = env;
   const F = { ...EXPLAINER_FONTS, ...(env.fonts || {}) };
   const C = EXPLAINER;

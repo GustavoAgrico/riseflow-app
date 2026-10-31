@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas';
-import { drawExplainer, EXPLAINER_FONTS } from '../../../shared/motionEngine.js';
+import { drawExplainer, EXPLAINER_FONT_FILES } from '../../../shared/motionEngine.js';
 import { ffmpegPath } from './ffmpeg.js';
 import { elementFile } from './elements.js';
 import { log } from '../logger.js';
@@ -13,16 +13,13 @@ const FONTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 
 let fontsReady = false;
 function registerFonts() {
   if (fontsReady) return;
-  GlobalFonts.registerFromPath(path.join(FONTS_DIR, 'Anton-Regular.ttf'), EXPLAINER_FONTS.display);
-  GlobalFonts.registerFromPath(path.join(FONTS_DIR, 'S-garamond-400i.ttf'), EXPLAINER_FONTS.serif);
-  GlobalFonts.registerFromPath(path.join(FONTS_DIR, 'S-inter-700.ttf'), EXPLAINER_FONTS.sans);
-  GlobalFonts.registerFromPath(path.join(FONTS_DIR, 'S-inter-900.ttf'), EXPLAINER_FONTS.heavy);
+  for (const [family, file] of EXPLAINER_FONT_FILES) GlobalFonts.registerFromPath(path.join(FONTS_DIR, file), family);
   fontsReady = true;
 }
 
 /** Imagens (objetos 3D) usadas pela cena, já carregadas. */
 async function sceneImages(scene) {
-  const ids = new Set(['brain', 'bulb']);
+  const ids = new Set(['brain', 'bulb', 'gear']);
   for (const b of scene.beats) if (b.data?.element) ids.add(b.data.element);
   const out = new Map();
   for (const id of ids) {
@@ -59,7 +56,7 @@ export async function renderExplainerScene(scene, { W, H, fps = 30 }, outFile, o
   }
   ff.stdin.end();
   await done;
-  log.ok(`motion explicativo: cena de ${(scene.end - scene.start).toFixed(1)} s (${scene.beats.map((b) => b.type).join(' → ')})`);
+  log.ok(`motion ${scene.style || 'explicativo'}: cena de ${(scene.end - scene.start).toFixed(1)} s (${scene.beats.map((b) => b.type).join(' → ')})`);
   return outFile;
 }
 

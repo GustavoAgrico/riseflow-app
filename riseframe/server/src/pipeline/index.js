@@ -30,7 +30,7 @@ import { captionCues, toSrt, toVtt, toTxt } from '../../../shared/captionExport.
 import { applySoundEffects, SFX_LIBRARY } from './sfx.js';
 import { kineticPlan } from '../../../shared/kinetic.js';
 import { elementFile } from './elements.js';
-import { explainerPlan } from '../../../shared/motionEngine.js';
+import { explainerPlan, MOTION_STYLES } from '../../../shared/motionEngine.js';
 import { explainerLayers } from './motionRender.js';
 import { vslPlan } from '../../../shared/vslPlan.js';
 import { applyVslCamera, applyLoudness } from './vsl.js';
@@ -638,7 +638,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
   }
 
   // motion explicativo (preset B) no automático: cenas desenhadas, com os sons e a legenda escondida
-  if (options.kinetic === true && mode !== 'render' && (options.kineticTheme === 'explicativo' || options.kineticTheme === 'estrategia')) {
+  if (options.kinetic === true && mode !== 'render' && Object.hasOwn(MOTION_STYLES, options.kineticTheme)) {
     const plan = explainerPlan({ segments: transcript.segments, dur: meta.duration, amount: options.kineticAmount, style: options.kineticTheme });
     options.kinetic = false;
     if (plan.scenes.length) {
