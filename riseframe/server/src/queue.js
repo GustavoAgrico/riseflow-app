@@ -237,7 +237,8 @@ class JobQueue extends EventEmitter {
           const snap = JSON.parse(await fs.readFile(full, 'utf8'));
           await fs.rm(full, { force: true });
           if (!snap?.id || this.jobs.has(snap.id)) continue;
-          const ok = snap.inputPath && fsSync.existsSync(snap.inputPath) && (snap.attempts || 0) < 2;
+          // (vídeo pelo link do YouTube ainda não baixado: baixa de novo ao retomar)
+          const ok = snap.inputPath && (fsSync.existsSync(snap.inputPath) || Boolean(snap.options?.sourceUrl)) && (snap.attempts || 0) < 2;
           const paused = ok && snap.paused;
           const job = {
             ...snap, status: paused ? 'paused' : ok ? 'queued' : 'error', progress: 0, stage: paused ? 'paused' : ok ? 'queued' : 'error',

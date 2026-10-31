@@ -22,7 +22,7 @@ import { colorAdjFresh, normColorAdj } from '../colorAdj.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
 import { suggestSfx, SFX_STYLES } from '../../../shared/autoMoments.js';
 import { kineticPlan, KINETIC_THEMES, KINETIC_AMOUNT } from '../../../shared/kinetic.js';
-import { explainerPlan, drawExplainer, EXPLAINER_FONTS } from '../../../shared/motionEngine.js';
+import { explainerPlan, drawExplainer, EXPLAINER_FONT_FILES, MOTION_STYLES } from '../../../shared/motionEngine.js';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
 import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, wordPlan, wordFrame, WORD_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
@@ -5148,7 +5148,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // final sai igual à prévia. `smart` marca os que vieram daqui (para refazer/tirar);
   // `motion` marca os sons que entraram junto com o motion tipográfico.
   const [autoSfxStyle, setAutoSfxStyle] = useState(() => { try { return SFX_STYLES[localStorage.getItem('rf_sfx_style2')] ? localStorage.getItem('rf_sfx_style2') : 'premium'; } catch { return 'premium'; } });
-  const [kinTheme, setKinTheme] = useState(() => (KINETIC_THEMES[options?.kineticTheme] ? options.kineticTheme : 'auto'));
+  const [kinTheme, setKinTheme] = useState(() => (KINETIC_THEMES[options?.kineticTheme] ? options.kineticTheme : 'estrategia'));
   const [kinAmount, setKinAmount] = useState(() => (KINETIC_AMOUNT[options?.kineticAmount] ? options.kineticAmount : 'chave'));
   const [kinSfx, setKinSfx] = useState(true);
   // fundos próprios das cenas (mídias da biblioteca): { ref, kind, ar, light, name }
@@ -5228,7 +5228,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   /** Motion tipográfico: cenas de tipografia cinética nos momentos da fala (com os sons). */
   function placeKinetic() {
     const keep = textLayers.filter((l) => !l.smart);
-    if (kinTheme === 'explicativo' || kinTheme === 'estrategia') {
+    if (Object.hasOwn(MOTION_STYLES, kinTheme)) {
       // motion desenhado (explicativo / estratégia): cada cena é uma camada (mesmo desenho na prévia e no render)
       const plan = explainerPlan({ segments: smartSegments(), dur, amount: kinAmount, existing: keep.filter((l) => l.end - l.start < dur * 0.8), style: kinTheme });
       const now = Date.now();
@@ -5247,7 +5247,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setSfxMoments([...keepSfx, ...sfx].sort((a, b) => a.t - b.t));
       const inScene = (w) => plan.scenes.some((sc) => (w.start + w.end) / 2 >= sc.start && (w.start + w.end) / 2 <= sc.end);
       setSegments((prev) => prev.map((sg) => ({ ...sg, words: sg.words.map((w) => (w.khid && !inScene(w) ? { ...w, hidden: false, khid: false } : !w.hidden && inScene(w) ? { ...w, hidden: true, khid: true } : w)) })));
-      sayAuto(plan.scenes.length ? `${plan.scenes.length} cena(s) de motion ${kinTheme === 'estrategia' ? 'estratégia' : 'explicativo'} — dê play para ver` : 'Não achei um trecho com frases suficientes (precisa de 3 ou mais frases seguidas). Tente "Quase o vídeo todo".');
+      sayAuto(plan.scenes.length ? `${plan.scenes.length} cena(s) de motion ${KINETIC_THEMES[kinTheme] || kinTheme} — dê play para ver` : 'Não achei um trecho com frases suficientes (precisa de 3 ou mais frases seguidas). Tente "Quase o vídeo todo".');
       return;
     }
     const aspect = (FMT_WH[aspectSel]?.[0] || vdim?.w || 1080) / (FMT_WH[aspectSel]?.[1] || vdim?.h || 1920);
@@ -10520,7 +10520,7 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
 let explainerFontsP = null;
 function loadExplainerFonts() {
   if (!explainerFontsP && typeof FontFace !== 'undefined') {
-    const files = [[EXPLAINER_FONTS.display, 'Anton-Regular.ttf'], [EXPLAINER_FONTS.serif, 'S-garamond-400i.ttf'], [EXPLAINER_FONTS.sans, 'S-inter-700.ttf']];
+    const files = EXPLAINER_FONT_FILES;
     explainerFontsP = Promise.all(files.map(([fam, f]) => new FontFace(fam, `url(/api/fonts/${f})`).load().then((ff) => document.fonts.add(ff)).catch(() => null)));
   }
   return explainerFontsP || Promise.resolve();

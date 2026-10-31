@@ -3,13 +3,15 @@
 import { capabilities, config } from './config.js';
 import { siteCapabilities } from './account.js';
 import { googleConfig, googleReady, searchesViaSite } from './pipeline/broll.js';
+import { resolveYtDlp } from './pipeline/youtube.js';
 
 /**
  * App de PC sem chaves de banco de imagens: as buscas de B-roll vão pela conta do site,
  * então as fontes que aparecem (Pexels, Pixabay, Google) são as ligadas no site.
  */
 export async function appCapabilities() {
-  const caps = capabilities();
+  // importar vídeo pelo link do YouTube (precisa do yt-dlp no servidor)
+  const caps = { ...capabilities(), youtubeImport: Boolean(await resolveYtDlp()) };
   if (!searchesViaSite({ apiKey: config.broll.pexelsKey, pixabayKey: config.broll.pixabayKey, googleReady: googleReady(googleConfig()) })) return caps;
   const site = await siteCapabilities();
   // O site (plano grátis) pode estar "dormindo" e demorar para responder: enquanto isso as

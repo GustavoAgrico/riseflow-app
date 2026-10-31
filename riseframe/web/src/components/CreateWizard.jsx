@@ -3,6 +3,7 @@ import { C, GRAD, glass, FONT_DISPLAY } from '../theme.js';
 import Icon from './Icon.jsx';
 import { Spinner } from './ui.jsx';
 import Uploader from './Uploader.jsx';
+import YoutubeLink, { YoutubeCard } from './YoutubeLink.jsx';
 import CaptionPreview from './CaptionPreview.jsx';
 import CaptionGallery, { presetPatch, currentPreset, CAPTION_PRESETS } from './CaptionGallery.jsx';
 import CostLine from './CostLine.jsx';
@@ -178,6 +179,8 @@ export default function CreateWizard({
     set({ ...base, captionPreset: undefined, ...brandOptions({ ...loadBrand(id), enabled: true }), brandOff: false });
   }
   const caps = catalog?.capabilities || {};
+  // Shorts, longo → curto e Podcast/Cortes: o mais comum é partir de um vídeo do YouTube
+  const fromLinkFirst = ['shorts', 'cortes', 'resumo'].includes(formatId);
   const set = (patch) => onOptions({ ...options, ...patch });
 
   function pickFormat(f) {
@@ -256,8 +259,15 @@ export default function CreateWizard({
       {step === 1 && (
         <div className="rf-anim">
           <h2 style={h2}>Envie seu vídeo</h2>
-          <p style={lead}>Arraste o arquivo ou selecione no seu computador ou celular. Qualquer tamanho.</p>
-          <Uploader file={file} onFile={onFile} />
+          <p style={lead}>
+            {fromLinkFirst
+              ? 'Cole o link do vídeo do YouTube que você quer cortar — ou envie o arquivo do seu computador ou celular.'
+              : 'Arraste o arquivo ou selecione no seu computador ou celular. Qualquer tamanho.'}
+          </p>
+          {file?.youtubeUrl
+            ? <YoutubeCard source={file} onClear={() => onFile(null)} />
+            : <Uploader file={file} onFile={onFile} />}
+          {!file && <YoutubeLink onFile={onFile} available={caps.youtubeImport !== false} />}
           {!file && (
             <div style={{ textAlign: 'center', marginTop: 14 }}>
               <button onClick={onExample} disabled={loadingExample} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: loadingExample ? 'wait' : 'pointer', background: 'transparent', border: `1px solid ${C.border}`, color: C.muted, borderRadius: 20, padding: '8px 16px', fontSize: 13, fontFamily: 'inherit' }}>

@@ -104,3 +104,27 @@ test('estratégia: as cenas vindas do editor mantêm o estilo e descartam batida
   assert.equal(o.motionScenes[0].style, 'estrategia');
   assert.deepEqual(o.motionScenes[0].beats.map((b) => b.type), sc.beats.map((b) => b.type));
 });
+
+test('estilos das outras referências (editorial, bordô, cinema): batidas do estilo, sons e desenho de todos os tipos', async () => {
+  const { STYLE_BEATS } = await import('../../shared/motionStyles.js');
+  const seg = (t, text) => { const ws = text.split(' '); return { start: t, end: t + ws.length * 0.3, text, words: ws.map((w, i) => ({ word: w, start: t + i * 0.3, end: t + i * 0.3 + 0.26 })) }; };
+  const segments = [seg(0.2, 'se você compara a gente com outras agências'), seg(2.4, 'número de posts orçamento campanhas'), seg(4.2, 'mas o crescimento mora no negócio'),
+    seg(6.0, 'a estratégia é o segredo do dinheiro'), seg(8.0, 'por isso a gente não compete')];
+  const c = createCanvas(108, 192);
+  const ctx = c.getContext('2d');
+  for (const style of ['editorial', 'bordo', 'cinema-escuro']) {
+    const plan = explainerPlan({ segments, dur: 11, amount: 'muitos', style });
+    assert.ok(plan.scenes.length >= 1, style);
+    const sc = plan.scenes[0];
+    assert.equal(sc.style, style);
+    for (const b of sc.beats) assert.ok(STYLE_BEATS[style].includes(b.type), `${style}: ${b.type}`);
+    assert.ok(plan.sfx.length > 0, `${style}: sons`);
+    // o sanitizador do servidor mantém o estilo e as batidas
+    const o = parseOptions({ kinetic: true, kineticTheme: style, motionScenes: [sc] });
+    assert.equal(o.kineticTheme, style);
+    assert.deepEqual(o.motionScenes[0].beats.map((b) => b.type), sc.beats.map((b) => b.type));
+    // todos os tipos desenham sem erro (com e sem objeto, com e sem palavras)
+    const all = { ...sc, beats: STYLE_BEATS[style].map((type, i) => ({ type, start: sc.start + i, end: sc.start + i + 1, words: i % 2 ? [] : [{ w: 'texto', t: sc.start + i + 0.1 }, { w: 'teste', t: sc.start + i + 0.4 }], data: { text: 'texto de teste', keyword: 'teste', small: 'texto de', after: '', keys: ['um', 'dois', 'três'], element: i % 2 ? 'bulb' : null } })) };
+    for (let t = all.start - 0.5; t < all.start + STYLE_BEATS[style].length + 0.5; t += 0.13) drawExplainer(ctx, all, t, { W: 108, H: 192, image: () => null });
+  }
+});

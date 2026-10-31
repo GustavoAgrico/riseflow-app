@@ -300,6 +300,18 @@ async function chunkedUpload(file, onProgress, mode) {
 
 /** Envia o vídeo + opções. onProgress(0..1) reflete o upload. */
 async function uploadTo(endpoint, file, options, onProgress) {
+  // Vídeo pelo link do YouTube: nada para enviar — o servidor baixa na 1ª etapa do job.
+  if (file?.youtubeUrl) {
+    const r = await fetch(`${BASE}${endpoint}`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ youtubeUrl: file.youtubeUrl, options: JSON.stringify(options) }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+    onProgress?.(1);
+    return data;
+  }
   const limit = await maxUploadBytes();
   if (limit && file.size > limit) {
     throw new Error(`o vídeo tem ${formatGB(file.size)} e o limite é ${formatGB(limit)}.`);

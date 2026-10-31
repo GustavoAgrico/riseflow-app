@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { assembleSequence } from './sequence.js';
+import { downloadYoutube } from './youtube.js';
 import { sequenceTranscript } from './seqTranscript.js';
 import { onlineSfxFile } from './sfxOnline.js';
 import { config } from '../config.js';
@@ -29,7 +30,7 @@ import { captionCues, toSrt, toVtt, toTxt } from '../../../shared/captionExport.
 import { applySoundEffects, SFX_LIBRARY } from './sfx.js';
 import { kineticPlan } from '../../../shared/kinetic.js';
 import { elementFile } from './elements.js';
-import { explainerPlan } from '../../../shared/motionEngine.js';
+import { explainerPlan, MOTION_STYLES } from '../../../shared/motionEngine.js';
 import { explainerLayers } from './motionRender.js';
 import { vslPlan } from '../../../shared/vslPlan.js';
 import { applyVslCamera, applyLoudness } from './vsl.js';
@@ -177,6 +178,8 @@ function buildPlan(mode, options) {
       { key: 'render', label: 'Renderização final', weight: 18, enabled: true },
     ].filter((s) => s.enabled);
   }
+  // Vídeo pelo link do YouTube: baixa antes de tudo (vira o vídeo de entrada do job).
+  if (options.sourceUrl) all.unshift({ key: 'download', label: 'Baixando o vídeo do YouTube', weight: mode === 'clips' ? 20 : 12 });
   const total = all.reduce((a, s) => a + s.weight, 0);
   let acc = 0;
   for (const s of all) {
@@ -286,6 +289,17 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
   // Etapas deste job (o site mostra só as que vão rodar, na ordem certa).
   emit({ steps: plan.map((s) => ({ key: s.key, label: s.label })) });
+
+  // 0. Link do YouTube: baixa o vídeo para o caminho de entrada do job (só uma vez — ao
+  // retomar/pausar, o arquivo já baixado é reaproveitado).
+  if (options.sourceUrl && has('download')) {
+    const st = enter('download');
+    if (!fs.existsSync(input)) {
+      const got = await downloadYoutube(options.sourceUrl, input, st.onProgress);
+      emit({ filename: got.filename });
+      report.source = { kind: 'youtube', url: options.sourceUrl, title: got.title };
+    }
+  }
 
   // 0. Timeline em branco: junta os clipes da trilha V1 num vídeo só (vira o vídeo do editor).
   if (job.sequence && has('sequence')) {
@@ -624,7 +638,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
   }
 
   // motion explicativo (preset B) no automático: cenas desenhadas, com os sons e a legenda escondida
-  if (options.kinetic === true && mode !== 'render' && (options.kineticTheme === 'explicativo' || options.kineticTheme === 'estrategia')) {
+  if (options.kinetic === true && mode !== 'render' && Object.hasOwn(MOTION_STYLES, options.kineticTheme)) {
     const plan = explainerPlan({ segments: transcript.segments, dur: meta.duration, amount: options.kineticAmount, style: options.kineticTheme });
     options.kinetic = false;
     if (plan.scenes.length) {

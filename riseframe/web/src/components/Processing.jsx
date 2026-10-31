@@ -5,6 +5,7 @@ import { MyQueue, JobControls } from './RenderQueue.jsx';
 
 // Nomes amigáveis de cada etapa do servidor.
 export const SHORT = {
+  download: 'Baixando do YouTube',
   probe: 'Analisando o vídeo',
   voice: 'Tratando a voz',
   gain: 'Ajustando o volume',

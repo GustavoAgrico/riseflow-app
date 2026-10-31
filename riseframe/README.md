@@ -28,6 +28,7 @@ B-roll → Legendas dinâmicas → Color grade → Render final → Download
 | **Editor de transcrição** (editar o vídeo editando o texto) | ✅ | transcreve → corta palavras/frases → render com remap de timeline |
 | **Color grade por IA** | ✅ | analisa frames → calcula balanço de branco/exposição/contraste/saturação + look |
 | **Clipes curtos** (highlight finder) | ✅ | acha os melhores trechos → N clipes com legendas + grade + reframe 9:16 |
+| **Vídeo pelo link do YouTube** | ✅ | cole o link (vídeo, Shorts, live gravada) → o servidor baixa com `yt-dlp` (até 1080p) e segue para Shorts, longo → curto ou Podcast/Cortes |
 | Fila de jobs assíncrona | ✅ | worker em memória, 1 job por vez |
 
 > **Nota honesta:** a transcrição padrão é **`whisper-local`** — ASR real via
