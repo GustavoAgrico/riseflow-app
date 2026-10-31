@@ -58,10 +58,44 @@ export const CONCEPTS = [
   ['boom', 'bomb', W('bomba|explos[aã]o|chocante|choque|impacto|bomb|shock'), ['boom', 'impact']],
   ['mail', 'envelope', W('e-?mail|carta|newsletter|inbox|mail'), ['notify', 'pop']],
   ['system', 'gear', W('autom[aá]tico|automatizar|automa[cç][aã]o|engrenagem|funcionamento|m[aá]quina|setup|automation|system'), ['click', 'kick']],
+  // assuntos que só têm recorte realista (o objeto 3D é o mais próximo, para os estilos sem recorte)
+  ['travel', 'globe', W('viagem|viagens|viajar|viajei|avi[aã]o|aeroporto|voar|voo|voos|destino|turismo|travel|trip|flight|plane'), ['whoosh', 'swoosh']],
+  ['stage', 'megaphone', W('palco|podcast|programa|est[uú]dio|televis[aã]o|tv|entrevista|apresenta[cç][aã]o|show|stage|studio'), ['pr-shine', 'pop']],
+  ['shout', 'megaphone', W('gritar|grito|gritando|berrar|boca|calar|cala a boca|falar alto|shout|scream|mouth'), ['boom', 'impact']],
+  ['past', 'hourglass', W('antigamente|passado|antigo|antiga|antigos|hist[oó]ria|tradi[cç][aã]o|velho|velha|old|history'), ['clock', 'pop']],
 ];
 
+/**
+ * Recortes realistas (fotos/3D com fundo transparente, em server/assets/elements/real):
+ * quando o assunto tem recorte, ele entra no lugar do objeto 3D (emoji) — fica mais perto
+ * das referências. Vários recortes no mesmo assunto: a escolha varia pela palavra falada.
+ */
+export const REAL_OBJECTS = {
+  time: ['real/hourglass-gold', 'real/clock-antique'],
+  clock: ['real/clock-antique', 'real/clock-gears'],
+  system: ['real/gear-gold', 'real/clock-gears'],
+  strategy: ['real/chess-set', 'real/rook-gold'],
+  leader: ['real/rook-gold'],
+  boom: ['real/time-bomb'],
+  alert: ['real/time-bomb'],
+  travel: ['real/airplane'],
+  stage: ['real/tv-stage'],
+  shout: ['real/mouth'],
+  talk: ['real/mouth'],
+  past: ['real/clock-antique'],
+};
+const REAL_IDS = [...new Set(Object.values(REAL_OBJECTS).flat())];
+/** Recorte realista do assunto (estável para a mesma palavra) ou null. */
+export function realObject(conceptId, word = '') {
+  const list = REAL_OBJECTS[conceptId];
+  if (!list?.length) return null;
+  let h = 0;
+  for (const ch of String(word).toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return list[h % list.length];
+}
+
 /** Ids de todos os objetos 3D usados (= arquivos em server/assets/elements). */
-export const ELEMENT_ASSETS = [...new Set(CONCEPTS.map((c) => c[1]))];
+export const ELEMENT_ASSETS = [...new Set([...CONCEPTS.map((c) => c[1]), ...REAL_IDS])];
 /** Rabiscos usados nas cenas (= arquivos em server/assets/elements/doodles). */
 export const SCENE_DOODLES = ['underline', 'squiggle', 'sparkle', 'star-4', 'arrow-curved', 'zigzag', 'circle-hand'];
 
@@ -81,7 +115,8 @@ export function conceptsIn(words) {
       if (seen.has(element)) continue;
       if (re.test(one) || (two && re.test(two) && !re.test(clean(words[i + 1])))) {
         seen.add(element);
-        found.push({ id, element, sfx, word: w, index: i });
+        // `real`: o recorte realista do assunto (quando há), usado pelos estilos de motion desenhados
+        found.push({ id, element, real: realObject(id, one), sfx, word: w, index: i });
         break;
       }
     }

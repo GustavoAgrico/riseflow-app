@@ -93,7 +93,7 @@ function beatsFor(chunks) {
     const data = { text: txt(c), keyword: tidy(clean(big)), small: txt(smallOf(c)), keys: keys.map((w) => tidy(clean(w))) };
     if (type === 'counter') data.number = num.n;
     if (type === 'counter') data.caption = txt(c.filter((w) => w !== num.word && bare(w) !== 'mil'));
-    if (type === 'counter' || type === 'morph') data.element = conceptsIn(c)[0]?.element || null;
+    if (type === 'counter' || type === 'morph') data.element = conceptsIn(c)[0]?.real || conceptsIn(c)[0]?.element || null;
     out.push({ type, chunk: c, data });
   });
   return out;
@@ -124,7 +124,7 @@ function strategyBeatsFor(chunks) {
     const idx = c.indexOf(big);
     out.push({ type, chunk: c, data: {
       text: txt(c), keyword: tidy(clean(big)), small: txt(c.slice(0, Math.max(0, idx))), after: txt(c.slice(idx + 1)),
-      keys: keys.map((w) => tidy(clean(w))), element: concept?.element || null,
+      keys: keys.map((w) => tidy(clean(w))), element: concept?.real || concept?.element || null,
     } });
   });
   return out;

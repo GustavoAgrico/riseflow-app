@@ -99,7 +99,7 @@ export function styleBeatsFor(style, chunks) {
     const idx = c.indexOf(big);
     out.push({ type, chunk: c, data: {
       text: txt(c), keyword: tidy(clean(big)), small: txt(c.slice(0, Math.max(0, idx))), after: txt(c.slice(idx + 1)),
-      keys: keys.map((w) => tidy(clean(w))).slice(0, 4), element: concept?.element || null,
+      keys: keys.map((w) => tidy(clean(w))).slice(0, 4), element: concept?.real || concept?.element || null,
     } });
   });
   return out;
