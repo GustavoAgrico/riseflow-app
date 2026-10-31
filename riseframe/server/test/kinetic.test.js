@@ -114,7 +114,7 @@ test('fundos próprios: cada cena usa uma mídia da pessoa e a cor do texto segu
 });
 
 test('legenda em bloco: cobre a fala toda, chave grande, pequenas em volta, cada palavra no seu instante', () => {
-  const plan = kineticPlan({ segments: SEGS, dur: 15, theme: 'legenda' });
+  const plan = kineticPlan({ segments: SEGS, dur: 15, theme: 'legenda', amount: 'muitos' });
   assert.ok(plan.scenes.length >= 3);
   assert.equal(plan.elements.length, 0);
   for (let i = 1; i < plan.scenes.length; i++) assert.ok(plan.scenes[i].start >= plan.scenes[i - 1].end - 1e-6);
@@ -126,4 +126,10 @@ test('legenda em bloco: cobre a fala toda, chave grande, pequenas em volta, cada
     assert.ok(l.animIn === 'palavras-desfoque' && l.x > 0.05 && l.x < 0.95, l.text);
     assert.ok(l.end > l.start);
   }
+});
+
+test('legenda em bloco em "Momentos-chave": só as frases de destaque, não o vídeo todo', () => {
+  const all = kineticPlan({ segments: SEGS, dur: 15, theme: 'legenda', amount: 'muitos' });
+  const key = kineticPlan({ segments: SEGS, dur: 15, theme: 'legenda', amount: 'chave' });
+  assert.ok(key.scenes.length >= 1 && key.scenes.length < all.scenes.length);
 });

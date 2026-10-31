@@ -41,7 +41,9 @@ export const KINETIC_THEMES = {
   'papel-cinza': 'Papel cinza',
   'branco-zigzag': 'Branco com zigzag',
   video: 'Sobre o vídeo',
-  legenda: 'Legenda em bloco (o vídeo todo)',
+  legenda: 'Legenda em bloco',
+  explicativo: 'Explicativo (motion design)',
+  estrategia: 'Estratégia (cortes secos)',
 };
 export const KINETIC_AMOUNT = { chave: 'Momentos-chave', muitos: 'Quase o vídeo todo' };
 
@@ -260,7 +262,7 @@ export function sceneLayers(words, { theme, start, end, aspect, index = 0 }) {
  * `elements`: objetos 3D e rabiscos (camadas de imagem por cima das cenas, ver sceneElements.js).
  */
 export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', amount = 'chave', existing = [], available = null, backgrounds = null } = {}) {
-  if (theme === 'legenda') return clusterCaptionPlan({ segments, dur, aspect, existing });
+  if (theme === 'legenda') return clusterCaptionPlan({ segments, dur, aspect, existing, amount });
   // fundos próprios (mídias da pessoa): [{ ref, kind: 'image'|'video', ar: altura/largura, light }]
   const custom = Array.isArray(backgrounds) && backgrounds.length ? backgrounds : null;
   const total = Number(dur) || 0;
@@ -342,10 +344,24 @@ export function kineticPlan({ segments, dur, aspect = 9 / 16, theme = 'auto', am
  * da chave, ou ao lado na mesma linha; as de depois embaixo, alinhadas à direita); cada palavra
  * entra desfocando no instante em que é falada e o bloco se monta aos poucos.
  */
-export function clusterCaptionPlan({ segments, dur, aspect = 9 / 16, existing = [] } = {}) {
+export function clusterCaptionPlan({ segments, dur, aspect = 9 / 16, existing = [], amount = 'chave' } = {}) {
   const total = Number(dur) || 0;
   const chunks = phraseChunks(segments, 5).filter((c) => c.length);
   const busy = (existing || []).filter((l) => Number.isFinite(Number(l.start)));
+  // "Momentos-chave": só as frases de destaque (como as cenas do motion); "Quase o vídeo todo": todas
+  let only = null;
+  if (amount !== 'muitos') {
+    const scored = chunks.map((c, i) => ({ i, s: c[0].start, e: c[c.length - 1].end,
+      score: emphasisScore({ start: c[0].start, end: c[c.length - 1].end, words: c }, i > 0 ? chunks[i - 1][chunks[i - 1].length - 1].end : NaN, i) }));
+    const limit = Math.max(1, Math.round((total || 30) / 6));
+    const picked = [];
+    for (const c of [...scored].sort((a, b) => b.score - a.score)) {
+      if (picked.length >= limit || c.score < 2) break;
+      if (picked.some((p) => c.s < p.e + 2.5 && c.e > p.s - 2.5)) continue;
+      picked.push(c);
+    }
+    only = new Set(picked.map((p) => p.i));
+  }
   const scenes = [];
   const layers = [];
   const KEY_MAX = 0.078;
@@ -355,6 +371,7 @@ export function clusterCaptionPlan({ segments, dur, aspect = 9 / 16, existing = 
   const wOf = (t, font, tr) => textWidthEm(t, font, tr);
   const r4 = (v) => +Number(v).toFixed(4);
   chunks.forEach((c, i) => {
+    if (only && !only.has(i)) return;
     const s0 = c[0].start;
     const e0 = c[c.length - 1].end;
     if (busy.some((l) => s0 < Number(l.end) && e0 > Number(l.start))) return;

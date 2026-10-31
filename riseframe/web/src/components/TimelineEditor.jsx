@@ -22,6 +22,7 @@ import { colorAdjFresh, normColorAdj } from '../colorAdj.js';
 import { keyZoomMoments } from '../../../shared/keyMoments.js';
 import { suggestSfx, SFX_STYLES } from '../../../shared/autoMoments.js';
 import { kineticPlan, KINETIC_THEMES, KINETIC_AMOUNT } from '../../../shared/kinetic.js';
+import { explainerPlan, drawExplainer, EXPLAINER_FONTS } from '../../../shared/motionEngine.js';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
 import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, wordPlan, wordFrame, WORD_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
@@ -3299,7 +3300,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         ...(blanks.length || seqHoles.length ? { videoBlanks: [...blanks, ...seqHoles].map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2), ...(b.audio === false ? { audio: false } : {}) })) } : {}),
         audioGains: gains.map((g) => ({ start: +g.start.toFixed(2), end: +g.end.toFixed(2), volume: +Number(g.volume).toFixed(2) })),
         // Minhas mídias colocadas na timeline (imagens/vídeos/músicas próprias).
-        userMedia: visMedia.map((m) => ({
+        // cenas do motion explicativo (o tempo segue o clipe, se ele foi arrastado na timeline)
+        ...(visMedia.some((m) => m.motionScene) ? { motionScenes: visMedia.filter((m) => m.motionScene).map((m) => {
+          const d = Number(m.start) - m.motionScene.start;
+          return { ...m.motionScene, start: +(m.motionScene.start + d).toFixed(2), end: +(m.motionScene.start + d + Number(m.duration)).toFixed(2), beats: m.motionScene.beats.map((b) => ({ ...b, start: +(b.start + d).toFixed(2), end: +(b.end + d).toFixed(2) })) };
+        }) } : {}),
+        userMedia: visMedia.filter((m) => !m.motionScene).map((m) => ({
           ...(m.element ? { element: m.element } : { mediaId: m.mediaId }),
           kind: m.kind,
           start: +Number(m.start).toFixed(2),
@@ -5222,6 +5228,28 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   /** Motion tipográfico: cenas de tipografia cinética nos momentos da fala (com os sons). */
   function placeKinetic() {
     const keep = textLayers.filter((l) => !l.smart);
+    if (kinTheme === 'explicativo' || kinTheme === 'estrategia') {
+      // motion desenhado (explicativo / estratégia): cada cena é uma camada (mesmo desenho na prévia e no render)
+      const plan = explainerPlan({ segments: smartSegments(), dur, amount: kinAmount, existing: keep.filter((l) => l.end - l.start < dur * 0.8), style: kinTheme });
+      const now = Date.now();
+      setTextLayers(keep);
+      setMedia((prev) => {
+        const rest = prev.filter((m) => !m.kinetic);
+        const top = rest.reduce((a, m) => Math.max(a, Number(m.layer) || 0), 0) + 1;
+        return [...rest, ...plan.scenes.map((sc, i) => ({
+          key: `k${now}_${i}`, kind: 'video', filename: `motion ${kinTheme} ${i + 1}`, motionScene: sc, start: sc.start, duration: +(sc.end - sc.start).toFixed(2),
+          srcDuration: 600, mode: 'cover', volume: 0, muted: true, opacity: 1, blend: 'normal', offset: 0, fadeIn: 0, fadeOut: 0, px: 0.5, py: 0.5, scale: 1,
+          animIn: 'none', animOut: 'none', layer: top, kinetic: true, scene: i + 1,
+        }))];
+      });
+      const keepSfx = sfxMoments.filter((m) => !(m.smart && m.motion));
+      const sfx = kinSfx ? plan.sfx.map((m, i) => ({ key: `s${now}_k${i}`, t: m.t, type: m.type, volume: m.volume, smart: true, motion: true, why: m.why })) : [];
+      setSfxMoments([...keepSfx, ...sfx].sort((a, b) => a.t - b.t));
+      const inScene = (w) => plan.scenes.some((sc) => (w.start + w.end) / 2 >= sc.start && (w.start + w.end) / 2 <= sc.end);
+      setSegments((prev) => prev.map((sg) => ({ ...sg, words: sg.words.map((w) => (w.khid && !inScene(w) ? { ...w, hidden: false, khid: false } : !w.hidden && inScene(w) ? { ...w, hidden: true, khid: true } : w)) })));
+      sayAuto(plan.scenes.length ? `${plan.scenes.length} cena(s) de motion ${kinTheme === 'estrategia' ? 'estratégia' : 'explicativo'} — dê play para ver` : 'Não achei um trecho com frases suficientes (precisa de 3 ou mais frases seguidas). Tente "Quase o vídeo todo".');
+      return;
+    }
     const aspect = (FMT_WH[aspectSel]?.[0] || vdim?.w || 1080) / (FMT_WH[aspectSel]?.[1] || vdim?.h || 1920);
     const plan = kineticPlan({ segments: smartSegments(), dur, aspect, theme: kinTheme, amount: kinAmount, existing: keep.filter((l) => l.end - l.start < dur * 0.8), available: sfxAvailable(),
       backgrounds: kinBgs.length ? kinBgs.map(({ ref, kind, ar, light }) => ({ ref, kind, ar, light })) : null });
@@ -5271,7 +5299,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restored]);
   const smartSfxN = sfxMoments.filter((m) => m.smart && !m.motion).length;
-  const kineticN = new Set(textLayers.filter((l) => l.smart).map((l) => l.scene || l.key)).size;
+  const kineticN = new Set(textLayers.filter((l) => l.smart).map((l) => l.scene || l.key)).size + media.filter((m) => m.motionScene).length;
   const autoCardStyle = { display: 'grid', gap: 7, padding: 10, borderRadius: 10, border: '1px solid rgba(124,58,237,0.45)', background: 'linear-gradient(135deg, rgba(124,58,237,0.16), rgba(255,107,53,0.08))', marginBottom: 8 };
   const chip = (on, onClick, label, key) => (
     <button key={key ?? label} type="button" onClick={onClick} aria-pressed={on}
@@ -10300,7 +10328,7 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
   // editor só muda umas 4 vezes por segundo — a animação ia aos pulos na prévia).
   // na parte dos textos só entram as camadas "por cima" (objetos/rabiscos das cenas)
   const ofPart = (m) => (part === 'texts' ? m.above === true : part === 'media' ? !m.above : true);
-  const animated = (media || []).some((m) => ofPart(m) && (m.kf || (m.motion && m.motion !== 'none') || (m.animIn && m.animIn !== 'none')));
+  const animated = (media || []).some((m) => ofPart(m) && (m.kf || m.motionScene || (m.motion && m.motion !== 'none') || (m.animIn && m.animIn !== 'none')));
   const [liveT, setLiveT] = useState(null);
   useEffect(() => {
     if (!animated) { setLiveT(null); return undefined; }
@@ -10320,13 +10348,14 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
   const T = liveT ?? cur;
   if (!box || box.h < 10) return null;
   const visible = (media || [])
-    .filter((m) => ofPart(m) && m.kind !== 'audio' && m.previewUrl && T >= m.start && T < m.start + m.duration)
+    .filter((m) => ofPart(m) && m.kind !== 'audio' && (m.previewUrl || m.motionScene) && T >= m.start && T < m.start + m.duration)
     .map((m) => layerAt(m, T)) // quadros-chave: posição/escala/giro/opacidade deste instante
     .sort((a, b) => (a.layer || 0) - (b.layer || 0));
   const liveTexts = (part === 'media' ? [] : texts || []).filter((l) => cur >= l.start && cur < l.end);
   if (!visible.length && !liveTexts.length) return null;
   const start = (e, d) => { if (!editable) return; e.preventDefault(); e.stopPropagation(); dragRef.current = { ...d, x0: e.clientX, y0: e.clientY }; document.body.style.userSelect = 'none'; };
   const drawMedia = (m) => {
+    if (m.motionScene) return <MotionCanvas key={m.key} m={m} box={box} T={T} />;
     const adj = layerCss(m);
     const el = (style0) => { const style = { ...style0, ...adj }; return (m.kind === 'video'
       ? <SyncedVideo m={m} mainRef={videoRef} style={style} onAspect={(r) => setAspect((a) => (a[m.key] === r ? a : { ...a, [m.key]: r }))} />
@@ -10487,6 +10516,42 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
  * a pausa, o arraste do playhead e a velocidade (lê o <video> principal a cada quadro).
  * Se o arquivo não tocar no navegador, usa a cópia H.264 do servidor.
  */
+// Motion explicativo na prévia: o mesmo desenho do render (shared/motionEngine.js) num canvas.
+let explainerFontsP = null;
+function loadExplainerFonts() {
+  if (!explainerFontsP && typeof FontFace !== 'undefined') {
+    const files = [[EXPLAINER_FONTS.display, 'Anton-Regular.ttf'], [EXPLAINER_FONTS.serif, 'S-garamond-400i.ttf'], [EXPLAINER_FONTS.sans, 'S-inter-700.ttf']];
+    explainerFontsP = Promise.all(files.map(([fam, f]) => new FontFace(fam, `url(/api/fonts/${f})`).load().then((ff) => document.fonts.add(ff)).catch(() => null)));
+  }
+  return explainerFontsP || Promise.resolve();
+}
+const explainerImgs = new Map();
+function explainerImage(id) {
+  if (!explainerImgs.has(id)) {
+    const img = new Image();
+    img.src = elementUrl(id);
+    explainerImgs.set(id, img);
+  }
+  const img = explainerImgs.get(id);
+  return img.complete && img.naturalWidth ? img : null;
+}
+function MotionCanvas({ m, box, T }) {
+  const ref = useRef(null);
+  const [, setReady] = useState(0);
+  useEffect(() => { loadExplainerFonts().then(() => setReady((n) => n + 1)); }, []);
+  useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    const W = Math.max(2, Math.round(box.w));
+    const H = Math.max(2, Math.round(box.h));
+    if (c.width !== W) c.width = W;
+    if (c.height !== H) c.height = H;
+    const d = Number(m.start) - m.motionScene.start; // clipe arrastado: a cena acompanha
+    drawExplainer(c.getContext('2d'), m.motionScene, T - d, { W, H, image: (id) => explainerImage(id) || explainerImage('brain') });
+  });
+  return <canvas ref={ref} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />;
+}
+
 function SyncedVideo({ m, mainRef, style, onAspect }) {
   const ref = useRef(null);
   const [src, setSrc] = useState(m.previewUrl);
