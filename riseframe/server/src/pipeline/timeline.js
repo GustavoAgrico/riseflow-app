@@ -78,6 +78,23 @@ export function remapTime(t, keep) {
 }
 
 /** Inverso do remapTime: tempo na timeline CORTADA → tempo no vídeo ORIGINAL. */
+/**
+ * Cenas de motion (tempo original) → timeline CORTADA. Batidas cujo meio cai num trecho
+ * removido saem; as outras acompanham a fala (tempos e palavras remapeados).
+ */
+export function remapMotionScenes(scenes, keep) {
+  const kept = (t) => keep.some((seg) => t >= seg.start && t <= seg.end);
+  return (Array.isArray(scenes) ? scenes : []).map((sc) => {
+    const beats = (sc.beats || []).filter((b) => kept((Number(b.start) + Number(b.end)) / 2)).map((b) => ({
+      ...b,
+      start: +remapTime(Number(b.start), keep).toFixed(3),
+      end: +remapTime(Number(b.end), keep).toFixed(3),
+      words: (b.words || []).map((w) => ({ ...w, t: +remapTime(Number(w.t), keep).toFixed(3) })),
+    }));
+    return { ...sc, start: +remapTime(Number(sc.start), keep).toFixed(3), end: +remapTime(Number(sc.end), keep).toFixed(3), beats };
+  }).filter((sc) => sc.beats.length && sc.end - sc.start > 0.2);
+}
+
 export function unmapTime(t, keep) {
   let acc = 0;
   const list = keep || [];

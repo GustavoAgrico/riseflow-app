@@ -11,7 +11,7 @@ import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
 import { preciseRemovals, wordGapRanges, dropSlivers } from './cutRefine.js';
 import { remapKf } from '../../../shared/layerKeys.js';
-import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, unmapTime } from './timeline.js';
+import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, remapMotionScenes, unmapTime } from './timeline.js';
 import { insertBroll, faceCropGeometry } from './broll.js';
 import { applyManualFrame, applyVideoCrop, cleanCrop, cleanCropRanges, hasCrop, applyVideoBlanks, cleanBlanks } from './frame.js';
 import { applyUnderlay, hasUnderlay } from './underlay.js';
@@ -576,6 +576,8 @@ export async function runPipeline(job, onUpdate = () => {}) {
       // Efeitos de vídeo e textos livres também foram colocados na timeline original.
       if (Array.isArray(options.fxMoments)) options.fxMoments = options.fxMoments.map(remapRange).filter(Boolean);
       if (Array.isArray(options.textLayers)) options.textLayers = options.textLayers.map(remapRange).filter(Boolean);
+      // Cenas de motion (desenhadas no editor, tempo original): acompanham a fala no vídeo cortado.
+      if (Array.isArray(options.motionScenes)) options.motionScenes = remapMotionScenes(options.motionScenes, keep);
       // Legendas adicionadas à mão: mesmo remap (as que caíram num corte saem).
       if (Array.isArray(options.extraCaptions)) {
         options.extraCaptions = options.extraCaptions.map((c) => {
