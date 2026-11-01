@@ -96,8 +96,8 @@ pelos tempos das palavras. Cada um virou um estilo do app.
   de um bloco da cor de destaque; no eco, a palavra repetida em 7 linhas com opacidade baixa.
 - **Marca (w3):** fundo lilás ou branco; cartão de 800×1040 com cantos arredondados e inclinação
   de perspectiva; barras brancas com altura crescente; a logo final em degradê.
-- **Contador (w4):** fundo cinza claro; botões em grade 3×5 com sombra suave; o valor final é lido
-  da própria frase.
+- **Contador (w4):** fundo cinza claro; uma caixa só (pílula) com sombra suave; o número sobe de 0
+  até o valor lido da própria frase; a frase entra embaixo.
 
 ## 3. Lógica das animações
 
@@ -109,7 +109,7 @@ pelos tempos das palavras. Cada um virou um estilo do app.
 | Fatias que sobem e descem | 0,35 s por tira, defasadas | glitch controlado |
 | Cartão que assenta | 0,5 s (overshoot) | objeto físico |
 | Barras que crescem | 0,5 s por barra, defasadas 0,12 s | dado, progresso |
-| Números que rolam | 1,0 s, desfoque até assentar | recompensa |
+| Número que sobe de 0 ao valor | 0,8 s ou 70% da batida, freando no fim | recompensa |
 | Câmera | `push`, `pull`, `whip`, `shake`, `drift` | igual aos estilos anteriores |
 
 ## 4. Sons (sintetizados, kits `bk-*`, `mk-*`, `rl-*`)
@@ -117,7 +117,8 @@ pelos tempos das palavras. Cada um virou um estilo do app.
 - **Bloco (`bk-*`):** `bk-hit` impacto grave ao cair o bloco; `bk-slice` tique de corte (uma por tira
   e uma por repetição do eco); `bk-swipe` varredura na faixa e na caixa.
 - **Marca (`mk-*`):** `mk-card` ar de cartão deslizando; `mk-chime` sino de logo com eco.
-- **Contador (`rl-tick`):** tique mecânico de odômetro, um por passo do número (só na grade).
+- **Contador (`rl-tick`):** tique mecânico de odômetro, até 24 tiques espaçados como o número sobe
+  (rápido no começo, freando no fim). Só na frase com número.
 
 Regra mantida: um som por ação visível.
 

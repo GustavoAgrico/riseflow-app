@@ -8974,6 +8974,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                           </>
                         ) : (
                           <>
+                            {m.motionScene && <MotionEditor scene={m.motionScene} onChange={(sc) => updateMedia(m.key, { motionScene: sc })} />}
                             <div style={{ display: 'flex', gap: 6, marginBottom: m.mode === 'pip' ? 8 : 0 }}>
                               {[{ id: 'cover', label: 'Tela cheia' }, { id: 'pip', label: 'Livre (posição/tamanho)' }].map((o) => (
                                 <button key={o.id} onClick={() => updateMedia(m.key, { mode: o.id })} style={framingTab(m.mode === o.id)}>{o.label}</button>
@@ -11501,6 +11502,40 @@ function ScrubNum({ value, onChange, step = 1, min = -Infinity, max = Infinity, 
     </span>
   );
 }
+/** Editor do motion: texto, palavra-chave e tipo de desenho de cada batida (vira o render também). */
+function MotionEditor({ scene, onChange }) {
+  const types = MOTION_STYLES[scene.style] || [];
+  const lw = (x) => String(x || '').toLowerCase();
+  const setBeat = (i, patch) => onChange({ ...scene, beats: scene.beats.map((b, j) => (j === i ? { ...b, ...patch } : b)) });
+  // texto novo: as palavras ganham tempos dentro da batida (a palavra-chave continua a mesma se ainda existir)
+  const setText = (i, text) => {
+    const b = scene.beats[i];
+    const parts = text.split(/\s+/).filter(Boolean);
+    const span = Math.max(0.4, b.end - b.start);
+    const words = parts.map((w, k) => ({ w, t: +(b.start + (k / Math.max(1, parts.length)) * span * 0.7).toFixed(2) }));
+    const keep = parts.some((p) => lw(p) === lw(b.data.keyword));
+    setBeat(i, { words, data: { ...b.data, text, keyword: keep ? b.data.keyword : parts[parts.length - 1] || '' } });
+  };
+  const field = { width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.05)', border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, padding: '5px 7px', fontSize: 12, fontFamily: 'inherit' };
+  return (
+    <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: C.text }}>Texto do motion</div>
+      <div style={{ fontSize: 10.5, color: C.faint }}>Corrija as palavras aqui. A palavra-chave aparece destacada no desenho.</div>
+      {scene.beats.map((b, i) => (
+        <div key={i} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 7, display: 'grid', gap: 5 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            <select value={b.type} onChange={(e) => setBeat(i, { type: e.target.value })} style={field} aria-label="Tipo de desenho">
+              {types.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <input value={b.data.keyword || ''} onChange={(e) => setBeat(i, { data: { ...b.data, keyword: e.target.value } })} placeholder="palavra-chave" aria-label="Palavra-chave" style={field} />
+          </div>
+          <textarea value={b.data.text || ''} onChange={(e) => setText(i, e.target.value)} rows={2} aria-label="Texto da batida" style={{ ...field, resize: 'vertical' }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CapRow({ label, children }) {
   return (
     <label style={{ display: 'grid', gap: 4 }}>

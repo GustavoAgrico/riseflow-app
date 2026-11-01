@@ -8,7 +8,8 @@ import { explainerPlan, drawExplainer, spring, EXPLAINER_BEATS, STRATEGY_BEATS }
 import { parseOptions } from '../src/routes/jobs.js';
 import { renderExplainerScene, explainerLayers } from '../src/pipeline/motionRender.js';
 import { probeSummary } from '../src/pipeline/ffmpeg.js';
-import { SFX_LIBRARY } from '../src/pipeline/sfx.js';
+import { SFX_LIBRARY, STYLE_PACK_SOUNDS } from '../src/pipeline/sfx.js';
+import { remapMotionScenes } from '../src/pipeline/timeline.js';
 
 const seg = (t0, text) => { let t = t0; const words = text.split(' ').map((w) => { const o = { start: +t.toFixed(2), end: +(t + 0.26).toFixed(2), word: w }; t += 0.3; return o; }); return { start: t0, end: t, words }; };
 const SEGS = [seg(0.2, 'você sabia disso'), seg(1.3, 'pesquisas mostram'), seg(2.2, 'que o cérebro toma'), seg(3.2, '35 mil decisões todo dia'),
@@ -206,4 +207,28 @@ test('bloco, marca e contador (referências de 4 vídeos): batidas, sons própri
     const hasNum = /\d/.test(String(b.data.text || ''));
     if (b.type === 'rl-grid') assert.ok(hasNum, `grade sem número: ${b.data.text}`);
   }
+});
+
+test('sons dos estilos vêm do pacote enviado (arquivo existe e tem duração)', () => {
+  for (const [key, rel] of Object.entries(STYLE_PACK_SOUNDS)) {
+    const s = SFX_LIBRARY[key];
+    assert.ok(s, `som ${key} existe`);
+    assert.ok(s.file && fs.existsSync(s.file), `${key} aponta para ${rel}`);
+    assert.ok(s.dur > 0, `${key} tem duração`);
+  }
+});
+
+test('motion com cortes: a cena acompanha a fala no vídeo cortado (tempo remapeado, batida cortada sai)', () => {
+  // trecho 2–4 s foi cortado: o que vem depois anda 2 s para trás
+  const keep = [{ start: 0, end: 2 }, { start: 4, end: 10 }];
+  const scene = { start: 5, end: 8, style: 'estrategia', beats: [
+    { type: 'x', start: 5, end: 6.5, words: [{ w: 'a', t: 5.2 }, { w: 'b', t: 6.1 }], data: { text: 'a b', keyword: 'b' } },
+    { type: 'x', start: 2.5, end: 3.5, words: [{ w: 'c', t: 2.7 }], data: { text: 'c', keyword: 'c' } },
+  ] };
+  const [out] = remapMotionScenes([scene], keep);
+  assert.equal(out.start, 3);
+  assert.equal(out.end, 6);
+  assert.equal(out.beats.length, 1, 'batida dentro do corte sai');
+  assert.equal(out.beats[0].start, 3);
+  assert.equal(out.beats[0].words[0].t, 3.2);
 });

@@ -31,6 +31,7 @@ export const KINETIC_THEMES = {
   bloco: 'Blocos e repetição',
   marca: 'Marca (cartão e logo)',
   rolagem: 'Contador em grade',
+  azul: 'Destaque azul (selo e sublinhado)',
   editorial: 'Editorial P&B',
   bordo: 'Itálico bordô',
   'cinema-escuro': 'Cinema escuro',

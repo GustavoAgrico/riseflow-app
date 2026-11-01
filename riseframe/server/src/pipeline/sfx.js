@@ -133,6 +133,26 @@ export const SFX_LIBRARY = {
     src: "aevalsrc='0.6*sin(2*PI*1319*t)*exp(-t*4)+0.35*sin(2*PI*1976*t)*exp(-t*6)':d=1.0:s=44100",
     af: ['aecho=0.5:0.35:50:0.2', 'volume=1.3', 'aformat=channel_layouts=stereo'],
   },
+  'az-pop': {
+    label: 'Destaque (azul)', base: 'pop', gain: 0.9, lead: 0, cat: 'azul', dur: 0.25,
+    src: "aevalsrc='0.5*sin(2*PI*880*t)*exp(-t*18)+0.2*sin(2*PI*1320*t)*exp(-t*30)':d=0.25:s=44100",
+    af: ['volume=1.4', 'aformat=channel_layouts=stereo'],
+  },
+  'az-stroke': {
+    label: 'Traço do sublinhado (azul)', base: 'swipe', gain: 0.8, lead: 0, cat: 'azul', dur: 0.35,
+    src: 'anoisesrc=d=0.35:c=white:a=0.5:r=44100',
+    af: ['bandpass=f=2400:w=1.2', 'afade=t=in:st=0:d=0.1', 'afade=t=out:st=0.1:d=0.25:curve=exp', 'volume=2.2', 'aformat=channel_layouts=stereo'],
+  },
+  'az-ding': {
+    label: 'Selo com número (azul)', base: 'ding', gain: 0.9, lead: 0, cat: 'azul', dur: 0.9,
+    src: "aevalsrc='0.55*sin(2*PI*1047*t)*exp(-t*5)+0.3*sin(2*PI*1568*t)*exp(-t*7)':d=0.9:s=44100",
+    af: ['volume=1.3', 'aformat=channel_layouts=stereo'],
+  },
+  'az-end': {
+    label: 'Palavra final (azul)', base: 'bling', gain: 0.9, lead: 0, cat: 'azul', dur: 0.8,
+    src: "aevalsrc='0.5*sin(2*PI*660*t)*exp(-t*6)+0.3*sin(2*PI*990*t)*exp(-t*8)':d=0.8:s=44100",
+    af: ['aecho=0.4:0.3:40:0.2', 'volume=1.3', 'aformat=channel_layouts=stereo'],
+  },
   'rl-tick': {
     label: 'Tique de odômetro (contador)', base: 'click', gain: 1, lead: 0, cat: 'rolagem', dur: 0.05,
     src: "aevalsrc='0.6*sin(2*PI*1800*t)*exp(-t*120)+0.25*(random(0)*2-1)*exp(-t*200)':d=0.05:s=44100",
@@ -413,6 +433,46 @@ export const SFX_LIBRARY = {
 };
 
 /** Categorias da biblioteca (como as do CapCut). */
+// Sons dos estilos vêm do pacote enviado (uma família por estilo, para soar coerente).
+// Sem o arquivo, o som sintetizado acima continua valendo como reserva.
+export const STYLE_PACK_SOUNDS = {
+  // minimalista: família "vidro"
+  'mi-tick': 'pack/interface/select-glass.mp3',
+  'mi-pop': 'pack/interface/toggle-on-glass.mp3',
+  'mi-air': 'pack/transicao/swipe-glass.mp3',
+  'mi-rise': 'pack/conquista/level-up-glass.mp3',
+  'mi-ding': 'pack/notificacao/notification-glass.mp3',
+  'mi-shine': 'pack/conquista/reward-glass.mp3',
+  // câmera e letras: família "cinema"; a tecla é a gravação real
+  'cn-key': 'tecla-01.wav',
+  'cn-whoosh': 'pack/transicao/swipe-cinematic.mp3',
+  'cn-pop': 'pack/interface/press-cinematic.mp3',
+  'cn-impact': 'pack/transicao/drop-cinematic.mp3',
+  'cn-swipe': 'pack/transicao/snap-cinematic.mp3',
+  // blocos: família "borracha" (percussiva)
+  'bk-hit': 'pack/transicao/drop-rubber.mp3',
+  'bk-slice': 'pack/interface/press-rubber.mp3',
+  'bk-swipe': 'pack/transicao/swipe-rubber.mp3',
+  // marca: família "sonho" (suave)
+  'mk-card': 'pack/transicao/swipe-dreamy.mp3',
+  'mk-chime': 'pack/conquista/complete-dreamy.mp3',
+  // contador: família "borracha"
+  'rl-tick': 'pack/interface/select-rubber.mp3',
+  // destaque azul: família "vidro"
+  'az-pop': 'pack/interface/toggle-on-glass.mp3',
+  'az-stroke': 'pack/transicao/swipe-glass.mp3',
+  'az-ding': 'pack/notificacao/notification-glass.mp3',
+  'az-end': 'pack/conquista/level-up-glass.mp3',
+};
+const PACK_DURS = (() => {
+  try { return Object.fromEntries(JSON.parse(fsSync.readFileSync(path.join(SFX_DIR, 'pack', 'pack.json'), 'utf8')).sounds.map((x) => [x.file, x.dur])); } catch { return {}; }
+})();
+for (const [key, rel] of Object.entries(STYLE_PACK_SOUNDS)) {
+  const file = path.join(SFX_DIR, rel);
+  if (!SFX_LIBRARY[key] || !fsSync.existsSync(file)) continue;
+  SFX_LIBRARY[key] = { ...SFX_LIBRARY[key], file, dur: PACK_DURS[rel.replace(/^pack\//, '')] || 0.1 };
+}
+
 export const SFX_CATEGORIES = {
   premium: 'Premium (agência)',
   minimalista: 'Minimalista (cards e palavras)',
@@ -420,6 +480,7 @@ export const SFX_CATEGORIES = {
   bloco: 'Blocos e repetição',
   marca: 'Marca (cartão e logo)',
   rolagem: 'Contador em grade',
+  azul: 'Destaque azul',
   cinetico: 'Câmera e letras (cinético)',
   transicao: 'Transição',
   impacto: 'Impacto',
@@ -435,6 +496,7 @@ const SFX_CAT = {
   'mi-tick': 'minimalista', 'mi-pop': 'minimalista', 'mi-air': 'minimalista', 'mi-rise': 'minimalista', 'mi-ding': 'minimalista', 'mi-shine': 'minimalista',
   'cn-key': 'cinetico', 'cn-whoosh': 'cinetico', 'cn-pop': 'cinetico', 'cn-impact': 'cinetico', 'cn-swipe': 'cinetico',
   'bk-hit': 'bloco', 'bk-slice': 'bloco', 'bk-swipe': 'bloco', 'mk-card': 'marca', 'mk-chime': 'marca', 'rl-tick': 'rolagem',
+  'az-pop': 'azul', 'az-stroke': 'azul', 'az-ding': 'azul', 'az-end': 'azul',
   whoosh: 'transicao', swoosh: 'transicao', riser: 'transicao', whooshdown: 'transicao', swipe: 'transicao', rewind: 'transicao',
   impact: 'impacto', kick: 'impacto', boom: 'impacto', thud: 'impacto', bassdrop: 'impacto',
   shutter: 'interface', click: 'interface', typing: 'interface', pop: 'interface', bubble: 'interface', ding: 'interface', notify: 'interface', clock: 'interface',
