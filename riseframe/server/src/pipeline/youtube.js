@@ -149,6 +149,9 @@ function commonArgs() {
   const cookies = process.env.YTDLP_COOKIES;
   if (cookies && fs.existsSync(cookies)) a.push('--cookies', cookies);
   if (process.env.YTDLP_PROXY) a.push('--proxy', process.env.YTDLP_PROXY);
+  // país informado ao YouTube (ex.: BR) para vídeos liberados só em alguns países
+  const geo = String(process.env.YTDLP_GEO_COUNTRY || '').trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(geo)) a.push('--xff', geo);
   return a;
 }
 
@@ -161,7 +164,9 @@ export function friendlyYtError(stderr) {
   if (/private video/i.test(s)) return 'este vídeo do YouTube é privado — só dá para usar vídeos públicos ou não listados.';
   if (/members.only|join this channel/i.test(s)) return 'este vídeo é só para membros do canal — não dá para baixar.';
   if (/age.?restrict|confirm your age|inappropriate for some users/i.test(s)) return 'este vídeo tem restrição de idade no YouTube — baixe o vídeo e envie o arquivo.';
-  if (/is not available in your country|geo.?restrict/i.test(s)) return 'este vídeo não está disponível na região do servidor.';
+  if (/available in your (?:country|region)|geo.?restrict|not available in your location/i.test(s)) {
+    return 'o dono deste vídeo bloqueou o país de onde o servidor baixa (restrição de região do YouTube). Teste com outro vídeo, ou baixe este e envie o arquivo.';
+  }
   if (/live event will begin|premieres in|is_upcoming/i.test(s)) return 'esta live/estreia ainda não começou.';
   if (/video unavailable|has been removed|does not exist|not available/i.test(s)) return 'vídeo do YouTube indisponível (removido, privado ou link errado).';
   if (/HTTP Error 429|too many requests/i.test(s)) return 'o YouTube limitou os downloads do servidor agora. Tente de novo em alguns minutos.';
