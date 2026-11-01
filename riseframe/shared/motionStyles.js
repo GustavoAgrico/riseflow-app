@@ -51,6 +51,9 @@ export const STYLE_BEATS = {
   'cinema-escuro': ['c-float', 'c-strike', 'c-embers', 'c-object', 'c-strip', 'c-bars', 'c-big'],
   minimalista: ['mi-word', 'mi-card', 'mi-count', 'mi-list', 'mi-cta'],
   cinetico: ['cn-type', 'cn-slide', 'cn-rise', 'cn-box', 'cn-stripe'],
+  bloco: ['bl-hit', 'bl-echo', 'bl-stripe', 'bl-slice'],
+  marca: ['mk-intro', 'mk-card', 'mk-bars', 'mk-logo'],
+  rolagem: ['rl-grid', 'rl-text'],
 };
 const DARK_BEATS = new Set(['e-end', 'b-dark', 'c-float', 'c-embers', 'c-object', 'c-strip', 'c-big', 'mi-word', 'mi-count', 'mi-cta']);
 
@@ -60,6 +63,13 @@ const keysOf = (c) => c.filter((w, i) => wordRole(w, i, c) !== 'small' && !/\d/.
 function pickType(style, { i, n, prev, used, keys, concept, k, len, num }) {
   const k0 = (_, r) => Math.ceil(len * r);
   const last = i === n - 1 && n >= 3;
+  if (style === 'bloco') return ['bl-hit', 'bl-echo', 'bl-stripe', 'bl-slice'][i % 4];
+  if (style === 'marca') {
+    if (i === 0) return 'mk-intro';
+    if (last) return 'mk-logo';
+    return k % 2 ? 'mk-bars' : 'mk-card';
+  }
+  if (style === 'rolagem') return num ? 'rl-grid' : 'rl-text';
   if (style === 'cinetico') {
     if (last) return 'cn-stripe';
     return ['cn-type', 'cn-slide', 'cn-rise', 'cn-box', 'cn-slide'][i % 5];
@@ -158,6 +168,20 @@ export function styleSfx(style, beats) {
       if (b.type === 'cn-rise') { add(b.start, 'cn-impact', 0.4, 'entrada'); if (kw) add(kw.t, 'cn-pop', 0.4, 'palavra'); }
       if (b.type === 'cn-box' && kw) add(kw.t - 0.05, 'cn-swipe', 0.45, 'caixa');
       if (b.type === 'cn-stripe') { add(b.start, 'cn-swipe', 0.5, 'faixa'); add(b.start + 0.3, 'cn-impact', 0.45, 'revelação'); }
+    } else if (style === 'bloco') {
+      // blocos: impacto ao cair o bloco, tiras no corte, varredura da faixa e do bloco branco
+      if (b.type === 'bl-hit') { add(b.start, 'bk-hit', 0.6, 'bloco'); if (kw) add(kw.t, 'bk-swipe', 0.4, 'palavra'); }
+      if (b.type === 'bl-echo') { add(b.start, 'bk-slice', 0.4, 'repetição'); (b.words || []).forEach((w) => add(w.t, 'bk-slice', 0.2, 'eco')); }
+      if (b.type === 'bl-stripe') add(b.start, 'bk-swipe', 0.5, 'faixa');
+      if (b.type === 'bl-slice') for (let j = 0; j < 6; j += 1) add(b.start + j * 0.03, 'bk-slice', 0.35, 'tira');
+    } else if (style === 'marca') {
+      // cartão e barras: deslize suave e tique; logo: sino ao aparecer a palavra
+      if (b.type === 'mk-card' || b.type === 'mk-intro') add(b.start + 0.05, 'mk-card', 0.4, 'cartão');
+      if (b.type === 'mk-bars') for (let j = 0; j < 5; j += 1) add(b.start + 0.1 + j * 0.12, 'rl-tick', 0.3, 'barra');
+      if (b.type === 'mk-logo' && kw) add(kw.t, 'mk-chime', 0.45, 'logo');
+    } else if (style === 'rolagem') {
+      // odômetro: um tique mecânico a cada passo do número
+      if (b.type === 'rl-grid') for (let j = 0; j < 12; j += 1) add(b.start + 0.15 + j * 0.07, 'rl-tick', 0.35, 'rolagem');
     } else {
       if (i) add(b.start, 'pr-air', 0.45, 'troca');
       if (b.type === 'c-strike' && kw) add(kw.t + 0.25, 'swipe', 0.45, 'risco');
@@ -313,7 +337,7 @@ export function drawStyle(ctx, scene, t, env) {
   ctx.fillStyle = DARK_BEATS.has(beat.type) ? '#000' : '#FFF';
   ctx.fillRect(0, 0, W, H);
   // empurrão lento da câmera em cada frase
-  const cam = style === 'cinetico' ? camFor(CN_CAM[beat.type], lt, beat.end - beat.start) : null;
+  const cam = CAM_STYLES.has(style) ? camFor(CN_CAM[beat.type] || 'drift', lt, beat.end - beat.start) : null;
   if (cam) FOCUS += cam.blur;
   const push = cam ? cam.s : lerp(1, style === 'cinema-escuro' ? 1.06 : 1.035, clamp(lt / Math.max(0.5, beat.end - beat.start)));
   ctx.translate(W / 2 + (cam ? cam.tx * k : 0), H / 2 + (cam ? cam.ty * k : 0));
@@ -1107,7 +1131,8 @@ const MI_DRAW = {
 // rápida com desfoque, tremor, zoom de saída, faixa diagonal de transição). Fundo muda de cor a
 // cada cena (claro, verde, laranja, escuro, gradiente), como nas referências.
 const CN_BG = ['#F7F7F4', '#0E7C62', '#FF8A1F', '#0B0B12', 'grad'];
-const CN_CAM = { 'cn-type': 'push', 'cn-slide': 'whip', 'cn-rise': 'shake', 'cn-box': 'pull', 'cn-stripe': 'drift' };
+const CN_CAM = { 'cn-type': 'push', 'cn-slide': 'whip', 'cn-rise': 'shake', 'cn-box': 'pull', 'cn-stripe': 'drift', 'bl-hit': 'pull', 'bl-echo': 'push', 'bl-stripe': 'shake', 'bl-slice': 'whip', 'mk-intro': 'push', 'mk-card': 'drift', 'mk-bars': 'pull', 'mk-logo': 'shake' };
+const CAM_STYLES = new Set(['cinetico', 'bloco', 'marca']);
 const cnDark = (bg) => bg === '#0B0B12' || bg === 'grad' || bg === '#0E7C62';
 const cnInk = (bg) => (cnDark(bg) ? '#FFFFFF' : '#111111');
 
@@ -1281,4 +1306,168 @@ const CN_DRAW = {
   },
 };
 
-const DRAW = { editorial: ED_DRAW, bordo: BO_DRAW, 'cinema-escuro': CI_DRAW, minimalista: MI_DRAW, cinetico: CN_DRAW };
+// ─────────────────────────────── bloco, marca e contador (referências de 4 vídeos) ───────────────────────────────
+const BLK_ORANGE = '#F04E23';
+const MK_LILAC = '#5F5CC9';
+function flatBg(ctx, c) {
+  ctx.save();
+  setFilter(ctx);
+  ctx.fillStyle = c;
+  ctx.fillRect(-200, -200, BW + 400, BH + 400);
+  ctx.restore();
+}
+
+const BLO_DRAW = {
+  // palavras grandes em preto; a palavra-chave dentro de um bloco laranja que desliza
+  'bl-hit'(ctx, b, lt) {
+    flatBg(ctx, '#000000');
+    cnBlock(ctx, beatWords(b), lt, { y: 900, size: 170, color: '#FFFFFF', fx: 'pop', stagger: 0.06, box: { word: low(b.data.keyword), fill: BLK_ORANGE, text: '#000000' } });
+  },
+  // a palavra repetida em linhas (eco) no fundo branco; a frase por cima
+  'bl-echo'(ctx, b, lt) {
+    flatBg(ctx, '#FFFFFF');
+    const e = outCubic(prog(lt, 0, 0.6));
+    ctx.save();
+    setFilter(ctx);
+    ctx.font = `200px "${FI9}"`;
+    ctx.letterSpacing = '-6px';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#111111';
+    for (let r = 0; r < 7; r += 1) {
+      ctx.globalAlpha = (0.06 + 0.05 * (r % 2)) * e;
+      ctx.fillText(b.data.keyword.toUpperCase(), 540 + (r % 2 ? 40 : -40) * e, 260 + r * 250);
+    }
+    ctx.restore();
+    cnBlock(ctx, beatWords(b), lt, { y: 960, size: 120, color: '#111111', fx: 'rise', stagger: 0.04 });
+  },
+  // faixa branca larga que varre a tela sobre o laranja; a frase em preto
+  'bl-stripe'(ctx, b, lt) {
+    flatBg(ctx, BLK_ORANGE);
+    const e = outCubic(prog(lt, 0, 0.35));
+    ctx.save();
+    setFilter(ctx);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 760, BW * e, 380);
+    ctx.restore();
+    cnBlock(ctx, beatWords(b), lt, { y: 950, size: 150, color: '#111111', fx: 'slide', stagger: 0.035 });
+  },
+  // a frase em fatias verticais que sobem e descem fora de ordem (corte em tiras)
+  'bl-slice'(ctx, b, lt) {
+    flatBg(ctx, '#000000');
+    const items = beatWords(b);
+    const strips = 6;
+    for (let i = 0; i < strips; i += 1) {
+      const e = outCubic(prog(lt, i * 0.03, 0.35));
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect((i * BW) / strips, 0, BW / strips, BH);
+      ctx.clip();
+      ctx.translate(0, (1 - e) * (i % 2 ? 1 : -1) * 260);
+      cnBlock(ctx, items, lt, { y: 940, size: 190, color: '#FFFFFF', fx: 'rise', stagger: 0.02 });
+      ctx.restore();
+    }
+  },
+};
+
+const MRC_DRAW = {
+  // lilás: palavra em contorno gigante ao fundo e a frase entrando palavra por palavra
+  'mk-intro'(ctx, b, lt) {
+    flatBg(ctx, MK_LILAC);
+    ctx.save();
+    setFilter(ctx, 1);
+    ctx.font = `440px "${FI9}"`;
+    ctx.letterSpacing = '-10px';
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.lineWidth = 4;
+    ctx.textAlign = 'left';
+    ctx.strokeText(b.data.keyword.toUpperCase(), 40 - lt * 50, 1420);
+    ctx.restore();
+    cnBlock(ctx, beatWords(b), lt, { y: 820, size: 110, color: '#FFFFFF', fx: 'rise', stagger: 0.07 });
+  },
+  // branco: cartão lilás inclinado (perspectiva) que sobe; a frase dentro dele
+  'mk-card'(ctx, b, lt, env) {
+    flatBg(ctx, '#FFFFFF');
+    const e = clamp(outBack(prog(lt, 0, 0.5)));
+    ctx.save();
+    ctx.translate(540, 1000 + (1 - e) * 500);
+    ctx.transform(1, 0, (1 - e) * -0.25, 1, 0, 0);
+    ctx.shadowColor = 'rgba(0,0,0,0.2)';
+    ctx.shadowBlur = 60;
+    ctx.shadowOffsetY = 30;
+    ctx.fillStyle = MK_LILAC;
+    setFilter(ctx);
+    roundRectPath(ctx, -400, -520, 800, 1040, 50);
+    ctx.fill();
+    ctx.restore();
+    if (b.data.element) objectImg(ctx, env, b.data.element, 540, 1000, 300, { alpha: outCubic(prog(lt, 0.2, 0.4)), shadow: 'rgba(0,0,0,0.2)' });
+    cnBlock(ctx, beatWords(b), lt, { y: 560, size: 84, color: '#111111', fx: 'slide', stagger: 0.05 });
+  },
+  // lilás: barras que crescem em sequência; a frase em cima
+  'mk-bars'(ctx, b, lt) {
+    flatBg(ctx, MK_LILAC);
+    [0.3, 0.45, 0.6, 0.78, 1].forEach((h, i) => {
+      const e = clamp(outBack(prog(lt, 0.1 + i * 0.12, 0.5)));
+      if (e <= 0) return;
+      ctx.save();
+      setFilter(ctx);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      roundRectPath(ctx, 540 + (i - 2) * 170 - 60, 1600 - 700 * h * e, 120, 700 * h * e, 26);
+      ctx.fill();
+      ctx.restore();
+    });
+    cnBlock(ctx, beatWords(b), lt, { y: 620, size: 110, color: '#FFFFFF', fx: 'rise', stagger: 0.05 });
+  },
+  // branco: logo em duas cores (degradê na palavra-chave) e a frase pequena em cima
+  'mk-logo'(ctx, b, lt) {
+    flatBg(ctx, '#FFFFFF');
+    cnBlock(ctx, beatWords(b), lt, { y: 760, size: 70, color: '#111111', fx: 'rise', stagger: 0.05 });
+    const g = ctx.createLinearGradient(300, 0, 780, 0);
+    g.addColorStop(0, '#5F5CC9');
+    g.addColorStop(1, '#E36D9B');
+    const kt = beatWords(b).find((w) => low(w.text) === low(b.data.keyword))?.at ?? 0.3;
+    fxLine(ctx, [{ text: b.data.keyword, at: kt }], lt, { y: 1000, size: 170, color: g, fx: 'pop', stagger: 0 });
+  },
+};
+
+const RLG_DRAW = {
+  // frase sem número: entra palavra por palavra sobre o mesmo fundo cinza
+  'rl-text'(ctx, b, lt) {
+    flatBg(ctx, '#E2E2E4');
+    cnBlock(ctx, beatWords(b), lt, { y: 960, size: 130, color: '#111111', fx: 'rise', stagger: 0.04 });
+  },
+  // grade de botões com números que rolam até o valor final
+  'rl-grid'(ctx, b, lt) {
+    flatBg(ctx, '#E2E2E4');
+    const m = String(b.data.text || '').match(/\d[\d.,]*/);
+    const target = m ? Number(m[0].replace(/\./g, '').replace(',', '.')) : 26;
+    const settle = outCubic(prog(lt, 0, 1.0));
+    for (let r = 0; r < 5; r += 1) {
+      for (let c = 0; c < 3; c += 1) {
+        const x = 540 + (c - 1) * 230;
+        const y = 520 + r * 230;
+        const v = Math.round(target + (((r * 3 + c) % 5) - 2) * (1 - settle));
+        ctx.save();
+        setFilter(ctx);
+        ctx.shadowColor = 'rgba(0,0,0,0.18)';
+        ctx.shadowBlur = 24;
+        ctx.shadowOffsetY = 10;
+        ctx.fillStyle = '#E8E8EA';
+        roundRectPath(ctx, x - 90, y - 55, 180, 110, 55);
+        ctx.fill();
+        ctx.restore();
+        ctx.save();
+        ctx.font = `64px "${FI7}"`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#444444';
+        setFilter(ctx, (1 - settle) * 4);
+        ctx.fillText(String(v), x, y + 2);
+        ctx.restore();
+      }
+    }
+    cnBlock(ctx, beatWords(b), lt, { y: 1640, size: 64, color: '#333333', fx: 'rise', stagger: 0.04 });
+  },
+};
+
+const DRAW = { editorial: ED_DRAW, bordo: BO_DRAW, 'cinema-escuro': CI_DRAW, minimalista: MI_DRAW, cinetico: CN_DRAW, bloco: BLO_DRAW, marca: MRC_DRAW, rolagem: RLG_DRAW };

@@ -106,6 +106,38 @@ export function tickTrackWav(times, durationSec, { rate = 44100, gain = 0.5, sam
  * - src/af: entrada lavfi e cadeia de filtros que geram o som.
  */
 export const SFX_LIBRARY = {
+  // ── Kit "bloco" (texto em blocos): impacto grave ao cair o bloco, tira de corte, varredura de faixa
+  'bk-hit': {
+    label: 'Bloco que cai (bloco)', base: 'thud', gain: 0.9, lead: 0, cat: 'bloco', dur: 0.4,
+    src: "aevalsrc='0.9*sin(2*PI*(90+60*exp(-t*25))*t)*exp(-t*12)+0.2*(random(0)*2-1)*exp(-t*90)':d=0.4:s=44100",
+    af: ['lowpass=f=700', 'volume=1.6', 'aformat=channel_layouts=stereo'],
+  },
+  'bk-slice': {
+    label: 'Corte em tira (bloco)', base: 'click', gain: 0.9, lead: 0, cat: 'bloco', dur: 0.08,
+    src: 'anoisesrc=d=0.08:c=white:a=0.7:r=44100',
+    af: ['bandpass=f=4200:w=1.5', 'afade=t=out:st=0.02:d=0.05', 'volume=3', 'aformat=channel_layouts=stereo'],
+  },
+  'bk-swipe': {
+    label: 'Varredura de bloco (bloco)', base: 'swipe', gain: 0.9, lead: 0, cat: 'bloco', dur: 0.3,
+    src: 'anoisesrc=d=0.3:c=white:a=0.6:r=44100',
+    af: ['highpass=f=1200', 'afade=t=in:st=0:d=0.08', 'afade=t=out:st=0.08:d=0.22:curve=exp', 'volume=2.6', 'aformat=channel_layouts=stereo'],
+  },
+  // ── Kit "marca" (cartão e logo) e "contador" (odômetro)
+  'mk-card': {
+    label: 'Cartão deslizando (marca)', base: 'whoosh', gain: 0.6, lead: 0, cat: 'marca', dur: 0.3,
+    src: "aevalsrc='0.4*sin(2*PI*(500*t+400*t*t))*exp(-t*8)':d=0.3:s=44100",
+    af: ['volume=1.5', 'aformat=channel_layouts=stereo'],
+  },
+  'mk-chime': {
+    label: 'Sino de logo (marca)', base: 'ding', gain: 0.9, lead: 0, cat: 'marca', dur: 1.0,
+    src: "aevalsrc='0.6*sin(2*PI*1319*t)*exp(-t*4)+0.35*sin(2*PI*1976*t)*exp(-t*6)':d=1.0:s=44100",
+    af: ['aecho=0.5:0.35:50:0.2', 'volume=1.3', 'aformat=channel_layouts=stereo'],
+  },
+  'rl-tick': {
+    label: 'Tique de odômetro (contador)', base: 'click', gain: 1, lead: 0, cat: 'rolagem', dur: 0.05,
+    src: "aevalsrc='0.6*sin(2*PI*1800*t)*exp(-t*120)+0.25*(random(0)*2-1)*exp(-t*200)':d=0.05:s=44100",
+    af: ['volume=1.6', 'aformat=channel_layouts=stereo'],
+  },
   // ── Kit "cinético" (letras e câmera): tecla seca, ar de panorâmica, pop curto, impacto grave,
   // varredura de faixa. Sintetizados (sem arquivos de terceiros).
   'cn-key': {
@@ -385,6 +417,9 @@ export const SFX_CATEGORIES = {
   premium: 'Premium (agência)',
   minimalista: 'Minimalista (cards e palavras)',
   cinetico: 'Câmera e letras',
+  bloco: 'Blocos e repetição',
+  marca: 'Marca (cartão e logo)',
+  rolagem: 'Contador em grade',
   cinetico: 'Câmera e letras (cinético)',
   transicao: 'Transição',
   impacto: 'Impacto',
@@ -399,6 +434,7 @@ const SFX_CAT = {
   'pr-air': 'premium', 'pr-out': 'premium', 'pr-hit': 'premium', 'pr-shine': 'premium', 'pr-rise': 'premium', 'pr-key': 'premium',
   'mi-tick': 'minimalista', 'mi-pop': 'minimalista', 'mi-air': 'minimalista', 'mi-rise': 'minimalista', 'mi-ding': 'minimalista', 'mi-shine': 'minimalista',
   'cn-key': 'cinetico', 'cn-whoosh': 'cinetico', 'cn-pop': 'cinetico', 'cn-impact': 'cinetico', 'cn-swipe': 'cinetico',
+  'bk-hit': 'bloco', 'bk-slice': 'bloco', 'bk-swipe': 'bloco', 'mk-card': 'marca', 'mk-chime': 'marca', 'rl-tick': 'rolagem',
   whoosh: 'transicao', swoosh: 'transicao', riser: 'transicao', whooshdown: 'transicao', swipe: 'transicao', rewind: 'transicao',
   impact: 'impacto', kick: 'impacto', boom: 'impacto', thud: 'impacto', bassdrop: 'impacto',
   shutter: 'interface', click: 'interface', typing: 'interface', pop: 'interface', bubble: 'interface', ding: 'interface', notify: 'interface', clock: 'interface',

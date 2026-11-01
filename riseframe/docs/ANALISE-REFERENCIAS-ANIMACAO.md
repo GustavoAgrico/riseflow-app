@@ -67,3 +67,73 @@ Regra: um som por ação visível; nada que não corresponda a um movimento.
 
 - A transcrição offline erra muitas palavras; os tempos são confiáveis, o texto não.
 - As referências usam fotos recortadas e vídeos; o app usa os objetos 3D e recortes da biblioteca.
+
+---
+
+# Atualização v1.86 — quatro referências novas
+
+Quatro vídeos de referência analisados por quadros (contact sheets de 1 quadro a cada 0,3 s) e
+pelos tempos das palavras. Cada um virou um estilo do app.
+
+| Referência | Formato | Ideia principal | Estilo no app |
+|---|---|---|---|
+| w1 — "tablescape" / "GAIN AGAIN" | 16:9, 10 s | palavras enormes, bloco laranja sobre a palavra-chave, repetição em faixas, cortes em tiras | `bloco` |
+| w2 — "MOTION" repetido | 1:1, 7 s | a mesma palavra repetida em colunas que se multiplicam, inversão de cor, fatias com falha | `bloco` |
+| w3 — marca "SoftwareWOW" | 9:16, 22 s | fundo lilás, cartão inclinado com objeto, barras que crescem, letra-fantasma gigante, logo em degradê | `marca` |
+| w4 — contador em grade | 1:1, 15 s | grade de botões cinza cujos números rolam até o valor final | `rolagem` |
+
+## 1. Onde entra no roteiro
+
+- Cada frase vira uma batida. A palavra-chave (a de maior peso) é a que ganha o bloco, a faixa ou a
+  caixa. Em w1 e w2 a palavra-chave aparece repetida; no app ela aparece repetida só no eco (`bl-echo`).
+- O contador (`rolagem`) só usa a grade quando a frase tem número. Frase sem número vira texto
+  (`rl-text`), para não inventar um valor.
+- w3 abre com a letra-fantasma e fecha com a logo, como na referência.
+
+## 2. Composição
+
+- **Bloco (w1/w2):** fundo chapado (preto, branco ou laranja); texto grande; a palavra-chave dentro
+  de um bloco da cor de destaque; no eco, a palavra repetida em 7 linhas com opacidade baixa.
+- **Marca (w3):** fundo lilás ou branco; cartão de 800×1040 com cantos arredondados e inclinação
+  de perspectiva; barras brancas com altura crescente; a logo final em degradê.
+- **Contador (w4):** fundo cinza claro; botões em grade 3×5 com sombra suave; o valor final é lido
+  da própria frase.
+
+## 3. Lógica das animações
+
+| Movimento | Duração | Sensação |
+|---|---|---|
+| Bloco que cai (`pop`) | ~0,3 s, com overshoot | impacto |
+| Faixa que varre (`slide`) | 0,35 s | corte gráfico |
+| Eco de palavra | 0,6 s | repetição, ritmo |
+| Fatias que sobem e descem | 0,35 s por tira, defasadas | glitch controlado |
+| Cartão que assenta | 0,5 s (overshoot) | objeto físico |
+| Barras que crescem | 0,5 s por barra, defasadas 0,12 s | dado, progresso |
+| Números que rolam | 1,0 s, desfoque até assentar | recompensa |
+| Câmera | `push`, `pull`, `whip`, `shake`, `drift` | igual aos estilos anteriores |
+
+## 4. Sons (sintetizados, kits `bk-*`, `mk-*`, `rl-*`)
+
+- **Bloco (`bk-*`):** `bk-hit` impacto grave ao cair o bloco; `bk-slice` tique de corte (uma por tira
+  e uma por repetição do eco); `bk-swipe` varredura na faixa e na caixa.
+- **Marca (`mk-*`):** `mk-card` ar de cartão deslizando; `mk-chime` sino de logo com eco.
+- **Contador (`rl-tick`):** tique mecânico de odômetro, um por passo do número (só na grade).
+
+Regra mantida: um som por ação visível.
+
+## 5. Como o app recria isso
+
+- `shared/motionStyles.js`: `BLO_DRAW`, `MRC_DRAW`, `RLG_DRAW`; `STYLE_BEATS` com `bloco`, `marca`,
+  `rolagem`; `CAM_STYLES` (câmera nos estilos de câmera); `flatBg` (fundo chapado).
+- `server/src/pipeline/sfx.js`: kits `bk-*`, `mk-*`, `rl-tick`.
+- `shared/kinetic.js`: três novos temas no seletor (Blocos e repetição, Marca, Contador em grade).
+- Testes: `server/test/motionEngine.test.js` (batidas, sons existentes, desenho de todos os tipos,
+  grade só com número).
+
+## Limites
+
+- As referências usam telas de celular e fotos reais. Aqui o cartão mostra o objeto do app
+  (carrinho, foguete, etc.) em vez de uma captura de tela.
+- A logo final é só texto em degradê; não há logotipo da marca original.
+- Os tempos são os da transcrição offline, que erra palavras. Os quadros e a lógica de movimento são
+  confiáveis; o texto exato não.
