@@ -181,7 +181,15 @@ export function styleSfx(style, beats) {
       if (b.type === 'mk-logo' && kw) add(kw.t, 'mk-chime', 0.45, 'logo');
     } else if (style === 'rolagem') {
       // odômetro: um tique mecânico a cada passo do número
-      if (b.type === 'rl-grid') for (let j = 0; j < 12; j += 1) add(b.start + 0.15 + j * 0.07, 'rl-tick', 0.35, 'rolagem');
+      // um tique por passo do contador (até 24), mais rápido no começo e freando no fim
+      if (b.type === 'rl-grid') {
+        const target = rollTarget(b);
+        const n = Math.min(24, target);
+        for (let k = 1; k <= n; k += 1) {
+          const j = Math.round((k * target) / n);
+          add(b.start + 0.1 + rollDur(b) * (1 - (1 - j / target) ** (1 / 3)), 'rl-tick', 0.35, 'rolagem');
+        }
+      }
     } else {
       if (i) add(b.start, 'pr-air', 0.45, 'troca');
       if (b.type === 'c-strike' && kw) add(kw.t + 0.25, 'swipe', 0.45, 'risco');
@@ -1430,43 +1438,46 @@ const MRC_DRAW = {
   },
 };
 
+/** Número da frase (o contador sobe de 0 até ele). */
+function rollTarget(b) {
+  const m = String(b.data.text || '').match(/\d[\d.,]*/);
+  return m ? Math.min(99999, Number(m[0].replace(/\./g, '').replace(',', '.'))) : 0;
+}
+/** Duração da subida do contador dentro da batida. */
+function rollDur(b) { return Math.max(0.8, (b.end - b.start) * 0.7); }
+
 const RLG_DRAW = {
   // frase sem número: entra palavra por palavra sobre o mesmo fundo cinza
   'rl-text'(ctx, b, lt) {
     flatBg(ctx, '#E2E2E4');
     cnBlock(ctx, beatWords(b), lt, { y: 960, size: 130, color: '#111111', fx: 'rise', stagger: 0.04 });
   },
-  // grade de botões com números que rolam até o valor final
+  // uma caixa só: o número sobe de 0 até o valor dito na frase; a frase entra embaixo
   'rl-grid'(ctx, b, lt) {
     flatBg(ctx, '#E2E2E4');
-    const m = String(b.data.text || '').match(/\d[\d.,]*/);
-    const target = m ? Number(m[0].replace(/\./g, '').replace(',', '.')) : 26;
-    const settle = outCubic(prog(lt, 0, 1.0));
-    for (let r = 0; r < 5; r += 1) {
-      for (let c = 0; c < 3; c += 1) {
-        const x = 540 + (c - 1) * 230;
-        const y = 520 + r * 230;
-        const v = Math.round(target + (((r * 3 + c) % 5) - 2) * (1 - settle));
-        ctx.save();
-        setFilter(ctx);
-        ctx.shadowColor = 'rgba(0,0,0,0.18)';
-        ctx.shadowBlur = 24;
-        ctx.shadowOffsetY = 10;
-        ctx.fillStyle = '#E8E8EA';
-        roundRectPath(ctx, x - 90, y - 55, 180, 110, 55);
-        ctx.fill();
-        ctx.restore();
-        ctx.save();
-        ctx.font = `64px "${FI7}"`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#444444';
-        setFilter(ctx, (1 - settle) * 4);
-        ctx.fillText(String(v), x, y + 2);
-        ctx.restore();
-      }
-    }
-    cnBlock(ctx, beatWords(b), lt, { y: 1640, size: 64, color: '#333333', fx: 'rise', stagger: 0.04 });
+    const target = rollTarget(b);
+    const roll = rollDur(b);
+    const v = Math.round(target * outCubic(prog(lt, 0.1, roll)));
+    const pw = Math.max(460, measure(ctx, String(target), 230, FI9, -0.03) + 200);
+    ctx.save();
+    setFilter(ctx);
+    ctx.shadowColor = 'rgba(0,0,0,0.2)';
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 16;
+    ctx.fillStyle = '#E8E8EA';
+    roundRectPath(ctx, 540 - pw / 2, 760, pw, 280, 140);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.font = `230px "${FI9}"`;
+    ctx.letterSpacing = '-3px';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#444444';
+    setFilter(ctx);
+    ctx.fillText(String(v), 540, 904);
+    ctx.restore();
+    cnBlock(ctx, beatWords(b), lt, { y: 1180, size: 96, color: '#333333', fx: 'rise', stagger: 0.04 });
   },
 };
 
