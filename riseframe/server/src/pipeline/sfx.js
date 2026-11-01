@@ -413,6 +413,41 @@ export const SFX_LIBRARY = {
 };
 
 /** Categorias da biblioteca (como as do CapCut). */
+// Sons dos estilos vêm do pacote enviado (uma família por estilo, para soar coerente).
+// Sem o arquivo, o som sintetizado acima continua valendo como reserva.
+export const STYLE_PACK_SOUNDS = {
+  // minimalista: família "vidro"
+  'mi-tick': 'pack/interface/select-glass.mp3',
+  'mi-pop': 'pack/interface/toggle-on-glass.mp3',
+  'mi-air': 'pack/transicao/swipe-glass.mp3',
+  'mi-rise': 'pack/conquista/level-up-glass.mp3',
+  'mi-ding': 'pack/notificacao/notification-glass.mp3',
+  'mi-shine': 'pack/conquista/reward-glass.mp3',
+  // câmera e letras: família "cinema"; a tecla é a gravação real
+  'cn-key': 'tecla-01.wav',
+  'cn-whoosh': 'pack/transicao/swipe-cinematic.mp3',
+  'cn-pop': 'pack/interface/press-cinematic.mp3',
+  'cn-impact': 'pack/transicao/drop-cinematic.mp3',
+  'cn-swipe': 'pack/transicao/snap-cinematic.mp3',
+  // blocos: família "borracha" (percussiva)
+  'bk-hit': 'pack/transicao/drop-rubber.mp3',
+  'bk-slice': 'pack/interface/press-rubber.mp3',
+  'bk-swipe': 'pack/transicao/swipe-rubber.mp3',
+  // marca: família "sonho" (suave)
+  'mk-card': 'pack/transicao/swipe-dreamy.mp3',
+  'mk-chime': 'pack/conquista/complete-dreamy.mp3',
+  // contador: família "borracha"
+  'rl-tick': 'pack/interface/select-rubber.mp3',
+};
+const PACK_DURS = (() => {
+  try { return Object.fromEntries(JSON.parse(fsSync.readFileSync(path.join(SFX_DIR, 'pack', 'pack.json'), 'utf8')).sounds.map((x) => [x.file, x.dur])); } catch { return {}; }
+})();
+for (const [key, rel] of Object.entries(STYLE_PACK_SOUNDS)) {
+  const file = path.join(SFX_DIR, rel);
+  if (!SFX_LIBRARY[key] || !fsSync.existsSync(file)) continue;
+  SFX_LIBRARY[key] = { ...SFX_LIBRARY[key], file, dur: PACK_DURS[rel.replace(/^pack\//, '')] || 0.1 };
+}
+
 export const SFX_CATEGORIES = {
   premium: 'Premium (agência)',
   minimalista: 'Minimalista (cards e palavras)',

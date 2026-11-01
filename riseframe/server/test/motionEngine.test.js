@@ -8,7 +8,7 @@ import { explainerPlan, drawExplainer, spring, EXPLAINER_BEATS, STRATEGY_BEATS }
 import { parseOptions } from '../src/routes/jobs.js';
 import { renderExplainerScene, explainerLayers } from '../src/pipeline/motionRender.js';
 import { probeSummary } from '../src/pipeline/ffmpeg.js';
-import { SFX_LIBRARY } from '../src/pipeline/sfx.js';
+import { SFX_LIBRARY, STYLE_PACK_SOUNDS } from '../src/pipeline/sfx.js';
 
 const seg = (t0, text) => { let t = t0; const words = text.split(' ').map((w) => { const o = { start: +t.toFixed(2), end: +(t + 0.26).toFixed(2), word: w }; t += 0.3; return o; }); return { start: t0, end: t, words }; };
 const SEGS = [seg(0.2, 'você sabia disso'), seg(1.3, 'pesquisas mostram'), seg(2.2, 'que o cérebro toma'), seg(3.2, '35 mil decisões todo dia'),
@@ -205,5 +205,14 @@ test('bloco, marca e contador (referências de 4 vídeos): batidas, sons própri
   for (const sc of nums.scenes) for (const b of sc.beats) {
     const hasNum = /\d/.test(String(b.data.text || ''));
     if (b.type === 'rl-grid') assert.ok(hasNum, `grade sem número: ${b.data.text}`);
+  }
+});
+
+test('sons dos estilos vêm do pacote enviado (arquivo existe e tem duração)', () => {
+  for (const [key, rel] of Object.entries(STYLE_PACK_SOUNDS)) {
+    const s = SFX_LIBRARY[key];
+    assert.ok(s, `som ${key} existe`);
+    assert.ok(s.file && fs.existsSync(s.file), `${key} aponta para ${rel}`);
+    assert.ok(s.dur > 0, `${key} tem duração`);
   }
 });
