@@ -26,6 +26,8 @@ export function textWidthEm(text, font, tracking = 0) {
 
 export const KINETIC_THEMES = {
   estrategia: 'Estratégia (creme e preto)',
+  minimalista: 'Minimalista (cards e palavras)',
+  cinetico: 'Câmera e letras (cinético)',
   editorial: 'Editorial P&B',
   bordo: 'Itálico bordô',
   'cinema-escuro': 'Cinema escuro',

@@ -106,6 +106,66 @@ export function tickTrackWav(times, durationSec, { rate = 44100, gain = 0.5, sam
  * - src/af: entrada lavfi e cadeia de filtros que geram o som.
  */
 export const SFX_LIBRARY = {
+  // ── Kit "cinético" (letras e câmera): tecla seca, ar de panorâmica, pop curto, impacto grave,
+  // varredura de faixa. Sintetizados (sem arquivos de terceiros).
+  'cn-key': {
+    label: 'Tecla seca (cinético)', base: 'typing', gain: 1, lead: 0, cat: 'cinetico', dur: 0.08,
+    src: 'anoisesrc=d=0.08:c=white:a=0.5:r=44100',
+    af: ['bandpass=f=2800:w=1.2', 'afade=t=out:st=0.02:d=0.05', 'volume=3', 'aformat=channel_layouts=stereo'],
+  },
+  'cn-whoosh': {
+    label: 'Panorâmica (cinético)', base: 'whoosh', gain: 0.8, lead: 0.1, cat: 'cinetico', dur: 0.6,
+    src: 'anoisesrc=d=0.6:c=brown:a=0.9:r=44100',
+    af: ['highpass=f=300', 'lowpass=f=2500', 'afade=t=in:st=0:d=0.3:curve=qsin', 'afade=t=out:st=0.3:d=0.3:curve=exp', 'volume=2.5', 'aformat=channel_layouts=stereo'],
+  },
+  'cn-pop': {
+    label: 'Pop de letra (cinético)', base: 'pop', gain: 1, lead: 0, cat: 'cinetico', dur: 0.2,
+    src: "aevalsrc='0.8*sin(2*PI*(900*t+500*t*t))*exp(-t*28)':d=0.2:s=44100",
+    af: ['volume=1.4', 'aformat=channel_layouts=stereo'],
+  },
+  'cn-impact': {
+    label: 'Impacto grave (cinético)', base: 'impact', gain: 0.9, lead: 0, cat: 'cinetico', dur: 0.6,
+    src: "aevalsrc='0.9*sin(2*PI*(55+30*exp(-t*20))*t)*exp(-t*9)+0.15*(random(0)*2-1)*exp(-t*60)':d=0.6:s=44100",
+    af: ['lowpass=f=600', 'volume=1.6', 'aformat=channel_layouts=stereo'],
+  },
+  'cn-swipe': {
+    label: 'Varredura (cinético)', base: 'swipe', gain: 0.9, lead: 0, cat: 'cinetico', dur: 0.3,
+    src: 'anoisesrc=d=0.3:c=white:a=0.7:r=44100',
+    af: ['bandpass=f=3500:w=2', 'afade=t=in:st=0:d=0.1', 'afade=t=out:st=0.1:d=0.2:curve=exp', 'volume=2.8', 'aformat=channel_layouts=stereo'],
+  },
+  // ── Kit "minimalista" (cards e palavras): sons próprios, curtos e limpos, feitos para o motion
+  // minimalista — tique de vidro na palavra da lista, pop de vidro na pílula, ar leve no cartão,
+  // subida do contador, sino no resultado e brilho no botão final. Nada de efeitos de jogo.
+  'mi-tick': {
+    label: 'Tique de vidro (minimalista)', base: 'click', gain: 1, lead: 0, cat: 'minimalista', dur: 0.25,
+    src: "aevalsrc='0.7*sin(2*PI*2600*t)*exp(-t*90)+0.25*sin(2*PI*5200*t)*exp(-t*160)':d=0.25:s=44100",
+    af: ['highpass=f=700', 'volume=1.2', 'aformat=channel_layouts=stereo'],
+  },
+  'mi-pop': {
+    label: 'Pop de vidro (minimalista)', base: 'pop', gain: 1, lead: 0, cat: 'minimalista', dur: 0.3,
+    src: "aevalsrc='0.8*sin(2*PI*(700*t+800*t*t))*exp(-t*22)+0.2*sin(2*PI*1400*t)*exp(-t*40)':d=0.3:s=44100",
+    af: ['aecho=0.6:0.3:30:0.15', 'volume=1.4', 'aformat=channel_layouts=stereo'],
+  },
+  'mi-air': {
+    label: 'Ar leve no cartão (minimalista)', base: 'whoosh', gain: 0.6, lead: 0.1, cat: 'minimalista', dur: 0.5,
+    src: 'anoisesrc=d=0.5:c=white:a=0.6:r=44100',
+    af: ['highpass=f=900', 'lowpass=f=5000', 'afade=t=in:st=0:d=0.25:curve=qsin', 'afade=t=out:st=0.25:d=0.25:curve=exp', 'volume=2.2', 'aformat=channel_layouts=stereo'],
+  },
+  'mi-rise': {
+    label: 'Subida do contador (minimalista)', base: 'riser', gain: 0.8, lead: 0, cat: 'minimalista', dur: 0.9,
+    src: "aevalsrc='0.5*sin(2*PI*(260*t+633*t*t))*(1-t/0.9)':d=0.9:s=44100",
+    af: ['volume=1.3', 'aformat=channel_layouts=stereo'],
+  },
+  'mi-ding': {
+    label: 'Sino do resultado (minimalista)', base: 'ding', gain: 0.9, lead: 0, cat: 'minimalista', dur: 1.2,
+    src: "aevalsrc='0.6*sin(2*PI*1046.5*t)*exp(-t*4)+0.3*sin(2*PI*2093*t)*exp(-t*7)+0.12*sin(2*PI*3136*t)*exp(-t*11)':d=1.2:s=44100",
+    af: ['aecho=0.5:0.4:60:0.2', 'volume=1.3', 'aformat=channel_layouts=stereo'],
+  },
+  'mi-shine': {
+    label: 'Brilho do botão (minimalista)', base: 'sparkle', gain: 0.9, lead: 0, cat: 'minimalista', dur: 0.8,
+    src: "aevalsrc='0.45*sin(2*PI*1568*t)*exp(-t*10)+0.3*sin(2*PI*2349*t)*exp(-t*18)':d=0.8:s=44100",
+    af: ['aecho=0.5:0.35:45:0.2', 'volume=1.5', 'aformat=channel_layouts=stereo'],
+  },
   // ── Kit premium (edição de agência): sons discretos, graves e com ar, nada de "joguinho".
   // Pensados para tipografia cinética: passagem nas cenas, batida grave nas palavras-chave,
   // tecla real nas palavras pequenas, brilho suave nas conquistas.
@@ -323,6 +383,9 @@ export const SFX_LIBRARY = {
 /** Categorias da biblioteca (como as do CapCut). */
 export const SFX_CATEGORIES = {
   premium: 'Premium (agência)',
+  minimalista: 'Minimalista (cards e palavras)',
+  cinetico: 'Câmera e letras',
+  cinetico: 'Câmera e letras (cinético)',
   transicao: 'Transição',
   impacto: 'Impacto',
   interface: 'Interface e redes',
@@ -334,6 +397,8 @@ export const SFX_CATEGORIES = {
 };
 const SFX_CAT = {
   'pr-air': 'premium', 'pr-out': 'premium', 'pr-hit': 'premium', 'pr-shine': 'premium', 'pr-rise': 'premium', 'pr-key': 'premium',
+  'mi-tick': 'minimalista', 'mi-pop': 'minimalista', 'mi-air': 'minimalista', 'mi-rise': 'minimalista', 'mi-ding': 'minimalista', 'mi-shine': 'minimalista',
+  'cn-key': 'cinetico', 'cn-whoosh': 'cinetico', 'cn-pop': 'cinetico', 'cn-impact': 'cinetico', 'cn-swipe': 'cinetico',
   whoosh: 'transicao', swoosh: 'transicao', riser: 'transicao', whooshdown: 'transicao', swipe: 'transicao', rewind: 'transicao',
   impact: 'impacto', kick: 'impacto', boom: 'impacto', thud: 'impacto', bassdrop: 'impacto',
   shutter: 'interface', click: 'interface', typing: 'interface', pop: 'interface', bubble: 'interface', ding: 'interface', notify: 'interface', clock: 'interface',
