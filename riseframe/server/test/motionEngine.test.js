@@ -128,3 +128,52 @@ test('estilos das outras referências (editorial, bordô, cinema): batidas do es
     for (let t = all.start - 0.5; t < all.start + STYLE_BEATS[style].length + 0.5; t += 0.13) drawExplainer(ctx, all, t, { W: 108, H: 192, image: () => null });
   }
 });
+
+test('minimalista (cards e palavras): batidas do estilo, sons no ponto da ação e desenho de todos os tipos', async () => {
+  const { STYLE_BEATS } = await import('../../shared/motionStyles.js');
+  const seg = (t, text) => { const ws = text.split(' '); return { start: t, end: t + ws.length * 0.27, text, words: ws.map((w, i) => ({ word: w, start: t + i * 0.27, end: t + i * 0.27 + 0.24 })) }; };
+  const segments = [seg(0.2, 'Seu post chegou a 2018 curtidas'), seg(2.6, 'em apenas 30 dias de conteúdo'), seg(4.8, 'com uma estratégia simples e clara'), seg(7.0, 'a 46296 visualizações por vídeo'), seg(9.2, 'e a conversão cresceu bastante'), seg(11.2, 'chame no direct pra começar')];
+  const plan = explainerPlan({ segments, dur: 14, amount: 'muitos', style: 'minimalista' });
+  assert.ok(plan.scenes.length >= 1);
+  const types = new Set(plan.scenes.flatMap((sc) => sc.beats.map((b) => b.type)));
+  assert.ok(types.has('mi-word') && types.has('mi-cta'), [...types].join(','));
+  for (const sc of plan.scenes) {
+    assert.equal(sc.style, 'minimalista');
+    for (const b of sc.beats) assert.ok(STYLE_BEATS.minimalista.includes(b.type), b.type);
+  }
+  // sons: só dos tipos previstos, e o contador tem riser + ding
+  const names = new Set(plan.sfx.map((s) => s.type));
+  for (const n of names) assert.ok(SFX_LIBRARY[n], `som ${n} existe no catálogo`);
+  assert.ok(names.has('mi-pop') && names.has('mi-air') && names.has('mi-shine') && names.has('mi-rise'), [...names].join(','));
+  // o sanitizador do servidor mantém o estilo e as batidas
+  const sc = plan.scenes[0];
+  const o = parseOptions({ kinetic: true, kineticTheme: 'minimalista', motionScenes: [sc] });
+  assert.equal(o.kineticTheme, 'minimalista');
+  assert.deepEqual(o.motionScenes[0].beats.map((b) => b.type), sc.beats.map((b) => b.type));
+  // todos os tipos desenham sem erro (com e sem palavras, com e sem número)
+  const ctx = createCanvas(108, 192).getContext('2d');
+  const all = { ...sc, beats: STYLE_BEATS.minimalista.map((type, i) => ({ type, start: sc.start + i, end: sc.start + i + 1, words: i % 2 ? [] : [{ w: 'texto', t: sc.start + i + 0.1 }, { w: 'teste', t: sc.start + i + 0.4 }], data: { text: 'texto 30 de teste', keyword: 'teste', small: 'texto de', after: 'fim', keys: ['um', 'dois', 'três'], element: i % 2 ? 'bulb' : null } })) };
+  for (let t = all.start - 0.5; t < all.start + STYLE_BEATS.minimalista.length + 0.5; t += 0.13) drawExplainer(ctx, all, t, { W: 108, H: 192, image: () => null });
+});
+
+test('cinético (letras e câmera): batidas, sons do kit próprio e desenho de todos os tipos', async () => {
+  const { STYLE_BEATS } = await import('../../shared/motionStyles.js');
+  const seg = (t, text) => { const ws = text.split(' '); return { start: t, end: t + ws.length * 0.1, text, words: ws.map((w, i) => ({ word: w, start: t + i * 0.1, end: t + i * 0.1 + 0.08 })) }; };
+  const segments = [seg(0.2, 'Make it you'), seg(1.8, 'new energy starts now'), seg(3.6, 'creative ideas every day'), seg(5.6, 'one simple habit changes everything'), seg(7.8, 'save this for later')];
+  const plan = explainerPlan({ segments, dur: 10, amount: 'muitos', style: 'cinetico' });
+  assert.ok(plan.scenes.length >= 1);
+  for (const sc of plan.scenes) {
+    assert.equal(sc.style, 'cinetico');
+    for (const b of sc.beats) assert.ok(STYLE_BEATS.cinetico.includes(b.type), b.type);
+  }
+  const names = new Set(plan.sfx.map((s) => s.type));
+  for (const n of names) assert.ok(SFX_LIBRARY[n], `som ${n} existe`);
+  assert.ok([...names].some((n) => n.startsWith('cn-')), [...names].join(','));
+  const sc = plan.scenes[0];
+  const o = parseOptions({ kinetic: true, kineticTheme: 'cinetico', motionScenes: [sc] });
+  assert.equal(o.kineticTheme, 'cinetico');
+  assert.deepEqual(o.motionScenes[0].beats.map((b) => b.type), sc.beats.map((b) => b.type));
+  const ctx = createCanvas(108, 192).getContext('2d');
+  const all = { ...sc, beats: STYLE_BEATS.cinetico.map((type, i) => ({ type, start: sc.start + i, end: sc.start + i + 1, words: [{ w: 'make', t: sc.start + i + 0.1 }, { w: 'it', t: sc.start + i + 0.3 }, { w: 'you', t: sc.start + i + 0.5 }], data: { text: 'make it you', keyword: 'you', small: 'make it', after: '', keys: ['you'], element: i % 2 ? 'bulb' : null } })) };
+  for (let t = all.start - 0.5; t < all.start + STYLE_BEATS.cinetico.length + 0.5; t += 0.13) drawExplainer(ctx, all, t, { W: 108, H: 192, image: () => null });
+});
