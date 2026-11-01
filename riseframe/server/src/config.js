@@ -1,13 +1,20 @@
 import 'dotenv/config';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_COSTS } from '../../shared/credits.js';
 
-// Versão do app (bate com web/src/version.js). Mostrada no boot e em /api/health
-// para confirmar rapidamente que o servidor está rodando o código novo.
-export const APP_VERSION = 'v1.79';
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Versão do app = a do riseframe/package.json (a mesma do site e do app de PC). Mostrada
+// no boot e em /api/health para confirmar que o servidor está rodando o código novo.
+export const APP_VERSION = (() => {
+  try {
+    return `v${JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8')).version}`;
+  } catch {
+    return 'v0.0.0';
+  }
+})();
 
 // riseframe/server/src → riseframe/
 const ROOT = path.resolve(__dirname, '..', '..');
