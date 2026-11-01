@@ -33,6 +33,7 @@ test('erros do yt-dlp viram mensagens claras', () => {
   assert.match(friendlyYtError('ERROR: [youtube] x: Private video. Sign in if you\'ve been granted access'), /privado/);
   assert.match(friendlyYtError('ERROR: [youtube] x: Video unavailable'), /indisponível/);
   assert.match(friendlyYtError('ERROR: [youtube] x: algo estranho'), /algo estranho/);
+  assert.match(friendlyYtError('ERROR: [youtube] 6OOfhcPMSkA: The uploader has not made this video available in your country'), /bloqueou o país/);
 });
 
 test('título do vídeo vira nome de arquivo seguro', () => {
