@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
+import { config } from '../config.js';
 import { ffmpegPath } from './ffmpeg.js';
 import { resolvePython } from './python.js';
 import { trackChild } from '../jobContext.js';
@@ -15,7 +17,8 @@ const log = makeLogger('youtube');
  * Podcast/Cortes. Só links do YouTube (vídeo, Shorts, live gravada, youtu.be).
  *
  * Servidor: `pip install yt-dlp` (já vem no requirements.txt / Docker). Também serve o
- * executável `yt-dlp` no PATH ou em YTDLP_BIN. Se o YouTube pedir login para o IP do
+ * executável `yt-dlp` no PATH ou em YTDLP_BIN; sem nenhum (app de PC/Mac, servidor sem
+ * Docker), o executável oficial é baixado sozinho (YTDLP_AUTO_DOWNLOAD=0 desliga). Se o YouTube pedir login para o IP do
  * servidor ("confirme que não é um robô"), aponte YTDLP_COOKIES para um cookies.txt.
  */
 
@@ -27,43 +30,117 @@ const maxHours = () => {
   return Number.isFinite(n) && n >= 0 ? n : 4;
 };
 
-function works(bin, args) {
+function works(bin, args, timeoutMs = 60000) {
   return new Promise((resolve) => {
     let proc;
     try {
-      proc = spawn(bin, args, { stdio: 'ignore' });
+      proc = spawn(bin, args, { stdio: 'ignore', windowsHide: true });
     } catch {
       return resolve(false);
     }
-    const t = setTimeout(() => { try { proc.kill('SIGKILL'); } catch { /* já saiu */ } resolve(false); }, 20000);
+    const t = setTimeout(() => { try { proc.kill('SIGKILL'); } catch { /* já saiu */ } resolve(false); }, timeoutMs);
     proc.on('error', () => { clearTimeout(t); resolve(false); });
     proc.on('close', (code) => { clearTimeout(t); resolve(code === 0); });
   });
 }
 
-let cached; // { bin, pre } | null
 /**
- * Como chamar o yt-dlp aqui: YTDLP_BIN → `yt-dlp` no PATH → `python -m yt_dlp`.
- * → { bin, pre: [args antes dos do yt-dlp] } ou null (indisponível). Memoizado.
+ * Executável oficial do yt-dlp (release do GitHub) para este sistema. No app de PC/Mac não
+ * há Python com yt-dlp: o app baixa o executável sozinho na 1ª vez (e confere o SHA-256).
  */
-export async function resolveYtDlp() {
-  if (cached !== undefined) return cached;
+function standaloneAsset() {
+  if (process.platform === 'win32') return 'yt-dlp.exe';
+  if (process.platform === 'darwin') return 'yt-dlp_macos';
+  if (process.platform === 'linux') return process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux';
+  return null;
+}
+const RELEASE = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download';
+const binDir = () => path.join(config.paths.cache, 'bin');
+const localBin = () => path.join(binDir(), process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
+
+async function downloadStandalone() {
+  const asset = standaloneAsset();
+  if (!asset || process.env.YTDLP_AUTO_DOWNLOAD === '0') return null;
+  log.info(`yt-dlp não encontrado — baixando o executável oficial (${asset})…`);
+  const get = async (url) => {
+    const r = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(180000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status} em ${url}`);
+    return Buffer.from(await r.arrayBuffer());
+  };
+  const sums = (await get(`${RELEASE}/SHA2-256SUMS`)).toString('utf8');
+  const want = sums.split('\n').map((l) => l.trim().split(/\s+/)).find((p) => p[1] === asset)?.[0];
+  if (!want) throw new Error(`sem a soma SHA-256 de ${asset} na release`);
+  const bin = await get(`${RELEASE}/${asset}`);
+  const got = crypto.createHash('sha256').update(bin).digest('hex');
+  if (got !== want.toLowerCase()) throw new Error('o executável baixado não confere com a soma SHA-256 da release');
+  fs.mkdirSync(binDir(), { recursive: true });
+  const tmp = `${localBin()}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, bin, { mode: 0o755 });
+  fs.renameSync(tmp, localBin());
+  log.ok(`yt-dlp baixado (${(bin.length / 1024 ** 2).toFixed(1)} MB) em ${localBin()}`);
+  return { bin: localBin(), pre: [] };
+}
+
+let cached; // { bin, pre } | null
+let failedAt = 0;
+let pending = null;
+const status = { ready: false, how: null, error: null };
+/** Estado do yt-dlp (para o /api/health): { ready, how, error }. */
+export const ytdlpStatus = () => ({ ...status, checking: Boolean(pending) });
+/**
+ * Dá para importar pelo link? Responde na hora (não espera o download do executável):
+ * enquanto procura/baixa, diz que sim — o envio do link espera o resultado.
+ */
+export function ytdlpAvailableNow() {
+  if (cached) return true;
+  if (cached === null && !pending && Date.now() - failedAt < 5 * 60_000) return false;
+  resolveYtDlp().catch(() => {});
+  return true;
+}
+
+async function findYtDlp() {
   const tries = [];
   if (process.env.YTDLP_BIN) tries.push({ bin: process.env.YTDLP_BIN, pre: [] });
+  if (fs.existsSync(localBin())) tries.push({ bin: localBin(), pre: [] });
   tries.push({ bin: 'yt-dlp', pre: [] });
   const py = await resolvePython();
   if (py) tries.push({ bin: py, pre: ['-m', 'yt_dlp'] });
   for (const t of tries) {
     // eslint-disable-next-line no-await-in-loop
-    if (await works(t.bin, [...t.pre, '--version'])) {
-      cached = t;
-      log.info(`yt-dlp disponível (${[t.bin, ...t.pre].join(' ')})`);
-      return t;
-    }
+    if (await works(t.bin, [...t.pre, '--version'])) return t;
   }
-  cached = null;
-  log.warn('yt-dlp indisponível — importar vídeo pelo link do YouTube fica desligado (pip install yt-dlp)');
+  // nada instalado: baixa o executável oficial (servidor sem Docker, app de PC/Mac)
+  const dl = await downloadStandalone();
+  if (dl && (await works(dl.bin, ['--version']))) return dl;
   return null;
+}
+
+/**
+ * Como chamar o yt-dlp aqui: YTDLP_BIN → o baixado pelo app → `yt-dlp` no PATH →
+ * `python -m yt_dlp` → baixa o executável oficial. → { bin, pre } ou null.
+ * Achou: fica guardado. Não achou: tenta de novo depois de 5 min (não desiste para sempre).
+ */
+export async function resolveYtDlp() {
+  if (cached) return cached;
+  if (cached === null && Date.now() - failedAt < 5 * 60_000) return null;
+  if (!pending) {
+    pending = findYtDlp()
+      .catch((err) => { status.error = err.message; return null; })
+      .then((t) => {
+        pending = null;
+        cached = t;
+        if (t) {
+          Object.assign(status, { ready: true, how: [t.bin, ...t.pre].join(' '), error: null });
+          log.info(`yt-dlp disponível (${status.how})`);
+        } else {
+          failedAt = Date.now();
+          Object.assign(status, { ready: false, how: null, error: status.error || 'yt-dlp não encontrado' });
+          log.warn(`yt-dlp indisponível (${status.error}) — tento de novo em 5 min`);
+        }
+        return t;
+      });
+  }
+  return pending;
 }
 
 /** Argumentos comuns: cookies/proxy do servidor (se configurados). */
