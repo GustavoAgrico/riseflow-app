@@ -18,7 +18,7 @@ import { billingRouter } from './routes/billing.js';
 import { publicRouter } from './routes/public.js';
 import { startRenewTimer } from './auth/billing.js';
 import { ffmpegPath, detectHwEncoder } from './pipeline/ffmpeg.js';
-import { resolveYtDlp } from './pipeline/youtube.js';
+import { resolveYtDlp, ytdlpStatus } from './pipeline/youtube.js';
 import { whisperLocalAvailable } from './pipeline/transcribe/providers.js';
 import { checkTranscribeKey } from './pipeline/transcribe/index.js';
 import { log } from './logger.js';
@@ -77,6 +77,8 @@ app.get('/api/health', async (_req, res) => {
     version: APP_VERSION,
     ffmpeg: Boolean(ffmpegPath),
     capabilities: await appCapabilities(),
+    // link do YouTube: { ready, how (como chama o yt-dlp), error }
+    youtube: ytdlpStatus(),
     cloud: cloudStatus().enabled ? (cloudStatus().ok ? 'ok' : 'erro') : 'off',
     // App de PC/Mac: a conta (login/planos) é a do site.
     account: remoteAccount() ? { remote: true, server: config.account.server } : { remote: false },
