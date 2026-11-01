@@ -37,6 +37,8 @@ export const STYLE_FONT_FILES = [
   ['RF Montserrat 800', 'S-montserrat-800.ttf'],
   ['RF Poppins 400i', 'S-poppins-400i.ttf'],
   ['RF Poppins 900i', 'S-poppins-900i.ttf'],
+  ['RF Garamond 400i', 'S-garamond-400i.ttf'],
+  ['RF Barlow 900i', 'S-barlow-900i.ttf'],
 ];
 const FM7 = 'RF Montserrat 700';
 const FM8 = 'RF Montserrat 800';
@@ -54,6 +56,7 @@ export const STYLE_BEATS = {
   bloco: ['bl-hit', 'bl-echo', 'bl-stripe', 'bl-slice'],
   marca: ['mk-intro', 'mk-card', 'mk-bars', 'mk-logo'],
   rolagem: ['rl-grid', 'rl-text'],
+  azul: ['az-hero', 'az-badge', 'az-end'],
 };
 const DARK_BEATS = new Set(['e-end', 'b-dark', 'c-float', 'c-embers', 'c-object', 'c-strip', 'c-big', 'mi-word', 'mi-count', 'mi-cta']);
 
@@ -70,6 +73,11 @@ function pickType(style, { i, n, prev, used, keys, concept, k, len, num }) {
     return k % 2 ? 'mk-bars' : 'mk-card';
   }
   if (style === 'rolagem') return num ? 'rl-grid' : 'rl-text';
+  if (style === 'azul') {
+    if (last) return 'az-end';
+    if (num && !used.has('az-badge')) return 'az-badge';
+    return 'az-hero';
+  }
   if (style === 'cinetico') {
     if (last) return 'cn-stripe';
     return ['cn-type', 'cn-slide', 'cn-rise', 'cn-box', 'cn-slide'][i % 5];
@@ -179,6 +187,11 @@ export function styleSfx(style, beats) {
       if (b.type === 'mk-card' || b.type === 'mk-intro') add(b.start + 0.05, 'mk-card', 0.4, 'cartão');
       if (b.type === 'mk-bars') for (let j = 0; j < 5; j += 1) add(b.start + 0.1 + j * 0.12, 'rl-tick', 0.3, 'barra');
       if (b.type === 'mk-logo' && kw) add(kw.t, 'mk-chime', 0.45, 'logo');
+    } else if (style === 'azul') {
+      // destaque azul: tique ao surgir a palavra-chave, traço do sublinhado, sino no selo, sinal final
+      if (b.type === 'az-hero' && kw) { add(kw.t, 'az-pop', 0.5, 'destaque'); add(kw.t + 0.12, 'az-stroke', 0.35, 'sublinhado'); }
+      if (b.type === 'az-badge') add(b.start + 0.05, 'az-ding', 0.5, 'número');
+      if (b.type === 'az-end') add(b.start + 0.05, 'az-end', 0.5, 'final');
     } else if (style === 'rolagem') {
       // odômetro: um tique mecânico a cada passo do número
       // um tique por passo do contador (até 24), mais rápido no começo e freando no fim
@@ -1481,4 +1494,108 @@ const RLG_DRAW = {
   },
 };
 
-const DRAW = { editorial: ED_DRAW, bordo: BO_DRAW, 'cinema-escuro': CI_DRAW, minimalista: MI_DRAW, cinetico: CN_DRAW, bloco: BLO_DRAW, marca: MRC_DRAW, rolagem: RLG_DRAW };
+// ── destaque azul (modelo enviado): serifa itálica pequena, palavra-chave azul com sublinhado, selo com número, palavra final em azul-marinho
+const FGI = 'RF Garamond 400i';
+const FBK = 'RF Barlow 900i';
+const AZ_BLUE = '#2F7BFF';
+const AZ_NAVY = '#0E1E3F';
+const AZ_GREY = '#5B6478';
+function azBg(ctx) {
+  ctx.save();
+  setFilter(ctx);
+  const g = ctx.createLinearGradient(0, 0, 0, BH);
+  g.addColorStop(0, '#CFE1FF');
+  g.addColorStop(1, '#F5F9FF');
+  ctx.fillStyle = g;
+  ctx.fillRect(-200, -200, BW + 400, BH + 400);
+  ctx.restore();
+}
+function azSparkle(ctx, x, y, r, a) {
+  if (r <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = AZ_BLUE;
+  ctx.beginPath();
+  ctx.moveTo(x, y - r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.quadraticCurveTo(x, y, x, y + r);
+  ctx.quadraticCurveTo(x, y, x - r, y);
+  ctx.quadraticCurveTo(x, y, x, y - r);
+  ctx.fill();
+  ctx.restore();
+}
+
+const AZ_DRAW = {
+  // linha pequena antes, palavra-chave azul com sublinhado desenhado, resto em azul-marinho
+  'az-hero'(ctx, b, lt) {
+    azBg(ctx);
+    const items = beatWords(b);
+    const ki = items.findIndex((w) => low(w.text) === low(b.data.keyword));
+    if (ki < 0) { cnBlock(ctx, items, lt, { y: 960, size: 170, color: AZ_NAVY, font: FI9, fx: 'rise', stagger: 0.04 }); return; }
+    const before = items.slice(0, ki);
+    const kw = items[ki];
+    const after = items.slice(ki + 1);
+    if (before.length) fxLine(ctx, before, lt, { y: 760, size: 84, font: FGI, color: AZ_GREY, fx: 'rise', stagger: 0.03, maxW: 900 });
+    const size0 = 190;
+    ctx.font = `${size0}px "${FBK}"`;
+    const kwW = measure(ctx, kw.text, size0, FBK, -0.03);
+    const size = Math.min(size0, (size0 * 960) / Math.max(1, kwW));
+    const y = 1010;
+    fxLine(ctx, [kw], lt, { y, size, font: FBK, color: AZ_BLUE, fx: 'pop', stagger: 0, maxW: 980 });
+    // sublinhado à mão: traço que se desenha depois da palavra
+    const w = measure(ctx, kw.text, size, FBK, -0.03);
+    const e = outCubic(prog(lt, kw.at + 0.15, 0.5));
+    const L = w + 60;
+    const yU = y + size * 0.5;
+    ctx.save();
+    setFilter(ctx);
+    ctx.strokeStyle = AZ_BLUE;
+    ctx.lineWidth = Math.max(8, size * 0.07);
+    ctx.lineCap = 'round';
+    ctx.setLineDash([L, L]);
+    ctx.lineDashOffset = L * (1 - e);
+    ctx.beginPath();
+    ctx.moveTo(540 - w / 2 - 20, yU);
+    ctx.quadraticCurveTo(540, yU + 26, 540 + w / 2 + 20, yU - 8);
+    ctx.stroke();
+    ctx.restore();
+    if (after.length) fxLine(ctx, after, lt, { y: 1240, size: 150, font: FI9, color: AZ_NAVY, fx: 'rise', stagger: 0.03, maxW: 960 });
+  },
+  // selo azul com o número que entra com molinha; brilho ao lado; resto da frase embaixo
+  'az-badge'(ctx, b, lt) {
+    azBg(ctx);
+    const m = String(b.data.text || '').match(/\d[\d.,]*/);
+    const num = m ? m[0] : '1';
+    const e = clamp(outBack(prog(lt, 0.05, 0.45)));
+    ctx.save();
+    ctx.translate(540, 760);
+    ctx.scale(Math.max(0, e), Math.max(0, e));
+    ctx.shadowColor = 'rgba(47,123,255,0.35)';
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 14;
+    ctx.fillStyle = AZ_BLUE;
+    setFilter(ctx);
+    roundRectPath(ctx, -140, -160, 280, 320, 34);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.translate(540, 760);
+    ctx.scale(Math.max(0, e), Math.max(0, e));
+    ctx.font = `${num.length > 2 ? 150 : 190}px "${FI9}"`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(num, 0, 12);
+    ctx.restore();
+    azSparkle(ctx, 540 + 170, 760 - 170, 78 * clamp(outBack(prog(lt, 0.2, 0.35))), 1);
+    const words = beatWords(b).filter((w) => !/\d/.test(w.text));
+    if (words.length) cnBlock(ctx, words, lt, { y: 1120, size: 130, color: AZ_NAVY, font: FI9, fx: 'rise', stagger: 0.04 });
+  },
+  // palavra final, grande, em azul-marinho
+  'az-end'(ctx, b, lt) {
+    azBg(ctx);
+    cnBlock(ctx, beatWords(b), lt, { y: 960, size: 200, color: AZ_NAVY, font: FI9, fx: 'pop', stagger: 0.05, maxW: 960 });
+  },
+};
+
+const DRAW = { editorial: ED_DRAW, bordo: BO_DRAW, 'cinema-escuro': CI_DRAW, minimalista: MI_DRAW, cinetico: CN_DRAW, bloco: BLO_DRAW, marca: MRC_DRAW, rolagem: RLG_DRAW, azul: AZ_DRAW };
