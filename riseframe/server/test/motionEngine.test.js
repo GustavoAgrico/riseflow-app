@@ -177,3 +177,33 @@ test('cinético (letras e câmera): batidas, sons do kit próprio e desenho de t
   const all = { ...sc, beats: STYLE_BEATS.cinetico.map((type, i) => ({ type, start: sc.start + i, end: sc.start + i + 1, words: [{ w: 'make', t: sc.start + i + 0.1 }, { w: 'it', t: sc.start + i + 0.3 }, { w: 'you', t: sc.start + i + 0.5 }], data: { text: 'make it you', keyword: 'you', small: 'make it', after: '', keys: ['you'], element: i % 2 ? 'bulb' : null } })) };
   for (let t = all.start - 0.5; t < all.start + STYLE_BEATS.cinetico.length + 0.5; t += 0.13) drawExplainer(ctx, all, t, { W: 108, H: 192, image: () => null });
 });
+
+test('bloco, marca e contador (referências de 4 vídeos): batidas, sons próprios e desenho de todos os tipos', async () => {
+  const { STYLE_BEATS } = await import('../../shared/motionStyles.js');
+  const seg = (t, text) => { const ws = text.split(' '); return { start: t, end: t + ws.length * 0.27, text, words: ws.map((w, i) => ({ word: w, start: t + i * 0.27, end: t + i * 0.27 + 0.24 })) }; };
+  const segments = [seg(0.2, 'você ainda perde tempo editando'), seg(2.6, 'vendas crescem 26 por cento'), seg(4.9, 'edição rápida todo dia'), seg(6.8, 'siga para mais dicas'), seg(8.9, 'salve este vídeo agora')];
+  const ctx = createCanvas(108, 192).getContext('2d');
+  const prefix = { bloco: 'bk-', marca: 'mk-', rolagem: 'rl-' };
+  for (const style of ['bloco', 'marca', 'rolagem']) {
+    const plan = explainerPlan({ segments, dur: 11, amount: 'muitos', style });
+    assert.ok(plan.scenes.length >= 1, style);
+    for (const sc of plan.scenes) {
+      assert.equal(sc.style, style);
+      for (const b of sc.beats) assert.ok(STYLE_BEATS[style].includes(b.type), `${style}: ${b.type}`);
+    }
+    const names = new Set(plan.sfx.map((s) => s.type));
+    for (const n of names) assert.ok(SFX_LIBRARY[n], `som ${n} existe`);
+    assert.ok([...names].some((n) => n.startsWith(prefix[style])), `${style}: ${[...names].join(',')}`);
+    // cada tipo desenha sem erro em qualquer instante da sua batida
+    for (const type of STYLE_BEATS[style]) {
+      const all = { start: 0, end: 2, style, beats: [{ type, start: 0, end: 2, words: [{ w: 'você', t: 0.1 }, { w: 'ainda', t: 0.4 }, { w: '26', t: 0.7 }], data: { text: 'você ainda 26', keyword: '26', small: 'você', after: '', keys: ['26'], element: 'bulb' } }] };
+      for (let t = -0.2; t < 2.4; t += 0.15) drawExplainer(ctx, all, t, { W: 108, H: 192, image: () => null });
+    }
+  }
+  // contador: só a frase com número vira grade de botões; as outras viram texto
+  const nums = explainerPlan({ segments, dur: 11, amount: 'muitos', style: 'rolagem' });
+  for (const sc of nums.scenes) for (const b of sc.beats) {
+    const hasNum = /\d/.test(String(b.data.text || ''));
+    if (b.type === 'rl-grid') assert.ok(hasNum, `grade sem número: ${b.data.text}`);
+  }
+});
