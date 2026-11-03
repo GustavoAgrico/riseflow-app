@@ -33,6 +33,7 @@ export const KINETIC_THEMES = {
   rolagem: 'Contador em grade',
   azul: 'Destaque azul (selo e sublinhado)',
   colagem: 'Colagem editorial (objetos 3D)',
+  premium: 'Premium (câmera, ícones e contadores)',
   editorial: 'Editorial P&B',
   bordo: 'Itálico bordô',
   'cinema-escuro': 'Cinema escuro',

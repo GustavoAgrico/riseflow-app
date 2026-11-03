@@ -40,6 +40,7 @@ import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
 import { ELEMENT_MOTIONS } from '../../../shared/elementMotion.js';
 import { KINETIC_THEMES } from '../../../shared/kinetic.js';
 import { MOTION_STYLES } from '../../../shared/motionEngine.js';
+import { PM_ICONS } from '../../../shared/motionStyles.js';
 import { cleanElementId, elementFile } from '../pipeline/elements.js';
 import { elementExt } from '../../../shared/sceneElements.js';
 import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
@@ -460,6 +461,11 @@ function cleanMotionScenes(raw) {
         keys: (Array.isArray(b?.data?.keys) ? b.data.keys : []).slice(0, 4).map((k) => str(k, 40)),
         ...(Number.isFinite(Number(b?.data?.number)) ? { number: Math.max(0, Math.min(1e12, Math.round(Number(b.data.number)))) } : {}),
         ...(cleanElementId(b?.data?.element) ? { element: b.data.element } : {}),
+        ...(b?.data?.objWord ? { objWord: str(b.data.objWord, 40) } : {}),
+        // estilo premium: objetos nas mãos (até 2) e o ícone de traço
+        ...(Array.isArray(b?.data?.objs) ? { objs: b.data.objs.slice(0, 2).filter((o) => cleanElementId(o?.el)).map((o) => ({ el: o.el, word: str(o.word, 40) })) } : {}),
+        ...(PM_ICONS.includes(b?.data?.icon) ? { icon: b.data.icon } : {}),
+        ...(b?.data?.query ? { query: str(b.data.query, 40) } : {}),
       },
     }));
     if (beats.length) out.push({ start, end, style, beats });
