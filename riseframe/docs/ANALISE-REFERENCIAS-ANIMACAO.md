@@ -169,7 +169,7 @@ vidro no cursor, traço de caneta na elipse, sino quando o número chega ao valo
 
 ## Recortes 3D
 
-28 recortes novos da pasta "3D PNG" em `server/assets/elements/real/` (recortados, até 768 px),
+27 recortes novos da pasta "3D PNG" (a boca saiu: tinha marca d'água de banco de imagens) e 5 imagens enviadas no chat (homem de corda, Franklin, duas estátuas, astronauta) em `server/assets/elements/real/` (recortados, até 768 px),
 ligados aos assuntos em `shared/sceneElements.js` (`REAL_OBJECTS`). Assuntos novos: sorte,
 clique, alegria, desconto, emoção e vídeo. Quatro arquivos eram iguais a recortes que já
 existiam e ficaram de fora. Arquivos de 2k acima de ~6 MB não passam pelo conector do Drive.

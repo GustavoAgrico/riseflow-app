@@ -69,6 +69,9 @@ export const CONCEPTS = [
   ['happy', 'star', W('feliz|felizes|felicidade|sorriso|sorrir|alegria|alegre|happy|smile'), ['pop', 'sparkle']],
   ['discount', 'shopping', W('desconto|descontos|promo[cç][aã]o|promo[cç][oõ]es|oferta|ofertas|cupom|black friday|discount|coupon'), ['cash', 'coin']],
   ['drama', 'speech', W('drama|teatro|ator|atriz|personagem|emo[cç][aã]o|emo[cç][oõ]es|sentimento|sentimentos|theater|emotion'), ['magic', 'pop']],
+  ['tired', 'thinking', W('cansad[oa]s?|cansa[cç]o|esgotad[oa]s?|exaust[oa]s?|burnout|piloto autom[aá]tico|tired|exhausted'), ['whooshdown', 'pop']],
+  ['wisdom', 'books', W('sabedoria|s[aá]bios?|filosofia|fil[oó]sofos?|reflex[aã]o|refletir|wisdom|philosophy'), ['magic', 'ding']],
+  ['dream', 'rocket', W('sonhos?|sonhar|sonhei|espa[cç]o sideral|astronauta|lua|imposs[ií]vel|sem limites?|dream|space'), ['riser', 'whoosh']],
   ['video', 'phone', W('v[ií]deo|v[ií]deos|filme|filmes|cinema|grava[cç][aã]o|gravar|gravei|edi[cç][aã]o|editar|editei|film|movie'), ['click', 'pop']],
 ];
 
@@ -80,7 +83,7 @@ export const CONCEPTS = [
 export const REAL_OBJECTS = {
   time: ['real/hourglass-gold', 'real/clock-antique'],
   clock: ['real/clock-antique', 'real/clock-gears'],
-  system: ['real/gear-gold', 'real/clock-gears'],
+  system: ['real/gear-gold', 'real/clock-gears', 'real/windup-man'],
   strategy: ['real/chess-set', 'real/rook-gold', 'real/chess-gold', 'real/king-glass'],
   leader: ['real/rook-gold', 'real/crown-gold', 'real/king-glass'],
   boom: ['real/time-bomb'],
@@ -102,7 +105,6 @@ export const REAL_OBJECTS = {
   win: ['real/trophy-gold'],
   best: ['real/crown-gold', 'real/trophy-gold'],
   learn: ['real/man-newspaper'],
-  shout: ['real/mouth-halftone'],
   goal: ['real/compass'],
   luck: ['real/dice'],
   click: ['real/cursor'],
@@ -110,6 +112,13 @@ export const REAL_OBJECTS = {
   discount: ['real/discount-tag'],
   drama: ['real/masks'],
   video: ['real/film-reel', 'real/tv-retro'],
+  // imagens enviadas no chat (homem de corda, Franklin, estátuas, astronauta)
+  tired: ['real/windup-man'],
+  error: ['real/franklin-facepalm'],
+  spend: ['real/franklin-facepalm'],
+  think: ['real/statue-thinker', 'real/statue-chin'],
+  wisdom: ['real/statue-thinker', 'real/statue-chin'],
+  dream: ['real/astronaut'],
 };
 const REAL_IDS = [...new Set(Object.values(REAL_OBJECTS).flat())];
 /** Recorte realista do assunto (estável para a mesma palavra) ou null. */
