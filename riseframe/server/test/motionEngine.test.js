@@ -232,3 +232,40 @@ test('motion com cortes: a cena acompanha a fala no vídeo cortado (tempo remape
   assert.equal(out.beats[0].start, 3);
   assert.equal(out.beats[0].words[0].t, 3.2);
 });
+
+test('colagem editorial (referências da pasta): objeto no lugar da letra, seleção com cursor, círculo e número', async () => {
+  const { STYLE_BEATS } = await import('../../shared/motionStyles.js');
+  const seg = (t, text) => { const ws = text.split(' '); return { start: t, end: t + ws.length * 0.27, text, words: ws.map((w, i) => ({ word: w, start: t + i * 0.27, end: t + i * 0.27 + 0.24 })) }; };
+  const segments = [seg(0.2, 'nosso cérebro opera em dois modos'), seg(2.6, 'vendas crescem 26 por cento'), seg(4.9, 'todo mundo busca atalhos'), seg(6.8, 'o dinheiro vem da estratégia'), seg(8.9, 'salve este vídeo para depois')];
+  const plan = explainerPlan({ segments, dur: 11, amount: 'muitos', style: 'colagem' });
+  assert.ok(plan.scenes.length >= 1);
+  const types = new Set();
+  for (const sc of plan.scenes) {
+    assert.equal(sc.style, 'colagem');
+    for (const b of sc.beats) { assert.ok(STYLE_BEATS.colagem.includes(b.type), b.type); types.add(b.type); }
+  }
+  assert.ok(types.has('cg-letter') && types.has('cg-number'), [...types].join(','));
+  // o objeto entra na palavra do assunto (cérebro), não na palavra-chave
+  const letter = plan.scenes.flatMap((sc) => sc.beats).find((b) => b.type === 'cg-letter');
+  assert.equal(letter.data.objWord, 'cérebro');
+  assert.equal(letter.data.element, 'real/brain-pink');
+  const names = new Set(plan.sfx.map((s) => s.type));
+  for (const n of names) assert.ok(SFX_LIBRARY[n], `som ${n} existe`);
+  assert.ok(names.has('cg-pop') && names.has('cg-whoosh'), [...names].join(','));
+  const ctx = createCanvas(108, 192).getContext('2d');
+  const img = createCanvas(20, 20);
+  for (const type of STYLE_BEATS.colagem) {
+    const sc = { start: 0, end: 2, style: 'colagem', beats: [{ type, start: 0, end: 1, words: [{ w: 'nosso', t: 0.1 }, { w: 'cérebro', t: 0.3 }, { w: '26', t: 0.5 }], data: { text: 'nosso cérebro 26', keyword: 'cérebro', objWord: 'cérebro', element: 'real/brain-pink' } }, { type, start: 1, end: 2, words: [{ w: 'dois', t: 1.1 }, { w: 'modos', t: 1.4 }], data: { text: 'dois modos', keyword: 'modos', element: null } }] };
+    for (let t = -0.2; t < 2.3; t += 0.15) {
+      drawExplainer(ctx, sc, t, { W: 108, H: 192, image: () => img });
+      drawExplainer(ctx, sc, t, { W: 108, H: 192, image: () => null });
+    }
+  }
+});
+
+test('recortes 3D da pasta enviada: todo assunto aponta para um arquivo que existe', async () => {
+  const { REAL_OBJECTS, ELEMENT_ASSETS } = await import('../../shared/sceneElements.js');
+  const dir = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'assets', 'elements');
+  for (const id of ELEMENT_ASSETS) assert.ok(fs.existsSync(path.join(dir, `${id}.png`)), id);
+  for (const k of ['money', 'brain', 'love', 'win', 'discount', 'video', 'luck', 'click']) assert.ok(REAL_OBJECTS[k]?.length, k);
+});
