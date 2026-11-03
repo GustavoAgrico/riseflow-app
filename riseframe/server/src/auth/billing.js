@@ -115,6 +115,16 @@ export function appAccess(user) {
   return Boolean(activePlan(e)) || e.freeEdits > 0;
 }
 
+/**
+ * Premium: plano mensal ativo (ou conta ilimitada/admin, ou cobrança desligada). O teste
+ * grátis não conta — recursos Premium (como os sons do Soundza) pedem a assinatura.
+ */
+export function premiumAccess(user) {
+  if (!user) return false;
+  if (unlimited(user)) return true;
+  return Boolean(activePlan(entry(user.id)));
+}
+
 /** Já usou o teste grátis (para os renders dos vídeos de teste continuarem funcionando). */
 export const hadTrial = (user) => (entry(user.id).trialSources || []).length > 0;
 
@@ -207,6 +217,8 @@ export function billingStatus(user) {
     autoRenewAvailable: billingEnabled() && b.autoRenew && !pixMode(),
     // App de PC/Mac: liberado só com plano mensal ativo.
     appAccess: appAccess(user),
+    // Recursos Premium (sons do Soundza…): só com plano ativo.
+    premium: premiumAccess(user),
     // Teste grátis em andamento (inclui os dias para terminar os vídeos de teste): o app
     // abre normalmente e tudo fica liberado; vídeo novo depois do teste pede o plano.
     trialActive: !unlimited(user) && inTrial(e),

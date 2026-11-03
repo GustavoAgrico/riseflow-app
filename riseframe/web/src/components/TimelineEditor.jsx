@@ -5102,7 +5102,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [sfxOnQ, setSfxOnQ] = useState('');
   const [sfxOn, setSfxOn] = useState({ busy: false, err: '', list: [], q: null });
   // fonte da busca: Openverse (sem chave, padrão) ou Freesound
-  const [sfxSrc, setSfxSrc] = useState(() => { try { return localStorage.getItem('rf_sfx_src') === 'freesound' ? 'freesound' : 'openverse'; } catch { return 'openverse'; } });
+  // Soundza: acervo Premium (plano ativo); a chave fica no servidor
+  const sfxPremium = !billing || Boolean(billing.premium || billing.unlimited);
+  const [sfxSrc, setSfxSrc] = useState(() => { try { const v = localStorage.getItem('rf_sfx_src'); return v === 'freesound' || (v === 'soundza' && sfxPremium) ? v : 'openverse'; } catch { return 'openverse'; } });
   const sfxOnSeq = useRef(0);
   async function runSfxSearch(q, src = sfxSrc) {
     const n = ++sfxOnSeq.current;
@@ -5136,8 +5138,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }
   }
   useEffect(() => { if (sfxOnline && sfxOn.q == null && !sfxOn.busy) runSfxSearch(''); }, [sfxOnline]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sfxOnItems = sfxOn.list.map((r) => ({ cat: 'som', kind: 'sfx', id: 'online', uid: `online:${r.src || ''}:${r.id}`, label: r.name || 'Som', scat: 'online', sdur: r.dur || 1, online: { url: r.preview, name: r.name || 'Som', dur: r.dur || 1 } }));
+  const sfxOnItems = sfxOn.list.map((r) => ({ cat: 'som', kind: 'sfx', id: 'online', uid: `online:${r.src || ''}:${r.id}`, label: r.name || 'Som', scat: 'online', sdur: r.dur || 1, premium: Boolean(r.premium), sync: Number(r.sync) || 0, online: { url: r.preview, name: r.name || 'Som', dur: r.dur || 1 } }));
   function pickSfxSrc(src) {
+    if (src === 'soundza' && !sfxPremium) {
+      setSfxOn((o) => ({ ...o, err: 'Os sons Premium (Soundza) são liberados com um plano mensal ativo. Assine em Planos para usar.' }));
+      return;
+    }
     setSfxSrc(src);
     try { localStorage.setItem('rf_sfx_src', src); } catch { /* sem armazenamento */ }
     runSfxSearch(sfxOnQ.trim(), src);
@@ -5427,7 +5433,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     } else if (item.kind === 'mysound') {
       addMediaItem(item.lib, { start: t }); // som importado: camada de áudio (dá para cortar, volume, fade)
     } else if (item.kind === 'sfx') {
-      setSfxMoments((l) => [...l, { key: `s${Date.now()}`, t: +t.toFixed(3), type: item.id, ...(item.online || {}) }].sort((a, b) => a.t - b.t));
+      // som com batida marcada (Soundza): adianta para a batida cair onde foi solto
+      const at = Math.max(0, t - (Number(item.sync) || 0));
+      setSfxMoments((l) => [...l, { key: `s${Date.now()}`, t: +at.toFixed(3), type: item.id, ...(item.online || {}) }].sort((a, b) => a.t - b.t));
     }
     setFxNote(`${item.label} em ${fmtDuration(t)}`);
     setTimeout(() => setFxNote(''), 2200);
@@ -6448,12 +6456,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ fontSize: 10.5, color: C.faint }}>Fonte:</span>
-                {[['openverse', 'Openverse'], ['freesound', 'Freesound']].map(([id, label]) => (
-                  <button key={id} type="button" onClick={() => pickSfxSrc(id)} aria-pressed={sfxSrc === id}
+                {[['openverse', 'Openverse'], ['freesound', 'Freesound'], ['soundza', sfxPremium ? '✨ Soundza Premium' : '🔒 Soundza Premium']].map(([id, label]) => (
+                  <button key={id} type="button" onClick={() => pickSfxSrc(id)} aria-pressed={sfxSrc === id} title={id === 'soundza' && !sfxPremium ? 'Disponível com plano mensal ativo' : undefined}
                     style={{ height: 20, padding: '0 8px', borderRadius: 999, border: `1px solid ${sfxSrc === id ? C.orange : C.border}`, background: sfxSrc === id ? 'rgba(255,107,53,0.16)' : 'transparent', color: sfxSrc === id ? C.text : C.muted, fontSize: 10.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>{label}</button>
                 ))}
               </div>
-              <span style={{ fontSize: 10.5, color: C.faint }}>{sfxSrc === 'openverse' ? 'Openverse (WordPress): milhares de efeitos sonoros do Freesound e do Wikimedia Commons, só os de domínio público (CC0/PDM).' : 'Freesound.org, só sons CC0.'} Pode usar em qualquer vídeo, até comercial, sem dar crédito.</span>
+              <span style={{ fontSize: 10.5, color: C.faint }}>{sfxSrc === 'soundza' ? 'Soundza (Premium): acervo curado de efeitos em alta qualidade; a batida de cada som já cai no ponto onde você solta.' : sfxSrc === 'openverse' ? 'Openverse (WordPress): milhares de efeitos sonoros do Freesound e do Wikimedia Commons, só os de domínio público (CC0/PDM).' : 'Freesound.org, só sons CC0.'} Pode usar em qualquer vídeo, até comercial, sem dar crédito.</span>
               {sfxOn.err && <span style={{ fontSize: 11.5, color: C.red }}>{sfxOn.err}</span>}
             </form>
           )}
