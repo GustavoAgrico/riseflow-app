@@ -9,7 +9,7 @@ import CaptionGallery, { presetPatch, currentPreset, CAPTION_PRESETS } from './C
 import CostLine from './CostLine.jsx';
 import { FORMATS } from '../formats.js';
 import { listBrands, loadBrand, activeBrandId, setActiveBrand, brandOptions } from '../brandKit.js';
-import { listTemplatesApi } from '../api.js';
+import { listTemplatesApi, uploadMedia } from '../api.js';
 
 const STEPS = [
   { id: 'format', label: 'Formato' },
@@ -327,8 +327,8 @@ export default function CreateWizard({
                   <div key={groupName} style={{ display: 'grid', gap: 7 }}>
                     <div style={{ fontSize: 11.5, color: C.faint, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', padding: '0 2px' }}>{groupName}</div>
                     {list.map((t) => (
+                      <React.Fragment key={t.id}>
                       <button
-                        key={t.id}
                         onClick={() => toggle(t)}
                         disabled={!!t.off}
                         style={{
@@ -347,6 +347,8 @@ export default function CreateWizard({
                         </span>
                         <Check on={t.on} disabled={!!t.off} />
                       </button>
+                      {t.id === 'vsl' && t.on && !t.off && <VslProofs options={options} set={set} />}
+                      </React.Fragment>
                     ))}
                   </div>
                 );
@@ -505,6 +507,54 @@ export default function CreateWizard({
         }
         @media (max-width: 560px){ .rf-step-label{ display: none; } }
       `}</style>
+    </div>
+  );
+}
+
+/** Prints de prova do VSL (perfil, resultados, depoimentos): sobem para a biblioteca de mídias
+ *  e entram no painel de cima da tela dividida, primeiro onde a pessoa cita números. */
+function VslProofs({ options, set }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const list = Array.isArray(options.vslProofs) ? options.vslProofs.filter((p) => p && p.mediaId) : [];
+  async function add(files) {
+    setErr('');
+    setBusy(true);
+    try {
+      const out = [...list];
+      for (const f of [...files]) {
+        if (out.length >= 8) break;
+        if (!String(f.type || '').startsWith('image/')) continue;
+        const r = await uploadMedia(f);
+        out.push({ mediaId: r.id, name: r.filename || f.name });
+      }
+      set({ vslProofs: out });
+    } catch (e) {
+      setErr(e.message || 'não deu para enviar a imagem');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div style={{ margin: '0 0 4px 49px', padding: '10px 12px', borderRadius: 12, border: `1px dashed ${C.border}`, background: 'rgba(255,255,255,0.02)', display: 'grid', gap: 8 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700 }}>Prints de prova (opcional)</div>
+      <div style={{ fontSize: 12, color: C.faint, lineHeight: 1.45 }}>Perfil, resultados, depoimentos… Entram em cima, na tela dividida, quando você cita números (até 8).</div>
+      {list.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {list.map((p, i) => (
+            <span key={p.mediaId} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 6px 4px 10px', borderRadius: 20, border: `1px solid ${C.border}`, maxWidth: 220 }}>
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i + 1}. {p.name || 'print'}</span>
+              <button type="button" onClick={() => set({ vslProofs: list.filter((_, j) => j !== i) })} aria-label={`Tirar o print ${i + 1}`}
+                style={{ border: 'none', background: 'transparent', color: C.muted, cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' }}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, width: 'fit-content', fontSize: 13, fontWeight: 650, padding: '7px 12px', borderRadius: 10, border: `1px solid ${C.border}`, cursor: busy || list.length >= 8 ? 'not-allowed' : 'pointer', opacity: busy || list.length >= 8 ? 0.6 : 1 }}>
+        <Icon name="image" size={14} strokeWidth={2} /> {busy ? 'Enviando…' : 'Adicionar prints'}
+        <input type="file" accept="image/*" multiple hidden disabled={busy || list.length >= 8} onChange={(e) => { add(e.target.files); e.target.value = ''; }} />
+      </label>
+      {err && <div style={{ color: C.red, fontSize: 12 }}>{err}</div>}
     </div>
   );
 }

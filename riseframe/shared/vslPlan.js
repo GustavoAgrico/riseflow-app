@@ -50,7 +50,7 @@ function leftText(text, { left, y, size, font, fontStyle, widthFont, tracking = 
  * @returns {{splits:Array<{start,end}>, punches:Array<{start,end,scale}>, hook:{end:number}|null,
  *   layers:Array, elements:Array, sfx:Array, hide:Array<{start,end}>}}
  */
-export function vslPlan({ segments, dur, aspect = 9 / 16, available = null } = {}) {
+export function vslPlan({ segments, dur, aspect = 9 / 16, available = null, proofs = 0 } = {}) {
   const total = Number(dur) || 0;
   const chunks = phraseChunks(segments, 8).filter((c) => c.length);
   const layers = [];
@@ -61,7 +61,8 @@ export function vslPlan({ segments, dur, aspect = 9 / 16, available = null } = {
   const punches = [];
   const has = (id) => !available || available.has(id);
   const snd = (t, ids, volume, why) => { const id = ids.find(has); if (id) sfx.push({ t: r3(Math.max(0, t)), type: id, volume, why }); };
-  if (!chunks.length || total < 4) return { splits, punches, hook: null, layers, elements, sfx, hide };
+  const proofSlots = [];
+  if (!chunks.length || total < 4) return { splits, punches, hook: null, layers, elements, sfx, hide, proofSlots };
 
   // 1) gancho: os primeiros ~1,5 s com cara de filmadora, depois glitch + boom
   const hookEnd = Math.min(1.6, Math.max(0.8, chunks[0][chunks[0].length - 1].end));
@@ -93,8 +94,17 @@ export function vslPlan({ segments, dur, aspect = 9 / 16, available = null } = {
   if (open) close(open.chunks[open.chunks.length - 1][open.chunks[open.chunks.length - 1].length - 1].end + 0.1);
 
   // 3) conteúdo de cada tela dividida: rótulo + título + card de vidro com os itens falados
+  // prints de prova (enviados pela pessoa): vão nas telas divididas em que ela cita NÚMERO
+  // (seguidores, faturamento…), depois nas outras; ali o painel mostra o print no lugar do título
+  const withNum = (sp) => sp.chunks.some((c) => c.some(isNum));
+  const proofIdx = new Set(splits.map((sp, i) => ({ i, n: withNum(sp) })).sort((a, b) => Number(b.n) - Number(a.n) || a.i - b.i).slice(0, Math.max(0, proofs)).map((x) => x.i));
   splits.forEach((sp, i) => {
-    splitLayers({ sp, layers, elements, aspect, index: i });
+    if (proofIdx.has(i)) {
+      const at0 = sp.start + VSL_SWITCH * 0.6;
+      layers.push(leftText(withNum(sp) ? 'OS NÚMEROS' : 'A PROVA', { left: 0.09, y: 0.115, size: 0.021, font: 'inter', fontStyle: '700', widthFont: 'inter-700', tracking: 220, aspect,
+        color: VSL_COLORS.acento2, start: r3(at0), end: r3(sp.end), animIn: 'fade', animOut: 'fade' }));
+      proofSlots.push({ start: r3(at0), end: r3(sp.end), split: i });
+    } else splitLayers({ sp, layers, elements, aspect, index: i });
     snd(sp.start, ['swoosh', 'whoosh', 'pr-air'], 0.5, 'troca para tela dividida');
     snd(sp.end, ['whoosh', 'swoosh', 'pr-air'], 0.45, 'volta para tela cheia');
     // legenda some na tela dividida e na troca (ela "vazaria" com o quadro encolhendo)
@@ -136,7 +146,7 @@ export function vslPlan({ segments, dur, aspect = 9 / 16, available = null } = {
   for (const s of sfx) if (!lean.length || s.t - lean[lean.length - 1].t >= 0.6) lean.push(s);
   const cap = Math.max(1, Math.floor(total * 0.8));
   return {
-    splits: splits.map(({ start, end }) => ({ start, end })), punches, hook,
+    splits: splits.map(({ start, end }) => ({ start, end })), punches, hook, proofSlots,
     layers: layers.map(({ _w, ...l }) => l), elements, sfx: lean.slice(0, cap), hide,
   };
 }

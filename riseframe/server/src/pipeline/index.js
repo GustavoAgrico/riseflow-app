@@ -626,7 +626,19 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (Math.abs(W / H - 9 / 16) > 0.02) {
       log.warn('Reel VSL é para vídeo vertical 9:16; mantendo a edição normal');
     } else {
-      vsl = vslPlan({ segments: transcript.segments, dur: meta.duration, aspect: W / H, available: new Set(Object.keys(SFX_LIBRARY)) });
+      const proofs = Array.isArray(options.vslProofs) ? options.vslProofs : [];
+      vsl = vslPlan({ segments: transcript.segments, dur: meta.duration, aspect: W / H, available: new Set(Object.keys(SFX_LIBRARY)), proofs: proofs.length });
+      // prints de prova no painel de cima da tela dividida (cabem entre y 0,15 e 0,47)
+      const proofMedia = [];
+      for (const [k, slot] of (vsl.proofSlots || []).entries()) {
+        const file = proofs[k];
+        const dim = file ? await probeSummary(file).catch(() => null) : null;
+        if (!dim?.width || !dim?.height) continue;
+        const px = Math.min(0.86 * W, (0.32 * H * dim.width) / dim.height);
+        proofMedia.push({ kind: 'image', file, start: slot.start, duration: +(slot.end - slot.start).toFixed(3), mode: 'pip', cx: 0.5, cy: 0.31, scale: +(px / W).toFixed(4),
+          px: 0.5, py: 0.1, opacity: 1, volume: 0, above: true, layer: 11, animIn: 'zoom', animOut: 'fade', animDur: 0.4, animEase: 'out', blend: 'normal', motion: 'float', motionSpeed: 0.6, motionAmp: 0.35 });
+      }
+      if (proofMedia.length) options.userMedia = [...(options.userMedia || []), ...proofMedia];
       options.kinetic = false; // o VSL já é o motion deste vídeo
       options.textLayers = cleanTextLayers([...(options.textLayers || []), ...vsl.layers], Object.keys(CAPTION_FONTS), 400);
       options.sfxMoments = [...(options.sfxMoments || []), ...vsl.sfx];
@@ -637,7 +649,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       if (options.captionMaxChars == null) options.captionMaxChars = 16;
       const hid = (w) => vsl.hide.some((h) => (w.start + w.end) / 2 >= h.start && (w.start + w.end) / 2 <= h.end);
       transcript = { ...transcript, segments: transcript.segments.map((sg) => (sg.words?.length ? { ...sg, words: sg.words.map((w) => (hid(w) ? { ...w, hidden: true } : w)) } : sg)) };
-      report.vsl = { splits: vsl.splits.length, punches: vsl.punches.length, texts: vsl.layers.length, elements: vsl.elements.length, sounds: vsl.sfx.length };
+      report.vsl = { splits: vsl.splits.length, punches: vsl.punches.length, texts: vsl.layers.length, elements: vsl.elements.length, sounds: vsl.sfx.length, proofs: (vsl.proofSlots || []).length };
     }
   }
 
