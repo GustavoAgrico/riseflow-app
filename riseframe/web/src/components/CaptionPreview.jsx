@@ -568,7 +568,7 @@ export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, 
   // Quebra de linha: a do estilo "duas linhas" (palavra-chave desce) ou a do cartão (br).
   const twoLines = options.captionLines !== 1;
   const duo = T.keywordBreak && twoLines && kw >= 0 && words.length > 1;
-  const breakAt = (k) => (duo ? k === kw || (kw === 0 && k === 1) : !!words[k].br);
+  const breakAt = (k) => (duo ? k === kw || (kw === 0 && k === 1) || (T.keywordSolo && k === kw + 1) : !!words[k].br);
   const { highlight, hl } = look;
   const markHex = look.accentIsWhite ? '#FFFFFF' : look.color;
   // Frase base: branca com destaque, palavra-chave, caixa ou brilho; senão na cor escolhida.

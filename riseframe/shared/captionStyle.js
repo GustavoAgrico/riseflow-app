@@ -165,6 +165,9 @@ export const CAPTION_TEMPLATES = {
   marker: { mode: 'phrase', size: 0.064, align: 2, marginV: 0.15, outline: 0.09, bold: true, upper: true, anim: 'fade', forceHighlight: true, hl: 'box', defaultFont: 'poppins' },
   // Duas linhas: a palavra-chave desce para a linha de baixo, maior e colorida.
   duo: { mode: 'phrase', size: 0.064, align: 2, marginV: 0.15, outline: 0.1, bold: true, upper: true, anim: 'pop', highlightKeyword: true, keywordBreak: true, kwScale: 1.35, defaultFont: 'archivo' },
+  // VSL (modelo de vídeo de vendas): frase pequena na altura do peito e a palavra de peso GRANDE
+  // sozinha no meio ("é ter / SEGUIDORES / qualificados")
+  vsl: { mode: 'phrase', size: 0.048, align: 2, marginV: 0.3, outline: 0.06, bold: true, upper: false, anim: 'pop', highlightKeyword: true, keywordBreak: true, keywordSolo: true, kwScale: 2.3, defaultFont: 'montserrat' },
   // Minimalista: as outras palavras apagadas e a falada colorida.
   minimal: { mode: 'phrase', size: 0.056, align: 2, marginV: 0.14, outline: 0.05, bold: true, upper: false, anim: 'fade', forceHighlight: true, dimOthers: true, defaultFont: 'poppins' },
   // Premium: palavras entram uma a uma; comuns pequenas em cima, a palavra-chave embaixo,
@@ -198,6 +201,7 @@ export const CAPTION_TEMPLATE_LABELS = {
   karaoke: 'Karaokê',
   marker: 'Marca-texto',
   duo: 'Duas linhas',
+  vsl: 'VSL (palavra no meio)',
   minimal: 'Minimalista',
   premium: 'Premium (palavra a palavra + brilho)',
   tiktok: 'TikTok (palavra cresce)',

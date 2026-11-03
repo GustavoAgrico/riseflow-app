@@ -92,3 +92,13 @@ test('animações no estilo do After Effects (Animation Kit): tags certas e o li
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('legenda VSL: frase pequena e a palavra-chave GRANDE sozinha na linha do meio', () => {
+  const ws = ['não', 'coloca', 'dinheiro', 'no', 'bolso'].map((word, i) => ({ word, start: i * 0.3, end: i * 0.3 + 0.28 }));
+  const ass = buildAss([{ start: 0, end: 1.6, text: ws.map((w) => w.word).join(' '), words: ws }], { width: 1080, height: 1920, duration: 2 }, { template: 'vsl', color: 'yellow' });
+  const ev = dialogues(ass);
+  assert.ok(ev.some((l) => l.includes('\\fscx230')), 'palavra-chave ampliada');
+  // três alturas diferentes: linha de cima, palavra-chave, linha de baixo
+  const ys = new Set(ev.map((l) => (/\\pos\([\d.]+,([\d.]+)\)/.exec(l) || [])[1]).filter(Boolean));
+  assert.ok(ys.size >= 3, `linhas: ${[...ys].join(',')}`);
+});

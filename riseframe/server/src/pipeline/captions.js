@@ -377,7 +377,8 @@ export function buildAss(segments, meta, style = {}) {
     const duo = T.keywordBreak && maxLines > 1 && kw >= 0 && words.length > 1;
     const out = [[]];
     words.forEach((wd, j) => {
-      const brk = j > 0 && (duo ? j === kw || (kw === 0 && j === 1) : wd.br);
+      // VSL: a palavra-chave fica SOZINHA na linha dela (quebra antes e depois)
+      const brk = j > 0 && (duo ? j === kw || (kw === 0 && j === 1) || (T.keywordSolo && j === kw + 1) : wd.br);
       if (brk) out.push([]);
       out[out.length - 1].push(j);
     });
