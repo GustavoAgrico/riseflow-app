@@ -52,6 +52,9 @@ export async function transcribeOpenAI(input, work, meta, cfg) {
   form.append('model', 'whisper-1');
   form.append('response_format', 'verbose_json');
   form.append('timestamp_granularities[]', 'word');
+  form.append('temperature', '0');
+  // idioma conhecido: o Whisper não precisa adivinhar (adivinhando, troca palavras em trechos curtos)
+  if (cfg.openaiLanguage) form.append('language', String(cfg.openaiLanguage).slice(0, 2).toLowerCase());
   if (verbatimPrompt(cfg.openaiLanguage)) form.append('prompt', verbatimPrompt(cfg.openaiLanguage));
 
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -281,7 +284,8 @@ export async function transcribeAssemblyAI(input, work, meta, cfg) {
   const create = await fetch(`${base}/transcript`, {
     method: 'POST',
     headers: { authorization: cfg.assemblyaiKey, 'content-type': 'application/json' },
-    body: JSON.stringify({ audio_url: upload_url, punctuate: true }),
+    // sem idioma, o AssemblyAI assume INGLÊS: com idioma conhecido manda ele; senão pede a detecção
+    body: JSON.stringify({ audio_url: upload_url, punctuate: true, ...(cfg.assemblyaiLanguage ? { language_code: String(cfg.assemblyaiLanguage).slice(0, 2).toLowerCase() } : { language_detection: true }) }),
   });
   if (!create.ok) throw new Error(`AssemblyAI create ${create.status}: ${await create.text()}`);
   const { id } = await create.json();

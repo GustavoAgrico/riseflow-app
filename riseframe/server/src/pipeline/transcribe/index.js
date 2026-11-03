@@ -2,6 +2,7 @@ import { config } from '../../config.js';
 import { makeLogger } from '../../logger.js';
 import { transcribeMock } from './mock.js';
 import { markNoiseTags } from '../cleanup.js';
+import { fixArticleNumerals } from './numbers.js';
 import fsp from 'node:fs/promises';
 import { jobAccountToken, fetchWaking } from '../../account.js';
 import {
@@ -30,7 +31,8 @@ export function cleanLanguage(v) {
 
 export async function transcribe(input, work, meta, onProgress, ctx = {}) {
   // "(tosse)", "[pigarro]" viram palavras removidas; "[Música]", "(risos)" saem do texto.
-  return markNoiseTags(await transcribeAny(input, work, meta, onProgress, ctx));
+  // "1" que era o artigo "um"/"uma" volta a ser palavra (número só quando é número mesmo).
+  return fixArticleNumerals(markNoiseTags(await transcribeAny(input, work, meta, onProgress, ctx)));
 }
 
 /**
@@ -62,7 +64,10 @@ async function transcribeAny(input, work, meta, onProgress, ctx = {}) {
   const provider = config.transcribe.provider;
   // idioma escolhido na hora (Transcrever… no editor); sem ele, o configurado ou automático
   const language = cleanLanguage(ctx.language);
-  const cfg = language ? { ...config.transcribe, groqLanguage: language, deepgramLanguage: language } : config.transcribe;
+  // idioma escolhido (ou o padrão do servidor, TRANSCRIBE_LANGUAGE) vai para todos os serviços:
+  // sem ele cada um tenta adivinhar — e o AssemblyAI, sem nada, assume inglês.
+  const lang = language || cleanLanguage(config.transcribe.language);
+  const cfg = lang ? { ...config.transcribe, groqLanguage: lang, deepgramLanguage: lang, openaiLanguage: lang, assemblyaiLanguage: lang } : config.transcribe;
   // Vídeo sem faixa de áudio (gravação de tela muda, por exemplo): não há fala para
   // transcrever — segue sem legendas em vez de falhar o job inteiro.
   if (meta && meta.hasAudio === false) {

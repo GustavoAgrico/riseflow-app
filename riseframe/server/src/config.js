@@ -77,6 +77,9 @@ export const config = {
     groqModel: process.env.GROQ_WHISPER_MODEL || 'whisper-large-v3-turbo',
     // Idioma fixo opcional (ex.: 'pt'); vazio = detecta sozinho.
     groqLanguage: process.env.GROQ_LANGUAGE || '',
+    // Idioma padrão de TODA transcrição (ex.: 'pt'), para todos os serviços. Vazio = cada serviço
+    // detecta sozinho. O idioma escolhido no editor sempre vale mais.
+    language: process.env.TRANSCRIBE_LANGUAGE || '',
     whisperModel: process.env.WHISPER_MODEL || 'base',
     // Timeout do whisper-local (ms). 0/ausente = automático (escala com a duração).
     // Em máquinas pequenas, evita que um processo travado/OOM prenda o job.

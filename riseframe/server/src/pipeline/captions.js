@@ -74,13 +74,37 @@ export const CAPTION_ANIMATIONS = {
   typewriter: 'Máquina de escrever (cursor)',
   'pop-rot': 'Pop girando',
   shake: 'Tremer (impacto)',
+  // como os presets de texto do After Effects (Animation Kit): espaçamento, desfoque, 3D, esticar
+  tracking: 'Letras se juntando (tracking)',
+  blurin: 'Desfoque entrando',
+  flip: 'Virar (3D, eixo X)',
+  swing: 'Girar (3D, eixo Y)',
+  stretch: 'Esticar e assentar',
+  elastic: 'Elástico (quica 2x)',
+  skew: 'Inclinado assentando',
   none: 'Sem animação',
 };
 
 /** Tag ASS de animação (movimento de entrada). Só transforma escala/rotação/alpha,
  * nunca reposiciona (mantém a centralização). */
-function animTag(anim) {
+function animTag(anim, { spacing = 0, em = 60, glow = false } = {}) {
   switch (anim) {
+    // letras afastadas que se juntam no espaçamento do estilo
+    case 'tracking':
+      return `\\fad(60,40)\\fsp${(spacing + em * 0.45).toFixed(1)}\\t(0,300,\\fsp${spacing})`;
+    // entra desfocada e fica nítida (no neon termina no brilho do neon)
+    case 'blurin':
+      return `\\fad(80,40)\\blur14\\t(0,300,\\blur${glow ? 3 : 0})`;
+    case 'flip':
+      return '\\fad(40,40)\\frx-90\\t(0,280,\\frx0)';
+    case 'swing':
+      return '\\fad(40,40)\\fry80\\t(0,300,\\fry0)';
+    case 'stretch':
+      return '\\fad(40,40)\\fscx150\\fscy60\\t(0,140,\\fscx92\\fscy110)\\t(140,240,\\fscx100\\fscy100)';
+    case 'elastic':
+      return '\\fad(40,40)\\fscx40\\fscy40\\t(0,120,\\fscx118\\fscy118)\\t(120,200,\\fscx92\\fscy92)\\t(200,270,\\fscx104\\fscy104)\\t(270,330,\\fscx100\\fscy100)';
+    case 'skew':
+      return '\\fad(40,40)\\fax-0.35\\t(0,240,\\fax0)';
     case 'pop':
       return '\\fad(50,40)\\fscx82\\fscy82\\t(0,110,\\fscx106\\fscy106)\\t(110,210,\\fscx100\\fscy100)';
     case 'bounce':
@@ -288,10 +312,10 @@ export function buildAss(segments, meta, style = {}) {
   ];
 
   const animKind = style.animation && style.animation !== 'auto' && CAPTION_ANIMATIONS[style.animation] ? style.animation : T.anim;
-  const anim = animTag(animKind);
+  const anim = animTag(animKind, { spacing: +(sp * em).toFixed(2), em, glow: glowOn });
   // máquina de escrever: letra a letra nas legendas por frase (a palavra por vez fica com fade)
   const typing = animKind === 'typewriter' && mode !== 'word';
-  const glow = glowOn ? '\\blur3' : '';
+  const glow = glowOn && animKind !== 'blurin' ? '\\blur3' : '';
   const lines = [];
   const ev = (layer, t0, t1, styleName, text) => lines.push(`Dialogue: ${layer},${assTime(t0)},${assTime(t1)},${styleName},,0,0,0,,${text}`);
   /** Caixa desenhada centrada em (x, y). alpha "00" = sólida. */
