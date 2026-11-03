@@ -66,3 +66,39 @@ test('o libass aceita o ASS das duas animações novas', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('animações no estilo do After Effects (Animation Kit): tags certas e o libass desenha todas', () => {
+  const NEW = ['tracking', 'blurin', 'flip', 'swing', 'stretch', 'elastic', 'skew'];
+  for (const a of NEW) assert.ok(CAPTION_ANIMATIONS[a], a);
+  const tag = (anim, extra = {}) => dialogues(buildAss(segments, meta, { template: 'clean', animation: anim, color: 'white', ...extra }))[0];
+  assert.match(tag('tracking'), /\\fsp[\d.]+\\t\(0,300,\\fsp[\d.]+\)/);
+  assert.match(tag('blurin'), /\\blur14\\t\(0,300,\\blur0\)/);
+  assert.match(tag('flip'), /\\frx-90\\t\(0,280,\\frx0\)/);
+  assert.match(tag('swing'), /\\fry80\\t\(0,300,\\fry0\)/);
+  assert.match(tag('skew'), /\\fax-0\.35\\t\(0,240,\\fax0\)/);
+  // no neon, o desfoque de entrada termina no brilho (sem o \blur3 fixo apagando a animação)
+  const neon = dialogues(buildAss(segments, meta, { template: 'neon', animation: 'blurin', color: 'white' }))[0];
+  assert.match(neon, /\\blur14\\t\(0,300,\\blur3\)/);
+  assert.ok(!/\\t\(0,300,\\blur3\)\\blur3/.test(neon));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-anim-ae-'));
+  try {
+    for (const a of NEW) {
+      const assPath = path.join(dir, `${a}.ass`);
+      fs.writeFileSync(assPath, buildAss(segments, meta, { template: 'pop', animation: a, color: 'white' }));
+      const r = spawnSync(ffmpegPath, ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=960x540:d=2', '-vf', `ass=${assPath}`, '-f', 'null', '-']);
+      assert.equal(r.status, 0, `${a}: ${r.stderr.toString()}`);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('legenda VSL: frase pequena e a palavra-chave GRANDE sozinha na linha do meio', () => {
+  const ws = ['não', 'coloca', 'dinheiro', 'no', 'bolso'].map((word, i) => ({ word, start: i * 0.3, end: i * 0.3 + 0.28 }));
+  const ass = buildAss([{ start: 0, end: 1.6, text: ws.map((w) => w.word).join(' '), words: ws }], { width: 1080, height: 1920, duration: 2 }, { template: 'vsl', color: 'yellow' });
+  const ev = dialogues(ass);
+  assert.ok(ev.some((l) => l.includes('\\fscx230')), 'palavra-chave ampliada');
+  // três alturas diferentes: linha de cima, palavra-chave, linha de baixo
+  const ys = new Set(ev.map((l) => (/\\pos\([\d.]+,([\d.]+)\)/.exec(l) || [])[1]).filter(Boolean));
+  assert.ok(ys.size >= 3, `linhas: ${[...ys].join(',')}`);
+});

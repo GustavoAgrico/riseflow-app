@@ -28,6 +28,7 @@ export const TRANSITIONS = {
   lightleak: 'Vazamento de luz',
   static: 'Estática (TV)',
   rgbsplit: 'Divisão RGB',
+  rgbblur: 'Desfoque com RGB (VSL)',
 };
 /** Transições de câmera (mexem no quadro): vão juntas num zoompan/rotate só. */
 export const MOTION_TRANSITIONS = ['zoomin', 'zoomout', 'slideleft', 'slideright', 'slideup', 'slidedown', 'spin', 'shake'];
@@ -39,7 +40,7 @@ export const TRANSITION_TARGETS = {
 };
 
 /** Metade da duração de cada transição (s): o efeito vai de p-HALF a p+HALF. */
-const HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3, lightleak: 0.35, static: 0.2, rgbsplit: 0.2 };
+const HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3, lightleak: 0.35, static: 0.2, rgbsplit: 0.2, rgbblur: 0.22 };
 /** Duração padrão (s) de cada transição — a mesma que a prévia usa. */
 export const TRANSITION_DUR = Object.fromEntries(Object.entries(HALF).map(([k, h]) => [k, +(h * 2).toFixed(2)]));
 const MAX_POINTS = 40; // a expressão do FFmpeg cresce com os pontos — teto de segurança
@@ -131,6 +132,14 @@ export function transitionVf(type, points, duration, half = null) {
       return [
         `rgbashift=rh=-10:bh=10:enable='${windowExpr(pts, h)}'`,
         `rgbashift=rh=-14:bh=14:enable='${windowExpr(pts, h * 0.5)}'`,
+      ].join(',');
+    case 'rgbblur':
+      // como a troca do modelo de VSL: o quadro desfoca, as cores se separam e clareia um pouco
+      return [
+        `gblur=sigma=6:enable='${windowExpr(pts, h)}'`,
+        `rgbashift=rh=-16:bh=16:rv=4:bv=-4:enable='${windowExpr(pts, h * 0.7)}'`,
+        `gblur=sigma=12:enable='${windowExpr(pts, h * 0.35)}'`,
+        `eq=brightness='0.12*${E}':eval=frame`,
       ].join(',');
     case 'iris':
       // como a Íris do Premiere: a borda escurece fechando em círculo até o corte e reabre

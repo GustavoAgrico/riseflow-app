@@ -138,3 +138,38 @@ Regra mantida: um som por ação visível.
 - A logo final é só texto em degradê; não há logotipo da marca original.
 - Os tempos são os da transcrição offline, que erra palavras. Os quadros e a lógica de movimento são
   confiáveis; o texto exato não.
+
+---
+
+# Atualização v1.87 — pasta "MOTIONS REFE." e recortes 3D
+
+## Referências analisadas
+
+Pasta do Drive com 21 vídeos novos, 7 imagens e a imagem "Viral Motion Graphics" (6 vídeos já
+tinham sido analisados antes). Folhas de 8 quadros por vídeo.
+
+| Padrão nas referências | Onde aparece | Como o app recria |
+|---|---|---|
+| Objeto 3D no lugar de uma letra ("br🧠ins") e palavra-chave em vermelho embaixo | imagem "Viral Motion Graphics" | `cg-letter`: o objeto entra na palavra do assunto ("cé🧠bro"), na vogal mais perto do meio |
+| Caixa de seleção tracejada com alças nos cantos e cursor que clica | v04, v07, v13, v14 | `cg-select`: caixa se desenha, cursor 3D entra pelo canto e clica na palavra |
+| Círculo colorido com objeto e palavra serifada circulada à mão, ondas finas | v05 ("Cortex Frontal") | `cg-circle`: círculo verde com objeto, palavra em Garamond com elipse desenhada |
+| Número gigante (3 → 6, contador) | v06, v14 | `cg-number`: número sobe de 0 ao valor da frase, objeto apagado atrás |
+| Fundo cinza claro com luz de janela, pontinhos e código de barras | v04, v05, v07, v13 | `cgBg` |
+| Manchas pretas orgânicas entrando pelos cantos | v04, v13 | `cgBlobs`, 0,5 s em cada troca de frase |
+| Mistura de sans pesada com serifa itálica | v05, v07, i06, i07 | Inter 900 + Garamond 400i/700 |
+
+Não recriado (fora do escopo de motion de fala): animações de ícone de interface (v01, v02,
+v03, v16), fundos em tela verde (v08, v18), ilustrações chapadas (v17), anúncios com marcas e
+logotipos de terceiros (v07, v09), fundos em loop (v20, v21).
+
+## Sons
+
+Kit `cg-*` do pacote do app (família "cinema"): varrida nas manchas, pop do objeto, clique de
+vidro no cursor, traço de caneta na elipse, sino quando o número chega ao valor.
+
+## Recortes 3D
+
+27 recortes novos da pasta "3D PNG" (a boca saiu: tinha marca d'água de banco de imagens) e 5 imagens enviadas no chat (homem de corda, Franklin, duas estátuas, astronauta) em `server/assets/elements/real/` (recortados, até 768 px),
+ligados aos assuntos em `shared/sceneElements.js` (`REAL_OBJECTS`). Assuntos novos: sorte,
+clique, alegria, desconto, emoção e vídeo. Quatro arquivos eram iguais a recortes que já
+existiam e ficaram de fora. Arquivos de 2k acima de ~6 MB não passam pelo conector do Drive.

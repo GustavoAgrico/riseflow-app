@@ -91,3 +91,16 @@ test('VSL: o FFmpeg monta a câmera e o render desenha os textos do plano', () =
   const ass = buildTextAss(cleanTextLayers(plan.layers, Object.keys(CAPTION_FONTS), 400), { width: W, height: H, duration: 22 });
   assert.ok(ass.split('\n').filter((l) => l.startsWith('Dialogue')).length > 20);
 });
+
+test('VSL com prints de prova: vão primeiro nas telas divididas com número, sem título por cima', () => {
+  const withProofs = vslPlan({ segments: SEGS, dur: 22, available: new Set(Object.keys(SFX_LIBRARY)), proofs: 1 });
+  assert.equal(withProofs.proofSlots.length, Math.min(1, withProofs.splits.length));
+  const slot = withProofs.proofSlots[0];
+  const sp = withProofs.splits[slot.split];
+  // a tela dividida escolhida é a que cita número ("são 3 passos")
+  const words = SEGS.flatMap((s) => s.words).filter((w) => w.start >= sp.start && w.end <= sp.end + 0.2);
+  assert.ok(words.some((w) => /\d/.test(w.word)), words.map((w) => w.word).join(' '));
+  const inSlot = withProofs.layers.filter((l) => l.start >= slot.start - 0.01 && l.end <= slot.end + 0.01);
+  assert.deepEqual(inSlot.map((l) => l.text), ['OS NÚMEROS'], 'só o rótulo, o print ocupa o painel');
+  assert.equal(plan.proofSlots.length, 0, 'sem prints, nada muda');
+});

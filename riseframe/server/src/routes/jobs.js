@@ -100,6 +100,8 @@ function optionsForUser(req) {
       })
       .filter(Boolean);
   }
+  // Prints de prova do VSL: só imagens que existem (o resto sai).
+  if (o.vslProofs?.length) o.vslProofs = o.vslProofs.map((id) => resolveMedia(id)).filter((f) => f && f.kind === 'image').map((f) => f.path);
   // Logo do Brand Kit: só vale se a mídia existe e é imagem.
   if (o.watermark) {
     const found = resolveMedia(o.watermark.mediaId);
@@ -611,6 +613,8 @@ export function parseOptions(raw) {
     // motion tipográfico escolhido no começo (o modo automático monta as cenas no servidor)
     kinetic: o.kinetic === true,
     vsl: o.vsl === true, // Reel VSL (interface animada, vídeo vertical)
+    // prints de prova do VSL (ids da biblioteca de mídias; viram arquivos ao criar o job)
+    vslProofs: Array.isArray(o.vslProofs) ? o.vslProofs.map((p) => (typeof p === 'string' ? p : p?.mediaId)).filter((id) => typeof id === 'string' && id).slice(0, 8) : [],
     // cenas do motion explicativo montadas no editor (desenhadas no render)
     ...(Array.isArray(o.motionScenes) && o.motionScenes.length ? { motionScenes: cleanMotionScenes(o.motionScenes) } : {}),
     // padrão: o estilo da referência (creme/preto, grotesca, chave vermelha)
@@ -653,6 +657,7 @@ export function parseOptions(raw) {
     captionNoPunct: o.captionNoPunct === true || o.captionNoPunct === 'true',
     // Tela dividida com B-roll: a legenda vai para o meio (na linha entre as metades).
     captionBrollCenter: o.captionBrollCenter !== false && o.captionBrollCenter !== 'false',
+    textBehind: o.textBehind === true,
     // Área segura das redes no vídeo vertical: legenda fora dos botões/descrição do Reels e TikTok.
     captionSafeZone: o.captionSafeZone !== false && o.captionSafeZone !== 'false',
     // Modo de exibição: auto (do estilo) | word (palavra por vez) | phrase (frase inteira).

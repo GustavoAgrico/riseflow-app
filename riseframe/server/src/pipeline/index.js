@@ -12,7 +12,8 @@ import { silenceRemovalRanges } from './silence.js';
 import { preciseRemovals, wordGapRanges, dropSlivers } from './cutRefine.js';
 import { remapKf } from '../../../shared/layerKeys.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, remapMotionScenes, unmapTime } from './timeline.js';
-import { insertBroll, faceCropGeometry } from './broll.js';
+import { insertBroll, faceCropGeometry, brollOutsideScenes } from './broll.js';
+import { applyTextBehind } from './textBehind.js';
 import { applyManualFrame, applyVideoCrop, cleanCrop, cleanCropRanges, hasCrop, applyVideoBlanks, cleanBlanks } from './frame.js';
 import { applyUnderlay, hasUnderlay } from './underlay.js';
 import { applyUserMedia } from './overlay.js';
@@ -167,6 +168,7 @@ function buildPlan(mode, options) {
       { key: 'vsl', label: 'Montando o Reel VSL', weight: 12, enabled: options.vsl === true && mode !== 'render' },
       { key: 'vfx', label: 'Aplicando efeitos de vídeo', weight: 8, enabled: Array.isArray(options.fxMoments) && options.fxMoments.length > 0 },
       { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: (Array.isArray(options.userMedia) && options.userMedia.some((m) => m?.above !== true)) || (Array.isArray(options.motionScenes) && options.motionScenes.length > 0) || ((options.kinetic === true || options.vsl === true) && mode !== 'render') },
+      { key: 'behind', label: 'Texto atrás da pessoa', weight: 18, enabled: options.textBehind === true },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'texts', label: 'Colocando os textos', weight: 8, enabled: (Array.isArray(options.textLayers) && options.textLayers.length > 0) || ((options.kinetic === true || options.vsl === true) && mode !== 'render') },
       // objetos 3D e rabiscos das cenas de motion: por cima das legendas e dos textos
@@ -624,7 +626,19 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (Math.abs(W / H - 9 / 16) > 0.02) {
       log.warn('Reel VSL é para vídeo vertical 9:16; mantendo a edição normal');
     } else {
-      vsl = vslPlan({ segments: transcript.segments, dur: meta.duration, aspect: W / H, available: new Set(Object.keys(SFX_LIBRARY)) });
+      const proofs = Array.isArray(options.vslProofs) ? options.vslProofs : [];
+      vsl = vslPlan({ segments: transcript.segments, dur: meta.duration, aspect: W / H, available: new Set(Object.keys(SFX_LIBRARY)), proofs: proofs.length });
+      // prints de prova no painel de cima da tela dividida (cabem entre y 0,15 e 0,47)
+      const proofMedia = [];
+      for (const [k, slot] of (vsl.proofSlots || []).entries()) {
+        const file = proofs[k];
+        const dim = file ? await probeSummary(file).catch(() => null) : null;
+        if (!dim?.width || !dim?.height) continue;
+        const px = Math.min(0.86 * W, (0.32 * H * dim.width) / dim.height);
+        proofMedia.push({ kind: 'image', file, start: slot.start, duration: +(slot.end - slot.start).toFixed(3), mode: 'pip', cx: 0.5, cy: 0.31, scale: +(px / W).toFixed(4),
+          px: 0.5, py: 0.1, opacity: 1, volume: 0, above: true, layer: 11, animIn: 'zoom', animOut: 'fade', animDur: 0.4, animEase: 'out', blend: 'normal', motion: 'float', motionSpeed: 0.6, motionAmp: 0.35 });
+      }
+      if (proofMedia.length) options.userMedia = [...(options.userMedia || []), ...proofMedia];
       options.kinetic = false; // o VSL já é o motion deste vídeo
       options.textLayers = cleanTextLayers([...(options.textLayers || []), ...vsl.layers], Object.keys(CAPTION_FONTS), 400);
       options.sfxMoments = [...(options.sfxMoments || []), ...vsl.sfx];
@@ -635,7 +649,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
       if (options.captionMaxChars == null) options.captionMaxChars = 16;
       const hid = (w) => vsl.hide.some((h) => (w.start + w.end) / 2 >= h.start && (w.start + w.end) / 2 <= h.end);
       transcript = { ...transcript, segments: transcript.segments.map((sg) => (sg.words?.length ? { ...sg, words: sg.words.map((w) => (hid(w) ? { ...w, hidden: true } : w)) } : sg)) };
-      report.vsl = { splits: vsl.splits.length, punches: vsl.punches.length, texts: vsl.layers.length, elements: vsl.elements.length, sounds: vsl.sfx.length };
+      report.vsl = { splits: vsl.splits.length, punches: vsl.punches.length, texts: vsl.layers.length, elements: vsl.elements.length, sounds: vsl.sfx.length, proofs: (vsl.proofSlots || []).length };
     }
   }
 
@@ -703,7 +717,16 @@ export async function runPipeline(job, onUpdate = () => {}) {
   let analysis = { themes: [], brollMoments: [] };
   {
     const st = enter('analyze');
-    analysis = await analyze(transcript, meta, { ...options, _jobId: job.id });
+    // Cenas de motion cobrem a tela: B-roll que cai dentro delas ficava escondido (as imagens do
+    // Google "sumiam" com o motion ligado). Pede momentos a mais e fica com os de fora das cenas.
+    const scenes = Array.isArray(options.motionScenes) ? options.motionScenes : [];
+    const brollMax = options.brollMax ?? 6;
+    analysis = await analyze(transcript, meta, { ...options, ...(scenes.length ? { brollMax: brollMax + scenes.length } : {}), _jobId: job.id });
+    if (scenes.length && Array.isArray(analysis.brollMoments)) {
+      const before = analysis.brollMoments.length;
+      analysis.brollMoments = brollOutsideScenes(analysis.brollMoments, scenes).slice(0, brollMax);
+      if (before !== analysis.brollMoments.length) log.info(`B-roll: ${before - analysis.brollMoments.length} momento(s) dentro do motion trocado(s) por outros`);
+    }
     report.themes = analysis.themes;
     if (analysis.niche) report.niche = analysis.niche;
     // Classificação narrativa (heurística): marca gancho/desenvolvimento/clímax/CTA.
@@ -902,6 +925,27 @@ export async function runPipeline(job, onUpdate = () => {}) {
     }
     report.userMedia = { applied: r.applied, visual: r.visual, audio: r.audio };
     st.record(report.userMedia);
+    st.onProgress(1);
+  }
+
+  // 5c. Texto atrás da pessoa: a palavra-chave gigante no fundo, a pessoa na frente (antes da
+  // legenda, que continua por cima). Fora das cenas de motion e do B-roll.
+  if (has('behind')) {
+    const st = enter('behind');
+    try {
+      const exclude = [...brollWindows, ...(Array.isArray(options.motionScenes) ? options.motionScenes.map((s) => ({ start: s.start, end: s.end })) : [])];
+      const cur = { ...meta, ...(await probeSummary(input)) };
+      const r = await applyTextBehind(input, work, cur, transcript.segments, { exclude }, st.onProgress);
+      if (r) {
+        input = r.output;
+        report.textBehind = { count: r.items.length, words: r.items.map((x) => x.text), ...(r.skipped ? { skipped: r.skipped } : {}) };
+      }
+    } catch (e) {
+      // efeito extra: se falhar, o vídeo segue sem ele (não derruba o job)
+      log.warn(`texto atrás da pessoa: ${e.message}`);
+      report.textBehind = { count: 0, skipped: 'falhou ao recortar a pessoa' };
+    }
+    st.record(report.textBehind || { count: 0 });
     st.onProgress(1);
   }
 

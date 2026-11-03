@@ -39,6 +39,7 @@ export const STYLE_FONT_FILES = [
   ['RF Poppins 900i', 'S-poppins-900i.ttf'],
   ['RF Garamond 400i', 'S-garamond-400i.ttf'],
   ['RF Barlow 900i', 'S-barlow-900i.ttf'],
+  ['RF Garamond 700', 'S-garamond-700.ttf'],
 ];
 const FM7 = 'RF Montserrat 700';
 const FM8 = 'RF Montserrat 800';
@@ -57,6 +58,7 @@ export const STYLE_BEATS = {
   marca: ['mk-intro', 'mk-card', 'mk-bars', 'mk-logo'],
   rolagem: ['rl-grid', 'rl-text'],
   azul: ['az-hero', 'az-badge', 'az-end'],
+  colagem: ['cg-letter', 'cg-select', 'cg-circle', 'cg-number'],
 };
 const DARK_BEATS = new Set(['e-end', 'b-dark', 'c-float', 'c-embers', 'c-object', 'c-strip', 'c-big', 'mi-word', 'mi-count', 'mi-cta']);
 
@@ -73,6 +75,11 @@ function pickType(style, { i, n, prev, used, keys, concept, k, len, num }) {
     return k % 2 ? 'mk-bars' : 'mk-card';
   }
   if (style === 'rolagem') return num ? 'rl-grid' : 'rl-text';
+  if (style === 'colagem') {
+    if (num && !used.has('cg-number')) return 'cg-number';
+    if (concept && prev !== 'cg-letter' && !used.has(`obj:${concept.element}`)) return k % 2 ? 'cg-circle' : 'cg-letter';
+    return prev === 'cg-select' && concept ? 'cg-circle' : 'cg-select';
+  }
   if (style === 'azul') {
     if (last) return 'az-end';
     if (num && !used.has('az-badge')) return 'az-badge';
@@ -132,6 +139,7 @@ export function styleBeatsFor(style, chunks) {
     out.push({ type, chunk: c, data: {
       text: txt(c), keyword: tidy(clean(big)), small: txt(c.slice(0, Math.max(0, idx))), after: txt(c.slice(idx + 1)),
       keys: keys.map((w) => tidy(clean(w))).slice(0, 4), element: concept?.real || concept?.element || null,
+      objWord: concept ? tidy(clean(concept.word)) : null,
     } });
   });
   return out;
@@ -187,6 +195,18 @@ export function styleSfx(style, beats) {
       if (b.type === 'mk-card' || b.type === 'mk-intro') add(b.start + 0.05, 'mk-card', 0.4, 'cartão');
       if (b.type === 'mk-bars') for (let j = 0; j < 5; j += 1) add(b.start + 0.1 + j * 0.12, 'rl-tick', 0.3, 'barra');
       if (b.type === 'mk-logo' && kw) add(kw.t, 'mk-chime', 0.45, 'logo');
+    } else if (style === 'colagem') {
+      // colagem: varrida das manchas na troca, pop do objeto, clique do cursor, traço da caneta, número
+      if (i) add(b.start, 'cg-whoosh', 0.45, 'manchas');
+      if (b.type === 'cg-letter' && kw) add(kw.t + 0.15, 'cg-pop', 0.5, 'objeto na letra');
+      if (b.type === 'cg-select' && kw) add(kw.t, 'cg-click', 0.55, 'clique');
+      if (b.type === 'cg-circle') { add(b.start + 0.1, 'cg-pop', 0.45, 'círculo'); if (kw) add(kw.t + 0.25, 'cg-pen', 0.4, 'caneta'); }
+      if (b.type === 'cg-number') {
+        const target = rollTarget(b);
+        const n = Math.min(16, target);
+        for (let k2 = 1; k2 <= n; k2 += 1) { const j = Math.round((k2 * target) / n); add(b.start + 0.1 + rollDur(b) * (1 - (1 - j / target) ** (1 / 3)), 'rl-tick', 0.3, 'contagem'); }
+        add(b.start + 0.1 + rollDur(b), 'cg-ding', 0.5, 'número');
+      }
     } else if (style === 'azul') {
       // destaque azul: tique ao surgir a palavra-chave, traço do sublinhado, sino no selo, sinal final
       if (b.type === 'az-hero' && kw) { add(kw.t, 'az-pop', 0.5, 'destaque'); add(kw.t + 0.12, 'az-stroke', 0.35, 'sublinhado'); }
@@ -1152,8 +1172,8 @@ const MI_DRAW = {
 // rápida com desfoque, tremor, zoom de saída, faixa diagonal de transição). Fundo muda de cor a
 // cada cena (claro, verde, laranja, escuro, gradiente), como nas referências.
 const CN_BG = ['#F7F7F4', '#0E7C62', '#FF8A1F', '#0B0B12', 'grad'];
-const CN_CAM = { 'cn-type': 'push', 'cn-slide': 'whip', 'cn-rise': 'shake', 'cn-box': 'pull', 'cn-stripe': 'drift', 'bl-hit': 'pull', 'bl-echo': 'push', 'bl-stripe': 'shake', 'bl-slice': 'whip', 'mk-intro': 'push', 'mk-card': 'drift', 'mk-bars': 'pull', 'mk-logo': 'shake' };
-const CAM_STYLES = new Set(['cinetico', 'bloco', 'marca']);
+const CN_CAM = { 'cn-type': 'push', 'cn-slide': 'whip', 'cn-rise': 'shake', 'cn-box': 'pull', 'cn-stripe': 'drift', 'bl-hit': 'pull', 'bl-echo': 'push', 'bl-stripe': 'shake', 'bl-slice': 'whip', 'mk-intro': 'push', 'mk-card': 'drift', 'mk-bars': 'pull', 'mk-logo': 'shake', 'cg-letter': 'push', 'cg-select': 'drift', 'cg-circle': 'pull', 'cg-number': 'push' };
+const CAM_STYLES = new Set(['cinetico', 'bloco', 'marca', 'colagem']);
 const cnDark = (bg) => bg === '#0B0B12' || bg === 'grad' || bg === '#0E7C62';
 const cnInk = (bg) => (cnDark(bg) ? '#FFFFFF' : '#111111');
 
@@ -1598,4 +1618,323 @@ const AZ_DRAW = {
   },
 };
 
-const DRAW = { editorial: ED_DRAW, bordo: BO_DRAW, 'cinema-escuro': CI_DRAW, minimalista: MI_DRAW, cinetico: CN_DRAW, bloco: BLO_DRAW, marca: MRC_DRAW, rolagem: RLG_DRAW, azul: AZ_DRAW };
+// ── colagem editorial (pasta "MOTIONS REFE."): fundo cinza claro com luz de janela, pontinhos e
+// código de barras; recortes 3D; palavra com o objeto no lugar de uma letra ("br🧠ins"); caixa de
+// seleção tracejada com o cursor que clica; círculo com objeto e palavra serifada circulada à mão;
+// número gigante que sobe; manchas pretas que varrem os cantos na troca de frase.
+const FG7 = 'RF Garamond 700';
+const CG_RED = '#E3262E';
+const CG_INK = '#141414';
+const CG_GREEN = '#2E5E3A';
+function cgBg(ctx, lt) {
+  ctx.save();
+  setFilter(ctx);
+  ctx.fillStyle = '#E9E9E6';
+  ctx.fillRect(-200, -200, BW + 400, BH + 400);
+  ctx.restore();
+  // luz de janela: faixas claras inclinadas, bem suaves, andando devagar
+  ctx.save();
+  setFilter(ctx, 38);
+  ctx.globalAlpha = 0.6;
+  ctx.fillStyle = '#FFFFFF';
+  const sh = lt * 8;
+  for (let i = 0; i < 3; i += 1) {
+    const x = 60 + i * 320 + sh;
+    ctx.beginPath();
+    ctx.moveTo(x, 160);
+    ctx.lineTo(x + 170, 160);
+    ctx.lineTo(x + 560, 1560);
+    ctx.lineTo(x + 390, 1560);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+  ctx.save();
+  setFilter(ctx);
+  ctx.fillStyle = 'rgba(0,0,0,0.09)';
+  for (let y = 70; y < BH; y += 64) for (let x = 38; x < BW; x += 64) ctx.fillRect(x, y, 3, 3);
+  // código de barras no alto à direita
+  ctx.fillStyle = 'rgba(20,20,20,0.78)';
+  let bx = 770;
+  for (const w of [3, 1, 2, 1, 4, 1, 1, 3, 2, 1, 1, 2, 4, 1, 2, 1, 3, 1]) { ctx.fillRect(bx, 110, w * 3, 64); bx += w * 3 + 5; }
+  ctx.restore();
+}
+/** Mancha orgânica (pétalas arredondadas), como as que varrem a tela nas referências. */
+function cgBlob(ctx, cx, cy, r, seed) {
+  if (r <= 1) return;
+  const n = 5;
+  ctx.beginPath();
+  for (let i = 0; i < n; i += 1) {
+    const a = (i / n) * Math.PI * 2 + seed;
+    const h = Math.PI / n;
+    const p0 = [cx + Math.cos(a - h) * r * 0.5, cy + Math.sin(a - h) * r * 0.5];
+    const p1 = [cx + Math.cos(a + h) * r * 0.5, cy + Math.sin(a + h) * r * 0.5];
+    if (i === 0) ctx.moveTo(...p0);
+    ctx.bezierCurveTo(cx + Math.cos(a - h * 0.9) * r * 1.25, cy + Math.sin(a - h * 0.9) * r * 1.25, cx + Math.cos(a + h * 0.9) * r * 1.25, cy + Math.sin(a + h * 0.9) * r * 1.25, ...p1);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+/** Na troca de frase, duas manchas pretas saem dos cantos e encolhem (0,5 s). */
+function cgBlobs(ctx, lt, bi) {
+  if (!bi) return;
+  const e = clamp(lt / 0.5);
+  if (e >= 1) return;
+  const s = 1 - outCubic(e);
+  ctx.save();
+  setFilter(ctx);
+  ctx.fillStyle = CG_INK;
+  cgBlob(ctx, -40, -40, 560 * s, 0.4 + bi);
+  cgBlob(ctx, BW + 40, BH + 40, 660 * s, 1.1 + bi);
+  ctx.restore();
+}
+function cgZig(ctx, x, y, a) {
+  if (a <= 0) return;
+  ctx.save();
+  setFilter(ctx);
+  ctx.globalAlpha = a;
+  ctx.strokeStyle = CG_INK;
+  ctx.lineWidth = 7;
+  ctx.lineJoin = 'miter';
+  ctx.beginPath();
+  ctx.moveTo(x, y + 30);
+  ctx.lineTo(x + 30, y);
+  ctx.lineTo(x + 60, y + 30);
+  ctx.lineTo(x + 90, y);
+  ctx.stroke();
+  ctx.restore();
+}
+const cgKey = (b, items) => items.find((w) => low(w.text) === low(b.data.keyword)) || items[items.length - 1] || { text: String(b.data.keyword || ''), at: 0.2 };
+
+const CG_DRAW = {
+  // palavra grande com o objeto 3D no lugar de uma letra; palavra pequena antes, frase embaixo
+  'cg-letter'(ctx, b, lt, env, bi) {
+    cgBg(ctx, lt);
+    const items = beatWords(b);
+    // a palavra grande é a do assunto (onde o objeto entra); a palavra-chave fica em vermelho embaixo
+    const kIt = (b.data.objWord && items.find((w) => low(w.text) === low(b.data.objWord))) || cgKey(b, items);
+    const ki = items.indexOf(kIt);
+    const word = low(kIt.text);
+    const has = b.data.element && env.image?.(b.data.element);
+    // letra redonda (o, a, 0, e) mais perto do meio da palavra vira o objeto
+    let li = -1;
+    if (has) {
+      [...word].forEach((ch, j) => {
+        if (j > 0 && 'oa0e'.includes(ch) && (li < 0 || Math.abs(j - (word.length - 1) / 2) < Math.abs(li - (word.length - 1) / 2))) li = j;
+      });
+    }
+    const left = li >= 0 ? word.slice(0, li) : word;
+    const right = li >= 0 ? word.slice(li + 1) : '';
+    const widthAt = (sz) => measure(ctx, left, sz, FI9, -0.03) + (right ? measure(ctx, right, sz, FI9, -0.03) : 0) + (li >= 0 ? sz * 0.66 : 0);
+    let s = 270;
+    const full = widthAt(s);
+    if (full > 940) s *= 940 / full;
+    const lw = measure(ctx, left, s, FI9, -0.03);
+    const rw = right ? measure(ctx, right, s, FI9, -0.03) : 0;
+    const gap = li >= 0 ? s * 0.66 : 0;
+    const x0 = 540 - (lw + gap + rw) / 2;
+    const y = 960;
+    const e = outCubic(prog(lt, kIt.at, 0.35));
+    if (e > 0) {
+      ctx.save();
+      ctx.globalAlpha = e;
+      setFilter(ctx, (1 - e) * 12);
+      ctx.font = `${s}px "${FI9}"`;
+      ctx.letterSpacing = `${(-0.03 * s).toFixed(1)}px`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = CG_INK;
+      ctx.fillText(left, x0, y + (1 - e) * 40);
+      if (right) ctx.fillText(right, x0 + lw + gap, y + (1 - e) * 40);
+      ctx.restore();
+    }
+    if (li >= 0) objectImg(ctx, env, b.data.element, x0 + lw + gap / 2, y - s * 0.34, s * 0.98 * clamp(outBack(prog(lt, kIt.at + 0.15, 0.45))), { shadow: 'rgba(0,0,0,0.25)' });
+    const pre = items.slice(Math.max(0, ki - 2), ki);
+    if (pre.length) line(ctx, pre, lt, { x: x0 + 8, y: y - s * 0.8, size: 62, font: FI7, color: CG_INK, align: 'left', maxW: 700 });
+    const post = items.slice(ki + 1);
+    const red = post.find((w) => low(w.text) === low(b.data.keyword) && low(w.text) !== word) || (post.length > 1 ? post[post.length - 1] : null);
+    if (post.length) line(ctx, post.slice(0, 6), lt, { x: 540, y: y + 120, size: 74, font: FI7, maxW: 960, color: (it) => (it === red ? CG_RED : CG_INK) });
+    const z = outCubic(prog(lt, 0.2, 0.4));
+    cgZig(ctx, 40, 540, z);
+    cgZig(ctx, BW - 150, 1440, z);
+  },
+  // frase em caixa alta pequena + palavra-chave dentro da caixa de seleção; o cursor entra e clica
+  'cg-select'(ctx, b, lt, env, bi) {
+    cgBg(ctx, lt);
+    const items = beatWords(b);
+    const kIt = cgKey(b, items);
+    const ki = items.indexOf(kIt);
+    const pre = items.slice(0, ki);
+    const post = items.slice(ki + 1);
+    if (pre.length) line(ctx, pre.map((w) => ({ ...w, text: w.text.toUpperCase() })), lt, { x: 540, y: 850, size: 54, font: FI7, color: '#3A3A3A', maxW: 900 });
+    const kt = kIt.text.toUpperCase();
+    let s = 120;
+    const w0 = measure(ctx, kt, s, FI9, -0.02);
+    if (w0 > 860) s *= 860 / w0;
+    const w = measure(ctx, kt, s, FI9, -0.02);
+    const bw = w + 80;
+    const bh = s * 1.2;
+    const bx = 540 - bw / 2;
+    const by = 890;
+    const eb = outCubic(prog(lt, Math.max(0, kIt.at - 0.25), 0.35));
+    if (eb > 0) {
+      ctx.save();
+      setFilter(ctx);
+      ctx.globalAlpha = eb;
+      ctx.strokeStyle = CG_INK;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([12, 9]);
+      ctx.strokeRect(bx, by, bw, bh);
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#FFFFFF';
+      for (const [cx, cy] of [[bx, by], [bx + bw, by], [bx, by + bh], [bx + bw, by + bh]]) {
+        ctx.fillRect(cx - 9, cy - 9, 18, 18);
+        ctx.strokeRect(cx - 9, cy - 9, 18, 18);
+      }
+      ctx.restore();
+    }
+    fxLine(ctx, [{ text: kt, at: kIt.at }], lt, { y: by + s * 0.92, size: s, font: FI9, color: CG_INK, fx: 'pop', stagger: 0, maxW: 900 });
+    // cursor: entra pelo canto de baixo e clica no canto da caixa
+    const ce = outCubic(prog(lt, Math.max(0, kIt.at - 0.45), 0.4));
+    const ck = prog(lt, kIt.at, 0.16);
+    const press = ck > 0 && ck < 1 ? 0.84 : 1;
+    const tx = lerp(BW + 120, bx + bw - 6, ce);
+    const ty = lerp(BH * 0.82, by + bh - 6, ce);
+    if (env.image?.('real/cursor')) objectImg(ctx, env, 'real/cursor', tx + 46, ty + 50, 120 * press, { shadow: 'rgba(0,0,0,0.28)' });
+    else {
+      ctx.save();
+      setFilter(ctx);
+      ctx.translate(tx, ty);
+      ctx.scale(press, press);
+      ctx.fillStyle = CG_INK;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, 64);
+      ctx.lineTo(16, 50);
+      ctx.lineTo(28, 76);
+      ctx.lineTo(40, 70);
+      ctx.lineTo(28, 46);
+      ctx.lineTo(48, 46);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    if (post.length) line(ctx, post, lt, { x: 540, y: by + bh + 110, size: 66, font: FGI, color: '#2A2A2A', maxW: 900 });
+  },
+  // rótulo no alto, círculo verde com o objeto e, embaixo, a palavra serifada circulada à mão
+  'cg-circle'(ctx, b, lt, env, bi) {
+    cgBg(ctx, lt);
+    const items = beatWords(b);
+    const kIt = cgKey(b, items);
+    const ki = items.indexOf(kIt);
+    const label = ki > 1 ? items.slice(0, 1) : [];
+    if (label.length) line(ctx, label, lt, { x: 90, y: 330, size: 72, font: FI7, color: '#2B2B2B', align: 'left', maxW: 640 });
+    const ec = clamp(outBack(prog(lt, 0.08, 0.5)));
+    if (ec > 0) {
+      ctx.save();
+      setFilter(ctx);
+      ctx.shadowColor = 'rgba(0,0,0,0.25)';
+      ctx.shadowBlur = 40;
+      ctx.shadowOffsetY = 18;
+      ctx.fillStyle = CG_GREEN;
+      ctx.beginPath();
+      ctx.arc(540, 860, 270 * ec, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = '#C9A24A';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.restore();
+    }
+    objectImg(ctx, env, b.data.element, 540, 860, 400 * clamp(outBack(prog(lt, 0.28, 0.5))), { shadow: 'rgba(0,0,0,0.35)' });
+    const rest = items.slice(label.length, ki).slice(-3);
+    const aText = rest.map((w) => w.text).join(' ');
+    const sA = 92;
+    const sK = 140;
+    const aw = aText ? measure(ctx, aText, sA, FI7, -0.02) + 26 : 0;
+    const kw = measure(ctx, kIt.text, sK, FG7, -0.01);
+    const sc = Math.min(1, 960 / (aw + kw));
+    const x0 = 540 - ((aw + kw) * sc) / 2;
+    const y = 1420;
+    if (rest.length) line(ctx, rest, lt, { x: x0, y, size: sA * sc, font: FI7, color: '#2B2B2B', align: 'left', maxW: 960 });
+    const kx = x0 + aw * sc;
+    line(ctx, [kIt], lt, { x: kx, y, size: sK * sc, font: FG7, color: CG_INK, align: 'left', maxW: 960, ls: -0.01 });
+    // elipse à mão em volta da palavra (o traço se desenha)
+    const ee = outCubic(prog(lt, kIt.at + 0.25, 0.6));
+    if (ee > 0) {
+      const cx = kx + (kw * sc) / 2;
+      const cy = y - sK * sc * 0.32;
+      const rx = (kw * sc) / 2 + 40;
+      const ry = sK * sc * 0.62;
+      const a0 = -2.7;
+      const a1 = a0 + ee * (Math.PI * 2 + 0.45);
+      ctx.save();
+      setFilter(ctx);
+      ctx.strokeStyle = CG_INK;
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let a = a0; a <= a1; a += 0.04) {
+        const wob = 1 + 0.035 * Math.sin(a * 3);
+        const px = cx + Math.cos(a) * rx * wob;
+        const py = cy + Math.sin(a) * ry * wob - (a - a0) * 3;
+        if (a === a0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+    // ondas finas no rodapé, andando
+    const we = outCubic(prog(lt, 0.4, 0.6));
+    if (we > 0) {
+      ctx.save();
+      setFilter(ctx);
+      ctx.globalAlpha = 0.35 * we;
+      ctx.strokeStyle = CG_INK;
+      ctx.lineWidth = 1.5;
+      for (let k = 0; k < 7; k += 1) {
+        ctx.beginPath();
+        for (let x = 520; x <= BW + 20; x += 12) {
+          const yy = 1700 + k * 14 + Math.sin(x * 0.012 + lt * 2 + k * 0.4) * 40 * ((x - 520) / 560);
+          if (x === 520) ctx.moveTo(x, yy);
+          else ctx.lineTo(x, yy);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  },
+  // número gigante que sobe de 0 ao valor dito; objeto apagado atrás; frase em cima e embaixo
+  'cg-number'(ctx, b, lt, env, bi) {
+    cgBg(ctx, lt);
+    objectImg(ctx, env, b.data.element, 540, 960, 780, { alpha: 0.16, shadow: 'rgba(0,0,0,0)' });
+    const target = rollTarget(b);
+    const v = Math.round(target * outCubic(prog(lt, 0.1, rollDur(b))));
+    let s = 560;
+    const w = measure(ctx, String(target), s, FI9, -0.04);
+    if (w > 900) s *= 900 / w;
+    const e = clamp(outBack(prog(lt, 0, 0.35)));
+    ctx.save();
+    setFilter(ctx);
+    ctx.font = `${s}px "${FI9}"`;
+    ctx.letterSpacing = `${(-0.04 * s).toFixed(1)}px`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = CG_INK;
+    ctx.translate(540, 1170);
+    ctx.scale(Math.max(0.001, e), Math.max(0.001, e));
+    ctx.fillText(String(v), 0, 0);
+    ctx.restore();
+    const words = beatWords(b).filter((w2) => !/\d/.test(w2.text));
+    const half = Math.ceil(words.length / 2);
+    if (words.length) line(ctx, words.slice(0, half), lt, { x: 540, y: 640, size: 72, font: FI7, color: '#2B2B2B', maxW: 900 });
+    if (words.length > half) line(ctx, words.slice(half), lt, { x: 540, y: 1330, size: 86, font: FGI, color: CG_INK, maxW: 900 });
+  },
+};
+// as manchas da troca ficam por cima de cada tipo
+for (const k of Object.keys(CG_DRAW)) {
+  const fn = CG_DRAW[k];
+  CG_DRAW[k] = (ctx, b, lt, env, bi) => { fn(ctx, b, lt, env, bi); cgBlobs(ctx, lt, bi); };
+}
+
+const DRAW = { editorial: ED_DRAW, bordo: BO_DRAW, 'cinema-escuro': CI_DRAW, minimalista: MI_DRAW, cinetico: CN_DRAW, bloco: BLO_DRAW, marca: MRC_DRAW, rolagem: RLG_DRAW, azul: AZ_DRAW, colagem: CG_DRAW };

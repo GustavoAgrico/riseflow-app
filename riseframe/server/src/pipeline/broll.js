@@ -21,6 +21,20 @@ const http = (url, opts = {}, ms = API_TIMEOUT_MS) => fetch(url, { ...opts, sign
  * aleatória — dá VARIEDADE (não pega sempre o mesmo 1º resultado) sem perder o
  * contexto. Puro/exportado para teste.
  */
+/**
+ * Momentos de B-roll fora das cenas de motion (as cenas cobrem a tela inteira: o B-roll
+ * dentro delas não aparece). Sai o momento que tem mais de 0,4 s (ou 30%) dentro de uma cena.
+ */
+export function brollOutsideScenes(moments, scenes) {
+  const list = Array.isArray(scenes) ? scenes : [];
+  return (moments || []).filter((m) => {
+    const a = Number(m.start);
+    const b = Number(m.end);
+    const inside = list.reduce((acc, sc) => acc + Math.max(0, Math.min(b, Number(sc.end)) - Math.max(a, Number(sc.start))), 0);
+    return !(inside > 0.4 || inside > (b - a) * 0.3);
+  });
+}
+
 export function pickVaried(list, top = 5) {
   if (!list || !list.length) return null;
   const n = Math.min(top, list.length);

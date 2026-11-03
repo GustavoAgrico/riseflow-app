@@ -210,6 +210,9 @@ export default function OptionsPanel({ catalog, options, onChange, disabled, vid
               <div style={{ fontSize: 12.5, color: C.muted, margin: '12px 0 8px' }}>Estilo do texto</div>
               <TextStyleBar options={options} onChange={set} />
             </div>
+            <Row label="Texto atrás da pessoa" hint="Nas frases fortes, a palavra-chave aparece gigante ATRÁS de você (você fica na frente dela). Aparece no vídeo final; demora um pouco mais para renderizar.">
+              <Toggle on={options.textBehind === true} onChange={(v) => set({ textBehind: v })} />
+            </Row>
             {catalog.captionAnimations && (
               <Row label="Animação do texto" hint="Como cada palavra/frase entra na tela">
                 <Select value={options.captionAnimation || 'auto'} options={catalog.captionAnimations} onChange={(v) => set({ captionAnimation: v })} />

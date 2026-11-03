@@ -153,6 +153,31 @@ export const SFX_LIBRARY = {
     src: "aevalsrc='0.5*sin(2*PI*660*t)*exp(-t*6)+0.3*sin(2*PI*990*t)*exp(-t*8)':d=0.8:s=44100",
     af: ['aecho=0.4:0.3:40:0.2', 'volume=1.3', 'aformat=channel_layouts=stereo'],
   },
+  'cg-whoosh': {
+    label: 'Manchas na troca (colagem)', base: 'whoosh', gain: 0.8, lead: 0, cat: 'colagem', dur: 0.5,
+    src: 'anoisesrc=d=0.5:c=pink:a=0.6:r=44100',
+    af: ['lowpass=f=1800', 'afade=t=in:st=0:d=0.12', 'afade=t=out:st=0.15:d=0.35:curve=exp', 'volume=2.4', 'aformat=channel_layouts=stereo'],
+  },
+  'cg-pop': {
+    label: 'Objeto entrando (colagem)', base: 'pop', gain: 0.9, lead: 0, cat: 'colagem', dur: 0.25,
+    src: "aevalsrc='0.6*sin(2*PI*(300+500*exp(-t*30))*t)*exp(-t*14)':d=0.25:s=44100",
+    af: ['volume=1.5', 'aformat=channel_layouts=stereo'],
+  },
+  'cg-click': {
+    label: 'Clique do cursor (colagem)', base: 'click', gain: 1, lead: 0, cat: 'colagem', dur: 0.08,
+    src: "aevalsrc='0.7*sin(2*PI*2400*t)*exp(-t*160)+0.3*(random(0)*2-1)*exp(-t*220)':d=0.08:s=44100",
+    af: ['volume=1.6', 'aformat=channel_layouts=stereo'],
+  },
+  'cg-pen': {
+    label: 'Traço de caneta (colagem)', base: 'swipe', gain: 0.7, lead: 0, cat: 'colagem', dur: 0.6,
+    src: 'anoisesrc=d=0.6:c=white:a=0.4:r=44100',
+    af: ['bandpass=f=3200:w=1.4', 'tremolo=f=14:d=0.6', 'afade=t=in:st=0:d=0.08', 'afade=t=out:st=0.3:d=0.3', 'volume=2', 'aformat=channel_layouts=stereo'],
+  },
+  'cg-ding': {
+    label: 'Número no lugar (colagem)', base: 'ding', gain: 0.9, lead: 0, cat: 'colagem', dur: 0.9,
+    src: "aevalsrc='0.55*sin(2*PI*880*t)*exp(-t*5)+0.3*sin(2*PI*1320*t)*exp(-t*7)':d=0.9:s=44100",
+    af: ['volume=1.3', 'aformat=channel_layouts=stereo'],
+  },
   'rl-tick': {
     label: 'Tique de odômetro (contador)', base: 'click', gain: 1, lead: 0, cat: 'rolagem', dur: 0.05,
     src: "aevalsrc='0.6*sin(2*PI*1800*t)*exp(-t*120)+0.25*(random(0)*2-1)*exp(-t*200)':d=0.05:s=44100",
@@ -463,6 +488,12 @@ export const STYLE_PACK_SOUNDS = {
   'az-stroke': 'pack/transicao/swipe-glass.mp3',
   'az-ding': 'pack/notificacao/notification-glass.mp3',
   'az-end': 'pack/conquista/level-up-glass.mp3',
+  // colagem editorial: família "cinema" (clique de vidro no cursor)
+  'cg-whoosh': 'pack/transicao/swipe-cinematic.mp3',
+  'cg-pop': 'pack/interface/toggle-on-cinematic.mp3',
+  'cg-click': 'pack/interface/press-glass.mp3',
+  'cg-pen': 'pack/transicao/swipe-dreamy.mp3',
+  'cg-ding': 'pack/conquista/checkpoint-cinematic.mp3',
 };
 const PACK_DURS = (() => {
   try { return Object.fromEntries(JSON.parse(fsSync.readFileSync(path.join(SFX_DIR, 'pack', 'pack.json'), 'utf8')).sounds.map((x) => [x.file, x.dur])); } catch { return {}; }
@@ -481,6 +512,7 @@ export const SFX_CATEGORIES = {
   marca: 'Marca (cartão e logo)',
   rolagem: 'Contador em grade',
   azul: 'Destaque azul',
+  colagem: 'Colagem editorial',
   cinetico: 'Câmera e letras (cinético)',
   transicao: 'Transição',
   impacto: 'Impacto',
@@ -497,6 +529,7 @@ const SFX_CAT = {
   'cn-key': 'cinetico', 'cn-whoosh': 'cinetico', 'cn-pop': 'cinetico', 'cn-impact': 'cinetico', 'cn-swipe': 'cinetico',
   'bk-hit': 'bloco', 'bk-slice': 'bloco', 'bk-swipe': 'bloco', 'mk-card': 'marca', 'mk-chime': 'marca', 'rl-tick': 'rolagem',
   'az-pop': 'azul', 'az-stroke': 'azul', 'az-ding': 'azul', 'az-end': 'azul',
+  'cg-whoosh': 'colagem', 'cg-pop': 'colagem', 'cg-click': 'colagem', 'cg-pen': 'colagem', 'cg-ding': 'colagem',
   whoosh: 'transicao', swoosh: 'transicao', riser: 'transicao', whooshdown: 'transicao', swipe: 'transicao', rewind: 'transicao',
   impact: 'impacto', kick: 'impacto', boom: 'impacto', thud: 'impacto', bassdrop: 'impacto',
   shutter: 'interface', click: 'interface', typing: 'interface', pop: 'interface', bubble: 'interface', ding: 'interface', notify: 'interface', clock: 'interface',

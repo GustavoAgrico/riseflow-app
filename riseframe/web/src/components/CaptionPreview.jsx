@@ -16,6 +16,8 @@ const ANIM_CSS = {
   fade: 'rf-fade .5s ease both', pop: 'rf-pop .35s ease both', bounce: 'rf-bounce .5s ease both',
   zoom: 'rf-zoom .4s ease both', 'pop-rot': 'rf-pop-rot .45s ease both', shake: 'rf-shake .5s ease both', none: 'none',
   zoomblur: 'rf-zoomblur .26s ease both', typewriter: 'rf-fade .12s ease both',
+  tracking: 'rf-track .32s ease both', blurin: 'rf-blurin .32s ease both', flip: 'rf-flip .3s ease both', swing: 'rf-swing .32s ease both',
+  stretch: 'rf-stretch .26s ease both', elastic: 'rf-elastic .36s ease both', skew: 'rf-skew .26s ease both',
 };
 
 // Largura de um texto (em "em") na fonte já carregada — para o auto-ajuste da palavra
@@ -566,7 +568,7 @@ export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, 
   // Quebra de linha: a do estilo "duas linhas" (palavra-chave desce) ou a do cartão (br).
   const twoLines = options.captionLines !== 1;
   const duo = T.keywordBreak && twoLines && kw >= 0 && words.length > 1;
-  const breakAt = (k) => (duo ? k === kw || (kw === 0 && k === 1) : !!words[k].br);
+  const breakAt = (k) => (duo ? k === kw || (kw === 0 && k === 1) || (T.keywordSolo && k === kw + 1) : !!words[k].br);
   const { highlight, hl } = look;
   const markHex = look.accentIsWhite ? '#FFFFFF' : look.color;
   // Frase base: branca com destaque, palavra-chave, caixa ou brilho; senão na cor escolhida.

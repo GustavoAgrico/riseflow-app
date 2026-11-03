@@ -33,6 +33,14 @@
 @keyframes rf-blink { 0%, 50% { opacity: 1 } 50.01%, 100% { opacity: 0 } }
 @keyframes rf-pop-rot { 0% { opacity: 0; transform: scale(.7) rotate(-6deg) } 70% { opacity: 1; transform: scale(1.04) rotate(0) } 100% { transform: scale(1) } }
 @keyframes rf-shake { 0% { opacity: 0 } 20% { opacity: 1 } 25% { transform: rotate(3deg) } 50% { transform: rotate(-3deg) } 75% { transform: rotate(2deg) } 100% { transform: rotate(0) } }
+/* entradas no estilo dos presets de texto do After Effects (server/src/pipeline/captions.js) */
+@keyframes rf-track { from { opacity: 0; letter-spacing: .45em } }
+@keyframes rf-blurin { from { opacity: 0; filter: blur(10px) } }
+@keyframes rf-flip { from { opacity: 0; transform: perspective(600px) rotateX(-90deg) } }
+@keyframes rf-swing { from { opacity: 0; transform: perspective(600px) rotateY(80deg) } }
+@keyframes rf-stretch { 0% { opacity: 0; transform: scale(1.5, .6) } 55% { opacity: 1; transform: scale(.92, 1.1) } 100% { transform: none } }
+@keyframes rf-elastic { 0% { opacity: 0; transform: scale(.4) } 35% { opacity: 1; transform: scale(1.18) } 60% { transform: scale(.92) } 80% { transform: scale(1.04) } 100% { transform: none } }
+@keyframes rf-skew { from { opacity: 0; transform: skewX(19deg) } }
 @keyframes rf-blurin { 0% { opacity: 0; filter: blur(6px); transform: scaleX(1.18) } 100% { opacity: 1; filter: blur(0); transform: none } }
 
 /* Estilos de cada fonte (Regular, Itálico, Negrito, Black…) — família única por arquivo. */
