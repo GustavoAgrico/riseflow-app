@@ -13,6 +13,7 @@ import { preciseRemovals, wordGapRanges, dropSlivers } from './cutRefine.js';
 import { remapKf } from '../../../shared/layerKeys.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, remapMotionScenes, unmapTime } from './timeline.js';
 import { insertBroll, faceCropGeometry, brollOutsideScenes } from './broll.js';
+import { applyTextBehind } from './textBehind.js';
 import { applyManualFrame, applyVideoCrop, cleanCrop, cleanCropRanges, hasCrop, applyVideoBlanks, cleanBlanks } from './frame.js';
 import { applyUnderlay, hasUnderlay } from './underlay.js';
 import { applyUserMedia } from './overlay.js';
@@ -167,6 +168,7 @@ function buildPlan(mode, options) {
       { key: 'vsl', label: 'Montando o Reel VSL', weight: 12, enabled: options.vsl === true && mode !== 'render' },
       { key: 'vfx', label: 'Aplicando efeitos de vídeo', weight: 8, enabled: Array.isArray(options.fxMoments) && options.fxMoments.length > 0 },
       { key: 'usermedia', label: 'Aplicando suas mídias', weight: 10, enabled: (Array.isArray(options.userMedia) && options.userMedia.some((m) => m?.above !== true)) || (Array.isArray(options.motionScenes) && options.motionScenes.length > 0) || ((options.kinetic === true || options.vsl === true) && mode !== 'render') },
+      { key: 'behind', label: 'Texto atrás da pessoa', weight: 18, enabled: options.textBehind === true },
       { key: 'captions', label: 'Renderizando legendas dinâmicas', weight: 20, enabled: options.captions !== false },
       { key: 'texts', label: 'Colocando os textos', weight: 8, enabled: (Array.isArray(options.textLayers) && options.textLayers.length > 0) || ((options.kinetic === true || options.vsl === true) && mode !== 'render') },
       // objetos 3D e rabiscos das cenas de motion: por cima das legendas e dos textos
@@ -911,6 +913,27 @@ export async function runPipeline(job, onUpdate = () => {}) {
     }
     report.userMedia = { applied: r.applied, visual: r.visual, audio: r.audio };
     st.record(report.userMedia);
+    st.onProgress(1);
+  }
+
+  // 5c. Texto atrás da pessoa: a palavra-chave gigante no fundo, a pessoa na frente (antes da
+  // legenda, que continua por cima). Fora das cenas de motion e do B-roll.
+  if (has('behind')) {
+    const st = enter('behind');
+    try {
+      const exclude = [...brollWindows, ...(Array.isArray(options.motionScenes) ? options.motionScenes.map((s) => ({ start: s.start, end: s.end })) : [])];
+      const cur = { ...meta, ...(await probeSummary(input)) };
+      const r = await applyTextBehind(input, work, cur, transcript.segments, { exclude }, st.onProgress);
+      if (r) {
+        input = r.output;
+        report.textBehind = { count: r.items.length, words: r.items.map((x) => x.text), ...(r.skipped ? { skipped: r.skipped } : {}) };
+      }
+    } catch (e) {
+      // efeito extra: se falhar, o vídeo segue sem ele (não derruba o job)
+      log.warn(`texto atrás da pessoa: ${e.message}`);
+      report.textBehind = { count: 0, skipped: 'falhou ao recortar a pessoa' };
+    }
+    st.record(report.textBehind || { count: 0 });
     st.onProgress(1);
   }
 

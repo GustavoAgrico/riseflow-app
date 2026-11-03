@@ -653,6 +653,7 @@ export function parseOptions(raw) {
     captionNoPunct: o.captionNoPunct === true || o.captionNoPunct === 'true',
     // Tela dividida com B-roll: a legenda vai para o meio (na linha entre as metades).
     captionBrollCenter: o.captionBrollCenter !== false && o.captionBrollCenter !== 'false',
+    textBehind: o.textBehind === true,
     // Área segura das redes no vídeo vertical: legenda fora dos botões/descrição do Reels e TikTok.
     captionSafeZone: o.captionSafeZone !== false && o.captionSafeZone !== 'false',
     // Modo de exibição: auto (do estilo) | word (palavra por vez) | phrase (frase inteira).
