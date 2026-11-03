@@ -12,7 +12,7 @@ import { silenceRemovalRanges } from './silence.js';
 import { preciseRemovals, wordGapRanges, dropSlivers } from './cutRefine.js';
 import { remapKf } from '../../../shared/layerKeys.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, remapMotionScenes, unmapTime } from './timeline.js';
-import { insertBroll, faceCropGeometry } from './broll.js';
+import { insertBroll, faceCropGeometry, brollOutsideScenes } from './broll.js';
 import { applyManualFrame, applyVideoCrop, cleanCrop, cleanCropRanges, hasCrop, applyVideoBlanks, cleanBlanks } from './frame.js';
 import { applyUnderlay, hasUnderlay } from './underlay.js';
 import { applyUserMedia } from './overlay.js';
@@ -703,7 +703,16 @@ export async function runPipeline(job, onUpdate = () => {}) {
   let analysis = { themes: [], brollMoments: [] };
   {
     const st = enter('analyze');
-    analysis = await analyze(transcript, meta, { ...options, _jobId: job.id });
+    // Cenas de motion cobrem a tela: B-roll que cai dentro delas ficava escondido (as imagens do
+    // Google "sumiam" com o motion ligado). Pede momentos a mais e fica com os de fora das cenas.
+    const scenes = Array.isArray(options.motionScenes) ? options.motionScenes : [];
+    const brollMax = options.brollMax ?? 6;
+    analysis = await analyze(transcript, meta, { ...options, ...(scenes.length ? { brollMax: brollMax + scenes.length } : {}), _jobId: job.id });
+    if (scenes.length && Array.isArray(analysis.brollMoments)) {
+      const before = analysis.brollMoments.length;
+      analysis.brollMoments = brollOutsideScenes(analysis.brollMoments, scenes).slice(0, brollMax);
+      if (before !== analysis.brollMoments.length) log.info(`B-roll: ${before - analysis.brollMoments.length} momento(s) dentro do motion trocado(s) por outros`);
+    }
     report.themes = analysis.themes;
     if (analysis.niche) report.niche = analysis.niche;
     // Classificação narrativa (heurística): marca gancho/desenvolvimento/clímax/CTA.

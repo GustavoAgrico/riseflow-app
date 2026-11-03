@@ -1336,7 +1336,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           }
           const E = best ? best.e : 0;
           const tm = !best ? transMotion(t, L.trans) : null; // borrão de movimento das de câmera
-          const glitch = best?.type === 'glitch' || best?.type === 'rgbsplit';
+          const glitch = best?.type === 'glitch' || best?.type === 'rgbsplit' || best?.type === 'rgbblur';
           const leak = best?.type === 'lightleak';
           const stat = best?.type === 'static';
           const iris = best?.type === 'iris';
@@ -10636,6 +10636,7 @@ const FX_ANIM_CSS = `
 .o-tr-static { background-color: rgba(128,128,128,0.6); opacity: 0; animation-name: rfFlash; }
 .a-tr-static { animation-name: rfTrStatic; } @keyframes rfTrStatic { 0%, 100% { filter: none; } 50% { filter: saturate(0.2) contrast(1.4); } }
 .a-tr-rgbsplit { animation-name: rfGlitch; animation-duration: 0.6s !important; animation-timing-function: steps(1) !important; }
+.a-tr-rgbblur { animation-name: rfTrBlur; }
 .o-tr-iris { opacity: 1; animation-name: rfIris; } @keyframes rfIris { 0%, 100% { background: radial-gradient(circle, transparent 75%, #000 93%); } 50% { background: radial-gradient(circle, transparent 0%, #000 8%); } }
 .a-tr-zoomin { animation-name: rfTrZin; } @keyframes rfTrZin { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.5); filter: blur(2px); } }
 .a-tr-zoomout { animation-name: rfTrZout; } @keyframes rfTrZout { 0%, 45% { transform: scale(1.05); } 50% { transform: scale(1.5); filter: blur(2px); } 100% { transform: scale(1); } }
@@ -10657,7 +10658,7 @@ const FX_ANIM_CSS = `
 `;
 
 // Meia duração de cada transição (igual ao servidor) e textura de grão para a prévia.
-const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3, lightleak: 0.35, static: 0.2, rgbsplit: 0.2 };
+const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3, lightleak: 0.35, static: 0.2, rgbsplit: 0.2, rgbblur: 0.22 };
 const TRANS_DUR = Object.fromEntries(Object.entries(TRANS_HALF).map(([k, h]) => [k, +(h * 2).toFixed(2)]));
 // Camadas por cima do vídeo na prévia (molduras, faixas, grade, linhas de TV…)
 const FX_OVERLAY_BG = {
@@ -10674,11 +10675,11 @@ const FX_OVERLAY_BG = {
 const FX_THUMB_TF = { mirror: 'scaleX(-1)', vflip: 'scaleY(-1)', tilt: 'rotate(-4deg) scale(1.1)', tiltr: 'rotate(4deg) scale(1.1)', fisheye: 'scale(1.08)', zoomfix: 'scale(1.25)', zoomfix2: 'scale(1.5)', persp3d: 'perspective(300px) rotateX(12deg)', wideangle: 'scale(0.94)' };
 // Cursor da navalha (C), como o do Premiere: uma lâmina; o corte acontece no ponto laranja (9,27).
 const RAZOR_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><defs><linearGradient id='b' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#FFFFFF'/><stop offset='1' stop-color='#C3C9D2'/></linearGradient></defs><g transform='rotate(-40 18 13)' filter=''><path d='M7.5 8h21a1.5 1.5 0 0 1 1.5 1.5V15H6V9.5A1.5 1.5 0 0 1 7.5 8z' fill='url(#b)' stroke='#0B0C10' stroke-width='1.3'/><path d='M6 15h24v3.2H6z' fill='#8E97A4' stroke='#0B0C10' stroke-width='1.3'/><path d='M6.6 17.4h22.8' stroke='#FFFFFF' stroke-width='0.9'/><rect x='12.5' y='10.4' width='11' height='2.6' rx='1.3' fill='#0B0C10'/><circle cx='10' cy='11.7' r='1.2' fill='#0B0C10'/><circle cx='26' cy='11.7' r='1.2' fill='#0B0C10'/></g><circle cx='9' cy='27' r='2.4' fill='#FF6B35' stroke='#FFFFFF' stroke-width='1.1'/></svg>")}") 9 27, crosshair`;
-const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch', 'whiteout', 'iris', 'lightleak', 'static', 'rgbsplit']);
+const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch', 'whiteout', 'iris', 'lightleak', 'static', 'rgbsplit', 'rgbblur']);
 // Grupos das transições, como o painel do Film Impact
 const TRANS_GROUPS = [
   ['dissolver', 'Dissolver', ['dip', 'whiteout']],
-  ['luzes', 'Luzes e desfoques', ['flash', 'glow', 'blur', 'lightleak']],
+  ['luzes', 'Luzes e desfoques', ['flash', 'glow', 'blur', 'rgbblur', 'lightleak']],
   ['deslizar', 'Deslizar', ['slideleft', 'slideright', 'slideup', 'slidedown']],
   ['transformadores', 'Transformadores', ['zoomin', 'zoomout', 'spin']],
   ['grunge', 'Grunge e distorção', ['glitch', 'shake', 'static', 'rgbsplit']],

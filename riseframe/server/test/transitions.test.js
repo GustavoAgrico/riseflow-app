@@ -60,3 +60,14 @@ test('transições novas (vazamento de luz, estática, divisão RGB): o FFmpeg a
   const r = spawnSync(ffmpegPath, ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=30:d=3', '-vf', vf, '-f', 'null', '-']);
   assert.equal(r.status, 0, r.stderr.toString());
 });
+
+test('transição "Desfoque com RGB" (modelo de VSL): desfoque, cores separadas e clarão no ponto, e o FFmpeg aceita', async () => {
+  const vf = transitionVf('rgbblur', [2], 4);
+  assert.match(vf, /gblur=sigma=6/);
+  assert.match(vf, /rgbashift=rh=-16:bh=16/);
+  assert.match(vf, /eq=brightness=/);
+  const { spawnSync } = await import('node:child_process');
+  const { ffmpegPath } = await import('../src/pipeline/ffmpeg.js');
+  const r = spawnSync(ffmpegPath, ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=s=320x240:d=4', '-vf', vf, '-f', 'null', '-']);
+  assert.equal(r.status, 0, r.stderr.toString());
+});

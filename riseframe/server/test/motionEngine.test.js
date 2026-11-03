@@ -269,3 +269,11 @@ test('recortes 3D da pasta enviada: todo assunto aponta para um arquivo que exis
   for (const id of ELEMENT_ASSETS) assert.ok(fs.existsSync(path.join(dir, `${id}.png`)), id);
   for (const k of ['money', 'brain', 'love', 'win', 'discount', 'video', 'luck', 'click']) assert.ok(REAL_OBJECTS[k]?.length, k);
 });
+
+test('B-roll fora das cenas de motion: o que cai dentro da cena sai (ficava escondido atrás dela)', async () => {
+  const { brollOutsideScenes } = await import('../src/pipeline/broll.js');
+  const scenes = [{ start: 4, end: 9 }];
+  const out = brollOutsideScenes([{ start: 1, end: 3 }, { start: 5, end: 7 }, { start: 8.8, end: 11 }, { start: 3.5, end: 4.2 }], scenes);
+  assert.deepEqual(out.map((m) => m.start), [1, 8.8, 3.5]);
+  assert.equal(brollOutsideScenes([{ start: 5, end: 6 }], []).length, 1);
+});
