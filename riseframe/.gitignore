@@ -9,6 +9,8 @@ data/outputs/*
 data/work/*
 data/jobs/*
 data/cache/*
+# modelos baixados na 1ª vez (ex.: recorte de pessoas, 176 MB)
+data/models/
 !data/uploads/.gitkeep
 !data/outputs/.gitkeep
 !data/work/.gitkeep
