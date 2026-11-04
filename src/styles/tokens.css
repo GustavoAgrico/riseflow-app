@@ -77,6 +77,15 @@
   border-radius: var(--r-full); padding: 4px 10px;
 }
 
+/* Dashboard em grade: coluna principal + coluna lateral (alertas, conversas, plano) */
+.rf-dash { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; align-items: start; }
+.rf-dash-main { min-width: 0; }
+.rf-rail { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.rf-rail > * { margin-bottom: 0 !important; }
+@media (min-width: 1280px) {
+  .rf-dash { grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; }
+}
+
 /* Painel premium — superfície única das seções do Dashboard (substitui o glass translúcido) */
 .rf-panel {
   position: relative;
