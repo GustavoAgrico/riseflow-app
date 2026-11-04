@@ -5238,6 +5238,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       // motion desenhado (explicativo / estratégia): cada cena é uma camada (mesmo desenho na prévia e no render)
       const plan = explainerPlan({ segments: smartSegments(), dur, amount: kinAmount, existing: keep.filter((l) => l.end - l.start < dur * 0.8), style: kinTheme });
       const now = Date.now();
+      // Reel editado: a legenda por cima da pessoa faz parte do estilo (palavra dourada) — troca só se
+      // a legenda ainda está no modelo padrão
+      if (kinTheme === 'reel' && cap.captionTemplate === 'clean') setCapField({ captionTemplate: 'reel' });
       setTextLayers(keep);
       setMedia((prev) => {
         const rest = prev.filter((m) => !m.kinetic);
@@ -5253,7 +5256,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setSfxMoments([...keepSfx, ...sfx].sort((a, b) => a.t - b.t));
       const inScene = (w) => plan.scenes.some((sc) => (w.start + w.end) / 2 >= sc.start && (w.start + w.end) / 2 <= sc.end);
       setSegments((prev) => prev.map((sg) => ({ ...sg, words: sg.words.map((w) => (w.khid && !inScene(w) ? { ...w, hidden: false, khid: false } : !w.hidden && inScene(w) ? { ...w, hidden: true, khid: true } : w)) })));
-      sayAuto(plan.scenes.length ? `${plan.scenes.length} cena(s) de motion ${KINETIC_THEMES[kinTheme] || kinTheme} — dê play para ver` : 'Não achei um trecho com frases suficientes (precisa de 3 ou mais frases seguidas). Tente "Quase o vídeo todo".');
+      sayAuto(plan.scenes.length ? `${plan.scenes.length} cena(s) de motion ${KINETIC_THEMES[kinTheme] || kinTheme} — dê play para ver` : kinTheme === 'reel' ? 'Não achei frases fortes para as telas do Reel editado.' : 'Não achei um trecho com frases suficientes (precisa de 3 ou mais frases seguidas). Tente "Quase o vídeo todo".');
       return;
     }
     const aspect = (FMT_WH[aspectSel]?.[0] || vdim?.w || 1080) / (FMT_WH[aspectSel]?.[1] || vdim?.h || 1920);

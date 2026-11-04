@@ -10,7 +10,7 @@ import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
 import { pickKeyword, emphasisOf, premiumChunks, layoutCaption, autoMaxChars, stripPunct, timeSegments } from '../../../shared/captionKeyword.js';
 import {
   CAPTION_FONTS as FONT_DEFS, fontById, fontBold, CAPTION_COLORS, colorHex, isLightHex, isWhiteish,
-  HIGHLIGHT_IDS, LINE_HEIGHT, CAPTION_TEMPLATES, CAPTION_TEMPLATE_LABELS, safeCaptionBox, resolveFontFace,
+  HIGHLIGHT_IDS, LINE_HEIGHT, CAPTION_TEMPLATES, CAPTION_TEMPLATE_LABELS, safeCaptionBox, resolveFontFace, fontStyles,
 } from '../../../shared/captionStyle.js';
 
 export { premiumChunks, CAPTION_COLORS, CAPTION_TEMPLATES, CAPTION_TEMPLATE_LABELS };
@@ -334,7 +334,10 @@ export function buildAss(segments, meta, style = {}) {
   // Ênfase manual de uma palavra (cor própria e/ou maior). Depois dela volta ao normal.
   const emHex = (wd) => colorHex(wd.emColor, null);
   const hasEm = (wd) => !!(wd.emColor || wd.emBig);
-  const wordScale = (wd, j, kw) => (wd.emBig ? 1.3 : j === kw ? T.kwScale || 1.18 : 1);
+  // palavra-chave em outra fonte (Reel editado): encolhe para caber na largura do quadro
+  const kwFace = T.kwFace ? fontStyles(T.kwFace.font).find((x) => x.id === T.kwFace.style) : null;
+  const kwFit = (wd) => Math.min(T.kwScale || 1.18, kwFace ? (w * 0.8) / Math.max(1, tw(up(wd.word)) * em) : Infinity);
+  const wordScale = (wd, j, kw) => (wd.emBig ? 1.3 : j === kw ? kwFit(wd) : 1);
   const tw = (text) => FM.width(text) + sp * [...String(text)].length; // largura em em (com o espaçamento)
   const spaceW = FM.width(' ') + sp;
 
@@ -510,9 +513,14 @@ export function buildAss(segments, meta, style = {}) {
       const txtBord = useBox ? 0 : outline;
       const txtShad = useBox ? 0 : shadow;
       const base = `${plainColored ? `\\c${accent}` : ''}${useBox ? '\\bord0\\shad0' : ''}${hardShadow}${hollowOff}`;
-      const kwBig = (j) => `\\fscx${Math.round((T.kwScale || 1.18) * 100)}\\fscy${Math.round((T.kwScale || 1.18) * 100)}`;
+      const kwBig = (wd) => { const k = Math.round((wd ? kwFit(wd) : T.kwScale || 1.18) * 100); return `\\fscx${k}\\fscy${k}`; };
+      // cor e fonte próprias da palavra-chave (Reel editado: dourada, serifa itálica) — a cor
+      // escolhida pelo usuário vale quando não é branco
+      const kwColor = T.kwColor && accentIsWhite ? assColor(colorHex(T.kwColor)) : accent;
+      const kwFn = kwFace ? `\\fn${kwFace.family}\\b0` : '';
+      const kwFnOff = kwFace ? `\\fn${fontName}${boldFlag ? '\\b1' : ''}` : '';
       const emPart = (wd, t) => `{${emHex(wd) ? `\\1a&H00&\\c${assColor(emHex(wd))}` : ''}${wd.emBig ? '\\fscx130\\fscy130' : ''}}${t}{\\fscx100\\fscy100\\c${fill}${T.hollow ? '\\1a&HFF&' : ''}}`;
-      const kwPart = (t) => (glowOn ? `{${kwBig()}}${t}{\\fscx100\\fscy100}` : `{${kwBig()}\\c${accent}${T.hollow ? hollowOn : ''}}${t}{\\fscx100\\fscy100\\c${fill}${hollowOff}}`);
+      const kwPart = (t, wd) => (glowOn ? `{${kwBig(wd)}${kwFn}}${t}{\\fscx100\\fscy100${kwFnOff}}` : `{${kwBig(wd)}${kwFn}\\c${kwColor}${T.hollow ? hollowOn : ''}}${t}{\\fscx100\\fscy100${kwFnOff}\\c${fill}${hollowOff}}`);
 
       // fim da palavra j: onde começa a próxima (a última vai até o fim do cartão)
       const wordEnd = (j) => (j + 1 < words.length ? words[j + 1].start : endAll);
@@ -524,7 +532,7 @@ export function buildAss(segments, meta, style = {}) {
           const wd = words[j];
           const t = typing ? typeOut(up(wd.word), wd.start, wordEnd(j), words[0].start) : escapeAss(up(wd.word));
           if (hasEm(wd)) return emPart(wd, t);
-          return j === kw ? kwPart(t) : t;
+          return j === kw ? kwPart(t, wd) : t;
         };
         emitLines(1, words[0].start, endAll, g, `${anim}${glow}${base}`, partOf, words, kw);
       } else {
@@ -552,7 +560,7 @@ export function buildAss(segments, meta, style = {}) {
             if (typing && j > i) return `{\\alpha&HFF&}${escapeAss(up(wd.word))}`;
             const t = typing && j === i ? typeOut(up(wd.word), wd.start, wordEnd(j), start) : escapeAss(up(wd.word));
             if (hasEm(wd)) return `{\\alpha&H00&}${emPart(wd, t)}`;
-            if (j === kw) return glowOn ? `{\\alpha&H00&${kwBig()}}${t}{\\fscx100\\fscy100}` : `{\\alpha&H00&}${kwPart(t)}`;
+            if (j === kw) return glowOn ? `{\\alpha&H00&${kwBig(words[j])}${kwFn}}${t}{\\fscx100\\fscy100${kwFnOff}}` : `{\\alpha&H00&}${kwPart(t, words[j])}`;
             if (j === i) {
               if (T.hollow) return `{${hollowOn}\\c${accentIsWhite ? WHITE : accent}}${t}{${hollowOff}\\c${WHITE}}`;
               if (hl === 'box') return `{\\alpha&H00&\\c${isLightHex(markHex) ? assColor('111111') : WHITE}\\bord0\\shad0}${t}{\\c${WHITE}\\bord${txtBord}\\shad${txtShad}}`;

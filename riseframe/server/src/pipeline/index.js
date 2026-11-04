@@ -655,6 +655,9 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
   // motion explicativo (preset B) no automático: cenas desenhadas, com os sons e a legenda escondida
   if (options.kinetic === true && mode !== 'render' && Object.hasOwn(MOTION_STYLES, options.kineticTheme)) {
+    // Reel editado: a legenda por cima da pessoa é parte do estilo (palavra dourada em serifa
+    // itálica) — entra quando a legenda está no modelo padrão
+    if (options.kineticTheme === 'reel' && (!options.captionTemplate || options.captionTemplate === 'clean')) options.captionTemplate = 'reel';
     const plan = explainerPlan({ segments: transcript.segments, dur: meta.duration, amount: options.kineticAmount, style: options.kineticTheme });
     options.kinetic = false;
     if (plan.scenes.length) {

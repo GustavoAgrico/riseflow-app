@@ -7,7 +7,7 @@
 import { phraseChunks, wordRole } from './kinetic.js';
 import { conceptsIn } from './sceneElements.js';
 import { emphasisScore } from './keyMoments.js';
-import { STYLE_BEATS, styleBeatsFor, styleSfx, drawStyle, STYLE_FONT_FILES } from './motionStyles.js';
+import { STYLE_BEATS, styleBeatsFor, styleSfx, drawStyle, STYLE_FONT_FILES, reelType } from './motionStyles.js';
 
 export const EXPLAINER = {
   bg: '#DADADE', indigo: '#2A0A9A', violet: '#7A1FD6', magenta: '#B0309E', orange: '#F5A623', lime: '#B8E03A',
@@ -139,6 +139,7 @@ export function explainerPlan({ segments, dur, amount = 'chave', existing = [], 
   const chunks = phraseChunks(segments, 6).filter((c) => c.length);
   const busy = (existing || []).filter((l) => Number.isFinite(Number(l.start)));
   const free = (a, b) => !busy.some((l) => a < Number(l.end) && b > Number(l.start));
+  if (style === 'reel') return reelPlan(chunks, total, amount, free);
   // janelas: grupos de frases seguidas (6–10 s); "Momentos-chave" pega as de mais destaque
   const groups = [];
   for (let i = 0; i < chunks.length;) {
@@ -217,6 +218,45 @@ export function phraseTimes(words, keyword) {
     const at = k >= 0 && i > k ? Number(words[k].t) + 0.22 + STEP * (i - k - 1) : t0 + STEP * (k >= 0 ? i : i);
     return { ...w, t: r2(Math.min(t, at)) };
   });
+}
+
+/**
+ * Reel editado (o "depois" das referências): a pessoa fica na tela e só as frases mais fortes
+ * viram uma tela cheia CURTA (a duração da própria frase), espaçadas — ~1 a cada 8 s em
+ * "Momentos-chave", ~1 a cada 4,5 s em "Quase o vídeo todo". Pura.
+ */
+function reelPlan(chunks, total, amount, free) {
+  const every = amount === 'muitos' ? 4.5 : 8;
+  const limit = Math.max(1, Math.round((total || 30) / every));
+  const scored = chunks
+    .map((c, k) => ({ c, k, score: emphasisScore({ start: c[0].start, end: c[c.length - 1].end, words: c }, NaN, k) }))
+    .filter(({ c }) => c[c.length - 1].end - c[0].start >= 0.6)
+    .sort((a, b) => b.score - a.score);
+  const picked = [];
+  for (const x of scored) {
+    if (picked.length >= limit) break;
+    const a = x.c[0].start;
+    const b = x.c[x.c.length - 1].end;
+    if (picked.some((p) => Math.abs(p.c[0].start - a) < every * 0.6)) continue;
+    if (!free(a - 0.1, b + 0.4)) continue;
+    picked.push(x);
+  }
+  picked.sort((a, b) => a.c[0].start - b.c[0].start);
+  const scenes = [];
+  const sfx = [];
+  let prev = null;
+  picked.forEach(({ c }, i) => {
+    const [planned] = styleBeatsFor('reel', [c]);
+    const num = c.some((w) => /\d/.test(clean(w)));
+    planned.type = reelType({ i, num, keys: planned.data.keys || [], text: planned.data.text, prev });
+    prev = planned.type;
+    const start = Math.max(0, c[0].start - 0.12);
+    const end = Math.min(total || Infinity, Math.max(start + 1.3, c[c.length - 1].end + 0.35));
+    const beat = { type: planned.type, start: r2(start), end: r2(end), words: phraseTimes(c.map((w) => ({ w: clean(w), t: r2(w.start) })), planned.data.keyword), data: planned.data };
+    scenes.push({ start: r2(start), end: r2(end), style: 'reel', beats: [beat] });
+    sfx.push(...thinSfx([beat], styleSfx('reel', [beat])));
+  });
+  return { scenes, sfx };
 }
 
 /** Sons de cada batida (pop, subida, tique do contador, quique da forma, tique das barras e das etiquetas, varrida, flecha, impacto). */

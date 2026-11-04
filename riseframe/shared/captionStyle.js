@@ -168,6 +168,9 @@ export const CAPTION_TEMPLATES = {
   // VSL (modelo de vídeo de vendas): frase pequena na altura do peito e a palavra de peso GRANDE
   // sozinha no meio ("é ter / SEGUIDORES / qualificados")
   vsl: { mode: 'phrase', size: 0.048, align: 2, marginV: 0.3, outline: 0.06, bold: true, upper: false, anim: 'pop', highlightKeyword: true, keywordBreak: true, keywordSolo: true, kwScale: 2.3, defaultFont: 'montserrat' },
+  // Reel editado (o "depois" das referências): frase curta branca pequena na altura do peito e a
+  // palavra-chave grande em serifa itálica (Playfair Black itálico), dourada, na linha de baixo
+  reel: { mode: 'phrase', size: 0.04, align: 2, marginV: 0.32, outline: 0, shadow: 0.05, bold: true, upper: false, anim: 'fade', highlightKeyword: true, keywordBreak: true, keywordSolo: true, kwScale: 2.6, kwFace: { font: 'playfair', style: '900i' }, kwColor: '#E8B931', defaultFont: 'inter' },
   // Minimalista: as outras palavras apagadas e a falada colorida.
   minimal: { mode: 'phrase', size: 0.056, align: 2, marginV: 0.14, outline: 0.05, bold: true, upper: false, anim: 'fade', forceHighlight: true, dimOthers: true, defaultFont: 'poppins' },
   // Premium: palavras entram uma a uma; comuns pequenas em cima, a palavra-chave embaixo,
@@ -202,6 +205,7 @@ export const CAPTION_TEMPLATE_LABELS = {
   marker: 'Marca-texto',
   duo: 'Duas linhas',
   vsl: 'VSL (palavra no meio)',
+  reel: 'Reel editado (palavra dourada)',
   minimal: 'Minimalista',
   premium: 'Premium (palavra a palavra + brilho)',
   tiktok: 'TikTok (palavra cresce)',

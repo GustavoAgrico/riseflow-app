@@ -40,6 +40,8 @@ export const STYLE_FONT_FILES = [
   ['RF Garamond 400i', 'S-garamond-400i.ttf'],
   ['RF Barlow 900i', 'S-barlow-900i.ttf'],
   ['RF Garamond 700', 'S-garamond-700.ttf'],
+  ['RF Playfair 900i', 'S-playfair-900i.ttf'],
+  ['RF Anton', 'Anton-Regular.ttf'],
 ];
 const FM7 = 'RF Montserrat 700';
 const FM8 = 'RF Montserrat 800';
@@ -60,6 +62,7 @@ export const STYLE_BEATS = {
   azul: ['az-hero', 'az-badge', 'az-end'],
   colagem: ['cg-letter', 'cg-select', 'cg-circle', 'cg-number'],
   premium: ['pm-count', 'pm-calendar', 'pm-stage', 'pm-search', 'pm-progress', 'pm-icon'],
+  reel: ['re-dark', 're-light', 're-question', 're-list', 're-number'],
 };
 const DARK_BEATS = new Set(['e-end', 'b-dark', 'c-float', 'c-embers', 'c-object', 'c-strip', 'c-big', 'mi-word', 'mi-count', 'mi-cta']);
 
@@ -69,6 +72,7 @@ const keysOf = (c) => c.filter((w, i) => wordRole(w, i, c) !== 'small' && !/\d/.
 function pickType(style, { i, n, prev, used, keys, concept, k, len, num, text = '', objs = 0 }) {
   const k0 = (_, r) => Math.ceil(len * r);
   const last = i === n - 1 && n >= 3;
+  if (style === 'reel') return reelType({ i: k, num, keys, text, prev });
   if (style === 'premium') {
     // dias → calendário; valor dito → contador; dois objetos → palco com câmera; busca, entrega, ícone
     if (dayTarget(text) > 0 && prev !== 'pm-calendar') return 'pm-calendar';
@@ -228,6 +232,10 @@ export function styleSfx(style, beats) {
         for (let k2 = 1; k2 <= n; k2 += 1) { const j = Math.round((k2 * target) / n); add(b.start + 0.1 + rollDur(b) * (1 - (1 - j / target) ** (1 / 3)), 'rl-tick', 0.3, 'contagem'); }
         add(b.start + 0.1 + rollDur(b), 'cg-ding', 0.5, 'número');
       }
+    } else if (style === 'reel') {
+      // clarão de luz na entrada (passagem) e batida na palavra grande
+      add(b.start, 'cn-whoosh', 0.45, 'clarão de entrada');
+      if (kw && kw.t - b.start > 0.25) add(kw.t, b.type === 're-number' ? 'bk-hit' : 'pr-hit', 0.4, 'palavra grande');
     } else if (style === 'premium') {
       premiumSfx(b, i, add);
     } else if (style === 'azul') {
@@ -1195,8 +1203,8 @@ const MI_DRAW = {
 // rápida com desfoque, tremor, zoom de saída, faixa diagonal de transição). Fundo muda de cor a
 // cada cena (claro, verde, laranja, escuro, gradiente), como nas referências.
 const CN_BG = ['#F7F7F4', '#0E7C62', '#FF8A1F', '#0B0B12', 'grad'];
-const CN_CAM = { 'cn-type': 'push', 'cn-slide': 'whip', 'cn-rise': 'shake', 'cn-box': 'pull', 'cn-stripe': 'drift', 'bl-hit': 'pull', 'bl-echo': 'push', 'bl-stripe': 'shake', 'bl-slice': 'whip', 'mk-intro': 'push', 'mk-card': 'drift', 'mk-bars': 'pull', 'mk-logo': 'shake', 'cg-letter': 'push', 'cg-select': 'drift', 'cg-circle': 'pull', 'cg-number': 'push', 'pm-count': 'push', 'pm-calendar': 'push', 'pm-stage': 'still', 'pm-search': 'drift', 'pm-progress': 'still', 'pm-icon': 'pull' };
-const CAM_STYLES = new Set(['cinetico', 'bloco', 'marca', 'colagem', 'premium']);
+const CN_CAM = { 'cn-type': 'push', 'cn-slide': 'whip', 'cn-rise': 'shake', 'cn-box': 'pull', 'cn-stripe': 'drift', 'bl-hit': 'pull', 'bl-echo': 'push', 'bl-stripe': 'shake', 'bl-slice': 'whip', 'mk-intro': 'push', 'mk-card': 'drift', 'mk-bars': 'pull', 'mk-logo': 'shake', 'cg-letter': 'push', 'cg-select': 'drift', 'cg-circle': 'pull', 'cg-number': 'push', 'pm-count': 'push', 'pm-calendar': 'push', 'pm-stage': 'still', 'pm-search': 'drift', 'pm-progress': 'still', 'pm-icon': 'pull', 're-dark': 'push', 're-light': 'push', 're-question': 'push', 're-list': 'drift', 're-number': 'push' };
+const CAM_STYLES = new Set(['cinetico', 'bloco', 'marca', 'colagem', 'premium', 'reel']);
 const cnDark = (bg) => bg === '#0B0B12' || bg === 'grad' || bg === '#0E7C62';
 const cnInk = (bg) => (cnDark(bg) ? '#FFFFFF' : '#111111');
 
@@ -2911,4 +2919,207 @@ function premiumSfx(b, i, add) {
   }
 }
 
-const DRAW = { editorial: ED_DRAW, bordo: BO_DRAW, 'cinema-escuro': CI_DRAW, minimalista: MI_DRAW, cinetico: CN_DRAW, bloco: BLO_DRAW, marca: MRC_DRAW, rolagem: RLG_DRAW, azul: AZ_DRAW, colagem: CG_DRAW, premium: PM_DRAW };
+// ── Reel editado (o "depois" das referências de pessoa falando): telas cheias CURTAS só nos
+// momentos fortes — fundo escuro com texto condensado enorme brilhando, cinza claro com grade e a
+// palavra dourada em serifa itálica, "?" gigante, cartão de vidro com lista sobre bolhas
+// vermelhas, número gigante vermelho. Entrada e saída com clarão de luz laranja.
+const RE_GOLD = '#E8B931';
+const RE_RED = '#E5262A';
+const FPF = 'RF Playfair 900i';
+const FAN = 'RF Anton';
+/** Tipo da cena do reel (rodízio; número e lista quando a frase pede). */
+export function reelType({ i = 0, num = false, keys = [], text = '', prev = null }) {
+  if (num && prev !== 're-number') return 're-number';
+  if (/\?|\b(por ?que|como|quem|qual)\b/i.test(text) && prev !== 're-question') return 're-question';
+  // lista só em enumeração de verdade (4+ palavras fortes ou vírgulas)
+  if ((keys.length >= 4 || (text.match(/,/g) || []).length >= 2) && prev !== 're-list') return 're-list';
+  const rot = ['re-dark', 're-light', 're-dark', 're-question'];
+  const t = rot[i % rot.length];
+  return t === prev ? rot[(i + 1) % rot.length] : t;
+}
+function reFlash(ctx, lt, dur) {
+  // clarão de luz quente (filme queimando) na entrada e na saída
+  const a = Math.max(1 - clamp(lt / 0.32), clamp((lt - (dur - 0.22)) / 0.22));
+  if (a <= 0.01) return;
+  ctx.save();
+  setFilter(ctx);
+  ctx.globalCompositeOperation = 'screen';
+  const g = ctx.createLinearGradient(0, 0, BW * 0.4, BH);
+  g.addColorStop(0, `rgba(255,214,120,${(0.95 * a).toFixed(3)})`);
+  g.addColorStop(0.45, `rgba(255,120,40,${(0.8 * a).toFixed(3)})`);
+  g.addColorStop(1, `rgba(180,30,20,${(0.35 * a).toFixed(3)})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(-200, -200, BW + 400, BH + 400);
+  ctx.restore();
+}
+function reDarkBg(ctx, warm = true) {
+  ctx.save();
+  setFilter(ctx);
+  ctx.fillStyle = '#120E0E';
+  ctx.fillRect(-200, -200, BW + 400, BH + 400);
+  const g = ctx.createRadialGradient(540, 860, 60, 540, 960, 1100);
+  g.addColorStop(0, warm ? 'rgba(90,50,44,0.85)' : 'rgba(60,60,60,0.7)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(-200, -200, BW + 400, BH + 400);
+  ctx.restore();
+}
+/** Texto condensado enorme (Anton), em até 2 linhas, com brilho. */
+function reBig(ctx, text, lt, at, { y = 900, color = '#FFFFFF', glow = 'rgba(255,255,255,0.55)', maxW = 900, size = 300 } = {}) {
+  const words = String(text || '').toUpperCase().split(' ').filter(Boolean);
+  if (!words.length) return;
+  const lines = words.length > 2 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [words.join(' ')];
+  const e = outCubic(prog(lt, at, 0.4));
+  if (e <= 0) return;
+  let s = size;
+  for (const ln of lines) { const w = measure(ctx, ln, s, FAN, 0); if (w > maxW) s *= maxW / w; }
+  ctx.save();
+  setFilter(ctx, (1 - e) * 14);
+  ctx.globalAlpha *= e;
+  ctx.translate(540, y);
+  const sc = lerp(1.18, 1, e);
+  ctx.scale(sc, sc);
+  ctx.font = `${s}px "${FAN}"`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = 50;
+  ctx.fillStyle = color;
+  lines.forEach((ln, i) => ctx.fillText(ln, 0, (i - (lines.length - 1) / 2) * s * 0.95));
+  ctx.restore();
+}
+/** Frase pequena + palavra-chave grande em serifa itálica dourada (como "A influência é a nova / moeda"). */
+function reGoldPair(ctx, b, lt, { y = 960, small = '#1D1D1F', kwColor = RE_GOLD } = {}) {
+  const [pre, key, post] = splitAtKey(b);
+  const head = [...pre];
+  if (head.length) line(ctx, head, lt, { x: 540, y: y - 130, size: 58, font: FI7, color: small, maxW: 900, ls: -0.03 });
+  if (key.length) {
+    const k = key[0];
+    const e = outCubic(prog(lt, k.at - 0.04, 0.45));
+    if (e > 0) {
+      let s = 230;
+      const w = measure(ctx, k.text, s, FPF, -0.02);
+      if (w > 940) s *= 940 / w;
+      ctx.save();
+      setFilter(ctx, (1 - e) * 10);
+      ctx.globalAlpha *= e;
+      ctx.translate(540, y + 40 + (1 - e) * 30);
+      ctx.font = `${s}px "${FPF}"`;
+      ctx.letterSpacing = `${(-0.02 * s).toFixed(1)}px`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.shadowColor = 'rgba(232,185,49,0.45)';
+      ctx.shadowBlur = 40;
+      const g = ctx.createLinearGradient(0, -s * 0.7, 0, s * 0.1);
+      g.addColorStop(0, '#F6D774');
+      g.addColorStop(1, kwColor);
+      ctx.fillStyle = g;
+      ctx.fillText(k.text, 0, 0);
+      ctx.restore();
+    }
+  }
+  if (post.length) line(ctx, post, lt, { x: 540, y: y + 150, size: 52, font: FI7, color: small, maxW: 900, ls: -0.03 });
+}
+const RE_DRAW = {
+  // escuro quente: frase-chave condensada enorme, branca e brilhando; objeto do assunto no meio
+  're-dark'(ctx, b, lt, env) {
+    reDarkBg(ctx);
+    const [, key] = splitAtKey(b);
+    const kt = key[0]?.at ?? 0.1;
+    const words = beatWords(b);
+    // frase curta inteira; longa: o trecho final que termina na palavra-chave (até 3 palavras seguidas)
+    const ki = Math.max(0, words.findIndex((w) => low(w.text) === low(b.data.keyword)));
+    const strong = words.length <= 4 ? words.map((w) => w.text).join(' ') : words.slice(Math.max(0, ki - 2), ki + 1).map((w) => w.text).join(' ');
+    reBig(ctx, strong, lt, Math.min(0.15, kt), { y: 880 });
+    if (b.data.element) {
+      const e = clamp(outBack(prog(lt, Math.max(0.2, kt), 0.5)));
+      objectImg(ctx, env, b.data.element, 540, 900, 380 * e, { shadow: 'rgba(0,0,0,0.5)', rot: Math.sin(lt * 2) * 0.05 });
+    }
+    reFlash(ctx, lt, b.end - b.start);
+  },
+  // cinza claro com grade: frase pequena escura e a palavra-chave dourada em serifa itálica
+  're-light'(ctx, b, lt) {
+    ctx.save();
+    setFilter(ctx);
+    ctx.fillStyle = '#BDBDBF';
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    const g = ctx.createRadialGradient(540, 940, 60, 540, 960, 900);
+    g.addColorStop(0, 'rgba(255,255,255,0.95)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    ctx.strokeStyle = 'rgba(0,0,0,0.05)';
+    ctx.lineWidth = 2;
+    for (let x = 180; x <= 900; x += 90) { ctx.beginPath(); ctx.moveTo(x, 600); ctx.lineTo(x, 1320); ctx.stroke(); }
+    for (let y = 600; y <= 1320; y += 90) { ctx.beginPath(); ctx.moveTo(180, y); ctx.lineTo(900, y); ctx.stroke(); }
+    ctx.restore();
+    reGoldPair(ctx, b, lt, { y: 960 });
+    reFlash(ctx, lt, b.end - b.start);
+  },
+  // quase preto com "?" gigante apagado atrás; frase pequena branca e a palavra dourada
+  're-question'(ctx, b, lt) {
+    reDarkBg(ctx, false);
+    ctx.save();
+    setFilter(ctx, 6);
+    ctx.globalAlpha = 0.16;
+    ctx.font = `1300px "${FPF}"`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText('?', 540 + Math.sin(lt * 0.8) * 10, 1000);
+    ctx.restore();
+    reGoldPair(ctx, b, lt, { y: 1000, small: 'rgba(255,255,255,0.9)' });
+    reFlash(ctx, lt, b.end - b.start);
+  },
+  // bolhas vermelhas desfocadas; cartão de vidro com título vermelho condensado e lista
+  're-list'(ctx, b, lt) {
+    reDarkBg(ctx);
+    ctx.save();
+    setFilter(ctx, 18);
+    for (const [x, y, r] of [[160, 420, 260], [960, 760, 300], [220, 1480, 280], [900, 1650, 200]]) {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(229,38,42,0.85)');
+      g.addColorStop(1, 'rgba(229,38,42,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x + Math.sin(lt + x) * 12, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    const e = clamp(outBack(prog(lt, 0, 0.5)));
+    ctx.save();
+    setFilter(ctx);
+    ctx.translate(540, 960);
+    ctx.rotate(-0.05 * (1 - e) - 0.02);
+    ctx.scale(lerp(0.9, 1, e), lerp(0.9, 1, e));
+    ctx.globalAlpha *= e;
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 2;
+    roundRectPath(ctx, -360, -380, 720, 760, 28);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    reBig(ctx, b.data.keyword, lt, 0.1, { y: 760, color: RE_RED, glow: 'rgba(229,38,42,0.7)', size: 170, maxW: 600 });
+    const items = (b.data.keys || []).filter((k) => low(k) !== low(b.data.keyword)).slice(0, 4);
+    const ws = beatWords(b);
+    items.forEach((it, j) => {
+      const w = ws.find((x) => low(x.text) === low(it));
+      line(ctx, [{ text: `- ${it}`, at: w ? w.at : 0.3 + j * 0.25 }], lt, { x: 240, y: 920 + j * 80, size: 54, font: FI7, color: '#FFFFFF', align: 'left', maxW: 600 });
+    });
+    reFlash(ctx, lt, b.end - b.start);
+  },
+  // número gigante vermelho brilhando sobre o escuro; o resto da frase pequeno embaixo
+  're-number'(ctx, b, lt) {
+    reDarkBg(ctx);
+    const m = String(b.data.text || '').match(/\d[\d.,]*%?/);
+    const n = m ? m[0] : b.data.keyword;
+    const nw = beatWords(b).find((w) => /\d/.test(w.text));
+    reBig(ctx, n, lt, nw ? Math.max(0, nw.at - 0.05) : 0.1, { y: 880, color: RE_RED, glow: 'rgba(229,38,42,0.8)', size: 620, maxW: 860 });
+    const rest = beatWords(b).filter((w) => !/\d/.test(w.text));
+    if (rest.length) line(ctx, rest.slice(0, 7), lt, { x: 540, y: 1320, size: 58, font: FI7, color: 'rgba(255,255,255,0.88)', maxW: 900 });
+    reFlash(ctx, lt, b.end - b.start);
+  },
+};
+
+const DRAW = { editorial: ED_DRAW, bordo: BO_DRAW, 'cinema-escuro': CI_DRAW, minimalista: MI_DRAW, cinetico: CN_DRAW, bloco: BLO_DRAW, marca: MRC_DRAW, rolagem: RLG_DRAW, azul: AZ_DRAW, colagem: CG_DRAW, premium: PM_DRAW, reel: RE_DRAW };

@@ -361,3 +361,29 @@ test('sons no ritmo das referências: um por batida no máximo, alternando, nunc
   assert.deepEqual(out.map((x) => x.type), ['cn-whoosh', 'bk-hit', 'mi-ding']);
   for (let i = 1; i < out.length; i += 1) assert.ok(out[i].t - out[i - 1].t >= 0.5);
 });
+
+test('Reel editado: telas curtas só nas frases fortes, espaçadas; legenda dourada em serifa itálica', async () => {
+  const { STYLE_BEATS } = await import('../../shared/motionStyles.js');
+  const { buildAss } = await import('../src/pipeline/captions.js');
+  const seg = (t, text) => { const ws = text.split(' '); return { start: t, end: t + ws.length * 0.3, text, words: ws.map((w, i) => ({ word: w, start: t + i * 0.3, end: t + i * 0.3 + 0.26 })) }; };
+  const texts = ['nós estamos na era da atenção', 'e isso muda tudo', 'a influência é a nova moeda', 'quem não aparece some', 'você já ganhou 2 clientes', 'como que faz isso', 'é rápido e flexível', 'salva esse vídeo agora'];
+  const segments = texts.map((t, i) => seg(i * 4, t));
+  const plan = explainerPlan({ segments, dur: 34, amount: 'chave', style: 'reel' });
+  assert.ok(plan.scenes.length >= 2 && plan.scenes.length <= 5, `${plan.scenes.length} telas`);
+  for (const sc of plan.scenes) {
+    assert.equal(sc.style, 'reel');
+    assert.equal(sc.beats.length, 1, 'uma frase por tela');
+    assert.ok(sc.end - sc.start >= 1.3 && sc.end - sc.start <= 3.5, 'tela curta');
+    assert.ok(STYLE_BEATS.reel.includes(sc.beats[0].type));
+  }
+  for (let i = 1; i < plan.scenes.length; i += 1) assert.ok(plan.scenes[i].start - plan.scenes[i - 1].end > 2, 'a pessoa aparece entre as telas');
+  for (const s of plan.sfx) assert.ok(SFX_LIBRARY[s.type], s.type);
+  const ass = buildAss([seg(0, 'nós estamos na era da atenção')], { width: 1080, height: 1920 }, { template: 'reel', color: 'white' });
+  assert.match(ass, /\\fnRFS playfair 900i/, 'palavra-chave em Playfair itálico');
+  assert.match(ass, /\\c&H0031B9E8/, 'dourada quando a cor é branco');
+  const ctx = createCanvas(108, 192).getContext('2d');
+  for (const type of STYLE_BEATS.reel) {
+    const b = { type, start: 0, end: 2, words: [{ w: 'era', t: 0.1 }, { w: 'da', t: 0.2 }, { w: 'atenção', t: 0.4 }, { w: '2', t: 0.5 }], data: { text: 'era da atenção 2', keyword: 'atenção', keys: ['era', 'atenção', 'foco', 'tempo'] } };
+    for (let t = -0.1; t < 2.2; t += 0.2) drawExplainer(ctx, { start: 0, end: 2, style: 'reel', beats: [b] }, t, { W: 108, H: 192, image: () => null });
+  }
+});

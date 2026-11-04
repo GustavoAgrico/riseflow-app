@@ -17,7 +17,7 @@ const STEPS = [
   { id: 'ai', label: 'Edição com IA' },
 ];
 
-const HIGHLIGHT = ['premium', 'vsl', 'keyword', 'duo', 'karaoke', 'marker'];
+const HIGHLIGHT = ['premium', 'reel', 'vsl', 'keyword', 'duo', 'karaoke', 'marker'];
 
 // Agrupa as melhorias por assunto, para o cliente achar sem ler a lista inteira.
 const TASK_GROUPS = [
