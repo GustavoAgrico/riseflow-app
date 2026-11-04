@@ -74,13 +74,13 @@ export function behindAss(plan, { width, height }) {
     '[Script Info]', 'ScriptType: v4.00+', `PlayResX: ${W}`, `PlayResY: ${H}`, 'WrapStyle: 2', 'ScaledBorderAndShadow: yes', '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Behind,Anton,${Math.round(H * 0.2)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1`,
+    `Style: Behind,Anton,${Math.round(H * 0.35)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1`,
     '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
   ];
   const lines = plan.map((p) => {
-    // Anton é condensada: ~0,46 em por letra maiúscula; ocupa até 94% da largura
-    const fs = Math.round(Math.min(H * 0.2, (W * 0.94) / (p.text.length * 0.46)));
-    const tags = `\\pos(${Math.round(W / 2)},${Math.round(H * 0.28)})\\fs${fs}\\fad(150,180)\\fscx86\\fscy86\\t(0,320,\\fscx100\\fscy100)`;
+    // Anton é condensada: ~0,46 em por letra maiúscula; ocupa até 96% da largura
+    const fs = Math.round(Math.min(H * 0.35, (W * 0.96) / (p.text.length * 0.46)));
+    const tags = `\\pos(${Math.round(W / 2)},${Math.round(H * 0.30)})\\fs${fs}\\fad(120,200)\\fscx80\\fscy80\\t(0,350,\\fscx100\\fscy100)`;
     return `Dialogue: 0,${assTime(p.start)},${assTime(p.end)},Behind,,0,0,0,,{${tags}}${p.text}`;
   });
   return `${[...head, ...lines].join('\n')}\n`;

@@ -3109,7 +3109,7 @@ function reDarkBg(ctx, warm = true) {
   klickBg(ctx, null, 0, 0, { halftoneColor: warm ? '#CC6644' : '#888899', accent: warm ? '#CC4422' : '#555566', dark: true });
 }
 /** Texto condensado enorme (Anton), em até 2 linhas, com brilho. */
-function reBig(ctx, text, lt, at, { y = 900, color = '#FFFFFF', glow = 'rgba(255,255,255,0.55)', maxW = 900, size = 300 } = {}) {
+function reBig(ctx, text, lt, at, { y = 900, color = '#FFFFFF', glow = 'rgba(255,255,255,0.55)', maxW = 1020, size = 520 } = {}) {
   const words = String(text || '').toUpperCase().split(' ').filter(Boolean);
   if (!words.length) return;
   const lines = words.length > 2 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [words.join(' ')];
@@ -3231,7 +3231,7 @@ const RE_DRAW = {
     ctx.fill();
     ctx.stroke();
     ctx.restore();
-    reBig(ctx, b.data.keyword, lt, 0.1, { y: 760, color: RE_RED, glow: 'rgba(229,38,42,0.7)', size: 170, maxW: 600 });
+    reBig(ctx, b.data.keyword, lt, 0.1, { y: 760, color: RE_RED, glow: 'rgba(229,38,42,0.7)', size: 240, maxW: 640 });
     const items = (b.data.keys || []).filter((k) => low(k) !== low(b.data.keyword)).slice(0, 4);
     const ws = beatWords(b);
     items.forEach((it, j) => {
