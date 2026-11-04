@@ -246,9 +246,10 @@ test('colagem editorial (referências da pasta): objeto no lugar da letra, sele�
     assert.equal(sc.style, 'colagem');
     for (const b of sc.beats) { assert.ok(STYLE_BEATS.colagem.includes(b.type), b.type); types.add(b.type); }
   }
-  assert.ok(types.has('cg-letter') && types.has('cg-number'), [...types].join(','));
+  assert.ok((types.has('cg-letter') || types.has('cg-pair')) && types.has('cg-number'), [...types].join(','));
   // o objeto entra na palavra do assunto (cérebro), não na palavra-chave
-  const letter = plan.scenes.flatMap((sc) => sc.beats).find((b) => b.type === 'cg-letter');
+  // a cena do objeto (na letra ou o recorte embaixo da serifa) usa a palavra do assunto
+  const letter = plan.scenes.flatMap((sc) => sc.beats).find((b) => (b.type === 'cg-letter' || b.type === 'cg-pair') && b.data.element === 'real/brain-pink');
   assert.equal(letter.data.objWord, 'cérebro');
   assert.equal(letter.data.element, 'real/brain-pink');
   const names = new Set(plan.sfx.map((s) => s.type));
