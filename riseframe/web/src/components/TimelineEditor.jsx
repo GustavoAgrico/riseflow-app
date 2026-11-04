@@ -4713,7 +4713,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   });
   const fitNow = (fitRanges || []).some((r) => cur >= r.start - 0.001 && cur < r.end);
   // Tela dividida sem zoom: a pessoa inteira contida sobre o fundo desfocado (como o render)
-  const splitContain = previewMode === 'split' && !podSplit && zoom <= 1.001;
+  const splitContain = previewMode === 'split' && !podSplit;
   const personCropStyle = (() => {
     if (fitNow && !fitMode && aspectSel !== 'original') return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx };
     if (fitMode || splitContain) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilterFx };
