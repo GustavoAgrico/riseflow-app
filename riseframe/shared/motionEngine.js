@@ -170,9 +170,33 @@ export function explainerPlan({ segments, dur, amount = 'chave', existing = [], 
       return { type: b.type, start: r2(s), end: r2(Math.max(s + 0.6, e)), words: phraseTimes(b.chunk.map((w) => ({ w: clean(w), t: r2(w.start) })), b.data?.keyword), data: b.data };
     });
     scenes.push({ start: r2(start), end: r2(end), style: Object.hasOwn(MOTION_STYLES, style) ? style : 'explicativo', beats });
-    sfx.push(...(style === 'estrategia' ? strategySfx(beats) : STYLE_BEATS[style] ? styleSfx(style, beats) : explainerSfx(beats)));
+    sfx.push(...thinSfx(beats, style === 'estrategia' ? strategySfx(beats) : STYLE_BEATS[style] ? styleSfx(style, beats) : explainerSfx(beats)));
   }
   return { scenes, sfx };
+}
+
+// Peso de cada som: fechamento/valor final > impacto/passagem > pop/cartão > tique/tecla/clique.
+const sfxRank = (type) => (/ding|chime|cash|shine|riser|rise|pr-out|-end$/.test(type) ? 3 : /hit|impact|thud|boom|whoosh|swoosh|swipe|air|glitch|slice/.test(type) ? 2 : /pop|card|pen|stroke/.test(type) ? 1 : 0);
+/**
+ * Sons no ritmo das referências: nelas só ~1 em cada 3 ações tem efeito (o resto é a trilha).
+ * Fica no máximo um som por batida, o de mais peso; tiques/teclas/cliques em série saem; duas
+ * batidas seguidas não tocam as duas (exceto o som forte); nunca dois sons a menos de 0,5 s. Pura.
+ */
+export function thinSfx(beats, sfx) {
+  const best = beats.map((b, i) => {
+    const mine = sfx.filter((x) => x.t >= b.start - 0.05 && (i === beats.length - 1 ? x.t <= b.end + 0.5 : x.t < beats[i + 1].start - 0.05));
+    return mine.reduce((a, x) => (!a || sfxRank(x.type) > sfxRank(a.type) || (sfxRank(x.type) === sfxRank(a.type) && x.t < a.t) ? x : a), null);
+  });
+  const out = [];
+  best.forEach((x, i) => {
+    if (!x) return;
+    const prev = out[out.length - 1];
+    // batidas seguidas: só o som forte (fechamento/valor) toca nas duas; o resto alterna
+    if (sfxRank(x.type) < 3 && prev && prev.beat === i - 1) return;
+    if (prev && x.t - prev.t < 0.5) return;
+    out.push({ ...x, beat: i });
+  });
+  return out.map(({ beat, ...x }) => x);
 }
 
 /**

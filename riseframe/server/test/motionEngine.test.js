@@ -145,7 +145,9 @@ test('minimalista (cards e palavras): batidas do estilo, sons no ponto da ação
   // sons: só dos tipos previstos, e o contador tem riser + ding
   const names = new Set(plan.sfx.map((s) => s.type));
   for (const n of names) assert.ok(SFX_LIBRARY[n], `som ${n} existe no catálogo`);
-  assert.ok(names.has('mi-pop') && names.has('mi-air') && names.has('mi-shine') && names.has('mi-rise'), [...names].join(','));
+  // sons do kit minimalista, no ritmo das referências (no máximo um por batida)
+  for (const n of names) assert.ok(n.startsWith('mi-'), n);
+  assert.ok(plan.sfx.length <= plan.scenes.reduce((x, sc) => x + sc.beats.length, 0), 'no máximo um som por batida');
   // o sanitizador do servidor mantém o estilo e as batidas
   const sc = plan.scenes[0];
   const o = parseOptions({ kinetic: true, kineticTheme: 'minimalista', motionScenes: [sc] });
@@ -309,7 +311,7 @@ test('premium (referências: contador, calendário, palco com câmera, busca, pr
   assert.equal(keys[keys.length - 1][1].s, 1, 'termina no plano geral');
   const names = new Set(plan.sfx.map((s) => s.type));
   for (const n of names) assert.ok(SFX_LIBRARY[n], `som ${n} existe`);
-  assert.ok(names.has('rl-tick') && names.has('cn-whoosh') && names.has('cn-key'), [...names].join(','));
+  assert.ok(plan.sfx.length >= 2 && plan.sfx.length <= beats.length, `sons esparsos: ${[...names].join(',')}`);
   // o editor manda as cenas de volta: objetos, ícone e busca passam pelo filtro
   const o = parseOptions({ kinetic: true, kineticTheme: 'premium', motionScenes: plan.scenes });
   const back = o.motionScenes.flatMap((sc) => sc.beats);
@@ -345,4 +347,17 @@ test('B-roll com motion no vídeo todo: abre espaço na cena em vez de sumir com
   assert.equal(free.scenes[0], scene);
   // trecho curto demais depois do corte some
   assert.equal(carveScenes([{ start: 0, end: 4, beats: [{ start: 0, end: 4 }] }], [{ start: 0.5, end: 3.5 }]).length, 0);
+});
+
+test('sons no ritmo das referências: um por batida no máximo, alternando, nunca colados', async () => {
+  const { thinSfx } = await import('../../shared/motionEngine.js');
+  const beats = [0, 1, 2, 3, 4].map((s) => ({ start: s, end: s + 1 }));
+  const sfx = [
+    { t: 0.0, type: 'cn-whoosh' }, { t: 0.2, type: 'cn-key' }, { t: 0.4, type: 'cn-key' },
+    { t: 1.0, type: 'cn-pop' }, { t: 2.0, type: 'bk-hit' }, { t: 2.1, type: 'rl-tick' },
+    { t: 3.0, type: 'cn-pop' }, { t: 4.2, type: 'mi-ding' },
+  ];
+  const out = thinSfx(beats, sfx);
+  assert.deepEqual(out.map((x) => x.type), ['cn-whoosh', 'bk-hit', 'mi-ding']);
+  for (let i = 1; i < out.length; i += 1) assert.ok(out[i].t - out[i - 1].t >= 0.5);
 });
