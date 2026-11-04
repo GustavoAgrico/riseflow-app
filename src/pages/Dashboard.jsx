@@ -22,6 +22,7 @@ import { useOnboarding } from '@hooks/useOnboarding'
 import { OnboardingWizard } from '@components/OnboardingWizard'
 import { LiveConversations } from '@components/Dashboard/LiveConversations'
 import { GoalPanel } from '@components/Goals/GoalPanel'
+import { LeadStatusPanel } from '@components/Dashboard/LeadStatusPanel'
 import { useApp } from '@context/AppContext'
 import { useAuth } from '@context/AuthContext'
 import clsx from 'clsx'
@@ -379,7 +380,10 @@ export const Dashboard = () => {
       </div>
 
       {/* ── Meta de vendas do mês (ao vivo) ── */}
-      <div style={{ marginBottom: 24 }}><GoalPanel /></div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 20, marginBottom: 24 }}>
+        <GoalPanel />
+        <LeadStatusPanel />
+      </div>
 
       {/* ── Hero premium ── */}
       <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 20, marginBottom: 24,
