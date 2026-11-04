@@ -334,6 +334,8 @@ server.listen(PORT, () => {
   metaClient.resumePages()
   whatsappCloud.resumeNumbers()
   // Inicia motor de campanhas: retoma envios interrompidos e verifica agendamentos.
-  campaignEngine.start()
-  scheduleEngine.start()
+  if (process.env.ENGINES_ENABLED !== 'false') {
+    campaignEngine.start()
+    scheduleEngine.start()
+  }
 })
