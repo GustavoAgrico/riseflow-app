@@ -388,6 +388,8 @@ export const Dashboard = () => {
         </div>
       </div>
 
+    <div className="rf-dash">
+      <div className="rf-dash-main">
       {/* ── Meta de vendas do mês (ao vivo) ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 20, marginBottom: 24 }}>
         <GoalPanel />
@@ -511,87 +513,6 @@ export const Dashboard = () => {
           <div style={{ height: 280, display: 'grid', placeItems: 'center', color: '#2D3A55', fontSize: 13 }}>Sem dados no período</div>
         )}
       </div>
-
-      {/* ── Prioridades do dia — alertas compactos (P0.2) ── */}
-      {(() => {
-        const items = [
-          overdueTasks.length > 0 && { icon: AlertTriangle, color: '#EF4444', label: `${overdueTasks.length} tarefa${overdueTasks.length > 1 ? 's' : ''} atrasada${overdueTasks.length > 1 ? 's' : ''}`, sub: overdueTasks.slice(0, 2).map(t => t.title).join(', '), to: '/hoje' },
-          hotLeads.length > 0 && { icon: Flame, color: '#FF6B35', label: `${hotLeads.length} lead${hotLeads.length > 1 ? 's' : ''} quente${hotLeads.length > 1 ? 's' : ''}`, sub: hotLeads.slice(0, 2).map(l => l.name).join(', '), to: '/crm' },
-          coldLeads.length > 0 && { icon: Clock, color: '#38BDF8', label: `${coldLeads.length} lead${coldLeads.length > 1 ? 's' : ''} esfriando`, sub: 'Sem interação há +3 dias', to: '/hoje' },
-          unreadConvs.length > 0 && { icon: MessageCircle, color: '#3B82F6', label: `${unreadConvs.length} conversa${unreadConvs.length > 1 ? 's' : ''} não lida${unreadConvs.length > 1 ? 's' : ''}`, sub: unreadConvs.slice(0, 2).map(c => c.contact_name || c.contact_phone).join(', '), to: '/chat' },
-          todaySchedules.length > 0 && { icon: Calendar, color: '#7C3AED', label: `${todaySchedules.length} envio${todaySchedules.length > 1 ? 's' : ''} agendado${todaySchedules.length > 1 ? 's' : ''} hoje`, sub: todaySchedules.slice(0, 2).map(s => s.name || s.phone).join(', '), to: '/schedules' },
-        ].filter(Boolean)
-        if (!items.length) return null
-        return (
-          <div className="rf-panel rounded-2xl p-4 mb-6">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <h3 className="rf-section-title">Prioridades</h3>
-              <Link to="/hoje" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Ver tudo →</Link>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
-              {items.map((it, i) => (
-                <div
-                  key={i}
-                  onClick={() => navigate(it.to)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
-                    background: it.color + '0A', border: `1px solid ${it.color}22`,
-                    borderRadius: 12, cursor: 'pointer', transition: 'border-color .15s',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = it.color + '55'}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = it.color + '22'}
-                >
-                  <div style={{ width: 34, height: 34, borderRadius: 10, background: it.color + '18', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                    <it.icon size={16} color={it.color} />
-                  </div>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-1)', margin: 0 }}>{it.label}</p>
-                    <p style={{ fontSize: 11, color: 'var(--ink-4)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.sub}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )
-      })()}
-
-      <LiveConversations />
-
-      {/* ── Plan usage ── */}
-      {usage && (() => {
-        const unlimited = usage.messages_limit === -1
-        const pct = unlimited ? 0 : Math.min((usage.messages_sent / usage.messages_limit) * 100, 100)
-        const full = pct >= 100
-        const barHex = full ? '#EF4444' : pct > 80 ? '#EAB308' : '#FF6B35'
-        return (
-          <div className="rf-panel rounded-2xl p-5 mb-6">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <MessageCircle size={15} style={{ color: '#FF6B35' }} />
-                <span className="font-display font-semibold text-white text-sm">Mensagens</span>
-                <span style={{ background: 'rgba(168,85,247,0.14)', color: '#C084FC', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>{usage.plan}</span>
-              </div>
-              <span style={{ fontSize: 11, color: '#475569' }}>
-                {unlimited ? `${usage.messages_sent.toLocaleString()} usadas · ilimitado` : `${usage.messages_sent} / ${usage.messages_limit}`}
-              </span>
-            </div>
-            <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 4, overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', borderRadius: 4, width: `${unlimited ? 3 : pct}%`,
-                background: `linear-gradient(90deg, ${barHex}, ${barHex}bb)`,
-                boxShadow: `0 0 10px ${barHex}80`, transition: 'width .7s ease',
-              }} />
-            </div>
-            {full && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
-                <AlertCircle size={12} style={{ color: '#EF4444' }} />
-                <span style={{ fontSize: 11, color: '#EF4444', fontWeight: 500 }}>Limite atingido</span>
-                <Link to="/plans" style={{ fontSize: 11, color: '#FF6B35', marginLeft: 'auto', textDecoration: 'none' }}>Fazer upgrade →</Link>
-              </div>
-            )}
-          </div>
-        )
-      })()}
 
       {/* ── Desempenho de vendas (funil real dos clients) ── */}
       <div className="mb-6">
@@ -953,6 +874,90 @@ export const Dashboard = () => {
           )}
         </div>
       </div>
+      </div>
+      <aside className="rf-rail">
+      {/* ── Prioridades do dia — alertas compactos (P0.2) ── */}
+      {(() => {
+        const items = [
+          overdueTasks.length > 0 && { icon: AlertTriangle, color: '#EF4444', label: `${overdueTasks.length} tarefa${overdueTasks.length > 1 ? 's' : ''} atrasada${overdueTasks.length > 1 ? 's' : ''}`, sub: overdueTasks.slice(0, 2).map(t => t.title).join(', '), to: '/hoje' },
+          hotLeads.length > 0 && { icon: Flame, color: '#FF6B35', label: `${hotLeads.length} lead${hotLeads.length > 1 ? 's' : ''} quente${hotLeads.length > 1 ? 's' : ''}`, sub: hotLeads.slice(0, 2).map(l => l.name).join(', '), to: '/crm' },
+          coldLeads.length > 0 && { icon: Clock, color: '#38BDF8', label: `${coldLeads.length} lead${coldLeads.length > 1 ? 's' : ''} esfriando`, sub: 'Sem interação há +3 dias', to: '/hoje' },
+          unreadConvs.length > 0 && { icon: MessageCircle, color: '#3B82F6', label: `${unreadConvs.length} conversa${unreadConvs.length > 1 ? 's' : ''} não lida${unreadConvs.length > 1 ? 's' : ''}`, sub: unreadConvs.slice(0, 2).map(c => c.contact_name || c.contact_phone).join(', '), to: '/chat' },
+          todaySchedules.length > 0 && { icon: Calendar, color: '#7C3AED', label: `${todaySchedules.length} envio${todaySchedules.length > 1 ? 's' : ''} agendado${todaySchedules.length > 1 ? 's' : ''} hoje`, sub: todaySchedules.slice(0, 2).map(s => s.name || s.phone).join(', '), to: '/schedules' },
+        ].filter(Boolean)
+        if (!items.length) return null
+        return (
+          <div className="rf-panel rounded-2xl p-4 mb-6">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h3 className="rf-section-title">Prioridades</h3>
+              <Link to="/hoje" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Ver tudo →</Link>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+              {items.map((it, i) => (
+                <div
+                  key={i}
+                  onClick={() => navigate(it.to)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+                    background: it.color + '0A', border: `1px solid ${it.color}22`,
+                    borderRadius: 12, cursor: 'pointer', transition: 'border-color .15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = it.color + '55'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = it.color + '22'}
+                >
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: it.color + '18', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <it.icon size={16} color={it.color} />
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-1)', margin: 0 }}>{it.label}</p>
+                    <p style={{ fontSize: 11, color: 'var(--ink-4)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.sub}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
+      <LiveConversations />
+
+      {/* ── Plan usage ── */}
+      {usage && (() => {
+        const unlimited = usage.messages_limit === -1
+        const pct = unlimited ? 0 : Math.min((usage.messages_sent / usage.messages_limit) * 100, 100)
+        const full = pct >= 100
+        const barHex = full ? '#EF4444' : pct > 80 ? '#EAB308' : '#FF6B35'
+        return (
+          <div className="rounded-2xl p-5" style={{ position: 'relative', overflow: 'hidden', border: '1px solid rgba(255,107,53,.28)', background: 'linear-gradient(135deg, rgba(255,107,53,.20), rgba(124,58,237,.24) 70%), var(--card)', boxShadow: '0 16px 40px -24px rgba(255,107,53,.45)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <MessageCircle size={15} style={{ color: '#FF6B35' }} />
+                <span className="font-display font-semibold text-white text-sm">Mensagens</span>
+                <span style={{ background: 'rgba(168,85,247,0.14)', color: '#C084FC', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>{usage.plan}</span>
+              </div>
+              <span style={{ fontSize: 11, color: '#475569' }}>
+                {unlimited ? `${usage.messages_sent.toLocaleString()} usadas · ilimitado` : `${usage.messages_sent} / ${usage.messages_limit}`}
+              </span>
+            </div>
+            <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', borderRadius: 4, width: `${unlimited ? 3 : pct}%`,
+                background: `linear-gradient(90deg, ${barHex}, ${barHex}bb)`,
+                boxShadow: `0 0 10px ${barHex}80`, transition: 'width .7s ease',
+              }} />
+            </div>
+            {full && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                <AlertCircle size={12} style={{ color: '#EF4444' }} />
+                <span style={{ fontSize: 11, color: '#EF4444', fontWeight: 500 }}>Limite atingido</span>
+                <Link to="/plans" style={{ fontSize: 11, color: '#FF6B35', marginLeft: 'auto', textDecoration: 'none' }}>Fazer upgrade →</Link>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+      </aside>
+    </div>
     </Layout>
   )
 }
