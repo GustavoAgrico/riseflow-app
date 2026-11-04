@@ -173,3 +173,24 @@ vidro no cursor, traço de caneta na elipse, sino quando o número chega ao valo
 ligados aos assuntos em `shared/sceneElements.js` (`REAL_OBJECTS`). Assuntos novos: sorte,
 clique, alegria, desconto, emoção e vídeo. Quatro arquivos eram iguais a recortes que já
 existiam e ficaram de fora. Arquivos de 2k acima de ~6 MB não passam pelo conector do Drive.
+
+# Atualização v1.91 — estilo "Premium" (câmera, ícones e contadores)
+
+Os vídeos que tinham ficado de fora na v1.87 (ícones de interface, tela verde, ilustração) viraram
+o estilo **Premium**. A regra de todos: item ancorado (na mão, no cartão, na barra), na escala do
+quadro, e a câmera conduz o olhar.
+
+| Referência | O que acontece | Como o app recria (`pm-*`) |
+|---|---|---|
+| Contador "$ 24.561 → $ 1.000.000" (v06) | número grande, limpo, fundo quase preto | `pm-count`: sobe do valor falado (R$ quando é dinheiro, "50 mil", "1 milhão"), algarismos de largura fixa (não dançam), clareia e pulsa no fim |
+| Empresário de terno com relógio e dinheiro nas mãos (v08) | plano geral → close no relógio → passa para o dinheiro → plano geral | `pm-stage`: silhueta com luz de contorno segura os recortes 3D nas palmas; a câmera entra no item na hora em que a palavra é falada, com desfoque de movimento, e mostra a etiqueta ("TEMPO", "DINHEIRO") |
+| Calendário virando 1 → 31 (v02) | folhas viram, sombra macia, some no fim | `pm-calendar`: folha dividida no meio vira até o número de dias ("30 dias", "uma semana" = 7, "3 meses" = 90), desenho próprio |
+| Saco de dinheiro na mão com moeda caindo (v03) | ícone de traço branco sobre degradê, laço curto | `pm-icon`: 6 ícones de traço animados (saco + moeda, relógio, coração batendo, lâmpada, alvo com flecha, gráfico subindo), cor por assunto |
+| Barra de busca com lupa (v01) | lupa varre os resultados | `pm-search`: digita o que vem depois de "pesquisar/buscar" ("google"), resultados entram e a lupa (com lente que aumenta) para no escolhido |
+| Botão upload → barra 3%…100% → check (v16) | clique, morfose, etiqueta de % | `pm-progress`: cursor clica no botão com a palavra-chave, vira bolinha, vira barra com a etiqueta, termina no check verde |
+
+Ilustração chapada de pessoas (v17) e cursor em tela verde (v18) continuam fora: pedem desenhos
+de personagem que não dá para gerar com qualidade no Canvas.
+
+Sons: pacote do app (tique na contagem, folha virando, varrida da câmera, tecla, clique de vidro,
+subida e sino de sucesso, moeda).

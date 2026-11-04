@@ -59,15 +59,26 @@ export const STYLE_BEATS = {
   rolagem: ['rl-grid', 'rl-text'],
   azul: ['az-hero', 'az-badge', 'az-end'],
   colagem: ['cg-letter', 'cg-select', 'cg-circle', 'cg-number'],
+  premium: ['pm-count', 'pm-calendar', 'pm-stage', 'pm-search', 'pm-progress', 'pm-icon'],
 };
 const DARK_BEATS = new Set(['e-end', 'b-dark', 'c-float', 'c-embers', 'c-object', 'c-strip', 'c-big', 'mi-word', 'mi-count', 'mi-cta']);
 
 // ─────────────────────────────── planejamento ───────────────────────────────
 const keysOf = (c) => c.filter((w, i) => wordRole(w, i, c) !== 'small' && !/\d/.test(clean(w)));
 
-function pickType(style, { i, n, prev, used, keys, concept, k, len, num }) {
+function pickType(style, { i, n, prev, used, keys, concept, k, len, num, text = '', objs = 0 }) {
   const k0 = (_, r) => Math.ceil(len * r);
   const last = i === n - 1 && n >= 3;
+  if (style === 'premium') {
+    // dias → calendário; valor dito → contador; dois objetos → palco com câmera; busca, entrega, ícone
+    if (dayTarget(text) > 0 && prev !== 'pm-calendar') return 'pm-calendar';
+    if ((num || /milh|\bmil\b/i.test(text)) && moneyTarget(text) > 0 && prev !== 'pm-count') return 'pm-count';
+    if (objs >= 2 && prev !== 'pm-stage') return 'pm-stage';
+    if (PM_SEARCH_RE.test(text) && prev !== 'pm-search') return 'pm-search';
+    if (PM_DONE_RE.test(text) && prev !== 'pm-progress' && !used.has('pm-progress')) return 'pm-progress';
+    if (objs === 1 && prev !== 'pm-stage' && !used.has('pm-stage1')) { used.add('pm-stage1'); return 'pm-stage'; }
+    return 'pm-icon';
+  }
   if (style === 'bloco') return ['bl-hit', 'bl-echo', 'bl-stripe', 'bl-slice'][i % 4];
   if (style === 'marca') {
     if (i === 0) return 'mk-intro';
@@ -128,9 +139,12 @@ export function styleBeatsFor(style, chunks) {
   let k = 0;
   chunks.forEach((c, i) => {
     const keys = keysOf(c);
-    const concept = conceptsIn(c)[0] || null;
+    const found = conceptsIn(c);
+    const concept = found[0] || null;
     const num = c.some((w) => /\d/.test(clean(w)));
-    const type = pickType(style, { i, n: chunks.length, prev: out[out.length - 1]?.type, used, keys, concept, k, len: c.length, num });
+    // objetos com recorte realista (o palco segura até dois)
+    const objs = found.filter((x) => x.real).slice(0, 2).map((x) => ({ el: x.real, word: tidy(clean(x.word)) }));
+    const type = pickType(style, { i, n: chunks.length, prev: out[out.length - 1]?.type, used, keys, concept, k, len: c.length, num, text: txt(c), objs: objs.length });
     if (i > 0) k += 1;
     used.add(type);
     if (concept) used.add(`obj:${concept.element}`);
@@ -140,7 +154,14 @@ export function styleBeatsFor(style, chunks) {
       text: txt(c), keyword: tidy(clean(big)), small: txt(c.slice(0, Math.max(0, idx))), after: txt(c.slice(idx + 1)),
       keys: keys.map((w) => tidy(clean(w))).slice(0, 4), element: concept?.real || concept?.element || null,
       objWord: concept ? tidy(clean(concept.word)) : null,
+      ...(style === 'premium' ? { objs, icon: pmIconFor(found.map((x) => x.id), i), query: pmQuery(c) } : {}),
     } });
+    // ícones seguidos nunca iguais
+    const cur = out[out.length - 1];
+    const before = out[out.length - 2];
+    if (cur.type === 'pm-icon' && before?.type === 'pm-icon' && before.data.icon === cur.data.icon) {
+      cur.data.icon = PM_ICONS[(PM_ICONS.indexOf(cur.data.icon) + 1) % PM_ICONS.length];
+    }
   });
   return out;
 }
@@ -207,6 +228,8 @@ export function styleSfx(style, beats) {
         for (let k2 = 1; k2 <= n; k2 += 1) { const j = Math.round((k2 * target) / n); add(b.start + 0.1 + rollDur(b) * (1 - (1 - j / target) ** (1 / 3)), 'rl-tick', 0.3, 'contagem'); }
         add(b.start + 0.1 + rollDur(b), 'cg-ding', 0.5, 'número');
       }
+    } else if (style === 'premium') {
+      premiumSfx(b, i, add);
     } else if (style === 'azul') {
       // destaque azul: tique ao surgir a palavra-chave, traço do sublinhado, sino no selo, sinal final
       if (b.type === 'az-hero' && kw) { add(kw.t, 'az-pop', 0.5, 'destaque'); add(kw.t + 0.12, 'az-stroke', 0.35, 'sublinhado'); }
@@ -1172,8 +1195,8 @@ const MI_DRAW = {
 // rápida com desfoque, tremor, zoom de saída, faixa diagonal de transição). Fundo muda de cor a
 // cada cena (claro, verde, laranja, escuro, gradiente), como nas referências.
 const CN_BG = ['#F7F7F4', '#0E7C62', '#FF8A1F', '#0B0B12', 'grad'];
-const CN_CAM = { 'cn-type': 'push', 'cn-slide': 'whip', 'cn-rise': 'shake', 'cn-box': 'pull', 'cn-stripe': 'drift', 'bl-hit': 'pull', 'bl-echo': 'push', 'bl-stripe': 'shake', 'bl-slice': 'whip', 'mk-intro': 'push', 'mk-card': 'drift', 'mk-bars': 'pull', 'mk-logo': 'shake', 'cg-letter': 'push', 'cg-select': 'drift', 'cg-circle': 'pull', 'cg-number': 'push' };
-const CAM_STYLES = new Set(['cinetico', 'bloco', 'marca', 'colagem']);
+const CN_CAM = { 'cn-type': 'push', 'cn-slide': 'whip', 'cn-rise': 'shake', 'cn-box': 'pull', 'cn-stripe': 'drift', 'bl-hit': 'pull', 'bl-echo': 'push', 'bl-stripe': 'shake', 'bl-slice': 'whip', 'mk-intro': 'push', 'mk-card': 'drift', 'mk-bars': 'pull', 'mk-logo': 'shake', 'cg-letter': 'push', 'cg-select': 'drift', 'cg-circle': 'pull', 'cg-number': 'push', 'pm-count': 'push', 'pm-calendar': 'push', 'pm-stage': 'still', 'pm-search': 'drift', 'pm-progress': 'still', 'pm-icon': 'pull' };
+const CAM_STYLES = new Set(['cinetico', 'bloco', 'marca', 'colagem', 'premium']);
 const cnDark = (bg) => bg === '#0B0B12' || bg === 'grad' || bg === '#0E7C62';
 const cnInk = (bg) => (cnDark(bg) ? '#FFFFFF' : '#111111');
 
@@ -1183,6 +1206,7 @@ function camFor(model, lt, dur) {
   if (model === 'push') return { s: lerp(1, 1.09, p), tx: 0, ty: 0, rot: 0, blur: 0 };
   if (model === 'pull') return { s: lerp(1.09, 1, p), tx: 0, ty: 0, rot: 0, blur: 0 };
   if (model === 'whip') { const w = 1 - outCubic(clamp(lt / 0.32)); return { s: 1, tx: w * BW * 0.4, ty: 0, rot: 0, blur: 14 * w }; }
+  if (model === 'still') return { s: 1, tx: 0, ty: 0, rot: 0, blur: 0 };
   if (model === 'shake') return { s: 1.04, tx: Math.sin(lt * 23) * 7, ty: Math.cos(lt * 19) * 7, rot: Math.sin(lt * 9) * 0.006, blur: 0 };
   return { s: 1 + 0.02 * p, tx: 0, ty: 0, rot: 0, blur: 0 };
 }
@@ -1937,4 +1961,943 @@ for (const k of Object.keys(CG_DRAW)) {
   CG_DRAW[k] = (ctx, b, lt, env, bi) => { fn(ctx, b, lt, env, bi); cgBlobs(ctx, lt, bi); };
 }
 
-const DRAW = { editorial: ED_DRAW, bordo: BO_DRAW, 'cinema-escuro': CI_DRAW, minimalista: MI_DRAW, cinetico: CN_DRAW, bloco: BLO_DRAW, marca: MRC_DRAW, rolagem: RLG_DRAW, azul: AZ_DRAW, colagem: CG_DRAW };
+// ── premium (pasta "MOTIONS REFE.", v1.91): contador de dinheiro em número grande e limpo,
+// calendário que vira as folhas até o número de dias, "palco" (silhueta que segura os objetos nas
+// mãos e a câmera passeia: plano geral → close no item A → close no item B → plano geral),
+// barra de busca com lupa que varre os resultados, botão → barra de progresso → check, e ícone de
+// traço animado sobre degradê. Itens sempre ancorados (na mão, no cartão) e na escala do quadro.
+const PM_INK = '#121214';
+const pmNorm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const PM_MONEY_RE = /r\$|\breais\b|\breal\b|d[oó]lar|\$|dinheiro|grana|fatur|lucr|ganh|vend|milh[aã]o|milh[oõ]es|\bmil\b|caixa|sal[aá]rio|renda|investi/i;
+const PM_SEARCH_RE = /pesquis|\bbusc|procur|google|encontr|descobr|\bachar\b|\bache[i]?\b|search/i;
+const PM_DONE_RE = /resultado|pronto|conclu|termin|finaliz|carreg|process|progress|aprovad|consegu|complet|entreg|\bmeta\b|objetivo|upload|\benvi|100 ?%|funcion/i;
+const PM_MULT = { mil: 1e3, k: 1e3, milhao: 1e6, milhoes: 1e6, mi: 1e6, bilhao: 1e9, bilhoes: 1e9, bi: 1e9 };
+
+/** Valor dito na frase ("R$ 50 mil" → 50000, "1 milhão" → 1000000, "um milhão" → 1000000). */
+export function moneyTarget(text) {
+  const s = pmNorm(text);
+  const m = s.match(/(\d[\d.,]*)\s*(mil|k|milhao|milhoes|mi|bilhao|bilhoes|bi)?\b/);
+  if (!m) {
+    if (/\bmeio milhao\b/.test(s)) return 500000;
+    return /\bmilh(ao|oes)\b/.test(s) ? 1000000 : /\bmil\b/.test(s) ? 1000 : 0;
+  }
+  let n = m[1].replace(/[.,]$/, '');
+  if (/^\d{1,3}(\.\d{3})+$/.test(n)) n = n.replace(/\./g, '');
+  else if (/^\d{1,3}(,\d{3})+$/.test(n)) n = n.replace(/,/g, '');
+  else n = n.replace(',', '.');
+  let v = Number(n);
+  if (!Number.isFinite(v)) return 0;
+  if (m[2]) v *= PM_MULT[m[2]];
+  return Math.min(999e9, Math.round(v));
+}
+/** É uma frase sobre dinheiro (o contador ganha o "R$")? */
+export const isMoneyText = (text) => PM_MONEY_RE.test(String(text || ''));
+/** Dias da frase ("30 dias" → 30, "uma semana" → 7, "3 meses" → 90, "um ano" → 365). 0 se não há. */
+export function dayTarget(text) {
+  const s = pmNorm(text);
+  let m = s.match(/(\d+)\s*(dias?|days?)\b/);
+  if (m) return Math.max(1, Math.min(365, Number(m[1])));
+  m = s.match(/(\d+)\s*semanas?\b/);
+  if (m) return Math.min(365, Number(m[1]) * 7);
+  if (/\b(uma|1) semana\b/.test(s)) return 7;
+  m = s.match(/(\d+)\s*mes(es)?\b/);
+  if (m) return Math.min(365, Number(m[1]) * 30);
+  if (/\b(um|1) mes\b/.test(s)) return 30;
+  if (/\b(um|1) ano\b/.test(s)) return 365;
+  return 0;
+}
+/** Número da frase quando não é dinheiro (até 1 milhão). */
+function pmPlainTarget(text) {
+  const v = moneyTarget(text);
+  return v > 0 ? Math.min(1e6, v) : 0;
+}
+/** 1234567 → "1.234.567" (sem depender do idioma do servidor). */
+export function pmFmt(v) {
+  const s = String(Math.max(0, Math.round(v)));
+  return s.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+/** Ícone de traço para o assunto da frase. */
+const PM_ICON_OF = {
+  money: 'bag', sale: 'bag', spend: 'bag', discount: 'bag', gift: 'bag', win: 'bag',
+  time: 'clock', clock: 'clock', calendar: 'clock', past: 'clock', fast: 'clock', tired: 'clock',
+  love: 'heart', happy: 'heart', people: 'heart', team: 'heart', chat: 'heart', talk: 'heart',
+  idea: 'bulb', brain: 'bulb', think: 'bulb', learn: 'bulb', wisdom: 'bulb', magic: 'bulb', secret: 'bulb', dream: 'bulb', question: 'bulb', course: 'bulb', write: 'bulb',
+  goal: 'target', strategy: 'target', best: 'target', leader: 'target', right: 'target', key: 'target',
+  growth: 'chart', boom: 'chart', strength: 'chart', energy: 'chart', fire: 'chart', system: 'chart', work: 'chart',
+};
+export const PM_ICONS = ['bag', 'clock', 'heart', 'bulb', 'target', 'chart'];
+const PM_ICON_RANK = ['bag', 'chart', 'target', 'clock', 'bulb', 'heart'];
+/** Ícone da frase: o assunto mais forte (dinheiro > crescimento > meta > tempo > ideia > pessoas). */
+export function pmIconFor(conceptIds, i = 0) {
+  const ids = Array.isArray(conceptIds) ? conceptIds : [conceptIds];
+  const icons = ids.map((id) => PM_ICON_OF[id]).filter(Boolean);
+  if (icons.length) return icons.sort((a, b) => PM_ICON_RANK.indexOf(a) - PM_ICON_RANK.indexOf(b))[0];
+  return ['bulb', 'target', 'chart'][i % 3];
+}
+const PM_GRAD = {
+  bag: ['#77742A', '#F3F46E'], clock: ['#1D3478', '#5EA0F7'], heart: ['#8E1237', '#FB7590'],
+  bulb: ['#8A2F0F', '#FDB872'], target: ['#43198A', '#A98BFB'], chart: ['#075A42', '#6DE6B4'],
+};
+
+/** O que vai na barra de busca: a palavra forte logo depois de "pesquisar/buscar/procurar". */
+function pmQuery(chunk) {
+  const i = chunk.findIndex((w) => PM_SEARCH_RE.test(clean(w)));
+  const pool = (i >= 0 ? chunk.slice(i + 1) : chunk).filter((w, j, all) => wordRole(w, j, all) !== 'small' && !/^(n[aã]o|sim|e|ou|mas)$/i.test(tidy(clean(w))));
+  // "google" pode ser a busca; os verbos (pesquisar, buscar…) não
+  const w = pool.find((x) => !/pesquis|busc|procur|encontr|descobr|^ach/i.test(clean(x)));
+  return w ? tidy(clean(w)) : '';
+}
+
+/** Tempos (relativos à batida) em que cada palavra-objeto é falada. */
+function pmObjTimes(b) {
+  const ws = beatWords(b);
+  const dur = Math.max(1.2, b.end - b.start);
+  const objs = (b.data.objs || []).slice(0, 2);
+  return objs.map((o, i) => {
+    const w = ws.find((x) => low(x.text) === low(o.word));
+    return w ? w.at : dur * (i ? 0.62 : 0.3);
+  });
+}
+
+// ── palco: silhueta de terno com as mãos para cima segurando os objetos ──
+const PM_FIG = { x: 540, y: 1520, s: 0.92 };
+const PM_PALM = { x: 352, y: -668 };
+/** Onde fica o objeto na mão (lado -1 esquerda, 1 direita), em coordenadas do quadro. */
+function pmItemAt(side, size) {
+  return { x: PM_FIG.x + side * PM_PALM.x * PM_FIG.s, y: PM_FIG.y + PM_PALM.y * PM_FIG.s - size * 0.43 };
+}
+const PM_ITEM = 270;
+
+/** Câmera do palco: [tempo, {cx, cy, s}] (cx, cy = ponto do quadro no centro da tela). */
+export function pmStageKeys(b) {
+  const dur = Math.max(1.6, b.end - b.start);
+  const n = Math.min(2, (b.data.objs || []).length);
+  const [ta = dur * 0.3, tb = dur * 0.62] = pmObjTimes(b);
+  const WIDE = { cx: 540, cy: 1060, s: 1 };
+  const INTRO = { cx: 540, cy: 860, s: 1.75 };
+  const shot = (side) => { const p = pmItemAt(side, PM_ITEM); return { cx: p.x, cy: p.y + 40, s: 2.05 }; };
+  const keys = [[0, INTRO], [0.6, WIDE]];
+  const push = (t, v) => keys.push([Math.max(t, keys[keys.length - 1][0] + 0.25), v]);
+  const A = shot(-1);
+  push(ta - 0.15, WIDE);
+  push(ta + 0.4, A);
+  if (n >= 2) {
+    const B = shot(1);
+    const tB = Math.max(tb, ta + 1.0);
+    push(tB - 0.15, A);
+    push(tB + 0.4, B);
+  }
+  const tEnd = Math.min(dur - 0.15, keys[keys.length - 1][0] + 1.1);
+  const last = keys[keys.length - 1][1];
+  if (tEnd - 0.5 > keys[keys.length - 1][0]) {
+    push(tEnd - 0.5, last);
+    push(tEnd, WIDE);
+  }
+  return keys;
+}
+function pmCamAt(keys, lt) {
+  if (lt <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i += 1) {
+    const [t1, v1] = keys[i];
+    const [t0, v0] = keys[i - 1];
+    if (lt <= t1) {
+      const e = inOutCubic(clamp((lt - t0) / Math.max(0.01, t1 - t0)));
+      return { cx: lerp(v0.cx, v1.cx, e), cy: lerp(v0.cy, v1.cy, e), s: lerp(v0.s, v1.s, e) };
+    }
+  }
+  return keys[keys.length - 1][1];
+}
+
+function pmPoly(ctx, pts) {
+  ctx.beginPath();
+  pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.fill();
+}
+/** Silhueta (unidades: 1000 de altura, pés em 0). `ink` = cor do corpo. */
+function pmBody(ctx, ink, details) {
+  ctx.fillStyle = ink;
+  ctx.strokeStyle = ink;
+  // pernas e sapatos
+  // pernas juntas no alto (sem fresta: a luz de contorno não vaza entre elas)
+  pmPoly(ctx, [[-66, -470], [1, -470], [1, -360], [-20, -22], [-64, -22]]);
+  pmPoly(ctx, [[-1, -470], [66, -470], [64, -22], [20, -22], [-1, -360]]);
+  roundRectPath(ctx, -104, -30, 92, 30, 14);
+  ctx.fill();
+  roundRectPath(ctx, 12, -30, 92, 30, 14);
+  ctx.fill();
+  // paletó
+  ctx.beginPath();
+  ctx.moveTo(-150, -770);
+  ctx.quadraticCurveTo(-150, -812, -108, -818);
+  ctx.lineTo(108, -818);
+  ctx.quadraticCurveTo(150, -812, 150, -770);
+  ctx.lineTo(116, -500);
+  ctx.lineTo(124, -430);
+  ctx.lineTo(-124, -430);
+  ctx.lineTo(-116, -500);
+  ctx.closePath();
+  ctx.fill();
+  // pescoço e cabeça (bloco anguloso, levemente inclinado)
+  ctx.fillRect(-28, -858, 56, 50);
+  pmPoly(ctx, [[-58, -1006], [62, -992], [64, -872], [36, -846], [-52, -852]]);
+  // braços: ombro → cotovelo → mão aberta para cima
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 64;
+  for (const sd of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(sd * 128, -770);
+    ctx.lineTo(sd * 190, -610);
+    ctx.lineTo(sd * 300, -650);
+    ctx.stroke();
+    // palma aberta (dedos para fora)
+    ctx.beginPath();
+    ctx.moveTo(sd * 286, -676);
+    ctx.quadraticCurveTo(sd * 360, -684, sd * 420, -678);
+    ctx.quadraticCurveTo(sd * 432, -672, sd * 418, -664);
+    ctx.quadraticCurveTo(sd * 360, -646, sd * 300, -628);
+    ctx.closePath();
+    ctx.fill();
+  }
+  if (!details) return;
+  // vinco entre as pernas
+  ctx.strokeStyle = '#2A2B30';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, -440);
+  ctx.lineTo(0, -360);
+  ctx.stroke();
+  // camisa e gravata
+  ctx.fillStyle = '#EEF3F1';
+  pmPoly(ctx, [[-42, -816], [42, -816], [0, -640]]);
+  ctx.fillStyle = '#26B3A2';
+  pmPoly(ctx, [[-13, -800], [13, -800], [19, -668], [0, -630], [-19, -668]]);
+  ctx.fillStyle = '#1C8F82';
+  pmPoly(ctx, [[-14, -812], [14, -812], [10, -792], [-10, -792]]);
+}
+function pmFigure(ctx, x, y, s, lift = 0) {
+  ctx.save();
+  setFilter(ctx);
+  ctx.translate(x, y + lift);
+  ctx.scale(s, s);
+  // luz de contorno (azul-verde) de um lado, como nas referências
+  ctx.save();
+  ctx.translate(7, -4);
+  pmBody(ctx, '#57D6C8', false);
+  ctx.restore();
+  pmBody(ctx, PM_INK, true);
+  ctx.restore();
+}
+
+/** Ícone de traço (unidades: caixa de 100, centro em 0). */
+function pmIcon(ctx, kind, lt) {
+  const loop = (p) => ((lt % p) + p) % p;
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.lineWidth = 5.5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const stroke = (fn) => { ctx.beginPath(); fn(); ctx.stroke(); };
+  if (kind === 'bag') {
+    // moeda cai no saco a cada 1,4 s; o saco amassa e volta
+    const ph = loop(1.4);
+    const fall = clamp(ph / 0.45);
+    const hit = ph >= 0.45 ? Math.exp(-(ph - 0.45) * 9) * Math.sin((ph - 0.45) * 30) : 0;
+    if (fall < 1) {
+      ctx.save();
+      ctx.globalAlpha *= 1 - fall * 0.6;
+      stroke(() => ctx.arc(0, lerp(-96, -40, fall * fall), 8, 0, Math.PI * 2));
+      ctx.lineWidth = 3;
+      stroke(() => { ctx.moveTo(0, lerp(-96, -40, fall * fall) - 4); ctx.lineTo(0, lerp(-96, -40, fall * fall) + 4); });
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.translate(0, 40);
+    ctx.scale(1 + hit * 0.06, 1 - hit * 0.07);
+    ctx.translate(0, -40);
+    stroke(() => {
+      ctx.moveTo(-15, -20);
+      ctx.bezierCurveTo(-46, -2, -42, 40, 0, 40);
+      ctx.bezierCurveTo(42, 40, 46, -2, 15, -20);
+    });
+    stroke(() => { ctx.moveTo(-17, -21); ctx.lineTo(17, -21); });
+    stroke(() => { ctx.moveTo(-15, -21); ctx.lineTo(-25, -38); ctx.lineTo(25, -38); ctx.lineTo(15, -21); });
+    ctx.font = `38px "${FI9}"`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('$', 0, 12);
+    ctx.restore();
+    // mão que segura (traço embaixo)
+    stroke(() => { ctx.moveTo(-52, 30); ctx.quadraticCurveTo(-40, 52, 0, 50); ctx.quadraticCurveTo(26, 50, 44, 40); });
+    stroke(() => { ctx.moveTo(-56, 20); ctx.lineTo(-56, 52); });
+  } else if (kind === 'clock') {
+    const spin = outCubic(clamp(lt / 1.6));
+    stroke(() => ctx.arc(0, 4, 40, 0, Math.PI * 2));
+    for (let k = 0; k < 12; k += 1) {
+      const a = (k / 12) * Math.PI * 2;
+      const r0 = k % 3 ? 34 : 30;
+      ctx.lineWidth = k % 3 ? 3 : 5;
+      stroke(() => { ctx.moveTo(Math.cos(a) * r0, 4 + Math.sin(a) * r0); ctx.lineTo(Math.cos(a) * 36, 4 + Math.sin(a) * 36); });
+    }
+    ctx.lineWidth = 5.5;
+    const am = -Math.PI / 2 + spin * Math.PI * 4 + loop(60) * 0.1;
+    const ah = -Math.PI / 2 + spin * Math.PI * 0.6;
+    stroke(() => { ctx.moveTo(0, 4); ctx.lineTo(Math.cos(am) * 28, 4 + Math.sin(am) * 28); });
+    stroke(() => { ctx.moveTo(0, 4); ctx.lineTo(Math.cos(ah) * 18, 4 + Math.sin(ah) * 18); });
+    // sininhos no alto balançando
+    const wob = Math.sin(lt * 18) * Math.exp(-loop(2.4) * 2) * 0.25;
+    for (const sd of [-1, 1]) {
+      ctx.save();
+      ctx.translate(sd * 30, -38);
+      ctx.rotate(sd * 0.5 + wob);
+      stroke(() => ctx.arc(0, 0, 11, Math.PI, 0));
+      ctx.restore();
+    }
+  } else if (kind === 'heart') {
+    const ph = loop(1.1);
+    const beat = 1 + 0.09 * (Math.exp(-((ph - 0.1) ** 2) / 0.004) + 0.6 * Math.exp(-((ph - 0.32) ** 2) / 0.004));
+    ctx.save();
+    ctx.scale(beat, beat);
+    stroke(() => {
+      ctx.moveTo(0, 38);
+      ctx.bezierCurveTo(-60, -4, -34, -46, 0, -20);
+      ctx.bezierCurveTo(34, -46, 60, -4, 0, 38);
+    });
+    ctx.restore();
+    const r = (beat - 1) * 11;
+    if (r > 0.05) {
+      ctx.save();
+      ctx.globalAlpha *= clamp(r);
+      for (const a of [-2.5, -1.57, -0.64]) stroke(() => { ctx.moveTo(Math.cos(a) * 52, Math.sin(a) * 52 - 2); ctx.lineTo(Math.cos(a) * 64, Math.sin(a) * 64 - 2); });
+      ctx.restore();
+    }
+  } else if (kind === 'bulb') {
+    const glow = 0.5 + 0.5 * Math.sin(lt * 4);
+    stroke(() => {
+      ctx.arc(0, -12, 28, Math.PI * 0.78, Math.PI * 0.22);
+      ctx.lineTo(13, 18);
+      ctx.lineTo(-13, 18);
+      ctx.closePath();
+    });
+    stroke(() => { ctx.moveTo(-12, 27); ctx.lineTo(12, 27); });
+    stroke(() => { ctx.moveTo(-8, 36); ctx.lineTo(8, 36); });
+    ctx.lineWidth = 3.5;
+    stroke(() => { ctx.moveTo(-7, 12); ctx.lineTo(-7, -6); ctx.lineTo(-2, -12); ctx.lineTo(3, -6); ctx.lineTo(7, -12); ctx.lineTo(7, 12); });
+    ctx.lineWidth = 5.5;
+    for (let k = 0; k < 5; k += 1) {
+      const a = -Math.PI / 2 + (k - 2) * 0.6;
+      const l = 8 + glow * 6;
+      stroke(() => { ctx.moveTo(Math.cos(a) * 40, -12 + Math.sin(a) * 40); ctx.lineTo(Math.cos(a) * (40 + l), -12 + Math.sin(a) * (40 + l)); });
+    }
+  } else if (kind === 'target') {
+    for (const r of [40, 26, 12]) stroke(() => ctx.arc(0, 0, r, 0, Math.PI * 2));
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
+    // flecha entra pelo canto e treme ao acertar
+    const fly = outCubic(clamp((lt - 0.25) / 0.35));
+    const wob = lt > 0.6 ? Math.sin((lt - 0.6) * 40) * Math.exp(-(lt - 0.6) * 5) * 0.12 : 0;
+    ctx.save();
+    ctx.translate(lerp(60, 0, fly), lerp(-60, 0, fly));
+    ctx.rotate(wob);
+    stroke(() => { ctx.moveTo(0, 0); ctx.lineTo(48, -48); });
+    stroke(() => { ctx.moveTo(40, -56); ctx.lineTo(48, -48); ctx.lineTo(56, -40); });
+    stroke(() => { ctx.moveTo(32, -46); ctx.lineTo(40, -38); });
+    ctx.restore();
+  } else {
+    // gráfico subindo: eixos, a linha se desenha e a seta na ponta
+    stroke(() => { ctx.moveTo(-40, -40); ctx.lineTo(-40, 40); ctx.lineTo(42, 40); });
+    const pts = [[-30, 24], [-10, 2], [6, 12], [34, -28]];
+    const e = outCubic(clamp((lt - 0.2) / 0.9));
+    const segs = pts.length - 1;
+    const upto = e * segs;
+    stroke(() => {
+      ctx.moveTo(...pts[0]);
+      for (let k = 1; k <= segs; k += 1) {
+        const f = clamp(upto - (k - 1));
+        if (f <= 0) break;
+        ctx.lineTo(lerp(pts[k - 1][0], pts[k][0], f), lerp(pts[k - 1][1], pts[k][1], f));
+      }
+    });
+    if (e > 0.98) stroke(() => { ctx.moveTo(22, -30); ctx.lineTo(34, -28); ctx.lineTo(32, -16); });
+  }
+}
+
+/** Tempos da cena da barra de progresso (relativos), proporcionais à duração da frase. */
+export function pmProgT(b) {
+  const D = Math.max(2.4, b.end - b.start);
+  const f = Math.min(1, D / 3.4);
+  return { D, pop: 0, click: 0.75 * f, circle: 0.85 * f, bar: 1.1 * f, fill: 1.32 * f, done: D - 0.95 * f, check: D - 0.7 * f };
+}
+
+const PM_DRAW = {
+  // número grande e limpo subindo até o valor (com R$ quando é dinheiro), fundo quase preto
+  'pm-count'(ctx, b, lt) {
+    ctx.save();
+    setFilter(ctx);
+    ctx.fillStyle = '#0C0C0E';
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    const g = ctx.createRadialGradient(540, 940, 40, 540, 960, 900);
+    g.addColorStop(0, 'rgba(60,56,52,0.55)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    ctx.restore();
+    const text = b.data.text || '';
+    const money = isMoneyText(text);
+    const target = money ? moneyTarget(text) : pmPlainTarget(text);
+    const dur = rollDur(b);
+    const p = 1 - (1 - prog(lt, 0.15, dur)) ** 4;
+    const v = Math.round(lerp(target * 0.02, target, p));
+    const prefix = money ? (/d[oó]lar|us\$/i.test(text) ? 'US$ ' : 'R$ ') : '';
+    const str = `${prefix}${pmFmt(v)}`;
+    const strEnd = `${prefix}${pmFmt(target)}`;
+    // algarismos de largura fixa: o número não "dança" enquanto sobe
+    let s = 200;
+    const adv = (size) => measure(ctx, '0', size, FI7, 0);
+    const widthOf = (t2, size) => [...t2].reduce((a, ch) => a + (/\d/.test(ch) ? adv(size) : measure(ctx, ch, size, FI7, 0)), 0);
+    const wEnd = widthOf(strEnd, s);
+    if (wEnd > 940) s *= 940 / wEnd;
+    const done = prog(lt, 0.15 + dur, 0.35);
+    const pulse = 1 + 0.045 * Math.sin(Math.PI * done);
+    const e = outCubic(prog(lt, 0, 0.3));
+    const w = widthOf(str, s);
+    const d = adv(s);
+    ctx.save();
+    setFilter(ctx, (1 - e) * 10);
+    ctx.globalAlpha *= e;
+    ctx.translate(540, 980);
+    ctx.scale(pulse, pulse);
+    ctx.font = `${s}px "${FI7}"`;
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'center';
+    const c = Math.round(lerp(176, 238, done));
+    ctx.fillStyle = `rgb(${c},${Math.round(c * 0.95)},${Math.round(c * 0.9)})`;
+    if (done > 0) { ctx.shadowColor = `rgba(255,240,220,${0.25 * done})`; ctx.shadowBlur = 40; }
+    let x = -w / 2;
+    for (const ch of str) {
+      const cw = /\d/.test(ch) ? d : measure(ctx, ch, s, FI7, 0);
+      ctx.font = `${s}px "${FI7}"`;
+      ctx.fillText(ch, x + cw / 2, 0);
+      x += cw;
+    }
+    ctx.restore();
+    // fio embaixo que acompanha a subida
+    ctx.save();
+    setFilter(ctx);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(540 - (wEnd * Math.min(1, s / 200)) / 2, 1040, wEnd * Math.min(1, s / 200) * p, 3);
+    ctx.restore();
+    const words = beatWords(b).filter((w2) => !/\d|r\$|^\$/i.test(w2.text) && !/^(mil|milh[aã]o|milh[oõ]es|reais)$/i.test(low(w2.text)));
+    if (words.length) line(ctx, words.slice(0, 7), lt, { x: 540, y: 1150, size: 54, font: FI7, color: '#8A837C', maxW: 900 });
+  },
+  // calendário: as folhas viram de 1 até o número de dias, com sombra macia
+  'pm-calendar'(ctx, b, lt) {
+    ctx.save();
+    setFilter(ctx);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    const g = ctx.createRadialGradient(540, 900, 100, 540, 960, 1200);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(1, 'rgba(0,0,0,0.08)');
+    ctx.fillStyle = g;
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    ctx.restore();
+    const N = dayTarget(b.data.text) || 30;
+    const dur = Math.max(0.9, (b.end - b.start) * 0.6);
+    const f = 1 + (N - 1) * outCubic(prog(lt, 0.4, dur));
+    const cur = Math.min(N, Math.floor(f));
+    const ph = cur >= N ? 0 : f - cur;
+    const next = Math.min(N, cur + 1);
+    const cx = 540;
+    const cy = 900;
+    const W2 = 520;
+    const H2 = 250; // meia altura
+    const ent = clamp(outBack(prog(lt, 0, 0.45)));
+    const out = prog(lt, b.end - b.start - 0.35, 0.3);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(Math.max(0.001, ent), Math.max(0.001, ent));
+    ctx.globalAlpha *= 1 - out;
+    // sombra e argolas
+    ctx.save();
+    setFilter(ctx);
+    ctx.shadowColor = 'rgba(0,0,0,0.22)';
+    ctx.shadowBlur = 70;
+    ctx.shadowOffsetY = 40;
+    ctx.fillStyle = '#D9D9DC';
+    roundRectPath(ctx, -W2 / 2 + 18, -H2 - 46, W2 - 36, 90, 26);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    setFilter(ctx);
+    ctx.fillStyle = '#F4F4F6';
+    for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(sd * 110, -H2 - 16, 13, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+    const digits = String(N).length;
+    const fs = Math.min(300, (W2 * 0.78) / (digits * 0.62));
+    const half = (num, which, sy, shade) => {
+      const top = which === 'top';
+      ctx.save();
+      setFilter(ctx);
+      ctx.scale(1, Math.max(0.001, sy));
+      ctx.beginPath();
+      if (top) ctx.rect(-W2 / 2 - 2, -H2 - 2, W2 + 4, H2 + 2);
+      else ctx.rect(-W2 / 2 - 2, 0, W2 + 4, H2 + 80);
+      ctx.clip();
+      if (!top) { ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 30; }
+      ctx.fillStyle = top ? '#E0442D' : '#F45A3F';
+      roundRectPath(ctx, -W2 / 2, -H2, W2, H2 * 2, 44);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.font = `${fs}px "${FI7}"`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(String(num), 0, fs * 0.04);
+      if (shade > 0) { ctx.fillStyle = `rgba(0,0,0,${(shade * 0.35).toFixed(3)})`; ctx.fillRect(-W2 / 2, -H2, W2, H2 * 2); }
+      ctx.restore();
+    };
+    // fixo: metade de cima já com o próximo número, de baixo com o atual; a folha vira por cima
+    half(cur >= N ? N : next, 'top', 1, 0);
+    half(cur, 'bottom', 1, 0);
+    if (cur < N) {
+      if (ph < 0.5) half(cur, 'top', 1 - ph * 2, ph);
+      else half(next, 'bottom', ph * 2 - 1, 1 - ph);
+    }
+    // dobra no meio
+    ctx.save();
+    setFilter(ctx);
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(-W2 / 2, -2, W2, 4);
+    ctx.restore();
+    ctx.restore();
+    const lab = N === 1 ? 'DIA' : 'DIAS';
+    const le = outCubic(prog(lt, 0.3, 0.4));
+    ctx.save();
+    setFilter(ctx, (1 - le) * 8);
+    ctx.globalAlpha *= le * (1 - out);
+    ctx.font = `68px "${FI9}"`;
+    ctx.letterSpacing = '14px';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#1A1A1C';
+    ctx.fillText(lab, 540, 1290);
+    ctx.restore();
+    const words = beatWords(b).filter((w2) => !/\d/.test(w2.text) && !/^(dias?|semanas?|m[eê]s(es)?|anos?)$/i.test(low(w2.text)));
+    if (words.length) line(ctx, words.slice(0, 8), lt, { x: 540, y: 1390, size: 52, font: FI7, color: '#6B6B70', maxW: 900, alpha: 1 - out });
+  },
+  // palco: a silhueta segura os objetos nas mãos e a câmera vai de um para o outro
+  'pm-stage'(ctx, b, lt, env) {
+    ctx.save();
+    setFilter(ctx);
+    ctx.fillStyle = '#ECE7DD';
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    ctx.restore();
+    const keys = pmStageKeys(b);
+    const cam = pmCamAt(keys, lt);
+    const prev = pmCamAt(keys, lt - 1 / 30);
+    // desfoque de movimento proporcional à velocidade da câmera
+    const speed = Math.hypot(cam.cx - prev.cx, cam.cy - prev.cy) * cam.s + Math.abs(cam.s - prev.s) * 600;
+    FOCUS += Math.min(7, speed * 0.06);
+    ctx.save();
+    ctx.translate(540, 960);
+    ctx.scale(cam.s, cam.s);
+    ctx.translate(-cam.cx, -cam.cy);
+    // luz atrás e sombra no chão
+    ctx.save();
+    setFilter(ctx);
+    const g = ctx.createRadialGradient(540, 1000, 60, 540, 1000, 760);
+    g.addColorStop(0, 'rgba(255,255,255,0.85)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(-400, -400, BW + 800, BH + 800);
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    ctx.beginPath();
+    ctx.ellipse(540, PM_FIG.y + 4, 230, 26, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    const lift = (1 - outCubic(prog(lt, 0, 0.55))) * 420;
+    pmFigure(ctx, PM_FIG.x, PM_FIG.y, PM_FIG.s, lift);
+    const objs = (b.data.objs || []).slice(0, 2);
+    const times = pmObjTimes(b);
+    objs.forEach((o, i) => {
+      const side = i ? 1 : -1;
+      const at = Math.min(0.55 + i * 0.12, times[i] - 0.2);
+      const e = clamp(outBack(prog(lt, Math.max(0.3, at), 0.45)));
+      if (e <= 0) return;
+      const p = pmItemAt(side, PM_ITEM);
+      const bob = Math.sin(lt * 2.2 + i * 1.7) * 5;
+      objectImg(ctx, env, o.el, p.x, p.y + lift + bob - (1 - e) * 30, PM_ITEM * e, { shadow: 'rgba(0,0,0,0.28)' });
+      // etiqueta com a palavra quando a câmera chega no item
+      const le = outCubic(prog(lt, times[i] + 0.1, 0.3)) * clamp((cam.s - 1.4) / 0.5);
+      if (le > 0.01 && o.word) {
+        const label = String(o.word).toUpperCase();
+        ctx.save();
+        setFilter(ctx);
+        ctx.globalAlpha *= le;
+        ctx.font = `30px "${FI9}"`;
+        ctx.letterSpacing = '3px';
+        const lw = ctx.measureText(label).width + 40;
+        const ly = p.y - PM_ITEM * 0.62 - (1 - le) * 14;
+        ctx.fillStyle = PM_INK;
+        roundRectPath(ctx, p.x - lw / 2, ly - 26, lw, 52, 26);
+        ctx.fill();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, p.x + 1.5, ly + 2);
+        ctx.restore();
+      }
+    });
+    ctx.restore();
+  },
+  // barra de busca: a palavra é digitada, os resultados entram e a lupa varre até achar
+  'pm-search'(ctx, b, lt) {
+    ctx.save();
+    setFilter(ctx);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    ctx.fillStyle = 'rgba(20,20,40,0.06)';
+    for (let y = 60; y < BH; y += 56) for (let x = 30; x < BW; x += 56) ctx.fillRect(x, y, 3, 3);
+    ctx.restore();
+    const BLUE = '#2430D6';
+    const kw = String(b.data.query || b.data.keyword || '').slice(0, 22);
+    const typeAt = 0.25;
+    const nType = Math.floor(clamp((lt - typeAt) / 0.07, 0, kw.length));
+    // campo de busca
+    const fe = clamp(outBack(prog(lt, 0, 0.4)));
+    ctx.save();
+    ctx.translate(540, 700);
+    ctx.scale(fe, fe);
+    setFilter(ctx);
+    ctx.shadowColor = 'rgba(20,20,60,0.14)';
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 14;
+    ctx.fillStyle = '#FFFFFF';
+    roundRectPath(ctx, -420, -64, 840, 128, 64);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = '#E2E3EA';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.strokeStyle = '#9A9AA6';
+    ctx.lineWidth = 7;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(-352, -6, 20, 0, Math.PI * 2);
+    ctx.moveTo(-338, 8);
+    ctx.lineTo(-322, 24);
+    ctx.stroke();
+    let size = 58;
+    const tw = measure(ctx, kw, size, FI7, -0.01);
+    if (tw > 620) size *= 620 / tw;
+    ctx.font = `${size}px "${FI7}"`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#18181C';
+    const shown = kw.slice(0, nType);
+    ctx.fillText(shown, -290, 4);
+    const cw = measure(ctx, shown, size, FI7, -0.01);
+    if (Math.floor(lt * 2.4) % 2 === 0 && lt < 2.6) { ctx.fillStyle = BLUE; ctx.fillRect(-290 + cw + 6, -30, 5, 64); }
+    ctx.restore();
+    // resultados: cartões com miniatura e linhas cinza
+    const cards = [880, 1050, 1220];
+    const tSweep = typeAt + kw.length * 0.07 + 0.3;
+    const pick = 1;
+    const hl = outCubic(prog(lt, tSweep + 1.45, 0.3));
+    const drawCards = () => {
+      cards.forEach((y, i) => {
+        const e = outCubic(prog(lt, tSweep - 0.25 + i * 0.1, 0.35));
+        if (e <= 0) return;
+        ctx.save();
+        ctx.globalAlpha *= e;
+        ctx.translate(0, (1 - e) * 40);
+        setFilter(ctx);
+        const on = i === pick ? hl : 0;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.shadowColor = 'rgba(20,20,60,0.08)';
+        ctx.shadowBlur = 24;
+        roundRectPath(ctx, 130, y - 62, 820, 124, 20);
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+        ctx.strokeStyle = on ? `rgba(36,48,214,${on.toFixed(2)})` : '#ECECF1';
+        ctx.lineWidth = on ? 5 : 2.5;
+        ctx.stroke();
+        ctx.fillStyle = on ? `rgba(36,48,214,${(0.18 + on * 0.6).toFixed(2)})` : '#DCDCE2';
+        roundRectPath(ctx, 158, y - 38, 76, 76, 12);
+        ctx.fill();
+        const widths = [560, 420, 260];
+        widths.forEach((w, j) => {
+          ctx.fillStyle = on && j === 0 ? BLUE : '#DCDCE2';
+          roundRectPath(ctx, 262, y - 34 + j * 26, w * (j === 0 ? 1 : 0.9), j === 0 ? 16 : 12, 6);
+          ctx.fill();
+        });
+        ctx.restore();
+      });
+    };
+    drawCards();
+    // lupa: varre os cartões e para no escolhido (com a lente aumentando o que está embaixo)
+    const path = [[820, 860], [300, 900], [760, 1060], [560, 1050]];
+    const sp = prog(lt, tSweep, 1.4);
+    if (lt > tSweep - 0.2) {
+      const seg = Math.min(path.length - 2, Math.floor(sp * (path.length - 1)));
+      const f = inOutCubic(sp * (path.length - 1) - seg);
+      const mx = lerp(path[seg][0], path[seg + 1][0], f);
+      const my = lerp(path[seg][1], path[seg + 1][1], f);
+      const me = outBack(prog(lt, tSweep - 0.2, 0.35));
+      const R = 74 * clamp(me, 0, 1.2) * (1 + hl * 0.12);
+      if (R > 1) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(mx, my, R, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(mx - R, my - R, R * 2, R * 2);
+        ctx.translate(mx, my);
+        ctx.scale(1.45, 1.45);
+        ctx.translate(-mx, -my);
+        drawCards();
+        ctx.restore();
+        ctx.save();
+        setFilter(ctx);
+        ctx.strokeStyle = BLUE;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 14;
+        ctx.beginPath();
+        ctx.arc(mx, my, R, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.lineWidth = 22;
+        ctx.beginPath();
+        ctx.moveTo(mx + R * 0.72, my + R * 0.72);
+        ctx.lineTo(mx + R * 1.45, my + R * 1.45);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    const rest = beatWords(b);
+    if (rest.length) line(ctx, rest.slice(0, 8), lt, { x: 540, y: 1460, size: 52, font: FI7, color: '#55555E', maxW: 900 });
+  },
+  // botão → bolinha → barra de progresso com etiqueta de % → check verde
+  'pm-progress'(ctx, b, lt) {
+    const T = pmProgT(b);
+    const ok = outCubic(prog(lt, T.done, 0.3));
+    ctx.save();
+    setFilter(ctx);
+    ctx.fillStyle = '#1A2A6C';
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    if (ok > 0) { ctx.globalAlpha = ok; ctx.fillStyle = '#0B5A1C'; ctx.fillRect(-200, -200, BW + 400, BH + 400); }
+    ctx.restore();
+    const BLUE = '#2B5BFF';
+    const kw = String(b.data.keyword || 'enviar').toUpperCase().slice(0, 18);
+    const cy = 900;
+    // tudo 30% maior, a partir do centro do botão
+    ctx.save();
+    ctx.translate(540, cy);
+    ctx.scale(1.3, 1.3);
+    ctx.translate(-540, -cy);
+    const pop = clamp(outBack(prog(lt, 0, 0.4)));
+    const press = lt > T.click - 0.06 && lt < T.click + 0.12 ? 0.94 : 1;
+    const toCircle = inOutCubic(prog(lt, T.circle, 0.25));
+    const toBar = inOutCubic(prog(lt, T.bar, 0.25));
+    const fill = inOutCubic(prog(lt, T.fill, Math.max(0.6, T.done - T.fill - 0.1)));
+    const toDone = inOutCubic(prog(lt, T.done, 0.25));
+    ctx.save();
+    setFilter(ctx);
+    ctx.font = `64px "${FI9}"`;
+    const bw0 = Math.min(820, ctx.measureText(kw).width + 220);
+    let w = lerp(bw0, 150, toCircle);
+    let h = lerp(130, 150, toCircle);
+    w = lerp(w, 720, toBar);
+    h = lerp(h, 34, toBar);
+    w = lerp(w, 230, toDone);
+    h = lerp(h, 230, toDone);
+    ctx.translate(540, cy);
+    ctx.scale(pop * press, pop * press);
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 18;
+    const base = toBar > 0.5 && toDone < 0.5 ? '#FFFFFF' : toDone >= 0.5 ? '#25E25A' : BLUE;
+    ctx.fillStyle = base;
+    roundRectPath(ctx, -w / 2, -h / 2, w, h, Math.min(h / 2, w / 2));
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    if (toBar > 0.5 && toDone < 0.5) {
+      ctx.fillStyle = BLUE;
+      roundRectPath(ctx, -w / 2, -h / 2, Math.max(h, w * fill), h, h / 2);
+      ctx.fill();
+    }
+    if (toCircle < 0.6) {
+      ctx.globalAlpha *= 1 - toCircle / 0.6;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      let fs = 64;
+      const tw = ctx.measureText(kw).width;
+      if (tw > bw0 - 200) fs *= (bw0 - 200) / tw;
+      ctx.font = `${fs}px "${FI9}"`;
+      ctx.fillText(kw, 34, 4);
+      // seta para cima dentro de uma nuvem simplificada
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 9;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const ix = -bw0 / 2 + 70;
+      ctx.beginPath();
+      ctx.moveTo(ix, 22);
+      ctx.lineTo(ix, -18);
+      ctx.moveTo(ix - 16, -4);
+      ctx.lineTo(ix, -20);
+      ctx.lineTo(ix + 16, -4);
+      ctx.stroke();
+    }
+    ctx.restore();
+    // etiqueta de % acompanhando o preenchimento
+    if (toBar > 0.9 && toDone < 0.3) {
+      const pct = Math.round(fill * 100);
+      const tx = 540 - 360 + 720 * fill;
+      ctx.save();
+      setFilter(ctx);
+      ctx.globalAlpha *= clamp((toBar - 0.9) * 10) * (1 - toDone / 0.3);
+      ctx.fillStyle = '#F0336E';
+      roundRectPath(ctx, tx - 54, cy - 104, 108, 54, 12);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(tx - 10, cy - 51);
+      ctx.lineTo(tx, cy - 36);
+      ctx.lineTo(tx + 10, cy - 51);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = `30px "${FI9}"`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${pct}%`, tx, cy - 76);
+      ctx.restore();
+    }
+    // check se desenhando
+    const ce = outCubic(prog(lt, T.check, 0.35));
+    if (ce > 0) {
+      ctx.save();
+      setFilter(ctx);
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 26;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const pts = [[-52, 4], [-14, 42], [56, -36]];
+      const l1 = Math.hypot(38, 38);
+      const l2 = Math.hypot(70, 78);
+      const L = (l1 + l2) * ce;
+      ctx.beginPath();
+      ctx.moveTo(540 + pts[0][0], cy + pts[0][1]);
+      if (L <= l1) ctx.lineTo(540 + lerp(pts[0][0], pts[1][0], L / l1), cy + lerp(pts[0][1], pts[1][1], L / l1));
+      else {
+        ctx.lineTo(540 + pts[1][0], cy + pts[1][1]);
+        const f2 = (L - l1) / l2;
+        ctx.lineTo(540 + lerp(pts[1][0], pts[2][0], f2), cy + lerp(pts[1][1], pts[2][1], f2));
+      }
+      ctx.stroke();
+      ctx.restore();
+      const words = beatWords(b);
+      line(ctx, words.slice(0, 8).map((w2) => ({ ...w2, at: Math.max(w2.at, T.check) })), lt, { x: 540, y: 1150, size: 60, font: FI9, color: '#FFFFFF', maxW: 700 });
+    }
+    // cursor que entra e clica no botão
+    const ce2 = outCubic(prog(lt, 0.2, T.click - 0.2));
+    const cOut = prog(lt, T.circle + 0.2, 0.3);
+    if (ce2 > 0 && cOut < 1) {
+      const x = lerp(860, 600, ce2);
+      const y = lerp(1250, cy + 20, ce2) + (cOut > 0 ? cOut * 300 : 0);
+      ctx.save();
+      setFilter(ctx);
+      ctx.globalAlpha *= 1 - cOut;
+      ctx.translate(x, y);
+      ctx.scale(press < 1 ? 0.9 : 1, press < 1 ? 0.9 : 1);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.strokeStyle = '#111111';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, 64);
+      ctx.lineTo(16, 50);
+      ctx.lineTo(28, 76);
+      ctx.lineTo(40, 70);
+      ctx.lineTo(28, 46);
+      ctx.lineTo(48, 46);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  },
+  // ícone de traço branco sobre degradê, com animação curta (moeda, ponteiros, batida, luz, flecha, gráfico)
+  'pm-icon'(ctx, b, lt) {
+    const kind = PM_ICONS.includes(b.data.icon) ? b.data.icon : 'bulb';
+    const [c0, c1] = PM_GRAD[kind];
+    ctx.save();
+    setFilter(ctx);
+    const g = ctx.createLinearGradient(0, BH, BW, 0);
+    g.addColorStop(0, c0);
+    g.addColorStop(1, c1);
+    ctx.fillStyle = g;
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    ctx.restore();
+    const e = clamp(outBack(prog(lt, 0, 0.5)));
+    ctx.save();
+    setFilter(ctx);
+    ctx.translate(540, 860);
+    ctx.scale(4.1 * e, 4.1 * e);
+    ctx.rotate((1 - e) * -0.2);
+    pmIcon(ctx, kind, lt);
+    ctx.restore();
+    const [pre, key, post] = splitAtKey(b);
+    if (key.length) fxLine(ctx, key.map((k2) => ({ ...k2, text: k2.text.toUpperCase() })), lt, { y: 1300, size: 120, font: FI9, color: '#FFFFFF', fx: 'rise', stagger: 0.03, maxW: 920 });
+    const rest = [...pre, ...post];
+    if (rest.length) line(ctx, rest.slice(0, 8), lt, { x: 540, y: 1410, size: 52, font: FI7, color: 'rgba(255,255,255,0.88)', maxW: 900 });
+  },
+};
+
+/** Sons do estilo premium (contagem, folhas virando, câmera, digitação, clique, sucesso). */
+function premiumSfx(b, i, add) {
+  const kw = (b.words || []).find((w) => low(w.w) === low(b.data.keyword));
+  if (b.type === 'pm-count') {
+    const dur = rollDur(b);
+    for (let k = 1; k <= 14; k += 1) add(b.start + 0.15 + dur * (1 - (1 - k / 14) ** (1 / 4)) * 0.98, 'rl-tick', 0.28, 'contagem');
+    add(b.start + 0.15 + dur, isMoneyText(b.data.text) ? 'cash' : 'cg-ding', 0.5, 'valor final');
+  } else if (b.type === 'pm-calendar') {
+    const N = dayTarget(b.data.text) || 30;
+    const dur = Math.max(0.9, (b.end - b.start) * 0.6);
+    const n = Math.min(12, N - 1);
+    for (let k = 1; k <= n; k += 1) {
+      const j = (k / n) * (N - 1);
+      add(b.start + 0.4 + dur * (1 - (1 - j / Math.max(1, N - 1)) ** (1 / 3)), 'bk-slice', 0.3, 'folha');
+    }
+    add(b.start + 0.4 + dur, 'mi-ding', 0.4, 'dia final');
+  } else if (b.type === 'pm-stage') {
+    const keys = pmStageKeys(b);
+    for (let k = 1; k < keys.length; k += 1) {
+      const a = keys[k - 1][1];
+      const z = keys[k][1];
+      if (k > 1 && (a.cx !== z.cx || a.s !== z.s)) add(b.start + keys[k - 1][0], 'cn-whoosh', 0.3, 'câmera');
+    }
+    (b.data.objs || []).slice(0, 2).forEach((_, j) => add(b.start + 0.55 + j * 0.12, 'cg-pop', 0.4, 'objeto na mão'));
+  } else if (b.type === 'pm-search') {
+    const q = String(b.data.query || b.data.keyword || '').slice(0, 22);
+    for (let k = 0; k < Math.min(10, q.length); k += 1) add(b.start + 0.25 + k * 0.07, 'cn-key', 0.3, 'digitando');
+    const tS = 0.25 + q.length * 0.07 + 0.3;
+    add(b.start + tS, 'cn-whoosh', 0.25, 'lupa');
+    add(b.start + tS + 1.45, 'mi-tick', 0.4, 'achou');
+  } else if (b.type === 'pm-progress') {
+    const T = pmProgT(b);
+    add(b.start + T.click, 'cg-click', 0.5, 'clique');
+    add(b.start + T.fill, 'mi-rise', 0.35, 'carregando');
+    add(b.start + T.check, 'mi-ding', 0.5, 'pronto');
+  } else if (b.type === 'pm-icon') {
+    add(b.start + 0.05, 'cg-pop', 0.45, 'ícone');
+    if (b.data.icon === 'bag') [0.45, 1.85].forEach((t) => { if (t < b.end - b.start) add(b.start + t, 'coin', 0.35, 'moeda'); });
+    if (kw && kw.t - b.start > 0.3) add(kw.t, 'mi-pop', 0.3, 'palavra');
+  }
+}
+
+const DRAW = { editorial: ED_DRAW, bordo: BO_DRAW, 'cinema-escuro': CI_DRAW, minimalista: MI_DRAW, cinetico: CN_DRAW, bloco: BLO_DRAW, marca: MRC_DRAW, rolagem: RLG_DRAW, azul: AZ_DRAW, colagem: CG_DRAW, premium: PM_DRAW };

@@ -277,3 +277,53 @@ test('B-roll fora das cenas de motion: o que cai dentro da cena sai (ficava esco
   assert.deepEqual(out.map((m) => m.start), [1, 8.8, 3.5]);
   assert.equal(brollOutsideScenes([{ start: 5, end: 6 }], []).length, 1);
 });
+
+test('premium (referências: contador, calendário, palco com câmera, busca, progresso, ícone): escolha, sons e desenho', async () => {
+  const { STYLE_BEATS, moneyTarget, dayTarget, pmFmt, pmStageKeys, pmIconFor } = await import('../../shared/motionStyles.js');
+  // valores e dias falados
+  assert.equal(moneyTarget('ganhei R$ 50 mil'), 50000);
+  assert.equal(moneyTarget('1 milhão de reais'), 1000000);
+  assert.equal(moneyTarget('um milhão'), 1000000);
+  assert.equal(moneyTarget('R$ 1.250.000'), 1250000);
+  assert.equal(moneyTarget('2,5 milhões'), 2500000);
+  assert.equal(dayTarget('em apenas 30 dias'), 30);
+  assert.equal(dayTarget('em uma semana'), 7);
+  assert.equal(dayTarget('3 meses depois'), 90);
+  assert.equal(dayTarget('mesmo assim'), 0);
+  assert.equal(pmFmt(1000000), '1.000.000');
+  assert.equal(pmIconFor(['people', 'money']), 'bag', 'dinheiro vence pessoas');
+  const seg = (t, text) => { const ws = text.split(' '); return { start: t, end: t + ws.length * 0.3 + 0.5, text, words: ws.map((w, i) => ({ word: w, start: t + i * 0.3, end: t + i * 0.3 + 0.26 })) }; };
+  const segments = [seg(0.2, 'a gente faturou 50 mil reais'), seg(2.6, 'em apenas 30 dias'), seg(4.4, 'entre tempo e dinheiro você escolhe'), seg(7.0, 'você pesquisa no google sozinho'), seg(9.4, 'até o resultado ficar pronto')];
+  const plan = explainerPlan({ segments, dur: 12, amount: 'muitos', style: 'premium' });
+  const beats = plan.scenes.flatMap((sc) => sc.beats);
+  const types = beats.map((b) => b.type);
+  for (const t of types) assert.ok(STYLE_BEATS.premium.includes(t), t);
+  for (const t of ['pm-count', 'pm-calendar', 'pm-stage', 'pm-search']) assert.ok(types.includes(t), `${t} em ${types.join(',')}`);
+  const stage = beats.find((b) => b.type === 'pm-stage');
+  assert.deepEqual(stage.data.objs.map((o) => o.word), ['tempo', 'dinheiro']);
+  assert.equal(beats.find((b) => b.type === 'pm-search').data.query, 'google');
+  // câmera do palco: abre fechado, plano geral, close em cada item na hora da palavra, volta ao geral
+  const keys = pmStageKeys(stage);
+  for (let i = 1; i < keys.length; i += 1) assert.ok(keys[i][0] > keys[i - 1][0], 'tempos crescentes');
+  assert.ok(keys.some(([, v]) => v.cx < 540 && v.s > 1.5) && keys.some(([, v]) => v.cx > 540 && v.s > 1.5), 'close nos dois itens');
+  assert.equal(keys[keys.length - 1][1].s, 1, 'termina no plano geral');
+  const names = new Set(plan.sfx.map((s) => s.type));
+  for (const n of names) assert.ok(SFX_LIBRARY[n], `som ${n} existe`);
+  assert.ok(names.has('rl-tick') && names.has('cn-whoosh') && names.has('cn-key'), [...names].join(','));
+  // o editor manda as cenas de volta: objetos, ícone e busca passam pelo filtro
+  const o = parseOptions({ kinetic: true, kineticTheme: 'premium', motionScenes: plan.scenes });
+  const back = o.motionScenes.flatMap((sc) => sc.beats);
+  assert.deepEqual(back.find((b) => b.type === 'pm-stage').data.objs, stage.data.objs);
+  assert.equal(back.find((b) => b.type === 'pm-search').data.query, 'google');
+  // desenho de todos os tipos, com e sem imagem, em qualquer instante
+  const ctx = createCanvas(108, 192).getContext('2d');
+  const img = createCanvas(20, 20);
+  for (const type of STYLE_BEATS.premium) {
+    const data = { text: 'ganhei 50 mil em 30 dias com tempo e dinheiro', keyword: 'dinheiro', query: 'google', icon: 'bag', objs: [{ el: 'real/clock-antique', word: 'tempo' }, { el: 'real/money-sack', word: 'dinheiro' }] };
+    const sc = { start: 0, end: 5, style: 'premium', beats: [{ type, start: 0, end: 3, words: [{ w: 'tempo', t: 0.6 }, { w: 'dinheiro', t: 1.6 }], data }, { type, start: 3, end: 5, words: [], data: { text: 'só isso', keyword: 'isso' } }] };
+    for (let t = -0.2; t < 5.3; t += 0.2) {
+      drawExplainer(ctx, sc, t, { W: 108, H: 192, image: () => img });
+      drawExplainer(ctx, sc, t, { W: 108, H: 192, image: () => null });
+    }
+  }
+});

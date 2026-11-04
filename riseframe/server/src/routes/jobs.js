@@ -9,7 +9,7 @@ import { config } from '../config.js';
 import { queue } from '../queue.js';
 import { requireAuth, requireVerified } from './auth.js';
 import { getSettings } from '../auth/settings.js';
-import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod, trialCovers, useFreeEdit, refundFreeEdit, holdRemote, releaseRemote, appAccess, hadTrial } from '../auth/billing.js';
+import { billingStatus, canAfford, charge, refund, allowedFeatures, currentPeriod, trialCovers, useFreeEdit, refundFreeEdit, holdRemote, releaseRemote, appAccess, hadTrial, premiumAccess } from '../auth/billing.js';
 import { remoteAccount, remoteCheck, remoteCharge, holdRemoteCharge, settleRemoteCharge, sendAccountError, rememberJobToken, accountFetch } from '../account.js';
 import { creditItems, creditTotal, lockedItems, cheapestPlanFor } from '../../../shared/credits.js';
 import { registerMedia, resolveMedia, relinkMedia, mediaStatus, listLibrary, removeFromLibrary } from '../mediaStore.js';
@@ -26,7 +26,7 @@ import { CLIP_GOALS } from '../pipeline/clipSelect.js';
 import { sanitizeHeadline, sanitizeCover, makeCover } from '../pipeline/headline.js';
 import { outputTarget, cleanFitRanges } from '../pipeline/render.js';
 import { brollCandidates, resolveSource, googleConfig, googleReady } from '../pipeline/broll.js';
-import { freesoundKey, searchFreesound, searchOpenverse, okSfxUrl, onlineSfxFile } from '../pipeline/sfxOnline.js';
+import { freesoundKey, searchFreesound, searchOpenverse, okSfxUrl, onlineSfxFile, isSoundza, knownSoundza, searchSoundza, soundzaKey } from '../pipeline/sfxOnline.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
 import { analyzeAndGrade } from '../pipeline/autoColor.js';
 import { CAPTION_TEMPLATES, CAPTION_FONTS } from '../pipeline/captions.js';
@@ -40,6 +40,7 @@ import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
 import { ELEMENT_MOTIONS } from '../../../shared/elementMotion.js';
 import { KINETIC_THEMES } from '../../../shared/kinetic.js';
 import { MOTION_STYLES } from '../../../shared/motionEngine.js';
+import { PM_ICONS } from '../../../shared/motionStyles.js';
 import { cleanElementId, elementFile } from '../pipeline/elements.js';
 import { elementExt } from '../../../shared/sceneElements.js';
 import { cleanExtraCaptions } from '../../../shared/extraCaptions.js';
@@ -84,6 +85,8 @@ function optionsForUser(req) {
     const f = resolveCustomFont(req.user.id, l.font.slice(7));
     if (f) { l.fontFile = f.path; l.fontFamily = f.family; } else l.font = 'poppins';
   }
+  // Sons Premium (Soundza): só entram no render de quem tem plano ativo.
+  if (o.sfxMoments?.length && !premiumAccess(req.user)) o.sfxMoments = o.sfxMoments.filter((m) => !isSoundza(m.url));
   const s = getSettings(req.user.id);
   if (s.pexelsKey) o.pexelsKey = s.pexelsKey;
   if (s.anthropicKey) o.anthropicKey = s.anthropicKey;
@@ -458,6 +461,11 @@ function cleanMotionScenes(raw) {
         keys: (Array.isArray(b?.data?.keys) ? b.data.keys : []).slice(0, 4).map((k) => str(k, 40)),
         ...(Number.isFinite(Number(b?.data?.number)) ? { number: Math.max(0, Math.min(1e12, Math.round(Number(b.data.number)))) } : {}),
         ...(cleanElementId(b?.data?.element) ? { element: b.data.element } : {}),
+        ...(b?.data?.objWord ? { objWord: str(b.data.objWord, 40) } : {}),
+        // estilo premium: objetos nas mãos (até 2) e o ícone de traço
+        ...(Array.isArray(b?.data?.objs) ? { objs: b.data.objs.slice(0, 2).filter((o) => cleanElementId(o?.el)).map((o) => ({ el: o.el, word: str(o.word, 40) })) } : {}),
+        ...(PM_ICONS.includes(b?.data?.icon) ? { icon: b.data.icon } : {}),
+        ...(b?.data?.query ? { query: str(b.data.query, 40) } : {}),
       },
     }));
     if (beats.length) out.push({ start, end, style, beats });
@@ -1386,6 +1394,20 @@ jobsRouter.post('/remote/broll-search', requireAuth, requireVerified, requireApp
 jobsRouter.get('/sfx-online/search', requireAuth, async (req, res) => {
   const q = String(req.query.q || '').slice(0, 80);
   const page = Number(req.query.page) || 1;
+  // Soundza: acervo Premium (plano ativo), com a chave deste servidor
+  if (req.query.src === 'soundza') {
+    if (!premiumAccess(req.user)) {
+      return res.status(402).json({ code: 'PLAN_REQUIRED', premiumRequired: true, error: 'Os sons Premium (Soundza) são liberados com um plano mensal ativo. Assine em Planos para usar.' });
+    }
+    if (!soundzaKey()) return res.status(501).json({ error: 'Os sons Premium ainda não estão ligados neste servidor (falta SOUNDZA_API_KEY).' });
+    if (!remoteQuota('soundza', req.user.id, Number(process.env.SOUNDZA_DAILY_SEARCHES) || 300)) return res.status(429).json({ error: 'Limite diário de buscas de sons Premium atingido — volta amanhã.' });
+    try {
+      return res.json({ results: await searchSoundza(q, { page, cacheDir: config.paths.cache }), src: 'soundza' });
+    } catch (err) {
+      console.warn(`[sfx-online] soundza: ${err.message}`);
+      return res.status(err.status || 502).json({ error: err.message || 'falha na busca de sons Premium' });
+    }
+  }
   const want = req.query.src === 'freesound' ? 'freesound' : 'openverse';
   const freesound = async () => {
     if (freesoundKey()) return searchFreesound(q, { page });
@@ -1422,8 +1444,10 @@ jobsRouter.post('/remote/sfx-search', requireAuth, requireVerified, requireAppPl
 jobsRouter.get('/sfx-online/preview', async (req, res) => {
   const u = String(req.query.u || '');
   if (!okSfxUrl(u)) return res.status(400).json({ error: 'endereço de som inválido' });
+  // Soundza: só sons que já apareceram numa busca Premium (a prévia é a grátis do Soundza)
+  if (isSoundza(u) && !(await knownSoundza(u, config.paths.cache))) return res.status(404).json({ error: 'som não encontrado' });
   try {
-    const file = await onlineSfxFile(u, config.paths.cache);
+    const file = await onlineSfxFile(u, config.paths.cache, { quality: 'preview' });
     res.set('Cache-Control', 'private, max-age=86400');
     res.type('audio/mpeg').sendFile(path.resolve(file));
   } catch (err) {
