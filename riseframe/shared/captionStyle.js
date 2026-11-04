@@ -176,6 +176,8 @@ export const CAPTION_TEMPLATES = {
   // Premium: palavras entram uma a uma; comuns pequenas em cima, a palavra-chave embaixo,
   // grande, com brilho (+ som de tecla).
   premium: { mode: 'phrase', size: 0.08, smallSize: 0.04, align: 2, marginV: 0.2, outline: 0.05, bold: true, upper: false, anim: 'fade', premium: true, defaultFont: 'archivo', smallFont: 'inter' },
+  // Klickpin: premium word-by-word + conectivos em itálico + palavra-chave vermelha grande (serifa)
+  klickpin: { mode: 'phrase', size: 0.08, smallSize: 0.038, align: 2, marginV: 0.22, outline: 0.05, bold: true, upper: false, anim: 'fade', premium: true, defaultFont: 'archivo', smallFont: 'inter', smallItalic: true, kwColor: '#E5262A', kwFace: { font: 'playfair', style: '900i' } },
   // ── novos ──
   // TikTok: contorno grosso; a palavra falada cresce na cor de destaque.
   tiktok: { mode: 'phrase', size: 0.066, align: 2, marginV: 0.18, outline: 0.14, bold: true, upper: false, anim: 'pop', forceHighlight: true, hl: 'scale', defaultFont: 'montserrat' },
@@ -208,6 +210,7 @@ export const CAPTION_TEMPLATE_LABELS = {
   reel: 'Reel editado (palavra dourada)',
   minimal: 'Minimalista',
   premium: 'Premium (palavra a palavra + brilho)',
+  klickpin: 'Klickpin (itálico + palavra vermelha)',
   tiktok: 'TikTok (palavra cresce)',
   beast: 'YouTuber (gigante + sombra)',
   comic: 'Quadrinhos',
