@@ -67,13 +67,14 @@ test('o FFmpeg pinta o rabisco e anima o objeto 3D por cima', () => {
   assert.equal(r.status, 0, r.stderr.toString().slice(0, 400));
 });
 
-test('cada tema com fundo tem a imagem no app e o "Alternar" passa por vários fundos', async () => {
+test('cada fundo de cena tem a imagem no app; o seletor só mostra os estilos das referências', async () => {
   const { SCENE_BACKGROUNDS, KINETIC_THEMES } = await import('../../shared/kinetic.js');
+  const { MOTION_STYLES } = await import('../../shared/motionEngine.js');
   assert.ok(SCENE_BACKGROUNDS.length >= 14);
-  for (const b of SCENE_BACKGROUNDS) {
-    assert.ok(KINETIC_THEMES[b], b);
-    assert.ok(elementFile(`backgrounds/${b}`), b);
-  }
+  for (const b of SCENE_BACKGROUNDS) assert.ok(elementFile(`backgrounds/${b}`), b);
+  // todo estilo do seletor é desenhado (vem de uma referência); nada de tema antigo em camadas
+  for (const id of Object.keys(KINETIC_THEMES)) assert.ok(Object.hasOwn(MOTION_STYLES, id), id);
+  for (const gone of ['preto-raios', 'grade-ondulada', 'lampada', 'explicativo', 'auto']) assert.equal(KINETIC_THEMES[gone], undefined, gone);
   for (const old of ['holofote', 'papel', 'grade', 'cinema', 'roxo-ondas', 'preto-linha', 'cinza-rasgado', 'branco-grade']) assert.equal(KINETIC_THEMES[old], undefined, `${old} saiu`);
   const segs = Array.from({ length: 8 }, (_, i) => ({ start: i * 5, end: i * 5 + 3, words: words('o segredo do dinheiro é sempre o tempo', i * 5) }));
   const plan = kineticPlan({ segments: segs, dur: 42, amount: 'muitos' });

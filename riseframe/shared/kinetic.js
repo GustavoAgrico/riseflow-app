@@ -24,6 +24,9 @@ export function textWidthEm(text, font, tracking = 0) {
   return w / 1000 + (tracking / 1000) * n;
 }
 
+// Só os estilos feitos a partir das referências enviadas (os temas antigos em camadas —
+// raios, grade ondulada, lâmpada… — e o Explicativo saíram do seletor; projetos antigos
+// com eles voltam para o Estratégia).
 export const KINETIC_THEMES = {
   estrategia: 'Estratégia (creme e preto)',
   minimalista: 'Minimalista (cards e palavras)',
@@ -37,24 +40,6 @@ export const KINETIC_THEMES = {
   editorial: 'Editorial P&B',
   bordo: 'Itálico bordô',
   'cinema-escuro': 'Cinema escuro',
-  auto: 'Alternar',
-  'preto-raios': 'Preto com raios',
-  'grade-ondulada': 'Grade ondulada',
-  'azul-grade': 'Azul com grade e estrelas',
-  'cinza-manchas': 'Cinza com manchas',
-  'holofote-cone': 'Feixe de luz',
-  lampada: 'Lâmpada',
-  'azul-orbita': 'Azul-noite com órbitas',
-  'lilas-flor': 'Lilás com flor',
-  escuro: 'Escuro premium',
-  branco: 'Branco com recortes',
-  vsl: 'Roxo vidro (VSL)',
-  'azul-claro': 'Azul-claro',
-  'papel-cinza': 'Papel cinza',
-  'branco-zigzag': 'Branco com zigzag',
-  video: 'Sobre o vídeo',
-  legenda: 'Legenda em bloco',
-  explicativo: 'Explicativo (motion design)',
 };
 export const KINETIC_AMOUNT = { chave: 'Momentos-chave', muitos: 'Quase o vídeo todo' };
 

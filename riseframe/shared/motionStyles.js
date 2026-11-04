@@ -1435,8 +1435,11 @@ const BLO_DRAW = {
   },
 };
 
+// Marca (referência "SoftwareWOW"): sans geométrica (Montserrat 700, como a da referência),
+// frase centrada no alto, cartão separado do texto, nada encostando.
+const MK_FONT = { font: FM7, ls: -0.01 };
 const MRC_DRAW = {
-  // lilás: palavra em contorno gigante ao fundo e a frase entrando palavra por palavra
+  // lilás: palavra em contorno gigante ao fundo e a frase entrando
   'mk-intro'(ctx, b, lt) {
     flatBg(ctx, MK_LILAC);
     ctx.save();
@@ -1448,25 +1451,32 @@ const MRC_DRAW = {
     ctx.textAlign = 'left';
     ctx.strokeText(b.data.keyword.toUpperCase(), 40 - lt * 50, 1420);
     ctx.restore();
-    cnBlock(ctx, beatWords(b), lt, { y: 820, size: 110, color: '#FFFFFF', fx: 'rise', stagger: 0.07 });
+    cnBlock(ctx, beatWords(b), lt, { y: 900, size: 104, color: '#FFFFFF', fx: 'rise', stagger: 0.05, ...MK_FONT });
   },
-  // branco: cartão lilás inclinado (perspectiva) que sobe; a frase dentro dele
+  // branco: a frase no alto e, abaixo dela (sem encostar), o cartão lilás inclinado que sobe com o
+  // objeto; sem objeto, a palavra-chave grande dentro do cartão (o cartão nunca fica vazio)
   'mk-card'(ctx, b, lt, env) {
     flatBg(ctx, '#FFFFFF');
     const e = clamp(outBack(prog(lt, 0, 0.5)));
+    const cy = 1150;
     ctx.save();
-    ctx.translate(540, 1000 + (1 - e) * 500);
+    ctx.translate(540, cy + (1 - e) * 500);
     ctx.transform(1, 0, (1 - e) * -0.25, 1, 0, 0);
-    ctx.shadowColor = 'rgba(0,0,0,0.2)';
-    ctx.shadowBlur = 60;
-    ctx.shadowOffsetY = 30;
+    ctx.rotate(-0.035);
+    ctx.shadowColor = 'rgba(40,30,120,0.25)';
+    ctx.shadowBlur = 70;
+    ctx.shadowOffsetY = 34;
     ctx.fillStyle = MK_LILAC;
     setFilter(ctx);
-    roundRectPath(ctx, -400, -520, 800, 1040, 50);
+    roundRectPath(ctx, -330, -400, 660, 800, 54);
     ctx.fill();
     ctx.restore();
-    if (b.data.element) objectImg(ctx, env, b.data.element, 540, 1000, 300, { alpha: outCubic(prog(lt, 0.2, 0.4)), shadow: 'rgba(0,0,0,0.2)' });
-    cnBlock(ctx, beatWords(b), lt, { y: 560, size: 84, color: '#111111', fx: 'slide', stagger: 0.05 });
+    const ws = beatWords(b);
+    const kw = ws.find((w) => low(w.text) === low(b.data.keyword));
+    if (b.data.element) objectImg(ctx, env, b.data.element, 540, cy + (1 - e) * 500, 420, { alpha: outCubic(prog(lt, 0.2, 0.4)), shadow: 'rgba(0,0,0,0.25)' });
+    else if (kw) fxLine(ctx, [{ ...kw, text: kw.text }], lt, { y: cy + 50 + (1 - e) * 500, size: 120, color: '#FFFFFF', fx: 'pop', stagger: 0, maxW: 560, ...MK_FONT });
+    const rest = b.data.element ? ws : ws.filter((w) => w !== kw);
+    cnBlock(ctx, rest, lt, { y: 560, size: 80, color: '#111111', fx: 'slide', stagger: 0.04, ...MK_FONT });
   },
   // lilás: barras que crescem em sequência; a frase em cima
   'mk-bars'(ctx, b, lt) {
@@ -1477,21 +1487,22 @@ const MRC_DRAW = {
       ctx.save();
       setFilter(ctx);
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      roundRectPath(ctx, 540 + (i - 2) * 170 - 60, 1600 - 700 * h * e, 120, 700 * h * e, 26);
+      roundRectPath(ctx, 540 + (i - 2) * 170 - 60, 1600 - 640 * h * e, 120, 640 * h * e, 26);
       ctx.fill();
       ctx.restore();
     });
-    cnBlock(ctx, beatWords(b), lt, { y: 620, size: 110, color: '#FFFFFF', fx: 'rise', stagger: 0.05 });
+    cnBlock(ctx, beatWords(b), lt, { y: 640, size: 100, color: '#FFFFFF', fx: 'rise', stagger: 0.05, ...MK_FONT });
   },
   // branco: logo em duas cores (degradê na palavra-chave) e a frase pequena em cima
   'mk-logo'(ctx, b, lt) {
     flatBg(ctx, '#FFFFFF');
-    cnBlock(ctx, beatWords(b), lt, { y: 760, size: 70, color: '#111111', fx: 'rise', stagger: 0.05 });
+    const ws = beatWords(b);
+    const kwAt = ws.find((w) => low(w.text) === low(b.data.keyword));
+    cnBlock(ctx, ws.filter((w) => w !== kwAt), lt, { y: 800, size: 74, color: '#111111', fx: 'rise', stagger: 0.05, ...MK_FONT });
     const g = ctx.createLinearGradient(300, 0, 780, 0);
     g.addColorStop(0, '#5F5CC9');
     g.addColorStop(1, '#E36D9B');
-    const kt = beatWords(b).find((w) => low(w.text) === low(b.data.keyword))?.at ?? 0.3;
-    fxLine(ctx, [{ text: b.data.keyword, at: kt }], lt, { y: 1000, size: 170, color: g, fx: 'pop', stagger: 0 });
+    fxLine(ctx, [{ text: b.data.keyword, at: kwAt?.at ?? 0.3 }], lt, { y: 1010, size: 170, color: g, fx: 'pop', stagger: 0, ...MK_FONT });
   },
 };
 

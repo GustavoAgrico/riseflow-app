@@ -167,12 +167,32 @@ export function explainerPlan({ segments, dur, amount = 'chave', existing = [], 
     const beats = planned.map((b, k, all) => {
       const s = Math.max(start, b.chunk[0].start - 0.05);
       const e = k < all.length - 1 ? all[k + 1].chunk[0].start - 0.05 : end;
-      return { type: b.type, start: r2(s), end: r2(Math.max(s + 0.6, e)), words: b.chunk.map((w) => ({ w: clean(w), t: r2(w.start) })), data: b.data };
+      return { type: b.type, start: r2(s), end: r2(Math.max(s + 0.6, e)), words: phraseTimes(b.chunk.map((w) => ({ w: clean(w), t: r2(w.start) })), b.data?.keyword), data: b.data };
     });
     scenes.push({ start: r2(start), end: r2(end), style: Object.hasOwn(MOTION_STYLES, style) ? style : 'explicativo', beats });
     sfx.push(...(style === 'estrategia' ? strategySfx(beats) : STYLE_BEATS[style] ? styleSfx(style, beats) : explainerSfx(beats)));
   }
   return { scenes, sfx };
+}
+
+/**
+ * Quando cada palavra entra na tela. Nas referências a frase aparece inteira e rápida (não uma
+ * palavra por vez esperando a fala, o que deixava a tela vazia ou com "no mês pa…"): o começo
+ * entra em cascata curta a partir da 1ª palavra falada, a palavra-chave entra no instante em
+ * que é falada (a batida de destaque continua no tempo da fala) e o resto logo depois dela.
+ * Nunca entra depois de ser falada. Pura.
+ */
+export function phraseTimes(words, keyword) {
+  if (!words.length) return words;
+  const k = words.findIndex((w) => low(w.w) === low(keyword));
+  const t0 = Number(words[0].t);
+  const STEP = 0.07;
+  return words.map((w, i) => {
+    const t = Number(w.t);
+    if (i === k) return w;
+    const at = k >= 0 && i > k ? Number(words[k].t) + 0.22 + STEP * (i - k - 1) : t0 + STEP * (k >= 0 ? i : i);
+    return { ...w, t: r2(Math.min(t, at)) };
+  });
 }
 
 /** Sons de cada batida (pop, subida, tique do contador, quique da forma, tique das barras e das etiquetas, varrida, flecha, impacto). */
