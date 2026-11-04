@@ -22,6 +22,7 @@ import { useOnboarding } from '@hooks/useOnboarding'
 import { OnboardingWizard } from '@components/OnboardingWizard'
 import { LiveConversations } from '@components/Dashboard/LiveConversations'
 import { GoalPanel } from '@components/Goals/GoalPanel'
+import { LeadStatusPanel } from '@components/Dashboard/LeadStatusPanel'
 import { useApp } from '@context/AppContext'
 import { useAuth } from '@context/AuthContext'
 import clsx from 'clsx'
@@ -70,7 +71,16 @@ const Sparkline = ({ data = [], color = '#FF6B35', w = 72, h = 30 }) => {
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
-const StatCard = ({ icon: Icon, label, value, change, color, hex = '#FF6B35', sparkData, to, trend }) => {
+const statCardSurface = {
+  position: 'relative',
+  overflow: 'hidden',
+  padding: 18,
+  borderRadius: 16,
+  border: '1px solid var(--border)',
+  background: 'linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01)), var(--card)',
+  boxShadow: '0 1px 0 rgba(255,255,255,.03) inset, 0 16px 40px -28px rgba(0,0,0,.6)',
+}
+const StatCard =({ icon: Icon, label, value, change, color, hex = '#FF6B35', sparkData, to, trend }) => {
   // trend definido ('up'/'down') → pílula verde/vermelha com seta coerente (delta real).
   // trend indefinido → mantém a cor do card (compatibilidade).
   const dColor = trend == null ? hex : trend === 'down' ? '#EF4444' : '#10B981'
@@ -109,9 +119,9 @@ const StatCard = ({ icon: Icon, label, value, change, color, hex = '#FF6B35', sp
   )
   const cls = clsx('stat-card group', to && 'cursor-pointer hover:border-white/15 transition-colors')
   if (to) {
-    return <Link to={to} className={cls} style={{ position: 'relative', overflow: 'hidden', display: 'block', textDecoration: 'none' }}>{content}</Link>
+    return <Link to={to} className={cls} style={{ ...statCardSurface, display: 'block', textDecoration: 'none' }}>{content}</Link>
   }
-  return <div className={cls} style={{ position: 'relative', overflow: 'hidden' }}>{content}</div>
+  return <div className={cls} style={statCardSurface}>{content}</div>
 }
 
 // ── Channel dot (inline style) ────────────────────────────────────────────────
@@ -173,16 +183,16 @@ const ActiveDot = ({ cx, cy, fill }) => (
 // ── Loading skeleton ───────────────────────────────────────────────────────────
 const LoadingSkeleton = () => (
   <div className="space-y-6 animate-pulse">
-    <div className="h-20 glass rounded-2xl" />
+    <div className="h-20 rf-panel rounded-2xl" />
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {[...Array(4)].map((_, i) => <div key={i} className="h-36 glass rounded-2xl" />)}
+      {[...Array(4)].map((_, i) => <div key={i} className="h-36 rf-panel rounded-2xl" />)}
     </div>
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div className="lg:col-span-2 h-72 glass rounded-2xl" />
-      <div className="h-72 glass rounded-2xl" />
+      <div className="lg:col-span-2 h-72 rf-panel rounded-2xl" />
+      <div className="h-72 rf-panel rounded-2xl" />
     </div>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      {[...Array(2)].map((_, i) => <div key={i} className="h-64 glass rounded-2xl" />)}
+      {[...Array(2)].map((_, i) => <div key={i} className="h-64 rf-panel rounded-2xl" />)}
     </div>
   </div>
 )
@@ -216,7 +226,7 @@ const EmptyState = ({ userName, onCreateFlow }) => (
         { icon: Zap,           title: 'Automações inteligentes', desc: 'Fluxos automáticos que vendem enquanto você dorme', color: 'text-brand-orange' },
         { icon: TrendingUp,   title: 'Analytics em tempo real', desc: 'Acompanhe conversões e métricas do seu negócio', color: 'text-brand-blue' },
       ].map((f, i) => (
-        <div key={i} className="glass rounded-2xl p-5 text-center hover:border-brand-orange/20 transition-all">
+        <div key={i} className="rf-panel rounded-2xl p-5 text-center hover:border-brand-orange/20 transition-all">
           <div className="w-10 h-10 rounded-xl bg-dark-500 flex items-center justify-center mx-auto mb-3">
             <f.icon size={18} className={f.color} />
           </div>
@@ -379,7 +389,10 @@ export const Dashboard = () => {
       </div>
 
       {/* ── Meta de vendas do mês (ao vivo) ── */}
-      <div style={{ marginBottom: 24 }}><GoalPanel /></div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 20, marginBottom: 24 }}>
+        <GoalPanel />
+        <LeadStatusPanel />
+      </div>
 
       {/* ── Hero premium ── */}
       <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 20, marginBottom: 24,
@@ -433,11 +446,11 @@ export const Dashboard = () => {
       </div>
 
       {/* ── Gráfico grande — desempenho ao longo do tempo (destaque no topo, estilo referência) ── */}
-      <div className="glass rounded-2xl p-5 mb-6">
+      <div className="rf-panel rounded-2xl p-5 mb-6">
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-          <h4 className="font-display font-semibold text-white" style={{ fontSize: 14 }}>
+          <h3 className="rf-section-title">
             {hasCrm ? 'Desempenho ao longo do tempo' : 'Atividade de mensagens (últimos 7 dias)'}
-          </h4>
+          </h3>
           <div style={{ display: 'flex', gap: 16, fontSize: 11, color: '#475569' }}>
             {hasCrm ? (
               <>
@@ -510,7 +523,7 @@ export const Dashboard = () => {
         ].filter(Boolean)
         if (!items.length) return null
         return (
-          <div className="glass rounded-2xl p-4 mb-6">
+          <div className="rf-panel rounded-2xl p-4 mb-6">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <h3 className="rf-section-title">Prioridades</h3>
               <Link to="/hoje" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Ver tudo →</Link>
@@ -551,7 +564,7 @@ export const Dashboard = () => {
         const full = pct >= 100
         const barHex = full ? '#EF4444' : pct > 80 ? '#EAB308' : '#FF6B35'
         return (
-          <div className="glass rounded-2xl p-5 mb-6">
+          <div className="rf-panel rounded-2xl p-5 mb-6">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <MessageCircle size={15} style={{ color: '#FF6B35' }} />
@@ -590,8 +603,8 @@ export const Dashboard = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Barras horizontais — valor por etapa (estilo "campaign performance" do modelo) */}
-          <div className="glass rounded-2xl p-5">
-            <h4 className="font-display font-semibold text-white" style={{ fontSize: 13, marginBottom: 6 }}>Valor por etapa</h4>
+          <div className="rf-panel rounded-2xl p-5">
+            <h3 className="rf-section-title" style={{ fontSize: 14, marginBottom: 10 }}>Valor por etapa</h3>
             {hasCrm ? (
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={barData} layout="vertical" margin={{ top: 6, right: 16, bottom: 0, left: 0 }} barCategoryGap="28%">
@@ -610,8 +623,8 @@ export const Dashboard = () => {
           </div>
 
           {/* Pizza — distribuição do funil */}
-          <div className="glass rounded-2xl p-5">
-            <h4 className="font-display font-semibold text-white" style={{ fontSize: 13, marginBottom: 6 }}>Distribuição do funil</h4>
+          <div className="rf-panel rounded-2xl p-5">
+            <h3 className="rf-section-title" style={{ fontSize: 14, marginBottom: 10 }}>Distribuição do funil</h3>
             {stagePie.length ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <ResponsiveContainer width="55%" height={220}>
@@ -643,7 +656,7 @@ export const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
 
         {/* Activity chart (2/3) */}
-        <div className="lg:col-span-2 glass rounded-2xl p-5">
+        <div className="lg:col-span-2 rf-panel rounded-2xl p-5">
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
             <div>
               <h3 className="rf-section-title">Atividade</h3>
@@ -754,7 +767,7 @@ export const Dashboard = () => {
         </div>
 
         {/* Channels (1/3) */}
-        <div className="glass rounded-2xl p-5 flex flex-col">
+        <div className="rf-panel rounded-2xl p-5 flex flex-col">
           <h3 className="rf-section-title mb-5">Canais</h3>
 
           {/* Donut chart */}
@@ -828,7 +841,7 @@ export const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Recent Clients */}
-        <div className="glass rounded-2xl p-5">
+        <div className="rf-panel rounded-2xl p-5">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <h3 className="rf-section-title">Clientes Recentes</h3>
             <Link to="/clients" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Ver todos →</Link>
@@ -874,7 +887,7 @@ export const Dashboard = () => {
         </div>
 
         {/* Active Flows */}
-        <div className="glass rounded-2xl p-5">
+        <div className="rf-panel rounded-2xl p-5">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <h3 className="rf-section-title">Fluxos Ativos</h3>
             <Link to="/automation" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Gerenciar →</Link>

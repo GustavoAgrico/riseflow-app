@@ -51,7 +51,7 @@ const parseMoney = (v) => {
 /* linha da tabela clients -> formato do card do CRM */
 const mapRow = r => ({ id: r.id, name: r.name || '', phone: r.phone || '', email: r.email || '', company: r.company || '', value: Number(r.value) || 0, stage: r.stage || 'lead', tags: r.tags || [], lastMsg: r.last_message || '', time: rel(r.created_at), assignedTo: r.assigned_to || '' })
 
-const ContactCard = ({ contact, onDragStart, onClick, onDelete, stages }) => {
+const ContactCard = ({ contact, onDragStart, onClick, onDelete, onEditClick, stages }) => {
   const [hov, setHov] = useState(false)
   const st = stageAt(stages, contact.stage)
   return (
@@ -66,6 +66,15 @@ const ContactCard = ({ contact, onDragStart, onClick, onDelete, stages }) => {
         </div>
         {!hov && contact.assignedTo && (
           <div title={'Responsável: ' + contact.assignedTo} style={{ width: 22, height: 22, borderRadius: '50%', background: '#33415A', color: 'var(--ink-2)', display: 'grid', placeItems: 'center', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{ini(contact.assignedTo)}</div>
+        )}
+        {hov && onEditClick && (
+          <button
+            onClick={e => { e.stopPropagation(); onEditClick(contact) }}
+            title="Editar lead"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.mut, padding: 2, display: 'flex', flexShrink: 0 }}
+          >
+            <Pencil size={14} />
+          </button>
         )}
         {hov && (
           <button
@@ -165,7 +174,7 @@ const deriveTemp = (tags, updatedAt) => {
 }
 const TEMP_MAP = { hot: { Icon: Flame, label: 'Quente', color: '#FF6B35' }, warm: { Icon: CloudSun, label: 'Morno', color: '#EAB308' }, cold: { Icon: Snowflake, label: 'Frio', color: '#38BDF8' } }
 
-const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, onAssign, onEdit, members = [], stages = DEFAULT_STAGES, userId, mobile }) => {
+const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, onAssign, onEdit, startEditing = false, members = [], stages = DEFAULT_STAGES, userId, mobile }) => {
   const st = stageAt(stages, contact.stage)
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
@@ -191,6 +200,7 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, o
     if (err) setEditErr(err)
     else setEditing(false)
   }
+  useEffect(() => { if (startEditing) startEdit() }, [])
   const [msgs, setMsgs] = useState(null)
   const [nextTask, setNextTask] = useState(null)
   const [timeline, setTimeline] = useState(null)
@@ -486,6 +496,8 @@ export function CRM() {
   const [navHov, setNavHov] = useState(false)
   const [contacts, setContacts] = useState([])
   const [selected, setSelected] = useState(null)
+  const [openInEdit, setOpenInEdit] = useState(false)
+  const [editTick, setEditTick] = useState(0)
   const isMobile = useIsMobile()
   const [modal, setModal] = useState(false)
   const [search, setSearch] = useState('')
@@ -692,8 +704,10 @@ export function CRM() {
                 </div>
                 <div style={{ minHeight: 60, borderRadius: 12, border: over ? '2px dashed #2563EB66' : '2px dashed transparent', background: over ? '#2563EB06' : 'transparent', padding: over ? 4 : 0, transition: 'all .15s' }}>
                   {cols.map(c => (
-                    <ContactCard key={c.id} contact={c} onClick={setSelected} stages={stages}
+                    <ContactCard key={c.id} contact={c} stages={stages}
+                      onClick={(item) => { setOpenInEdit(false); setSelected(item) }}
                       onDragStart={(e, id) => e.dataTransfer.setData('cid', id)}
+                      onEditClick={(item) => { setOpenInEdit(true); setEditTick(t => t + 1); setSelected(item) }}
                       onDelete={deleteContact} />
                   ))}
                 </div>
@@ -701,7 +715,7 @@ export function CRM() {
             )
           })}
         </div>
-        {selected && <DetailPanel key={selected.id} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} onDelete={deleteContact} onAssign={assignOwner} onEdit={updateContact} members={members} stages={stages} userId={ownerUserId} mobile={isMobile} />}
+        {selected && <DetailPanel key={`${selected.id}:${editTick}`} startEditing={openInEdit} contact={selected} onClose={() => setSelected(null)} onStageChange={moveContact} onToggleTag={toggleTag} onDelete={deleteContact} onAssign={assignOwner} onEdit={updateContact} members={members} stages={stages} userId={ownerUserId} mobile={isMobile} />}
       </div>
       {modal && <NewContactModal onSave={addContact} onClose={() => setModal(false)} stages={stages} />}
       {stagesOpen && <StageEditor stages={stages} ownerUserId={ownerUserId} isDemoMode={isDemoMode} onClose={() => setStagesOpen(false)} onSaved={reloadStages} />}
