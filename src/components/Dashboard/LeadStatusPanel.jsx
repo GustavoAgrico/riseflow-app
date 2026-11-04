@@ -3,7 +3,11 @@ import { Users, UserPlus, CalendarDays, Wallet } from 'lucide-react'
 import { useLeadStats } from '@hooks/useLeadStats'
 import { brl } from '@lib/metrics'
 
-const card = { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, boxShadow: '0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px -20px rgba(0,0,0,.5)' }
+const card = {
+  background: 'linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01)), var(--card)',
+  border: '1px solid var(--border)', borderRadius: 16, padding: 20,
+  boxShadow: '0 1px 0 rgba(255,255,255,.03) inset, 0 16px 40px -28px rgba(0,0,0,.6)',
+}
 const num = { fontVariantNumeric: 'tabular-nums' }
 
 function secondsAgo(ts, now) {
