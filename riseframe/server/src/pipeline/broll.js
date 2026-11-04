@@ -35,6 +35,54 @@ export function brollOutsideScenes(moments, scenes) {
   });
 }
 
+/**
+ * Recorta as cenas de motion nas janelas dadas: a cena vira duas (antes e depois), as batidas
+ * que começam dentro da janela saem e as que entram nela são encurtadas. Partes curtas somem. Puro.
+ */
+export function carveScenes(scenes, windows) {
+  let out = Array.isArray(scenes) ? scenes : [];
+  for (const w of windows || []) {
+    const next = [];
+    for (const sc of out) {
+      if (w.end <= sc.start || w.start >= sc.end) { next.push(sc); continue; }
+      for (const [a, b] of [[sc.start, w.start], [w.end, sc.end]]) {
+        if (b - a < 1.2) continue;
+        const beats = (sc.beats || [])
+          .filter((bt) => bt.start >= a - 0.05 && bt.start < b - 0.4)
+          .map((bt) => ({ ...bt, start: +Math.max(bt.start, a).toFixed(3), end: +Math.min(bt.end, b).toFixed(3) }))
+          .filter((bt) => bt.end - bt.start >= 0.4);
+        if (beats.length) next.push({ ...sc, start: +a.toFixed(3), end: +b.toFixed(3), beats });
+      }
+    }
+    out = next;
+  }
+  return out;
+}
+
+/**
+ * B-roll junto com o motion. Fica com os momentos de fora das cenas; quando o motion cobre
+ * quase o vídeo todo e eles não bastam, usa momentos de dentro e abre espaço na cena naquele
+ * trecho (antes o B-roll pedido simplesmente sumia). → { moments, scenes, carved }
+ */
+export function fitBrollWithScenes(moments, scenes, max) {
+  const list = Array.isArray(moments) ? moments : [];
+  const outside = brollOutsideScenes(list, scenes);
+  const want = Math.min(Math.max(0, Number(max) || 0), list.length);
+  const chosen = outside.slice(0, want);
+  if (chosen.length >= want || !scenes?.length) return { moments: chosen, scenes, carved: [] };
+  const carved = [];
+  for (const m of list) {
+    if (chosen.length >= want) break;
+    if (outside.includes(m)) continue;
+    // espaço entre um B-roll e outro (pelo menos 1,5 s de motion ou de fala no meio)
+    if (chosen.some((c) => Math.min(Number(c.end), Number(m.end)) - Math.max(Number(c.start), Number(m.start)) > -1.5)) continue;
+    chosen.push(m);
+    carved.push({ start: Number(m.start), end: Number(m.end) });
+  }
+  chosen.sort((a, b) => Number(a.start) - Number(b.start));
+  return { moments: chosen, scenes: carved.length ? carveScenes(scenes, carved) : scenes, carved };
+}
+
 export function pickVaried(list, top = 5) {
   if (!list || !list.length) return null;
   const n = Math.min(top, list.length);

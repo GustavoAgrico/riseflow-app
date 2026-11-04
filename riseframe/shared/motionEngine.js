@@ -697,11 +697,11 @@ function flowText(ctx, b, lt, F, { x, y, maxW, S = 90, K = 180, dark = false, al
       // centro da palavra (coordenadas da cena, sem a rotação) — para o círculo de destaque
       it.cx = x + cx;
       it.cy = y + y0 - it.size * 0.36;
-      ctx.translate(cx + (1 - e) * 70, y0 + (1 - e) * 8);
-      const s = lerp(1.14, 1, e);
+      ctx.translate(cx + (1 - e) * 34, y0 + (1 - e) * 6);
+      const s = lerp(1.08, 1, e);
       ctx.scale(s, s);
       ctx.globalAlpha *= e;
-      if (e < 1) ctx.filter = `blur(${((1 - e) * 16).toFixed(2)}px)`;
+      if (e < 1) ctx.filter = `blur(${((1 - e) * 7).toFixed(2)}px)`;
       ctx.font = `${it.size}px "${it.red ? F.heavy : F.sans}"`;
       ctx.letterSpacing = `${(it.red ? -0.045 : -0.03) * it.size}px`;
       if (dark) {
@@ -723,6 +723,12 @@ function flowText(ctx, b, lt, F, { x, y, maxW, S = 90, K = 180, dark = false, al
   });
   ctx.restore();
   return L;
+}
+
+/** Altura do bloco de texto (para nunca cair em cima do objeto). */
+function textH(ctx, b, F, { items = null, maxW, S, K }) {
+  const list = items || beatWords(b);
+  return list.length ? flowLayout(ctx, list, { S, K, maxW, font: F.sans, heavy: F.heavy }).h : 0;
 }
 
 /** Fundo creme (com vinheta suave) ou preto (com um leve halo no centro). */
@@ -931,8 +937,9 @@ const ADRAW = {
     const e = outCubic(prog(lt, 0, 0.7));
     dotGrid(ctx, 640, 960, 620, 700, outCubic(prog(lt, 0.1, 0.6)));
     barcode(ctx, 700, 330, 240, 80, outCubic(prog(lt, 0.15, 0.4)));
-    objectImg(ctx, env, b.data.element || 'bulb', lerp(-420, 70, e), 960 + bob(lt, 8, 0.8), 980, { rot: lerp(-0.4, -0.08, e), alpha: clamp(e * 1.4) });
-    flowText(ctx, b, lt, F, { x: 650, y: 960, maxW: 720, S: 88, K: 180 });
+    // objeto cortado na borda esquerda e a frase à direita dele, sem encostar
+    objectImg(ctx, env, b.data.element || 'bulb', lerp(-480, -70, e), 960 + bob(lt, 8, 0.8), 880, { rot: lerp(-0.4, -0.08, e), alpha: clamp(e * 1.4) });
+    flowText(ctx, b, lt, F, { x: 700, y: 960, maxW: 560, S: 80, K: 150 });
   },
   // preto: balão branco com a frase (e a chave vermelha); o resto entra grande embaixo
   'a-bubble'(ctx, b, lt, F, env) {
@@ -963,19 +970,29 @@ const ADRAW = {
       objectImg(ctx, env, el, 980, 230, 420, { blur: 5, alpha: outCubic(prog(lt, 0.1, 0.5)), rot: -0.3, shadow: false });
       objectImg(ctx, env, el, 90, 1760, 520, { blur: 7, alpha: outCubic(prog(lt, 0.15, 0.5)), rot: 0.25, shadow: false });
     }
-    flowText(ctx, b, lt, F, { x: 540, y: el ? 740 : 940, maxW: 920, S: 90, K: 180 });
+    // a frase fica toda acima do objeto (o bloco sobe quando tem mais linhas)
+    const objTop = 1010;
+    const h = el ? textH(ctx, b, F, { maxW: 920, S: 90, K: 180 }) : 0;
+    flowText(ctx, b, lt, F, { x: 540, y: el ? Math.min(760, objTop - 50 - h / 2) : 940, maxW: 920, S: 90, K: 180 });
     if (el) {
       const e = outBack(prog(lt, 0.2, 0.45));
-      objectImg(ctx, env, el, 540, 1120 + bob(lt, 10, 1.2), 440 * Math.max(0, e), { rot: Math.sin(lt * 3) * 0.04 });
+      objectImg(ctx, env, el, 540, objTop + 220 + bob(lt, 10, 1.2), 420 * Math.max(0, e), { rot: Math.sin(lt * 3) * 0.04 });
     }
   },
   // preto: objeto 3D no centro, a frase inclinada em cima e o fim dela embaixo
   'a-object'(ctx, b, lt, F, env) {
     const [head, tail] = splitAtKey(b);
     const e = outBack(prog(lt, 0, 0.5));
-    objectImg(ctx, env, b.data.element, 540, 1010 + bob(lt, 12, 1), 640 * lerp(0.7, 1, clamp(e)), { alpha: clamp(e), rot: -0.06 + Math.sin(lt * 1.4) * 0.03 });
-    flowText(ctx, b, lt, F, { x: 520, y: 640, maxW: 860, S: 70, K: 140, items: head, dark: true, rot: -0.13, align: 'center', S: 84, K: 165 });
-    if (tail.length) flowText(ctx, b, lt, F, { x: 560, y: 1420, maxW: 860, S: 70, K: 140, items: tail, dark: true, rot: -0.04, S: 84, K: 165 });
+    // objeto no meio; o começo da frase acima dele e o fim abaixo, sem sobrepor
+    const size = 540;
+    const oy = 1040;
+    objectImg(ctx, env, b.data.element, 540, oy + bob(lt, 12, 1), size * lerp(0.7, 1, clamp(e)), { alpha: clamp(e), rot: -0.06 + Math.sin(lt * 1.4) * 0.03 });
+    const hHead = textH(ctx, b, F, { items: head, maxW: 860, S: 84, K: 165 });
+    flowText(ctx, b, lt, F, { x: 520, y: Math.min(640, oy - size / 2 - 60 - hHead / 2), maxW: 860, items: head, dark: true, rot: -0.1, align: 'center', S: 84, K: 165 });
+    if (tail.length) {
+      const hTail = textH(ctx, b, F, { items: tail, maxW: 860, S: 84, K: 165 });
+      flowText(ctx, b, lt, F, { x: 560, y: Math.max(1420, oy + size / 2 + 60 + hTail / 2), maxW: 860, items: tail, dark: true, rot: -0.04, S: 84, K: 165 });
+    }
   },
   // creme: cartão cinza preso com o alfinete vermelho; título e a lista com ícones
   'a-card'(ctx, b, lt, F) {

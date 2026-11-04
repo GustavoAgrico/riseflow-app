@@ -327,3 +327,22 @@ test('premium (referências: contador, calendário, palco com câmera, busca, pr
     }
   }
 });
+
+test('B-roll com motion no vídeo todo: abre espaço na cena em vez de sumir com o B-roll', async () => {
+  const { fitBrollWithScenes, carveScenes } = await import('../src/pipeline/broll.js');
+  const scene = { start: 0, end: 30, style: 'estrategia', beats: [0, 5, 10, 15, 20, 25].map((s) => ({ type: 'a-glow', start: s, end: s + 5, data: { text: `b${s}` } })) };
+  const moments = [{ start: 6, end: 9, query: 'a' }, { start: 7, end: 10, query: 'b' }, { start: 16, end: 19, query: 'c' }, { start: 26, end: 29, query: 'd' }];
+  const fit = fitBrollWithScenes(moments, [scene], 3);
+  assert.equal(fit.moments.length, 3, 'o B-roll pedido aparece');
+  assert.deepEqual(fit.moments.map((m) => m.query), ['a', 'c', 'd'], 'sem dois B-rolls colados');
+  for (const m of fit.moments) {
+    for (const sc of fit.scenes) assert.ok(m.end <= sc.start || m.start >= sc.end, `B-roll ${m.start}-${m.end} fora da cena ${sc.start}-${sc.end}`);
+  }
+  for (const sc of fit.scenes) for (const b of sc.beats) assert.ok(b.start >= sc.start && b.end <= sc.end && b.end - b.start >= 0.4);
+  // com espaço fora do motion, nada é recortado
+  const free = fitBrollWithScenes([{ start: 40, end: 43 }], [scene], 2);
+  assert.equal(free.carved.length, 0);
+  assert.equal(free.scenes[0], scene);
+  // trecho curto demais depois do corte some
+  assert.equal(carveScenes([{ start: 0, end: 4, beats: [{ start: 0, end: 4 }] }], [{ start: 0.5, end: 3.5 }]).length, 0);
+});

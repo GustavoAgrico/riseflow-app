@@ -12,7 +12,7 @@ import { silenceRemovalRanges } from './silence.js';
 import { preciseRemovals, wordGapRanges, dropSlivers } from './cutRefine.js';
 import { remapKf } from '../../../shared/layerKeys.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, remapMotionScenes, unmapTime } from './timeline.js';
-import { insertBroll, faceCropGeometry, brollOutsideScenes } from './broll.js';
+import { insertBroll, faceCropGeometry, fitBrollWithScenes } from './broll.js';
 import { applyTextBehind } from './textBehind.js';
 import { applyManualFrame, applyVideoCrop, cleanCrop, cleanCropRanges, hasCrop, applyVideoBlanks, cleanBlanks } from './frame.js';
 import { applyUnderlay, hasUnderlay } from './underlay.js';
@@ -723,9 +723,22 @@ export async function runPipeline(job, onUpdate = () => {}) {
     const brollMax = options.brollMax ?? 6;
     analysis = await analyze(transcript, meta, { ...options, ...(scenes.length ? { brollMax: brollMax + scenes.length } : {}), _jobId: job.id });
     if (scenes.length && Array.isArray(analysis.brollMoments)) {
-      const before = analysis.brollMoments.length;
-      analysis.brollMoments = brollOutsideScenes(analysis.brollMoments, scenes).slice(0, brollMax);
-      if (before !== analysis.brollMoments.length) log.info(`B-roll: ${before - analysis.brollMoments.length} momento(s) dentro do motion trocado(s) por outros`);
+      // motion cobrindo quase tudo: em vez de sumir com o B-roll, abre espaço nas cenas para ele
+      const fit = fitBrollWithScenes(analysis.brollMoments, scenes, brollMax);
+      analysis.brollMoments = fit.moments;
+      if (fit.carved.length) {
+        options.motionScenes = fit.scenes;
+        const inWin = (t) => fit.carved.some((w) => t >= w.start - 0.05 && t <= w.end + 0.05);
+        // sons das batidas que saíram (o B-roll tem o próprio som de entrada)
+        options.sfxMoments = (options.sfxMoments || []).filter((m) => !(m.why && inWin(Number(m.t))));
+        // no automático a legenda volta nesses trechos (ela estava escondida pelo motion)
+        if (mode !== 'render') {
+          const inScene = (t) => fit.scenes.some((sc) => t >= sc.start && t <= sc.end);
+          transcript = { ...transcript, segments: transcript.segments.map((sg) => (sg.words?.length ? { ...sg, words: sg.words.map((w) => { const mid = (w.start + w.end) / 2; return w.hidden && inWin(mid) && !inScene(mid) ? { ...w, hidden: false } : w; }) } : sg)) };
+        }
+        log.info(`B-roll: ${fit.carved.length} imagem(ns) abriram espaço dentro do motion`);
+        report.brollInMotion = fit.carved.length;
+      }
     }
     report.themes = analysis.themes;
     if (analysis.niche) report.niche = analysis.niche;

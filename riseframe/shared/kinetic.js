@@ -203,7 +203,8 @@ export function sceneLayers(words, { theme, start, end, aspect, index = 0 }) {
   // Bloco tipográfico: coluna de largura fixa; as palavras-chave crescem até ocupar a mesma
   // largura (medida real das letras, a mesma do render), com teto de tamanho. Linhas
   // alinhadas pela mesma borda e ritmo vertical constante.
-  const col = (T.glass ? 0.7 : 0.8) * aspect; // largura da coluna, em frações da ALTURA
+  // 74% da largura: margem de segurança dos dois lados (o itálico grosso saía encostado na borda)
+  const col = (T.glass ? 0.66 : 0.74) * aspect; // largura da coluna, em frações da ALTURA
   const KEY_MAX = 0.105;
   const NUM_PAD = 0.16;
   const fontOf = (l, accent) => (l.role === 'small' ? 'garamond-400i' : accent ? 'inter-900i' : 'inter-900');
