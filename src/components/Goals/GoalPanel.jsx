@@ -4,6 +4,7 @@ import { Target, Trophy, Package, CalendarClock } from 'lucide-react'
 import { useGoalProgress } from '@hooks/useGoalProgress'
 import { useAuth } from '@context/AuthContext'
 import { brl } from '@lib/metrics'
+import { SalesThermometer } from './SalesThermometer'
 
 const card = { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20 }
 const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
@@ -50,15 +51,13 @@ export function GoalPanel() {
         {canEdit && <Link to="/goals" style={{ marginLeft: 'auto', fontSize: 12, color: '#FF6B35', textDecoration: 'none', fontWeight: 600 }}>Editar meta →</Link>}
       </div>
 
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
-        <Stat label="Meta" value={brl(g.target)} />
-        <Stat label="Vendido" value={brl(g.sold)} color="#10B981" />
-        <Stat label={g.reached ? 'Superou em' : 'Falta'} value={brl(g.reached ? g.sold - g.target : g.remaining)} color={g.reached ? '#10B981' : '#FF6B35'} />
-        <Stat label="Atingido" value={`${g.pct.toFixed(1)}%`} color={barColor} />
-      </div>
-
-      <div style={{ height: 14, borderRadius: 999, background: 'var(--surface-1, rgba(255,255,255,.06))', overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${barColor}, ${barColor}cc)`, transition: 'width .8s ease' }} />
+      <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
+        <SalesThermometer pct={g.pct} reached={g.reached} color={barColor} />
+        <div style={{ flex: 1, minWidth: 220, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          <Stat label="Meta" value={brl(g.target)} />
+          <Stat label="Vendido" value={brl(g.sold)} color="#10B981" />
+          <Stat label={g.reached ? 'Superou em' : 'Falta'} value={brl(g.reached ? g.sold - g.target : g.remaining)} color={g.reached ? '#10B981' : '#FF6B35'} />
+        </div>
       </div>
 
       {g.reached ? (
