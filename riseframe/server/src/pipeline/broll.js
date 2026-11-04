@@ -419,8 +419,24 @@ export async function brollCandidates(query, opts = {}) {
     } else if (source === 'wikimedia') {
       const [vids, imgs] = await Promise.all([wikimediaCandidates(query, { kind: 'video', limit: 2 }), wikimediaCandidates(query, { kind: 'image', limit })]);
       out.push(...vids, ...imgs);
-    } else if (source === 'google' && googleReady(google)) {
-      out.push(...await googleImageCandidates(query, google, limit));
+    } else if (source === 'google') {
+      if (googleReady(google)) {
+        out.push(...await googleImageCandidates(query, google, limit));
+        if (!out.length) log.warn(`Google Imagens sem resultados para "${query}"; caindo para Pexels`);
+      } else {
+        log.warn('Google Imagens selecionado mas nenhuma chave configurada (CSE/Serper/Brave); caindo para Pexels');
+      }
+      if (!out.length && apiKey) {
+        const loc = lang === 'pt' ? '&locale=pt-BR' : '';
+        const rv = await http(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}${loc}`, { headers: { Authorization: apiKey } });
+        if (rv.ok) {
+          const d = await rv.json();
+          for (const v of d.videos || []) {
+            const f = pickBestVideoFile(v.video_files, targetH);
+            if (f) out.push({ id: String(v.id), link: f.link, thumb: v.image, kind: 'video', source: 'pexels' });
+          }
+        }
+      }
     } else if (apiKey) {
       const loc = lang === 'pt' ? '&locale=pt-BR' : '';
       const rv = await http(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}${loc}`, { headers: { Authorization: apiKey } });
@@ -544,7 +560,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   const personY = layout === 'top' ? regionH : 0; // pessoa fica na metade oposta
   // Posição vertical da pessoa dentro da metade dela (topo/centro/base). Na tela
   // dividida a pessoa é ENCAIXADA inteira (não cortada); isto só a alinha na metade.
-  const pcrop = ['top', 'center', 'bottom'].includes(options.personCrop) ? options.personCrop : 'center';
+  const pcrop = ['top', 'center', 'bottom'].includes(options.personCrop) ? options.personCrop : (isSplit ? 'top' : 'center');
   const alignY = pcrop === 'top' ? '0' : pcrop === 'bottom' ? 'H-h' : '(H-h)/2';
 
   // Baixa clipes distintos; ignora os que falharem ou repetirem. Se não houver
@@ -661,7 +677,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     // folga de cabeça: o centro médio do rosto fica abaixo do topo da cabeça
     // Sem zoom manual, a pessoa inteira fica contida sobre o fundo desfocado (a cabeça nunca sai);
     // o recorte no rosto só vale quando a pessoa escolheu zoom acima de 1.
-    const g = personFocus && personZoom > 1.001 ? faceCropGeometry(pW, pH, regionW, regionH, personFocus, personZoom, 0.12) : null;
+    const g = personFocus && personZoom > 1.001 ? faceCropGeometry(pW, pH, regionW, regionH, personFocus, personZoom, 0.20) : null;
     // A metade da pessoa vem da fonte SEM o reenquadramento do vídeo inteiro (quando houver),
     // para o foco/zoom não ser aplicado duas vezes. O resto do vídeo usa a entrada 0.
     const personIdx = options.personInput ? clips.length + 1 : 0;
