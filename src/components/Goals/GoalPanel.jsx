@@ -41,7 +41,7 @@ export function GoalPanel() {
   const barColor = g.reached ? '#10B981' : pct >= 70 ? '#F59E0B' : '#FF6B35'
 
   return (
-    <div style={card}>
+    <div style={{ ...card, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         {g.reached ? <Trophy size={20} color="#10B981" /> : <Target size={20} color="#FF6B35" />}
         <h3 className="rf-section-title" style={{ margin: 0 }}>Meta de {monthName}</h3>
@@ -71,7 +71,7 @@ export function GoalPanel() {
       )}
 
       {!g.reached && g.productsNeeded.length > 0 && (
-        <div style={{ marginTop: 16 }}>
+        <div style={{ marginTop: 'auto', paddingTop: 16 }}>
           <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
             <Package size={13} /> O que falta, em produtos
           </p>
