@@ -929,7 +929,7 @@ export const Dashboard = () => {
         const barHex = full ? '#EF4444' : pct > 80 ? '#EAB308' : '#FF6B35'
         return (
           <div className="rounded-2xl p-5" style={{ position: 'relative', overflow: 'hidden', border: '1px solid rgba(255,107,53,.28)', background: 'linear-gradient(135deg, rgba(255,107,53,.20), rgba(124,58,237,.24) 70%), var(--card)', boxShadow: '0 16px 40px -24px rgba(255,107,53,.45)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <MessageCircle size={15} style={{ color: '#FF6B35' }} />
                 <span className="font-display font-semibold text-white text-sm">Mensagens</span>
