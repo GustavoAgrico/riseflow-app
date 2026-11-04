@@ -7,6 +7,7 @@ import YoutubeLink, { YoutubeCard } from './YoutubeLink.jsx';
 import CaptionPreview from './CaptionPreview.jsx';
 import CaptionGallery, { presetPatch, currentPreset, CAPTION_PRESETS } from './CaptionGallery.jsx';
 import CostLine from './CostLine.jsx';
+import { KINETIC_THEMES } from '../../../shared/kinetic.js';
 import { FORMATS } from '../formats.js';
 import { listBrands, loadBrand, activeBrandId, setActiveBrand, brandOptions } from '../brandKit.js';
 import { listTemplatesApi, uploadMedia } from '../api.js';
@@ -17,14 +18,14 @@ const STEPS = [
   { id: 'ai', label: 'Edição com IA' },
 ];
 
-const HIGHLIGHT = ['premium', 'vsl', 'keyword', 'duo', 'karaoke', 'marker'];
+const HIGHLIGHT = ['premium', 'reel', 'vsl', 'keyword', 'duo', 'karaoke', 'marker'];
 
 // Agrupa as melhorias por assunto, para o cliente achar sem ler a lista inteira.
 const TASK_GROUPS = [
   ['Cortes e fala', ['cut', 'clean', 'short', 'moments']],
   ['Legendas', ['captions', 'highlight']],
   ['Imagem', ['reframe', 'color', 'zoom', 'broll']],
-  ['Som e destaques', ['audio', 'sfx', 'kinetic', 'vsl']],
+  ['Som e destaques', ['audio', 'sfx', 'kinetic', 'textBehind', 'vsl']],
   ['Depois de criar', ['review']],
 ];
 // O "recomendado" liga só o essencial: corta o tempo morto, limpa a fala, legenda e corrige a cor.
@@ -59,6 +60,7 @@ function aiTasks({ options, mode, caps }) {
     { id: 'zoom', icon: 'zap', title: 'Zoom nos momentos-chave', desc: 'Aproxima nas frases mais fortes', on: options.videoMotion === 'dynamic', set: (v) => ({ videoMotion: v ? 'dynamic' : 'none' }), off: notClips },
     { id: 'broll', icon: 'image', title: 'Imagens de apoio (B-roll)', desc: 'Ilustra o que você fala com imagens e vídeos', on: options.broll === true, set: (v) => ({ broll: v }), off: notClips || (!brollOk ? 'indisponível no servidor' : null) },
     { id: 'kinetic', icon: 'sparkles', title: 'Motion tipográfico', desc: 'Frases animadas palavra por palavra, com sons', on: options.kinetic === true, set: (v) => ({ kinetic: v, ...(v ? { vsl: false } : {}) }), off: notClips },
+    { id: 'textBehind', icon: 'user', title: 'Texto atrás da pessoa', desc: 'Palavra-chave gigante atrás de você (recorte com IA)', on: options.textBehind === true, set: (v) => ({ textBehind: v }), off: notClips },
     {
       id: 'vsl', icon: 'film', title: 'Reel VSL (interface animada)',
       desc: 'Tela cheia com zoom ↔ tela dividida com painel de vidro, letreiros nas frases fortes e som enxuto (vertical 9:16)',
@@ -347,6 +349,25 @@ export default function CreateWizard({
                         </span>
                         <Check on={t.on} disabled={!!t.off} />
                       </button>
+                      {t.id === 'kinetic' && t.on && !t.off && (
+                        <div style={{ padding: '12px 14px', borderRadius: 12, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)', display: 'grid', gap: 10 }}>
+                          <div>
+                            <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 6 }}>ESTILO DO MOTION</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                              {Object.entries(KINETIC_THEMES).map(([id, label]) => {
+                                const sel = (options.kineticTheme || 'estrategia') === id;
+                                return (
+                                  <button key={id} type="button" onClick={() => set({ kineticTheme: id })}
+                                    style={{ height: 24, padding: '0 9px', borderRadius: 999, border: `1px solid ${sel ? '#FF6B35' : C.border}`, background: sel ? 'rgba(255,107,53,0.16)' : 'transparent', color: sel ? C.text : C.muted, fontSize: 10.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
+                                    {label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 10.5, color: C.faint, lineHeight: 1.4 }}>O estilo controla cores, fontes e layout do motion. Você pode trocar depois no editor.</div>
+                        </div>
+                      )}
                       {t.id === 'vsl' && t.on && !t.off && <VslProofs options={options} set={set} />}
                       </React.Fragment>
                     ))}

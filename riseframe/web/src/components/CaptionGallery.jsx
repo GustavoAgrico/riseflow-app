@@ -23,6 +23,7 @@ export const CAPTION_PRESETS = [
   { id: 'duaslinhas', label: 'Duas linhas', patch: { captionTemplate: 'duo', captionColor: 'green' } },
   { id: 'destaque', label: 'Destaque', patch: { captionTemplate: 'duo', captionColor: 'yellow' } },
   { id: 'vsl', label: 'VSL', patch: { captionTemplate: 'vsl', captionColor: 'yellow', captionFont: 'montserrat' } },
+  { id: 'reel', label: 'Reel editado', patch: { captionTemplate: 'reel', captionColor: 'white', captionFont: 'inter' } },
   { id: 'impacto', label: 'Impacto', patch: { captionTemplate: 'hormozi', captionColor: 'yellow' } },
   { id: 'pop', label: 'Pop', patch: { captionTemplate: 'pop', captionColor: 'white' } },
   { id: 'minimal', label: 'Minimalista', patch: { captionTemplate: 'minimal', captionColor: 'green', captionBackground: 'clean' } },

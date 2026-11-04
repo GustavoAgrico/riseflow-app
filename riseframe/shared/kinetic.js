@@ -24,7 +24,11 @@ export function textWidthEm(text, font, tracking = 0) {
   return w / 1000 + (tracking / 1000) * n;
 }
 
+// Só os estilos feitos a partir das referências enviadas (os temas antigos em camadas —
+// raios, grade ondulada, lâmpada… — e o Explicativo saíram do seletor; projetos antigos
+// com eles voltam para o Estratégia).
 export const KINETIC_THEMES = {
+  reel: 'Reel editado (sobre a pessoa)',
   estrategia: 'Estratégia (creme e preto)',
   minimalista: 'Minimalista (cards e palavras)',
   cinetico: 'Câmera e letras (cinético)',
@@ -37,24 +41,6 @@ export const KINETIC_THEMES = {
   editorial: 'Editorial P&B',
   bordo: 'Itálico bordô',
   'cinema-escuro': 'Cinema escuro',
-  auto: 'Alternar',
-  'preto-raios': 'Preto com raios',
-  'grade-ondulada': 'Grade ondulada',
-  'azul-grade': 'Azul com grade e estrelas',
-  'cinza-manchas': 'Cinza com manchas',
-  'holofote-cone': 'Feixe de luz',
-  lampada: 'Lâmpada',
-  'azul-orbita': 'Azul-noite com órbitas',
-  'lilas-flor': 'Lilás com flor',
-  escuro: 'Escuro premium',
-  branco: 'Branco com recortes',
-  vsl: 'Roxo vidro (VSL)',
-  'azul-claro': 'Azul-claro',
-  'papel-cinza': 'Papel cinza',
-  'branco-zigzag': 'Branco com zigzag',
-  video: 'Sobre o vídeo',
-  legenda: 'Legenda em bloco',
-  explicativo: 'Explicativo (motion design)',
 };
 export const KINETIC_AMOUNT = { chave: 'Momentos-chave', muitos: 'Quase o vídeo todo' };
 
@@ -203,7 +189,8 @@ export function sceneLayers(words, { theme, start, end, aspect, index = 0 }) {
   // Bloco tipográfico: coluna de largura fixa; as palavras-chave crescem até ocupar a mesma
   // largura (medida real das letras, a mesma do render), com teto de tamanho. Linhas
   // alinhadas pela mesma borda e ritmo vertical constante.
-  const col = (T.glass ? 0.7 : 0.8) * aspect; // largura da coluna, em frações da ALTURA
+  // 74% da largura: margem de segurança dos dois lados (o itálico grosso saía encostado na borda)
+  const col = (T.glass ? 0.66 : 0.74) * aspect; // largura da coluna, em frações da ALTURA
   const KEY_MAX = 0.105;
   const NUM_PAD = 0.16;
   const fontOf = (l, accent) => (l.role === 'small' ? 'garamond-400i' : accent ? 'inter-900i' : 'inter-900');

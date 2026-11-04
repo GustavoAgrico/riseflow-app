@@ -145,7 +145,9 @@ test('minimalista (cards e palavras): batidas do estilo, sons no ponto da ação
   // sons: só dos tipos previstos, e o contador tem riser + ding
   const names = new Set(plan.sfx.map((s) => s.type));
   for (const n of names) assert.ok(SFX_LIBRARY[n], `som ${n} existe no catálogo`);
-  assert.ok(names.has('mi-pop') && names.has('mi-air') && names.has('mi-shine') && names.has('mi-rise'), [...names].join(','));
+  // sons do kit minimalista, no ritmo das referências (no máximo um por batida)
+  for (const n of names) assert.ok(n.startsWith('mi-'), n);
+  assert.ok(plan.sfx.length <= plan.scenes.reduce((x, sc) => x + sc.beats.length, 0), 'no máximo um som por batida');
   // o sanitizador do servidor mantém o estilo e as batidas
   const sc = plan.scenes[0];
   const o = parseOptions({ kinetic: true, kineticTheme: 'minimalista', motionScenes: [sc] });
@@ -244,9 +246,10 @@ test('colagem editorial (referências da pasta): objeto no lugar da letra, sele�
     assert.equal(sc.style, 'colagem');
     for (const b of sc.beats) { assert.ok(STYLE_BEATS.colagem.includes(b.type), b.type); types.add(b.type); }
   }
-  assert.ok(types.has('cg-letter') && types.has('cg-number'), [...types].join(','));
+  assert.ok((types.has('cg-letter') || types.has('cg-pair')) && types.has('cg-number'), [...types].join(','));
   // o objeto entra na palavra do assunto (cérebro), não na palavra-chave
-  const letter = plan.scenes.flatMap((sc) => sc.beats).find((b) => b.type === 'cg-letter');
+  // a cena do objeto (na letra ou o recorte embaixo da serifa) usa a palavra do assunto
+  const letter = plan.scenes.flatMap((sc) => sc.beats).find((b) => (b.type === 'cg-letter' || b.type === 'cg-pair') && b.data.element === 'real/brain-pink');
   assert.equal(letter.data.objWord, 'cérebro');
   assert.equal(letter.data.element, 'real/brain-pink');
   const names = new Set(plan.sfx.map((s) => s.type));
@@ -309,7 +312,7 @@ test('premium (referências: contador, calendário, palco com câmera, busca, pr
   assert.equal(keys[keys.length - 1][1].s, 1, 'termina no plano geral');
   const names = new Set(plan.sfx.map((s) => s.type));
   for (const n of names) assert.ok(SFX_LIBRARY[n], `som ${n} existe`);
-  assert.ok(names.has('rl-tick') && names.has('cn-whoosh') && names.has('cn-key'), [...names].join(','));
+  assert.ok(plan.sfx.length >= 2 && plan.sfx.length <= beats.length, `sons esparsos: ${[...names].join(',')}`);
   // o editor manda as cenas de volta: objetos, ícone e busca passam pelo filtro
   const o = parseOptions({ kinetic: true, kineticTheme: 'premium', motionScenes: plan.scenes });
   const back = o.motionScenes.flatMap((sc) => sc.beats);
@@ -325,5 +328,63 @@ test('premium (referências: contador, calendário, palco com câmera, busca, pr
       drawExplainer(ctx, sc, t, { W: 108, H: 192, image: () => img });
       drawExplainer(ctx, sc, t, { W: 108, H: 192, image: () => null });
     }
+  }
+});
+
+test('B-roll com motion no vídeo todo: abre espaço na cena em vez de sumir com o B-roll', async () => {
+  const { fitBrollWithScenes, carveScenes } = await import('../src/pipeline/broll.js');
+  const scene = { start: 0, end: 30, style: 'estrategia', beats: [0, 5, 10, 15, 20, 25].map((s) => ({ type: 'a-glow', start: s, end: s + 5, data: { text: `b${s}` } })) };
+  const moments = [{ start: 6, end: 9, query: 'a' }, { start: 7, end: 10, query: 'b' }, { start: 16, end: 19, query: 'c' }, { start: 26, end: 29, query: 'd' }];
+  const fit = fitBrollWithScenes(moments, [scene], 3);
+  assert.equal(fit.moments.length, 3, 'o B-roll pedido aparece');
+  assert.deepEqual(fit.moments.map((m) => m.query), ['a', 'c', 'd'], 'sem dois B-rolls colados');
+  for (const m of fit.moments) {
+    for (const sc of fit.scenes) assert.ok(m.end <= sc.start || m.start >= sc.end, `B-roll ${m.start}-${m.end} fora da cena ${sc.start}-${sc.end}`);
+  }
+  for (const sc of fit.scenes) for (const b of sc.beats) assert.ok(b.start >= sc.start && b.end <= sc.end && b.end - b.start >= 0.4);
+  // com espaço fora do motion, nada é recortado
+  const free = fitBrollWithScenes([{ start: 40, end: 43 }], [scene], 2);
+  assert.equal(free.carved.length, 0);
+  assert.equal(free.scenes[0], scene);
+  // trecho curto demais depois do corte some
+  assert.equal(carveScenes([{ start: 0, end: 4, beats: [{ start: 0, end: 4 }] }], [{ start: 0.5, end: 3.5 }]).length, 0);
+});
+
+test('sons no ritmo das referências: um por batida no máximo, alternando, nunca colados', async () => {
+  const { thinSfx } = await import('../../shared/motionEngine.js');
+  const beats = [0, 1, 2, 3, 4].map((s) => ({ start: s, end: s + 1 }));
+  const sfx = [
+    { t: 0.0, type: 'cn-whoosh' }, { t: 0.2, type: 'cn-key' }, { t: 0.4, type: 'cn-key' },
+    { t: 1.0, type: 'cn-pop' }, { t: 2.0, type: 'bk-hit' }, { t: 2.1, type: 'rl-tick' },
+    { t: 3.0, type: 'cn-pop' }, { t: 4.2, type: 'mi-ding' },
+  ];
+  const out = thinSfx(beats, sfx);
+  assert.deepEqual(out.map((x) => x.type), ['cn-whoosh', 'bk-hit', 'mi-ding']);
+  for (let i = 1; i < out.length; i += 1) assert.ok(out[i].t - out[i - 1].t >= 0.5);
+});
+
+test('Reel editado: telas curtas só nas frases fortes, espaçadas; legenda dourada em serifa itálica', async () => {
+  const { STYLE_BEATS } = await import('../../shared/motionStyles.js');
+  const { buildAss } = await import('../src/pipeline/captions.js');
+  const seg = (t, text) => { const ws = text.split(' '); return { start: t, end: t + ws.length * 0.3, text, words: ws.map((w, i) => ({ word: w, start: t + i * 0.3, end: t + i * 0.3 + 0.26 })) }; };
+  const texts = ['nós estamos na era da atenção', 'e isso muda tudo', 'a influência é a nova moeda', 'quem não aparece some', 'você já ganhou 2 clientes', 'como que faz isso', 'é rápido e flexível', 'salva esse vídeo agora'];
+  const segments = texts.map((t, i) => seg(i * 4, t));
+  const plan = explainerPlan({ segments, dur: 34, amount: 'chave', style: 'reel' });
+  assert.ok(plan.scenes.length >= 2 && plan.scenes.length <= 5, `${plan.scenes.length} telas`);
+  for (const sc of plan.scenes) {
+    assert.equal(sc.style, 'reel');
+    assert.equal(sc.beats.length, 1, 'uma frase por tela');
+    assert.ok(sc.end - sc.start >= 1.3 && sc.end - sc.start <= 3.5, 'tela curta');
+    assert.ok(STYLE_BEATS.reel.includes(sc.beats[0].type));
+  }
+  for (let i = 1; i < plan.scenes.length; i += 1) assert.ok(plan.scenes[i].start - plan.scenes[i - 1].end > 2, 'a pessoa aparece entre as telas');
+  for (const s of plan.sfx) assert.ok(SFX_LIBRARY[s.type], s.type);
+  const ass = buildAss([seg(0, 'nós estamos na era da atenção')], { width: 1080, height: 1920 }, { template: 'reel', color: 'white' });
+  assert.match(ass, /\\fnRFS playfair 900i/, 'palavra-chave em Playfair itálico');
+  assert.match(ass, /\\c&H0031B9E8/, 'dourada quando a cor é branco');
+  const ctx = createCanvas(108, 192).getContext('2d');
+  for (const type of STYLE_BEATS.reel) {
+    const b = { type, start: 0, end: 2, words: [{ w: 'era', t: 0.1 }, { w: 'da', t: 0.2 }, { w: 'atenção', t: 0.4 }, { w: '2', t: 0.5 }], data: { text: 'era da atenção 2', keyword: 'atenção', keys: ['era', 'atenção', 'foco', 'tempo'] } };
+    for (let t = -0.1; t < 2.2; t += 0.2) drawExplainer(ctx, { start: 0, end: 2, style: 'reel', beats: [b] }, t, { W: 108, H: 192, image: () => null });
   }
 });

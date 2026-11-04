@@ -475,6 +475,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const setCv = (patch) => setCover((c) => ({ ...c, ...patch }));
   // B-roll ligado neste vídeo? Desligar guarda as escolhas (dá para religar depois).
   const [brollOn, setBrollOn] = useState(Boolean(options?.broll));
+  const [textBehindOn, setTextBehindOn] = useState(Boolean(options?.textBehind));
   const [brollPasteHint, setBrollPasteHint] = useState(null); // índice do momento esperando a imagem do Google
   const [brollBusy, setBrollBusy] = useState(false);
   const [brollErr, setBrollErr] = useState('');
@@ -3358,6 +3359,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // Layout do B-roll escolhido aqui (tela cheia ou tela dividida).
         brollLayout: brollLayoutSel,
         imageSource,
+        textBehind: textBehindOn,
       },
       ));
       markAutosaveSubmitted(sourceId);
@@ -5238,6 +5240,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       // motion desenhado (explicativo / estratégia): cada cena é uma camada (mesmo desenho na prévia e no render)
       const plan = explainerPlan({ segments: smartSegments(), dur, amount: kinAmount, existing: keep.filter((l) => l.end - l.start < dur * 0.8), style: kinTheme });
       const now = Date.now();
+      // Reel editado: a legenda por cima da pessoa faz parte do estilo (palavra dourada) — troca só se
+      // a legenda ainda está no modelo padrão
+      if (kinTheme === 'reel' && cap.captionTemplate === 'clean') setCapField({ captionTemplate: 'reel' });
       setTextLayers(keep);
       setMedia((prev) => {
         const rest = prev.filter((m) => !m.kinetic);
@@ -5253,7 +5258,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       setSfxMoments([...keepSfx, ...sfx].sort((a, b) => a.t - b.t));
       const inScene = (w) => plan.scenes.some((sc) => (w.start + w.end) / 2 >= sc.start && (w.start + w.end) / 2 <= sc.end);
       setSegments((prev) => prev.map((sg) => ({ ...sg, words: sg.words.map((w) => (w.khid && !inScene(w) ? { ...w, hidden: false, khid: false } : !w.hidden && inScene(w) ? { ...w, hidden: true, khid: true } : w)) })));
-      sayAuto(plan.scenes.length ? `${plan.scenes.length} cena(s) de motion ${KINETIC_THEMES[kinTheme] || kinTheme} — dê play para ver` : 'Não achei um trecho com frases suficientes (precisa de 3 ou mais frases seguidas). Tente "Quase o vídeo todo".');
+      sayAuto(plan.scenes.length ? `${plan.scenes.length} cena(s) de motion ${KINETIC_THEMES[kinTheme] || kinTheme} — dê play para ver` : kinTheme === 'reel' ? 'Não achei frases fortes para as telas do Reel editado.' : 'Não achei um trecho com frases suficientes (precisa de 3 ou mais frases seguidas). Tente "Quase o vídeo todo".');
       return;
     }
     const aspect = (FMT_WH[aspectSel]?.[0] || vdim?.w || 1080) / (FMT_WH[aspectSel]?.[1] || vdim?.h || 1920);
@@ -5377,6 +5382,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         {kineticN > 0 && <button type="button" onClick={clearKinetic} style={{ ...miniBtn(false, false) }}>Tirar ({kineticN} {kineticN === 1 ? 'cena' : 'cenas'})</button>}
       </div>
       {autoNote && <span style={{ fontSize: 11.5, color: C.text }}>{autoNote}</span>}
+    </div>
+  );
+  const textBehindCard = (
+    <div style={{ ...autoCardStyle, marginBottom: 0, borderColor: textBehindOn ? 'rgba(124,58,237,0.45)' : C.border, background: textBehindOn ? 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(255,107,53,0.06))' : 'rgba(255,255,255,0.03)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <label style={{ position: 'relative', width: 36, height: 20, flexShrink: 0, cursor: 'pointer' }}>
+          <input type="checkbox" checked={textBehindOn} onChange={(e) => setTextBehindOn(e.target.checked)} style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }} />
+          <span style={{ position: 'absolute', inset: 0, borderRadius: 999, background: textBehindOn ? '#7C3AED' : 'rgba(255,255,255,0.12)', transition: 'background 0.2s' }} />
+          <span style={{ position: 'absolute', top: 2, left: textBehindOn ? 18 : 2, width: 16, height: 16, borderRadius: 999, background: '#fff', transition: 'left 0.2s' }} />
+        </label>
+        <b style={{ fontSize: 12.5 }}>🧑 Texto atrás da pessoa</b>
+      </div>
+      <span style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.35 }}>Palavra-chave gigante aparece atrás de você — a IA recorta a pessoa quadro a quadro e compõe o texto no fundo, como nos Reels de VSL profissionais. Funciona melhor com talking-head frontal.</span>
     </div>
   );
   const fxShown = sfxOnline ? sfxOnItems : sfxMine ? mySoundItems : fxLibrary.filter((x) => (fxQ ? norm(x.label).includes(fxQ) : fxCat === 'fav' ? fxFavs.includes(x.uid) : x.cat === fxCat && (fxCat !== 'som' || !sfxCat || x.scat === sfxCat) && (fxCat !== 'trans' || !transCat || TRANS_GROUP_OF[x.id] === transCat)));
@@ -8577,7 +8595,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           )}
 
           {tab === 'texto' && textBlock}
-          {tab === 'graficos' && <div style={{ display: 'grid', gap: 12 }}>{autoMotionCard}{graficosBlock}</div>}
+          {tab === 'graficos' && <div style={{ display: 'grid', gap: 12 }}>{autoMotionCard}{textBehindCard}{graficosBlock}</div>}
           {tab === 'propriedades' && propsBlockFn()}
 
           {tab === 'cor' && (

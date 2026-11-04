@@ -5,7 +5,7 @@ import { motionAt, playWhoosh, LOOK_CSS, colorAdjustCss } from '../livePreview.j
 import { pickKeyword, premiumChunks, layoutCaption, autoMaxChars, stripPunct, captionTiming, timeSegments } from '../../../shared/captionKeyword.js';
 import { shadowParams, shadowGeometry } from '../../../shared/captionShadow.js';
 import {
-  CAPTION_TEMPLATES, CAPTION_FONTS, CAPTION_COLOR_LIST, fontById, fontBold, colorHex, isLightHex, isWhiteish, HIGHLIGHT_IDS, LINE_HEIGHT, resolveFontFace,
+  CAPTION_TEMPLATES, CAPTION_FONTS, CAPTION_COLOR_LIST, fontById, fontBold, colorHex, isLightHex, isWhiteish, HIGHLIGHT_IDS, LINE_HEIGHT, resolveFontFace, fontStyles,
   SAFE_ZONE, isVerticalFrame, safeCaptionBox,
 } from '../../../shared/captionStyle.js';
 
@@ -564,7 +564,15 @@ export function CaptionWords({ words, wi = 0, look, options, fontPx, keyId = 0, 
   if (T.premium) return <PremiumWords words={words} wi={still ? words.length - 1 : wi} look={look} options={options} fontPx={fontPx} still={still} />;
 
   const kw = T.highlightKeyword ? pickKeyword(words) : -1;
-  const kwStyle = { color: look.glowOn ? undefined : look.color, fontSize: `${T.kwScale || 1.18}em`, display: 'inline-block' };
+  // Reel editado: a palavra-chave em outra fonte (serifa itálica) e cor própria (dourada quando a cor
+  // escolhida é branco), encolhendo para caber no quadro — igual ao render
+  const kwFaceP = T.kwFace ? fontStyles(T.kwFace.font).find((x) => x.id === T.kwFace.style) : null;
+  const kwWord = kw >= 0 ? up(words[kw].word) : '';
+  const kwScale = Math.min(T.kwScale || 1.18, kwFaceP && frameW ? (frameW * 0.8) / Math.max(1, textEm(kwWord, look.fontFamily, look.weight) * fontPx) : Infinity);
+  const kwStyle = {
+    color: look.glowOn ? undefined : T.kwColor && look.accentIsWhite ? T.kwColor : look.color, fontSize: `${kwScale}em`, display: 'inline-block',
+    ...(kwFaceP ? { fontFamily: `'${kwFaceP.family}', Georgia, serif`, fontWeight: 400, fontStyle: 'normal', lineHeight: 1 } : null),
+  };
   // Quebra de linha: a do estilo "duas linhas" (palavra-chave desce) ou a do cartão (br).
   const twoLines = options.captionLines !== 1;
   const duo = T.keywordBreak && twoLines && kw >= 0 && words.length > 1;

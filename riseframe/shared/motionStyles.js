@@ -40,6 +40,9 @@ export const STYLE_FONT_FILES = [
   ['RF Garamond 400i', 'S-garamond-400i.ttf'],
   ['RF Barlow 900i', 'S-barlow-900i.ttf'],
   ['RF Garamond 700', 'S-garamond-700.ttf'],
+  ['RF Playfair 900i', 'S-playfair-900i.ttf'],
+  ['RF Playfair 400', 'S-playfair-400.ttf'],
+  ['RF Anton', 'Anton-Regular.ttf'],
 ];
 const FM7 = 'RF Montserrat 700';
 const FM8 = 'RF Montserrat 800';
@@ -58,8 +61,9 @@ export const STYLE_BEATS = {
   marca: ['mk-intro', 'mk-card', 'mk-bars', 'mk-logo'],
   rolagem: ['rl-grid', 'rl-text'],
   azul: ['az-hero', 'az-badge', 'az-end'],
-  colagem: ['cg-letter', 'cg-select', 'cg-circle', 'cg-number'],
+  colagem: ['cg-letter', 'cg-select', 'cg-circle', 'cg-number', 'cg-pair', 'cg-mark'],
   premium: ['pm-count', 'pm-calendar', 'pm-stage', 'pm-search', 'pm-progress', 'pm-icon'],
+  reel: ['re-dark', 're-light', 're-question', 're-list', 're-number'],
 };
 const DARK_BEATS = new Set(['e-end', 'b-dark', 'c-float', 'c-embers', 'c-object', 'c-strip', 'c-big', 'mi-word', 'mi-count', 'mi-cta']);
 
@@ -69,6 +73,7 @@ const keysOf = (c) => c.filter((w, i) => wordRole(w, i, c) !== 'small' && !/\d/.
 function pickType(style, { i, n, prev, used, keys, concept, k, len, num, text = '', objs = 0 }) {
   const k0 = (_, r) => Math.ceil(len * r);
   const last = i === n - 1 && n >= 3;
+  if (style === 'reel') return reelType({ i: k, num, keys, text, prev });
   if (style === 'premium') {
     // dias → calendário; valor dito → contador; dois objetos → palco com câmera; busca, entrega, ícone
     if (dayTarget(text) > 0 && prev !== 'pm-calendar') return 'pm-calendar';
@@ -87,9 +92,13 @@ function pickType(style, { i, n, prev, used, keys, concept, k, len, num, text = 
   }
   if (style === 'rolagem') return num ? 'rl-grid' : 'rl-text';
   if (style === 'colagem') {
+    // referência editorial cinza: pequena + GRANDE serifada com o recorte embaixo, palavra com o
+    // objeto na letra, caixa de seleção com cursor, círculo tracejado, marcador, número
     if (num && !used.has('cg-number')) return 'cg-number';
-    if (concept && prev !== 'cg-letter' && !used.has(`obj:${concept.element}`)) return k % 2 ? 'cg-circle' : 'cg-letter';
-    return prev === 'cg-select' && concept ? 'cg-circle' : 'cg-select';
+    if (concept && prev !== 'cg-pair' && prev !== 'cg-letter' && !used.has(`obj:${concept.element}`)) return k % 2 ? 'cg-letter' : 'cg-pair';
+    const rot = ['cg-select', 'cg-mark', 'cg-circle', 'cg-pair'];
+    const t = rot[k % rot.length];
+    return t === prev ? rot[(k + 1) % rot.length] : t;
   }
   if (style === 'azul') {
     if (last) return 'az-end';
@@ -222,12 +231,18 @@ export function styleSfx(style, beats) {
       if (b.type === 'cg-letter' && kw) add(kw.t + 0.15, 'cg-pop', 0.5, 'objeto na letra');
       if (b.type === 'cg-select' && kw) add(kw.t, 'cg-click', 0.55, 'clique');
       if (b.type === 'cg-circle') { add(b.start + 0.1, 'cg-pop', 0.45, 'círculo'); if (kw) add(kw.t + 0.25, 'cg-pen', 0.4, 'caneta'); }
+      if (b.type === 'cg-pair') add(b.start + 0.1, 'cg-pop', 0.4, 'palavra serifada');
+      if (b.type === 'cg-mark' && kw) add(kw.t, 'cg-pen', 0.4, 'marcador');
       if (b.type === 'cg-number') {
         const target = rollTarget(b);
         const n = Math.min(16, target);
         for (let k2 = 1; k2 <= n; k2 += 1) { const j = Math.round((k2 * target) / n); add(b.start + 0.1 + rollDur(b) * (1 - (1 - j / target) ** (1 / 3)), 'rl-tick', 0.3, 'contagem'); }
         add(b.start + 0.1 + rollDur(b), 'cg-ding', 0.5, 'número');
       }
+    } else if (style === 'reel') {
+      // clarão de luz na entrada (passagem) e batida na palavra grande
+      add(b.start, 'cn-whoosh', 0.45, 'clarão de entrada');
+      if (kw && kw.t - b.start > 0.25) add(kw.t, b.type === 're-number' ? 'bk-hit' : 'pr-hit', 0.4, 'palavra grande');
     } else if (style === 'premium') {
       premiumSfx(b, i, add);
     } else if (style === 'azul') {
@@ -1195,8 +1210,8 @@ const MI_DRAW = {
 // rápida com desfoque, tremor, zoom de saída, faixa diagonal de transição). Fundo muda de cor a
 // cada cena (claro, verde, laranja, escuro, gradiente), como nas referências.
 const CN_BG = ['#F7F7F4', '#0E7C62', '#FF8A1F', '#0B0B12', 'grad'];
-const CN_CAM = { 'cn-type': 'push', 'cn-slide': 'whip', 'cn-rise': 'shake', 'cn-box': 'pull', 'cn-stripe': 'drift', 'bl-hit': 'pull', 'bl-echo': 'push', 'bl-stripe': 'shake', 'bl-slice': 'whip', 'mk-intro': 'push', 'mk-card': 'drift', 'mk-bars': 'pull', 'mk-logo': 'shake', 'cg-letter': 'push', 'cg-select': 'drift', 'cg-circle': 'pull', 'cg-number': 'push', 'pm-count': 'push', 'pm-calendar': 'push', 'pm-stage': 'still', 'pm-search': 'drift', 'pm-progress': 'still', 'pm-icon': 'pull' };
-const CAM_STYLES = new Set(['cinetico', 'bloco', 'marca', 'colagem', 'premium']);
+const CN_CAM = { 'cn-type': 'push', 'cn-slide': 'whip', 'cn-rise': 'shake', 'cn-box': 'pull', 'cn-stripe': 'drift', 'bl-hit': 'pull', 'bl-echo': 'push', 'bl-stripe': 'shake', 'bl-slice': 'whip', 'mk-intro': 'push', 'mk-card': 'drift', 'mk-bars': 'pull', 'mk-logo': 'shake', 'cg-letter': 'push', 'cg-select': 'drift', 'cg-circle': 'pull', 'cg-number': 'push', 'cg-pair': 'push', 'cg-mark': 'drift', 'pm-count': 'push', 'pm-calendar': 'push', 'pm-stage': 'still', 'pm-search': 'drift', 'pm-progress': 'still', 'pm-icon': 'pull', 're-dark': 'push', 're-light': 'push', 're-question': 'push', 're-list': 'drift', 're-number': 'push' };
+const CAM_STYLES = new Set(['cinetico', 'bloco', 'marca', 'colagem', 'premium', 'reel']);
 const cnDark = (bg) => bg === '#0B0B12' || bg === 'grad' || bg === '#0E7C62';
 const cnInk = (bg) => (cnDark(bg) ? '#FFFFFF' : '#111111');
 
@@ -1435,8 +1450,11 @@ const BLO_DRAW = {
   },
 };
 
+// Marca (referência "SoftwareWOW"): sans geométrica (Montserrat 700, como a da referência),
+// frase centrada no alto, cartão separado do texto, nada encostando.
+const MK_FONT = { font: FM7, ls: -0.01 };
 const MRC_DRAW = {
-  // lilás: palavra em contorno gigante ao fundo e a frase entrando palavra por palavra
+  // lilás: palavra em contorno gigante ao fundo e a frase entrando
   'mk-intro'(ctx, b, lt) {
     flatBg(ctx, MK_LILAC);
     ctx.save();
@@ -1448,25 +1466,32 @@ const MRC_DRAW = {
     ctx.textAlign = 'left';
     ctx.strokeText(b.data.keyword.toUpperCase(), 40 - lt * 50, 1420);
     ctx.restore();
-    cnBlock(ctx, beatWords(b), lt, { y: 820, size: 110, color: '#FFFFFF', fx: 'rise', stagger: 0.07 });
+    cnBlock(ctx, beatWords(b), lt, { y: 900, size: 104, color: '#FFFFFF', fx: 'rise', stagger: 0.05, ...MK_FONT });
   },
-  // branco: cartão lilás inclinado (perspectiva) que sobe; a frase dentro dele
+  // branco: a frase no alto e, abaixo dela (sem encostar), o cartão lilás inclinado que sobe com o
+  // objeto; sem objeto, a palavra-chave grande dentro do cartão (o cartão nunca fica vazio)
   'mk-card'(ctx, b, lt, env) {
     flatBg(ctx, '#FFFFFF');
     const e = clamp(outBack(prog(lt, 0, 0.5)));
+    const cy = 1150;
     ctx.save();
-    ctx.translate(540, 1000 + (1 - e) * 500);
+    ctx.translate(540, cy + (1 - e) * 500);
     ctx.transform(1, 0, (1 - e) * -0.25, 1, 0, 0);
-    ctx.shadowColor = 'rgba(0,0,0,0.2)';
-    ctx.shadowBlur = 60;
-    ctx.shadowOffsetY = 30;
+    ctx.rotate(-0.035);
+    ctx.shadowColor = 'rgba(40,30,120,0.25)';
+    ctx.shadowBlur = 70;
+    ctx.shadowOffsetY = 34;
     ctx.fillStyle = MK_LILAC;
     setFilter(ctx);
-    roundRectPath(ctx, -400, -520, 800, 1040, 50);
+    roundRectPath(ctx, -330, -400, 660, 800, 54);
     ctx.fill();
     ctx.restore();
-    if (b.data.element) objectImg(ctx, env, b.data.element, 540, 1000, 300, { alpha: outCubic(prog(lt, 0.2, 0.4)), shadow: 'rgba(0,0,0,0.2)' });
-    cnBlock(ctx, beatWords(b), lt, { y: 560, size: 84, color: '#111111', fx: 'slide', stagger: 0.05 });
+    const ws = beatWords(b);
+    const kw = ws.find((w) => low(w.text) === low(b.data.keyword));
+    if (b.data.element) objectImg(ctx, env, b.data.element, 540, cy + (1 - e) * 500, 420, { alpha: outCubic(prog(lt, 0.2, 0.4)), shadow: 'rgba(0,0,0,0.25)' });
+    else if (kw) fxLine(ctx, [{ ...kw, text: kw.text }], lt, { y: cy + 50 + (1 - e) * 500, size: 120, color: '#FFFFFF', fx: 'pop', stagger: 0, maxW: 560, ...MK_FONT });
+    const rest = b.data.element ? ws : ws.filter((w) => w !== kw);
+    cnBlock(ctx, rest, lt, { y: 560, size: 80, color: '#111111', fx: 'slide', stagger: 0.04, ...MK_FONT });
   },
   // lilás: barras que crescem em sequência; a frase em cima
   'mk-bars'(ctx, b, lt) {
@@ -1477,21 +1502,22 @@ const MRC_DRAW = {
       ctx.save();
       setFilter(ctx);
       ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      roundRectPath(ctx, 540 + (i - 2) * 170 - 60, 1600 - 700 * h * e, 120, 700 * h * e, 26);
+      roundRectPath(ctx, 540 + (i - 2) * 170 - 60, 1600 - 640 * h * e, 120, 640 * h * e, 26);
       ctx.fill();
       ctx.restore();
     });
-    cnBlock(ctx, beatWords(b), lt, { y: 620, size: 110, color: '#FFFFFF', fx: 'rise', stagger: 0.05 });
+    cnBlock(ctx, beatWords(b), lt, { y: 640, size: 100, color: '#FFFFFF', fx: 'rise', stagger: 0.05, ...MK_FONT });
   },
   // branco: logo em duas cores (degradê na palavra-chave) e a frase pequena em cima
   'mk-logo'(ctx, b, lt) {
     flatBg(ctx, '#FFFFFF');
-    cnBlock(ctx, beatWords(b), lt, { y: 760, size: 70, color: '#111111', fx: 'rise', stagger: 0.05 });
+    const ws = beatWords(b);
+    const kwAt = ws.find((w) => low(w.text) === low(b.data.keyword));
+    cnBlock(ctx, ws.filter((w) => w !== kwAt), lt, { y: 800, size: 74, color: '#111111', fx: 'rise', stagger: 0.05, ...MK_FONT });
     const g = ctx.createLinearGradient(300, 0, 780, 0);
     g.addColorStop(0, '#5F5CC9');
     g.addColorStop(1, '#E36D9B');
-    const kt = beatWords(b).find((w) => low(w.text) === low(b.data.keyword))?.at ?? 0.3;
-    fxLine(ctx, [{ text: b.data.keyword, at: kt }], lt, { y: 1000, size: 170, color: g, fx: 'pop', stagger: 0 });
+    fxLine(ctx, [{ text: b.data.keyword, at: kwAt?.at ?? 0.3 }], lt, { y: 1010, size: 170, color: g, fx: 'pop', stagger: 0, ...MK_FONT });
   },
 };
 
@@ -1651,36 +1677,27 @@ const CG_RED = '#E3262E';
 const CG_INK = '#141414';
 const CG_GREEN = '#2E5E3A';
 function cgBg(ctx, lt) {
+  // cinza quente com vinheta (centro claro) e arcos finos atravessando a tela, como a referência
   ctx.save();
   setFilter(ctx);
-  ctx.fillStyle = '#E9E9E6';
+  ctx.fillStyle = '#BEBBB8';
   ctx.fillRect(-200, -200, BW + 400, BH + 400);
-  ctx.restore();
-  // luz de janela: faixas claras inclinadas, bem suaves, andando devagar
-  ctx.save();
-  setFilter(ctx, 38);
-  ctx.globalAlpha = 0.6;
-  ctx.fillStyle = '#FFFFFF';
-  const sh = lt * 8;
-  for (let i = 0; i < 3; i += 1) {
-    const x = 60 + i * 320 + sh;
+  const g = ctx.createRadialGradient(540, 900, 80, 540, 960, 1150);
+  g.addColorStop(0, 'rgba(244,243,241,1)');
+  g.addColorStop(0.6, 'rgba(226,224,221,0.9)');
+  g.addColorStop(1, 'rgba(170,166,162,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(-200, -200, BW + 400, BH + 400);
+  ctx.strokeStyle = 'rgba(40,40,40,0.28)';
+  ctx.lineWidth = 2;
+  const sh = lt * 6;
+  for (const [cx, cy, r] of [[-420, 1400, 1250], [1500, -300, 1350], [1300, 2300, 1100]]) {
     ctx.beginPath();
-    ctx.moveTo(x, 160);
-    ctx.lineTo(x + 170, 160);
-    ctx.lineTo(x + 560, 1560);
-    ctx.lineTo(x + 390, 1560);
-    ctx.closePath();
-    ctx.fill();
+    ctx.arc(cx + sh, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
   }
-  ctx.restore();
-  ctx.save();
-  setFilter(ctx);
-  ctx.fillStyle = 'rgba(0,0,0,0.09)';
-  for (let y = 70; y < BH; y += 64) for (let x = 38; x < BW; x += 64) ctx.fillRect(x, y, 3, 3);
-  // código de barras no alto à direita
-  ctx.fillStyle = 'rgba(20,20,20,0.78)';
-  let bx = 770;
-  for (const w of [3, 1, 2, 1, 4, 1, 1, 3, 2, 1, 1, 2, 4, 1, 2, 1, 3, 1]) { ctx.fillRect(bx, 110, w * 3, 64); bx += w * 3 + 5; }
+  ctx.fillStyle = 'rgba(0,0,0,0.07)';
+  for (let y = 1250; y < 1700; y += 26) for (let x = 60; x < 360; x += 26) ctx.fillRect(x, y, 3, 3);
   ctx.restore();
 }
 /** Mancha orgânica (pétalas arredondadas), como as que varrem a tela nas referências. */
@@ -1728,6 +1745,7 @@ function cgZig(ctx, x, y, a) {
   ctx.stroke();
   ctx.restore();
 }
+const FPR = 'RF Playfair 400';
 const cgKey = (b, items) => items.find((w) => low(w.text) === low(b.data.keyword)) || items[items.length - 1] || { text: String(b.data.keyword || ''), at: 0.2 };
 
 const CG_DRAW = {
@@ -1738,33 +1756,43 @@ const CG_DRAW = {
     // a palavra grande é a do assunto (onde o objeto entra); a palavra-chave fica em vermelho embaixo
     const kIt = (b.data.objWord && items.find((w) => low(w.text) === low(b.data.objWord))) || cgKey(b, items);
     const ki = items.indexOf(kIt);
-    const word = low(kIt.text);
+    const word = kIt.text.toUpperCase();
     const has = b.data.element && env.image?.(b.data.element);
     // letra redonda (o, a, 0, e) mais perto do meio da palavra vira o objeto
     let li = -1;
     if (has) {
       [...word].forEach((ch, j) => {
-        if (j > 0 && 'oa0e'.includes(ch) && (li < 0 || Math.abs(j - (word.length - 1) / 2) < Math.abs(li - (word.length - 1) / 2))) li = j;
+        if (j > 0 && 'OA0E'.includes(ch) && (li < 0 || Math.abs(j - (word.length - 1) / 2) < Math.abs(li - (word.length - 1) / 2))) li = j;
       });
     }
     const left = li >= 0 ? word.slice(0, li) : word;
     const right = li >= 0 ? word.slice(li + 1) : '';
-    const widthAt = (sz) => measure(ctx, left, sz, FI9, -0.03) + (right ? measure(ctx, right, sz, FI9, -0.03) : 0) + (li >= 0 ? sz * 0.66 : 0);
+    const widthAt = (sz) => measure(ctx, left, sz, FBK, -0.01) + (right ? measure(ctx, right, sz, FBK, -0.01) : 0) + (li >= 0 ? sz * 0.66 : 0);
     let s = 270;
     const full = widthAt(s);
     if (full > 940) s *= 940 / full;
-    const lw = measure(ctx, left, s, FI9, -0.03);
-    const rw = right ? measure(ctx, right, s, FI9, -0.03) : 0;
+    const lw = measure(ctx, left, s, FBK, -0.01);
+    const rw = right ? measure(ctx, right, s, FBK, -0.01) : 0;
     const gap = li >= 0 ? s * 0.66 : 0;
     const x0 = 540 - (lw + gap + rw) / 2;
     const y = 960;
+    // bloco cinza atrás da palavra e código de barras (como "THE FOCUS" na referência)
+    const be = outCubic(prog(lt, Math.max(0, kIt.at - 0.2), 0.4));
+    if (be > 0) {
+      ctx.save();
+      setFilter(ctx);
+      ctx.fillStyle = 'rgba(160,157,154,0.55)';
+      ctx.fillRect(BW - 470 * be, y - s * 0.2, 470, s * 1.15);
+      ctx.restore();
+      barcode(ctx, 120, y + s * 0.75, 230, 56, be);
+    }
     const e = outCubic(prog(lt, kIt.at, 0.35));
     if (e > 0) {
       ctx.save();
       ctx.globalAlpha = e;
       setFilter(ctx, (1 - e) * 12);
-      ctx.font = `${s}px "${FI9}"`;
-      ctx.letterSpacing = `${(-0.03 * s).toFixed(1)}px`;
+      ctx.font = `${s}px "${FBK}"`;
+      ctx.letterSpacing = `${(-0.01 * s).toFixed(1)}px`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = CG_INK;
@@ -1778,9 +1806,6 @@ const CG_DRAW = {
     const post = items.slice(ki + 1);
     const red = post.find((w) => low(w.text) === low(b.data.keyword) && low(w.text) !== word) || (post.length > 1 ? post[post.length - 1] : null);
     if (post.length) line(ctx, post.slice(0, 6), lt, { x: 540, y: y + 120, size: 74, font: FI7, maxW: 960, color: (it) => (it === red ? CG_RED : CG_INK) });
-    const z = outCubic(prog(lt, 0.2, 0.4));
-    cgZig(ctx, 40, 540, z);
-    cgZig(ctx, BW - 150, 1440, z);
   },
   // frase em caixa alta pequena + palavra-chave dentro da caixa de seleção; o cursor entra e clica
   'cg-select'(ctx, b, lt, env, bi) {
@@ -1790,12 +1815,12 @@ const CG_DRAW = {
     const ki = items.indexOf(kIt);
     const pre = items.slice(0, ki);
     const post = items.slice(ki + 1);
-    if (pre.length) line(ctx, pre.map((w) => ({ ...w, text: w.text.toUpperCase() })), lt, { x: 540, y: 850, size: 54, font: FI7, color: '#3A3A3A', maxW: 900 });
-    const kt = kIt.text.toUpperCase();
+    if (pre.length) line(ctx, pre, lt, { x: 540, y: 850, size: 54, font: FI7, color: '#3A3A3A', maxW: 900 });
+    const kt = kIt.text;
     let s = 120;
-    const w0 = measure(ctx, kt, s, FI9, -0.02);
+    const w0 = measure(ctx, kt, s, FPR, -0.01);
     if (w0 > 860) s *= 860 / w0;
-    const w = measure(ctx, kt, s, FI9, -0.02);
+    const w = measure(ctx, kt, s, FPR, -0.01);
     const bw = w + 80;
     const bh = s * 1.2;
     const bx = 540 - bw / 2;
@@ -1817,7 +1842,7 @@ const CG_DRAW = {
       }
       ctx.restore();
     }
-    fxLine(ctx, [{ text: kt, at: kIt.at }], lt, { y: by + s * 0.92, size: s, font: FI9, color: CG_INK, fx: 'pop', stagger: 0, maxW: 900 });
+    fxLine(ctx, [{ text: kt, at: kIt.at }], lt, { y: by + s * 0.9, size: s, font: FPR, color: CG_INK, fx: 'pop', stagger: 0, maxW: 900 });
     // cursor: entra pelo canto de baixo e clica no canto da caixa
     const ce = outCubic(prog(lt, Math.max(0, kIt.at - 0.45), 0.4));
     const ck = prog(lt, kIt.at, 0.16);
@@ -1851,82 +1876,78 @@ const CG_DRAW = {
     const items = beatWords(b);
     const kIt = cgKey(b, items);
     const ki = items.indexOf(kIt);
-    const label = ki > 1 ? items.slice(0, 1) : [];
-    if (label.length) line(ctx, label, lt, { x: 90, y: 330, size: 72, font: FI7, color: '#2B2B2B', align: 'left', maxW: 640 });
-    const ec = clamp(outBack(prog(lt, 0.08, 0.5)));
-    if (ec > 0) {
+    // círculo tracejado se desenha e a palavra entra letra a letra dentro dele (como "Ads")
+    const ce = outCubic(prog(lt, Math.max(0, kIt.at - 0.35), 0.55));
+    if (ce > 0) {
       ctx.save();
       setFilter(ctx);
-      ctx.shadowColor = 'rgba(0,0,0,0.25)';
-      ctx.shadowBlur = 40;
-      ctx.shadowOffsetY = 18;
-      ctx.fillStyle = CG_GREEN;
-      ctx.beginPath();
-      ctx.arc(540, 860, 270 * ec, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowColor = 'transparent';
-      ctx.strokeStyle = '#C9A24A';
+      ctx.strokeStyle = '#2A2A2A';
       ctx.lineWidth = 4;
+      ctx.setLineDash([16, 12]);
+      ctx.beginPath();
+      ctx.arc(540, 900, 250, -Math.PI / 2, -Math.PI / 2 + ce * Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
-    objectImg(ctx, env, b.data.element, 540, 860, 400 * clamp(outBack(prog(lt, 0.28, 0.5))), { shadow: 'rgba(0,0,0,0.35)' });
-    const rest = items.slice(label.length, ki).slice(-3);
-    const aText = rest.map((w) => w.text).join(' ');
-    const sA = 92;
-    const sK = 140;
-    const aw = aText ? measure(ctx, aText, sA, FI7, -0.02) + 26 : 0;
-    const kw = measure(ctx, kIt.text, sK, FG7, -0.01);
-    const sc = Math.min(1, 960 / (aw + kw));
-    const x0 = 540 - ((aw + kw) * sc) / 2;
-    const y = 1420;
-    if (rest.length) line(ctx, rest, lt, { x: x0, y, size: sA * sc, font: FI7, color: '#2B2B2B', align: 'left', maxW: 960 });
-    const kx = x0 + aw * sc;
-    line(ctx, [kIt], lt, { x: kx, y, size: sK * sc, font: FG7, color: CG_INK, align: 'left', maxW: 960, ls: -0.01 });
-    // elipse à mão em volta da palavra (o traço se desenha)
-    const ee = outCubic(prog(lt, kIt.at + 0.25, 0.6));
-    if (ee > 0) {
-      const cx = kx + (kw * sc) / 2;
-      const cy = y - sK * sc * 0.32;
-      const rx = (kw * sc) / 2 + 40;
-      const ry = sK * sc * 0.62;
-      const a0 = -2.7;
-      const a1 = a0 + ee * (Math.PI * 2 + 0.45);
+    let s2 = 120;
+    const kw = kIt.text;
+    const w = measure(ctx, kw, s2, FPR, -0.01);
+    if (w > 400) s2 *= 400 / w;
+    fxLine(ctx, [{ text: kw, at: kIt.at }], lt, { y: 900 + s2 * 0.34, size: s2, font: FPR, color: '#2A2A2A', fx: 'rise', stagger: 0.05, maxW: 420, ls: -0.01 });
+    const pre = items.slice(Math.max(0, ki - 4), ki);
+    const post = items.slice(ki + 1, ki + 6);
+    if (pre.length) line(ctx, pre, lt, { x: 540, y: 560, size: 60, font: FI7, color: '#3A3A3A', maxW: 900 });
+    if (post.length) line(ctx, post, lt, { x: 540, y: 1260, size: 60, font: FI7, color: '#3A3A3A', maxW: 900 });
+  },
+  // pequena + GRANDE serifada + pequena (como "most / Businesses / fail online") e o recorte do
+  // assunto em preto e branco embaixo, centralizado e na escala do quadro
+  'cg-pair'(ctx, b, lt, env, bi) {
+    cgBg(ctx, lt);
+    const items = beatWords(b);
+    const kIt = (b.data.objWord && items.find((w) => low(w.text) === low(b.data.objWord))) || cgKey(b, items);
+    const ki = items.indexOf(kIt);
+    const has = b.data.element && env.image?.(b.data.element);
+    const y = has ? 600 : 900;
+    let s2 = 190;
+    const w = measure(ctx, kIt.text, s2, FPR, -0.02);
+    if (w > 860) s2 *= 860 / w;
+    const kw2 = measure(ctx, kIt.text, s2, FPR, -0.02);
+    fxLine(ctx, [{ text: kIt.text, at: kIt.at }], lt, { y, size: s2, font: FPR, color: '#3B3A39', fx: 'rise', stagger: 0.03, maxW: 900, ls: -0.02 });
+    const pre = items.slice(Math.max(0, ki - 3), ki);
+    const post = items.slice(ki + 1, ki + 6);
+    if (pre.length) line(ctx, pre, lt, { x: 540 + kw2 / 2, y: y - s2 * 0.78, size: 50, font: FI7, color: '#2A2A2A', align: 'right', maxW: 700 });
+    if (post.length) line(ctx, post, lt, { x: 540 - kw2 / 2 + 8, y: y + 62, size: 50, font: FI7, color: '#2A2A2A', align: 'left', maxW: 760 });
+    if (has) {
+      const e = outCubic(prog(lt, 0.05, 0.6));
+      objectImg(ctx, env, b.data.element, 540, 1170 + (1 - e) * 260, 940, { alpha: e, filter: 'grayscale(1) contrast(1.1)', shadow: 'rgba(0,0,0,0.25)' });
+    }
+  },
+  // marcador: frase pequena e a palavra-chave numa faixa oliva que corre por trás (como "that is marketing")
+  'cg-mark'(ctx, b, lt, env, bi) {
+    cgBg(ctx, lt);
+    const items = beatWords(b);
+    const kIt = cgKey(b, items);
+    const ki = items.indexOf(kIt);
+    const pre = items.slice(Math.max(0, ki - 4), ki);
+    const size = 84;
+    const pw = pre.length ? measure(ctx, pre.map((w) => w.text).join(' '), size, FI7, -0.03) + 22 : 0;
+    const kw = measure(ctx, kIt.text, size, FI9, -0.03);
+    const total = pw + kw;
+    const sc = Math.min(1, 940 / total);
+    const x0 = 540 - (total * sc) / 2;
+    const y = 960;
+    const me = outCubic(prog(lt, Math.max(0, kIt.at - 0.1), 0.35));
+    if (me > 0) {
       ctx.save();
       setFilter(ctx);
-      ctx.strokeStyle = CG_INK;
-      ctx.lineWidth = 4;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      for (let a = a0; a <= a1; a += 0.04) {
-        const wob = 1 + 0.035 * Math.sin(a * 3);
-        const px = cx + Math.cos(a) * rx * wob;
-        const py = cy + Math.sin(a) * ry * wob - (a - a0) * 3;
-        if (a === a0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }
-      ctx.stroke();
+      ctx.fillStyle = '#8E7C5C';
+      ctx.fillRect(x0 + pw * sc - 10, y - size * sc * 0.82, (kw * sc + 20) * me, size * sc * 1.08);
       ctx.restore();
     }
-    // ondas finas no rodapé, andando
-    const we = outCubic(prog(lt, 0.4, 0.6));
-    if (we > 0) {
-      ctx.save();
-      setFilter(ctx);
-      ctx.globalAlpha = 0.35 * we;
-      ctx.strokeStyle = CG_INK;
-      ctx.lineWidth = 1.5;
-      for (let k = 0; k < 7; k += 1) {
-        ctx.beginPath();
-        for (let x = 520; x <= BW + 20; x += 12) {
-          const yy = 1700 + k * 14 + Math.sin(x * 0.012 + lt * 2 + k * 0.4) * 40 * ((x - 520) / 560);
-          if (x === 520) ctx.moveTo(x, yy);
-          else ctx.lineTo(x, yy);
-        }
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
+    if (pre.length) line(ctx, pre, lt, { x: x0, y, size: size * sc, font: FI7, color: '#1E1E1E', align: 'left', maxW: 940 });
+    line(ctx, [kIt], lt, { x: x0 + pw * sc, y, size: size * sc, font: FI9, color: '#1E1E1E', align: 'left', maxW: 940 });
+    const post = items.slice(ki + 1, ki + 7);
+    if (post.length) line(ctx, post, lt, { x: 540, y: y + 130, size: 56, font: FI7, color: '#3A3A3A', maxW: 900 });
   },
   // número gigante que sobe de 0 ao valor dito; objeto apagado atrás; frase em cima e embaixo
   'cg-number'(ctx, b, lt, env, bi) {
@@ -1955,11 +1976,6 @@ const CG_DRAW = {
     if (words.length > half) line(ctx, words.slice(half), lt, { x: 540, y: 1330, size: 86, font: FGI, color: CG_INK, maxW: 900 });
   },
 };
-// as manchas da troca ficam por cima de cada tipo
-for (const k of Object.keys(CG_DRAW)) {
-  const fn = CG_DRAW[k];
-  CG_DRAW[k] = (ctx, b, lt, env, bi) => { fn(ctx, b, lt, env, bi); cgBlobs(ctx, lt, bi); };
-}
 
 // ── premium (pasta "MOTIONS REFE.", v1.91): contador de dinheiro em número grande e limpo,
 // calendário que vira as folhas até o número de dias, "palco" (silhueta que segura os objetos nas
@@ -2900,4 +2916,207 @@ function premiumSfx(b, i, add) {
   }
 }
 
-const DRAW = { editorial: ED_DRAW, bordo: BO_DRAW, 'cinema-escuro': CI_DRAW, minimalista: MI_DRAW, cinetico: CN_DRAW, bloco: BLO_DRAW, marca: MRC_DRAW, rolagem: RLG_DRAW, azul: AZ_DRAW, colagem: CG_DRAW, premium: PM_DRAW };
+// ── Reel editado (o "depois" das referências de pessoa falando): telas cheias CURTAS só nos
+// momentos fortes — fundo escuro com texto condensado enorme brilhando, cinza claro com grade e a
+// palavra dourada em serifa itálica, "?" gigante, cartão de vidro com lista sobre bolhas
+// vermelhas, número gigante vermelho. Entrada e saída com clarão de luz laranja.
+const RE_GOLD = '#E8B931';
+const RE_RED = '#E5262A';
+const FPF = 'RF Playfair 900i';
+const FAN = 'RF Anton';
+/** Tipo da cena do reel (rodízio; número e lista quando a frase pede). */
+export function reelType({ i = 0, num = false, keys = [], text = '', prev = null }) {
+  if (num && prev !== 're-number') return 're-number';
+  if (/\?|\b(por ?que|como|quem|qual)\b/i.test(text) && prev !== 're-question') return 're-question';
+  // lista só em enumeração de verdade (4+ palavras fortes ou vírgulas)
+  if ((keys.length >= 4 || (text.match(/,/g) || []).length >= 2) && prev !== 're-list') return 're-list';
+  const rot = ['re-dark', 're-light', 're-dark', 're-question'];
+  const t = rot[i % rot.length];
+  return t === prev ? rot[(i + 1) % rot.length] : t;
+}
+function reFlash(ctx, lt, dur) {
+  // clarão de luz quente (filme queimando) na entrada e na saída
+  const a = Math.max(1 - clamp(lt / 0.32), clamp((lt - (dur - 0.22)) / 0.22));
+  if (a <= 0.01) return;
+  ctx.save();
+  setFilter(ctx);
+  ctx.globalCompositeOperation = 'screen';
+  const g = ctx.createLinearGradient(0, 0, BW * 0.4, BH);
+  g.addColorStop(0, `rgba(255,214,120,${(0.95 * a).toFixed(3)})`);
+  g.addColorStop(0.45, `rgba(255,120,40,${(0.8 * a).toFixed(3)})`);
+  g.addColorStop(1, `rgba(180,30,20,${(0.35 * a).toFixed(3)})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(-200, -200, BW + 400, BH + 400);
+  ctx.restore();
+}
+function reDarkBg(ctx, warm = true) {
+  ctx.save();
+  setFilter(ctx);
+  ctx.fillStyle = '#120E0E';
+  ctx.fillRect(-200, -200, BW + 400, BH + 400);
+  const g = ctx.createRadialGradient(540, 860, 60, 540, 960, 1100);
+  g.addColorStop(0, warm ? 'rgba(90,50,44,0.85)' : 'rgba(60,60,60,0.7)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(-200, -200, BW + 400, BH + 400);
+  ctx.restore();
+}
+/** Texto condensado enorme (Anton), em até 2 linhas, com brilho. */
+function reBig(ctx, text, lt, at, { y = 900, color = '#FFFFFF', glow = 'rgba(255,255,255,0.55)', maxW = 900, size = 300 } = {}) {
+  const words = String(text || '').toUpperCase().split(' ').filter(Boolean);
+  if (!words.length) return;
+  const lines = words.length > 2 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [words.join(' ')];
+  const e = outCubic(prog(lt, at, 0.4));
+  if (e <= 0) return;
+  let s = size;
+  for (const ln of lines) { const w = measure(ctx, ln, s, FAN, 0); if (w > maxW) s *= maxW / w; }
+  ctx.save();
+  setFilter(ctx, (1 - e) * 14);
+  ctx.globalAlpha *= e;
+  ctx.translate(540, y);
+  const sc = lerp(1.18, 1, e);
+  ctx.scale(sc, sc);
+  ctx.font = `${s}px "${FAN}"`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = 50;
+  ctx.fillStyle = color;
+  lines.forEach((ln, i) => ctx.fillText(ln, 0, (i - (lines.length - 1) / 2) * s * 0.95));
+  ctx.restore();
+}
+/** Frase pequena + palavra-chave grande em serifa itálica dourada (como "A influência é a nova / moeda"). */
+function reGoldPair(ctx, b, lt, { y = 960, small = '#1D1D1F', kwColor = RE_GOLD } = {}) {
+  const [pre, key, post] = splitAtKey(b);
+  const head = [...pre];
+  if (head.length) line(ctx, head, lt, { x: 540, y: y - 130, size: 58, font: FI7, color: small, maxW: 900, ls: -0.03 });
+  if (key.length) {
+    const k = key[0];
+    const e = outCubic(prog(lt, k.at - 0.04, 0.45));
+    if (e > 0) {
+      let s = 230;
+      const w = measure(ctx, k.text, s, FPF, -0.02);
+      if (w > 940) s *= 940 / w;
+      ctx.save();
+      setFilter(ctx, (1 - e) * 10);
+      ctx.globalAlpha *= e;
+      ctx.translate(540, y + 40 + (1 - e) * 30);
+      ctx.font = `${s}px "${FPF}"`;
+      ctx.letterSpacing = `${(-0.02 * s).toFixed(1)}px`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.shadowColor = 'rgba(232,185,49,0.45)';
+      ctx.shadowBlur = 40;
+      const g = ctx.createLinearGradient(0, -s * 0.7, 0, s * 0.1);
+      g.addColorStop(0, '#F6D774');
+      g.addColorStop(1, kwColor);
+      ctx.fillStyle = g;
+      ctx.fillText(k.text, 0, 0);
+      ctx.restore();
+    }
+  }
+  if (post.length) line(ctx, post, lt, { x: 540, y: y + 150, size: 52, font: FI7, color: small, maxW: 900, ls: -0.03 });
+}
+const RE_DRAW = {
+  // escuro quente: frase-chave condensada enorme, branca e brilhando; objeto do assunto no meio
+  're-dark'(ctx, b, lt, env) {
+    reDarkBg(ctx);
+    const [, key] = splitAtKey(b);
+    const kt = key[0]?.at ?? 0.1;
+    const words = beatWords(b);
+    // frase curta inteira; longa: o trecho final que termina na palavra-chave (até 3 palavras seguidas)
+    const ki = Math.max(0, words.findIndex((w) => low(w.text) === low(b.data.keyword)));
+    const strong = words.length <= 4 ? words.map((w) => w.text).join(' ') : words.slice(Math.max(0, ki - 2), ki + 1).map((w) => w.text).join(' ');
+    reBig(ctx, strong, lt, Math.min(0.15, kt), { y: 880 });
+    if (b.data.element) {
+      const e = clamp(outBack(prog(lt, Math.max(0.2, kt), 0.5)));
+      objectImg(ctx, env, b.data.element, 540, 900, 380 * e, { shadow: 'rgba(0,0,0,0.5)', rot: Math.sin(lt * 2) * 0.05 });
+    }
+    reFlash(ctx, lt, b.end - b.start);
+  },
+  // cinza claro com grade: frase pequena escura e a palavra-chave dourada em serifa itálica
+  're-light'(ctx, b, lt) {
+    ctx.save();
+    setFilter(ctx);
+    ctx.fillStyle = '#BDBDBF';
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    const g = ctx.createRadialGradient(540, 940, 60, 540, 960, 900);
+    g.addColorStop(0, 'rgba(255,255,255,0.95)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    ctx.strokeStyle = 'rgba(0,0,0,0.05)';
+    ctx.lineWidth = 2;
+    for (let x = 180; x <= 900; x += 90) { ctx.beginPath(); ctx.moveTo(x, 600); ctx.lineTo(x, 1320); ctx.stroke(); }
+    for (let y = 600; y <= 1320; y += 90) { ctx.beginPath(); ctx.moveTo(180, y); ctx.lineTo(900, y); ctx.stroke(); }
+    ctx.restore();
+    reGoldPair(ctx, b, lt, { y: 960 });
+    reFlash(ctx, lt, b.end - b.start);
+  },
+  // quase preto com "?" gigante apagado atrás; frase pequena branca e a palavra dourada
+  're-question'(ctx, b, lt) {
+    reDarkBg(ctx, false);
+    ctx.save();
+    setFilter(ctx, 6);
+    ctx.globalAlpha = 0.16;
+    ctx.font = `1300px "${FPF}"`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText('?', 540 + Math.sin(lt * 0.8) * 10, 1000);
+    ctx.restore();
+    reGoldPair(ctx, b, lt, { y: 1000, small: 'rgba(255,255,255,0.9)' });
+    reFlash(ctx, lt, b.end - b.start);
+  },
+  // bolhas vermelhas desfocadas; cartão de vidro com título vermelho condensado e lista
+  're-list'(ctx, b, lt) {
+    reDarkBg(ctx);
+    ctx.save();
+    setFilter(ctx, 18);
+    for (const [x, y, r] of [[160, 420, 260], [960, 760, 300], [220, 1480, 280], [900, 1650, 200]]) {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(229,38,42,0.85)');
+      g.addColorStop(1, 'rgba(229,38,42,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x + Math.sin(lt + x) * 12, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    const e = clamp(outBack(prog(lt, 0, 0.5)));
+    ctx.save();
+    setFilter(ctx);
+    ctx.translate(540, 960);
+    ctx.rotate(-0.05 * (1 - e) - 0.02);
+    ctx.scale(lerp(0.9, 1, e), lerp(0.9, 1, e));
+    ctx.globalAlpha *= e;
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 2;
+    roundRectPath(ctx, -360, -380, 720, 760, 28);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    reBig(ctx, b.data.keyword, lt, 0.1, { y: 760, color: RE_RED, glow: 'rgba(229,38,42,0.7)', size: 170, maxW: 600 });
+    const items = (b.data.keys || []).filter((k) => low(k) !== low(b.data.keyword)).slice(0, 4);
+    const ws = beatWords(b);
+    items.forEach((it, j) => {
+      const w = ws.find((x) => low(x.text) === low(it));
+      line(ctx, [{ text: `- ${it}`, at: w ? w.at : 0.3 + j * 0.25 }], lt, { x: 240, y: 920 + j * 80, size: 54, font: FI7, color: '#FFFFFF', align: 'left', maxW: 600 });
+    });
+    reFlash(ctx, lt, b.end - b.start);
+  },
+  // número gigante vermelho brilhando sobre o escuro; o resto da frase pequeno embaixo
+  're-number'(ctx, b, lt) {
+    reDarkBg(ctx);
+    const m = String(b.data.text || '').match(/\d[\d.,]*%?/);
+    const n = m ? m[0] : b.data.keyword;
+    const nw = beatWords(b).find((w) => /\d/.test(w.text));
+    reBig(ctx, n, lt, nw ? Math.max(0, nw.at - 0.05) : 0.1, { y: 880, color: RE_RED, glow: 'rgba(229,38,42,0.8)', size: 620, maxW: 860 });
+    const rest = beatWords(b).filter((w) => !/\d/.test(w.text));
+    if (rest.length) line(ctx, rest.slice(0, 7), lt, { x: 540, y: 1320, size: 58, font: FI7, color: 'rgba(255,255,255,0.88)', maxW: 900 });
+    reFlash(ctx, lt, b.end - b.start);
+  },
+};
+
+const DRAW = { editorial: ED_DRAW, bordo: BO_DRAW, 'cinema-escuro': CI_DRAW, minimalista: MI_DRAW, cinetico: CN_DRAW, bloco: BLO_DRAW, marca: MRC_DRAW, rolagem: RLG_DRAW, azul: AZ_DRAW, colagem: CG_DRAW, premium: PM_DRAW, reel: RE_DRAW };
