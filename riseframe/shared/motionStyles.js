@@ -31,6 +31,106 @@ const txt = (ws) => tidy(ws.map(clean).join(' '));
 // número pseudoaleatório estável (a prévia e o render desenham igual)
 const rnd = (i) => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 
+// ─────────────────────────────── shared Klickpin decorative helpers ───────────────────────────────
+function halftone(ctx, cx, cy, outerR, color, alpha = 0.12, rings = 6) {
+  if (alpha <= 0 || outerR < 10) return;
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.fillStyle = color;
+  for (let ring = 1; ring <= rings; ring += 1) {
+    const r = (ring / rings) * outerR;
+    const n = Math.max(6, Math.round(ring * 8));
+    const dotR = Math.max(1.5, outerR * 0.018 * (1 + ring * 0.15));
+    for (let i = 0; i < n; i += 1) {
+      const a = (i / n) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, dotR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+function diagBands(ctx, alpha = 0.07, gap = 120, width = 50) {
+  if (alpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.rotate(Math.PI / 4);
+  const span = BW + BH;
+  for (let i = -span; i < span * 2; i += gap) {
+    ctx.fillRect(i, -span, width, span * 3);
+  }
+  ctx.restore();
+}
+function hexBadge(ctx, x, y, r, color1, color2, iconChar, lt) {
+  if (r <= 0) return;
+  ctx.save();
+  ctx.translate(x, y);
+  const g = ctx.createLinearGradient(-r, -r, r, r);
+  g.addColorStop(0, color1);
+  g.addColorStop(1, color2);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  for (let i = 0; i < 6; i += 1) {
+    const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
+    const px = Math.cos(a) * r;
+    const py = Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.shadowColor = 'rgba(0,0,0,0.15)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 6;
+  ctx.fill();
+  if (iconChar) {
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = `${r * 0.7}px "${FM7}"`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(iconChar, 0, 2);
+  }
+  ctx.restore();
+}
+function klickBg(ctx, tint, lt, idx, { halftoneColor = '#D4727A', accent = '#E03E3E', dark = false } = {}) {
+  ctx.save();
+  setFilter(ctx);
+  if (dark) {
+    ctx.fillStyle = '#111114';
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    const g = ctx.createRadialGradient(540, 900, 60, 540, 960, 1000);
+    g.addColorStop(0, `rgba(${parseInt(accent.slice(1,3),16)},${parseInt(accent.slice(3,5),16)},${parseInt(accent.slice(5,7),16)},0.35)`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    ctx.restore();
+    return;
+  }
+  const g = ctx.createLinearGradient(0, 0, BW * 0.3, BH);
+  g.addColorStop(0, tint || '#ECEBE7');
+  g.addColorStop(1, '#F8F7F5');
+  ctx.fillStyle = g;
+  ctx.fillRect(-200, -200, BW + 400, BH + 400);
+  const vg = ctx.createRadialGradient(540, 900, 200, 540, 960, 1250);
+  vg.addColorStop(0, 'rgba(255,255,255,0.6)');
+  vg.addColorStop(0.5, 'rgba(255,255,255,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.08)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(-200, -200, BW + 400, BH + 400);
+  ctx.strokeStyle = 'rgba(0,0,0,0.045)';
+  ctx.lineWidth = 1;
+  const gs = 80;
+  for (let x = gs; x < BW; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, BH); ctx.stroke(); }
+  for (let y = gs; y < BH; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(BW, y); ctx.stroke(); }
+  diagBands(ctx, 0.045);
+  const htx = 170 + (idx % 3) * 350;
+  const hty = 320 + (idx % 2) * 1100;
+  halftone(ctx, htx, hty, 280, halftoneColor, 0.10, 7);
+  halftone(ctx, BW - htx + 80, BH - hty + 200, 220, halftoneColor, 0.07, 5);
+  ctx.restore();
+}
+
 /** Fontes destes estilos: [família, arquivo em server/assets/fonts]. */
 export const STYLE_FONT_FILES = [
   ['RF Montserrat 700', 'Montserrat-Bold.ttf'],
@@ -680,21 +780,18 @@ const ED_DRAW = {
 const BO = { maroon: '#A23E3E', ink: '#151515' };
 
 function boBg(ctx, lt, idx, dark = false) {
+  if (dark) {
+    klickBg(ctx, null, lt, idx, { halftoneColor: '#C06060', accent: '#A23E3E', dark: true });
+    return;
+  }
+  klickBg(ctx, '#F5F0EE', lt, idx, { halftoneColor: '#D4727A', accent: '#A23E3E' });
+  const slide = 1 - outCubic(prog(lt, 0, 0.6));
   ctx.save();
   setFilter(ctx);
-  ctx.fillStyle = dark ? '#000' : '#FFF';
-  ctx.fillRect(-200, -200, BW + 400, BH + 400);
-  // estrelas curvas nos cantos (pretas no branco; bordô desfocadas no preto)
-  const spots = [[1010, 150, 260], [70, 1800, 230], [1010, 1820, 200], [60, 120, 200]];
-  const a = spots[idx % 2 ? 1 : 0];
-  const bspot = spots[idx % 2 ? 2 : 3];
-  const slide = 1 - outCubic(prog(lt, 0, 0.6));
-  ctx.fillStyle = dark ? '#8B3434' : '#000';
-  if (dark) setFilter(ctx, 50);
-  // estrela alongada (uma ponta comprida), entrando pelo canto e girando devagar
-  starPath(ctx, a[0] + slide * 220, a[1] - slide * 220, a[2], 0.5 + lt * 0.05, 0.05, 1.7);
+  ctx.fillStyle = '#1A1A1A';
+  starPath(ctx, 60 + slide * 140, 120 - slide * 140, 180, 0.5 + lt * 0.05, 0.05, 1.7);
   ctx.fill();
-  starPath(ctx, bspot[0] - slide * 220, bspot[1] + slide * 220, bspot[2], -0.6 - lt * 0.04, 0.05, 1.7);
+  starPath(ctx, 1020 - slide * 140, 1820 + slide * 140, 200, -0.6 - lt * 0.04, 0.05, 1.7);
   ctx.fill();
   ctx.restore();
 }
@@ -839,12 +936,7 @@ function ciBg(ctx, { light = false, glow = 0.5 } = {}) {
   ctx.save();
   setFilter(ctx);
   if (light) {
-    const g = ctx.createRadialGradient(540, 960, 80, 540, 960, 1150);
-    g.addColorStop(0, '#FFFFFF');
-    g.addColorStop(0.5, '#E2E2E2');
-    g.addColorStop(1, '#6E6E6E');
-    ctx.fillStyle = g;
-    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    klickBg(ctx, '#EDEDEE', 0, 0, { halftoneColor: '#8888AA', accent: '#4455AA' });
   } else {
     ctx.fillStyle = '#070707';
     ctx.fillRect(-200, -200, BW + 400, BH + 400);
@@ -853,6 +945,11 @@ function ciBg(ctx, { light = false, glow = 0.5 } = {}) {
     g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g;
     ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    const gs = 90;
+    for (let x = gs; x < BW; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, BH); ctx.stroke(); }
+    for (let y = gs; y < BH; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(BW, y); ctx.stroke(); }
   }
   ctx.restore();
 }
@@ -1070,24 +1167,32 @@ function miBg(ctx, dark, lt) {
     g.addColorStop(0, MI.navy);
     g.addColorStop(1, MI.navy2);
     ctx.fillStyle = g;
-  } else {
-    ctx.fillStyle = '#F5F7FB';
-  }
-  ctx.fillRect(-200, -200, BW + 400, BH + 400);
-  // manchas suaves que deslizam devagar (a textura de fundo das referências)
-  const blobs = dark
-    ? [[860, 320, 380, 'rgba(47,107,255,0.30)'], [160, 1560, 420, 'rgba(47,107,255,0.18)']]
-    : [[900, 240, 360, 'rgba(47,107,255,0.10)'], [120, 1700, 420, 'rgba(47,107,255,0.08)']];
-  for (const [x, y, r, c] of blobs) {
-    const dx = Math.sin(lt * 0.4 + x) * 30;
-    const dy = Math.cos(lt * 0.3 + y) * 30;
-    const g = ctx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
-    g.addColorStop(0, c);
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = g;
     ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    const gs = 90;
+    for (let x = gs; x < BW; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, BH); ctx.stroke(); }
+    for (let y = gs; y < BH; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(BW, y); ctx.stroke(); }
+    halftone(ctx, 860, 340, 260, '#4477DD', 0.12, 5);
+    halftone(ctx, 180, 1560, 300, '#4477DD', 0.08, 5);
+  } else {
+    ctx.fillStyle = '#F2F5FA';
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    const vg = ctx.createRadialGradient(540, 900, 200, 540, 960, 1200);
+    vg.addColorStop(0, 'rgba(255,255,255,0.7)');
+    vg.addColorStop(0.5, 'rgba(255,255,255,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.05)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    ctx.strokeStyle = 'rgba(0,0,0,0.04)';
+    ctx.lineWidth = 1;
+    const gs = 80;
+    for (let x = gs; x < BW; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, BH); ctx.stroke(); }
+    for (let y = gs; y < BH; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(BW, y); ctx.stroke(); }
+    diagBands(ctx, 0.04);
+    halftone(ctx, 880, 280, 300, '#6B9FFF', 0.08, 6);
+    halftone(ctx, 160, 1600, 260, '#6B9FFF', 0.06, 5);
   }
-  // colchetes finos nos cantos
   ctx.strokeStyle = dark ? 'rgba(255,255,255,0.35)' : 'rgba(14,26,51,0.25)';
   ctx.lineWidth = 3;
   const c = 70;
@@ -1280,10 +1385,10 @@ const MI_DRAW = {
 // com rastro, caixa colorida atrás da palavra-chave) e movimentos de câmera (zoom, panorâmica
 // rápida com desfoque, tremor, zoom de saída, faixa diagonal de transição). Fundo muda de cor a
 // cada cena (claro, verde, laranja, escuro, gradiente), como nas referências.
-const CN_BG = ['#F7F7F4', '#0E7C62', '#FF8A1F', '#0B0B12', 'grad'];
+const CN_BG = ['#F2F1EE', '#E8F0E8', '#FFF4E8', '#111114', '#E8EEF5'];
 const CN_CAM = { 'cn-type': 'push', 'cn-slide': 'whip', 'cn-rise': 'shake', 'cn-box': 'pull', 'cn-stripe': 'drift', 'bl-hit': 'pull', 'bl-echo': 'push', 'bl-stripe': 'shake', 'bl-slice': 'whip', 'mk-intro': 'push', 'mk-card': 'drift', 'mk-bars': 'pull', 'mk-logo': 'shake', 'cg-letter': 'push', 'cg-select': 'drift', 'cg-circle': 'pull', 'cg-number': 'push', 'cg-pair': 'push', 'cg-mark': 'drift', 'pm-count': 'push', 'pm-calendar': 'push', 'pm-stage': 'still', 'pm-search': 'drift', 'pm-progress': 'still', 'pm-icon': 'pull', 're-dark': 'push', 're-light': 'push', 're-question': 'push', 're-list': 'drift', 're-number': 'push' };
 const CAM_STYLES = new Set(['cinetico', 'bloco', 'marca', 'colagem', 'premium', 'reel']);
-const cnDark = (bg) => bg === '#0B0B12' || bg === 'grad' || bg === '#0E7C62';
+const cnDark = (bg) => bg === '#111114';
 const cnInk = (bg) => (cnDark(bg) ? '#FFFFFF' : '#111111');
 
 /** Movimento da câmera no tempo lt (s) de uma cena de duração dur: escala, deslocamento, giro, desfoque. */
@@ -1300,19 +1405,12 @@ function camFor(model, lt, dur) {
 /** Fundo da cena (cor da lista pelo índice da cena, ou uma cor fixa). */
 function cnBg(ctx, bi, force = null) {
   const c = force || CN_BG[bi % CN_BG.length];
-  ctx.save();
-  setFilter(ctx);
-  if (c === 'grad') {
-    const g = ctx.createLinearGradient(0, 0, BW, BH);
-    g.addColorStop(0, '#6A11CB');
-    g.addColorStop(0.55, '#1B0F3A');
-    g.addColorStop(1, '#00E5B0');
-    ctx.fillStyle = g;
+  const dark = c === '#111114';
+  if (dark) {
+    klickBg(ctx, null, 0, bi, { halftoneColor: '#D4A040', accent: '#CC8800', dark: true });
   } else {
-    ctx.fillStyle = c;
+    klickBg(ctx, c, 0, bi, { halftoneColor: '#D4A040', accent: '#CC8800' });
   }
-  ctx.fillRect(-200, -200, BW + 400, BH + 400);
-  ctx.restore();
   return c;
 }
 
@@ -1460,12 +1558,25 @@ const CN_DRAW = {
 // ─────────────────────────────── bloco, marca e contador (referências de 4 vídeos) ───────────────────────────────
 const BLK_ORANGE = '#F04E23';
 const MK_LILAC = '#5F5CC9';
-function flatBg(ctx, c) {
-  ctx.save();
-  setFilter(ctx);
-  ctx.fillStyle = c;
-  ctx.fillRect(-200, -200, BW + 400, BH + 400);
-  ctx.restore();
+function flatBg(ctx, c, idx = 0) {
+  const dark = c === '#000000' || c === '#111114';
+  if (dark) {
+    klickBg(ctx, null, 0, idx, { halftoneColor: '#E07050', accent: BLK_ORANGE, dark: true });
+  } else if (c === BLK_ORANGE || c === MK_LILAC) {
+    ctx.save();
+    setFilter(ctx);
+    const g = ctx.createLinearGradient(0, 0, BW * 0.2, BH);
+    g.addColorStop(0, c);
+    g.addColorStop(1, c === BLK_ORANGE ? '#D83E18' : '#4A48B0');
+    ctx.fillStyle = g;
+    ctx.fillRect(-200, -200, BW + 400, BH + 400);
+    diagBands(ctx, 0.06);
+    halftone(ctx, 200, 400, 200, '#FFFFFF', 0.06, 4);
+    halftone(ctx, 900, 1500, 240, '#FFFFFF', 0.05, 4);
+    ctx.restore();
+  } else {
+    klickBg(ctx, c === '#FFFFFF' ? '#F4F3F1' : c === '#E2E2E4' ? '#ECEAE8' : c, 0, idx, { halftoneColor: '#E07050', accent: BLK_ORANGE });
+  }
 }
 
 const BLO_DRAW = {
@@ -1642,14 +1753,7 @@ const AZ_BLUE = '#2F7BFF';
 const AZ_NAVY = '#0E1E3F';
 const AZ_GREY = '#5B6478';
 function azBg(ctx) {
-  ctx.save();
-  setFilter(ctx);
-  const g = ctx.createLinearGradient(0, 0, 0, BH);
-  g.addColorStop(0, '#CFE1FF');
-  g.addColorStop(1, '#F5F9FF');
-  ctx.fillStyle = g;
-  ctx.fillRect(-200, -200, BW + 400, BH + 400);
-  ctx.restore();
+  klickBg(ctx, '#E8F0FF', 0, 0, { halftoneColor: '#7BAAF0', accent: '#2F7BFF' });
 }
 function azSparkle(ctx, x, y, r, a) {
   if (r <= 0) return;
@@ -2436,16 +2540,7 @@ export function pmProgT(b) {
 const PM_DRAW = {
   // número grande e limpo subindo até o valor (com R$ quando é dinheiro), fundo quase preto
   'pm-count'(ctx, b, lt) {
-    ctx.save();
-    setFilter(ctx);
-    ctx.fillStyle = '#0C0C0E';
-    ctx.fillRect(-200, -200, BW + 400, BH + 400);
-    const g = ctx.createRadialGradient(540, 940, 40, 540, 960, 900);
-    g.addColorStop(0, 'rgba(60,56,52,0.55)');
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(-200, -200, BW + 400, BH + 400);
-    ctx.restore();
+    klickBg(ctx, null, lt, 0, { halftoneColor: '#D4A860', accent: '#CC9933', dark: true });
     const text = b.data.text || '';
     const money = isMoneyText(text);
     const target = money ? moneyTarget(text) : pmPlainTarget(text);
@@ -2496,16 +2591,7 @@ const PM_DRAW = {
   },
   // calendário: as folhas viram de 1 até o número de dias, com sombra macia
   'pm-calendar'(ctx, b, lt) {
-    ctx.save();
-    setFilter(ctx);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(-200, -200, BW + 400, BH + 400);
-    const g = ctx.createRadialGradient(540, 900, 100, 540, 960, 1200);
-    g.addColorStop(0, 'rgba(255,255,255,0)');
-    g.addColorStop(1, 'rgba(0,0,0,0.08)');
-    ctx.fillStyle = g;
-    ctx.fillRect(-200, -200, BW + 400, BH + 400);
-    ctx.restore();
+    klickBg(ctx, '#FBF9F5', lt, 1, { halftoneColor: '#D4A860', accent: '#CC9933' });
     const N = dayTarget(b.data.text) || 30;
     const dur = Math.max(0.9, (b.end - b.start) * 0.6);
     const f = 1 + (N - 1) * outCubic(prog(lt, 0.4, dur));
@@ -2591,11 +2677,7 @@ const PM_DRAW = {
   },
   // palco: a silhueta segura os objetos nas mãos e a câmera vai de um para o outro
   'pm-stage'(ctx, b, lt, env) {
-    ctx.save();
-    setFilter(ctx);
-    ctx.fillStyle = '#ECE7DD';
-    ctx.fillRect(-200, -200, BW + 400, BH + 400);
-    ctx.restore();
+    klickBg(ctx, '#F0EDE6', lt, 2, { halftoneColor: '#D4A860', accent: '#CC9933' });
     const keys = pmStageKeys(b);
     const cam = pmCamAt(keys, lt);
     const prev = pmCamAt(keys, lt - 1 / 30);
@@ -2656,13 +2738,7 @@ const PM_DRAW = {
   },
   // barra de busca: a palavra é digitada, os resultados entram e a lupa varre até achar
   'pm-search'(ctx, b, lt) {
-    ctx.save();
-    setFilter(ctx);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(-200, -200, BW + 400, BH + 400);
-    ctx.fillStyle = 'rgba(20,20,40,0.06)';
-    for (let y = 60; y < BH; y += 56) for (let x = 30; x < BW; x += 56) ctx.fillRect(x, y, 3, 3);
-    ctx.restore();
+    klickBg(ctx, '#FAFAF7', lt, 3, { halftoneColor: '#D4A860', accent: '#CC9933' });
     const BLUE = '#2430D6';
     const kw = String(b.data.query || b.data.keyword || '').slice(0, 22);
     const typeAt = 0.25;
@@ -2784,12 +2860,15 @@ const PM_DRAW = {
   'pm-progress'(ctx, b, lt) {
     const T = pmProgT(b);
     const ok = outCubic(prog(lt, T.done, 0.3));
-    ctx.save();
-    setFilter(ctx);
-    ctx.fillStyle = '#1A2A6C';
-    ctx.fillRect(-200, -200, BW + 400, BH + 400);
-    if (ok > 0) { ctx.globalAlpha = ok; ctx.fillStyle = '#0B5A1C'; ctx.fillRect(-200, -200, BW + 400, BH + 400); }
-    ctx.restore();
+    klickBg(ctx, null, lt, 4, { halftoneColor: '#6080CC', accent: '#2244AA', dark: true });
+    if (ok > 0) {
+      ctx.save();
+      setFilter(ctx);
+      ctx.globalAlpha = ok * 0.4;
+      ctx.fillStyle = '#0B5A1C';
+      ctx.fillRect(-200, -200, BW + 400, BH + 400);
+      ctx.restore();
+    }
     const BLUE = '#2B5BFF';
     const kw = String(b.data.keyword || 'enviar').toUpperCase().slice(0, 18);
     const cy = 900;
@@ -2934,15 +3013,8 @@ const PM_DRAW = {
   // ícone de traço branco sobre degradê, com animação curta (moeda, ponteiros, batida, luz, flecha, gráfico)
   'pm-icon'(ctx, b, lt) {
     const kind = PM_ICONS.includes(b.data.icon) ? b.data.icon : 'bulb';
-    const [c0, c1] = PM_GRAD[kind];
-    ctx.save();
-    setFilter(ctx);
-    const g = ctx.createLinearGradient(0, BH, BW, 0);
-    g.addColorStop(0, c0);
-    g.addColorStop(1, c1);
-    ctx.fillStyle = g;
-    ctx.fillRect(-200, -200, BW + 400, BH + 400);
-    ctx.restore();
+    const [c0] = PM_GRAD[kind];
+    klickBg(ctx, null, lt, 5, { halftoneColor: '#D4A860', accent: c0, dark: true });
     const e = clamp(outBack(prog(lt, 0, 0.5)));
     ctx.save();
     setFilter(ctx);
@@ -3034,16 +3106,7 @@ function reFlash(ctx, lt, dur) {
   ctx.restore();
 }
 function reDarkBg(ctx, warm = true) {
-  ctx.save();
-  setFilter(ctx);
-  ctx.fillStyle = '#120E0E';
-  ctx.fillRect(-200, -200, BW + 400, BH + 400);
-  const g = ctx.createRadialGradient(540, 860, 60, 540, 960, 1100);
-  g.addColorStop(0, warm ? 'rgba(90,50,44,0.85)' : 'rgba(60,60,60,0.7)');
-  g.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(-200, -200, BW + 400, BH + 400);
-  ctx.restore();
+  klickBg(ctx, null, 0, 0, { halftoneColor: warm ? '#CC6644' : '#888899', accent: warm ? '#CC4422' : '#555566', dark: true });
 }
 /** Texto condensado enorme (Anton), em até 2 linhas, com brilho. */
 function reBig(ctx, text, lt, at, { y = 900, color = '#FFFFFF', glow = 'rgba(255,255,255,0.55)', maxW = 900, size = 300 } = {}) {
@@ -3120,20 +3183,7 @@ const RE_DRAW = {
   },
   // cinza claro com grade: frase pequena escura e a palavra-chave dourada em serifa itálica
   're-light'(ctx, b, lt) {
-    ctx.save();
-    setFilter(ctx);
-    ctx.fillStyle = '#BDBDBF';
-    ctx.fillRect(-200, -200, BW + 400, BH + 400);
-    const g = ctx.createRadialGradient(540, 940, 60, 540, 960, 900);
-    g.addColorStop(0, 'rgba(255,255,255,0.95)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(-200, -200, BW + 400, BH + 400);
-    ctx.strokeStyle = 'rgba(0,0,0,0.05)';
-    ctx.lineWidth = 2;
-    for (let x = 180; x <= 900; x += 90) { ctx.beginPath(); ctx.moveTo(x, 600); ctx.lineTo(x, 1320); ctx.stroke(); }
-    for (let y = 600; y <= 1320; y += 90) { ctx.beginPath(); ctx.moveTo(180, y); ctx.lineTo(900, y); ctx.stroke(); }
-    ctx.restore();
+    klickBg(ctx, '#EBEAE8', lt, 1, { halftoneColor: '#D4A060', accent: RE_GOLD });
     reGoldPair(ctx, b, lt, { y: 960 });
     reFlash(ctx, lt, b.end - b.start);
   },
