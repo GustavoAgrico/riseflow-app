@@ -71,7 +71,16 @@ const Sparkline = ({ data = [], color = '#FF6B35', w = 72, h = 30 }) => {
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
-const StatCard = ({ icon: Icon, label, value, change, color, hex = '#FF6B35', sparkData, to, trend }) => {
+const statCardSurface = {
+  position: 'relative',
+  overflow: 'hidden',
+  padding: 18,
+  borderRadius: 16,
+  border: '1px solid var(--border)',
+  background: 'linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01)), var(--card)',
+  boxShadow: '0 1px 0 rgba(255,255,255,.03) inset, 0 16px 40px -28px rgba(0,0,0,.6)',
+}
+const StatCard =({ icon: Icon, label, value, change, color, hex = '#FF6B35', sparkData, to, trend }) => {
   // trend definido ('up'/'down') → pílula verde/vermelha com seta coerente (delta real).
   // trend indefinido → mantém a cor do card (compatibilidade).
   const dColor = trend == null ? hex : trend === 'down' ? '#EF4444' : '#10B981'
@@ -110,9 +119,9 @@ const StatCard = ({ icon: Icon, label, value, change, color, hex = '#FF6B35', sp
   )
   const cls = clsx('stat-card group', to && 'cursor-pointer hover:border-white/15 transition-colors')
   if (to) {
-    return <Link to={to} className={cls} style={{ position: 'relative', overflow: 'hidden', display: 'block', textDecoration: 'none' }}>{content}</Link>
+    return <Link to={to} className={cls} style={{ ...statCardSurface, display: 'block', textDecoration: 'none' }}>{content}</Link>
   }
-  return <div className={cls} style={{ position: 'relative', overflow: 'hidden' }}>{content}</div>
+  return <div className={cls} style={statCardSurface}>{content}</div>
 }
 
 // ── Channel dot (inline style) ────────────────────────────────────────────────

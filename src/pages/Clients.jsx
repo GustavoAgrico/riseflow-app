@@ -753,6 +753,15 @@ export const Clients = () => {
                         <p className="text-sm font-medium text-white group-hover:text-brand-orange transition-colors">{c.name}</p>
                         <p className="text-xs text-slate-500">{c.phone ?? '—'}</p>
                       </div>
+                      {!isDemoMode && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditTarget(c); setFormOpen(true) }}
+                          title="Editar lead"
+                          className="ml-auto text-slate-500 hover:text-brand-orange transition-colors p-1.5 rounded-md hover:bg-dark-400 flex-shrink-0"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      )}
                     </div>
                     {/* No mobile, canal/status/tag ficam numa linha que quebra;
                         no desktop, sm:contents devolve cada um às colunas do grid */}
