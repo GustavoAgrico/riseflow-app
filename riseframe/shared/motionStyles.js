@@ -451,41 +451,39 @@ function edBg(ctx, lt, idx, dark = false) {
   g.addColorStop(1, 'rgba(70,70,70,0.6)');
   ctx.fillStyle = g;
   ctx.fillRect(-200, -200, BW + 400, BH + 400);
-  // grade bem fraca no meio
+  // grid lines (reference: light gray grid visible across the full frame)
   ctx.save();
   setFilter(ctx);
-  for (let x = 156; x <= 924; x += 96) {
-    for (let y = 520; y <= 1400; y += 96) {
-      const d = Math.hypot((x - 540) / 420, (y - 960) / 480);
-      const a = clamp(1 - d) * 0.07;
-      if (a <= 0.005) continue;
-      ctx.strokeStyle = `rgba(0,0,0,${a.toFixed(3)})`;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([6, 6]);
-      ctx.strokeRect(x, y, 96, 96);
-    }
-  }
+  ctx.strokeStyle = 'rgba(0,0,0,0.065)';
+  ctx.lineWidth = 1;
+  const gs = 80;
+  for (let x = gs; x < BW; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, BH); ctx.stroke(); }
+  for (let y = gs; y < BH; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(BW, y); ctx.stroke(); }
+  // dashed crosshair lines through center
+  ctx.strokeStyle = 'rgba(0,0,0,0.09)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([10, 8]);
+  ctx.beginPath(); ctx.moveTo(540, 200); ctx.lineTo(540, BH - 200); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(100, 960); ctx.lineTo(BW - 100, 960); ctx.stroke();
   ctx.setLineDash([]);
   ctx.restore();
-  // estrelas cromadas nos cantos (giram devagar)
+  // abstract dark star shapes in corners (reference: solid black asterisk shapes)
   chromeStar(ctx, 30, 40, 230, 0.35 + lt * 0.08 + idx * 0.2);
   chromeStar(ctx, 1070, 1890, 260, -0.2 - lt * 0.06 - idx * 0.15);
+  chromeStar(ctx, 1040, 120, 140, 0.6 + lt * 0.05 + idx * 0.3);
+  chromeStar(ctx, 60, 1820, 160, -0.5 - lt * 0.04 - idx * 0.25);
 }
 
 function chromeStar(ctx, x, y, s, rot) {
   ctx.save();
   setFilter(ctx);
-  ctx.shadowColor = 'rgba(0,0,0,0.35)';
-  ctx.shadowBlur = 30;
-  ctx.shadowOffsetY = 14;
-  const g = ctx.createLinearGradient(x - s, y - s, x + s, y + s);
-  g.addColorStop(0, '#FAFAFA');
-  g.addColorStop(0.35, '#8E8E8E');
-  g.addColorStop(0.5, '#F2F2F2');
-  g.addColorStop(0.7, '#5A5A5A');
-  g.addColorStop(1, '#D8D8D8');
-  ctx.fillStyle = g;
-  starPath(ctx, x, y, s, rot, 0.16);
+  ctx.shadowColor = 'rgba(0,0,0,0.18)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 8;
+  ctx.fillStyle = '#1A1A1A';
+  starPath(ctx, x, y, s, rot, 0.10);
+  ctx.fill();
+  starPath(ctx, x, y, s * 0.55, rot + 0.78, 0.08);
   ctx.fill();
   ctx.restore();
 }
@@ -526,6 +524,66 @@ function pushpin(ctx, x, y, e) {
   ctx.restore();
 }
 
+/** Dashed selection box around text (Photoshop marquee style, as in Klickpin references). */
+function edSelectBox(ctx, x, y, w, h, lt, alpha = 1) {
+  if (alpha <= 0) return;
+  ctx.save();
+  setFilter(ctx);
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = '#1A1A1A';
+  ctx.lineWidth = 2.5;
+  const dash = lt * 60;
+  ctx.setLineDash([14, 10]);
+  ctx.lineDashOffset = -dash;
+  ctx.strokeRect(x - w / 2 - 30, y - h * 0.85, w + 60, h + 20);
+  // corner handles (white squares with dark border)
+  ctx.setLineDash([]);
+  const hs = 10;
+  for (const [cx, cy] of [[x - w / 2 - 30, y - h * 0.85], [x + w / 2 + 30, y - h * 0.85], [x - w / 2 - 30, y - h * 0.85 + h + 20], [x + w / 2 + 30, y - h * 0.85 + h + 20]]) {
+    ctx.fillStyle = '#FFF';
+    ctx.fillRect(cx - hs, cy - hs, hs * 2, hs * 2);
+    ctx.strokeStyle = '#1A1A1A';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cx - hs, cy - hs, hs * 2, hs * 2);
+  }
+  ctx.restore();
+}
+
+/** Cursor pointer near text (reference: small arrow cursor on selection). */
+function edCursor(ctx, x, y, lt, alpha = 1) {
+  if (alpha <= 0) return;
+  ctx.save();
+  setFilter(ctx);
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  ctx.shadowColor = 'rgba(0,0,0,0.25)';
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 4;
+  ctx.fillStyle = '#1A1A1A';
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, 52);
+  ctx.lineTo(14, 40);
+  ctx.lineTo(24, 62);
+  ctx.lineTo(34, 56);
+  ctx.lineTo(24, 36);
+  ctx.lineTo(40, 36);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.moveTo(4, 6);
+  ctx.lineTo(4, 44);
+  ctx.lineTo(14, 35);
+  ctx.lineTo(22, 53);
+  ctx.lineTo(28, 50);
+  ctx.lineTo(20, 34);
+  ctx.lineTo(34, 34);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 const ED_DRAW = {
   // frase em cima, objeto P&B no meio, o fim da frase embaixo em cinza
   'e-split'(ctx, b, lt, env, idx) {
@@ -535,6 +593,9 @@ const ED_DRAW = {
     objectImg(ctx, env, b.data.element, 540, 1010 - (1 - e) * 60, 640, { alpha: e, filter: GRAY });
     edBlock(ctx, pre, key, lt, 640);
     if (post.length) edBlock(ctx, post.slice(0, -1), post.slice(-1), lt, 1400, { bigColor: ED.grey });
+    const ka = key[0]?.at ?? 0.2;
+    const sa = outCubic(prog(lt, ka + 0.1, 0.35));
+    edSelectBox(ctx, 540, 640, 700, 150, lt, sa * 0.55);
   },
   // frase em cima e o objeto grande embaixo, saindo de uma névoa
   'e-head'(ctx, b, lt, env, idx) {
@@ -552,6 +613,9 @@ const ED_DRAW = {
     ctx.fillRect(0, 1000, BW, 900);
     ctx.restore();
     edBlock(ctx, pre, key.concat(post), lt, 600, { bigColor: ED.grey });
+    const ka2 = key[0]?.at ?? 0.2;
+    const ce = outCubic(prog(lt, ka2 + 0.25, 0.35));
+    edCursor(ctx, lerp(BW + 60, 540 + 380, ce), lerp(BH * 0.5, 600 + 50, ce), lt, ce * 0.8);
   },
   // lista com estrelinhas: cada item entra quando é falado; o objeto embaixo
   'e-list'(ctx, b, lt, env, idx) {
@@ -583,8 +647,10 @@ const ED_DRAW = {
     if (pre.length) line(ctx, pre, lt, { x: 540, y: 700, size: 46, font: FM7, color: ED.soft, maxW: 860 });
     line(ctx, key, lt, { x: 540, y: 900, size: 124, font: FM8, color: ED.ink, maxW: 960, ls: -0.025, blurIn: 18 });
     if (post.length) line(ctx, post, lt, { x: 540, y: 975, size: 46, font: FM7, color: ED.grey, maxW: 860 });
+    const sa = outCubic(prog(lt, ka + 0.2, 0.35));
+    edSelectBox(ctx, 540, 900, 660, 150, lt, sa * 0.5);
   },
-  // uma palavra enorme; as pequenas espalhadas em cima
+  // uma palavra enorme; as pequenas espalhadas em cima + dashed selection box + cursor
   'e-word'(ctx, b, lt, env, idx) {
     edBg(ctx, lt, idx);
     const [pre, key, post] = splitAtKey(b);
@@ -594,6 +660,11 @@ const ED_DRAW = {
       line(ctx, [it], lt, { x, y: 880, size: 34, font: FM7, color: ED.soft, maxW: 300 });
     });
     line(ctx, key, lt, { x: 540, y: 1010, size: 190, font: FM8, color: ED.ink, maxW: 980, ls: -0.03, blurIn: 22 });
+    const ka = key[0]?.at ?? 0.2;
+    const sa = outCubic(prog(lt, ka + 0.15, 0.4));
+    edSelectBox(ctx, 540, 1010, 800, 220, lt, sa * 0.7);
+    const ca = outCubic(prog(lt, ka + 0.3, 0.35));
+    edCursor(ctx, lerp(BW + 60, 540 + 420, ca), lerp(BH * 0.7, 1010 + 80, ca), lt, ca);
   },
   // fechamento no preto: a palavra em branco e o resto da frase embaixo
   'e-end'(ctx, b, lt, env, idx) {
@@ -938,9 +1009,9 @@ const CI_DRAW = {
     ctx.restore();
     if (e > 0.6) line(ctx, beatWords(b), lt, { x: 540, y: 982, size: 64, font: FI7, color: '#111', maxW: 960, ls: -0.03, blurIn: 6, rise: 6 });
   },
-  // barras de TV, letreiro de contorno e o cartão branco com o objeto
+  // cartão branco com o objeto sobre fundo escuro texturizado (letreiro de contorno)
   'c-bars'(ctx, b, lt, env) {
-    tvBars(ctx, lt);
+    ciBg(ctx, { glow: 0.5 });
     outlineText(ctx, b.data.keyword, lt, 1150, { color: 'rgba(255,255,255,0.35)', size: 400 });
     const e = outBack(prog(lt, 0.05, 0.45));
     ctx.save();
@@ -1677,18 +1748,24 @@ const CG_RED = '#E3262E';
 const CG_INK = '#141414';
 const CG_GREEN = '#2E5E3A';
 function cgBg(ctx, lt) {
-  // cinza quente com vinheta (centro claro) e arcos finos atravessando a tela, como a referência
   ctx.save();
   setFilter(ctx);
-  ctx.fillStyle = '#BEBBB8';
+  ctx.fillStyle = '#E2DFDC';
   ctx.fillRect(-200, -200, BW + 400, BH + 400);
   const g = ctx.createRadialGradient(540, 900, 80, 540, 960, 1150);
   g.addColorStop(0, 'rgba(244,243,241,1)');
-  g.addColorStop(0.6, 'rgba(226,224,221,0.9)');
-  g.addColorStop(1, 'rgba(170,166,162,0)');
+  g.addColorStop(0.6, 'rgba(232,230,227,0.9)');
+  g.addColorStop(1, 'rgba(195,192,188,0)');
   ctx.fillStyle = g;
   ctx.fillRect(-200, -200, BW + 400, BH + 400);
-  ctx.strokeStyle = 'rgba(40,40,40,0.28)';
+  // full-frame grid (reference: light gray grid visible everywhere)
+  ctx.strokeStyle = 'rgba(0,0,0,0.055)';
+  ctx.lineWidth = 1;
+  const gs = 72;
+  for (let x = gs; x < BW; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, BH); ctx.stroke(); }
+  for (let y = gs; y < BH; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(BW, y); ctx.stroke(); }
+  // arcs
+  ctx.strokeStyle = 'rgba(40,40,40,0.22)';
   ctx.lineWidth = 2;
   const sh = lt * 6;
   for (const [cx, cy, r] of [[-420, 1400, 1250], [1500, -300, 1350], [1300, 2300, 1100]]) {
@@ -1696,7 +1773,14 @@ function cgBg(ctx, lt) {
     ctx.arc(cx + sh, cy, r, 0, Math.PI * 2);
     ctx.stroke();
   }
-  ctx.fillStyle = 'rgba(0,0,0,0.07)';
+  // dark abstract star shapes in corners (like editorial references)
+  ctx.fillStyle = '#1A1A1A';
+  starPath(ctx, 40, 60, 160, 0.3 + lt * 0.06, 0.10);
+  ctx.fill();
+  starPath(ctx, 1050, 1870, 180, -0.2 - lt * 0.05, 0.10);
+  ctx.fill();
+  // dot grid in lower-left
+  ctx.fillStyle = 'rgba(0,0,0,0.06)';
   for (let y = 1250; y < 1700; y += 26) for (let x = 60; x < 360; x += 26) ctx.fillRect(x, y, 3, 3);
   ctx.restore();
 }
