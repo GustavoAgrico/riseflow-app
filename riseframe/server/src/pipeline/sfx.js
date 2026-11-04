@@ -9,9 +9,9 @@ const log = makeLogger('sfx');
 
 // Volume de cada tipo de efeito por intensidade (0..1). "medio" é o padrão.
 const LEVELS = {
-  suave: { pop: 0.18, whoosh: 0.4, tick: 0.5 },
-  medio: { pop: 0.32, whoosh: 0.6, tick: 0.75 },
-  forte: { pop: 0.5, whoosh: 0.85, tick: 1 },
+  suave: { pop: 0.18, whoosh: 0.4, tick: 0.5, click: 0.2, ding: 0.25, swipe: 0.35, impact: 0.3, riser: 0.35, thud: 0.3, sparkle: 0.2, bling: 0.2, typing: 0.25 },
+  medio: { pop: 0.32, whoosh: 0.6, tick: 0.75, click: 0.35, ding: 0.4, swipe: 0.55, impact: 0.5, riser: 0.55, thud: 0.5, sparkle: 0.35, bling: 0.35, typing: 0.4 },
+  forte: { pop: 0.5, whoosh: 0.85, tick: 1, click: 0.55, ding: 0.6, swipe: 0.75, impact: 0.7, riser: 0.75, thud: 0.7, sparkle: 0.55, bling: 0.55, typing: 0.6 },
 };
 
 // Batidas de teclado reais (assets/sfx/tecla-*.wav), carregadas uma vez.
@@ -647,7 +647,7 @@ export function buildSfxMix(events, opts = {}) {
     const s = e.file ? { base: 'whoosh', gain: 1.2 } : SFX_LIBRARY[e.type];
     const fromFile = Boolean(e.file || s.file);
     // volume de cada som colocado à mão (0–2, como o do CapCut); o padrão é 1
-    const vol = +(lv[s.base] * s.gain * (Number.isFinite(Number(e.volume)) ? Math.max(0, Math.min(2, Number(e.volume))) : 1)).toFixed(3);
+    const vol = +((lv[s.base] ?? lv.pop) * s.gain * (Number.isFinite(Number(e.volume)) ? Math.max(0, Math.min(2, Number(e.volume))) : 1)).toFixed(3);
     const ms = Math.round(e.at * 1000);
     const idx = i + 1; // input 0 é o vídeo original
     parts.push(`[${idx}:a]${fromFile ? 'aformat=sample_rates=44100:channel_layouts=stereo,' : ''}adelay=${ms}|${ms},volume=${vol}[e${i}]`);
