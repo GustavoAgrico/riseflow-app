@@ -151,6 +151,23 @@ export function brollFrameVf(regionW, regionH, c = {}) {
   return `scale=${sw}:${sh}:force_original_aspect_ratio=increase,crop=${regionW}:${regionH}:(iw-ow)*${fx.toFixed(3)}:(ih-oh)*${fy.toFixed(3)}`;
 }
 
+// Foco vertical da pessoa na tela dividida quando não há rosto detectado.
+const SPLIT_FALLBACK_Y = { top: 0.3, center: 0.5, bottom: 0.7 };
+
+/**
+ * Enquadramento da pessoa na metade dela. personSplit* é só da tela dividida (o foco e o zoom
+ * do vídeo em tela cheia não mexem nele); personSplitAuto pede a detecção do rosto.
+ * Sem nenhum dos dois, vale o foco geral. Puro. `focus: null` = detectar o rosto.
+ */
+export function splitFraming(options = {}) {
+  const clampZoom = (z) => Math.min(2.5, Math.max(1, Number(z) || 1));
+  const point = (x, y) => (x != null && y != null && Number.isFinite(Number(x)) && Number.isFinite(Number(y))
+    ? { x: Number(x), y: Number(y), source: 'manual' } : null);
+  const own = point(options.personSplitFocusX, options.personSplitFocusY);
+  if (own || options.personSplitAuto) return { focus: own, zoom: clampZoom(options.personSplitZoom) };
+  return { focus: point(options.personFocusX, options.personFocusY), zoom: clampZoom(options.personZoom) };
+}
+
 export function faceCropGeometry(inW, inH, regionW, regionH, focus = {}, zoom = 1, headroom = 0) {
   const base = Math.max(regionW / inW, regionH / inH);
   const s = base * Math.min(2.5, Math.max(1, zoom));
@@ -558,10 +575,8 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   const cardW = layout === 'cartoes' ? even(cardH / 1.25) : regionW;
   const ovY = layout === 'bottom' ? H - regionH : 0; // Y da metade do B-roll
   const personY = layout === 'top' ? regionH : 0; // pessoa fica na metade oposta
-  // Posição vertical da pessoa dentro da metade dela (topo/centro/base). Na tela
-  // dividida a pessoa é ENCAIXADA inteira (não cortada); isto só a alinha na metade.
+  // Posição vertical da pessoa na metade dela (topo/centro/base) quando não há rosto detectado.
   const pcrop = ['top', 'center', 'bottom'].includes(options.personCrop) ? options.personCrop : (isSplit ? 'top' : 'center');
-  const alignY = pcrop === 'top' ? '0' : pcrop === 'bottom' ? 'H-h' : '(H-h)/2';
 
   // Baixa clipes distintos; ignora os que falharem ou repetirem. Se não houver
   // VÍDEO para o momento, cai para uma FOTO do Pexels (mesmo contexto/nicho).
@@ -626,20 +641,22 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   clips.push(...got.filter(Boolean).sort((x, y) => x.start - y.start));
   if (!clips.length) return { output: input, inserted: 0 };
 
-  // Enquadramento da pessoa na tela dividida: foco no ROSTO. Manual (options) tem
-  // prioridade; senão detecta pelo rastreador. Sem tracking → cai para contida+desfoque.
+  // Enquadramento da pessoa na tela dividida: o escolhido para a tela dividida tem prioridade;
+  // senão detecta o rosto. Sem rosto detectado, segue a posição da pessoa (topo/centro/base).
   let personFocus = null;
-  let personZoom = Math.min(2.5, Math.max(1, Number(options.personZoom) || 1));
+  const framing = splitFraming(options);
+  const personZoom = framing.zoom;
   if (isSplit) {
-    const mx = Number(options.personFocusX);
-    const my = Number(options.personFocusY);
-    if (Number.isFinite(mx) && Number.isFinite(my)) {
-      personFocus = { x: mx, y: my, source: 'manual' };
-      log.info(`enquadramento manual: foco (${mx.toFixed(2)}, ${my.toFixed(2)}) zoom ${personZoom}`);
+    personFocus = framing.focus;
+    if (personFocus) {
+      log.info(`enquadramento manual: foco (${personFocus.x.toFixed(2)}, ${personFocus.y.toFixed(2)}) zoom ${personZoom}`);
     } else {
       personFocus = await averageSubjectCenter(options.personInput || input);
       if (personFocus) log.ok(`enquadramento no ${personFocus.source}: foco (${personFocus.x.toFixed(2)}, ${personFocus.y.toFixed(2)})`);
-      else log.info('sem rastreamento; pessoa contida com fundo desfocado');
+      else {
+        personFocus = { x: 0.5, y: SPLIT_FALLBACK_Y[pcrop], source: 'posição' };
+        log.info(`sem rastreamento; pessoa na posição ${pcrop}`);
+      }
     }
   }
 
@@ -667,17 +684,13 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
 
   let last;
   if (isSplit) {
-    // Tela dividida: a pessoa é ENCAIXADA INTEIRA na metade dela (contida, sem cortar
-    // a cabeça). O vazio é preenchido por uma cópia ampliada e DESFOCADA do próprio
-    // quadro (estilo Reels), e a pessoa é alinhada em topo/centro/base (alignY).
+    // Tela dividida: a pessoa COBRE a metade dela, centralizada no foco (sem faixas laterais).
     const n = clips.length;
     // geometria da metade da pessoa sobre a fonte dela (o vídeo antes do formato, quando houver)
     const pW = options.personInput && options.personMeta?.width ? options.personMeta.width : W;
     const pH = options.personInput && options.personMeta?.height ? options.personMeta.height : H;
-    // folga de cabeça: o centro médio do rosto fica abaixo do topo da cabeça
-    // Sem zoom manual, a pessoa inteira fica contida sobre o fundo desfocado (a cabeça nunca sai);
-    // o recorte no rosto só vale quando a pessoa escolheu zoom acima de 1.
-    const g = personFocus && personZoom > 1.001 ? faceCropGeometry(pW, pH, regionW, regionH, personFocus, personZoom, 0.20) : null;
+    // A mesma conta da prévia (coverCrop): o que aparece no editor é o que sai no vídeo.
+    const g = faceCropGeometry(pW, pH, regionW, regionH, personFocus, personZoom);
     // A metade da pessoa vem da fonte SEM o reenquadramento do vídeo inteiro (quando houver),
     // para o foco/zoom não ser aplicado duas vezes. O resto do vídeo usa a entrada 0.
     const personIdx = options.personInput ? clips.length + 1 : 0;
@@ -688,24 +701,10 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
       parts.push(`[0:v]split=${n + 1}[base]${clips.map((_, i) => `[p${i}]`).join('')}`);
     }
     clips.forEach((_, i) => {
-      if (g) {
-        // Enquadrado no rosto: cobre a metade e centraliza no foco (preenche, sem cortar a cabeça).
-        parts.push(
-          `[p${i}]scale=${g.scaledW}:${g.scaledH}:flags=bicubic,` +
-            `crop=${regionW}:${regionH}:${g.cropX}:${g.cropY},setsar=1[ph${i}]`,
-        );
-      } else {
-        // Sem rastreamento: pessoa inteira contida sobre fundo desfocado (nada cortado).
-        parts.push(`[p${i}]split=2[pbg${i}][pfg${i}]`);
-        parts.push(
-          `[pbg${i}]scale=${regionW}:${regionH}:force_original_aspect_ratio=increase,` +
-            `crop=${regionW}:${regionH},boxblur=18:2,setsar=1[pbb${i}]`,
-        );
-        parts.push(
-          `[pfg${i}]scale=${regionW}:${regionH}:force_original_aspect_ratio=decrease,setsar=1[pff${i}]`,
-        );
-        parts.push(`[pbb${i}][pff${i}]overlay=x=(W-w)/2:y=${alignY}[ph${i}]`);
-      }
+      parts.push(
+        `[p${i}]scale=${g.scaledW}:${g.scaledH}:flags=bicubic,` +
+          `crop=${regionW}:${regionH}:${g.cropX}:${g.cropY},setsar=1[ph${i}]`,
+      );
     });
     // Transformar (quadros-chave) e zoom dos momentos na metade da pessoa: aplicados DEPOIS
     // do recorte, no tamanho da metade — como a prévia (que mexe só na metade). Antes o

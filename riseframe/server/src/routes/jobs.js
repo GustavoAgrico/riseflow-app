@@ -26,6 +26,7 @@ import { CLIP_GOALS } from '../pipeline/clipSelect.js';
 import { sanitizeHeadline, sanitizeCover, makeCover } from '../pipeline/headline.js';
 import { outputTarget, cleanFitRanges } from '../pipeline/render.js';
 import { brollCandidates, resolveSource, googleConfig, googleReady } from '../pipeline/broll.js';
+import { averageSubjectCenter } from '../pipeline/reframe.js';
 import { freesoundKey, searchFreesound, searchOpenverse, okSfxUrl, onlineSfxFile, isSoundza, knownSoundza, searchSoundza, soundzaKey } from '../pipeline/sfxOnline.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
 import { analyzeAndGrade } from '../pipeline/autoColor.js';
@@ -694,6 +695,11 @@ export function parseOptions(raw) {
     personFocusX: Number.isFinite(Number(o.personFocusX)) ? clampNum(o.personFocusX, 0, 1, undefined) : undefined,
     personFocusY: Number.isFinite(Number(o.personFocusY)) ? clampNum(o.personFocusY, 0, 1, undefined) : undefined,
     personZoom: clampNum(o.personZoom, 1, 2.5, 1),
+    // Enquadramento só da tela dividida (o de tela cheia não mexe nele). Auto = detecta o rosto.
+    personSplitFocusX: o.personSplitFocusX != null && Number.isFinite(Number(o.personSplitFocusX)) ? clampNum(o.personSplitFocusX, 0, 1, undefined) : undefined,
+    personSplitFocusY: o.personSplitFocusY != null && Number.isFinite(Number(o.personSplitFocusY)) ? clampNum(o.personSplitFocusY, 0, 1, undefined) : undefined,
+    personSplitZoom: clampNum(o.personSplitZoom, 1, 2.5, 1),
+    personSplitAuto: o.personSplitAuto === true,
     // Fonte das imagens de B-roll: pexels | pixabay | wikimedia | google | mix (tudo).
     imageSource: ['pexels', 'pixabay', 'wikimedia', 'google', 'mix'].includes(o.imageSource) ? o.imageSource : 'mix',
     // Título fixo no vídeo e capa (quadro + título em JPG; opcional no início do vídeo).
@@ -1820,6 +1826,26 @@ jobsRouter.get('/jobs/:id/peaks', async (req, res) => {
   const out = path.join(config.paths.cache, `${job.id}.peaks.json`);
   try {
     if (!fs.existsSync(out)) await once(out, () => buildPeaks(job, out));
+    res.type('application/json').send(fs.readFileSync(out, 'utf8'));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/jobs/:id/person-center → centro médio do rosto (0..1), para a prévia da tela
+// dividida abrir enquadrada igual ao vídeo final. Sem rosto ou sem rastreador: center null.
+jobsRouter.get('/jobs/:id/person-center', async (req, res) => {
+  const job = sourceJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'vídeo de origem indisponível' });
+  const out = path.join(config.paths.cache, `${job.id}.person-center.json`);
+  try {
+    if (!fs.existsSync(out)) {
+      await once(out, async () => {
+        const center = await averageSubjectCenter(job.inputPath, 1);
+        if (center) fs.writeFileSync(out, JSON.stringify({ center }));
+      });
+    }
+    if (!fs.existsSync(out)) return res.json({ center: null });
     res.type('application/json').send(fs.readFileSync(out, 'utf8'));
   } catch (err) {
     res.status(500).json({ error: err.message });

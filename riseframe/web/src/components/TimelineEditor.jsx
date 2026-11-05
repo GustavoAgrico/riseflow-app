@@ -5,7 +5,7 @@ import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import Processing from './Processing.jsx';
 import { pickExportTarget, setPendingExport } from '../exportTarget.js';
-import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, elementUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
+import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, getPersonCenter, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, elementUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -308,6 +308,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [mTool, setMTool] = useState('main'); // barra de ferramentas: principal ou da legenda
   const [advOpen, setAdvOpen] = useState(false);
   const [peaks, setPeaks] = useState([]);
+  const [faceCenter, setFaceCenter] = useState(null); // rosto do vídeo: a tela dividida começa nele
   const rangeDragRef = useRef(null);
   // Volume da fala: geral, mudo e trechos com volume próprio (tempo original).
   const [audioMute, setAudioMute] = useState(options?.audioMute === true);
@@ -436,6 +437,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [framingMode, setFramingMode] = useState(!hasFocus0 && Number(options?.personZoom) > 1 ? 'auto' : 'manual');
   const [focus, setFocus] = useState(hasFocus0 ? { x: Number(options.personFocusX), y: Number.isFinite(Number(options.personFocusY)) ? Number(options.personFocusY) : 0.4 } : { x: 0.5, y: 0.4 });
   const [zoom, setZoom] = useState(Math.min(2.5, Math.max(1, Number(options?.personZoom) || 1)));
+  // Enquadramento só da tela dividida com B-roll: null = no rosto (automático).
+  const [splitFocus, setSplitFocus] = useState(options?.personSplitFocusX != null && options?.personSplitFocusY != null ? { x: Number(options.personSplitFocusX), y: Number(options.personSplitFocusY) } : null);
+  const [splitZoom, setSplitZoom] = useState(Math.min(2.5, Math.max(1, Number(options?.personSplitZoom) || 1)));
+  const splitModeRef = useRef(false); // a prévia está na tela dividida (arrastar/rolar mexe só nela)
   // Formato do vídeo final e como ele entra no formato (igual ao servidor):
   // auto = segue o rosto · manual = ponto escolhido · fit = inteiro com fundo desfocado.
   const [aspectSel, setAspectSel] = useState(['original', '9:16', '1:1', '16:9'].includes(options?.aspect) ? options.aspect : 'original');
@@ -475,6 +480,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const setCv = (patch) => setCover((c) => ({ ...c, ...patch }));
   // B-roll ligado neste vídeo? Desligar guarda as escolhas (dá para religar depois).
   const [brollOn, setBrollOn] = useState(Boolean(options?.broll));
+  const wantsFace = brollOn && brollLayoutSel !== 'fullscreen';
+  useEffect(() => {
+    if (!wantsFace || faceCenter) return undefined;
+    let vivo = true;
+    getPersonCenter(sourceId).then((c) => { if (vivo && c) setFaceCenter(c); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [sourceId, wantsFace, faceCenter]);
   const [textBehindOn, setTextBehindOn] = useState(Boolean(options?.textBehind));
   const [brollPasteHint, setBrollPasteHint] = useState(null); // índice do momento esperando a imagem do Google
   const [brollBusy, setBrollBusy] = useState(false);
@@ -717,7 +729,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const histState = {
     segments, cuts, keptPauses, keptNoises, gains, videoCrop, cropRanges, fitRanges, blanks, projMediaIds, avLinked, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs, brollLayoutSel, imageSource, volKeys, pauseAuto, aiCleaned, lead, v1Gaps,
-    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
+    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, splitFocus, splitZoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
   };
   const histSet = {
     segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, cropRanges: setCropRanges, fitRanges: setFitRanges, blanks: setBlanks, projMediaIds: setProjMediaIds, avLinked: setAvLinked, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
@@ -725,7 +737,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     cover: setCover, colorLook: setColorLook, colorAdj: setColorAdj, cap: setCap, fx: setFx, voice: setVoice,
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths, brollLayoutSel: setBrollLayoutSel, imageSource: setImageSource, volKeys: setVolKeys, pauseAuto: setPauseAuto, aiCleaned: setAiCleaned, lead: setLead, v1Gaps: setV1Gaps,
     cutCoughs: setCutCoughs, aspectSel: setAspectSel, quality: setQuality, reframeMode: setReframeMode,
-    splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom,
+    splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom, splitFocus: setSplitFocus, splitZoom: setSplitZoom,
     vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, extraCaps: setExtraCaps, fxMoments: setFxMoments, transitions: setTransitions, laneHide: setLaneHide, laneLock: setLaneLock, markers: setMarkers, speedRanges: setSpeedRanges, freezes: setFreezes,
   };
   const histRef = useRef({ past: [], future: [], prev: null, skip: false, at: 0 });
@@ -1839,6 +1851,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // mostra mais da esquerda). Divide pelo zoom p/ um ajuste mais fino quando ampliado.
         const dx = (e.clientX - p.startX) / (p.w * p.zoom);
         const dy = (e.clientY - p.startY) / (p.h * p.zoom);
+        if (p.split) {
+          // tela dividida: p.w/p.h = tamanho do vídeo ampliado; fica dentro do que dá para mostrar
+          setSplitFocus({ x: +Math.min(p.maxX, Math.max(p.minX, p.fx - dx)).toFixed(3), y: +Math.min(p.maxY, Math.max(p.minY, p.fy - dy)).toFixed(3) });
+          return;
+        }
         // centro do vídeo no centro do quadro: gruda e mostra a linha-guia
         const sx = snapCenter(clamp01(p.fx - dx), p.w * p.zoom);
         const sy = snapCenter(clamp01(p.fy - dy), p.h * p.zoom);
@@ -1861,7 +1878,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   useEffect(() => {
     const el = previewBoxRef.current;
     if (!el) return;
-    function onWheel(e) { e.preventDefault(); setZoom((z) => clampZoom(z + (e.deltaY < 0 ? 0.1 : -0.1))); }
+    function onWheel(e) { e.preventDefault(); (splitModeRef.current ? setSplitZoom : setZoom)((z) => clampZoom(z + (e.deltaY < 0 ? 0.1 : -0.1))); }
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [framingMode]);
@@ -3254,6 +3271,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // Enquadramento (tela dividida): manual envia foco; auto deixa o servidor
         // detectar o rosto. Zoom vale para os dois.
         personZoom: +Number(zoom).toFixed(2),
+        // Tela dividida: o foco que a prévia usa; sem rosto conhecido ainda, o servidor detecta.
+        personSplitZoom: +Number(splitZoom).toFixed(2),
+        ...(splitFocus || faceCenter
+          ? { personSplitFocusX: +(splitFocus || faceCenter).x.toFixed(3), personSplitFocusY: +(splitFocus || faceCenter).y.toFixed(3) }
+          : { personSplitAuto: true }),
         // Formato do vídeo final + enquadramento no formato (escolhidos na aba Enquadramento).
         aspect: aspectSel,
         quality: hdAllowed ? quality : 'original',
@@ -4701,6 +4723,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     ? (brollReview?.moments || []).filter((m) => !m.removed && (m.myMediaId || m.candidates?.[m.pick])).map((m) => ({ start: m.start, end: m.end }))
     : [];
   const previewMode = brollMoment && thumbOf(brollMoment) ? (brollLayout === 'split' ? 'split' : 'broll') : 'video';
+  splitModeRef.current = previewMode === 'split';
   // Recorte da pessoa = a MESMA conta do servidor (faceCropGeometry): cobre o quadro,
   // amplia pelo zoom e CENTRALIZA no ponto do rosto. Assim a prévia bate com o render.
   const fitMode = reframeMode === 'fit' && aspectSel !== 'original' && previewMode === 'video';
@@ -4712,16 +4735,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     objectPosition: `${side * 100}% 40%`, transform: 'scale(1.9)', transformOrigin: `${side * 100}% 40%`, filter: videoFilterFx,
   });
   const fitNow = (fitRanges || []).some((r) => cur >= r.start - 0.001 && cur < r.end);
-  // Tela dividida sem zoom: a pessoa inteira contida sobre o fundo desfocado (como o render)
-  const splitContain = previewMode === 'split' && !podSplit;
+  // Tela dividida com B-roll: enquadramento próprio (a mesma conta do render).
+  const inSplit = previewMode === 'split' && !podSplit;
+  const shownFocus = inSplit ? (splitFocus || faceCenter || { x: 0.5, y: 0.5 }) : focus;
+  const shownZoom = inSplit ? splitZoom : zoom;
   const personCropStyle = (() => {
     if (fitNow && !fitMode && aspectSel !== 'original') return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx };
-    if (fitMode || splitContain) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilterFx };
+    if (fitMode) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilterFx };
     const sd = vdim || (vbox?.vw ? { w: vbox.vw, h: vbox.vh } : null);
     if (!sd || !pbox?.w || !pbox?.h) {
-      return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, filter: videoFilterFx };
+      return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${shownFocus.x * 100}% ${shownFocus.y * 100}%`, filter: videoFilterFx };
     }
-    const g = coverCrop(sd.w, sd.h, pbox.w, pbox.h, focus, zoom);
+    const g = coverCrop(sd.w, sd.h, pbox.w, pbox.h, shownFocus, shownZoom);
     return { position: 'absolute', left: -g.cropX, top: -g.cropY, width: g.scaledW, height: g.scaledH, maxWidth: 'none', objectFit: 'fill', filter: videoFilterFx };
   })();
   // V0 na prévia: as mídias de baixo ficam atrás do vídeo; num espaço vazio o vídeo some e
@@ -4739,11 +4764,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       onPointerDown={(e) => {
         e.preventDefault();
         const r = previewBoxRef.current.getBoundingClientRect();
+        const sd = vdim || (vbox?.vw ? { w: vbox.vw, h: vbox.vh } : null);
+        if (inSplit && sd) {
+          const g = coverCrop(sd.w, sd.h, r.width, r.height, shownFocus, shownZoom);
+          const halfX = r.width / 2 / g.scaledW;
+          const halfY = r.height / 2 / g.scaledH;
+          panRef.current = { split: true, startX: e.clientX, startY: e.clientY, fx: shownFocus.x, fy: shownFocus.y, w: g.scaledW, h: g.scaledH, zoom: 1, minX: halfX, maxX: 1 - halfX, minY: halfY, maxY: 1 - halfY };
+          return;
+        }
         panRef.current = { startX: e.clientX, startY: e.clientY, fx: focus.x, fy: focus.y, w: r.width, h: r.height, zoom };
       }}
       style={{ position: 'relative', height: previewMode === 'split' ? '50%' : previewMode === 'video' ? '100%' : '0%', display: previewMode === 'broll' ? 'none' : 'block', overflow: 'hidden', cursor: 'grab', touchAction: 'none', boxShadow: `inset 0 0 0 2px ${C.orange}` }}
     >
-      {(fitMode || splitContain) && (
+      {fitMode && (
         <video ref={bgVideoRef} src={srcUrl} muted playsInline preload="auto" aria-hidden="true"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.12)', filter: `${videoFilter && videoFilter !== 'none' ? `${videoFilter} ` : ''}blur(9px) brightness(0.88)` }} />
       )}
@@ -7958,6 +7991,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               <div className="rf-tl-pv-fmt">
                 {composedPreview}
                 {previewMode === 'split' && <button onClick={() => setPersonSide((s) => (s === 'top' ? 'bottom' : 'top'))} style={{ ...zoomBtn, width: '100%', padding: '6px 0', marginTop: 8, fontSize: 11, fontWeight: 600 }}>Você: {personSide === 'top' ? 'em cima' : 'embaixo'}</button>}
+                {previewMode === 'split' && (splitFocus || splitZoom !== 1) && <button onClick={() => { setSplitFocus(null); setSplitZoom(1); }} style={{ ...zoomBtn, width: '100%', padding: '6px 0', marginTop: 6, fontSize: 11, fontWeight: 600 }}>Voltar a enquadrar no rosto</button>}
               </div>
             )}
           </div>

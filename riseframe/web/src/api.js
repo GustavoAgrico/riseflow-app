@@ -629,6 +629,14 @@ export async function getPeaks(id) {
   return Array.isArray(d.peaks) ? d.peaks : [];
 }
 
+/** Centro médio do rosto no vídeo de origem ({x,y} em 0–1), ou null. */
+export async function getPersonCenter(id) {
+  const r = await fetch(`${BASE}/jobs/${id}/person-center`);
+  if (!r.ok) return null;
+  const d = await r.json().catch(() => ({}));
+  return d.center || null;
+}
+
 /** Prévia da voz (8 s a partir de `start`) com o tratamento/modificador escolhido.
  *  Resolve com uma URL local (blob) do áudio. */
 export async function previewVoice(sourceId, start, options) {

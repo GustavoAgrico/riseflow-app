@@ -269,10 +269,10 @@ async function runTracker(input, sampleFps = 5) {
  * enquadrar a pessoa no rosto na tela dividida. Retorna null se não houver tracking.
  * @returns {Promise<{x:number,y:number,source:string}|null>}
  */
-export async function averageSubjectCenter(input) {
+export async function averageSubjectCenter(input, sampleFps = 5) {
   let data;
   try {
-    data = await runTracker(input);
+    data = await runTracker(input, sampleFps);
   } catch (err) {
     log.warn(`tracking indisponível para enquadramento (${err.message})`);
     return null;
