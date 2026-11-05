@@ -452,16 +452,19 @@ export function buildAss(segments, meta, style = {}) {
     } else if (T.premium) {
       // Cada palavra aparece quando é falada (as próximas já ocupam o lugar, invisíveis).
       // Pequenas em cima (fonte leve); a parte grande embaixo, com brilho.
-      const premCol = accentIsWhite ? 'C6F25A' : accentHex;
-      const fillC = assColor(tint(premCol, accentIsWhite ? 0.72 : 0.55));
+      // kwColor/kwFace/smallItalic: extensões para o estilo Klickpin (vermelho + itálico).
+      const hasKwOverride = !!(T.kwColor || T.kwFace);
+      const premCol = T.kwColor ? colorHex(T.kwColor) : (accentIsWhite ? 'C6F25A' : accentHex);
+      const fillC = assColor(tint(premCol, T.kwColor ? 0.85 : (accentIsWhite ? 0.72 : 0.55)));
       const glowC = assColor(premCol);
       const smallDef = fontById(T.smallFont);
       const SM = fontMetrics(smallDef.family);
       const smallEm = h * T.smallSize * scale;
       const plainEm = em * 0.78;
-      const glowBord = Math.max(2, Math.round(em * 0.1));
-      const glowBlur = Math.max(4, Math.round(em * 0.16));
-      const STRUT = 1.02; // altura de linha do bloco premium na prévia
+      const glowBord = Math.max(2, Math.round(em * (hasKwOverride ? 0.07 : 0.1)));
+      const glowBlur = Math.max(4, Math.round(em * (hasKwOverride ? 0.12 : 0.16)));
+      const smallIt = T.smallItalic ? '\\i1' : '';
+      const STRUT = 1.02;
       for (const ch of premiumChunks(words, seg.end)) {
         const cw = ch.words;
         const topIdx = cw.map((_, j) => j).filter((j) => j < ch.big);
@@ -479,16 +482,15 @@ export function buildAss(segments, meta, style = {}) {
             const emC = wd.emColor ? assColor(emHex(wd)) : null;
             let look;
             if (!big) {
-              look = `\\fn${smallDef.family}\\fs${fsOf(smallEm, SM)}\\b1\\c${emC || WHITE}\\bord0\\shad${Math.max(1, Math.round(smallEm * 0.06))}\\blur0`;
+              look = `\\fn${smallDef.family}\\fs${fsOf(smallEm, SM)}${smallIt}\\b1\\c${emC || WHITE}\\bord0\\shad${Math.max(1, Math.round(smallEm * 0.06))}\\blur0`;
             } else if (glowing) {
-              look = `\\fn${fontName}\\fs${fsOf(wd.emBig ? em * 1.3 : em)}\\b0\\c${emC || fillC}\\3c${emC || glowC}\\bord${glowBord}\\blur${glowBlur}\\shad0`;
+              look = `\\fn${kwFace ? kwFace.family : fontName}\\fs${fsOf(wd.emBig ? em * 1.3 : em)}\\b0\\c${emC || fillC}\\3c${emC || glowC}\\bord${glowBord}\\blur${glowBlur}\\shad0`;
             } else {
               look = `\\fn${fontName}\\fs${fsOf(plainEm)}\\b0\\c${emC || WHITE}\\3c&H000000&\\bord${Math.max(1, Math.round(plainEm * 0.04))}\\blur1\\shad0`;
             }
             const shown = glowing ? '\\1a&H00&\\3a&H60&\\4a&HFF&' : '\\1a&H00&\\3a&H40&\\4a&H80&';
             if (j > i) return `{${look}\\1a&HFF&\\3a&HFF&\\4a&HFF&}${escapeAss(wd.word)}`;
             if (j < i) return `{${look}${shown}}${escapeAss(wd.word)}`;
-            // Entrando agora: as grandes chegam esticadas e desfocadas.
             const enter = big ? '\\fscx118\\be10\\t(0,180,\\fscx100\\be0)' : '\\fscx92\\t(0,120,\\fscx100)';
             return `{${look}\\1a&HFF&\\3a&HFF&\\4a&HFF&${enter}\\t(0,150,${shown})}${escapeAss(wd.word)}`;
           };

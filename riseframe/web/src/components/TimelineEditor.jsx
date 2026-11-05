@@ -5382,6 +5382,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         {kineticN > 0 && <button type="button" onClick={clearKinetic} style={{ ...miniBtn(false, false) }}>Tirar ({kineticN} {kineticN === 1 ? 'cena' : 'cenas'})</button>}
       </div>
       {autoNote && <span style={{ fontSize: 11.5, color: C.text }}>{autoNote}</span>}
+      {media.filter((m) => m.motionScene).map((m) => (
+        <MotionEditor key={m.key} scene={m.motionScene} onChange={(sc) => updateMedia(m.key, { motionScene: sc })} />
+      ))}
     </div>
   );
   const textBehindCard = (

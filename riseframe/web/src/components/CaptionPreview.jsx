@@ -654,6 +654,7 @@ function tintHex(hex, t) {
  * da vez entra (desfoque + esticada nas grandes) e as próximas ficam reservadas.
  */
 function PremiumWords({ words, wi, look, options, fontPx, still }) {
+  const T = look.T;
   const chunks = premiumChunks(words, 0);
   let off = 0;
   let ch = chunks[0];
@@ -662,17 +663,20 @@ function PremiumWords({ words, wi, look, options, fontPx, still }) {
     off += c.words.length;
   }
   const local = wi - off;
-  const glowHex = look.accentIsWhite ? '#C6F25A' : look.color;
-  const fill = tintHex(glowHex, look.accentIsWhite ? 0.72 : 0.55);
+  const kwCol = T.kwColor ? colorHex(T.kwColor) : null;
+  const glowHex = kwCol || (look.accentIsWhite ? '#C6F25A' : look.color);
+  const fill = tintHex(glowHex, kwCol ? 0.85 : (look.accentIsWhite ? 0.72 : 0.55));
+  const kwFaceP = T.kwFace ? fontStyles(T.kwFace.font).find((x) => x.id === T.kwFace.style) : null;
+  const bigFamily = kwFaceP ? `'${kwFaceP.family}', serif` : `'${look.fontFamily}', system-ui, sans-serif`;
   const small = Math.max(6, Math.round(fontPx * 0.5));
   const span = (wd, j) => {
     const big = j >= ch.big;
     const glow = big && ch.glow;
     const em = wd.emColor ? hexOfEm(wd.emColor) : null;
     const base = !big
-      ? { fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 700, fontSize: small, color: em || '#fff', textShadow: '0 1px 3px rgba(0,0,0,.6)', letterSpacing: 0 }
+      ? { fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 700, fontSize: small, color: em || '#fff', textShadow: '0 1px 3px rgba(0,0,0,.6)', letterSpacing: 0, ...(T.smallItalic ? { fontStyle: 'italic' } : null) }
       : glow
-        ? { fontFamily: `'${look.fontFamily}', system-ui, sans-serif`, fontWeight: 400, fontSize: wd.emBig ? '1.3em' : '1em', color: em || fill, textShadow: `0 0 ${fontPx * 0.12}px ${em || glowHex}, 0 0 ${fontPx * 0.3}px ${em || glowHex}` }
+        ? { fontFamily: bigFamily, fontWeight: 400, fontSize: wd.emBig ? '1.3em' : '1em', color: em || fill, textShadow: `0 0 ${fontPx * 0.12}px ${em || glowHex}, 0 0 ${fontPx * 0.3}px ${em || glowHex}` }
         : { fontFamily: `'${look.fontFamily}', system-ui, sans-serif`, fontWeight: 400, fontSize: '0.78em', color: em || '#fff', textShadow: '0 2px 4px rgba(0,0,0,.55)' };
     const vis = j < local || still ? null
       : j === local ? { animation: big ? 'rf-blurin .22s ease-out both' : 'rf-fade .15s ease both' }

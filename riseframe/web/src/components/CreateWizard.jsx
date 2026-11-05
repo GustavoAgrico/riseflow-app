@@ -8,6 +8,8 @@ import CaptionPreview from './CaptionPreview.jsx';
 import CaptionGallery, { presetPatch, currentPreset, CAPTION_PRESETS } from './CaptionGallery.jsx';
 import CostLine from './CostLine.jsx';
 import { KINETIC_THEMES } from '../../../shared/kinetic.js';
+import { drawExplainer, EXPLAINER_FONT_FILES } from '../../../shared/motionEngine.js';
+import { STYLE_BEATS } from '../../../shared/motionStyles.js';
 import { FORMATS } from '../formats.js';
 import { listBrands, loadBrand, activeBrandId, setActiveBrand, brandOptions } from '../brandKit.js';
 import { listTemplatesApi, uploadMedia } from '../api.js';
@@ -17,6 +19,89 @@ const STEPS = [
   { id: 'upload', label: 'Vídeo' },
   { id: 'ai', label: 'Edição com IA' },
 ];
+
+let _styleFontsP = null;
+function loadStyleFonts() {
+  if (!_styleFontsP && typeof FontFace !== 'undefined') {
+    _styleFontsP = Promise.all(EXPLAINER_FONT_FILES.map(([fam, f]) =>
+      new FontFace(fam, `url(/api/fonts/${f})`).load().then((ff) => document.fonts.add(ff)).catch(() => null)
+    ));
+  }
+  return _styleFontsP || Promise.resolve();
+}
+
+function mockScene(style) {
+  const types = style === 'estrategia' ? ['a-plain'] : STYLE_BEATS[style];
+  if (!types) return null;
+  const type = types[0];
+  const kw = 'DESIGN';
+  return {
+    style,
+    start: 0,
+    end: 4,
+    beats: [{
+      type,
+      start: 0,
+      end: 4,
+      data: { keyword: kw, keys: [kw, 'MOTION'], text: 'seu design com motion', element: null },
+      words: [
+        { text: 'Seu', word: 'Seu', at: 0.1, start: 0.1, end: 0.4 },
+        { text: 'design', word: 'design', at: 0.4, start: 0.4, end: 0.7 },
+        { text: 'com', word: 'com', at: 0.7, start: 0.7, end: 1.0 },
+        { text: 'motion', word: 'motion', at: 1.0, start: 1.0, end: 1.3 },
+      ],
+    }],
+  };
+}
+
+const _thumbCache = new Map();
+function MotionStyleThumb({ style, selected, onClick, label }) {
+  const ref = React.useRef(null);
+  const [ready, setReady] = React.useState(false);
+  React.useEffect(() => { loadStyleFonts().then(() => setReady(true)); }, []);
+  React.useEffect(() => {
+    const c = ref.current;
+    if (!c || !ready) return;
+    const key = style;
+    if (_thumbCache.has(key)) {
+      const ctx = c.getContext('2d');
+      ctx.putImageData(_thumbCache.get(key), 0, 0);
+      return;
+    }
+    const W = 108;
+    const H = 192;
+    c.width = W;
+    c.height = H;
+    const scene = mockScene(style);
+    if (!scene) return;
+    const ctx = c.getContext('2d');
+    try {
+      drawExplainer(ctx, scene, 1.0, { W, H, image: () => null });
+      _thumbCache.set(key, ctx.getImageData(0, 0, W, H));
+    } catch { /* fallback: leave canvas empty */ }
+  }, [style, ready]);
+  return (
+    <button type="button" onClick={onClick} style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, padding: 0, background: 'none',
+      border: 'none', cursor: 'pointer', width: 90, flexShrink: 0,
+    }}>
+      <div style={{
+        width: 84, height: 150, borderRadius: 10, overflow: 'hidden', position: 'relative',
+        border: `2px solid ${selected ? '#FF6B35' : 'rgba(255,255,255,0.08)'}`,
+        boxShadow: selected ? '0 0 12px rgba(255,107,53,0.3)' : 'none',
+        transition: 'border-color 0.15s, box-shadow 0.15s',
+      }}>
+        <canvas ref={ref} width={108} height={192}
+          style={{ width: '100%', height: '100%', display: 'block', background: '#111' }} />
+      </div>
+      <span style={{
+        fontSize: 10, fontWeight: selected ? 700 : 500, textAlign: 'center',
+        color: selected ? C.text : C.muted, lineHeight: 1.2, maxWidth: 88,
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>{label}</span>
+    </button>
+  );
+}
 
 const HIGHLIGHT = ['premium', 'reel', 'vsl', 'keyword', 'duo', 'karaoke', 'marker'];
 
@@ -352,17 +437,13 @@ export default function CreateWizard({
                       {t.id === 'kinetic' && t.on && !t.off && (
                         <div style={{ padding: '12px 14px', borderRadius: 12, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.03)', display: 'grid', gap: 10 }}>
                           <div>
-                            <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 6 }}>ESTILO DO MOTION</div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                              {Object.entries(KINETIC_THEMES).map(([id, label]) => {
-                                const sel = (options.kineticTheme || 'estrategia') === id;
-                                return (
-                                  <button key={id} type="button" onClick={() => set({ kineticTheme: id })}
-                                    style={{ height: 24, padding: '0 9px', borderRadius: 999, border: `1px solid ${sel ? '#FF6B35' : C.border}`, background: sel ? 'rgba(255,107,53,0.16)' : 'transparent', color: sel ? C.text : C.muted, fontSize: 10.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
-                                    {label}
-                                  </button>
-                                );
-                              })}
+                            <div style={{ fontSize: 11, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>ESTILO DO MOTION</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' }}>
+                              {Object.entries(KINETIC_THEMES).map(([id, label]) => (
+                                <MotionStyleThumb key={id} style={id} label={label.split('(')[0].trim()}
+                                  selected={(options.kineticTheme || 'estrategia') === id}
+                                  onClick={() => set({ kineticTheme: id })} />
+                              ))}
                             </div>
                           </div>
                           <div style={{ fontSize: 10.5, color: C.faint, lineHeight: 1.4 }}>O estilo controla cores, fontes e layout do motion. Você pode trocar depois no editor.</div>

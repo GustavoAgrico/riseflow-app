@@ -16,6 +16,8 @@ export const CAPTION_PRESETS = [
   { id: 'criador', label: 'Criador', group: 'perfil', patch: { captionTemplate: 'tiktok', captionColor: 'lime', captionFont: 'montserrat' } },
   // Premium: palavra a palavra, palavra-chave grande com brilho + som de tecla a cada palavra.
   { id: 'premium', label: 'Premium ✨', patch: { captionTemplate: 'premium', captionColor: 'white', soundEffects: true } },
+  // Klickpin: premium word-by-word + connecting words italic + red keyword (Playfair serif)
+  { id: 'klickpin', label: 'Klickpin', patch: { captionTemplate: 'klickpin', captionColor: 'white', soundEffects: true } },
   { id: 'classico', label: 'Clássico', patch: { captionTemplate: 'clean', captionColor: 'white' } },
   { id: 'karaoke', label: 'Karaokê', patch: { captionTemplate: 'karaoke', captionColor: 'yellow' } },
   { id: 'marcatexto', label: 'Marca-texto', patch: { captionTemplate: 'marker', captionColor: 'purple' } },
