@@ -25,7 +25,7 @@ test('texto atrás da pessoa: palavra-chave da frase, espaçada, fora do motion/
 test('ASS das palavras gigantes e filtro de composição (texto onde não é pessoa)', () => {
   const ass = behindAss([{ start: 1, end: 3, text: 'DINHEIRO' }], { width: 1080, height: 1920 });
   assert.match(ass, /PlayResX: 1080/);
-  assert.match(ass, /Dialogue: 0,0:00:01\.00,0:00:03\.00,Behind,,0,0,0,,\{\\pos\(540,538\)\\fs\d+/);
+  assert.match(ass, /Dialogue: 0,0:00:01\.00,0:00:03\.00,Behind,,0,0,0,,\{\\pos\(540,576\)\\fs\d+/);
   const f = behindFilter({ width: 1080, height: 1920 });
   assert.match(f, /subtitles=behind\.ass:fontsdir=fonts/);
   assert.match(f, /\[a\]\[b\]\[m\]maskedmerge/);
