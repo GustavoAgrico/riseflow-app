@@ -16,6 +16,7 @@ import { appCapabilities } from './appCaps.js';
 import { settingsRouter } from './routes/settings.js';
 import { billingRouter } from './routes/billing.js';
 import { publicRouter } from './routes/public.js';
+import { styleRouter } from './routes/style.js';
 import { startRenewTimer } from './auth/billing.js';
 import { ffmpegPath, detectHwEncoder } from './pipeline/ffmpeg.js';
 import { resolveYtDlp, ytdlpStatus } from './pipeline/youtube.js';
@@ -120,6 +121,7 @@ app.use('/api', billingRouter);
 app.use('/api', publicRouter);
 app.use('/api', optionsRouter);
 app.use('/api', jobsRouter);
+app.use('/api', styleRouter);
 app.use('/api', projectsRouter);
 
 // Em produção, serve o build do frontend (mesma origem).

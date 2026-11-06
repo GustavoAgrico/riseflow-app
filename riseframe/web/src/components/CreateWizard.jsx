@@ -12,6 +12,7 @@ import { drawExplainer, EXPLAINER_FONT_FILES } from '../../../shared/motionEngin
 import { STYLE_BEATS } from '../../../shared/motionStyles.js';
 import { FORMATS } from '../formats.js';
 import { listBrands, loadBrand, activeBrandId, setActiveBrand, brandOptions } from '../brandKit.js';
+import { readyProfiles, activeProfileId, setActiveProfile, flowOptions, FLOW_OPTION_KEYS } from '../editFlow.js';
 import { listTemplatesApi, uploadMedia } from '../api.js';
 
 const STEPS = [
@@ -264,6 +265,17 @@ export default function CreateWizard({
     if (!id) return set({ ...base, captionPreset: undefined, brandOff: true });
     setActiveBrand(id);
     set({ ...base, captionPreset: undefined, ...brandOptions({ ...loadBrand(id), enabled: true }), brandOff: false });
+  }
+  // Estilo do "Meu fluxo" deste vídeo (corte, animação, câmera, som): o ativo, outro ou nenhum.
+  const [flows] = useState(readyProfiles);
+  const [flowSel, setFlowSel] = useState(() => (flows.some((p) => p.id === activeProfileId()) ? activeProfileId() : ''));
+  function chooseFlow(id) {
+    setFlowSel(id);
+    setActiveProfile(id);
+    // volta as chaves do estilo anterior ao padrão do app e aplica as do novo
+    const base = Object.fromEntries(FLOW_OPTION_KEYS.map((k) => [k, catalog?.defaults?.[k]]).filter(([, v]) => v !== undefined));
+    const off = { editNotes: false, kinetic: false, transition: catalog?.defaults?.transition ?? 'none' };
+    set({ ...base, ...off, ...(id ? flowOptions(flows.find((p) => p.id === id)) : {}) });
   }
   const caps = catalog?.capabilities || {};
   // Shorts, longo → curto e Podcast/Cortes: o mais comum é partir de um vídeo do YouTube
@@ -524,6 +536,25 @@ export default function CreateWizard({
                 })}
               </div>
               <div style={{ fontSize: 12, color: C.faint, marginTop: 8 }}>A legenda, as cores, a fonte e o logo da marca entram neste vídeo. Cadastre outras marcas no <b>Brand Kit</b>.</div>
+            </div>
+          )}
+
+          {flows.length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 12, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>ESTILO DE EDIÇÃO (MEU FLUXO)</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[...flows, { id: '', name: 'Sem estilo' }].map((x) => {
+                  const on = flowSel === x.id;
+                  return (
+                    <button key={x.id || 'none'} type="button" onClick={() => chooseFlow(x.id)}
+                      style={{ border: on ? '2px solid #fff' : `1px solid ${C.border}`, borderRadius: 999, padding: '7px 14px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                        background: on ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)', color: on ? C.text : C.muted, fontWeight: on ? 700 : 500 }}>
+                      {x.name || 'Sem nome'}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 12, color: C.faint, marginTop: 8 }}>O ritmo do corte, as notas faladas, a animação, a câmera e o som do seu estilo entram neste vídeo. Monte outros em <b>Meu fluxo</b>.</div>
             </div>
           )}
 

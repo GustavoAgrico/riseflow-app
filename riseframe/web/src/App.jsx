@@ -13,6 +13,7 @@ import CreateWizard from './components/CreateWizard.jsx';
 import Processing from './components/Processing.jsx';
 import { presetPatch } from './components/CaptionGallery.jsx';
 import { brandOptions, brandWatermark } from './brandKit.js';
+import { flowOptions } from './editFlow.js';
 import { formatById } from './formats.js';
 import { friendlyError } from './errors.js';
 import CaptionGallery from './components/CaptionGallery.jsx';
@@ -109,7 +110,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
           // Formato já escolhido (atalho do Início ou do template): Reels → 9:16 etc.
           const fmt = formatById(template?.format);
           const fmtOpts = fmt ? (fmt.clips ? { clipAspect: fmt.aspect } : { aspect: fmt.aspect }) : null;
-          setOptions({ ...c.defaults, ...brandOptions(), ...tpl, ...fmtOpts, pexelsKey: savedKey, ...(intent === 'broll' ? { broll: true } : null) });
+          setOptions({ ...c.defaults, ...flowOptions(), ...brandOptions(), ...tpl, ...fmtOpts, pexelsKey: savedKey, ...(intent === 'broll' ? { broll: true } : null) });
           setLoadError(null);
           return;
         } catch (e) {
@@ -377,7 +378,7 @@ export default function App({ embedded = false, onHome, onSettings, intent = nul
     setClipsJob(null);
     setPhase('setup');
     setFormatId(null);
-    if (catalog) setOptions({ ...catalog.defaults, ...brandOptions() });
+    if (catalog) setOptions({ ...catalog.defaults, ...flowOptions(), ...brandOptions() });
   }
 
   if (loadError) {

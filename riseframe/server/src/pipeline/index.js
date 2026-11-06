@@ -9,6 +9,7 @@ import { probeSummary, runFfmpeg, sdrVf, x264Fast } from './ffmpeg.js';
 import { transcribe } from './transcribe/index.js';
 import { analyze } from './analyze.js';
 import { silenceRemovalRanges } from './silence.js';
+import { applyEditNotes } from './editNotes.js';
 import { preciseRemovals, wordGapRanges, dropSlivers } from './cutRefine.js';
 import { remapKf } from '../../../shared/layerKeys.js';
 import { subtractRanges, keptDuration, remuxByKeepSegments, remapTranscript, snapKeep, remapTime, remapMotionScenes, unmapTime } from './timeline.js';
@@ -144,7 +145,7 @@ function buildPlan(mode, options) {
       { key: 'clips', label: 'Gerando clipes curtos', weight: 75, enabled: true },
     ];
   } else {
-    const hasRemoval = options.cutSilence !== false || options.autoClean === true || mode === 'render' || Number(options.shortTarget) > 0;
+    const hasRemoval = options.cutSilence !== false || options.autoClean === true || options.editNotes === true || mode === 'render' || Number(options.shortTarget) > 0;
     all = [
       { key: 'probe', label: 'Sondando o vídeo', weight: 2, enabled: true },
       { key: 'voice', label: 'Tratando a voz (ruído e equalização)', weight: 10, enabled: voiceActive(options, 'clean') },
@@ -425,6 +426,12 @@ export async function runPipeline(job, onUpdate = () => {}) {
 
   // Modo transcribe: devolve a transcrição e para (o upload é preservado para o render).
   if (mode === 'transcribe') {
+    // Notas de edição faladas ("nota de edição … fim da nota"): o trecho já abre riscado.
+    if (options.editNotes) {
+      const n = applyEditNotes(transcript, options);
+      transcript = n.transcript;
+      if (n.notes.length) report.editNotes = n.notes;
+    }
     // O editor já abre com as muletas, frases refeitas e erros corrigidos riscados
     // (o usuário vê o que vai sair e pode devolver qualquer palavra com um toque).
     if (options.autoClean) {
@@ -465,6 +472,14 @@ export async function runPipeline(job, onUpdate = () => {}) {
   if (has('cut')) {
     const st = enter('cut');
 
+    // Notas de edição faladas: o trecho da nota sai do vídeo e o texto vai para o relatório.
+    // (no render a timeline já traz as palavras da nota riscadas — e a pessoa pode devolver)
+    if (options.editNotes && mode !== 'render') {
+      const n = applyEditNotes(transcript, options);
+      transcript = n.transcript;
+      editorTranscript = n.transcript;
+      if (n.notes.length) report.editNotes = n.notes;
+    }
     // Limpeza automática da fala: muletas, gagueiras, frases refeitas e erros corrigidos.
     // No render (timeline) a transcrição já vem limpa e revisada pelo usuário — rodar de
     // novo cortaria as palavras que ele devolveu.
