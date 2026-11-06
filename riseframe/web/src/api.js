@@ -423,6 +423,22 @@ export function uploadMedia(file, onProgress) {
   });
 }
 
+/** Meu fluxo → Referências: sobe um trecho de vídeo e devolve as medidas do estilo
+ *  (ritmo de corte, movimento na tela, câmera). */
+export async function analyzeReference(file, onProgress) {
+  const media = await uploadMedia(file, (p) => onProgress && onProgress(p * 0.6));
+  if (onProgress) onProgress(0.65);
+  const r = await fetch(`${BASE}/style/reference`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ mediaId: media.id }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  if (onProgress) onProgress(1);
+  return data.metrics;
+}
+
 export const clipPreviewUrl = (id, i) => `${BASE}/jobs/${id}/clips/${i}/preview`;
 export const clipDownloadUrl = (id, i) => `${BASE}/jobs/${id}/clips/${i}/download`;
 

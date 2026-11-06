@@ -8,10 +8,10 @@ import CaptionPreview from './CaptionPreview.jsx';
 import CaptionGallery, { presetPatch, currentPreset, CAPTION_PRESETS } from './CaptionGallery.jsx';
 import CostLine from './CostLine.jsx';
 import { KINETIC_THEMES } from '../../../shared/kinetic.js';
-import { drawExplainer, EXPLAINER_FONT_FILES } from '../../../shared/motionEngine.js';
-import { STYLE_BEATS } from '../../../shared/motionStyles.js';
+import { drawExplainer, EXPLAINER_FONT_FILES, previewScene } from '../../../shared/motionEngine.js';
 import { FORMATS } from '../formats.js';
 import { listBrands, loadBrand, activeBrandId, setActiveBrand, brandOptions } from '../brandKit.js';
+import { readyProfiles, activeProfileId, setActiveProfile, flowOptions, FLOW_OPTION_KEYS } from '../editFlow.js';
 import { listTemplatesApi, uploadMedia } from '../api.js';
 
 const STEPS = [
@@ -30,30 +30,8 @@ function loadStyleFonts() {
   return _styleFontsP || Promise.resolve();
 }
 
-function mockScene(style) {
-  const types = style === 'estrategia' ? ['a-plain'] : STYLE_BEATS[style];
-  if (!types) return null;
-  const type = types[0];
-  const kw = 'DESIGN';
-  return {
-    style,
-    start: 0,
-    end: 4,
-    beats: [{
-      type,
-      start: 0,
-      end: 4,
-      data: { keyword: kw, keys: [kw, 'MOTION'], text: 'seu design com motion', element: null },
-      words: [
-        { text: 'Seu', word: 'Seu', at: 0.1, start: 0.1, end: 0.4 },
-        { text: 'design', word: 'design', at: 0.4, start: 0.4, end: 0.7 },
-        { text: 'com', word: 'com', at: 0.7, start: 0.7, end: 1.0 },
-        { text: 'motion', word: 'motion', at: 1.0, start: 1.0, end: 1.3 },
-      ],
-    }],
-  };
-}
-
+// Quadro da miniatura: depois que todas as palavras do exemplo entraram (a última em ~1 s).
+const PREVIEW_T = 2.2;
 const _thumbCache = new Map();
 function MotionStyleThumb({ style, selected, onClick, label }) {
   const ref = React.useRef(null);
@@ -72,11 +50,11 @@ function MotionStyleThumb({ style, selected, onClick, label }) {
     const H = 192;
     c.width = W;
     c.height = H;
-    const scene = mockScene(style);
+    const scene = previewScene(style);
     if (!scene) return;
     const ctx = c.getContext('2d');
     try {
-      drawExplainer(ctx, scene, 1.0, { W, H, image: () => null });
+      drawExplainer(ctx, scene, PREVIEW_T, { W, H, image: () => null });
       _thumbCache.set(key, ctx.getImageData(0, 0, W, H));
     } catch { /* fallback: leave canvas empty */ }
   }, [style, ready]);
@@ -264,6 +242,17 @@ export default function CreateWizard({
     if (!id) return set({ ...base, captionPreset: undefined, brandOff: true });
     setActiveBrand(id);
     set({ ...base, captionPreset: undefined, ...brandOptions({ ...loadBrand(id), enabled: true }), brandOff: false });
+  }
+  // Estilo do "Meu fluxo" deste vídeo (corte, animação, câmera, som): o ativo, outro ou nenhum.
+  const [flows] = useState(readyProfiles);
+  const [flowSel, setFlowSel] = useState(() => (flows.some((p) => p.id === activeProfileId()) ? activeProfileId() : ''));
+  function chooseFlow(id) {
+    setFlowSel(id);
+    setActiveProfile(id);
+    // volta as chaves do estilo anterior ao padrão do app e aplica as do novo
+    const base = Object.fromEntries(FLOW_OPTION_KEYS.map((k) => [k, catalog?.defaults?.[k]]).filter(([, v]) => v !== undefined));
+    const off = { editNotes: false, kinetic: false, transition: catalog?.defaults?.transition ?? 'none' };
+    set({ ...base, ...off, ...(id ? flowOptions(flows.find((p) => p.id === id)) : {}) });
   }
   const caps = catalog?.capabilities || {};
   // Shorts, longo → curto e Podcast/Cortes: o mais comum é partir de um vídeo do YouTube
@@ -524,6 +513,25 @@ export default function CreateWizard({
                 })}
               </div>
               <div style={{ fontSize: 12, color: C.faint, marginTop: 8 }}>A legenda, as cores, a fonte e o logo da marca entram neste vídeo. Cadastre outras marcas no <b>Brand Kit</b>.</div>
+            </div>
+          )}
+
+          {flows.length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 12, color: C.faint, fontWeight: 700, letterSpacing: 0.8, marginBottom: 8 }}>ESTILO DE EDIÇÃO (MEU FLUXO)</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[...flows, { id: '', name: 'Sem estilo' }].map((x) => {
+                  const on = flowSel === x.id;
+                  return (
+                    <button key={x.id || 'none'} type="button" onClick={() => chooseFlow(x.id)}
+                      style={{ border: on ? '2px solid #fff' : `1px solid ${C.border}`, borderRadius: 999, padding: '7px 14px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                        background: on ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)', color: on ? C.text : C.muted, fontWeight: on ? 700 : 500 }}>
+                      {x.name || 'Sem nome'}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 12, color: C.faint, marginTop: 8 }}>O ritmo do corte, as notas faladas, a animação, a câmera e o som do seu estilo entram neste vídeo. Monte outros em <b>Meu fluxo</b>.</div>
             </div>
           )}
 

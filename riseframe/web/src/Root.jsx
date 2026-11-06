@@ -20,6 +20,7 @@ import { APP_VERSION } from './version.js';
 import Editor from './App.jsx';
 import Templates from './pages/Templates.jsx';
 import BrandKit from './pages/BrandKit.jsx';
+import EditFlow from './pages/EditFlow.jsx';
 import VerifyEmail from './pages/VerifyEmail.jsx';
 import DeviceLogin from './pages/DeviceLogin.jsx';
 import InstallApp from './components/InstallApp.jsx';
@@ -30,6 +31,7 @@ const NAV = [
   { id: 'timeline', label: 'Timeline em branco', icon: 'film' },
   { id: 'rendering', label: 'Renderizando', icon: 'clapper' },
   { id: 'templates', label: 'Templates', icon: 'layers' },
+  { id: 'flow', label: 'Meu fluxo', icon: 'wand' },
   { id: 'brand', label: 'Brand Kit', icon: 'brush' },
   { id: 'plans', label: 'Planos', icon: 'zap' },
   { id: 'settings', label: 'Configurações', icon: 'gear' },
@@ -479,6 +481,7 @@ export default function Root() {
         {view === 'library' && <Library onNewVideo={() => go('editor')} onOpen={(j) => go('editor', { reopen: j })} />}
         {view === 'templates' && <Templates onUse={(t) => go('editor', { template: t })} onNewVideo={() => go('editor')} />}
         {view === 'brand' && <BrandKit onNewVideo={() => go('editor')} />}
+        {view === 'flow' && <EditFlow onNewVideo={() => go('editor')} />}
         {view === 'settings' && <Settings onNewVideo={() => go('editor')} onLogout={logout} />}
         {view === 'plans' && <Plans user={user} checkOnOpen={billingReturn} />}
         {view === 'editor' && (
