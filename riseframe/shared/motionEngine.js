@@ -207,6 +207,24 @@ export function thinSfx(beats, sfx) {
  * que é falada (a batida de destaque continua no tempo da fala) e o resto logo depois dela.
  * Nunca entra depois de ser falada. Pura.
  */
+/**
+ * Cena de exemplo de um estilo, para as miniaturas do seletor (1ª batida do estilo).
+ * Mesmo formato das cenas de verdade (`explainerPlan`): palavras como `{ w, t }` — com
+ * outro formato os desenhos liam `w.w` vazio e escreviam "undefined" na miniatura.
+ */
+export function previewScene(style) {
+  const types = style === 'estrategia' ? ['a-plain'] : STYLE_BEATS[style];
+  if (!types) return null;
+  const kw = 'DESIGN';
+  const words = phraseTimes(['Seu', 'design', 'com', 'motion'].map((w, i) => ({ w, t: r2(0.1 + i * 0.3) })), kw);
+  return {
+    style,
+    start: 0,
+    end: 4,
+    beats: [{ type: types[0], start: 0, end: 4, words, data: { keyword: kw, keys: [kw, 'MOTION'], text: 'seu design com motion', element: null } }],
+  };
+}
+
 export function phraseTimes(words, keyword) {
   if (!words.length) return words;
   const k = words.findIndex((w) => low(w.w) === low(keyword));

@@ -8,8 +8,7 @@ import CaptionPreview from './CaptionPreview.jsx';
 import CaptionGallery, { presetPatch, currentPreset, CAPTION_PRESETS } from './CaptionGallery.jsx';
 import CostLine from './CostLine.jsx';
 import { KINETIC_THEMES } from '../../../shared/kinetic.js';
-import { drawExplainer, EXPLAINER_FONT_FILES } from '../../../shared/motionEngine.js';
-import { STYLE_BEATS } from '../../../shared/motionStyles.js';
+import { drawExplainer, EXPLAINER_FONT_FILES, previewScene } from '../../../shared/motionEngine.js';
 import { FORMATS } from '../formats.js';
 import { listBrands, loadBrand, activeBrandId, setActiveBrand, brandOptions } from '../brandKit.js';
 import { readyProfiles, activeProfileId, setActiveProfile, flowOptions, FLOW_OPTION_KEYS } from '../editFlow.js';
@@ -31,30 +30,8 @@ function loadStyleFonts() {
   return _styleFontsP || Promise.resolve();
 }
 
-function mockScene(style) {
-  const types = style === 'estrategia' ? ['a-plain'] : STYLE_BEATS[style];
-  if (!types) return null;
-  const type = types[0];
-  const kw = 'DESIGN';
-  return {
-    style,
-    start: 0,
-    end: 4,
-    beats: [{
-      type,
-      start: 0,
-      end: 4,
-      data: { keyword: kw, keys: [kw, 'MOTION'], text: 'seu design com motion', element: null },
-      words: [
-        { text: 'Seu', word: 'Seu', at: 0.1, start: 0.1, end: 0.4 },
-        { text: 'design', word: 'design', at: 0.4, start: 0.4, end: 0.7 },
-        { text: 'com', word: 'com', at: 0.7, start: 0.7, end: 1.0 },
-        { text: 'motion', word: 'motion', at: 1.0, start: 1.0, end: 1.3 },
-      ],
-    }],
-  };
-}
-
+// Quadro da miniatura: depois que todas as palavras do exemplo entraram (a última em ~1 s).
+const PREVIEW_T = 2.2;
 const _thumbCache = new Map();
 function MotionStyleThumb({ style, selected, onClick, label }) {
   const ref = React.useRef(null);
@@ -73,11 +50,11 @@ function MotionStyleThumb({ style, selected, onClick, label }) {
     const H = 192;
     c.width = W;
     c.height = H;
-    const scene = mockScene(style);
+    const scene = previewScene(style);
     if (!scene) return;
     const ctx = c.getContext('2d');
     try {
-      drawExplainer(ctx, scene, 1.0, { W, H, image: () => null });
+      drawExplainer(ctx, scene, PREVIEW_T, { W, H, image: () => null });
       _thumbCache.set(key, ctx.getImageData(0, 0, W, H));
     } catch { /* fallback: leave canvas empty */ }
   }, [style, ready]);
