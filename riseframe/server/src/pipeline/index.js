@@ -904,6 +904,7 @@ export async function runPipeline(job, onUpdate = () => {}) {
     const toOrig = (t) => (cutKeep ? unmapTime(t, cutKeep) : t);
     report.broll = {
       inserted: r.inserted,
+      ...(r.inserted ? {} : { tried: r.tried ?? 0, reason: r.reason || null, source: r.source || null }),
       layout: r.layout,
       items: (r.items || []).map((it) => ({ ...it, start: +toOrig(it.start).toFixed(3), end: +toOrig(it.end).toFixed(3) })),
     };

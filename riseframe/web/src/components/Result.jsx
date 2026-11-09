@@ -85,6 +85,15 @@ export default function Result({ job, onReset, onEditTimeline }) {
             <span style={chip}>{r.output?.audioFile ? 'MP3 · só áudio' : r.output?.streams === 'video' ? 'MP4 · só vídeo (sem som)' : "MP4 · sem marca d'água"}</span>
           </div>
 
+          {job.options?.broll && r.broll && !r.broll.inserted && (
+            <div role="status" style={{ display: 'flex', gap: 10, padding: '11px 13px', borderRadius: 12, fontSize: 13, lineHeight: 1.45, border: '1px solid rgba(255,170,60,0.55)', background: 'rgba(255,170,60,0.1)' }}>
+              <Icon name="alert" size={17} strokeWidth={2.2} />
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <b>As imagens de apoio (B-roll) não entraram.</b> {r.broll.reason ? `Motivo: ${r.broll.reason}.` : ''}
+                {onEditTimeline ? ' Abra na timeline para escolher as imagens de cada trecho.' : ''}
+              </span>
+            </div>
+          )}
           {saved && (
             <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderRadius: 12, fontSize: 13, lineHeight: 1.4,
               border: `1px solid ${saved.state === 'error' ? 'rgba(240,82,107,0.6)' : saved.state === 'done' ? 'rgba(46,212,122,0.55)' : C.border}`,
