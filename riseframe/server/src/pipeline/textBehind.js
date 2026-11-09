@@ -13,6 +13,7 @@ import { config } from '../config.js';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { resolvePython } from './python.js';
 import { fontsDirArg } from './captions.js';
+import { fontMetrics } from './fontMetrics.js';
 import { pickKeyword } from '../../../shared/captionKeyword.js';
 import { makeLogger } from '../logger.js';
 import { trackChild } from '../jobContext.js';
@@ -66,7 +67,23 @@ const assTime = (t) => {
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs % 100).padStart(2, '0')}`;
 };
 
-/** .ass das palavras gigantes (Anton branco, na altura da cabeça, entra crescendo). Puro. */
+/** Altura do centro da palavra (fração do quadro): um pouco acima da cabeça. */
+export const BEHIND_Y = 0.25;
+/** Largura que a palavra ocupa (fração do quadro). */
+export const BEHIND_FILL = 0.94;
+
+/**
+ * Tamanho ASS da palavra para ocupar `BEHIND_FILL` da largura, com a largura MEDIDA das
+ * letras da Anton (antes: estimativa de 0,46 em por letra, quase o dobro do real — a
+ * palavra saía com ~57% da largura). No ASS, tamanho = em × célula. Puro.
+ */
+export function behindFontSize(text, { width, height }) {
+  const m = fontMetrics('Anton');
+  const em = Math.max(0.5, m.width(String(text)));
+  return Math.round(Math.min(height * 0.35, (width * BEHIND_FILL * m.cell) / em));
+}
+
+/** .ass das palavras gigantes (Anton branco, acima da cabeça, entra crescendo). Puro. */
 export function behindAss(plan, { width, height }) {
   const W = Math.round(width);
   const H = Math.round(height);
@@ -78,9 +95,8 @@ export function behindAss(plan, { width, height }) {
     '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
   ];
   const lines = plan.map((p) => {
-    // Anton é condensada: ~0,46 em por letra maiúscula; ocupa até 96% da largura
-    const fs = Math.round(Math.min(H * 0.35, (W * 0.96) / (p.text.length * 0.46)));
-    const tags = `\\pos(${Math.round(W / 2)},${Math.round(H * 0.30)})\\fs${fs}\\fad(120,200)\\fscx80\\fscy80\\t(0,350,\\fscx100\\fscy100)`;
+    const fs = behindFontSize(p.text, { width: W, height: H });
+    const tags = `\\pos(${Math.round(W / 2)},${Math.round(H * BEHIND_Y)})\\fs${fs}\\fad(120,200)\\fscx80\\fscy80\\t(0,350,\\fscx100\\fscy100)`;
     return `Dialogue: 0,${assTime(p.start)},${assTime(p.end)},Behind,,0,0,0,,{${tags}}${p.text}`;
   });
   return `${[...head, ...lines].join('\n')}\n`;

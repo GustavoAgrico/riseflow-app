@@ -76,6 +76,70 @@ export function fixOneArticle(words) {
   });
 }
 
+// ─── Porcentagem ──────────────────────────────────────────────────────────────────────
+// A transcrição escreve "oitenta e um por cento" como "81 por 100" ou "81 por cento" (às
+// vezes ainda com um "1" solto antes: "1 81", sobra do "e um"). Na legenda tem de ser "81%".
+const NUMBER_RE = /^(\d+(?:[.,]\d+)?)$/;
+const TAIL_RE = /^(?:100|cento)([.,!?;:…"”)]*)$/i;
+
+/**
+ * Junta "N por 100" / "N por cento" / "N porcento" / "N %" numa palavra só ("N%"), com o
+ * tempo do começo do número ao fim da última palavra; e tira o "1" solto antes de um número
+ * terminado em 1 ("1 81" → "81"), juntando o tempo dele ao do número. Puro.
+ * @param {Array<{word:string,start:number,end:number,removed?:boolean}>} words
+ */
+export function mergePercentWords(words) {
+  const out = [];
+  for (let i = 0; i < words.length; i += 1) {
+    const w = words[i];
+    const t = String(w.word ?? '').trim();
+    const n1 = String(words[i + 1]?.word ?? '').trim();
+    // "1" solto antes de 21, 31, … 91 (o "e um" da dezena virou dois números)
+    if (t === '1' && /^[2-9]1(?:[.,]\d+)?[.,!?;:…%]*$/.test(n1) && Number(words[i + 1].start) - Number(w.end) < 0.6) {
+      words[i + 1] = { ...words[i + 1], start: w.start };
+      continue;
+    }
+    const num = NUMBER_RE.exec(t);
+    if (num) {
+      const p1 = plain(n1);
+      const n2 = String(words[i + 2]?.word ?? '').trim();
+      let take = 0;
+      let tail = '';
+      if (p1 === 'por' && TAIL_RE.test(n2)) { take = 2; tail = TAIL_RE.exec(n2)[1]; }
+      else if (p1 === 'porcento') { take = 1; tail = /([.,!?;:…"”)]*)$/.exec(n1)[1]; }
+      else if (/^%([.,!?;:…"”)]*)$/.test(n1)) { take = 1; tail = n1.slice(1); }
+      if (take) {
+        const last = words[i + take];
+        const all = words.slice(i, i + take + 1);
+        const merged = { ...w, word: `${num[1]}%${tail}`, end: last.end };
+        // só fica riscada se a pessoa (ou a limpeza) riscou as três palavras
+        if (all.every((x) => x.removed)) merged.removed = true;
+        else delete merged.removed;
+        out.push(merged);
+        i += take;
+        continue;
+      }
+    }
+    out.push(w);
+  }
+  return out;
+}
+
+/** Aplica a junção da porcentagem em cada frase (só em português). */
+export function fixPercents(t) {
+  if (!t || !Array.isArray(t.segments) || !isPortuguese(t.language)) return t;
+  let changed = false;
+  const segments = t.segments.map((sg) => {
+    if (!Array.isArray(sg.words) || sg.words.length < 2) return sg;
+    const words = mergePercentWords(sg.words.map((w) => ({ ...w })));
+    if (words.length === sg.words.length && words.every((w, i) => w.word === sg.words[i].word)) return sg;
+    changed = true;
+    return { ...sg, words, ...(typeof sg.text === 'string' ? { text: words.map((w) => w.word).join(' ').replace(/\s+/g, ' ').trim() } : {}) };
+  });
+  if (!changed) return t;
+  return { ...t, segments, ...(typeof t.text === 'string' ? { text: segments.map((sg) => sg.text ?? (sg.words || []).map((w) => w.word).join(' ')).join(' ') } : {}) };
+}
+
 const isPortuguese = (lang) => /^(pt|portuguese|portugu[eê]s)/i.test(String(lang || '').trim());
 
 /**
