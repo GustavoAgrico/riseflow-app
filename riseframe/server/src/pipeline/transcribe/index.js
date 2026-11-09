@@ -2,7 +2,7 @@ import { config } from '../../config.js';
 import { makeLogger } from '../../logger.js';
 import { transcribeMock } from './mock.js';
 import { markNoiseTags } from '../cleanup.js';
-import { fixArticleNumerals } from './numbers.js';
+import { fixArticleNumerals, fixPercents } from './numbers.js';
 import fsp from 'node:fs/promises';
 import { jobAccountToken, fetchWaking } from '../../account.js';
 import {
@@ -32,7 +32,8 @@ export function cleanLanguage(v) {
 export async function transcribe(input, work, meta, onProgress, ctx = {}) {
   // "(tosse)", "[pigarro]" viram palavras removidas; "[Música]", "(risos)" saem do texto.
   // "1" que era o artigo "um"/"uma" volta a ser palavra (número só quando é número mesmo).
-  return fixArticleNumerals(markNoiseTags(await transcribeAny(input, work, meta, onProgress, ctx)));
+  // "81 por 100" / "81 por cento" viram "81%" (e o "1" solto do "oitenta e um" sai).
+  return fixArticleNumerals(fixPercents(markNoiseTags(await transcribeAny(input, work, meta, onProgress, ctx))));
 }
 
 /**

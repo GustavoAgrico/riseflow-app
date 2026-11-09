@@ -541,7 +541,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   const source = resolveSource(options.imageSource, { apiKey, pixabayKey, googleReady: googleReady(google) });
   const moments = (analysis.brollMoments || []).slice(0, options.brollMax ?? 6);
   const hasPlan = Array.isArray(options.brollPlan) && options.brollPlan.length > 0;
-  if (!moments.length && !hasPlan) return { output: input, inserted: 0 };
+  if (!moments.length && !hasPlan) return { output: input, inserted: 0, tried: 0, reason: 'nenhum trecho da fala virou busca de imagem' };
 
   const W = meta.width || 1080;
   const H = meta.height || 1920;
@@ -583,9 +583,10 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   let done = 0;
   const tick = () => { done++; onProgress?.(0.4 * (done / Math.max(1, todo.length))); };
   onProgress?.(0.01);
+  const miss = { none: 0, failed: 0, late: 0, lastError: '' };
   const got = await pool(todo, 3, async (item, idx) => {
     try {
-      if (late()) { log.warn(`B-roll: prazo esgotado, pulando o momento ${idx + 1}`); return null; }
+      if (late()) { miss.late++; log.warn(`B-roll: prazo esgotado, pulando o momento ${idx + 1}`); return null; }
       if (plan) {
         const p = item;
         const start = Math.max(0, Number(p.start) || 0);
@@ -610,7 +611,7 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
       // variando entre as mais relevantes.
       const hit = m.entity ? cands[0] : cands.slice(0, 4).find((c) => c.kind === 'video') || pickVaried(cands);
       if (!hit || late()) {
-        if (!hit) log.info(`sem B-roll para "${m.query}"`);
+        if (!hit) { miss.none++; log.info(`sem B-roll para "${m.query}"`); } else miss.late++;
         return null;
       }
       usedIds.add(hit.id);
@@ -619,6 +620,8 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
       await downloadMedia(hit.link, hit.thumb, dest, isImage);
       return { ...m, file: dest, isImage, link: hit.link, credit: hit.credit || null, source: hit.source, logo: Boolean(hit.logo && isImage) };
     } catch (err) {
+      miss.failed++;
+      miss.lastError = String(err.message || err).slice(0, 160);
       log.warn(`B-roll ${plan ? `(plano) em ${Number(item.start).toFixed(1)}s` : `"${item.query}"`} falhou: ${err.message}`);
       return null;
     } finally {
@@ -626,7 +629,16 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     }
   });
   clips.push(...got.filter(Boolean).sort((x, y) => x.start - y.start));
-  if (!clips.length) return { output: input, inserted: 0 };
+  if (!clips.length) {
+    // nenhuma imagem entrou: o motivo vai para o relatório (a tela de resultado mostra)
+    const why = [
+      miss.none ? `nenhuma imagem encontrada para ${miss.none} trecho(s)` : '',
+      miss.failed ? `${miss.failed} download(s) falharam${miss.lastError ? ` (${miss.lastError})` : ''}` : '',
+      miss.late ? `${miss.late} trecho(s) passaram do tempo limite da busca` : '',
+    ].filter(Boolean).join('; ');
+    log.warn(`B-roll: nada inserido (${todo.length} trecho(s)): ${why || 'sem motivo registrado'}`);
+    return { output: input, inserted: 0, tried: todo.length, reason: why || 'nenhuma imagem pôde ser usada', source };
+  }
 
   // Enquadramento pelo ROSTO: sem ponto de foco escolhido, o recorte que cobre a área do
   // B-roll é posicionado para a cabeça de quem aparece caber inteira (antes: centro, que

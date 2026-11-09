@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { behindPlan, behindAss, behindFilter, ensureMaskModel } from '../src/pipeline/textBehind.js';
+import { behindPlan, behindAss, behindFilter, ensureMaskModel, behindFontSize, BEHIND_FILL } from '../src/pipeline/textBehind.js';
+import { fontMetrics } from '../src/pipeline/fontMetrics.js';
 
 const seg = (t0, text) => {
   let t = t0;
@@ -25,10 +26,22 @@ test('texto atrás da pessoa: palavra-chave da frase, espaçada, fora do motion/
 test('ASS das palavras gigantes e filtro de composição (texto onde não é pessoa)', () => {
   const ass = behindAss([{ start: 1, end: 3, text: 'DINHEIRO' }], { width: 1080, height: 1920 });
   assert.match(ass, /PlayResX: 1080/);
-  assert.match(ass, /Dialogue: 0,0:00:01\.00,0:00:03\.00,Behind,,0,0,0,,\{\\pos\(540,576\)\\fs\d+/);
+  assert.match(ass, /Dialogue: 0,0:00:01\.00,0:00:03\.00,Behind,,0,0,0,,\{\\pos\(540,480\)\\fs\d+/); // 25% da altura
   const f = behindFilter({ width: 1080, height: 1920 });
   assert.match(f, /subtitles=behind\.ass:fontsdir=fonts/);
   assert.match(f, /\[a\]\[b\]\[m\]maskedmerge/);
+});
+
+test('texto atrás: palavra ocupa ~94% da largura (medida da Anton), sem passar da borda', () => {
+  const m = fontMetrics('Anton');
+  for (const word of ['EMPREENDEDORES', 'QUALIFICADOS', 'DINHEIRO']) {
+    const fs = behindFontSize(word, { width: 1080, height: 1920 });
+    const px = (m.width(word) * fs) / m.cell; // largura na tela (ASS: tamanho = em × célula)
+    assert.ok(px <= 1080 * BEHIND_FILL + 2, `${word} cabe (${Math.round(px)} px)`);
+    assert.ok(px >= 1080 * 0.9 || fs === Math.round(1920 * 0.35), `${word} grande (${Math.round(px)} px)`);
+  }
+  // antes: EMPREENDEDORES saía com ~57% da largura
+  assert.ok(behindFontSize('EMPREENDEDORES', { width: 1080, height: 1920 }) > 161 * 1.5);
 });
 
 test('modelo de recorte: download que não confere é recusado (o vídeo segue sem o efeito)', async () => {
