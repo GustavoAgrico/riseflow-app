@@ -8,6 +8,8 @@ import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { averageSubjectCenter } from './reframe.js';
 import { keyframesVf, momentsZoomVf } from './motion.js';
 import { makeLogger } from '../logger.js';
+import { detectFaces } from './brollFaces.js';
+import { faceFocus } from '../../../shared/brollFocus.js';
 
 const log = makeLogger('broll');
 
@@ -625,6 +627,21 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   });
   clips.push(...got.filter(Boolean).sort((x, y) => x.start - y.start));
   if (!clips.length) return { output: input, inserted: 0 };
+
+  // Enquadramento pelo ROSTO: sem ponto de foco escolhido, o recorte que cobre a área do
+  // B-roll é posicionado para a cabeça de quem aparece caber inteira (antes: centro, que
+  // cortava a cabeça em fotos mais altas que a área). Sem rosto/OpenCV, fica o padrão.
+  const regionAspect = cardW / cardH;
+  await pool(clips, 3, async (c) => {
+    if (c.logo || (Number.isFinite(c.fx) && Number.isFinite(c.fy))) return;
+    const f = faceFocus(await detectFaces(c.file, { at: 0.5 }), regionAspect, c.zoom);
+    if (!f) return;
+    if (!Number.isFinite(c.fx)) c.fx = f.fx;
+    if (!Number.isFinite(c.fy)) c.fy = f.fy;
+    c.autoFocus = true;
+  });
+  const framed = clips.filter((c) => c.autoFocus).length;
+  if (framed) log.ok(`B-roll enquadrado no rosto em ${framed} de ${clips.length} momento(s)`);
 
   // Enquadramento da pessoa na tela dividida: foco no ROSTO. Manual (options) tem
   // prioridade; senão detecta pelo rastreador. Sem tracking → cai para contida+desfoque.
