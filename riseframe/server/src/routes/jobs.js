@@ -25,7 +25,8 @@ import { preciseRemovals, audioAnalysis, detectNoises } from '../pipeline/cutRef
 import { CLIP_GOALS } from '../pipeline/clipSelect.js';
 import { sanitizeHeadline, sanitizeCover, makeCover } from '../pipeline/headline.js';
 import { outputTarget, cleanFitRanges } from '../pipeline/render.js';
-import { brollCandidates, resolveSource, googleConfig, googleReady } from '../pipeline/broll.js';
+import { brollCandidates, resolveSource, googleConfig, googleReady, download } from '../pipeline/broll.js';
+import { detectFaces, detectFacesAtUrl, isPublicUrl } from '../pipeline/brollFaces.js';
 import { freesoundKey, searchFreesound, searchOpenverse, okSfxUrl, onlineSfxFile, isSoundza, knownSoundza, searchSoundza, soundzaKey } from '../pipeline/sfxOnline.js';
 import { sanitizeColorAdjust, colorFilter, manualAdjustVf, fastColorChain } from '../pipeline/color.js';
 import { analyzeAndGrade } from '../pipeline/autoColor.js';
@@ -580,8 +581,11 @@ function sanitizeBrollPlan(raw) {
     // Logo de marca: entra inteiro e centralizado (sem cortar para preencher).
     if (p.logo === true) item.logo = true;
     item.zoom = clampNum(p.zoom, 1, 2.5, 1);
-    item.fx = clampNum(p.fx, 0, 1, 0.5);
-    item.fy = clampNum(p.fy, 0, 1, 0.5);
+    // Sem ponto de foco: o render enquadra pelo rosto de quem aparece (pipeline/broll.js).
+    const fx = p.fx == null || p.fx === '' ? NaN : Number(p.fx);
+    const fy = p.fy == null || p.fy === '' ? NaN : Number(p.fy);
+    if (Number.isFinite(fx)) item.fx = clampNum(fx, 0, 1, 0.5);
+    if (Number.isFinite(fy)) item.fy = clampNum(fy, 0, 1, 0.5);
     out.push(item);
     if (out.length >= 40) break;
   }
@@ -1133,6 +1137,29 @@ jobsRouter.post('/broll/plan', requireAuth, requireVerified, async (req, res) =>
 
 // POST /api/broll/search  (JSON: query + source + orientation) → candidatos de B-roll para
 // um termo escolhido pelo usuário (ex.: trocar a imagem de um momento por outra busca).
+// POST /api/broll/faces  { url } | { mediaId } → { aspect, faces } (rostos normalizados 0–1)
+// Enquadramento automático do B-roll na timeline: a prévia posiciona o recorte pela cabeça
+// de quem aparece, com a MESMA conta do render (shared/brollFocus.js). Sem rosto: faces [].
+jobsRouter.post('/broll/faces', requireAuth, async (req, res) => {
+  try {
+    const { url, mediaId } = req.body || {};
+    let det = null;
+    if (typeof mediaId === 'string' && mediaId) {
+      const m = resolveMedia(mediaId);
+      if (!m || (m.ownerId && String(m.ownerId) !== String(req.user?.id))) return res.status(404).json({ error: 'mídia não encontrada' });
+      if (m.kind === 'audio') return res.json({ aspect: null, faces: [] });
+      det = await detectFaces(m.path, { at: 0.5 });
+    } else if (typeof url === 'string' && isPublicUrl(url)) {
+      det = await detectFacesAtUrl(url, download);
+    } else {
+      return res.status(400).json({ error: 'endereço da imagem inválido' });
+    }
+    res.set('Cache-Control', 'private, max-age=3600').json(det || { aspect: null, faces: [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 jobsRouter.post('/broll/search', requireAuth, requireVerified, async (req, res) => {
   const query = String(req.body?.query || '').trim().slice(0, 80);
   if (query.length < 2) return res.status(400).json({ error: 'digite o que buscar' });

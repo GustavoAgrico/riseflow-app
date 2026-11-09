@@ -5,7 +5,7 @@ import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import Processing from './Processing.jsx';
 import { pickExportTarget, setPendingExport } from '../exportTarget.js';
-import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, elementUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi } from '../api.js';
+import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, elementUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi, brollFaces } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -33,6 +33,7 @@ import ColorField from './ColorPicker.jsx';
 import { customFontFamily, useCustomFonts } from '../customFonts.js';
 import { shadowParams } from '../../../shared/captionShadow.js';
 import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById, fontStyles } from '../../../shared/captionStyle.js';
+import { faceFocus, brollRegionAspect } from '../../../shared/brollFocus.js';
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 import { captionCues, toSrt, toVtt, toTxt, skipMapper } from '../../../shared/captionExport.js';
 import { layerAt, upsertKey, shiftKf, KF_INTERPS, kfInterpOf, withInterp, cleanVolKeys, volDbAt, VOL_DB_MIN, VOL_DB_MAX } from '../../../shared/layerKeys.js';
@@ -1676,6 +1677,48 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const selZoomItem = (zoomMoments || []).find((z) => z.key === selZoom) || null;
   const setBrollMoments = (fn) => setBrollReview((r) => (r ? { ...r, moments: fn(r.moments) } : r));
 
+  // Enquadramento automático do B-roll pela CABEÇA de quem aparece: os rostos de cada imagem
+  // (miniatura do banco ou mídia própria) vêm do servidor e o recorte é posicionado com a
+  // mesma conta do render (shared/brollFocus.js). Ajuste manual (fx/fy do momento) vence.
+  const [brollFaceDet, setBrollFaceDet] = useState({});
+  const faceAsked = useRef(new Set());
+  const brollFaceKey = (m) => {
+    if (!m || m.removed) return null;
+    if (m.myMediaId) return `m:${m.myMediaId}`;
+    const c = m.candidates?.[m.pick];
+    if (!c || c.logo) return null;
+    const u = c.thumb || c.link;
+    return typeof u === 'string' && /^https?:\/\//.test(u) ? u : null;
+  };
+  useEffect(() => {
+    const keys = [...new Set((brollReview?.moments || []).map(brollFaceKey).filter(Boolean))].filter((k) => !faceAsked.current.has(k));
+    if (!keys.length) return;
+    keys.forEach((k) => faceAsked.current.add(k));
+    let i = 0;
+    const next = async () => {
+      while (i < keys.length) {
+        const k = keys[i++];
+        const det = await brollFaces(k.startsWith('m:') ? { mediaId: k.slice(2) } : { url: k }).catch(() => ({ aspect: null, faces: [] }));
+        setBrollFaceDet((d) => ({ ...d, [k]: det }));
+      }
+    };
+    next(); next(); next(); // 3 por vez
+  }, [brollReview]);
+  /** Foco efetivo do B-roll (fx/fy): o escolhido à mão, senão o do rosto, senão o padrão.
+   *  `known`: a prévia já sabe o enquadramento (o render recebe o mesmo número). */
+  function brollFocusOf(m) {
+    const det = brollFaceDet[brollFaceKey(m)];
+    // proporção do quadro final (a mesma conta do fmtAr, que é definido mais abaixo)
+    const src = vdim || (vbox?.vw ? { w: vbox.vw, h: vbox.vh } : null);
+    const frameAr = aspectSel === '1:1' ? 1 : aspectSel === '16:9' ? 16 / 9 : aspectSel === '9:16' ? 9 / 16 : src ? src.w / src.h : 9 / 16;
+    const ar = brollRegionAspect(brollLayoutSel, frameAr);
+    const auto = det ? faceFocus(det, ar, m?.zoom) : null;
+    const dfy = Number(m?.zoom) > 1 ? 0.3 : 0.5;
+    const fx = m?.fx ?? auto?.fx ?? 0.5;
+    const fy = m?.fy ?? auto?.fy ?? dfy;
+    return { fx, fy, known: Boolean(det) || (m?.fx != null && m?.fy != null) };
+  }
+
   function seek(t, lo = -lead) {
     const v = videoRef.current;
     const c = Math.max(lo, Math.min(dur + tail, t));
@@ -3176,8 +3219,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     const onLane = new Set(brollLaneItems.map(({ i }) => i));
     return brollReview.moments.map((m, i) => {
       if (m.removed || !onLane.has(i)) return { start: m.start, end: m.end, remove: true };
-      // mesmo padrão do render (broll.js): com zoom, o recorte tem folga de cabeça (fy 0,3)
-      const frame = { zoom: +Number(m.zoom || 1).toFixed(2), fx: +Number(m.fx ?? 0.5).toFixed(3), fy: +Number(m.fy ?? (Number(m.zoom) > 1 ? 0.3 : 0.5)).toFixed(3) };
+      // o mesmo enquadramento da prévia (manual, pelo rosto ou o padrão). Rostos ainda não
+      // conferidos: vai sem foco e o render enquadra pelo rosto no arquivo (broll.js).
+      const bf = brollFocusOf(m);
+      const frame = { zoom: +Number(m.zoom || 1).toFixed(2), ...(bf.known ? { fx: +bf.fx.toFixed(3), fy: +bf.fy.toFixed(3) } : {}) };
       if (m.myMediaId) return { start: m.start, end: m.end, mediaId: m.myMediaId, kind: m.myKind, query: m.term, ...frame };
       const c = m.candidates[m.pick];
       if (!c) return { start: m.start, end: m.end, remove: true };
@@ -4688,8 +4733,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     width: '100%', height: '100%', objectFit: 'contain', display: 'block', boxSizing: 'border-box', padding: '17%', background: '#F5F5F7', filter: videoFilterFx,
   } : {
     width: '100%', height: '100%', objectFit: 'cover', display: 'block',
-    objectPosition: `${(m?.fx ?? 0.5) * 100}% ${(m?.fy ?? (m?.zoom > 1 ? 0.3 : 0.5)) * 100}%`,
-    transform: `scale(${m?.zoom || 1})`, transformOrigin: `${(m?.fx ?? 0.5) * 100}% ${(m?.fy ?? (m?.zoom > 1 ? 0.3 : 0.5)) * 100}%`,
+    objectPosition: `${brollFocusOf(m).fx * 100}% ${brollFocusOf(m).fy * 100}%`,
+    transform: `scale(${m?.zoom || 1})`, transformOrigin: `${brollFocusOf(m).fx * 100}% ${brollFocusOf(m).fy * 100}%`,
     filter: videoFilterFx,
   });
 
@@ -4772,7 +4817,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       e.preventDefault();
       const box = e.currentTarget.getBoundingClientRect();
       const m0 = brollReview.moments[idx];
-      const start = { x: e.clientX, y: e.clientY, fx: m0.fx ?? 0.5, fy: m0.fy ?? 0.5 };
+      const f0 = brollFocusOf(m0); // parte do enquadramento que está na tela (pelo rosto, se for o caso)
+      const start = { x: e.clientX, y: e.clientY, fx: f0.fx, fy: f0.fy };
       setSelBroll(idx);
       const move = (ev) => {
         // arrastar a imagem para a direita mostra mais da esquerda (como mover a foto)
@@ -8252,7 +8298,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                         <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
                           <div style={{ width: 64, height: 54, flexShrink: 0, borderRadius: 8, overflow: 'hidden', background: '#000', border: `1px solid ${C.border}`, display: 'grid', placeItems: 'center' }}>
                             {thumb
-                              ? <img src={thumb} alt="" onError={() => setBadThumbs((b) => new Set(b).add(thumb0))} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${(m.fx ?? 0.5) * 100}% ${(m.fy ?? 0.5) * 100}%` }} />
+                              ? <img src={thumb} alt="" onError={() => setBadThumbs((b) => new Set(b).add(thumb0))} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${brollFocusOf(m).fx * 100}% ${brollFocusOf(m).fy * 100}%` }} />
                               : <span style={{ fontSize: 9.5, color: C.faint, textAlign: 'center' }}>{thumb0 ? <>sem<br />prévia</> : <>sem<br />imagem</>}</span>}
                           </div>
                           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -8308,11 +8354,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                             </label>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
                               <span style={{ width: 40 }}>Lado</span>
-                              <input type="range" min="0" max="1" step="0.01" value={m.fx ?? 0.5} onChange={(e) => setMoment(i, { fx: Number(e.target.value) })} style={{ flex: 1 }} />
+                              <input type="range" min="0" max="1" step="0.01" value={brollFocusOf(m).fx} onChange={(e) => setMoment(i, { fx: Number(e.target.value), fy: brollFocusOf(m).fy })} style={{ flex: 1 }} />
                             </label>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
                               <span style={{ width: 40 }}>Altura</span>
-                              <input type="range" min="0" max="1" step="0.01" value={m.fy ?? 0.5} onChange={(e) => setMoment(i, { fy: Number(e.target.value) })} style={{ flex: 1 }} />
+                              <input type="range" min="0" max="1" step="0.01" value={brollFocusOf(m).fy} onChange={(e) => setMoment(i, { fy: Number(e.target.value), fx: brollFocusOf(m).fx })} style={{ flex: 1 }} />
                             </label>
                             <div style={{ fontSize: 10.5, color: C.faint }}>Ajuste aparece na prévia (e na 9:16). Dica: arraste a imagem na prévia 9:16 para posicionar.</div>
                             </>)}

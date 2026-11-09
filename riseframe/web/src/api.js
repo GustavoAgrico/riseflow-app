@@ -423,6 +423,18 @@ export function uploadMedia(file, onProgress) {
   });
 }
 
+/** Rostos de uma imagem do B-roll (miniatura da web ou mídia própria), para o enquadramento
+ *  automático pela cabeça. Resolve com { aspect, faces } (faces vazio quando não acha). */
+export async function brollFaces({ url, mediaId }) {
+  const r = await fetch(`${BASE}/broll/faces`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(mediaId ? { mediaId } : { url }),
+  });
+  if (!r.ok) return { aspect: null, faces: [] };
+  return r.json();
+}
+
 /** Meu fluxo → Referências: sobe um trecho de vídeo e devolve as medidas do estilo
  *  (ritmo de corte, movimento na tela, câmera). */
 export async function analyzeReference(file, onProgress) {
