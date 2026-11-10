@@ -682,12 +682,13 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     personFocus = { ...options.splitFace, source: 'timeline' };
     log.ok(`tela dividida: pessoa enquadrada como na timeline (${personFocus.x.toFixed(2)}, ${personFocus.y.toFixed(2)})`);
   } else if (isSplit) {
-    const tracked = await averageSubjectCenter(options.personInput || input);
+    // só o rosto detectado (o centro de movimento cai nas mãos/peito e cortava a cabeça)
+    const tracked = (await averageSubjectCenter(options.personInput || input))?.face || null;
     const mx = Number(options.personFocusX);
     const my = Number(options.personFocusY);
     personFocus = Number.isFinite(mx) && Number.isFinite(my)
       ? { x: mx, y: my, ...(tracked?.h ? { h: tracked.h } : {}), source: 'manual' }
-      : tracked;
+      : tracked && { ...tracked, source: 'face' };
     if (personFocus) log.ok(`tela dividida: pessoa enquadrada no ${personFocus.source} (${personFocus.x.toFixed(2)}, ${personFocus.y.toFixed(2)}${personFocus.h ? `, rosto ${Math.round(personFocus.h * 100)}%` : ''})`);
     else log.info('tela dividida: sem rastreamento; pessoa centralizada, um pouco acima do meio');
   }

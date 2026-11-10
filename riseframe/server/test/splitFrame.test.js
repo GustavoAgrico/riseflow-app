@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { splitPersonCrop, SPLIT_FACE_SHARE, SPLIT_FACE_Y } from '../../shared/splitFrame.js';
 import { parseOptions } from '../src/routes/jobs.js';
+import { subjectFromTrack } from '../src/pipeline/reframe.js';
 
 // selfie vertical 1080x1920 → metade de baixo do 9:16 (1080x960)
 const SRC = [1080, 1920];
@@ -49,4 +50,34 @@ test('splitFace da timeline passa pela validação das opções', () => {
   assert.deepEqual(parseOptions({ splitFace: { x: 0.4, y: 0.3, h: 0.15 } }).splitFace, { x: 0.4, y: 0.3, h: 0.15 });
   assert.equal(parseOptions({ splitFace: { x: 'a' } }).splitFace, undefined);
   assert.deepEqual(parseOptions({ splitFace: { x: 2, y: -1 } }).splitFace, { x: 1, y: 0 });
+});
+
+// ─── cabeça cortada na tela dividida (pessoa que gesticula) ───
+
+test('tela dividida: o rosto vem só dos pontos de rosto, não do centro do movimento (mãos/peito)', () => {
+  // rosto achado em 20% das amostras (y 0,30); no resto, o centro do movimento nas mãos (y 0,62)
+  const points = [];
+  const samples = [];
+  for (let i = 0; i < 50; i++) {
+    const face = i % 5 === 0;
+    points.push({ t: i / 4, x: face ? 0.5 : 0.45, y: face ? 0.3 : 0.62, src: face ? 'face' : 'motion' });
+    samples.push({ t: i / 4, faces: face ? [{ x: 0.5, y: 0.3, w: 0.2, h: 0.13 }] : [] });
+  }
+  const s = subjectFromTrack({ points, samples });
+  assert.ok(s.y > 0.5, 'a média antiga caía no movimento');
+  assert.equal(s.face.y, 0.3, 'o rosto de verdade');
+  assert.equal(s.face.h, 0.13);
+  // com o centro do movimento, a cabeça saía cortada; com o rosto, fica inteira e com folga
+  const g = splitPersonCrop(...SRC, ...HALF, s.face);
+  const headTop = ((s.face.y - 0.65 * s.face.h) * g.scaledH - g.cropY) / HALF[1];
+  assert.ok(headTop >= 0.04, `topo da cabeça dentro da metade (${headTop.toFixed(3)})`);
+  // poucos pontos de rosto: nada de rosto inventado
+  assert.equal(subjectFromTrack({ points: points.slice(1, 5), samples: [] }).face, null);
+});
+
+test('tela dividida: trava da cabeça mesmo com rosto alto e grande no quadro', () => {
+  const face = { x: 0.5, y: 0.2, h: 0.2 }; // rosto grande, alto no vídeo
+  const g = splitPersonCrop(...SRC, ...HALF, face);
+  const headTop = ((face.y - 0.65 * face.h) * g.scaledH - g.cropY) / HALF[1];
+  assert.ok(headTop >= 0.04 - 1e-9 || g.cropY === 0, `cabeça inteira (${headTop.toFixed(3)})`);
 });

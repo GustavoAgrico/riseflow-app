@@ -815,6 +815,8 @@ export function parseOptions(raw) {
     clipsCount: clampNum(o.clipsCount, 1, 8, 3),
     // objetivo dos cortes: autoridade | educacao | entretenimento | venda | engajamento
     clipGoal: CLIP_GOALS[o.clipGoal] ? o.clipGoal : 'auto',
+    // Cortes: a frase mais forte abre o clipe (gancho) antes do contexto.
+    clipHook: o.clipHook !== false,
     // Vídeo longo → UM vídeo curto de ~N segundos (0 = desligado). Diferente dos cortes (vários clipes).
     shortTarget: Number(o.shortTarget) > 0 ? clampNum(o.shortTarget, 15, 600, 60) : 0,
     clipAspect: ['original', '9:16', '16:9', '1:1'].includes(o.clipAspect) ? o.clipAspect : '9:16',
@@ -2066,7 +2068,9 @@ jobsRouter.get('/jobs/:id/subject', async (req, res) => {
       subjectCache.set(key, averageSubjectCenter(job.inputPath).catch(() => null));
     }
     const s = await subjectCache.get(key);
-    res.set('Cache-Control', 'private, max-age=3600').json(s ? { x: s.x, y: s.y, ...(s.h ? { h: s.h } : {}), source: s.source } : {});
+    // só o rosto (sem o centro de movimento, que cortava a cabeça na tela dividida)
+    const f = s?.face;
+    res.set('Cache-Control', 'private, max-age=3600').json(f ? { x: f.x, y: f.y, ...(f.h ? { h: f.h } : {}), source: 'face' } : {});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

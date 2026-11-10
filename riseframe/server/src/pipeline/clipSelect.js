@@ -148,6 +148,47 @@ export function ruleScore(S, a, b, goal) {
   return { score, type: hook && bestV < 1.5 ? 'gancho' : best, reasons };
 }
 
+// ─── Gancho na abertura (cold open) ───
+// Short/Reels: quem rola decide nos primeiros 1–3 s. Um corte que começa pelo contexto
+// perde a pessoa antes da parte forte. Como os editores fazem: a frase mais forte do corte
+// abre o vídeo (até ~6 s) e depois vem o corte inteiro, com o contexto e o desfecho.
+const STRONG = /\b(nunca|ninguem|todo mundo|maior|pior|melhor|erro|segredo|verdade|mentira|dinheiro|milh(ao|oes)|bilh|perdi|ganhei|quebr|demiti|absurdo|chocante|impossivel|ninguem esta falando|o problema|a real)\b/;
+
+/** Força de uma frase como gancho (pergunta, número, opinião firme, palavra forte). Puro. */
+export function hookScore(text) {
+  const t = norm(text);
+  const ts = typeScores(text);
+  let v = ts.gancho * 2 + ts.opiniao * 1.2 + Math.min(1, ts.conclusao) * 0.5;
+  if (/\?/.test(text)) v += 1.2;
+  if (/!/.test(text)) v += 0.5;
+  if (/\d|%/.test(text)) v += 1.2;
+  v += (t.match(new RegExp(STRONG.source, 'g')) || []).length * 1.1;
+  return v;
+}
+
+/**
+ * Frase do corte [a, b] que abre o vídeo como gancho, ou -1 (a 1ª já prende, ou nenhuma
+ * se sustenta sozinha). Não pode depender da anterior ("isso", "ele", "e aí…"), dura de
+ * 1,2 a 6 s e precisa ser bem mais forte que a 1ª frase. Puro.
+ */
+export function pickColdOpen(S, a, b, { minDur = 1.2, maxDur = 6, prefer = -1 } = {}) {
+  const ok = (i) => i > a && i <= b && S[i]
+    && S[i].end - S[i].start >= minDur && S[i].end - S[i].start <= maxDur
+    && !CONTEXT_OPENERS.has(firstWord(S[i].text));
+  const first = hookScore(S[a]?.text);
+  if (first >= 3) return -1; // o corte já abre forte
+  // a frase indicada pela IA vale se passar nas mesmas regras
+  if (Number.isInteger(prefer) && ok(prefer) && hookScore(S[prefer].text) >= first + 1) return prefer;
+  let best = -1;
+  let bestV = 0;
+  for (let i = a + 1; i <= b; i++) {
+    if (!ok(i)) continue;
+    const v = hookScore(S[i].text);
+    if (v >= 2 && v >= first + 1.5 && v > bestV) { best = i; bestV = v; }
+  }
+  return best;
+}
+
 /** Escolha só por regras: todas as combinações de frases dentro dos limites. */
 export function ruleClips(S, { min = 15, max = 50, count = 3, goal = 'auto' } = {}) {
   const cands = [];
@@ -203,7 +244,8 @@ Escolha os ${count + 3} MELHORES trechos. Cada corte:
 - não se sobrepõe a outro corte.
 Classifique cada um em "type": "gancho" | "historia" | "opiniao" | "ensinamento" | "conclusao".
 Dê "score" de 0 a 100 (potencial de desempenho para o objetivo — seja exigente: só trechos realmente fortes passam de 80), um "title" curto e chamativo em português (até 8 palavras) e um "reason": 1 frase em português explicando por que este trecho foi escolhido (concreto: o que ele tem de forte).
-Responda APENAS com JSON: {"clips":[{"from":0,"to":0,"type":"...","score":0,"title":"...","reason":"..."}]}`;
+"hook": o número da frase (dentro do corte, depois da 1ª) que deve ABRIR o vídeo como gancho, antes do contexto — a mais forte e que se entende sozinha, de até 6 segundos (afirmação forte, número, pergunta, a virada). Use -1 se a 1ª frase do corte já prende.
+Responda APENAS com JSON: {"clips":[{"from":0,"to":0,"hook":-1,"type":"...","score":0,"title":"...","reason":"..."}]}`;
 
 const sentenceLines = (S, a, b) => S.slice(a, b).map((s) => `S${s.i} [${s.start.toFixed(1)}s–${s.end.toFixed(1)}s] ${s.text}`).join('\n');
 
@@ -253,7 +295,7 @@ export async function selectClips(transcript, meta, options = {}, cfg = null) {
         by = `IA (${provider})`;
         for (const c of Array.isArray(data?.clips) ? data.clips : []) {
           const f = fixClip(S, c, { min, max });
-          if (f) all.push({ ...f, score: Math.max(0, Math.min(100, Math.round(Number(c.score) || 0))), type: CLIP_TYPES[c.type] ? c.type : 'ensinamento', title: String(c.title || '').trim().slice(0, 70) || titleFrom(S[f.a].text), reason: String(c.reason || '').trim().slice(0, 240) });
+          if (f) all.push({ ...f, hookHint: Number.isInteger(Number(c.hook)) ? Number(c.hook) : -1, score: Math.max(0, Math.min(100, Math.round(Number(c.score) || 0))), type: CLIP_TYPES[c.type] ? c.type : 'ensinamento', title: String(c.title || '').trim().slice(0, 70) || titleFrom(S[f.a].text), reason: String(c.reason || '').trim().slice(0, 240) });
         }
         if (b >= S.length) break;
       }
@@ -268,10 +310,16 @@ export async function selectClips(transcript, meta, options = {}, cfg = null) {
     by = 'regras';
   }
   log.info(`${picked.length} cortes escolhidos por ${by} (objetivo: ${goal})`);
+  const withHook = options.clipHook !== false;
   return picked
+    .map((c) => {
+      const h = withHook ? pickColdOpen(S, c.a, c.b, { prefer: c.hookHint ?? -1 }) : -1;
+      return { ...c, hook: h >= 0 ? { start: S[h].start, end: S[h].end, text: S[h].text } : null };
+    })
     .map((c) => ({
       start: S[c.a].start,
       end: S[c.b].end,
+      hook: c.hook,
       title: c.title,
       score: c.score,
       type: c.type,

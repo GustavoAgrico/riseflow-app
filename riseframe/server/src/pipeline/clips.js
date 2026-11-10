@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { probeSummary } from './ffmpeg.js';
+import { probeSummary, runFfmpeg, x264Fast } from './ffmpeg.js';
 import { remapTranscript, remuxByKeepSegments } from './timeline.js';
 import { burnCaptions } from './captions.js';
 import { colorFilter } from './color.js';
@@ -117,6 +117,35 @@ function titleFor(segs, themes) {
   return (base || 'Clipe').slice(0, 48);
 }
 
+/** Junta os pedaços (gancho + corte) num vídeo só, na ordem. */
+async function joinParts(files, work, hasAudio) {
+  const out = path.join(work, 'withhook.mp4');
+  const n = files.length;
+  const inputs = files.flatMap((f) => ['-i', f]);
+  const labels = files.map((_, k) => (hasAudio ? `[${k}:v][${k}:a]` : `[${k}:v]`)).join('');
+  const fc = `${labels}concat=n=${n}:v=1:a=${hasAudio ? 1 : 0}[v]${hasAudio ? '[a]' : ''}`;
+  await runFfmpeg([...inputs, '-filter_complex', fc, '-map', '[v]', ...(hasAudio ? ['-map', '[a]', '-c:a', 'aac', '-b:a', '192k'] : []), ...x264Fast(), '-movflags', '+faststart', '-y', out], { label: 'gancho' });
+  return out;
+}
+
+/** Transcrição do gancho + a do corte deslocada para depois dele (legenda das duas partes). Puro. */
+export function joinTranscripts(hookT, mainT, offset) {
+  const shift = (sg) => ({
+    ...sg,
+    start: +(Number(sg.start) + offset).toFixed(3),
+    end: +(Number(sg.end) + offset).toFixed(3),
+    words: (sg.words || []).map((w) => ({
+      ...w,
+      start: +(Number(w.start) + offset).toFixed(3),
+      end: +(Number(w.end) + offset).toFixed(3),
+      ...(Number.isFinite(Number(w.cs)) ? { cs: +(Number(w.cs) + offset).toFixed(3), ce: +(Number(w.ce) + offset).toFixed(3) } : {}),
+    })),
+  });
+  const hs = (hookT?.segments || []).filter((sg) => Number(sg.start) < offset);
+  const segments = [...hs, ...(mainT?.segments || []).map(shift)];
+  return { ...mainT, segments, text: segments.map((sg) => sg.text || (sg.words || []).map((w) => w.word).join(' ')).join(' ') };
+}
+
 /**
  * Gera os clipes curtos: para cada janela, corta a fonte, remapeia a transcrição,
  * queima legendas, aplica o grade e reframe. Reutiliza os módulos do pipeline.
@@ -148,11 +177,27 @@ export async function generateClips(ctx, onProgress = () => {}) {
     const keep = [{ start: Math.max(0, w.start - leadIn), end: Math.min(meta.duration, w.end + leadOut) }];
     const cut = await remuxByKeepSegments(source, cwork, meta, keep, () => {}, 'clipcut');
     let input = cut.output;
+    // 2) transcrição local (remapeada para 0..dur, palavras da janela)
+    let localTranscript = remapTranscript(transcript, keep);
+
+    // 1b) gancho na abertura: a frase mais forte do corte vem primeiro (até ~6 s) e depois o
+    //     corte inteiro — quem rola decide nos primeiros segundos (clipSelect.pickColdOpen)
+    let hookSec = 0;
+    if (w.hook) {
+      const hk = [{ start: Math.max(0, w.hook.start - 0.08), end: Math.min(meta.duration, w.hook.end + 0.15) }];
+      try {
+        const hcut = await remuxByKeepSegments(source, cwork, meta, hk, () => {}, 'hookcut');
+        const joined = await joinParts([hcut.output, input], cwork, meta.hasAudio);
+        hookSec = (await probeSummary(hcut.output)).duration || (hk[0].end - hk[0].start);
+        input = joined;
+        localTranscript = joinTranscripts(remapTranscript(transcript, hk), localTranscript, hookSec);
+      } catch (err) {
+        log.warn(`gancho do clipe ${i + 1} não entrou (${err.message}); segue sem`);
+        hookSec = 0;
+      }
+    }
     const trackInput = input; // corte limpo (antes das legendas) para o tracker de reframe
     let cmeta = await probeSummary(input);
-
-    // 2) transcrição local (remapeada para 0..dur, palavras da janela)
-    const localTranscript = remapTranscript(transcript, keep);
 
     // 3) formato (9:16…) ANTES das legendas: a legenda é desenhada no quadro final (tamanho
     // certo, sem sair cortada nas laterais e respeitando a área segura das redes).
@@ -222,7 +267,9 @@ export async function generateClips(ctx, onProgress = () => {}) {
       reason: w.reason, // por que este trecho foi escolhido
       by: w.by, // IA (claude/groq) ou regras
       goal: w.goal,
-      durationSec: Math.round((w.end - w.start) * 10) / 10,
+      durationSec: Math.round((w.end - w.start + hookSec) * 10) / 10,
+      // gancho que abre o clipe (a frase repetida depois, no lugar dela)
+      ...(hookSec ? { hook: { text: w.hook.text, seconds: Math.round(hookSec * 10) / 10 } } : {}),
       // Janela exata no vídeo original (com as folgas): o "Editar" do clipe recorta daqui.
       srcStart: keep[0].start,
       srcEnd: keep[0].end,
