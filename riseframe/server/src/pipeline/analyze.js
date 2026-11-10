@@ -227,14 +227,25 @@ export function pickBrollMoments(segments, themes, duration, opts = {}) {
   const themeTerms = themes.map((t) => t.term);
 
   const source = opts.imageSource === 'google' ? 'google' : 'pexels';
+  // fonte padrão do app é 'mix' (todos os bancos): sem imageSource, vale como mix
+  const mixed = !opts.imageSource || opts.imageSource === 'mix' || opts.imageSource === 'wikimedia';
   const moments = [];
   let nextAt = skipIntro;
   // Dedupe de query no VÍDEO INTEIRO (não só em sequência) — evita a mesma imagem
   // repetir em contextos diferentes. Cada momento recebe um termo de busca distinto.
   const usedQueries = new Set();
   const nq = (q) => String(q).toLowerCase().trim();
-  for (const seg of segments || []) {
-    if (seg.start < skipIntro || seg.start < nextAt) continue;
+  for (const seg0 of segments || []) {
+    // Frase que começa antes da abertura (ou colada no B-roll anterior): o B-roll entra no
+    // primeiro ponto permitido DENTRO dela, com as palavras ditas dali em diante. Antes a
+    // frase inteira era pulada — num vídeo curto com a fala numa frase só (a transcrição
+    // junta), nenhum trecho virava busca e o vídeo saía sem B-roll.
+    const from = Math.max(Number(seg0.start) || 0, skipIntro, nextAt);
+    if ((Number(seg0.end) || 0) - from < 1.2) continue;
+    const seg = from > seg0.start && seg0.words?.length
+      ? { ...seg0, start: from, words: seg0.words.filter((w) => Number(w.end) > from + 0.05) }
+      : seg0;
+    if (seg.words && !seg.words.length && seg0.words?.length) continue;
     const niche = opts.niche; // {core, fallback, label} | null — casa o B-roll com o tema
     const cands = candidateTerms(seg, themeTerms);
     // RELEVÂNCIA: só usa termos que casam com o CONTEXTO — um tema do vídeo ou uma
@@ -244,31 +255,40 @@ export function pickBrollMoments(segments, themes, duration, opts = {}) {
     let query = null;
     let kw = null;
 
-    if (source === 'google') {
-      // Google Imagens: contexto real da fala em pt (sem dicionário/tradução). A palavra
-      // vai com o complemento dela ("apagão" → "apagão de mão de obra"; antes ia sozinha e
-      // trazia foto de falta de luz) e verbo não vira busca ("vivendo", "mostrou").
-      // o assunto da frase primeiro: palavra com complemento ("apagão de mão de obra"), tema
-      // do vídeo; adjetivo ("assustadores", "pressionados") por último
+    // Busca em português com contexto (Google Imagens / Wikimedia entendem): a palavra vai
+    // com o complemento dela ("apagão" → "apagão de mão de obra"; sozinha trazia foto de falta
+    // de luz) e verbo não vira busca ("vivendo", "mostrou"). O assunto da frase primeiro:
+    // palavra com complemento, tema do vídeo; adjetivo ("assustadores") por último.
+    const ptQuery = () => {
       const ranked = relevant.filter((c) => !isVerbish(c) && !NUMBER_WORDS.test(c)).map((c, idx) => {
         const q = contextQuery(seg, c);
         const score = (q.toLowerCase() !== c.toLowerCase() ? 3 : 0) + (themeTerms.includes(c) ? 2 : 0) - (isAdjectiveish(c) ? 2 : 0) - idx * 0.01;
         return { c, q, score };
       }).sort((a, b) => b.score - a.score);
       for (const { c, q } of ranked) {
-        if (!usedQueries.has(nq(q)) && !usedQueries.has(nq(c))) { query = q; kw = c; break; }
+        if (!usedQueries.has(nq(q)) && !usedQueries.has(nq(c))) { query = q; kw = c; return; }
       }
+    };
+    // Pexels: banco indexado em inglês → traduz (mini-dicionário) e casa com o nicho.
+    const enQuery = () => {
+      for (const c of relevant) {
+        if (!isTranslatable(c)) continue;
+        const q = (niche ? `${niche.core} ${translateQuery(c)}` : translateQuery(c)).trim();
+        if (!usedQueries.has(nq(q))) { query = q; kw = c; return; }
+      }
+    };
+
+    if (source === 'google') {
+      ptQuery();
       if (!query) {
         const nl = nicheLabelPt(niche);
         if (nl && !usedQueries.has(nq(nl))) { query = nl; kw = nl; }
       }
     } else {
-      // Pexels: banco indexado em inglês → traduz e casa com o nicho (inglês).
-      for (const c of relevant) {
-        if (!isTranslatable(c)) continue;
-        const q = (niche ? `${niche.core} ${translateQuery(c)}` : translateQuery(c)).trim();
-        if (!usedQueries.has(nq(q))) { query = q; kw = c; break; }
-      }
+      enQuery();
+      // "Tudo" (mix) também busca no Google e no Wikimedia, que entendem português: sem
+      // tradução, a busca em português com contexto (antes o trecho ficava sem B-roll)
+      if (!query && mixed) ptQuery();
       if (!query && niche && !usedQueries.has(nq(niche.fallback))) { query = niche.fallback; kw = niche.core; }
     }
 

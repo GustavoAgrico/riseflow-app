@@ -51,3 +51,18 @@ test('download do B-roll: site que recusa o app recebe de novo como navegador an
   await downloadMedia('https://site.com/foto.jpg', 'https://tbn.gstatic.com/x', '/tmp/x', true, { fetchOnce: fail });
   assert.deepEqual(calls2, ['https://site.com/foto.jpg', 'https://site.com/foto.jpg (navegador)', 'https://tbn.gstatic.com/x'], 'só então a miniatura');
 });
+
+test('vídeo curto com a fala numa frase só (o caso do print): o B-roll entra depois da abertura', () => {
+  const s = 'O Brasil está vivendo o maior apagão de mão de obra da sua história e quase ninguém está falando sobre isso';
+  let t = 0.2;
+  const words = s.split(' ').map((w) => { const o = { word: w, start: +t.toFixed(2), end: +(t + 0.28).toFixed(2) }; t += 0.33; return o; });
+  const seg = [{ start: 0.2, end: t, text: s, words }];
+  for (const imageSource of ['google', 'mix', undefined]) {
+    const m = pickBrollMoments(seg, [], 7, { imageSource });
+    assert.equal(m.length, 1, `fonte ${imageSource}: um momento`);
+    assert.equal(m[0].start, 2, 'começa depois dos 2 s de abertura, dentro da frase');
+    assert.equal(m[0].query, 'apagão de mão de obra');
+  }
+  // frase que acaba logo depois da abertura: não cabe B-roll
+  assert.equal(pickBrollMoments([{ start: 0, end: 2.5, text: 'oi pessoal tudo bem', words: [{ word: 'oi', start: 0, end: 0.3 }, { word: 'pessoal', start: 0.4, end: 0.9 }, { word: 'tudo', start: 1, end: 1.3 }, { word: 'bem', start: 2.2, end: 2.5 }] }], [], 3, { imageSource: 'google' }).length, 0);
+});
