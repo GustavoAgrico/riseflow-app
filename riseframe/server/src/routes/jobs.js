@@ -815,6 +815,8 @@ export function parseOptions(raw) {
     clipsCount: clampNum(o.clipsCount, 1, 8, 3),
     // objetivo dos cortes: autoridade | educacao | entretenimento | venda | engajamento
     clipGoal: CLIP_GOALS[o.clipGoal] ? o.clipGoal : 'auto',
+    // Cortes: a frase mais forte abre o clipe (gancho) antes do contexto.
+    clipHook: o.clipHook !== false,
     // Vídeo longo → UM vídeo curto de ~N segundos (0 = desligado). Diferente dos cortes (vários clipes).
     shortTarget: Number(o.shortTarget) > 0 ? clampNum(o.shortTarget, 15, 600, 60) : 0,
     clipAspect: ['original', '9:16', '16:9', '1:1'].includes(o.clipAspect) ? o.clipAspect : '9:16',

@@ -590,6 +590,13 @@ export default function CreateWizard({
                 })}
               </div>
               <div style={{ fontSize: 12, color: C.faint, marginTop: 8 }}>{(catalog.clipGoals.find((g) => g.id === (options.clipGoal || 'auto')) || {}).label}. Cada corte vem com nota e o motivo da escolha.</div>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 14, cursor: 'pointer', fontSize: 13, color: C.text }}>
+                <input type="checkbox" checked={options.clipHook !== false} onChange={(e) => set({ clipHook: e.target.checked })} style={{ marginTop: 2 }} />
+                <span>
+                  <b>Abrir com o gancho</b>
+                  <span style={{ display: 'block', fontSize: 12, color: C.faint, marginTop: 2 }}>A frase mais forte do corte aparece nos primeiros segundos e depois vem o trecho inteiro, com o contexto (como nos Shorts que retêm). Só quando a 1ª frase não prende.</span>
+                </span>
+              </label>
             </div>
           )}
 

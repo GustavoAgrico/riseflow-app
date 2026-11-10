@@ -84,6 +84,11 @@ export default function ClipsResult({ job, onReset, onEdit }) {
               <div style={{ fontSize: 11, color: C.faint, marginBottom: c.reason ? 6 : 10 }}>
                 {fmtTime(c.start)}–{fmtTime(c.end)} · {c.aspect}{c.typeLabel ? ` · ${c.typeLabel}` : ''}
               </div>
+              {c.hook?.text && (
+                <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45, marginBottom: 6, padding: '7px 9px', borderRadius: 8, background: 'rgba(255,106,26,0.08)', border: '1px solid rgba(255,106,26,0.3)' }}>
+                  <b style={{ color: C.text }}>Abre com:</b> “{c.hook.text}” <span style={{ color: C.faint }}>({c.hook.seconds}s, repete depois no lugar dela)</span>
+                </div>
+              )}
               {c.reason && (
                 <div title={c.by ? `Escolhido por ${c.by}` : undefined} style={{ fontSize: 12, color: C.muted, lineHeight: 1.45, marginBottom: 10, padding: '7px 9px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}` }}>
                   <b style={{ color: C.text }}>Por que este corte:</b> {c.reason}
