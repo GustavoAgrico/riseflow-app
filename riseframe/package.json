@@ -1,6 +1,6 @@
 {
   "name": "riseframe",
-  "version": "1.102.1",
+  "version": "1.102.2",
   "private": true,
   "description": "Editor de vídeo web com IA — MVP do pipeline (corte de silêncio, legendas, B-roll, color grade).",
   "type": "module",

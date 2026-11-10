@@ -13,6 +13,10 @@ export const SPLIT_FACE_SHARE = 0.3;
 /** Onde fica o centro do rosto na metade (fração da altura, de cima). */
 export const SPLIT_FACE_Y = 0.4;
 export const SPLIT_MAX_ZOOM = 2.2;
+/** Topo do cabelo acima do centro do rosto, em alturas de rosto (caixa do detector). */
+export const HEAD_ABOVE = 1.0;
+/** Folga acima da cabeça (fração da altura da metade). */
+export const HEAD_MARGIN = 0.06;
 
 /**
  * Recorte da metade da pessoa.
@@ -41,10 +45,12 @@ export function splitPersonCrop(srcW, srcH, regionW, regionH, face = null) {
   const fy = clamp(Number.isFinite(Number(face?.y)) ? Number(face.y) : 0.35, 0, 1);
   const cropX = Math.round(clamp(fx * scaledW - rw / 2, 0, scaledW - rw));
   let cropY = fy * scaledH - rh * SPLIT_FACE_Y;
-  // trava da cabeça: o topo dela (cabelo ~0,65 do rosto acima do centro; sem o tamanho do
-  // rosto, o de uma selfie) fica dentro da metade, com folga — nunca corta a cabeça
-  const head = fy - 0.65 * (fh > 0 ? fh : 0.12);
-  cropY = Math.min(cropY, head * scaledH - rh * 0.05);
+  // trava da cabeça: o topo dela fica dentro da metade, com folga — nunca corta a cabeça.
+  // O detector marca o rosto das sobrancelhas ao queixo; o topo do cabelo fica ~1 altura do
+  // rosto acima do CENTRO dele (medido em vídeo real; 0,65 cortava o cabelo). Sem o tamanho
+  // do rosto, supõe um rosto grande (o caso que corta).
+  const head = fy - HEAD_ABOVE * (fh > 0 ? fh : 0.2);
+  cropY = Math.min(cropY, head * scaledH - rh * HEAD_MARGIN);
   cropY = Math.round(clamp(cropY, 0, scaledH - rh));
   return { scaledW, scaledH, cropX, cropY, zoom: +zoom.toFixed(3) };
 }

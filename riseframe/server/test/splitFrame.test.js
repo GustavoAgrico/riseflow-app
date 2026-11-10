@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { splitPersonCrop, SPLIT_FACE_SHARE, SPLIT_FACE_Y } from '../../shared/splitFrame.js';
+import { splitPersonCrop, SPLIT_FACE_SHARE, SPLIT_FACE_Y, HEAD_ABOVE, HEAD_MARGIN } from '../../shared/splitFrame.js';
 import { parseOptions } from '../src/routes/jobs.js';
 import { subjectFromTrack } from '../src/pipeline/reframe.js';
 
@@ -40,7 +40,8 @@ test('tela dividida: rosto perto da borda não deixa faixa; sem rosto, centro um
   const n = splitPersonCrop(...SRC, ...HALF, null);
   assert.equal(n.zoom, 1);
   assert.equal(n.scaledW, 1080);
-  assert.equal(n.cropY, Math.round(0.35 * 1920 - 960 * SPLIT_FACE_Y));
+  // sem rosto: a trava supõe um rosto grande (centro 0,35, cabelo ~0,2 acima)
+  assert.equal(n.cropY, Math.round(Math.min(0.35 * 1920 - 960 * SPLIT_FACE_Y, (0.35 - HEAD_ABOVE * 0.2) * 1920 - 960 * HEAD_MARGIN)));
   // vídeo horizontal (16:9) na metade: cobre pela altura e centraliza no rosto
   const w = splitPersonCrop(1920, 1080, ...HALF, { x: 0.3, y: 0.4, h: 0.25 });
   assert.ok(w.scaledH >= 960 && w.cropX >= 0 && w.cropX + 1080 <= w.scaledW);
@@ -69,7 +70,7 @@ test('tela dividida: o rosto vem só dos pontos de rosto, não do centro do movi
   assert.equal(s.face.h, 0.13);
   // com o centro do movimento, a cabeça saía cortada; com o rosto, fica inteira e com folga
   const g = splitPersonCrop(...SRC, ...HALF, s.face);
-  const headTop = ((s.face.y - 0.65 * s.face.h) * g.scaledH - g.cropY) / HALF[1];
+  const headTop = ((s.face.y - HEAD_ABOVE * s.face.h) * g.scaledH - g.cropY) / HALF[1];
   assert.ok(headTop >= 0.04, `topo da cabeça dentro da metade (${headTop.toFixed(3)})`);
   // poucos pontos de rosto: nada de rosto inventado
   assert.equal(subjectFromTrack({ points: points.slice(1, 5), samples: [] }).face, null);
@@ -78,6 +79,16 @@ test('tela dividida: o rosto vem só dos pontos de rosto, não do centro do movi
 test('tela dividida: trava da cabeça mesmo com rosto alto e grande no quadro', () => {
   const face = { x: 0.5, y: 0.2, h: 0.2 }; // rosto grande, alto no vídeo
   const g = splitPersonCrop(...SRC, ...HALF, face);
-  const headTop = ((face.y - 0.65 * face.h) * g.scaledH - g.cropY) / HALF[1];
+  const headTop = ((face.y - HEAD_ABOVE * face.h) * g.scaledH - g.cropY) / HALF[1];
   assert.ok(headTop >= 0.04 - 1e-9 || g.cropY === 0, `cabeça inteira (${headTop.toFixed(3)})`);
+});
+
+test('tela dividida: o caso do print — rosto grande e baixo no quadro, cabelo inteiro na metade', () => {
+  // medido no vídeo: topo do cabelo a 0,26, centro do rosto (caixa do detector) a 0,48, h 0,22
+  const face = { x: 0.5, y: 0.48, h: 0.22 };
+  const g = splitPersonCrop(...SRC, ...HALF, face);
+  const hairTop = (0.26 * g.scaledH - g.cropY) / HALF[1];
+  const chin = (0.59 * g.scaledH - g.cropY) / HALF[1];
+  assert.ok(hairTop >= HEAD_MARGIN - 0.01, `cabelo dentro da metade (${hairTop.toFixed(3)})`);
+  assert.ok(chin <= 0.85, `queixo com espaço embaixo (${chin.toFixed(3)})`);
 });
