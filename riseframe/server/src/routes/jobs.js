@@ -2068,7 +2068,9 @@ jobsRouter.get('/jobs/:id/subject', async (req, res) => {
       subjectCache.set(key, averageSubjectCenter(job.inputPath).catch(() => null));
     }
     const s = await subjectCache.get(key);
-    res.set('Cache-Control', 'private, max-age=3600').json(s ? { x: s.x, y: s.y, ...(s.h ? { h: s.h } : {}), source: s.source } : {});
+    // só o rosto (sem o centro de movimento, que cortava a cabeça na tela dividida)
+    const f = s?.face;
+    res.set('Cache-Control', 'private, max-age=3600').json(f ? { x: f.x, y: f.y, ...(f.h ? { h: f.h } : {}), source: 'face' } : {});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

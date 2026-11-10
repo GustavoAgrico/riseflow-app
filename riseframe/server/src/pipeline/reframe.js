@@ -277,6 +277,11 @@ export async function averageSubjectCenter(input) {
     log.warn(`tracking indisponível para enquadramento (${err.message})`);
     return null;
   }
+  return subjectFromTrack(data);
+}
+
+/** Centro do sujeito (e só do rosto, em `face`) a partir da saída do track_subject.py. Puro. */
+export function subjectFromTrack(data) {
   const pts = (data?.points || []).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
   if (!pts.length) return null;
   const face = pts.filter((p) => p.src === 'face');
@@ -287,7 +292,13 @@ export async function averageSubjectCenter(input) {
   // para enquadrar a pessoa no tamanho certo (shared/splitFrame.js)
   const sizes = (data?.samples || []).map((s) => (Array.isArray(s.faces) && s.faces.length ? Math.max(...s.faces.map((f) => Number(f.h) || 0)) : 0)).filter((h) => h > 0);
   const h = sizes.length >= 3 ? median(sizes) : null;
-  return { x: clamp(x, 0, 1), y: clamp(y, 0, 1), ...(h ? { h: clamp(h, 0.02, 1) } : {}), source: face.length ? 'face' : 'motion' };
+  // Só o ROSTO (sem o centro de movimento): a tela dividida enquadra a cabeça por ele. A
+  // média acima mistura o movimento quando o rosto aparece pouco — numa pessoa que
+  // gesticula, o "centro" caía nas mãos/peito e a cabeça saía cortada no topo da metade.
+  const faceOnly = face.length >= 3
+    ? { x: clamp(median(face.map((p) => p.x)), 0, 1), y: clamp(median(face.map((p) => p.y)), 0, 1), ...(h ? { h: clamp(h, 0.02, 1) } : {}) }
+    : null;
+  return { x: clamp(x, 0, 1), y: clamp(y, 0, 1), ...(h ? { h: clamp(h, 0.02, 1) } : {}), source: face.length ? 'face' : 'motion', face: faceOnly };
 }
 
 /**

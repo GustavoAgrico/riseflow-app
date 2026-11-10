@@ -40,6 +40,11 @@ export function splitPersonCrop(srcW, srcH, regionW, regionH, face = null) {
   const fx = clamp(Number.isFinite(Number(face?.x)) ? Number(face.x) : 0.5, 0, 1);
   const fy = clamp(Number.isFinite(Number(face?.y)) ? Number(face.y) : 0.35, 0, 1);
   const cropX = Math.round(clamp(fx * scaledW - rw / 2, 0, scaledW - rw));
-  const cropY = Math.round(clamp(fy * scaledH - rh * SPLIT_FACE_Y, 0, scaledH - rh));
+  let cropY = fy * scaledH - rh * SPLIT_FACE_Y;
+  // trava da cabeça: o topo dela (cabelo ~0,65 do rosto acima do centro; sem o tamanho do
+  // rosto, o de uma selfie) fica dentro da metade, com folga — nunca corta a cabeça
+  const head = fy - 0.65 * (fh > 0 ? fh : 0.12);
+  cropY = Math.min(cropY, head * scaledH - rh * 0.05);
+  cropY = Math.round(clamp(cropY, 0, scaledH - rh));
   return { scaledW, scaledH, cropX, cropY, zoom: +zoom.toFixed(3) };
 }
