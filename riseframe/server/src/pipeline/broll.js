@@ -468,12 +468,24 @@ export async function brollCandidates(query, opts = {}) {
  * Baixa a mídia com prazo e teto de tamanho (vídeo original em 4K da Wikimedia/NASA
  * podia ter centenas de MB e travar a etapa). Exportado para teste.
  */
-export async function download(url, dest, { timeoutMs = 45000, maxBytes = 80e6 } = {}) {
+// Alguns sites (CDN com proteção contra robôs) recusam o download com o nome do app e só
+// entregam a foto a um navegador comum. Sem isso a original falhava e entrava a miniatura
+// do Google (~200 px), esticada e borrada no vídeo final.
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+  Accept: 'image/avif,image/webp,image/apng,image/*,video/*,*/*;q=0.8',
+  'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+};
+
+export async function download(url, dest, { timeoutMs = 45000, maxBytes = 80e6, browser = false } = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': UA['User-Agent'] } });
-    if (!res.ok || !res.body) throw new Error(`download falhou ${res.status}`);
+    const res = await fetch(url, { signal: ctrl.signal, headers: browser ? BROWSER_HEADERS : { 'User-Agent': UA['User-Agent'] } });
+    if (!res.ok || !res.body) throw Object.assign(new Error(`download falhou ${res.status}`), { status: res.status });
+    const type = String(res.headers.get('content-type') || '');
+    // página de bloqueio/HTML no lugar da imagem: não é a mídia
+    if (/text\/html/i.test(type)) throw Object.assign(new Error('o site devolveu uma página, não a imagem'), { status: 403 });
     const len = Number(res.headers.get('content-length')) || 0;
     if (len > maxBytes) throw new Error(`arquivo grande demais (${(len / 1e6).toFixed(0)} MB)`);
     let got = 0;
@@ -493,14 +505,22 @@ export async function download(url, dest, { timeoutMs = 45000, maxBytes = 80e6 }
 }
 
 /** Baixa a mídia; se a original falhar (grande/lenta), tenta a versão menor (miniatura). */
-async function downloadMedia(link, thumb, dest, isImage) {
+export async function downloadMedia(link, thumb, dest, isImage, { fetchOnce = download } = {}) {
   const caps = isImage ? { maxBytes: 25e6, timeoutMs: 30000 } : { maxBytes: 80e6, timeoutMs: 60000 };
   try {
-    return await download(link, dest, caps);
+    return await fetchOnce(link, dest, caps);
   } catch (err) {
+    // recusado (403/401/429, página no lugar da imagem): tenta de novo como um navegador comum
+    if ([401, 403, 429].includes(err.status) || /fetch failed|ECONNRESET|socket/i.test(String(err.message))) {
+      try {
+        return await fetchOnce(link, dest, { ...caps, browser: true });
+      } catch (err2) {
+        err = err2;
+      }
+    }
     if (isImage && thumb && thumb !== link) {
-      log.info(`B-roll: original falhou (${err.message}); usando a versão menor`);
-      return download(thumb, dest, caps);
+      log.warn(`B-roll: original falhou (${err.message}); usando a miniatura (pode sair com pouca nitidez)`);
+      return fetchOnce(thumb, dest, caps);
     }
     throw err;
   }
