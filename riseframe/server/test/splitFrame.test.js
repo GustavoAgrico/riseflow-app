@@ -92,3 +92,16 @@ test('tela dividida: o caso do print — rosto grande e baixo no quadro, cabelo 
   assert.ok(hairTop >= HEAD_MARGIN - 0.01, `cabelo dentro da metade (${hairTop.toFixed(3)})`);
   assert.ok(chin <= 0.85, `queixo com espaço embaixo (${chin.toFixed(3)})`);
 });
+
+test('tela dividida: o zoom dos momentos amplia a partir do topo da cabeça (o punch cortava o cabelo)', async () => {
+  const { momentsZoomVf } = await import('../src/pipeline/motion.js');
+  const face = { x: 0.5, y: 0.45, h: 0.2 };
+  const g = splitPersonCrop(...SRC, ...HALF, face);
+  const headTop = ((face.y - HEAD_ABOVE * face.h) * g.scaledH - g.cropY) / HALF[1];
+  assert.ok(Math.abs(g.anchorY - headTop) < 0.002, `âncora no topo da cabeça (${g.anchorY} × ${headTop.toFixed(3)})`);
+  // com zoom z em volta da âncora, o topo da cabeça fica no mesmo lugar (não sai da metade)
+  const vf = momentsZoomVf([[1, 2, 1.2, 'punch']], { width: 1080, height: 960, fps: 30 }, 'forte', { anchorY: g.anchorY });
+  assert.match(vf, new RegExp(`y='\\(ih-ih/zoom\\)\\*${g.anchorY.toFixed(4)}`));
+  // padrão (vídeo inteiro): continua centralizado, igual a antes
+  assert.match(momentsZoomVf([[1, 2, 1.2, 'punch']], { width: 1080, height: 1920, fps: 30 }), /y='ih\/2-\(ih\/zoom\/2\)'/);
+});

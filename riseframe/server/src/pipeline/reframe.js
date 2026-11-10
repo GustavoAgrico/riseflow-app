@@ -291,7 +291,9 @@ export function subjectFromTrack(data) {
   // altura típica do rosto (mediana do maior rosto de cada amostra): a tela dividida usa
   // para enquadrar a pessoa no tamanho certo (shared/splitFrame.js)
   const sizes = (data?.samples || []).map((s) => (Array.isArray(s.faces) && s.faces.length ? Math.max(...s.faces.map((f) => Number(f.h) || 0)) : 0)).filter((h) => h > 0);
-  const h = sizes.length >= 3 ? median(sizes) : null;
+  // percentil 75: um "rosto" falso pequeno (lombada de livro, objeto) puxava o tamanho para
+  // baixo — a tela dividida dava zoom a mais e a trava da cabeça ficava curta
+  const h = sizes.length >= 3 ? quantile(sizes, 0.75) : null;
   // Só o ROSTO (sem o centro de movimento): a tela dividida enquadra a cabeça por ele. A
   // média acima mistura o movimento quando o rosto aparece pouco — numa pessoa que
   // gesticula, o "centro" caía nas mãos/peito e a cabeça saía cortada no topo da metade.

@@ -746,7 +746,8 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     // lugar (o deslocamento valia o dobro).
     const pm = options.personMotion;
     const halfMeta = { width: regionW, height: regionH, fps: meta.fps };
-    const pmVf = pm ? [keyframesVf(pm.keys, halfMeta), momentsZoomVf(pm.windows, halfMeta, pm.intensity)].filter(Boolean).join(',') : '';
+    // zoom dos momentos ancorado no topo da cabeça (pelo centro, o punch cortava o cabelo)
+    const pmVf = pm ? [keyframesVf(pm.keys, halfMeta), momentsZoomVf(pm.windows, halfMeta, pm.intensity, { anchorY: g.anchorY })].filter(Boolean).join(',') : '';
     if (pmVf) clips.forEach((_, i) => parts.push(`[ph${i}]${pmVf},setsar=1[phm${i}]`));
     const ph = (i) => (pmVf ? `[phm${i}]` : `[ph${i}]`);
     last = '[base]';

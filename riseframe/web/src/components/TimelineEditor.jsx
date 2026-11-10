@@ -442,6 +442,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // pessoa é enquadrada nele, no zoom que o tamanho do rosto pede — o zoom acima (do vídeo
   // inteiro) não vale ali. Foco ajustado à mão decide o centro.
   const [subject, setSubject] = useState(null);
+  const splitPivotRef = useRef(null); // tela dividida: ponto fixo do zoom dos momentos na metade
   useEffect(() => {
     if (!sourceId) return undefined;
     let alive = true;
@@ -1319,7 +1320,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         const mw = motionWrapRef.current;
         if (mw) {
           if (mw.style.transform !== tfHalf) mw.style.transform = tfHalf;
-          mw.style.transformOrigin = `${m.ox}% ${m.oy}%`;
+          // tela dividida: o zoom do momento amplia a partir do topo da cabeça (como o render),
+          // não do centro (o punch cortava o cabelo)
+          const spv = splitPivotRef.current;
+          mw.style.transformOrigin = `${m.ox}% ${spv ? (spv.ay * 100).toFixed(1) : m.oy}%`;
           mw.style.transition = v.style.transition;
         }
         const vol = Math.max(0, Math.min(1, volumeAt(t, L.audio)));
@@ -4775,6 +4779,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const fitNow = (fitRanges || []).some((r) => cur >= r.start - 0.001 && cur < r.end);
   // Tela dividida: a pessoa preenche a metade, enquadrada no rosto (como o render)
   const splitContain = previewMode === 'split' && !podSplit;
+  if (!splitContain) splitPivotRef.current = null;
   const personCropStyle = (() => {
     if (fitNow && !fitMode && aspectSel !== 'original') return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx };
     if (fitMode) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilterFx };
@@ -4782,6 +4787,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     // tela dividida: a metade preenchida e enquadrada no rosto (a mesma conta do render)
     if (splitContain && sd && pbox?.w && pbox?.h) {
       const g = splitPersonCrop(sd.w, sd.h, pbox.w, pbox.h, splitFace);
+      // ponto fixo do zoom dos momentos na metade (o topo da cabeça), como no render
+      splitPivotRef.current = { ay: g.anchorY };
       return { position: 'absolute', left: -g.cropX, top: -g.cropY, width: g.scaledW, height: g.scaledH, maxWidth: 'none', objectFit: 'fill', filter: videoFilterFx };
     }
     if (splitContain) return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${(splitFace?.x ?? 0.5) * 100}% ${(splitFace?.y ?? 0.35) * 100}%`, filter: videoFilterFx };

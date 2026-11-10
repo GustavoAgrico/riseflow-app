@@ -52,5 +52,8 @@ export function splitPersonCrop(srcW, srcH, regionW, regionH, face = null) {
   const head = fy - HEAD_ABOVE * (fh > 0 ? fh : 0.2);
   cropY = Math.min(cropY, head * scaledH - rh * HEAD_MARGIN);
   cropY = Math.round(clamp(cropY, 0, scaledH - rh));
-  return { scaledW, scaledH, cropX, cropY, zoom: +zoom.toFixed(3) };
+  // ponto fixo do zoom dos momentos-chave na metade: o topo da cabeça (o zoom amplia para
+  // baixo e a cabeça não sai pelo topo; ampliar pelo centro cortava o cabelo no punch)
+  const anchorY = +clamp((head * scaledH - cropY) / rh, 0, 0.5).toFixed(3);
+  return { scaledW, scaledH, cropX, cropY, zoom: +zoom.toFixed(3), anchorY };
 }

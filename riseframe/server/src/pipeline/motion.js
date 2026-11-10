@@ -63,7 +63,8 @@ export function dynamicZoomVf(segments, meta, intensity = 'medio', custom, effec
  * punch = k · zoom-in = k·p · zoom-out = k·(1−p) · Ken Burns = k·p + pan · pulse = respiração.
  * Puro/exportado para teste. @returns {string|null}
  */
-export function momentsZoomVf(windows, meta, intensity = 'medio') {
+/** `anchorY` (0–1): altura que fica parada no zoom (0,5 = centro; tela dividida: o topo da cabeça). */
+export function momentsZoomVf(windows, meta, intensity = 'medio', { anchorY = 0.5 } = {}) {
   if (!windows?.length) return null;
   const W = meta.width || 1080;
   const H = meta.height || 1920;
@@ -96,7 +97,9 @@ export function momentsZoomVf(windows, meta, intensity = 'medio') {
   }
   const z = `1+${zTerms.join('+')}`;
   const x = `iw/2-(iw/zoom/2)${panX.length ? `+${panX.join('+')}` : ''}`;
-  const y = `ih/2-(ih/zoom/2)${panY.length ? `+${panY.join('+')}` : ''}`;
+  const ay = Math.min(1, Math.max(0, Number(anchorY)));
+  const y0 = Math.abs(ay - 0.5) < 1e-6 ? 'ih/2-(ih/zoom/2)' : `(ih-ih/zoom)*${ay.toFixed(4)}`;
+  const y = `${y0}${panY.length ? `+${panY.join('+')}` : ''}`;
   return `zoompan=z='${z}':d=1:x='${x}':y='${y}':s=${W}x${H}:fps=${fps}`;
 }
 
