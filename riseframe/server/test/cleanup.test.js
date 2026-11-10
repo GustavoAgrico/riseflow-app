@@ -95,3 +95,40 @@ test('markFillers: engasgo com muleta no meio (forte) → "quero é quero"', () 
   const kept = r.segments[0].words.filter((w) => !w.removed).map((w) => w.word);
   assert.deepEqual(kept, ['quero', 'isso'], 'remove a 1ª cópia e o conector, mantém a 2ª');
 });
+
+// ─── frase refeita que parou no meio ("Uma pesquisa da, … saiu uma pesquisa do") ───
+// palavras com tempo; "|" = pausa de 0,8 s
+function timed(text) {
+  let t = 0;
+  const words = [];
+  for (const tok of text.split(' ')) {
+    if (tok === '|') { t += 0.8; continue; }
+    words.push({ start: +t.toFixed(2), end: +(t + 0.3).toFixed(2), word: tok });
+    t += 0.35;
+  }
+  return { segments: [{ start: 0, end: t, text, words }] };
+}
+const kept = (r) => r.segments.flatMap((s) => s.words).filter((w) => !w.removed).map((w) => w.word).join(' ');
+
+test('frase refeita do print: "Uma pesquisa da, | saiu uma pesquisa do Manpower" → sai a tentativa', () => {
+  const r = markFillers(timed('isso. Uma pesquisa da, | saiu uma pesquisa do Manpower Group em 2026 e trouxe'));
+  assert.equal(kept(r), 'isso. saiu uma pesquisa do Manpower Group em 2026 e trouxe');
+});
+
+test('frase refeita: fim trocado sem palavra nova; palavra cortada; pausa sem vírgula', () => {
+  assert.equal(kept(markFillers(timed('a gente vai falar da, a gente vai falar do mercado'))), 'a gente vai falar do mercado');
+  assert.equal(kept(markFillers(timed('o maior apagão de | hoje o maior apagão da história'))), 'hoje o maior apagão da história');
+  assert.equal(kept(markFillers(timed('uma pesquisa mos- | uma pesquisa mostrou que'))), 'uma pesquisa mostrou que');
+});
+
+test('frase refeita: enumeração e frase completa NÃO são cortadas', () => {
+  // enumeração de propósito: a 1ª termina em palavra de conteúdo
+  const enumr = 'uma pesquisa da Fiesp, e uma pesquisa do IBGE mostram';
+  assert.equal(kept(markFillers(timed(enumr))), enumr);
+  // frase completa seguida, sem pausa: "o produto do mês o produto do ano"
+  const seq = 'teve o dono da loja e o dono do mercado juntos';
+  assert.equal(kept(markFillers(timed(seq))), seq);
+  // palavra de conteúdo nova no meio da tentativa: fica
+  const par = 'eu quero que você cresça, eu quero que você lucre';
+  assert.equal(kept(markFillers(timed(par))), par);
+});
