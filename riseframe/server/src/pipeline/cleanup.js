@@ -213,6 +213,9 @@ export function markFillers(transcript, opts = {}) {
     // ("hoje eu vou mostrar três... hoje eu vou te mostrar as três dicas") → sai a
     // tentativa abandonada inteira, fica a versão final.
     removedCount += markRetakes(kept());
+    // 3b) Frase refeita que parou no meio e recomeçou trocando o fim e/ou com uma palavra
+    // nova na frente ("Uma pesquisa da, … saiu uma pesquisa do Manpower") → sai a tentativa.
+    removedCount += markOpenRetakes(kept());
     // 4) Correção explícita: "custa 50, digo, 60 reais" → sai "50, digo,".
     if (aggressive) removedCount += markCorrections(kept());
   }
@@ -279,6 +282,60 @@ export function markRetakes(list) {
       }
       i = j - 1;
       break;
+    }
+  }
+  return removed;
+}
+
+// Palavras que não fecham uma frase: quem para nelas parou no meio ("uma pesquisa da,").
+const OPEN_END = new Set(['de', 'da', 'do', 'das', 'dos', 'o', 'a', 'os', 'as', 'um', 'uma', 'uns', 'umas', 'no', 'na', 'nos', 'nas',
+  'em', 'por', 'pelo', 'pela', 'pelos', 'pelas', 'para', 'pra', 'pro', 'com', 'sem', 'que', 'e', 'ou', 'ao', 'aos', 'seu', 'sua',
+  'meu', 'minha', 'esse', 'essa', 'este', 'esta', 'isso', 'num', 'numa', 'dum', 'duma', 'mas', 'se', 'porque', 'como', 'quando']);
+
+/**
+ * Frase refeita que PAROU NO MEIO e recomeçou diferente — o caso que markRetakes não pega:
+ *  - o fim da tentativa muda no recomeço ("pesquisa da," → "pesquisa do");
+ *  - e/ou o recomeço ganha 1–2 palavras novas na frente ("… saiu uma pesquisa do").
+ * Vale só quando a tentativa termina numa palavra que não fecha frase (de, da, uma, que…)
+ * ou cortada, seguida de pausa/vírgula; todas as outras palavras dela reaparecem no
+ * recomeço. Enumeração de propósito ("uma pesquisa da Fiesp e uma pesquisa do IBGE")
+ * fica: a tentativa termina numa palavra de conteúdo. Marca e devolve quantas saíram.
+ */
+export function markOpenRetakes(list) {
+  let removed = 0;
+  const C = (x) => x.c ?? x.n;
+  const raw = (x) => String(x.w.word ?? '').trim();
+  for (let i = 0; i + 1 < list.length; i++) {
+    if (list[i].w.removed) continue;
+    let done = false;
+    for (let j = i + 2; !done && j < list.length - 1 && j - i <= 14; j++) {
+      if (Number(list[j].w.start) - Number(list[i].w.start) > 12) break;
+      if (C(list[j]) !== C(list[i]) || C(list[j + 1]) !== C(list[i + 1])) continue;
+      for (const lead of [0, 1, 2]) {
+        const e = j - lead; // fim (exclusivo) da tentativa; [e, j) = palavras novas na frente do recomeço
+        if (e - i < 2) continue;
+        const last = list[e - 1];
+        const cut = /(…|\.\.\.|-)$/.test(raw(last));
+        if (!OPEN_END.has(last.n) && !cut) continue; // parou numa palavra de conteúdo: não é tentativa
+        const gap = Number(list[e].w.start) - Number(last.w.end);
+        if (!(cut || /,["')\]]*$/.test(raw(last)) || gap >= 0.35)) continue; // sem pausa/vírgula: frase seguida
+        // palavras novas na frente do recomeço: só se a tentativa parou com uma pausa clara
+        if (lead && gap < 0.25 && !/,["')\]]*$/.test(raw(last))) continue;
+        const redo = new Set();
+        for (let k = j; k < Math.min(list.length, j + (e - i) + 3); k++) redo.add(C(list[k]));
+        let ok = true;
+        for (let k = i; k < e - 1; k++) if (!redo.has(C(list[k])) && !isFiller(list[k].w.word, true)) { ok = false; break; }
+        if (!ok) continue;
+        for (let k = i; k < e; k++) {
+          if (!list[k].w.removed) {
+            list[k].w.removed = true;
+            removed++;
+          }
+        }
+        i = j - 1;
+        done = true;
+        break;
+      }
     }
   }
   return removed;
