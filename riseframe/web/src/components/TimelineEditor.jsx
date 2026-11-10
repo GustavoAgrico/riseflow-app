@@ -5,7 +5,7 @@ import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import Processing from './Processing.jsx';
 import { pickExportTarget, setPendingExport } from '../exportTarget.js';
-import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, elementUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi, brollFaces } from '../api.js';
+import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, elementUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi, brollFaces, getSubject } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -34,6 +34,7 @@ import { customFontFamily, useCustomFonts } from '../customFonts.js';
 import { shadowParams } from '../../../shared/captionShadow.js';
 import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById, fontStyles } from '../../../shared/captionStyle.js';
 import { faceFocus, brollRegionAspect } from '../../../shared/brollFocus.js';
+import { splitPersonCrop } from '../../../shared/splitFrame.js';
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 import { captionCues, toSrt, toVtt, toTxt, skipMapper } from '../../../shared/captionExport.js';
 import { layerAt, upsertKey, shiftKf, KF_INTERPS, kfInterpOf, withInterp, cleanVolKeys, volDbAt, VOL_DB_MIN, VOL_DB_MAX } from '../../../shared/layerKeys.js';
@@ -437,6 +438,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [framingMode, setFramingMode] = useState(!hasFocus0 && Number(options?.personZoom) > 1 ? 'auto' : 'manual');
   const [focus, setFocus] = useState(hasFocus0 ? { x: Number(options.personFocusX), y: Number.isFinite(Number(options.personFocusY)) ? Number(options.personFocusY) : 0.4 } : { x: 0.5, y: 0.4 });
   const [zoom, setZoom] = useState(Math.min(2.5, Math.max(1, Number(options?.personZoom) || 1)));
+  // Rosto do vídeo (posição e tamanho, achado no servidor): na tela dividida a metade da
+  // pessoa é enquadrada nele, no zoom que o tamanho do rosto pede — o zoom acima (do vídeo
+  // inteiro) não vale ali. Foco ajustado à mão decide o centro.
+  const [subject, setSubject] = useState(null);
+  useEffect(() => {
+    if (!sourceId) return undefined;
+    let alive = true;
+    getSubject(sourceId).then((s) => { if (alive) setSubject(s); }).catch(() => {});
+    return () => { alive = false; };
+  }, [sourceId]);
+  const focusMoved = framingMode === 'manual' && (Math.abs(focus.x - 0.5) > 0.004 || Math.abs(focus.y - 0.4) > 0.004);
+  const splitFace = focusMoved ? { x: focus.x, y: focus.y, ...(subject?.h ? { h: subject.h } : {}) } : subject;
   // Formato do vídeo final e como ele entra no formato (igual ao servidor):
   // auto = segue o rosto · manual = ponto escolhido · fit = inteiro com fundo desfocado.
   const [aspectSel, setAspectSel] = useState(['original', '9:16', '1:1', '16:9'].includes(options?.aspect) ? options.aspect : 'original');
@@ -3313,6 +3326,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // o rosto sozinho e centralizava nele — a pessoa saía mais alta/baixa que no editor
         personFocusX: +focus.x.toFixed(3),
         personFocusY: +focus.y.toFixed(3),
+        // tela dividida: o rosto que a prévia usou para enquadrar a pessoa (o render usa o mesmo)
+        ...(splitFace ? { splitFace: { x: +splitFace.x.toFixed(3), y: +splitFace.y.toFixed(3), ...(splitFace.h ? { h: +splitFace.h.toFixed(3) } : {}) } } : {}),
         // Ajustes de legenda escolhidos aqui na timeline (sobrepõem os das opções).
         ...cap,
         // Zoom, efeitos sonoros e cor escolhidos nas abas Efeitos e Cor.
@@ -4758,12 +4773,18 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     objectPosition: `${side * 100}% 40%`, transform: 'scale(1.9)', transformOrigin: `${side * 100}% 40%`, filter: videoFilterFx,
   });
   const fitNow = (fitRanges || []).some((r) => cur >= r.start - 0.001 && cur < r.end);
-  // Tela dividida sem zoom: a pessoa inteira contida sobre o fundo desfocado (como o render)
+  // Tela dividida: a pessoa preenche a metade, enquadrada no rosto (como o render)
   const splitContain = previewMode === 'split' && !podSplit;
   const personCropStyle = (() => {
     if (fitNow && !fitMode && aspectSel !== 'original') return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#000', filter: videoFilterFx };
-    if (fitMode || splitContain) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilterFx };
+    if (fitMode) return { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', filter: videoFilterFx };
     const sd = vdim || (vbox?.vw ? { w: vbox.vw, h: vbox.vh } : null);
+    // tela dividida: a metade preenchida e enquadrada no rosto (a mesma conta do render)
+    if (splitContain && sd && pbox?.w && pbox?.h) {
+      const g = splitPersonCrop(sd.w, sd.h, pbox.w, pbox.h, splitFace);
+      return { position: 'absolute', left: -g.cropX, top: -g.cropY, width: g.scaledW, height: g.scaledH, maxWidth: 'none', objectFit: 'fill', filter: videoFilterFx };
+    }
+    if (splitContain) return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${(splitFace?.x ?? 0.5) * 100}% ${(splitFace?.y ?? 0.35) * 100}%`, filter: videoFilterFx };
     if (!sd || !pbox?.w || !pbox?.h) {
       return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, filter: videoFilterFx };
     }
@@ -4785,6 +4806,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       onPointerDown={(e) => {
         e.preventDefault();
         const r = previewBoxRef.current.getBoundingClientRect();
+        // tela dividida: parte do enquadramento que está na tela (o rosto) e passa a ser à mão
+        if (splitContain) {
+          setFramingMode('manual');
+          const sd = vdim || (vbox?.vw ? { w: vbox.vw, h: vbox.vh } : null);
+          const zs = sd ? splitPersonCrop(sd.w, sd.h, r.width, r.height, splitFace).zoom : 1;
+          panRef.current = { startX: e.clientX, startY: e.clientY, fx: splitFace?.x ?? 0.5, fy: splitFace?.y ?? 0.35, w: r.width, h: r.height, zoom: zs };
+          return;
+        }
         panRef.current = { startX: e.clientX, startY: e.clientY, fx: focus.x, fy: focus.y, w: r.width, h: r.height, zoom };
       }}
       style={{ position: 'relative', height: previewMode === 'split' ? '50%' : previewMode === 'video' ? '100%' : '0%', display: previewMode === 'broll' ? 'none' : 'block', overflow: 'hidden', cursor: 'grab', touchAction: 'none', boxShadow: `inset 0 0 0 2px ${C.orange}` }}
