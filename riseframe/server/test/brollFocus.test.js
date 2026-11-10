@@ -65,3 +65,15 @@ test('plano do B-roll: sem ponto de foco o render enquadra pelo rosto (não for�
   assert.equal(o.brollPlan[1].fx, 0.2);
   assert.equal(o.brollPlan[1].fy, 0.1);
 });
+
+test('plano do B-roll: imagem do Google em site http entra (antes era descartada sem aviso)', () => {
+  const o = parseOptions({ brollPlan: [
+    { start: 1, end: 3, url: 'http://www.site-sem-https.com.br/foto.jpg', thumb: 'https://encrypted-tbn0.gstatic.com/images?q=x', kind: 'image' },
+    { start: 4, end: 6, url: 'http://192.168.0.10/interno.jpg', thumb: 'https://encrypted-tbn0.gstatic.com/images?q=y', kind: 'image' },
+    { start: 7, end: 9, url: 'http://localhost:4000/x.jpg', kind: 'image' },
+  ] });
+  assert.equal(o.brollPlan[0].url, 'http://www.site-sem-https.com.br/foto.jpg');
+  // endereço interno é recusado; com miniatura pública, a miniatura entra no lugar
+  assert.equal(o.brollPlan[1].url, 'https://encrypted-tbn0.gstatic.com/images?q=y');
+  assert.equal(o.brollPlan[2].url, undefined);
+});

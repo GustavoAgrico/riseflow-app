@@ -572,10 +572,15 @@ function sanitizeBrollPlan(raw) {
       // Crédito (autor/licença) da imagem do banco — vai para o relatório do vídeo.
       credit: typeof p.credit === 'string' ? p.credit.replace(/[<>]/g, '').slice(0, 140) : null,
     };
-    // URL do banco: só http(s) de imagem/vídeo (o download roda no pipeline).
-    if (typeof p.url === 'string' && /^https:\/\/[^\s]+$/i.test(p.url)) item.url = p.url;
+    // URL do banco: http(s) público de imagem/vídeo (o download roda no pipeline). Antes só
+    // https: imagem do Google Imagens em site http saía do plano sem aviso e o vídeo ficava
+    // sem o B-roll revisado. Endereço interno (localhost, rede privada) continua recusado.
+    const okUrl = (u) => typeof u === 'string' && u.length < 2048 && /^https?:\/\/[^\s]+$/i.test(u) && isPublicUrl(u);
+    if (okUrl(p.url)) item.url = p.url;
     // Miniatura: reserva quando o site da imagem original recusa o download.
-    if (typeof p.thumb === 'string' && /^https:\/\/[^\s]+$/i.test(p.thumb)) item.thumb = p.thumb;
+    if (okUrl(p.thumb)) item.thumb = p.thumb;
+    // Sem a original mas com a miniatura: usa a miniatura (melhor que perder o momento).
+    if (!item.url && item.thumb && item.kind === 'image') item.url = item.thumb;
     if (typeof p.mediaId === 'string' && p.mediaId) item.mediaId = p.mediaId;
     // Ajuste do quadro do B-roll: zoom 1–2.5 e ponto de foco X/Y (0–1) dentro da imagem.
     // Logo de marca: entra inteiro e centralizado (sem cortar para preencher).

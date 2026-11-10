@@ -3100,7 +3100,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       const src = typeof srcOverride === 'string' ? srcOverride : imageSource;
       const plan = await fetchBrollPlan(sourceId, trOverride || currentTranscript(), { ...options, ...cap, broll: true, imageSource: src });
       const moments = (plan.moments || []).map((m, i) => ({
-        key: `b${i}_${Date.now()}`, zoom: 1, fx: 0.5, fy: 0.5,
+        // sem fx/fy: o enquadramento sai pelo rosto da imagem (brollFocusOf); arrastar define
+        key: `b${i}_${Date.now()}`, zoom: 1,
         start: m.start, end: m.end, term: m.term, query: m.query,
         candidates: m.candidates || [],
         pick: (m.candidates || []).length ? 0 : -1, // índice do candidato escolhido (-1 = nenhum)
@@ -3201,7 +3202,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   /** Novo momento de B-roll na posição atual do vídeo (3 s); depois escolhe a imagem. */
   function addBrollHere() {
     const start = Math.max(0, Math.min(cur, durationSec - 0.8));
-    const m = { key: `m${Date.now()}`, zoom: 1, fx: 0.5, fy: 0.5, start: +start.toFixed(2), end: +Math.min(durationSec, start + 3).toFixed(2), term: 'nova imagem', query: '', candidates: [], pick: -1, removed: false, myThumb: null, myMediaId: null, myKind: null, manual: true };
+    const m = { key: `m${Date.now()}`, zoom: 1, start: +start.toFixed(2), end: +Math.min(durationSec, start + 3).toFixed(2), term: 'nova imagem', query: '', candidates: [], pick: -1, removed: false, myThumb: null, myMediaId: null, myKind: null, manual: true };
     setBrollOn(true);
     setBrollReview((r) => {
       const moments = [...(r?.moments || []), m].sort((a, b) => a.start - b.start);
