@@ -18,6 +18,7 @@ import { startUpload, uploadStatus, receiveChunk, fromChunkedUpload } from '../c
 import { parseYoutubeUrl, resolveYtDlp } from '../pipeline/youtube.js';
 import { saveCustomFont, listCustomFonts, resolveCustomFont, deleteCustomFont } from '../customFonts.js';
 import { probeSummary, runFfmpeg, sdrVf } from '../pipeline/ffmpeg.js';
+import { averageSubjectCenter } from '../pipeline/reframe.js';
 import { analyze } from '../pipeline/analyze.js';
 import { remuxByKeepSegments, remapTranscript, snapKeep } from '../pipeline/timeline.js';
 import { markFillers } from '../pipeline/cleanup.js';
@@ -714,6 +715,15 @@ export function parseOptions(raw) {
     personFocusX: Number.isFinite(Number(o.personFocusX)) ? clampNum(o.personFocusX, 0, 1, undefined) : undefined,
     personFocusY: Number.isFinite(Number(o.personFocusY)) ? clampNum(o.personFocusY, 0, 1, undefined) : undefined,
     personZoom: clampNum(o.personZoom, 1, 2.5, 1),
+    // Tela dividida: o rosto que a prévia da timeline usou para enquadrar a pessoa (centro
+    // 0–1 e altura do rosto) — o render usa o mesmo (shared/splitFrame.js).
+    ...(o.splitFace && Number.isFinite(Number(o.splitFace.x)) && Number.isFinite(Number(o.splitFace.y)) ? {
+      splitFace: {
+        x: clampNum(o.splitFace.x, 0, 1, 0.5),
+        y: clampNum(o.splitFace.y, 0, 1, 0.35),
+        ...(Number(o.splitFace.h) > 0 ? { h: clampNum(o.splitFace.h, 0.02, 1, 0.2) } : {}),
+      },
+    } : {}),
     // Fonte das imagens de B-roll: pexels | pixabay | wikimedia | google | mix (tudo).
     imageSource: ['pexels', 'pixabay', 'wikimedia', 'google', 'mix'].includes(o.imageSource) ? o.imageSource : 'mix',
     // Título fixo no vídeo e capa (quadro + título em JPG; opcional no início do vídeo).
@@ -2039,6 +2049,27 @@ jobsRouter.get('/jobs/:id/edit-source', (req, res) => {
   const ext = path.extname(job.inputPath).toLowerCase();
   res.type(MIME_BY_EXT[ext] || 'application/octet-stream');
   res.sendFile(path.resolve(job.inputPath));
+});
+
+// GET /api/jobs/:id/subject → { x, y, h } do rosto no vídeo de origem (ou {} sem rosto).
+// A prévia da tela dividida enquadra a pessoa com a MESMA conta do render
+// (shared/splitFrame.js). Rastreia uma vez por vídeo (guarda na memória).
+const subjectCache = new Map();
+jobsRouter.get('/jobs/:id/subject', async (req, res) => {
+  const job = queue.get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'job não encontrado' });
+  if (!job.inputPath || !fs.existsSync(job.inputPath)) return res.status(410).json({ error: 'o vídeo de origem expirou' });
+  try {
+    const key = `${job.id}:${job.inputPath}`;
+    if (!subjectCache.has(key)) {
+      if (subjectCache.size > 300) subjectCache.delete(subjectCache.keys().next().value);
+      subjectCache.set(key, averageSubjectCenter(job.inputPath).catch(() => null));
+    }
+    const s = await subjectCache.get(key);
+    res.set('Cache-Control', 'private, max-age=3600').json(s ? { x: s.x, y: s.y, ...(s.h ? { h: s.h } : {}), source: s.source } : {});
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 jobsRouter.get('/jobs/:id/source', (req, res) => {

@@ -283,7 +283,11 @@ export async function averageSubjectCenter(input) {
   const use = face.length >= Math.max(3, pts.length * 0.3) ? face : pts;
   const x = use.reduce((a, p) => a + p.x, 0) / use.length;
   const y = use.reduce((a, p) => a + p.y, 0) / use.length;
-  return { x: clamp(x, 0, 1), y: clamp(y, 0, 1), source: face.length ? 'face' : 'motion' };
+  // altura típica do rosto (mediana do maior rosto de cada amostra): a tela dividida usa
+  // para enquadrar a pessoa no tamanho certo (shared/splitFrame.js)
+  const sizes = (data?.samples || []).map((s) => (Array.isArray(s.faces) && s.faces.length ? Math.max(...s.faces.map((f) => Number(f.h) || 0)) : 0)).filter((h) => h > 0);
+  const h = sizes.length >= 3 ? median(sizes) : null;
+  return { x: clamp(x, 0, 1), y: clamp(y, 0, 1), ...(h ? { h: clamp(h, 0.02, 1) } : {}), source: face.length ? 'face' : 'motion' };
 }
 
 /**

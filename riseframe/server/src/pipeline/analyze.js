@@ -170,6 +170,54 @@ function candidateTerms(seg, themeTerms = []) {
   return uniq;
 }
 
+/** Forma de verbo (gerúndio, passado, imperfeito) ou advérbio em -mente: não ilustra nada. */
+export function isVerbish(w) {
+  const n = String(w || '').toLowerCase();
+  return /(ando|endo|indo|ondo)$/.test(n) || /(aram|eram|iram|avam|iam|ava|ia)$/.test(n) && n.length >= 6 && !/(ncia|logia|grafia|ria|tia|dia|mia|via|pia|sia|cia|gia)$/.test(n)
+    || (/ou$/.test(n) && n.length >= 5) || /mente$/.test(n) || (/(amos|emos|imos)$/.test(n) && n.length >= 5);
+}
+
+/** Cara de adjetivo/particípio ("assustadores" fica de fora: "-ores" também é nome). */
+export function isAdjectiveish(w) {
+  return /(ados|adas|idos|idas|ado|ada|ido|ida|osos|osas|oso|osa|ivos|ivas|ivo|iva|áveis|íveis|ável|ível|antes|entes)$/.test(String(w || '').toLowerCase())
+    && !/(estado|mercado|resultado|dado|lado|cuidado|soldado|vida|comida|bebida|saída|partida|medida|ida)$/.test(String(w || '').toLowerCase());
+}
+const ADJ_TAIL = /(al|ais|ico|ica|icos|icas|ivo|iva|ário|ária|ista|ês|esa|ano|ana|eiro|eira|ar)$/;
+
+// Número por extenso não ilustra nada sozinho ("oitenta", "cinquenta").
+const NUMBER_WORDS = /^(zero|dois|duas|três|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|quatorze|catorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa|cem|cento|duzentos|trezentos|quatrocentos|quinhentos|seiscentos|setecentos|oitocentos|novecentos|mil|milhão|milhões|bilhão|bilhões)$/i;
+
+const LINK = new Set(['de', 'da', 'do', 'das', 'dos']);
+const bare = (w) => String(w || '').replace(/[^\p{L}\p{N}-]/gu, '');
+
+/**
+ * A palavra com o complemento dela na frase, para a busca de imagens entender o contexto:
+ * "maior apagão de mão de obra" → "apagão de mão de obra"; "pesquisa do Manpower Group em
+ * 2026" → "pesquisa do Manpower Group". Até 2 complementos "de/da/do + palavra", e nomes
+ * próprios seguidos. Sem complemento, a palavra sozinha. Puro.
+ */
+export function contextQuery(seg, term) {
+  const words = (seg?.words?.length ? seg.words.map((w) => w.word) : String(seg?.text || '').split(/\s+/)).map(bare).filter(Boolean);
+  const low = (w) => w.toLowerCase();
+  const i = words.findIndex((w) => low(w) === String(term).toLowerCase());
+  if (i < 0) return term;
+  const out = [words[i]];
+  let k = i + 1;
+  for (let ext = 0; ext < 2 && k + 1 < words.length; ext++) {
+    if (!LINK.has(low(words[k]))) break;
+    const next = words[k + 1];
+    if (STOP.has(low(next)) || next.length < 3 || isVerbish(next)) break;
+    out.push(low(words[k]), /^\p{Lu}/u.test(next) ? next : low(next));
+    k += 2;
+    // nome próprio composto ("Manpower Group", "Banco Central")
+    while (k < words.length && /^\p{Lu}/u.test(words[k]) && out.length < 7) { out.push(words[k]); k++; }
+    // adjetivo que fecha o complemento ("inteligência artificial")
+    const adj = words[k];
+    if (adj && !LINK.has(low(adj)) && !STOP.has(low(adj)) && adj.length >= 5 && !isVerbish(adj) && ADJ_TAIL.test(low(adj)) && out.length < 7) { out.push(low(adj)); k++; }
+  }
+  return out.join(' ');
+}
+
 export function pickBrollMoments(segments, themes, duration, opts = {}) {
   const everySec = opts.brollEverySec ?? 7;
   const clipLen = opts.brollClipLen ?? 3.2;
@@ -197,9 +245,18 @@ export function pickBrollMoments(segments, themes, duration, opts = {}) {
     let kw = null;
 
     if (source === 'google') {
-      // Google Imagens: contexto real da fala em pt (sem dicionário/tradução).
-      for (const c of relevant) {
-        if (!usedQueries.has(nq(c))) { query = c; kw = c; break; }
+      // Google Imagens: contexto real da fala em pt (sem dicionário/tradução). A palavra
+      // vai com o complemento dela ("apagão" → "apagão de mão de obra"; antes ia sozinha e
+      // trazia foto de falta de luz) e verbo não vira busca ("vivendo", "mostrou").
+      // o assunto da frase primeiro: palavra com complemento ("apagão de mão de obra"), tema
+      // do vídeo; adjetivo ("assustadores", "pressionados") por último
+      const ranked = relevant.filter((c) => !isVerbish(c) && !NUMBER_WORDS.test(c)).map((c, idx) => {
+        const q = contextQuery(seg, c);
+        const score = (q.toLowerCase() !== c.toLowerCase() ? 3 : 0) + (themeTerms.includes(c) ? 2 : 0) - (isAdjectiveish(c) ? 2 : 0) - idx * 0.01;
+        return { c, q, score };
+      }).sort((a, b) => b.score - a.score);
+      for (const { c, q } of ranked) {
+        if (!usedQueries.has(nq(q)) && !usedQueries.has(nq(c))) { query = q; kw = c; break; }
       }
       if (!query) {
         const nl = nicheLabelPt(niche);

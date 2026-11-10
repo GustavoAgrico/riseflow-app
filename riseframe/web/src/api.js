@@ -627,6 +627,13 @@ export async function getJob(id) {
 }
 
 export const sourceUrl = (id) => `${BASE}/jobs/${id}/source`;
+/** Rosto do vídeo de origem { x, y, h } (ou {}): a prévia da tela dividida enquadra a pessoa. */
+export async function getSubject(id) {
+  const r = await fetch(`${BASE}/jobs/${id}/subject`);
+  if (!r.ok) return null;
+  const d = await r.json().catch(() => null);
+  return d && Number.isFinite(d.x) ? d : null;
+}
 /** Cópia do vídeo para editar (quadro-chave a cada 0,5 s: a prévia não trava nos cortes). */
 export const editSourceUrl = (id) => `${BASE}/jobs/${id}/edit-source`;
 export async function editSourceStatus(id) {
