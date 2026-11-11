@@ -53,7 +53,10 @@ export function splitPersonCrop(srcW, srcH, regionW, regionH, face = null) {
   // O detector marca o rosto das sobrancelhas ao queixo; o topo do cabelo fica ~1,2 altura do
   // rosto acima do CENTRO dele (0,65 e depois 1,0 ainda cortavam cabelo volumoso/topete). Sem o tamanho
   // do rosto, supõe um rosto grande (o caso que corta).
-  const head = fy - HEAD_ABOVE * (fh > 0 ? fh : 0.2);
+  // `top`: o topo da cabeça mais alto do trecho (a pessoa se inclina para a câmera) — a
+  // trava respeita esse, não só o do rosto médio
+  const top = Number(face?.top);
+  const head = Math.min(fy - HEAD_ABOVE * (fh > 0 ? fh : 0.2), Number.isFinite(top) ? top : Infinity);
   cropY = Math.min(cropY, head * scaledH - rh * HEAD_MARGIN);
   cropY = Math.round(clamp(cropY, 0, scaledH - rh));
   // ponto fixo do zoom dos momentos-chave na metade: o topo da cabeça (o zoom amplia para
@@ -73,4 +76,47 @@ export function splitFaceFor(tracked, focusX, focusY) {
   const mx = Number(focusX);
   const my = Number(focusY);
   return focusX != null && focusY != null && Number.isFinite(mx) && Number.isFinite(my) ? { x: mx, y: my, source: 'manual' } : null;
+}
+
+const median = (a) => {
+  const v = [...a].sort((p, q) => p - q);
+  const m = v.length >> 1;
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+};
+const quantile = (a, q) => {
+  const v = [...a].sort((p, r) => p - r);
+  return v[Math.min(v.length - 1, Math.max(0, Math.round((v.length - 1) * q)))];
+};
+
+/**
+ * Rosto de um TRECHO (um momento de B-roll na tela dividida): a pessoa se mexe — inclinada
+ * para a câmera num momento, recostada no outro — e um enquadramento só para o vídeo todo
+ * cortava a cabeça num e deixava o rosto lá embaixo no outro. Usa os rostos rastreados
+ * dentro do trecho (centro mediano, tamanho p75 e o topo de cabeça mais alto). Puro.
+ * @param {Array<{t:number,x:number,y:number,h:number}>} track rostos (centro, 0–1) no tempo
+ * @param {{x,y,h}|null} fallback rosto do vídeo inteiro (sem rosto no trecho)
+ */
+export function splitFaceInWindow(track, start, end, fallback = null) {
+  const list = (Array.isArray(track) ? track : []).filter((p) => p && [p.t, p.x, p.y].every((v) => Number.isFinite(Number(v))));
+  if (!list.length) return fallback;
+  const a = Number(start);
+  const b = Number(end);
+  let pts = list.filter((p) => p.t >= a - 0.5 && p.t <= b + 0.5);
+  if (!pts.length) {
+    // amostra esparsa: o rosto mais perto do trecho (até 2 s)
+    const mid = (a + b) / 2;
+    const near = list.reduce((best, p) => (Math.abs(p.t - mid) < Math.abs(best.t - mid) ? p : best));
+    if (Math.abs(near.t - mid) > (b - a) / 2 + 2) return fallback;
+    pts = [near];
+  }
+  const hs = pts.map((p) => Number(p.h)).filter((h) => h > 0);
+  const h = hs.length ? quantile(hs, 0.75) : Number(fallback?.h) || 0;
+  const tops = pts.map((p) => p.y - HEAD_ABOVE * (Number(p.h) > 0 ? Number(p.h) : h || 0.2));
+  return {
+    x: +median(pts.map((p) => Number(p.x))).toFixed(4),
+    y: +median(pts.map((p) => Number(p.y))).toFixed(4),
+    ...(h > 0 ? { h: +h.toFixed(4) } : {}),
+    top: +quantile(tops, 0.1).toFixed(4),
+    source: 'face',
+  };
 }

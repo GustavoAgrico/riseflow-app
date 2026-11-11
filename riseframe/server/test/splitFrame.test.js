@@ -154,3 +154,36 @@ test('tela dividida: o ponto do zoom escolhido na criação não vira posição 
   assert.deepEqual(splitFaceFor(null, 0.3, 0.2), { x: 0.3, y: 0.2, source: 'manual' });
   assert.equal(splitFaceFor(null, undefined, undefined), null);
 });
+
+test('tela dividida: cada momento de B-roll é enquadrado no rosto DAQUELE trecho (pessoa se mexe)', async () => {
+  const { splitFaceInWindow } = await import('../../shared/splitFrame.js');
+  // 0–6 s: recostado (rosto pequeno, baixo); 6–12 s: inclinado para a câmera (grande, alto)
+  const track = [];
+  for (let t = 0; t < 12; t += 0.5) track.push(t < 6 ? { t, x: 0.5, y: 0.5, h: 0.09 } : { t, x: 0.5, y: 0.3, h: 0.2 });
+  const whole = subjectFromTrack({
+    points: track.map((p) => ({ t: p.t, x: p.x, y: p.y, src: 'face' })),
+    samples: track.map((p) => ({ t: p.t, faces: [{ x: p.x, y: p.y, w: p.h, h: p.h }] })),
+  });
+  assert.equal(whole.track.length, track.length, 'o rastreador devolve o rosto no tempo');
+  const place = (face, f) => {
+    const g = splitPersonCrop(...SRC, ...HALF, face);
+    return {
+      center: (f.y * g.scaledH - g.cropY) / HALF[1],
+      head: ((f.y - 1.1 * f.h) * g.scaledH - g.cropY) / HALF[1],
+      chin: ((f.y + 0.5 * f.h) * g.scaledH - g.cropY) / HALF[1],
+    };
+  };
+  for (const [a, b, f] of [[1, 4, track[2]], [7, 10, track[16]]]) {
+    const w = splitFaceInWindow(whole.track, a, b, whole.face);
+    const p = place(w, f);
+    assert.ok(p.head >= 0, `${a}–${b}s: cabeça inteira (${p.head.toFixed(3)})`);
+    assert.ok(p.chin <= 1, `${a}–${b}s: queixo dentro (${p.chin.toFixed(3)})`);
+    assert.ok(p.center > 0.25 && p.center < 0.65, `${a}–${b}s: rosto no meio da metade (${p.center.toFixed(3)})`);
+  }
+  // um enquadramento só (o do vídeo todo) deixava o rosto recostado lá embaixo ou cortava a cabeça
+  const single = [place(whole.face, track[2]), place(whole.face, track[16])];
+  assert.ok(single.some((p) => p.head < 0 || p.center > 0.65), JSON.stringify(single));
+  // trecho sem rosto rastreado (e longe de qualquer amostra): o rosto do vídeo
+  assert.equal(splitFaceInWindow(whole.track, 40, 43, whole.face), whole.face);
+  assert.equal(splitFaceInWindow([], 1, 2, null), null);
+});
