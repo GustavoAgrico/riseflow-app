@@ -61,3 +61,16 @@ export function splitPersonCrop(srcW, srcH, regionW, regionH, face = null) {
   const anchorY = +clamp((head * scaledH - cropY) / rh, 0, 0.5).toFixed(3);
   return { scaledW, scaledH, cropX, cropY, zoom: +zoom.toFixed(3), anchorY };
 }
+
+/**
+ * Rosto que enquadra a metade da pessoa no render direto (sem a timeline). O foco manual
+ * (personFocusX/Y) é o ponto do ZOOM do vídeo inteiro, escolhido na criação — não a posição
+ * do rosto. Usado como rosto, a cabeça era calculada mais baixa do que estava e saía cortada
+ * no topo da metade. Com rosto detectado, vale o rosto; o foco só entra sem rosto.
+ */
+export function splitFaceFor(tracked, focusX, focusY) {
+  if (tracked && Number.isFinite(Number(tracked.x)) && Number.isFinite(Number(tracked.y))) return { ...tracked, source: 'face' };
+  const mx = Number(focusX);
+  const my = Number(focusY);
+  return focusX != null && focusY != null && Number.isFinite(mx) && Number.isFinite(my) ? { x: mx, y: my, source: 'manual' } : null;
+}

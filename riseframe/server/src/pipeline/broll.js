@@ -10,7 +10,7 @@ import { keyframesVf, momentsZoomVf } from './motion.js';
 import { makeLogger } from '../logger.js';
 import { detectFaces } from './brollFaces.js';
 import { faceFocus } from '../../../shared/brollFocus.js';
-import { splitPersonCrop } from '../../../shared/splitFrame.js';
+import { splitPersonCrop, splitFaceFor } from '../../../shared/splitFrame.js';
 
 const log = makeLogger('broll');
 
@@ -684,13 +684,10 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   } else if (isSplit) {
     // só o rosto detectado (o centro de movimento cai nas mãos/peito e cortava a cabeça)
     const tracked = (await averageSubjectCenter(options.personInput || input))?.face || null;
-    const mx = Number(options.personFocusX);
-    const my = Number(options.personFocusY);
-    personFocus = Number.isFinite(mx) && Number.isFinite(my)
-      ? { x: mx, y: my, ...(tracked?.h ? { h: tracked.h } : {}), source: 'manual' }
-      : tracked && { ...tracked, source: 'face' };
+    // o foco manual é o ponto do zoom do vídeo inteiro: só vale sem rosto (splitFrame.js)
+    personFocus = splitFaceFor(tracked, options.personFocusX, options.personFocusY);
     if (personFocus) log.ok(`tela dividida: pessoa enquadrada no ${personFocus.source} (${personFocus.x.toFixed(2)}, ${personFocus.y.toFixed(2)}${personFocus.h ? `, rosto ${Math.round(personFocus.h * 100)}%` : ''})`);
-    else log.info('tela dividida: sem rastreamento; pessoa centralizada, um pouco acima do meio');
+    else log.info('tela dividida: sem rosto detectado; a metade mostra o topo do vídeo');
   }
 
   // Filtergraph: cada clipe (vídeo ou foto) escalado/cropado para a região do

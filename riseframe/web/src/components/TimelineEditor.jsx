@@ -454,8 +454,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     }).catch(() => {});
     return () => { alive = false; };
   }, [sourceId]);
-  const focusMoved = framingMode === 'manual' && (Math.abs(focus.x - 0.5) > 0.004 || Math.abs(focus.y - 0.4) > 0.004);
-  const splitFace = focusMoved ? { x: focus.x, y: focus.y, ...(subject?.h ? { h: subject.h } : {}) } : subject;
+  // Tela dividida: o foco vale como posição do ROSTO só quando a pessoa arrastou a própria
+  // metade. O foco do zoom do vídeo inteiro (criação/Enquadramento) é o ponto do ZOOM, não o
+  // rosto: usado como rosto, a cabeça era calculada mais baixa do que estava e saía cortada.
+  const [splitManual, setSplitManual] = useState(false);
+  const splitFace = splitManual
+    ? { x: focus.x, y: focus.y, ...(subject?.h ? { h: subject.h } : {}) }
+    : subject;
   // Formato do vídeo final e como ele entra no formato (igual ao servidor):
   // auto = segue o rosto · manual = ponto escolhido · fit = inteiro com fundo desfocado.
   const [aspectSel, setAspectSel] = useState(['original', '9:16', '1:1', '16:9'].includes(options?.aspect) ? options.aspect : 'original');
@@ -737,7 +742,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const histState = {
     segments, cuts, keptPauses, keptNoises, gains, videoCrop, cropRanges, fitRanges, blanks, projMediaIds, avLinked, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs, brollLayoutSel, imageSource, volKeys, pauseAuto, aiCleaned, lead, v1Gaps,
-    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
+    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, splitManual, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
   };
   const histSet = {
     segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, cropRanges: setCropRanges, fitRanges: setFitRanges, blanks: setBlanks, projMediaIds: setProjMediaIds, avLinked: setAvLinked, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
@@ -745,7 +750,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     cover: setCover, colorLook: setColorLook, colorAdj: setColorAdj, cap: setCap, fx: setFx, voice: setVoice,
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths, brollLayoutSel: setBrollLayoutSel, imageSource: setImageSource, volKeys: setVolKeys, pauseAuto: setPauseAuto, aiCleaned: setAiCleaned, lead: setLead, v1Gaps: setV1Gaps,
     cutCoughs: setCutCoughs, aspectSel: setAspectSel, quality: setQuality, reframeMode: setReframeMode,
-    splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom,
+    splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom, splitManual: setSplitManual,
     vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, extraCaps: setExtraCaps, fxMoments: setFxMoments, transitions: setTransitions, laneHide: setLaneHide, laneLock: setLaneLock, markers: setMarkers, speedRanges: setSpeedRanges, freezes: setFreezes,
   };
   const histRef = useRef({ past: [], future: [], prev: null, skip: false, at: 0 });
@@ -4821,6 +4826,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         // tela dividida: parte do enquadramento que está na tela (o rosto) e passa a ser à mão
         if (splitContain) {
           setFramingMode('manual');
+          setSplitManual(true);
           const sd = vdim || (vbox?.vw ? { w: vbox.vw, h: vbox.vh } : null);
           const zs = sd ? splitPersonCrop(sd.w, sd.h, r.width, r.height, splitFace).zoom : 1;
           panRef.current = { startX: e.clientX, startY: e.clientY, fx: splitFace?.x ?? 0.5, fy: splitFace?.y ?? 0.35, w: r.width, h: r.height, zoom: zs };
@@ -8231,7 +8237,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
               </div>
               <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
                 {[{ id: 'auto', label: 'Automático (rosto)' }, { id: 'manual', label: 'Ajustar eu mesmo' }].map((o) => (
-                  <button key={o.id} onClick={() => setFramingMode(o.id)} style={framingTab(framingMode === o.id)}>{o.label}</button>
+                  <button key={o.id} onClick={() => { setFramingMode(o.id); if (o.id === 'auto') setSplitManual(false); }} style={framingTab(framingMode === o.id)}>{o.label}</button>
                 ))}
               </div>
               {framingMode === 'auto' && subjectMissing && (

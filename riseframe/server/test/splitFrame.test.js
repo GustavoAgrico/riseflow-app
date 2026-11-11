@@ -136,3 +136,21 @@ test('rastreador indisponível: o motivo vira aviso na tela (Python / OpenCV)', 
   assert.equal(trackerProblem("ModuleNotFoundError: No module named 'cv2'"), 'opencv');
   assert.equal(trackerProblem('tracker code 9'), 'erro');
 });
+
+test('tela dividida: o ponto do zoom escolhido na criação não vira posição do rosto (print)', async () => {
+  const { splitFaceFor } = await import('../../shared/splitFrame.js');
+  // rosto alto e grande (como no print); o zoom da criação ficou no ponto padrão 0,5 × 0,4
+  const tracked = { x: 0.5, y: 0.24, h: 0.13 };
+  const f = splitFaceFor(tracked, 0.5, 0.4);
+  assert.equal(f.y, 0.24, 'vale o rosto detectado');
+  const g = splitPersonCrop(...SRC, ...HALF, f);
+  const headTop = ((tracked.y - 1.1 * tracked.h) * g.scaledH - g.cropY) / HALF[1];
+  assert.ok(headTop >= 0, `cabeça inteira (topo em ${headTop.toFixed(3)})`);
+  // antes: o ponto do zoom (0,4) era tratado como o rosto e o recorte descia sobre a cabeça
+  const old = splitPersonCrop(...SRC, ...HALF, { x: 0.5, y: 0.4, h: tracked.h });
+  const oldTop = ((tracked.y - 1.1 * tracked.h) * old.scaledH - old.cropY) / HALF[1];
+  assert.ok(oldTop < 0, `antes cortava (topo em ${oldTop.toFixed(3)})`);
+  // sem rosto, o foco manual ainda serve; sem nada, null (a metade mostra o topo)
+  assert.deepEqual(splitFaceFor(null, 0.3, 0.2), { x: 0.3, y: 0.2, source: 'manual' });
+  assert.equal(splitFaceFor(null, undefined, undefined), null);
+});
