@@ -632,7 +632,9 @@ export async function getSubject(id) {
   const r = await fetch(`${BASE}/jobs/${id}/subject`);
   if (!r.ok) return null;
   const d = await r.json().catch(() => null);
-  return d && Number.isFinite(d.x) ? d : null;
+  if (d && Number.isFinite(d.x)) return d;
+  // sem rosto: { unavailable: 'python' | 'opencv' | 'sem-rosto' | 'erro' }
+  return d && d.unavailable ? { unavailable: String(d.unavailable) } : null;
 }
 /** Cópia do vídeo para editar (quadro-chave a cada 0,5 s: a prévia não trava nos cortes). */
 export const editSourceUrl = (id) => `${BASE}/jobs/${id}/edit-source`;

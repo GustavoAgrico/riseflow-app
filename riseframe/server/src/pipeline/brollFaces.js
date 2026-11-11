@@ -1,6 +1,6 @@
 // Rostos do B-roll (para o enquadramento automático — ver shared/brollFocus.js).
-// Roda o broll_faces.py (OpenCV). Sem Python/OpenCV, devolve null e o B-roll fica com o
-// enquadramento padrão: nunca trava o render.
+// Roda o broll_faces.py (OpenCV); sem Python/OpenCV, o detector em JavaScript (faceHaar.js).
+// Sem rosto, devolve null e o B-roll fica com o enquadramento padrão: nunca trava o render.
 
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -9,6 +9,7 @@ import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolvePython } from './python.js';
+import { detectFacesJs } from './faceHaar.js';
 import { trackChild } from '../jobContext.js';
 import { makeLogger } from '../logger.js';
 
@@ -19,9 +20,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * Rostos de um arquivo local (imagem, ou o quadro em `at` s de um vídeo).
  * @returns {Promise<{aspect:number, faces:Array<{x,y,w,h}>}|null>}
  */
-export async function detectFaces(file, { at = 0.5, timeoutMs = 20000 } = {}) {
+export async function detectFaces(file, opts = {}) {
+  const viaPy = await detectFacesPy(file, opts);
+  if (viaPy !== undefined) return viaPy;
+  // sem Python/OpenCV (app de PC): o detector em JavaScript, mesmo classificador do OpenCV
+  try {
+    return await detectFacesJs(file, opts);
+  } catch (err) {
+    log.info(`rostos não detectados (detector JS: ${err.message})`);
+    return null;
+  }
+}
+
+/** undefined = Python/OpenCV indisponível (quem chama tenta o detector JS). */
+async function detectFacesPy(file, { at = 0.5, timeoutMs = 20000 } = {}) {
   const py = await resolvePython();
-  if (!py) return null;
+  if (!py) return undefined;
   const script = path.join(__dirname, 'broll_faces.py');
   return new Promise((resolve) => {
     let out = '';
@@ -30,14 +44,15 @@ export async function detectFaces(file, { at = 0.5, timeoutMs = 20000 } = {}) {
     try {
       proc = trackChild(spawn(py, [script, file, String(at)]));
     } catch {
-      return resolve(null);
+      return resolve(undefined);
     }
     const timer = setTimeout(() => proc.kill('SIGKILL'), timeoutMs);
     proc.stdout.on('data', (d) => (out += d.toString()));
     proc.stderr.on('data', (d) => (err += d.toString()));
-    proc.on('error', () => { clearTimeout(timer); resolve(null); });
+    proc.on('error', () => { clearTimeout(timer); resolve(undefined); });
     proc.on('close', (code) => {
       clearTimeout(timer);
+      if (code === 3) return resolve(undefined); // sem OpenCV 4.x
       if (code !== 0) {
         log.info(`rostos não detectados (${err.trim().split('\n').pop() || `code ${code}`})`);
         return resolve(null);

@@ -49,6 +49,9 @@ def main() -> int:
     except ImportError:
         sys.stderr.write("opencv indisponível\n")
         return 3
+    if not hasattr(cv2, "CascadeClassifier"):  # OpenCV 5 tirou o Haar do pacote principal
+        sys.stderr.write("opencv sem CascadeClassifier (use opencv-python-headless 4.x)\n")
+        return 3
 
     cap = cv2.VideoCapture(video)
     if not cap.isOpened():

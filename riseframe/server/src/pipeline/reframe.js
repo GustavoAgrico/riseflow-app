@@ -2,6 +2,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolvePython } from './python.js';
+import { trackFacesJs } from './faceHaar.js';
 import { makeLogger } from '../logger.js';
 import { trackChild } from '../jobContext.js';
 
@@ -269,15 +270,40 @@ async function runTracker(input, sampleFps = 5) {
  * enquadrar a pessoa no rosto na tela dividida. Retorna null se não houver tracking.
  * @returns {Promise<{x:number,y:number,source:string}|null>}
  */
-export async function averageSubjectCenter(input) {
+export async function averageSubjectCenter(input, { onError } = {}) {
   let data;
   try {
     data = await runTracker(input);
   } catch (err) {
-    log.warn(`tracking indisponível para enquadramento (${err.message})`);
-    return null;
+    const why = trackerProblem(err.message);
+    // sem Python/OpenCV (app de PC): o detector em JavaScript (mesmo classificador do
+    // OpenCV) acha o rosto — antes a tela dividida chutava e cortava a cabeça
+    if (why !== 'erro') {
+      try {
+        data = await trackFacesJs(input);
+        log.info(`rosto pelo detector JS (${why === 'python' ? 'sem Python' : 'sem OpenCV'}): ${data.points.length}/${data.samples.length} quadros`);
+      } catch (e) {
+        log.warn(`detector JS falhou (${e.message})`);
+      }
+    }
+    if (!data) {
+      log.warn(`tracking indisponível para enquadramento (${err.message})`);
+      onError?.(why);
+      return null;
+    }
   }
   return subjectFromTrack(data);
+}
+
+/**
+ * Por que o rastreador não rodou, numa palavra que a tela traduz: 'python' (não instalado),
+ * 'opencv' (falta o opencv-python-headless 4.x) ou 'erro'. Puro.
+ */
+export function trackerProblem(message) {
+  const m = String(message || '');
+  if (/python não encontrado/i.test(m)) return 'python';
+  if (/opencv|cv2|CascadeClassifier/i.test(m)) return 'opencv';
+  return 'erro';
 }
 
 /** Centro do sujeito (e só do rosto, em `face`) a partir da saída do track_subject.py. Puro. */
