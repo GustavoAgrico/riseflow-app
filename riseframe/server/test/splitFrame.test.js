@@ -25,7 +25,9 @@ test('tela dividida: o rosto fica no tamanho certo e no lugar certo, qualquer qu
     const faceX = (face.x * g.scaledW - g.cropX) / HALF[0];
     if (g.zoom > 1) assert.ok(Math.abs(faceH - SPLIT_FACE_SHARE) < 0.01, `rosto ${h}: ocupa ${faceH.toFixed(2)} da metade`);
     else assert.ok(faceH >= SPLIT_FACE_SHARE - 0.01, `rosto grande fica no tamanho dele (${faceH.toFixed(2)})`);
-    assert.ok(Math.abs(faceY - SPLIT_FACE_Y) < 0.01, `centro do rosto a ${SPLIT_FACE_Y} da altura (${faceY.toFixed(2)})`);
+    // centro do rosto a SPLIT_FACE_Y — ou um pouco abaixo quando a trava da cabeça desce o quadro
+    assert.ok(faceY >= SPLIT_FACE_Y - 0.01 && faceY <= SPLIT_FACE_Y + 0.05, `centro do rosto perto de ${SPLIT_FACE_Y} (${faceY.toFixed(2)})`);
+    assert.ok(faceY - HEAD_ABOVE * faceH >= HEAD_MARGIN - 0.005, 'topo do cabelo com folga');
     // no meio — ou o mais perto possível quando não sobra largura para os lados (sem zoom)
     assert.ok(Math.abs(faceX - 0.5) < 0.01 || g.cropX === 0 || g.cropX === g.scaledW - HALF[0], `rosto no meio (${faceX.toFixed(2)})`);
     // cabeça inteira: topo da cabeça (~0,6 do rosto acima do centro) dentro da metade
@@ -33,15 +35,17 @@ test('tela dividida: o rosto fica no tamanho certo e no lugar certo, qualquer qu
   }
 });
 
-test('tela dividida: rosto perto da borda não deixa faixa; sem rosto, centro um pouco acima', () => {
+test('tela dividida: rosto perto da borda não deixa faixa; sem rosto, mostra o topo', () => {
   const g = splitPersonCrop(...SRC, ...HALF, { x: 0.95, y: 0.05, h: 0.12 });
   assert.equal(g.cropY, 0);
   assert.equal(g.cropX, g.scaledW - HALF[0]);
   const n = splitPersonCrop(...SRC, ...HALF, null);
   assert.equal(n.zoom, 1);
   assert.equal(n.scaledW, 1080);
-  // sem rosto: a trava supõe um rosto grande (centro 0,35, cabelo ~0,2 acima)
-  assert.equal(n.cropY, Math.round(Math.min(0.35 * 1920 - 960 * SPLIT_FACE_Y, (0.35 - HEAD_ABOVE * 0.2) * 1920 - 960 * HEAD_MARGIN)));
+  // sem rosto (sem Python/OpenCV no PC): mostra o topo do vídeo, onde fica a cabeça
+  assert.equal(n.cropY, 0);
+  assert.equal(n.anchorY, 0);
+  assert.equal(splitPersonCrop(...SRC, ...HALF, { x: 0.4 }).cropY, 0, 'só x, sem y: também o topo');
   // vídeo horizontal (16:9) na metade: cobre pela altura e centraliza no rosto
   const w = splitPersonCrop(1920, 1080, ...HALF, { x: 0.3, y: 0.4, h: 0.25 });
   assert.ok(w.scaledH >= 960 && w.cropX >= 0 && w.cropX + 1080 <= w.scaledW);
@@ -104,4 +108,31 @@ test('tela dividida: o zoom dos momentos amplia a partir do topo da cabeça (o p
   assert.match(vf, new RegExp(`y='\\(ih-ih/zoom\\)\\*${g.anchorY.toFixed(4)}`));
   // padrão (vídeo inteiro): continua centralizado, igual a antes
   assert.match(momentsZoomVf([[1, 2, 1.2, 'punch']], { width: 1080, height: 1920, fps: 30 }), /y='ih\/2-\(ih\/zoom\/2\)'/);
+});
+
+test('tela dividida sem rastreador: quem deu zoom no rosto antes não tem a cabeça cortada (print)', () => {
+  // vídeo já ampliado no rosto: cabelo começa a ~5% do topo do vídeo. Sem o rastreador
+  // (app de PC sem OpenCV), o padrão antigo começava o recorte a 12% e cortava o cabelo.
+  const hairTop = 0.05;
+  const g = splitPersonCrop(...SRC, ...HALF, null);
+  assert.ok(g.cropY / g.scaledH <= hairTop, `recorte começa em ${(g.cropY / g.scaledH).toFixed(3)}`);
+  const oldCrop = Math.min(0.35 * 1920 - 960 * 0.4, (0.35 - 0.2) * 1920 - 960 * 0.06) / 1920;
+  assert.ok(oldCrop > hairTop, 'o padrão antigo cortava (regressão do print)');
+});
+
+test('tela dividida: cabelo volumoso (topo a 1,1 rosto do centro) fica inteiro com o rosto detectado', () => {
+  for (const face of [{ x: 0.5, y: 0.3, h: 0.15 }, { x: 0.5, y: 0.25, h: 0.2 }, { x: 0.5, y: 0.4, h: 0.08 }]) {
+    const g = splitPersonCrop(...SRC, ...HALF, face);
+    const top = ((face.y - 1.1 * face.h) * g.scaledH - g.cropY) / HALF[1];
+    assert.ok(top >= 0.02, `${JSON.stringify(face)}: topo do cabelo em ${top.toFixed(3)} da metade`);
+  }
+});
+
+test('rastreador indisponível: o motivo vira aviso na tela (Python / OpenCV)', async () => {
+  const { trackerProblem } = await import('../src/pipeline/reframe.js');
+  assert.equal(trackerProblem('Python não encontrado no PATH (instale Python 3 ou defina PYTHON_BIN)'), 'python');
+  assert.equal(trackerProblem('opencv indisponível'), 'opencv');
+  assert.equal(trackerProblem('opencv sem CascadeClassifier (use opencv-python-headless 4.x)'), 'opencv');
+  assert.equal(trackerProblem("ModuleNotFoundError: No module named 'cv2'"), 'opencv');
+  assert.equal(trackerProblem('tracker code 9'), 'erro');
 });

@@ -442,11 +442,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // pessoa é enquadrada nele, no zoom que o tamanho do rosto pede — o zoom acima (do vídeo
   // inteiro) não vale ali. Foco ajustado à mão decide o centro.
   const [subject, setSubject] = useState(null);
+  const [subjectMissing, setSubjectMissing] = useState(null); // por que o rosto não foi achado
   const splitPivotRef = useRef(null); // tela dividida: ponto fixo do zoom dos momentos na metade
   useEffect(() => {
     if (!sourceId) return undefined;
     let alive = true;
-    getSubject(sourceId).then((s) => { if (alive) setSubject(s); }).catch(() => {});
+    getSubject(sourceId).then((s) => {
+      if (!alive) return;
+      setSubject(s && Number.isFinite(s.x) ? s : null);
+      setSubjectMissing(s?.unavailable || null);
+    }).catch(() => {});
     return () => { alive = false; };
   }, [sourceId]);
   const focusMoved = framingMode === 'manual' && (Math.abs(focus.x - 0.5) > 0.004 || Math.abs(focus.y - 0.4) > 0.004);
@@ -8229,6 +8234,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   <button key={o.id} onClick={() => setFramingMode(o.id)} style={framingTab(framingMode === o.id)}>{o.label}</button>
                 ))}
               </div>
+              {framingMode === 'auto' && subjectMissing && (
+                <div style={{ fontSize: 11.5, lineHeight: 1.45, color: '#FCD34D', background: 'rgba(252,211,77,0.08)', border: '1px solid rgba(252,211,77,0.3)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+                  {subjectMissing === 'sem-rosto'
+                    ? 'Não achei um rosto no vídeo: sua metade mostra o topo do vídeo. Se precisar, use "Ajustar eu mesmo".'
+                    : 'Não consegui analisar o rosto neste vídeo: sua metade mostra o topo do vídeo. Se precisar, use "Ajustar eu mesmo".'}
+                </div>
+              )}
               {framingMode === 'manual' && (
                 <div style={{ display: 'grid', gap: 8 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted }}>

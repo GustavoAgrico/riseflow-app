@@ -2053,7 +2053,7 @@ jobsRouter.get('/jobs/:id/edit-source', (req, res) => {
   res.sendFile(path.resolve(job.inputPath));
 });
 
-// GET /api/jobs/:id/subject → { x, y, h } do rosto no vídeo de origem (ou {} sem rosto).
+// GET /api/jobs/:id/subject → { x, y, h } do rosto no vídeo de origem (ou { unavailable } sem rosto).
 // A prévia da tela dividida enquadra a pessoa com a MESMA conta do render
 // (shared/splitFrame.js). Rastreia uma vez por vídeo (guarda na memória).
 const subjectCache = new Map();
@@ -2065,12 +2065,19 @@ jobsRouter.get('/jobs/:id/subject', async (req, res) => {
     const key = `${job.id}:${job.inputPath}`;
     if (!subjectCache.has(key)) {
       if (subjectCache.size > 300) subjectCache.delete(subjectCache.keys().next().value);
-      subjectCache.set(key, averageSubjectCenter(job.inputPath).catch(() => null));
+      let why = 'sem-rosto'; // rastreou e não achou rosto (o onError troca pelo motivo da falha)
+      subjectCache.set(key, averageSubjectCenter(job.inputPath, { onError: (w) => { why = w; } })
+        .catch(() => { why = 'erro'; return null; })
+        .then((s) => ({ s, why })));
     }
-    const s = await subjectCache.get(key);
+    const { s, why } = await subjectCache.get(key);
     // só o rosto (sem o centro de movimento, que cortava a cabeça na tela dividida)
     const f = s?.face;
-    res.set('Cache-Control', 'private, max-age=3600').json(f ? { x: f.x, y: f.y, ...(f.h ? { h: f.h } : {}), source: 'face' } : {});
+    if (f) return res.set('Cache-Control', 'private, max-age=3600').json({ x: f.x, y: f.y, ...(f.h ? { h: f.h } : {}), source: 'face' });
+    // sem rosto: diz o porquê (no app de PC, quase sempre falta Python/OpenCV) — a tela avisa
+    // e a metade da pessoa mostra o topo do vídeo, sem chutar onde está a cabeça
+    if (why !== 'sem-rosto') subjectCache.delete(key); // instalou o OpenCV: tenta de novo
+    res.set('Cache-Control', 'no-store').json({ unavailable: why });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

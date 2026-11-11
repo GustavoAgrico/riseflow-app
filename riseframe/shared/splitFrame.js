@@ -11,12 +11,12 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 /** Altura do rosto que fica bonita na metade (fração da altura da metade). */
 export const SPLIT_FACE_SHARE = 0.3;
 /** Onde fica o centro do rosto na metade (fração da altura, de cima). */
-export const SPLIT_FACE_Y = 0.4;
+export const SPLIT_FACE_Y = 0.45;
 export const SPLIT_MAX_ZOOM = 2.2;
 /** Topo do cabelo acima do centro do rosto, em alturas de rosto (caixa do detector). */
-export const HEAD_ABOVE = 1.0;
+export const HEAD_ABOVE = 1.2;
 /** Folga acima da cabeça (fração da altura da metade). */
-export const HEAD_MARGIN = 0.06;
+export const HEAD_MARGIN = 0.08;
 
 /**
  * Recorte da metade da pessoa.
@@ -25,7 +25,9 @@ export const HEAD_MARGIN = 0.06;
  * @param {number} regionW largura da metade (px)
  * @param {number} regionH altura da metade (px)
  * @param {{x?:number, y?:number, h?:number}|null} face centro do rosto (0–1) e altura dele
- *   (fração da altura do vídeo). Sem altura: zoom 1 (só cobre). Sem rosto: centro, um pouco acima.
+ *   (fração da altura do vídeo). Sem altura: zoom 1 (só cobre). Sem rosto (rastreador sem
+ *   Python/OpenCV, ou não achou): mostra o TOPO do vídeo — onde fica a cabeça de quem fala
+ *   para a câmera. Chutar o centro cortava a cabeça de quem deu zoom no rosto antes.
  * @returns {{scaledW:number, scaledH:number, cropX:number, cropY:number, zoom:number}}
  */
 export function splitPersonCrop(srcW, srcH, regionW, regionH, face = null) {
@@ -42,12 +44,14 @@ export function splitPersonCrop(srcW, srcH, regionW, regionH, face = null) {
   const scaledW = Math.max(rw, Math.round(sw * s));
   const scaledH = Math.max(rh, Math.round(sh * s));
   const fx = clamp(Number.isFinite(Number(face?.x)) ? Number(face.x) : 0.5, 0, 1);
-  const fy = clamp(Number.isFinite(Number(face?.y)) ? Number(face.y) : 0.35, 0, 1);
+  const hasY = face != null && face.y != null && Number.isFinite(Number(face.y));
   const cropX = Math.round(clamp(fx * scaledW - rw / 2, 0, scaledW - rw));
+  if (!hasY) return { scaledW, scaledH, cropX, cropY: 0, zoom: +zoom.toFixed(3), anchorY: 0 };
+  const fy = clamp(Number(face.y), 0, 1);
   let cropY = fy * scaledH - rh * SPLIT_FACE_Y;
   // trava da cabeça: o topo dela fica dentro da metade, com folga — nunca corta a cabeça.
-  // O detector marca o rosto das sobrancelhas ao queixo; o topo do cabelo fica ~1 altura do
-  // rosto acima do CENTRO dele (medido em vídeo real; 0,65 cortava o cabelo). Sem o tamanho
+  // O detector marca o rosto das sobrancelhas ao queixo; o topo do cabelo fica ~1,2 altura do
+  // rosto acima do CENTRO dele (0,65 e depois 1,0 ainda cortavam cabelo volumoso/topete). Sem o tamanho
   // do rosto, supõe um rosto grande (o caso que corta).
   const head = fy - HEAD_ABOVE * (fh > 0 ? fh : 0.2);
   cropY = Math.min(cropY, head * scaledH - rh * HEAD_MARGIN);
