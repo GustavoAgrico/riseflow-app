@@ -271,28 +271,38 @@ async function runTracker(input, sampleFps = 5) {
  * @returns {Promise<{x:number,y:number,source:string}|null>}
  */
 export async function averageSubjectCenter(input, { onError } = {}) {
-  let data;
+  let data = null;
+  let engine = 'python';
+  let failure = null;
   try {
     data = await runTracker(input);
   } catch (err) {
-    const why = trackerProblem(err.message);
-    // sem Python/OpenCV (app de PC): o detector em JavaScript (mesmo classificador do
-    // OpenCV) acha o rosto — antes a tela dividida chutava e cortava a cabeça
-    if (why !== 'erro') {
-      try {
-        data = await trackFacesJs(input);
-        log.info(`rosto pelo detector JS (${why === 'python' ? 'sem Python' : 'sem OpenCV'}): ${data.points.length}/${data.samples.length} quadros`);
-      } catch (e) {
-        log.warn(`detector JS falhou (${e.message})`);
+    failure = err;
+  }
+  // Python sem rosto ou com erro (sem Python/OpenCV, OpenCV 5, vídeo que o OpenCV não abre —
+  // codec, ou pasta com acento no Windows): o detector em JavaScript lê os quadros pelo
+  // ffmpeg e usa o mesmo classificador. Antes, no erro "genérico", a tela dividida ficava
+  // sem rosto e mostrava o topo do vídeo (o rosto ia lá para baixo).
+  const facePts = (d) => (d?.points || []).filter((p) => p.src === 'face').length;
+  if (!data || facePts(data) < 3) {
+    try {
+      const js = await trackFacesJs(input);
+      if (!data || facePts(js) > facePts(data)) {
+        data = js;
+        engine = 'js';
       }
-    }
-    if (!data) {
-      log.warn(`tracking indisponível para enquadramento (${err.message})`);
-      onError?.(why);
-      return null;
+      log.info(`rosto pelo detector JS (${failure ? `rastreador: ${failure.message.split('\n').pop()}` : 'o rastreador não achou rosto'}): ${js.points.length}/${js.samples.length} quadros`);
+    } catch (e) {
+      log.warn(`detector JS falhou (${e.message})`);
     }
   }
-  return subjectFromTrack(data);
+  if (!data) {
+    log.warn(`tracking indisponível para enquadramento (${failure?.message})`);
+    onError?.(trackerProblem(failure?.message), failure?.message);
+    return null;
+  }
+  const s = subjectFromTrack(data);
+  return s ? { ...s, engine } : null;
 }
 
 /**

@@ -94,6 +94,15 @@ export default function Result({ job, onReset, onEditTimeline }) {
               </span>
             </div>
           )}
+          {r.broll?.framing?.mode === 'none' && r.broll.inserted > 0 && (
+            <div role="status" style={{ display: 'flex', gap: 10, padding: '11px 13px', borderRadius: 12, fontSize: 13, lineHeight: 1.45, border: '1px solid rgba(255,170,60,0.55)', background: 'rgba(255,170,60,0.1)' }}>
+              <Icon name="alert" size={17} strokeWidth={2.2} />
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <b>Seu rosto não foi encontrado na tela dividida</b>: sua metade mostra o topo do vídeo.{r.broll.framing.why ? ` Motivo: ${r.broll.framing.why}.` : ''}
+                {onEditTimeline ? ' Na timeline, aba Enquadramento → "Ajustar eu mesmo", arraste sua metade para o lugar.' : ''}
+              </span>
+            </div>
+          )}
           {saved && (
             <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderRadius: 12, fontSize: 13, lineHeight: 1.4,
               border: `1px solid ${saved.state === 'error' ? 'rgba(240,82,107,0.6)' : saved.state === 'done' ? 'rgba(46,212,122,0.55)' : C.border}`,
@@ -167,6 +176,14 @@ export default function Result({ job, onReset, onEditTimeline }) {
         {r.captions && <Stat label="Legendas" value={`${r.captions.segments} blocos`} />}
         {r.color && <Stat label="Look" value={r.color.ai ? `IA · ${r.color.look}` : r.color.look} />}
         {r.broll && r.broll.inserted > 0 && <Stat label="B-roll" value={`${r.broll.inserted} clipes`} />}
+        {r.broll?.framing && r.broll.inserted > 0 && (
+          <Stat label="Tela dividida" value={
+            r.broll.framing.mode === 'none' ? 'sem rosto'
+              : r.broll.framing.mode === 'timeline' ? 'ajuste da timeline'
+                : r.broll.framing.mode === 'manual' ? 'ponto escolhido'
+                  : `rosto${r.broll.framing.moments ? ` em ${r.broll.framing.moments.withFace}/${r.broll.framing.moments.total}` : ''}${r.broll.framing.engine === 'js' ? ' · JS' : ''}`
+          } />
+        )}
         {r.output && <Stat label="Formato" value={r.output.aspect} />}
         {r.output?.reframe?.tracked && (
           <Stat label="Enquadramento" value={`IA · segue ${r.output.reframe.source === 'face' ? 'rosto' : 'sujeito'}`} />

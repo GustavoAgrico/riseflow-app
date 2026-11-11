@@ -678,16 +678,24 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
   // rastreador dá o tamanho do rosto (e o centro, sem foco manual).
   let personFocus = null;
   let faceTrack = null; // rosto no tempo: cada momento de B-roll é enquadrado no rosto dele
+  // como a pessoa foi enquadrada (aparece no resultado: sem isso não dava para saber se o
+  // rosto foi achado no computador de quem renderizou)
+  let framing = isSplit ? { mode: 'none' } : null;
   if (isSplit && options.splitFace) {
     // a pessoa ajustou a metade à mão na timeline: vale para todos os momentos
     personFocus = { ...options.splitFace, source: 'timeline' };
+    framing = { mode: 'timeline' };
     log.ok(`tela dividida: pessoa enquadrada como na timeline (${personFocus.x.toFixed(2)}, ${personFocus.y.toFixed(2)})`);
   } else if (isSplit) {
     // só o rosto detectado (o centro de movimento cai nas mãos/peito e cortava a cabeça)
-    const subj = await averageSubjectCenter(options.personInput || input);
+    let trackWhy = null;
+    const subj = await averageSubjectCenter(options.personInput || input, { onError: (w, msg) => { trackWhy = msg || w; } });
     faceTrack = subj?.track?.length ? subj.track : null;
     // o foco manual é o ponto do zoom do vídeo inteiro: só vale sem rosto (splitFrame.js)
     personFocus = splitFaceFor(subj?.face || null, options.personFocusX, options.personFocusY);
+    framing = personFocus
+      ? { mode: personFocus.source, engine: subj?.engine || null }
+      : { mode: 'none', why: trackWhy ? String(trackWhy).split('\n').pop().slice(0, 160) : 'nenhum rosto encontrado no vídeo' };
     if (personFocus) log.ok(`tela dividida: pessoa enquadrada no ${personFocus.source} (${personFocus.x.toFixed(2)}, ${personFocus.y.toFixed(2)}${personFocus.h ? `, rosto ${Math.round(personFocus.h * 100)}%` : ''})${faceTrack ? `, ajustada a cada momento (${faceTrack.length} amostras)` : ''}`);
     else log.info('tela dividida: sem rosto detectado; a metade mostra o topo do vídeo');
   }
@@ -723,7 +731,9 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     const pW = options.personInput && options.personMeta?.width ? options.personMeta.width : W;
     const pH = options.personInput && options.personMeta?.height ? options.personMeta.height : H;
     // enquadramento de cada momento: o rosto naquele trecho (a pessoa se mexe), ou o do vídeo
-    const geo = clips.map((c) => splitPersonCrop(pW, pH, regionW, regionH, faceTrack ? splitFaceInWindow(faceTrack, c.start, c.end, personFocus) : personFocus));
+    const faces = clips.map((c) => (faceTrack ? splitFaceInWindow(faceTrack, c.start, c.end, personFocus) : personFocus));
+    const geo = faces.map((f) => splitPersonCrop(pW, pH, regionW, regionH, f));
+    if (framing && faceTrack) framing.moments = { withFace: faces.filter((f) => f && f !== personFocus).length, total: clips.length };
     // A metade da pessoa vem da fonte SEM o reenquadramento do vídeo inteiro (quando houver),
     // para o foco/zoom não ser aplicado duas vezes. O resto do vídeo usa a entrada 0.
     const personIdx = options.personInput ? clips.length + 1 : 0;
@@ -823,5 +833,5 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     start: +c.start.toFixed(3), end: +c.end.toFixed(3), kind: c.isImage ? 'image' : 'video', link: c.link || null,
     query: c.query || c.term || null, zoom: c.zoom, fx: c.fx, fy: c.fy, credit: c.credit || null,
   }));
-  return { output, inserted: clips.length, items, layout };
+  return { output, inserted: clips.length, items, layout, ...(framing ? { framing } : {}) };
 }
