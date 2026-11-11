@@ -34,7 +34,7 @@ import { customFontFamily, useCustomFonts } from '../customFonts.js';
 import { shadowParams } from '../../../shared/captionShadow.js';
 import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById, fontStyles } from '../../../shared/captionStyle.js';
 import { faceFocus, brollRegionAspect } from '../../../shared/brollFocus.js';
-import { splitPersonCrop } from '../../../shared/splitFrame.js';
+import { splitPersonCrop, splitFaceInWindow } from '../../../shared/splitFrame.js';
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 import { captionCues, toSrt, toVtt, toTxt, skipMapper } from '../../../shared/captionExport.js';
 import { layerAt, upsertKey, shiftKf, KF_INTERPS, kfInterpOf, withInterp, cleanVolKeys, volDbAt, VOL_DB_MIN, VOL_DB_MAX } from '../../../shared/layerKeys.js';
@@ -458,9 +458,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // metade. O foco do zoom do vídeo inteiro (criação/Enquadramento) é o ponto do ZOOM, não o
   // rosto: usado como rosto, a cabeça era calculada mais baixa do que estava e saía cortada.
   const [splitManual, setSplitManual] = useState(false);
-  const splitFace = splitManual
-    ? { x: focus.x, y: focus.y, ...(subject?.h ? { h: subject.h } : {}) }
-    : subject;
+  const splitFaceManual = splitManual ? { x: focus.x, y: focus.y, ...(subject?.h ? { h: subject.h } : {}) } : null;
   // Formato do vídeo final e como ele entra no formato (igual ao servidor):
   // auto = segue o rosto · manual = ponto escolhido · fit = inteiro com fundo desfocado.
   const [aspectSel, setAspectSel] = useState(['original', '9:16', '1:1', '16:9'].includes(options?.aspect) ? options.aspect : 'original');
@@ -3341,7 +3339,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         personFocusX: +focus.x.toFixed(3),
         personFocusY: +focus.y.toFixed(3),
         // tela dividida: o rosto que a prévia usou para enquadrar a pessoa (o render usa o mesmo)
-        ...(splitFace ? { splitFace: { x: +splitFace.x.toFixed(3), y: +splitFace.y.toFixed(3), ...(splitFace.h ? { h: +splitFace.h.toFixed(3) } : {}) } } : {}),
+        // tela dividida ajustada à mão (sem ajuste, o render enquadra cada momento pelo rosto dele)
+        ...(splitFaceManual ? { splitFace: { x: +splitFaceManual.x.toFixed(3), y: +splitFaceManual.y.toFixed(3), ...(splitFaceManual.h ? { h: +splitFaceManual.h.toFixed(3) } : {}) } } : {}),
         // Ajustes de legenda escolhidos aqui na timeline (sobrepõem os das opções).
         ...cap,
         // Zoom, efeitos sonoros e cor escolhidos nas abas Efeitos e Cor.
@@ -4776,6 +4775,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     ? (brollReview?.moments || []).filter((m) => !m.removed && (m.myMediaId || m.candidates?.[m.pick])).map((m) => ({ start: m.start, end: m.end }))
     : [];
   const previewMode = brollMoment && thumbOf(brollMoment) ? (brollLayout === 'split' ? 'split' : 'broll') : 'video';
+  // Tela dividida: a pessoa se mexe, então cada momento de B-roll é enquadrado no rosto
+  // DAQUELE trecho (como o render); ajustada à mão, vale o ajuste.
+  const splitFace = splitFaceManual
+    || (subject && brollMoment ? splitFaceInWindow(subject.track, brollMoment.start, brollMoment.end, subject) : subject);
   // Recorte da pessoa = a MESMA conta do servidor (faceCropGeometry): cobre o quadro,
   // amplia pelo zoom e CENTRALIZA no ponto do rosto. Assim a prévia bate com o render.
   const fitMode = reframeMode === 'fit' && aspectSel !== 'original' && previewMode === 'video';

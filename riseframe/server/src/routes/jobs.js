@@ -2073,7 +2073,13 @@ jobsRouter.get('/jobs/:id/subject', async (req, res) => {
     const { s, why } = await subjectCache.get(key);
     // só o rosto (sem o centro de movimento, que cortava a cabeça na tela dividida)
     const f = s?.face;
-    if (f) return res.set('Cache-Control', 'private, max-age=3600').json({ x: f.x, y: f.y, ...(f.h ? { h: f.h } : {}), source: 'face' });
+    if (f) {
+      // rosto no tempo (até 600 pontos): a prévia enquadra cada momento de B-roll como o render
+      const tr = Array.isArray(s.track) ? s.track : [];
+      const k = Math.max(1, Math.ceil(tr.length / 600));
+      const track = tr.filter((_, i) => i % k === 0);
+      return res.set('Cache-Control', 'private, max-age=3600').json({ x: f.x, y: f.y, ...(f.h ? { h: f.h } : {}), source: 'face', track });
+    }
     // sem rosto: diz o porquê (no app de PC, quase sempre falta Python/OpenCV) — a tela avisa
     // e a metade da pessoa mostra o topo do vídeo, sem chutar onde está a cabeça
     if (why !== 'sem-rosto') subjectCache.delete(key); // instalou o OpenCV: tenta de novo

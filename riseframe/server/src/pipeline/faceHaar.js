@@ -275,12 +275,13 @@ function facesOf(frame, opts = {}) {
  * Rastreamento simples (só rosto) no formato do track_subject.py: { points, samples }.
  * Amostra até `maxFrames` quadros espalhados pelo vídeo.
  */
-export async function trackFacesJs(input, { maxFrames = 24, width = 480, timeoutMs = 120000 } = {}) {
+export async function trackFacesJs(input, { maxFrames = 150, width = 360, timeoutMs = 180000 } = {}) {
   let duration = 0;
   try {
     const p = await probe(input);
     duration = Number(p?.format?.duration) || 0;
   } catch { /* sem duração: amostra do começo */ }
+  // ~1 quadro por segundo (a tela dividida enquadra cada momento de B-roll pelo rosto dele)
   const fps = duration > 0 ? Math.min(2, maxFrames / duration) : 1;
   const frames = await grabFrames(input, { fps: +fps.toFixed(4), width, maxFrames, timeoutMs });
   const points = [];

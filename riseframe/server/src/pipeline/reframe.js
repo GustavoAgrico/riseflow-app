@@ -326,7 +326,15 @@ export function subjectFromTrack(data) {
   const faceOnly = face.length >= 3
     ? { x: clamp(median(face.map((p) => p.x)), 0, 1), y: clamp(median(face.map((p) => p.y)), 0, 1), ...(h ? { h: clamp(h, 0.02, 1) } : {}) }
     : null;
-  return { x: clamp(x, 0, 1), y: clamp(y, 0, 1), ...(h ? { h: clamp(h, 0.02, 1) } : {}), source: face.length ? 'face' : 'motion', face: faceOnly };
+  // rosto no tempo (maior rosto de cada amostra): a tela dividida enquadra cada momento de
+  // B-roll pelo rosto DAQUELE momento (shared/splitFrame.js splitFaceInWindow)
+  const track = faceOnly ? (data?.samples || []).flatMap((sm) => {
+    const fs2 = Array.isArray(sm.faces) ? sm.faces.filter((f) => Number(f.h) > 0) : [];
+    if (!fs2.length || !Number.isFinite(Number(sm.t))) return [];
+    const f = fs2.reduce((m, q) => (Number(q.h) > Number(m.h) ? q : m));
+    return [{ t: Number(sm.t), x: +Number(f.x).toFixed(4), y: +Number(f.y).toFixed(4), h: +Number(f.h).toFixed(4) }];
+  }) : [];
+  return { x: clamp(x, 0, 1), y: clamp(y, 0, 1), ...(h ? { h: clamp(h, 0.02, 1) } : {}), source: face.length ? 'face' : 'motion', face: faceOnly, track };
 }
 
 /**
