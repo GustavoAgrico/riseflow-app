@@ -120,10 +120,10 @@ test('tela dividida sem rastreador: quem deu zoom no rosto antes não tem a cabe
   assert.ok(oldCrop > hairTop, 'o padrão antigo cortava (regressão do print)');
 });
 
-test('tela dividida: cabelo volumoso (topo a 1,1 rosto do centro) fica inteiro com o rosto detectado', () => {
+test('tela dividida: cabelo volumoso (topo a 0,95 rosto do centro) fica inteiro com o rosto detectado', () => {
   for (const face of [{ x: 0.5, y: 0.3, h: 0.15 }, { x: 0.5, y: 0.25, h: 0.2 }, { x: 0.5, y: 0.4, h: 0.08 }]) {
     const g = splitPersonCrop(...SRC, ...HALF, face);
-    const top = ((face.y - 1.1 * face.h) * g.scaledH - g.cropY) / HALF[1];
+    const top = ((face.y - 0.95 * face.h) * g.scaledH - g.cropY) / HALF[1];
     assert.ok(top >= 0.02, `${JSON.stringify(face)}: topo do cabelo em ${top.toFixed(3)} da metade`);
   }
 });
@@ -144,11 +144,11 @@ test('tela dividida: o ponto do zoom escolhido na criação não vira posição 
   const f = splitFaceFor(tracked, 0.5, 0.4);
   assert.equal(f.y, 0.24, 'vale o rosto detectado');
   const g = splitPersonCrop(...SRC, ...HALF, f);
-  const headTop = ((tracked.y - 1.1 * tracked.h) * g.scaledH - g.cropY) / HALF[1];
+  const headTop = ((tracked.y - 0.8 * tracked.h) * g.scaledH - g.cropY) / HALF[1];
   assert.ok(headTop >= 0, `cabeça inteira (topo em ${headTop.toFixed(3)})`);
   // antes: o ponto do zoom (0,4) era tratado como o rosto e o recorte descia sobre a cabeça
   const old = splitPersonCrop(...SRC, ...HALF, { x: 0.5, y: 0.4, h: tracked.h });
-  const oldTop = ((tracked.y - 1.1 * tracked.h) * old.scaledH - old.cropY) / HALF[1];
+  const oldTop = ((tracked.y - 0.8 * tracked.h) * old.scaledH - old.cropY) / HALF[1];
   assert.ok(oldTop < 0, `antes cortava (topo em ${oldTop.toFixed(3)})`);
   // sem rosto, o foco manual ainda serve; sem nada, null (a metade mostra o topo)
   assert.deepEqual(splitFaceFor(null, 0.3, 0.2), { x: 0.3, y: 0.2, source: 'manual' });
@@ -169,7 +169,7 @@ test('tela dividida: cada momento de B-roll é enquadrado no rosto DAQUELE trech
     const g = splitPersonCrop(...SRC, ...HALF, face);
     return {
       center: (f.y * g.scaledH - g.cropY) / HALF[1],
-      head: ((f.y - 1.1 * f.h) * g.scaledH - g.cropY) / HALF[1],
+      head: ((f.y - 0.8 * f.h) * g.scaledH - g.cropY) / HALF[1],
       chin: ((f.y + 0.5 * f.h) * g.scaledH - g.cropY) / HALF[1],
     };
   };
@@ -186,4 +186,17 @@ test('tela dividida: cada momento de B-roll é enquadrado no rosto DAQUELE trech
   // trecho sem rosto rastreado (e longe de qualquer amostra): o rosto do vídeo
   assert.equal(splitFaceInWindow(whole.track, 40, 43, whole.face), whole.face);
   assert.equal(splitFaceInWindow([], 1, 2, null), null);
+});
+
+test('tela dividida: rosto grande (medido no vídeo do usuário) fica no meio, com cabelo e queixo', () => {
+  // quadro do vídeo do usuário (480×853): rosto [125, 277, 233, 233], topo do cabelo em y=244
+  const face = { x: (125 + 116.5) / 480, y: (277 + 116.5) / 853, h: 233 / 853 };
+  const hair = 244 / 853;
+  const chin = (277 + 233) / 853;
+  const g = splitPersonCrop(...SRC, ...HALF, face);
+  const at = (v) => (v * g.scaledH - g.cropY) / HALF[1];
+  assert.ok(at(hair) >= 0.03, `cabelo inteiro (${at(hair).toFixed(2)})`);
+  assert.ok(at(hair) <= 0.25, `sem cenário demais em cima (${at(hair).toFixed(2)}; antes 0,37)`);
+  assert.ok(at(chin) <= 0.88, `queixo com folga (${at(chin).toFixed(2)}; antes 0,99)`);
+  assert.ok(at(face.y) > 0.4 && at(face.y) < 0.6, `rosto no meio (${at(face.y).toFixed(2)}; antes 0,72)`);
 });

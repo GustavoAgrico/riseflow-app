@@ -13,10 +13,17 @@ export const SPLIT_FACE_SHARE = 0.3;
 /** Onde fica o centro do rosto na metade (fração da altura, de cima). */
 export const SPLIT_FACE_Y = 0.45;
 export const SPLIT_MAX_ZOOM = 2.2;
-/** Topo do cabelo acima do centro do rosto, em alturas de rosto (caixa do detector). */
-export const HEAD_ABOVE = 1.2;
+/**
+ * Topo do cabelo acima do centro do rosto, em alturas de rosto (caixa do detector). Varia de
+ * pessoa para pessoa (medido: 0,64 num vídeo, 1,0 noutro): a folga é a maior (HEAD_ABOVE) quando
+ * cabe, e encolhe até HEAD_ABOVE_MIN só para o QUEIXO não sair por baixo em rosto grande.
+ */
+export const HEAD_ABOVE = 1.0;
+export const HEAD_ABOVE_MIN = 0.75;
+/** O queixo (base da caixa do rosto) fica acima desta altura da metade. */
+export const CHIN_MAX = 0.86;
 /** Folga acima da cabeça (fração da altura da metade). */
-export const HEAD_MARGIN = 0.08;
+export const HEAD_MARGIN = 0.06;
 
 /**
  * Recorte da metade da pessoa.
@@ -50,14 +57,22 @@ export function splitPersonCrop(srcW, srcH, regionW, regionH, face = null) {
   const fy = clamp(Number(face.y), 0, 1);
   let cropY = fy * scaledH - rh * SPLIT_FACE_Y;
   // trava da cabeça: o topo dela fica dentro da metade, com folga — nunca corta a cabeça.
-  // O detector marca o rosto das sobrancelhas ao queixo; o topo do cabelo fica ~1,2 altura do
-  // rosto acima do CENTRO dele (0,65 e depois 1,0 ainda cortavam cabelo volumoso/topete). Sem o tamanho
+  // O detector marca o rosto das sobrancelhas ao queixo; o topo do cabelo fica de 0,65 a
+  // 1,0 altura do rosto acima do CENTRO dele (ver HEAD_ABOVE). Chapéu alto pode encostar no topo. Sem o tamanho
   // do rosto, supõe um rosto grande (o caso que corta).
   // `top`: o topo da cabeça mais alto do trecho (a pessoa se inclina para a câmera) — a
   // trava respeita esse, não só o do rosto médio
   const top = Number(face?.top);
-  const head = Math.min(fy - HEAD_ABOVE * (fh > 0 ? fh : 0.2), Number.isFinite(top) ? top : Infinity);
+  const fhh = fh > 0 ? fh : 0.2;
+  const head = Math.min(fy - HEAD_ABOVE * fhh, Number.isFinite(top) ? top : Infinity);
   cropY = Math.min(cropY, head * scaledH - rh * HEAD_MARGIN);
+  // rosto grande: a folga cheia empurrava o rosto para baixo (cenário em cima, queixo
+  // cortado — print). Sobe o quadro até o queixo caber, sem passar da folga mínima.
+  const chinMin = (fy + 0.5 * fhh) * scaledH - rh * CHIN_MAX;
+  if (cropY < chinMin) {
+    const tight = Math.min(fy - HEAD_ABOVE_MIN * fhh, Number.isFinite(top) ? top + (HEAD_ABOVE - HEAD_ABOVE_MIN) * fhh : Infinity);
+    cropY = Math.min(chinMin, tight * scaledH - rh * HEAD_MARGIN);
+  }
   cropY = Math.round(clamp(cropY, 0, scaledH - rh));
   // ponto fixo do zoom dos momentos-chave na metade: o topo da cabeça (o zoom amplia para
   // baixo e a cabeça não sai pelo topo; ampliar pelo centro cortava o cabelo no punch)
