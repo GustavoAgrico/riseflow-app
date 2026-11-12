@@ -88,10 +88,11 @@ test('tela dividida: trava da cabeça mesmo com rosto alto e grande no quadro', 
 });
 
 test('tela dividida: o caso do print — rosto grande e baixo no quadro, cabelo inteiro na metade', () => {
-  // medido no vídeo: topo do cabelo a 0,26, centro do rosto (caixa do detector) a 0,48, h 0,22
+  // rosto grande e baixo (centro 0,48, h 0,22); cabelo até 0,8 rosto acima do centro
+  // (o do usuário, medido no vídeo dele, fica a 0,64)
   const face = { x: 0.5, y: 0.48, h: 0.22 };
   const g = splitPersonCrop(...SRC, ...HALF, face);
-  const hairTop = (0.26 * g.scaledH - g.cropY) / HALF[1];
+  const hairTop = ((0.48 - 0.8 * 0.22) * g.scaledH - g.cropY) / HALF[1];
   const chin = (0.59 * g.scaledH - g.cropY) / HALF[1];
   assert.ok(hairTop >= HEAD_MARGIN - 0.01, `cabelo dentro da metade (${hairTop.toFixed(3)})`);
   assert.ok(chin <= 0.85, `queixo com espaço embaixo (${chin.toFixed(3)})`);
@@ -127,11 +128,11 @@ test('tela dividida sem rastreador: quem deu zoom no rosto antes não tem a cabe
   assert.ok(oldCrop > hairTop, 'o padrão antigo cortava (regressão do print)');
 });
 
-test('tela dividida: cabelo volumoso (topo a 0,95 rosto do centro) fica inteiro com o rosto detectado', () => {
+test('tela dividida: cabelo volumoso (topo a 0,8 rosto do centro) fica inteiro com o rosto detectado', () => {
   for (const face of [{ x: 0.5, y: 0.3, h: 0.15 }, { x: 0.5, y: 0.25, h: 0.2 }, { x: 0.5, y: 0.4, h: 0.08 }]) {
     const g = splitPersonCrop(...SRC, ...HALF, face);
-    const top = ((face.y - 0.95 * face.h) * g.scaledH - g.cropY) / HALF[1];
-    assert.ok(top >= 0.02, `${JSON.stringify(face)}: topo do cabelo em ${top.toFixed(3)} da metade`);
+    const top = ((face.y - 0.8 * face.h) * g.scaledH - g.cropY) / HALF[1];
+    assert.ok(top >= 0.03, `${JSON.stringify(face)}: topo do cabelo em ${top.toFixed(3)} da metade`);
   }
 });
 
@@ -254,4 +255,14 @@ test('tela dividida: rosto que já enche a metade fica sem o zoom do momento (o 
   assert.equal(big.punchOk, false);
   // rosto normal: o zoom do momento continua
   assert.equal(splitPersonCrop(...SRC, ...HALF, { x: 0.5, y: 0.4, h: 0.12 }).punchOk, true);
+});
+
+test('tela dividida: rosto do usuário sobe (menos cenário em cima) — print 0:21', () => {
+  // rosto medido no vídeo do usuário; cabelo real a 0,64 rosto acima do centro
+  const face = { x: 0.503, y: 0.461, h: 0.273 };
+  const g = splitPersonCrop(...SRC, ...HALF, face);
+  const at = (v) => (v * g.scaledH - g.cropY) / HALF[1];
+  assert.ok(at(face.y - 0.64 * face.h) >= 0.03, `cabelo inteiro (${at(face.y - 0.64 * face.h).toFixed(3)})`);
+  assert.ok(at(face.y - 0.64 * face.h) <= 0.16, `pouco cenário em cima (${at(face.y - 0.64 * face.h).toFixed(3)}; antes ~0,28)`);
+  assert.ok(at(face.y + 0.5 * face.h) <= 0.82, `queixo com folga (${at(face.y + 0.5 * face.h).toFixed(3)})`);
 });
