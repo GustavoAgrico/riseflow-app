@@ -34,7 +34,7 @@ import { customFontFamily, useCustomFonts } from '../customFonts.js';
 import { shadowParams } from '../../../shared/captionShadow.js';
 import { CAPTION_FONT_LIST, CAPTION_COLOR_LIST, fontById, fontStyles } from '../../../shared/captionStyle.js';
 import { faceFocus, brollRegionAspect } from '../../../shared/brollFocus.js';
-import { splitPersonCrop, splitFaceInWindow } from '../../../shared/splitFrame.js';
+import { splitPersonCrop, splitFaceInWindow, fullFaceCrop } from '../../../shared/splitFrame.js';
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 import { captionCues, toSrt, toVtt, toTxt, skipMapper } from '../../../shared/captionExport.js';
 import { layerAt, upsertKey, shiftKf, KF_INTERPS, kfInterpOf, withInterp, cleanVolKeys, volDbAt, VOL_DB_MIN, VOL_DB_MAX } from '../../../shared/layerKeys.js';
@@ -1307,7 +1307,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           tmParts.push(`scale(${(1 + TM.z).toFixed(4)})`);
         }
         if (sw) { const stf = tmParts.join(' '); if (sw.style.transform !== stf) sw.style.transform = stf; }
-        const tfHalf = splitNow && TM ? tparts.slice(tmParts.length).join(' ') : tf;
+        let tfHalf = splitNow && TM ? tparts.slice(tmParts.length).join(' ') : tf;
+        // rosto que já enche a metade: sem o zoom do momento nela (como o render)
+        if (splitNow && splitPivotRef.current?.noPunch && Math.abs(m.scale - 1) > 0.0005) {
+          const hp = [];
+          if (Math.abs(K.x) > 1e-4 || Math.abs(K.y) > 1e-4) hp.push(`translate(${(K.x * 100).toFixed(2)}%, ${(K.y * 100).toFixed(2)}%)`);
+          if (Math.abs(K.rot) > 1e-3) hp.push(`rotate(${K.rot.toFixed(2)}deg)`);
+          if (Math.abs(K.scale - 1) > 0.0005) hp.push(`scale(${K.scale.toFixed(4)})`);
+          if (L.fxTransform) hp.push(L.fxTransform);
+          tfHalf = hp.join(' ');
+        }
         v.style.transformOrigin = `${m.ox}% ${m.oy}%`;
         v.style.transition = !L.keys?.length && L.fx.videoMotion === 'dynamic' ? 'transform .12s ease-out' : 'none';
         // Prévia 9:16 no mesmo instante do player (mesmo quadro, mesmo zoom).
@@ -3336,8 +3345,9 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         splitSwap,
         // o foco que a PRÉVIA usa vai sempre (também no automático): sem ele o servidor achava
         // o rosto sozinho e centralizava nele — a pessoa saía mais alta/baixa que no editor
-        personFocusX: +focus.x.toFixed(3),
-        personFocusY: +focus.y.toFixed(3),
+        // Automático (rosto): sem foco — o render acha o rosto e limita o zoom para a cabeça
+        // caber (a prévia faz a mesma conta). Foco só no "Ajustar eu mesmo".
+        ...(framingMode === 'manual' || aspectSel !== 'original' ? { personFocusX: +focus.x.toFixed(3), personFocusY: +focus.y.toFixed(3) } : {}),
         // tela dividida: o rosto que a prévia usou para enquadrar a pessoa (o render usa o mesmo)
         // tela dividida ajustada à mão (sem ajuste, o render enquadra cada momento pelo rosto dele)
         ...(splitFaceManual ? { splitFace: { x: +splitFaceManual.x.toFixed(3), y: +splitFaceManual.y.toFixed(3), ...(splitFaceManual.h ? { h: +splitFaceManual.h.toFixed(3) } : {}) } } : {}),
@@ -4801,14 +4811,17 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (splitContain && sd && pbox?.w && pbox?.h) {
       const g = splitPersonCrop(sd.w, sd.h, pbox.w, pbox.h, splitFace);
       // ponto fixo do zoom dos momentos na metade (o topo da cabeça), como no render
-      splitPivotRef.current = { ay: g.anchorY };
+      splitPivotRef.current = { ay: g.anchorY, noPunch: g.punchOk === false };
       return { position: 'absolute', left: -g.cropX, top: -g.cropY, width: g.scaledW, height: g.scaledH, maxWidth: 'none', objectFit: 'fill', filter: videoFilterFx };
     }
     if (splitContain) return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${(splitFace?.x ?? 0.5) * 100}% ${(splitFace?.y ?? 0.35) * 100}%`, filter: videoFilterFx };
     if (!sd || !pbox?.w || !pbox?.h) {
       return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${focus.x * 100}% ${focus.y * 100}%`, filter: videoFilterFx };
     }
-    const g = coverCrop(sd.w, sd.h, pbox.w, pbox.h, focus, zoom);
+    // Automático (rosto) com zoom: enquadra no rosto e o zoom vale até a cabeça e o queixo
+    // caberem (a mesma conta do render, shared/splitFrame.js)
+    const auto = framingMode === 'auto' && zoom > 1.001 && aspectSel === 'original' && subject ? fullFaceCrop(sd.w, sd.h, pbox.w, pbox.h, subject, zoom) : null;
+    const g = auto || coverCrop(sd.w, sd.h, pbox.w, pbox.h, focus, zoom);
     return { position: 'absolute', left: -g.cropX, top: -g.cropY, width: g.scaledW, height: g.scaledH, maxWidth: 'none', objectFit: 'fill', filter: videoFilterFx };
   })();
   // V0 na prévia: as mídias de baixo ficam atrás do vídeo; num espaço vazio o vídeo some e

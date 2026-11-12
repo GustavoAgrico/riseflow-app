@@ -20,6 +20,8 @@ export const SPLIT_MAX_ZOOM = 2.2;
  */
 export const HEAD_ABOVE = 1.0;
 export const HEAD_ABOVE_MIN = 0.75;
+/** Zoom máximo de um momento-chave (punch) considerado para o ponto fixo na metade. */
+export const MOMENT_ZOOM = 1.25;
 /** O queixo (base da caixa do rosto) fica acima desta altura da metade. */
 export const CHIN_MAX = 0.86;
 /** Folga acima da cabeça (fração da altura da metade). */
@@ -74,10 +76,20 @@ export function splitPersonCrop(srcW, srcH, regionW, regionH, face = null) {
     cropY = Math.min(chinMin, tight * scaledH - rh * HEAD_MARGIN);
   }
   cropY = Math.round(clamp(cropY, 0, scaledH - rh));
-  // ponto fixo do zoom dos momentos-chave na metade: o topo da cabeça (o zoom amplia para
-  // baixo e a cabeça não sai pelo topo; ampliar pelo centro cortava o cabelo no punch)
-  const anchorY = +clamp((head * scaledH - cropY) / rh, 0, 0.5).toFixed(3);
-  return { scaledW, scaledH, cropX, cropY, zoom: +zoom.toFixed(3), anchorY };
+  // ponto fixo do zoom dos momentos-chave na metade: o mais perto do centro do rosto que
+  // ainda deixa o cabelo e o queixo dentro no zoom máximo do momento (MOMENT_ZOOM). Antes era
+  // o topo da cabeça: o cabelo ficava, mas o zoom empurrava o queixo para fora da metade.
+  const inHalf = (v) => (v * scaledH - cropY) / rh;
+  const Z = MOMENT_ZOOM;
+  const hairTop = inHalf(fy - HEAD_ABOVE_MIN * fhh);
+  const chinY = inHalf(fy + 0.55 * fhh);
+  const hi = (hairTop * Z - 0.02) / (Z - 1); // cabelo ≥ 2% da metade
+  const lo = (chinY * Z - 0.98) / (Z - 1); // queixo ≤ 98%
+  const anchorY = +clamp(lo > hi ? hi : clamp(inHalf(fy), lo, hi), 0, 1).toFixed(3);
+  // rosto que já enche a metade (pessoa inclinada para a câmera): o zoom do momento
+  // empurraria o queixo para fora — nesse trecho a metade fica sem o zoom do momento
+  const punchOk = lo <= hi + 1e-9;
+  return { scaledW, scaledH, cropX, cropY, zoom: +zoom.toFixed(3), anchorY, punchOk };
 }
 
 /**
@@ -134,4 +146,57 @@ export function splitFaceInWindow(track, start, end, fallback = null) {
     top: +quantile(tops, 0.1).toFixed(4),
     source: 'face',
   };
+}
+
+// ─── Zoom no rosto do vídeo inteiro (tela cheia, "Automático (rosto)") ───
+
+/** Folgas da tela cheia (fração da altura visível): acima da cabeça e abaixo do queixo. */
+export const FULL_TOP_MARGIN = 0.05;
+export const FULL_BOTTOM_MARGIN = 0.14;
+/** Centro do rosto na tela cheia (fração da altura, de cima): olhos perto do terço de cima. */
+export const FULL_FACE_Y = 0.42;
+/** Topo do cabelo acima do centro do rosto na tela cheia (alturas de rosto). */
+export const FULL_HEAD_ABOVE = 0.85;
+
+/**
+ * Zoom no rosto para o vídeo inteiro: o zoom escolhido vale ATÉ onde a cabeça e o queixo
+ * cabem — considerando o vídeo todo (a pessoa se inclina para a câmera em alguns momentos) —,
+ * com o rosto um pouco acima do meio. Antes o zoom era aplicado do tamanho pedido e
+ * centralizava o centro do rosto (misturado com o movimento das mãos): com rosto grande ou
+ * zoom alto, a cabeça saía do quadro. Mesma conta na prévia e no render. Puro.
+ * @param {{x,y,h?,track?:Array<{t,x,y,h}>}|null} face rosto (centro 0–1, altura) e o rosto no tempo
+ * @returns {{scaledW,scaledH,cropX,cropY,zoom:number}|null} null sem rosto (quem chama usa o padrão)
+ */
+export function fullFaceCrop(srcW, srcH, outW, outH, face, zoom = 1) {
+  const fx0 = Number(face?.x);
+  const fy = Number(face?.y);
+  if (!face || face.y == null || !Number.isFinite(fy) || !Number.isFinite(fx0)) return null;
+  const sw = Math.max(1, Number(srcW) || 1);
+  const sh = Math.max(1, Number(srcH) || 1);
+  const ow = Math.max(2, Number(outW) || 2);
+  const oh = Math.max(2, Number(outH) || 2);
+  const base = Math.max(ow / sw, oh / sh);
+  const fh = Number(face.h) > 0 ? Number(face.h) : 0.15;
+  // altura (na fonte) do topo da cabeça mais alto ao queixo mais baixo do vídeo
+  const pts = (Array.isArray(face.track) ? face.track : []).filter((p) => p && Number.isFinite(Number(p.y)));
+  const list = pts.length ? pts : [{ y: fy, h: fh }];
+  const hOf = (p) => (Number(p.h) > 0 ? Number(p.h) : fh);
+  const top = quantile(list.map((p) => Number(p.y) - FULL_HEAD_ABOVE * hOf(p)), 0.1);
+  const bottom = quantile(list.map((p) => Number(p.y) + 0.55 * hOf(p)), 0.9);
+  const v1 = Math.min(1, oh / (sh * base)); // fração da altura da fonte visível sem zoom
+  let z = clamp(Number(zoom) || 1, 1, 2.5);
+  const need = (bottom - top) / (1 - FULL_TOP_MARGIN - FULL_BOTTOM_MARGIN);
+  if (need > 0) z = Math.min(z, Math.max(1, v1 / need));
+  const vh = v1 / z;
+  // vertical (fração da fonte): rosto a FULL_FACE_Y; a cabeça manda, depois o queixo
+  const headMax = top - FULL_TOP_MARGIN * vh;
+  let y0 = Math.min(fy - FULL_FACE_Y * vh, headMax);
+  y0 = Math.max(y0, Math.min(bottom - (1 - FULL_BOTTOM_MARGIN) * vh, headMax));
+  y0 = clamp(y0, 0, Math.max(0, 1 - vh));
+  const s = base * z;
+  const scaledW = Math.max(ow, Math.round(sw * s));
+  const scaledH = Math.max(oh, Math.round(sh * s));
+  const cropX = Math.round(clamp(clamp(fx0, 0, 1) * scaledW - ow / 2, 0, scaledW - ow));
+  const cropY = Math.round(clamp(y0 * scaledH, 0, scaledH - oh));
+  return { scaledW, scaledH, cropX, cropY, zoom: +z.toFixed(3) };
 }

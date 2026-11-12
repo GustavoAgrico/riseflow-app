@@ -758,7 +758,8 @@ export async function insertBroll(input, work, meta, analysis, options, onProgre
     const pm = options.personMotion;
     const halfMeta = { width: regionW, height: regionH, fps: meta.fps };
     // zoom dos momentos ancorado no topo da cabeça (pelo centro, o punch cortava o cabelo)
-    const pmVf = (i) => (pm ? [keyframesVf(pm.keys, halfMeta), momentsZoomVf(pm.windows, halfMeta, pm.intensity, { anchorY: geo[i].anchorY })].filter(Boolean).join(',') : '');
+    // rosto que já enche a metade: sem o zoom do momento (o queixo sairia da metade)
+    const pmVf = (i) => (pm ? [keyframesVf(pm.keys, halfMeta), geo[i].punchOk === false ? null : momentsZoomVf(pm.windows, halfMeta, pm.intensity, { anchorY: geo[i].anchorY })].filter(Boolean).join(',') : '');
     clips.forEach((_, i) => { if (pmVf(i)) parts.push(`[ph${i}]${pmVf(i)},setsar=1[phm${i}]`); });
     const ph = (i) => (pmVf(i) ? `[phm${i}]` : `[ph${i}]`);
     last = '[base]';
