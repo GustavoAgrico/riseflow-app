@@ -1307,7 +1307,16 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           tmParts.push(`scale(${(1 + TM.z).toFixed(4)})`);
         }
         if (sw) { const stf = tmParts.join(' '); if (sw.style.transform !== stf) sw.style.transform = stf; }
-        const tfHalf = splitNow && TM ? tparts.slice(tmParts.length).join(' ') : tf;
+        let tfHalf = splitNow && TM ? tparts.slice(tmParts.length).join(' ') : tf;
+        // rosto que já enche a metade: sem o zoom do momento nela (como o render)
+        if (splitNow && splitPivotRef.current?.noPunch && Math.abs(m.scale - 1) > 0.0005) {
+          const hp = [];
+          if (Math.abs(K.x) > 1e-4 || Math.abs(K.y) > 1e-4) hp.push(`translate(${(K.x * 100).toFixed(2)}%, ${(K.y * 100).toFixed(2)}%)`);
+          if (Math.abs(K.rot) > 1e-3) hp.push(`rotate(${K.rot.toFixed(2)}deg)`);
+          if (Math.abs(K.scale - 1) > 0.0005) hp.push(`scale(${K.scale.toFixed(4)})`);
+          if (L.fxTransform) hp.push(L.fxTransform);
+          tfHalf = hp.join(' ');
+        }
         v.style.transformOrigin = `${m.ox}% ${m.oy}%`;
         v.style.transition = !L.keys?.length && L.fx.videoMotion === 'dynamic' ? 'transform .12s ease-out' : 'none';
         // Prévia 9:16 no mesmo instante do player (mesmo quadro, mesmo zoom).
@@ -4802,7 +4811,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (splitContain && sd && pbox?.w && pbox?.h) {
       const g = splitPersonCrop(sd.w, sd.h, pbox.w, pbox.h, splitFace);
       // ponto fixo do zoom dos momentos na metade (o topo da cabeça), como no render
-      splitPivotRef.current = { ay: g.anchorY };
+      splitPivotRef.current = { ay: g.anchorY, noPunch: g.punchOk === false };
       return { position: 'absolute', left: -g.cropX, top: -g.cropY, width: g.scaledW, height: g.scaledH, maxWidth: 'none', objectFit: 'fill', filter: videoFilterFx };
     }
     if (splitContain) return { width: '100%', height: '100%', objectFit: 'cover', objectPosition: `${(splitFace?.x ?? 0.5) * 100}% ${(splitFace?.y ?? 0.35) * 100}%`, filter: videoFilterFx };

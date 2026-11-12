@@ -20,6 +20,8 @@ export const SPLIT_MAX_ZOOM = 2.2;
  */
 export const HEAD_ABOVE = 1.0;
 export const HEAD_ABOVE_MIN = 0.75;
+/** Zoom máximo de um momento-chave (punch) considerado para o ponto fixo na metade. */
+export const MOMENT_ZOOM = 1.25;
 /** O queixo (base da caixa do rosto) fica acima desta altura da metade. */
 export const CHIN_MAX = 0.86;
 /** Folga acima da cabeça (fração da altura da metade). */
@@ -74,10 +76,20 @@ export function splitPersonCrop(srcW, srcH, regionW, regionH, face = null) {
     cropY = Math.min(chinMin, tight * scaledH - rh * HEAD_MARGIN);
   }
   cropY = Math.round(clamp(cropY, 0, scaledH - rh));
-  // ponto fixo do zoom dos momentos-chave na metade: o topo da cabeça (o zoom amplia para
-  // baixo e a cabeça não sai pelo topo; ampliar pelo centro cortava o cabelo no punch)
-  const anchorY = +clamp((head * scaledH - cropY) / rh, 0, 0.5).toFixed(3);
-  return { scaledW, scaledH, cropX, cropY, zoom: +zoom.toFixed(3), anchorY };
+  // ponto fixo do zoom dos momentos-chave na metade: o mais perto do centro do rosto que
+  // ainda deixa o cabelo e o queixo dentro no zoom máximo do momento (MOMENT_ZOOM). Antes era
+  // o topo da cabeça: o cabelo ficava, mas o zoom empurrava o queixo para fora da metade.
+  const inHalf = (v) => (v * scaledH - cropY) / rh;
+  const Z = MOMENT_ZOOM;
+  const hairTop = inHalf(fy - HEAD_ABOVE_MIN * fhh);
+  const chinY = inHalf(fy + 0.55 * fhh);
+  const hi = (hairTop * Z - 0.02) / (Z - 1); // cabelo ≥ 2% da metade
+  const lo = (chinY * Z - 0.98) / (Z - 1); // queixo ≤ 98%
+  const anchorY = +clamp(lo > hi ? hi : clamp(inHalf(fy), lo, hi), 0, 1).toFixed(3);
+  // rosto que já enche a metade (pessoa inclinada para a câmera): o zoom do momento
+  // empurraria o queixo para fora — nesse trecho a metade fica sem o zoom do momento
+  const punchOk = lo <= hi + 1e-9;
+  return { scaledW, scaledH, cropX, cropY, zoom: +zoom.toFixed(3), anchorY, punchOk };
 }
 
 /**

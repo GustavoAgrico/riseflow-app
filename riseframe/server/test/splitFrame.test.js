@@ -97,12 +97,19 @@ test('tela dividida: o caso do print — rosto grande e baixo no quadro, cabelo 
   assert.ok(chin <= 0.85, `queixo com espaço embaixo (${chin.toFixed(3)})`);
 });
 
-test('tela dividida: o zoom dos momentos amplia a partir do topo da cabeça (o punch cortava o cabelo)', async () => {
+test('tela dividida: o zoom dos momentos mantém o cabelo E o queixo na metade (punch)', async () => {
   const { momentsZoomVf } = await import('../src/pipeline/motion.js');
+  // rosto médio, grande, e o do usuário (medido): no zoom máximo do momento (1,25), o cabelo
+  // (0,64 rosto acima do centro) e o queixo (0,5 abaixo) continuam dentro
+  for (const face of [{ x: 0.5, y: 0.45, h: 0.12 }, { x: 0.5, y: 0.45, h: 0.2 }, { x: 0.503, y: 0.461, h: 0.273 }]) {
+    const gg = splitPersonCrop(...SRC, ...HALF, face);
+    const at = (v) => (v * gg.scaledH - gg.cropY) / HALF[1];
+    const zoomed = (y) => gg.anchorY + (y - gg.anchorY) * 1.25;
+    assert.ok(zoomed(at(face.y - 0.64 * face.h)) >= 0, `h ${face.h}: cabelo dentro no punch (${zoomed(at(face.y - 0.64 * face.h)).toFixed(3)})`);
+    assert.ok(zoomed(at(face.y + 0.5 * face.h)) <= 1, `h ${face.h}: queixo dentro no punch (${zoomed(at(face.y + 0.5 * face.h)).toFixed(3)})`);
+  }
   const face = { x: 0.5, y: 0.45, h: 0.2 };
   const g = splitPersonCrop(...SRC, ...HALF, face);
-  const headTop = ((face.y - HEAD_ABOVE * face.h) * g.scaledH - g.cropY) / HALF[1];
-  assert.ok(Math.abs(g.anchorY - headTop) < 0.002, `âncora no topo da cabeça (${g.anchorY} × ${headTop.toFixed(3)})`);
   // com zoom z em volta da âncora, o topo da cabeça fica no mesmo lugar (não sai da metade)
   const vf = momentsZoomVf([[1, 2, 1.2, 'punch']], { width: 1080, height: 960, fps: 30 }, 'forte', { anchorY: g.anchorY });
   assert.match(vf, new RegExp(`y='\\(ih-ih/zoom\\)\\*${g.anchorY.toFixed(4)}`));
@@ -239,4 +246,12 @@ test('tela cheia com zoom: quem se inclina para a câmera em alguns momentos nã
   const s = 2;
   const oldCrop = Math.max(0, 0.42 * 1920 * s - 960);
   assert.ok(((lean.y - 0.75 * lean.h) * 1920 * s - oldCrop) / 1920 < 0);
+});
+
+test('tela dividida: rosto que já enche a metade fica sem o zoom do momento (o queixo saía)', () => {
+  // inclinado para a câmera: rosto enorme na metade
+  const big = splitPersonCrop(...SRC, ...HALF, { x: 0.5, y: 0.4, h: 0.32 });
+  assert.equal(big.punchOk, false);
+  // rosto normal: o zoom do momento continua
+  assert.equal(splitPersonCrop(...SRC, ...HALF, { x: 0.5, y: 0.4, h: 0.12 }).punchOk, true);
 });
