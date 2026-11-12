@@ -11,21 +11,22 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 /** Altura do rosto que fica bonita na metade (fração da altura da metade). */
 export const SPLIT_FACE_SHARE = 0.3;
 /** Onde fica o centro do rosto na metade (fração da altura, de cima). */
-export const SPLIT_FACE_Y = 0.45;
+export const SPLIT_FACE_Y = 0.4;
 export const SPLIT_MAX_ZOOM = 2.2;
 /**
  * Topo do cabelo acima do centro do rosto, em alturas de rosto (caixa do detector). Varia de
- * pessoa para pessoa (medido: 0,64 num vídeo, 1,0 noutro): a folga é a maior (HEAD_ABOVE) quando
+ * pessoa para pessoa (medido no vídeo do usuário: 0,64; 1,0 sobrava e deixava o rosto baixo,
+ * com cenário em cima — print): a folga é a maior (HEAD_ABOVE) quando
  * cabe, e encolhe até HEAD_ABOVE_MIN só para o QUEIXO não sair por baixo em rosto grande.
  */
-export const HEAD_ABOVE = 1.0;
-export const HEAD_ABOVE_MIN = 0.75;
+export const HEAD_ABOVE = 0.8;
+export const HEAD_ABOVE_MIN = 0.7;
 /** Zoom máximo de um momento-chave (punch) considerado para o ponto fixo na metade. */
 export const MOMENT_ZOOM = 1.25;
 /** O queixo (base da caixa do rosto) fica acima desta altura da metade. */
 export const CHIN_MAX = 0.86;
 /** Folga acima da cabeça (fração da altura da metade). */
-export const HEAD_MARGIN = 0.06;
+export const HEAD_MARGIN = 0.05;
 
 /**
  * Recorte da metade da pessoa.
