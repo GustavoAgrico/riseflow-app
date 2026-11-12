@@ -200,3 +200,43 @@ test('tela dividida: rosto grande (medido no vídeo do usuário) fica no meio, c
   assert.ok(at(chin) <= 0.88, `queixo com folga (${at(chin).toFixed(2)}; antes 0,99)`);
   assert.ok(at(face.y) > 0.4 && at(face.y) < 0.6, `rosto no meio (${at(face.y).toFixed(2)}; antes 0,72)`);
 });
+
+// ─── zoom no rosto do vídeo inteiro (tela cheia) ───
+test('tela cheia com zoom: qualquer zoom escolhido mostra a cabeça e o queixo (rosto do usuário)', async () => {
+  const { fullFaceCrop, FULL_TOP_MARGIN } = await import('../../shared/splitFrame.js');
+  // rosto medido no vídeo do usuário (caixa do detector) e o topo real do cabelo (0,64 rosto acima)
+  const face = { x: 0.503, y: 0.461, h: 0.273 };
+  const hair = face.y - 0.64 * face.h;
+  const chin = face.y + 0.5 * face.h;
+  for (const z of [1.1, 1.3, 1.8, 2.5]) {
+    const g = fullFaceCrop(1080, 1920, 1080, 1920, face, z);
+    const at = (v) => (v * g.scaledH - g.cropY) / 1920;
+    assert.ok(at(hair) >= FULL_TOP_MARGIN * 0.5, `zoom ${z}: cabelo inteiro (${at(hair).toFixed(3)})`);
+    assert.ok(at(chin) <= 0.95, `zoom ${z}: queixo dentro (${at(chin).toFixed(3)})`);
+    assert.ok(g.zoom <= z + 1e-9 && g.zoom >= 1, `zoom ${g.zoom}`);
+  }
+  // o zoom alto é limitado (a cabeça não cabe em 2,5×); o baixo fica como pedido
+  assert.ok(fullFaceCrop(1080, 1920, 1080, 1920, face, 2.5).zoom < 2.5);
+  // rosto pequeno: o zoom pedido entra inteiro, com o rosto acima do meio
+  const small = { x: 0.5, y: 0.4, h: 0.1 };
+  const gs = fullFaceCrop(1080, 1920, 1080, 1920, small, 1.5);
+  assert.equal(gs.zoom, 1.5);
+  const cy = (small.y * gs.scaledH - gs.cropY) / 1920;
+  assert.ok(cy > 0.35 && cy < 0.5, `rosto um pouco acima do meio (${cy.toFixed(3)})`);
+  // sem rosto: null (quem chama usa o padrão)
+  assert.equal(fullFaceCrop(1080, 1920, 1080, 1920, null, 1.5), null);
+});
+
+test('tela cheia com zoom: quem se inclina para a câmera em alguns momentos não tem a cabeça cortada', async () => {
+  const { fullFaceCrop } = await import('../../shared/splitFrame.js');
+  const track = [];
+  for (let t = 0; t < 60; t += 1) track.push(t % 10 < 7 ? { t, x: 0.5, y: 0.42, h: 0.12 } : { t, x: 0.5, y: 0.3, h: 0.22 });
+  const g = fullFaceCrop(1080, 1920, 1080, 1920, { x: 0.5, y: 0.42, h: 0.12, track }, 2);
+  const lean = track.find((p) => p.h === 0.22);
+  const hairLean = ((lean.y - 0.75 * lean.h) * g.scaledH - g.cropY) / 1920;
+  assert.ok(hairLean >= 0, `inclinado: cabeça dentro (${hairLean.toFixed(3)})`);
+  // antes (centro do rosto no meio, zoom 2×): a cabeça inclinada saía do quadro
+  const s = 2;
+  const oldCrop = Math.max(0, 0.42 * 1920 * s - 960);
+  assert.ok(((lean.y - 0.75 * lean.h) * 1920 * s - oldCrop) / 1920 < 0);
+});

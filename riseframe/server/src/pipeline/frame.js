@@ -2,6 +2,7 @@ import path from 'node:path';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { faceCropGeometry } from './broll.js';
 import { averageSubjectCenter } from './reframe.js';
+import { fullFaceCrop } from '../../../shared/splitFrame.js';
 import { makeLogger } from '../logger.js';
 
 const log = makeLogger('frame');
@@ -23,19 +24,25 @@ export async function applyManualFrame(input, work, meta, options, onProgress) {
   let focus = Number.isFinite(Number(options.personFocusX))
     ? { x: Number(options.personFocusX), y: Number.isFinite(Number(options.personFocusY)) ? Number(options.personFocusY) : 0.4 }
     : null;
+  let g = null;
   if (!focus) {
-    const face = await averageSubjectCenter(input).catch(() => null);
-    focus = face ? { x: face.x, y: face.y } : { x: 0.5, y: 0.4 };
-    if (face) log.info(`zoom no rosto (${face.source}): foco (${face.x.toFixed(2)}, ${face.y.toFixed(2)})`);
+    // Automático (rosto): só o ROSTO (o centro misturado com o movimento caía nas mãos e
+    // cortava a cabeça) e o zoom pedido vale até a cabeça e o queixo caberem no vídeo todo
+    const subj = await averageSubjectCenter(input).catch(() => null);
+    g = subj?.face ? fullFaceCrop(W, H, W, H, { ...subj.face, track: subj.track }, zoom) : null;
+    if (g) {
+      focus = { x: subj.face.x, y: subj.face.y };
+      log.info(`zoom no rosto: foco (${focus.x.toFixed(2)}, ${focus.y.toFixed(2)})${g.zoom < zoom - 0.005 ? ` · zoom ${zoom}x → ${g.zoom}x para a cabeça caber` : ''}`);
+    } else focus = { x: 0.5, y: 0.4 };
   }
-  const g = faceCropGeometry(W, H, W, H, focus, zoom);
+  if (!g) g = faceCropGeometry(W, H, W, H, focus, zoom);
   const out = path.join(work, 'frame.mp4');
   const args = ['-i', input, '-vf', geoVf(W, H, g, W, H)];
   if (meta.hasAudio) args.push('-c:a', 'copy');
   args.push(...x264Fast(), '-movflags', '+faststart', '-y', out);
 
   await runFfmpeg(args, { label: 'frame', totalDuration: meta.duration, onProgress });
-  log.ok(`reenquadramento ${zoom}x · foco (${focus.x.toFixed(2)}, ${focus.y.toFixed(2)})`);
+  log.ok(`reenquadramento ${g.zoom ?? zoom}x · foco (${focus.x.toFixed(2)}, ${focus.y.toFixed(2)})`);
   return { output: out, applied: true };
 }
 
