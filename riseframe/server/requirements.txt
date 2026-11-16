@@ -7,4 +7,6 @@ opencv-python-headless==4.10.0.84
 
 # Vídeo pelo link do YouTube (Shorts, longo → curto, Podcast/Cortes): baixa com o yt-dlp.
 # Sem versão fixa: o YouTube muda sempre e só a versão nova continua baixando.
-yt-dlp
+# [default] traz o yt-dlp-ejs (scripts que o yt-dlp roda no motor JavaScript — Deno, que o
+# servidor baixa sozinho — para o YouTube não bloquear o download).
+yt-dlp[default]
