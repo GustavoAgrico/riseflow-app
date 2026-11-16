@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import { config } from '../config.js';
 import { ffmpegPath } from './ffmpeg.js';
 import { resolvePython } from './python.js';
@@ -19,7 +20,11 @@ const log = makeLogger('youtube');
  * Servidor: `pip install yt-dlp` (já vem no requirements.txt / Docker). Também serve o
  * executável `yt-dlp` no PATH ou em YTDLP_BIN; sem nenhum (app de PC/Mac, servidor sem
  * Docker), o executável oficial é baixado sozinho (YTDLP_AUTO_DOWNLOAD=0 desliga). Se o YouTube pedir login para o IP do
- * servidor ("confirme que não é um robô"), aponte YTDLP_COOKIES para um cookies.txt.
+ * servidor ("confirme que não é um robô"), aponte YTDLP_COOKIES para um cookies.txt (ou, no
+ * app de PC, YTDLP_COOKIES_FROM_BROWSER=firefox para usar o login do navegador).
+ *
+ * O yt-dlp precisa de um motor JavaScript (Deno ou Node 22+) para o YouTube: sem ele o
+ * download é bloqueado com frequência. O app baixa o Deno oficial sozinho (ver abaixo).
  */
 
 export { parseYoutubeUrl };
@@ -61,7 +66,7 @@ const localBin = () => path.join(binDir(), process.platform === 'win32' ? 'yt-dl
 async function downloadStandalone() {
   const asset = standaloneAsset();
   if (!asset || process.env.YTDLP_AUTO_DOWNLOAD === '0') return null;
-  log.info(`yt-dlp não encontrado — baixando o executável oficial (${asset})…`);
+  log.info(`${fs.existsSync(localBin()) ? 'atualizando o yt-dlp' : 'yt-dlp não encontrado'} — baixando o executável oficial (${asset})…`);
   const get = async (url) => {
     const r = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(180000) });
     if (!r.ok) throw new Error(`HTTP ${r.status} em ${url}`);
@@ -81,12 +86,145 @@ async function downloadStandalone() {
   return { bin: localBin(), pre: [] };
 }
 
+/** O executável baixado pelo app está velho? O YouTube muda sempre: versão antiga para de funcionar. */
+const STALE_DAYS = 10;
+function localBinAgeDays() {
+  try {
+    return (Date.now() - fs.statSync(localBin()).mtimeMs) / 86_400_000;
+  } catch {
+    return Infinity;
+  }
+}
+
+// ─── Motor JavaScript (Deno) ───────────────────────────────────────────────
+// O yt-dlp atual só resolve os desafios do YouTube com um motor JavaScript externo: Deno
+// (o único ligado por padrão) ou Node 22+. Sem nenhum, ele cai num modo limitado — e é
+// esse modo que o YouTube bloqueia com "Sign in to confirm you're not a bot". O app de
+// PC (Electron com Node 20) e o servidor (Node 20) não tinham nenhum: o app baixa o Deno
+// oficial sozinho, confere o SHA-256 da release e passa a usar.
+const DENO_RELEASE = 'https://github.com/denoland/deno/releases/latest/download';
+const localDeno = () => path.join(binDir(), process.platform === 'win32' ? 'deno.exe' : 'deno');
+
+function denoAsset() {
+  const arch = process.arch === 'arm64' ? 'aarch64' : process.arch === 'x64' ? 'x86_64' : null;
+  if (!arch) return null;
+  if (process.platform === 'win32') return 'deno-x86_64-pc-windows-msvc.zip'; // no ARM roda emulado
+  if (process.platform === 'darwin') return `deno-${arch}-apple-darwin.zip`;
+  if (process.platform === 'linux') return `deno-${arch}-unknown-linux-gnu.zip`;
+  return null;
+}
+
+/**
+ * Tira UM arquivo de um .zip (o do Deno traz só o executável). Lê o diretório central, sem
+ * biblioteca: métodos 0 (guardado) e 8 (deflate). Puro.
+ * @returns {Buffer|null}
+ */
+export function unzipOne(zip, wanted) {
+  const eocd = zip.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (eocd < 0) return null;
+  const count = zip.readUInt16LE(eocd + 10);
+  let at = zip.readUInt32LE(eocd + 16);
+  for (let i = 0; i < count; i++) {
+    if (at + 46 > zip.length || zip.readUInt32LE(at) !== 0x02014b50) return null;
+    const method = zip.readUInt16LE(at + 10);
+    const csize = zip.readUInt32LE(at + 20);
+    const usize = zip.readUInt32LE(at + 24);
+    const nlen = zip.readUInt16LE(at + 28);
+    const xlen = zip.readUInt16LE(at + 30);
+    const clen = zip.readUInt16LE(at + 32);
+    const local = zip.readUInt32LE(at + 42);
+    const name = zip.toString('utf8', at + 46, at + 46 + nlen);
+    at += 46 + nlen + xlen + clen;
+    if (path.posix.basename(name.replace(/\\/g, '/')) !== wanted) continue;
+    if (local + 30 > zip.length || zip.readUInt32LE(local) !== 0x04034b50) return null;
+    const start = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
+    const data = zip.subarray(start, start + csize);
+    if (method === 0) return Buffer.from(data);
+    if (method !== 8) return null;
+    const out = zlib.inflateRawSync(data);
+    return out.length === usize ? out : null;
+  }
+  return null;
+}
+
+/** Soma SHA-256 de um arquivo .sha256sum (formato do sha256sum ou do PowerShell). Puro. */
+export function parseSha256(text) {
+  const m = /\b([a-f0-9]{64})\b/i.exec(String(text || ''));
+  return m ? m[1].toLowerCase() : null;
+}
+
+async function downloadDeno() {
+  const asset = denoAsset();
+  if (!asset || process.env.YTDLP_AUTO_DOWNLOAD === '0') return null;
+  log.info(`motor JavaScript do yt-dlp não encontrado — baixando o Deno oficial (${asset})…`);
+  const get = async (url) => {
+    const r = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(300000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status} em ${url}`);
+    return Buffer.from(await r.arrayBuffer());
+  };
+  const want = parseSha256((await get(`${DENO_RELEASE}/${asset}.sha256sum`)).toString('utf8'));
+  if (!want) throw new Error(`sem a soma SHA-256 de ${asset} na release do Deno`);
+  const zip = await get(`${DENO_RELEASE}/${asset}`);
+  if (crypto.createHash('sha256').update(zip).digest('hex') !== want) throw new Error('o Deno baixado não confere com a soma SHA-256 da release');
+  const exe = unzipOne(zip, path.basename(localDeno()));
+  if (!exe) throw new Error('o pacote do Deno veio num formato inesperado');
+  fs.mkdirSync(binDir(), { recursive: true });
+  const tmp = `${localDeno()}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, exe, { mode: 0o755 });
+  fs.renameSync(tmp, localDeno());
+  log.ok(`Deno baixado (${(exe.length / 1024 ** 2).toFixed(0)} MB) em ${localDeno()}`);
+  return localDeno();
+}
+
+let jsCached; // string[] (argumentos do yt-dlp) | undefined
+let jsFailedAt = 0;
+let jsPending = null;
+const jsStatus = { ready: false, how: null, error: null };
+
+async function findJsRuntime() {
+  // Deno no PATH: o yt-dlp já acha sozinho
+  if (await works('deno', ['--version'], 20000)) return { args: [], how: 'deno (PATH)' };
+  if (fs.existsSync(localDeno()) && (await works(localDeno(), ['--version'], 20000))) return { args: ['--js-runtimes', `deno:${localDeno()}`], how: localDeno() };
+  // Node 22+ (o yt-dlp não aceita mais antigo): o próprio Node que roda o servidor
+  if (Number(process.versions.node.split('.')[0]) >= 22) return { args: ['--js-runtimes', `node:${process.execPath}`], how: `node ${process.versions.node}` };
+  const deno = await downloadDeno();
+  if (deno && (await works(deno, ['--version'], 20000))) return { args: ['--js-runtimes', `deno:${deno}`], how: deno };
+  return null;
+}
+
+/**
+ * Argumentos do yt-dlp para o motor JavaScript ([] quando não há — o yt-dlp segue no modo
+ * limitado, como antes). Achou: fica guardado; não achou: tenta de novo depois de 5 min.
+ */
+export async function resolveJsRuntime() {
+  if (jsCached) return jsCached;
+  if (!jsPending && Date.now() - jsFailedAt < 5 * 60_000) return [];
+  if (!jsPending) {
+    jsPending = findJsRuntime()
+      .catch((err) => { jsStatus.error = err.message; return null; })
+      .then((r) => {
+        jsPending = null;
+        if (r) {
+          jsCached = r.args;
+          Object.assign(jsStatus, { ready: true, how: r.how, error: null });
+          log.info(`motor JavaScript do yt-dlp: ${r.how}`);
+          return r.args;
+        }
+        jsFailedAt = Date.now();
+        Object.assign(jsStatus, { ready: false, how: null, error: jsStatus.error || 'sem Deno nem Node 22+' });
+        log.warn(`yt-dlp sem motor JavaScript (${jsStatus.error}) — o YouTube pode bloquear o download; tento de novo em 5 min`);
+        return [];
+      });
+  }
+  return jsPending;
+}
+
 let cached; // { bin, pre } | null
 let failedAt = 0;
 let pending = null;
 const status = { ready: false, how: null, error: null };
 /** Estado do yt-dlp (para o /api/health): { ready, how, error }. */
-export const ytdlpStatus = () => ({ ...status, checking: Boolean(pending) });
+export const ytdlpStatus = () => ({ ...status, checking: Boolean(pending), js: { ...jsStatus, checking: Boolean(jsPending) } });
 /**
  * Dá para importar pelo link? Responde na hora (não espera o download do executável):
  * enquanto procura/baixa, diz que sim — o envio do link espera o resultado.
@@ -101,6 +239,11 @@ export function ytdlpAvailableNow() {
 async function findYtDlp() {
   const tries = [];
   if (process.env.YTDLP_BIN) tries.push({ bin: process.env.YTDLP_BIN, pre: [] });
+  // o executável que o app baixou envelhece (o YouTube muda sempre): renova de tempos em
+  // tempos; se não der para baixar agora, segue com o que tem
+  if (fs.existsSync(localBin()) && !process.env.YTDLP_BIN && localBinAgeDays() > STALE_DAYS) {
+    await downloadStandalone().catch((err) => log.warn(`não deu para atualizar o yt-dlp agora (${err.message})`));
+  }
   if (fs.existsSync(localBin())) tries.push({ bin: localBin(), pre: [] });
   tries.push({ bin: 'yt-dlp', pre: [] });
   const py = await resolvePython();
@@ -132,6 +275,7 @@ export async function resolveYtDlp() {
         if (t) {
           Object.assign(status, { ready: true, how: [t.bin, ...t.pre].join(' '), error: null });
           log.info(`yt-dlp disponível (${status.how})`);
+          resolveJsRuntime().catch(() => {}); // já deixa o motor JavaScript pronto
         } else {
           failedAt = Date.now();
           Object.assign(status, { ready: false, how: null, error: status.error || 'yt-dlp não encontrado' });
@@ -148,6 +292,9 @@ function commonArgs() {
   const a = ['--no-playlist', '--no-warnings', '--no-color', '--newline'];
   const cookies = process.env.YTDLP_COOKIES;
   if (cookies && fs.existsSync(cookies)) a.push('--cookies', cookies);
+  // opcional (app de PC): usar o login do YouTube de um navegador deste computador, ex.: firefox
+  const browser = String(process.env.YTDLP_COOKIES_FROM_BROWSER || '').trim();
+  if (!a.includes('--cookies') && /^[a-z]+(?:[+:][\w .:+-]+)?$/i.test(browser)) a.push('--cookies-from-browser', browser);
   if (process.env.YTDLP_PROXY) a.push('--proxy', process.env.YTDLP_PROXY);
   // país informado ao YouTube (ex.: BR) para vídeos liberados só em alguns países
   const geo = String(process.env.YTDLP_GEO_COUNTRY || '').trim().toUpperCase();
@@ -156,10 +303,17 @@ function commonArgs() {
 }
 
 /** Erro do yt-dlp → mensagem clara para a pessoa. */
+/** O YouTube pediu login / "confirme que não é um robô"? (vale tentar de outro jeito) */
+export function isBotBlock(stderr) {
+  return /confirm you.?re not a bot|sign in to confirm|use --cookies/i.test(String(stderr || ''));
+}
+
 export function friendlyYtError(stderr) {
   const s = String(stderr || '');
-  if (/confirm you.?re not a bot|sign in to confirm|cookies/i.test(s)) {
-    return 'o YouTube bloqueou o download a partir do servidor (pediu login). Tente de novo mais tarde ou baixe o vídeo e envie o arquivo.';
+  if (isBotBlock(s) || /cookies/i.test(s)) {
+    // no app de PC o download sai do computador da pessoa, não de um servidor
+    const where = process.versions.electron ? 'neste computador' : 'a partir do servidor';
+    return `o YouTube bloqueou o download ${where} (pediu login). Tente de novo mais tarde ou baixe o vídeo e envie o arquivo.`;
   }
   if (/private video/i.test(s)) return 'este vídeo do YouTube é privado — só dá para usar vídeos públicos ou não listados.';
   if (/members.only|join this channel/i.test(s)) return 'este vídeo é só para membros do canal — não dá para baixar.';
@@ -206,11 +360,27 @@ function run(tool, args, { onLine, timeoutMs = 0 } = {}) {
   });
 }
 
+/**
+ * Argumentos do motor JavaScript para esta chamada. O yt-dlp do `pip` pode não trazer os
+ * scripts que rodam no motor (pacote yt-dlp-ejs): deixa buscar os oficiais no GitHub.
+ */
+async function runtimeArgs(tool) {
+  const js = await resolveJsRuntime();
+  return tool.pre.length ? [...js, '--remote-components', 'ejs:github'] : js;
+}
+
+/**
+ * Jeitos de pedir o vídeo quando o YouTube bloqueia ("confirme que não é um robô"): o
+ * normal e, depois, outros "aparelhos" (clientes) que o YouTube trata de forma diferente.
+ */
+export const YT_FALLBACK_CLIENTS = ['tv,web_safari,mweb', 'android_vr,tv_simply,web_embedded'];
+
 /** Dados do vídeo (título, duração…) sem baixar. */
-export async function youtubeInfo(url, tool) {
+export async function youtubeInfo(url, tool, extra = null) {
   const t = tool || (await resolveYtDlp());
   if (!t) throw new Error('importar do YouTube não está disponível neste servidor');
-  const out = await run(t, [...commonArgs(), '--skip-download', '--dump-single-json', url], { timeoutMs: 90_000 });
+  const more = extra || (await runtimeArgs(t));
+  const out = await run(t, [...commonArgs(), ...more, '--skip-download', '--dump-single-json', url], { timeoutMs: 120_000 });
   let info = null;
   // uma linha de JSON (o normal); se vier algo antes, a última linha é o JSON
   for (const txt of [out.trim(), out.trim().split('\n').pop()]) {
@@ -247,7 +417,31 @@ export async function downloadYoutube(rawUrl, outPath, onProgress = () => {}) {
   const tool = await resolveYtDlp();
   if (!tool) throw new Error('importar do YouTube não está disponível neste servidor (falta o yt-dlp)');
 
-  const info = await youtubeInfo(parsed.url, tool);
+  const base0 = await runtimeArgs(tool);
+  // 1ª tentativa normal; bloqueado ("não é um robô"): atualiza o yt-dlp se estiver velho e
+  // tenta de novo; depois, com outros clientes do YouTube. Outros erros não repetem.
+  const plans = [{ label: 'normal', extra: base0 }, ...YT_FALLBACK_CLIENTS.map((c) => ({ label: `clientes ${c}`, extra: [...base0, '--extractor-args', `youtube:player_client=${c}`] }))];
+  let lastErr = null;
+  for (let i = 0; i < plans.length; i++) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      return await downloadOnce(parsed, tool, outPath, onProgress, plans[i].extra);
+    } catch (err) {
+      lastErr = err;
+      if (!isBotBlock(err.stderr)) throw err;
+      log.warn(`o YouTube pediu login (tentativa ${plans[i].label})${i + 1 < plans.length ? ' — tentando de outro jeito' : ''}`);
+      if (i === 0 && tool.bin === localBin() && localBinAgeDays() > 1) {
+        // eslint-disable-next-line no-await-in-loop
+        const fresh = await downloadStandalone().catch(() => null);
+        if (fresh) plans.splice(1, 0, { label: 'yt-dlp atualizado', extra: base0 });
+      }
+    }
+  }
+  throw lastErr;
+}
+
+async function downloadOnce(parsed, tool, outPath, onProgress, extra) {
+  const info = await youtubeInfo(parsed.url, tool, extra);
   if (info.isLive) throw new Error('este vídeo é uma live em andamento — espere ela terminar para usar o link.');
   const lim = maxHours();
   if (lim && info.duration > lim * 3600) {
@@ -281,6 +475,7 @@ export async function downloadYoutube(rawUrl, outPath, onProgress = () => {}) {
   try {
     await run(tool, [
       ...commonArgs(),
+      ...extra,
       // melhor qualidade até 1080p; prefere H.264 + AAC (mp4) — toca no navegador
       '-f', 'bv*+ba/b',
       '-S', 'res:1080,vcodec:h264,acodec:aac,ext:mp4:m4a',
