@@ -23,6 +23,7 @@ import { keyZoomMoments } from '../../../shared/keyMoments.js';
 import { suggestSfx, SFX_STYLES } from '../../../shared/autoMoments.js';
 import { kineticPlan, KINETIC_THEMES, KINETIC_AMOUNT } from '../../../shared/kinetic.js';
 import { explainerPlan, drawExplainer, EXPLAINER_FONT_FILES, MOTION_STYLES } from '../../../shared/motionEngine.js';
+import PromptMotionStudio from './PromptMotionStudio.jsx';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
 import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, wordPlan, wordFrame, WORD_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
@@ -5420,7 +5421,52 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restored]);
   const smartSfxN = sfxMoments.filter((m) => m.smart && !m.motion).length;
-  const kineticN = new Set(textLayers.filter((l) => l.smart).map((l) => l.scene || l.key)).size + media.filter((m) => m.motionScene).length;
+  const kineticN = new Set(textLayers.filter((l) => l.smart).map((l) => l.scene || l.key)).size + media.filter((m) => m.motionScene && m.motionScene.style !== 'prompt').length;
+  // ─── Motion por prompt (como o Prompt Motion): a pessoa descreve a cena e a IA anima ───
+  const [pmStudio, setPmStudio] = useState(null); // null | { key?: string } (key = editando uma cena)
+  const promptScenes = media.filter((m) => m.motionScene?.style === 'prompt');
+  function insertPromptMotion(spec, meta) {
+    const scene = (start) => ({ start, end: +(start + spec.duration).toFixed(2), style: 'prompt', spec, beats: [], prompt: meta.prompt, form: meta.form, hideCaps: meta.form?.hideCaps !== false });
+    if (pmStudio?.key) {
+      setMedia((prev) => prev.map((m) => (m.key === pmStudio.key ? { ...m, filename: `motion: ${spec.title}`, motionScene: scene(Number(m.start)), duration: spec.duration } : m)));
+      sayAuto(`Cena "${spec.title}" atualizada`);
+    } else {
+      const start = +Math.max(0, Math.min(cur, Math.max(0, dur - 0.5))).toFixed(2);
+      const key = `pm${Date.now()}`;
+      setMedia((prev) => {
+        const top = prev.reduce((a, m) => Math.max(a, Number(m.layer) || 0), 0) + 1;
+        return [...prev, {
+          key, kind: 'video', filename: `motion: ${spec.title}`, motionScene: scene(start), start, duration: spec.duration,
+          srcDuration: 600, mode: 'cover', volume: 0, muted: true, opacity: 1, blend: 'normal', offset: 0, fadeIn: 0, fadeOut: 0, px: 0.5, py: 0.5, scale: 1,
+          animIn: 'none', animOut: 'none', layer: top, promptMotion: true,
+        }];
+      });
+      sayAuto(`Cena "${spec.title}" colocada em ${start.toFixed(1)} s — dê play para ver`);
+    }
+    setPmStudio(null);
+  }
+  // Legenda escondida enquanto uma cena de motion por prompt está na tela (se a pessoa pediu):
+  // segue a cena quando ela é arrastada, encurtada ou apagada.
+  useEffect(() => {
+    const wins = media.filter((m) => m.motionScene?.style === 'prompt' && m.motionScene.hideCaps !== false)
+      .map((m) => ({ a: Number(m.start), b: Number(m.start) + Number(m.duration) }));
+    const inWin = (w) => { const mid = (w.start + w.end) / 2; return wins.some((x) => mid >= x.a && mid <= x.b); };
+    setSegments((prev) => {
+      let changed = false;
+      const next = prev.map((sg) => {
+        let any = false;
+        const words = sg.words.map((w) => {
+          const want = inWin(w);
+          if (w.phid && !want) { any = true; return { ...w, hidden: false, phid: false }; }
+          if (want && !w.hidden) { any = true; return { ...w, hidden: true, phid: true }; }
+          return w;
+        });
+        if (any) changed = true;
+        return any ? { ...sg, words } : sg;
+      });
+      return changed ? next : prev;
+    });
+  }, [media]); // eslint-disable-line react-hooks/exhaustive-deps
   const autoCardStyle = { display: 'grid', gap: 7, padding: 10, borderRadius: 10, border: '1px solid rgba(124,58,237,0.45)', background: 'linear-gradient(135deg, rgba(124,58,237,0.16), rgba(255,107,53,0.08))', marginBottom: 8 };
   const chip = (on, onClick, label, key) => (
     <button key={key ?? label} type="button" onClick={onClick} aria-pressed={on}
@@ -5441,6 +5487,27 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         {smartSfxN > 0 && <button type="button" onClick={clearAutoSfx} style={{ ...miniBtn(false, false), flex: 'none' }}>Tirar ({smartSfxN})</button>}
       </div>
       {autoNote && <span style={{ fontSize: 11, color: C.text }}>{autoNote}</span>}
+    </div>
+  );
+  const promptMotionCard = (
+    <div style={{ ...autoCardStyle, marginBottom: 0, border: `1px solid ${C.orange}55`, background: 'linear-gradient(180deg, rgba(255,107,53,0.10), rgba(255,255,255,0.02))' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <b style={{ fontSize: 13.5 }}>✨ Motion por prompt</b>
+        <span style={{ fontSize: 11.5, color: C.faint }}>descreva a cena e a IA anima</span>
+      </div>
+      <span style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>Contadores, gráficos subindo, listas com check, oferta com botão clicando, notificações de venda, pesquisa digitando, chamada final… Escolha um modelo ou escreva o que quer, ajuste objetivo, estilo, cores e ritmo, e peça mudanças até ficar do seu jeito. A cena entra no ponto atual do vídeo.</span>
+      <button type="button" onClick={() => setPmStudio({})} style={{ ...miniBtn(true, false), justifySelf: 'start' }}>Criar motion por prompt</button>
+      {promptScenes.length > 0 && (
+        <div style={{ display: 'grid', gap: 5 }}>
+          {promptScenes.map((m) => (
+            <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, border: `1px solid ${C.border}`, borderRadius: 8, padding: '5px 8px' }}>
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.motionScene.spec?.title || 'Motion'} · {Number(m.start).toFixed(1)} s</span>
+              <button type="button" onClick={() => setPmStudio({ key: m.key })} style={{ ...miniBtn(false, false), flex: 'none' }}>Editar</button>
+              <button type="button" onClick={() => setMedia((prev) => prev.filter((x) => x.key !== m.key))} style={{ ...miniBtn(false, false), flex: 'none' }}>Tirar</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
   const autoMotionCard = (
@@ -5492,7 +5559,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         {kineticN > 0 && <button type="button" onClick={clearKinetic} style={{ ...miniBtn(false, false) }}>Tirar ({kineticN} {kineticN === 1 ? 'cena' : 'cenas'})</button>}
       </div>
       {autoNote && <span style={{ fontSize: 11.5, color: C.text }}>{autoNote}</span>}
-      {media.filter((m) => m.motionScene).map((m) => (
+      {media.filter((m) => m.motionScene && m.motionScene.style !== 'prompt').map((m) => (
         <MotionEditor key={m.key} scene={m.motionScene} onChange={(sc) => updateMedia(m.key, { motionScene: sc })} />
       ))}
     </div>
@@ -7868,6 +7935,19 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       {autoDlgEl}
       {autoRunEl}
       {exportDialog()}
+      {pmStudio && createPortal(
+        <PromptMotionStudio
+          key={pmStudio.key || 'novo'}
+          editing={Boolean(pmStudio.key)}
+          initial={pmStudio.key ? (() => { const m = media.find((x) => x.key === pmStudio.key); return m ? { prompt: m.motionScene.prompt || '', form: m.motionScene.form || {}, spec: m.motionScene.spec } : null; })() : null}
+          aspect={{ w: FMT_WH[aspectSel]?.[0] || vdim?.w || 1080, h: FMT_WH[aspectSel]?.[1] || vdim?.h || 1920 }}
+          aspectLabel={FMT_WH[aspectSel] ? aspectSel : (vdim?.w || 9) > (vdim?.h || 16) ? '16:9' : '9:16'}
+          loadFonts={loadExplainerFonts}
+          onInsert={insertPromptMotion}
+          onClose={() => setPmStudio(null)}
+        />,
+        document.body,
+      )}
       {tlNote && !v1Busy && createPortal(
         <div role="status" onClick={() => setTlNote('')} style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 960, maxWidth: 'min(640px, calc(100vw - 32px))', padding: '10px 16px', borderRadius: 14, background: '#2A2B33', border: '1px solid rgba(255,255,255,0.14)', color: '#fff', fontSize: 13, fontWeight: 600, lineHeight: 1.4, boxShadow: '0 12px 30px -10px rgba(0,0,0,0.8)', cursor: 'pointer' }}>{tlNote}</div>,
         document.body,
@@ -8715,7 +8795,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           )}
 
           {tab === 'texto' && textBlock}
-          {tab === 'graficos' && <div style={{ display: 'grid', gap: 12 }}>{autoMotionCard}{textBehindCard}{graficosBlock}</div>}
+          {tab === 'graficos' && <div style={{ display: 'grid', gap: 12 }}>{promptMotionCard}{autoMotionCard}{textBehindCard}{graficosBlock}</div>}
           {tab === 'propriedades' && propsBlockFn()}
 
           {tab === 'cor' && (

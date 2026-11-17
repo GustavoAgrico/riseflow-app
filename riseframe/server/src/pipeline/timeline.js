@@ -85,6 +85,11 @@ export function remapTime(t, keep) {
 export function remapMotionScenes(scenes, keep) {
   const kept = (t) => keep.some((seg) => t >= seg.start && t <= seg.end);
   return (Array.isArray(scenes) ? scenes : []).map((sc) => {
+    if (sc.style === 'prompt') {
+      // motion por prompt: a animação tem duração própria — só o começo muda de lugar
+      const start = +remapTime(Number(sc.start), keep).toFixed(3);
+      return { ...sc, start, end: +(start + (Number(sc.end) - Number(sc.start))).toFixed(3), beats: [] };
+    }
     const beats = (sc.beats || []).filter((b) => kept((Number(b.start) + Number(b.end)) / 2)).map((b) => ({
       ...b,
       start: +remapTime(Number(b.start), keep).toFixed(3),
@@ -92,7 +97,7 @@ export function remapMotionScenes(scenes, keep) {
       words: (b.words || []).map((w) => ({ ...w, t: +remapTime(Number(w.t), keep).toFixed(3) })),
     }));
     return { ...sc, start: +remapTime(Number(sc.start), keep).toFixed(3), end: +remapTime(Number(sc.end), keep).toFixed(3), beats };
-  }).filter((sc) => sc.beats.length && sc.end - sc.start > 0.2);
+  }).filter((sc) => (sc.style === 'prompt' ? sc.spec : sc.beats.length) && sc.end - sc.start > 0.2);
 }
 
 export function unmapTime(t, keep) {
