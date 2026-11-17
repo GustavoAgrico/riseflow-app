@@ -43,6 +43,7 @@ import { ELEMENT_MOTIONS } from '../../../shared/elementMotion.js';
 import { KINETIC_THEMES } from '../../../shared/kinetic.js';
 import { DEFAULT_NOTE_OPEN, DEFAULT_NOTE_CLOSE } from '../../../shared/editFlow.js';
 import { MOTION_STYLES } from '../../../shared/motionEngine.js';
+import { sanitizePromptSpec } from '../../../shared/promptMotion.js';
 import { PM_ICONS } from '../../../shared/motionStyles.js';
 import { cleanElementId, elementFile } from '../pipeline/elements.js';
 import { elementExt } from '../../../shared/sceneElements.js';
@@ -451,6 +452,12 @@ function cleanMotionScenes(raw) {
     const start = clampNum(sc?.start, 0, 100000, NaN);
     const end = clampNum(sc?.end, 0, 100000, NaN);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < 1 || end - start > 60) continue;
+    if (sc?.style === 'prompt') {
+      // motion por prompt: o roteiro passa pela mesma validação da rota (vocabulário fechado)
+      const spec = sanitizePromptSpec(sc.spec);
+      if (spec) out.push({ start, end, style: 'prompt', spec, beats: [] });
+      continue;
+    }
     const style = Object.hasOwn(MOTION_STYLES, sc?.style) ? sc.style : 'explicativo';
     const kinds = MOTION_STYLES[style];
     // batida de outro estilo (ou desconhecida) é descartada, não convertida

@@ -47,7 +47,8 @@ export function carveScenes(scenes, windows) {
   for (const w of windows || []) {
     const next = [];
     for (const sc of out) {
-      if (w.end <= sc.start || w.start >= sc.end) { next.push(sc); continue; }
+      // motion por prompt (cena feita pela pessoa) nunca é recortado pelo B-roll
+      if (sc.style === 'prompt' || w.end <= sc.start || w.start >= sc.end) { next.push(sc); continue; }
       for (const [a, b] of [[sc.start, w.start], [w.end, sc.end]]) {
         if (b - a < 1.2) continue;
         const beats = (sc.beats || [])
@@ -77,6 +78,8 @@ export function fitBrollWithScenes(moments, scenes, max) {
   for (const m of list) {
     if (chosen.length >= want) break;
     if (outside.includes(m)) continue;
+    // dentro de um motion por prompt: não (essa cena não abre espaço)
+    if ((scenes || []).some((sc) => sc.style === 'prompt' && Math.min(Number(sc.end), Number(m.end)) - Math.max(Number(sc.start), Number(m.start)) > 0.2)) continue;
     // espaço entre um B-roll e outro (pelo menos 1,5 s de motion ou de fala no meio)
     if (chosen.some((c) => Math.min(Number(c.end), Number(m.end)) - Math.max(Number(c.start), Number(m.start)) > -1.5)) continue;
     chosen.push(m);

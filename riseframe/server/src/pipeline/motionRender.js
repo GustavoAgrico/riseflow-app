@@ -20,7 +20,7 @@ function registerFonts() {
 /** Imagens (objetos 3D) usadas pela cena, já carregadas. */
 async function sceneImages(scene) {
   const ids = new Set(['brain', 'bulb', 'gear', 'real/cursor']);
-  for (const b of scene.beats) if (b.data?.element) ids.add(b.data.element);
+  for (const b of scene.beats || []) if (b.data?.element) ids.add(b.data.element);
   const out = new Map();
   for (const id of ids) {
     const file = elementFile(id);
@@ -56,7 +56,8 @@ export async function renderExplainerScene(scene, { W, H, fps = 30 }, outFile, o
   }
   ff.stdin.end();
   await done;
-  log.ok(`motion ${scene.style || 'explicativo'}: cena de ${(scene.end - scene.start).toFixed(1)} s (${scene.beats.map((b) => b.type).join(' → ')})`);
+  const parts = scene.style === 'prompt' ? (scene.spec?.elements || []).map((e) => e.type) : (scene.beats || []).map((b) => b.type);
+  log.ok(`motion ${scene.style === 'prompt' ? `por prompt "${scene.spec?.title || ''}"` : scene.style || 'explicativo'}: cena de ${(scene.end - scene.start).toFixed(1)} s (${parts.join(' → ')})`);
   return outFile;
 }
 

@@ -8,6 +8,7 @@ import { phraseChunks, wordRole } from './kinetic.js';
 import { conceptsIn } from './sceneElements.js';
 import { emphasisScore } from './keyMoments.js';
 import { STYLE_BEATS, styleBeatsFor, styleSfx, drawStyle, STYLE_FONT_FILES, reelType } from './motionStyles.js';
+import { drawPromptMotion } from './promptMotion.js';
 
 export const EXPLAINER = {
   bg: '#DADADE', indigo: '#2A0A9A', violet: '#7A1FD6', magenta: '#B0309E', orange: '#F5A623', lime: '#B8E03A',
@@ -406,6 +407,8 @@ function noShadow(ctx) {
  * @param {{W:number,H:number,fonts?:object,image?:(id:string)=>any}} env
  */
 export function drawExplainer(ctx, scene, t, env) {
+  // motion por prompt: o roteiro da cena (tempo relativo ao começo dela)
+  if (scene.style === 'prompt') return scene.spec ? drawPromptMotion(ctx, scene.spec, t - scene.start, env) : undefined;
   if (scene.style === 'estrategia') return drawStrategy(ctx, scene, t, env);
   if (STYLE_BEATS[scene.style]) return drawStyle(ctx, scene, t, env);
   const { W, H } = env;
