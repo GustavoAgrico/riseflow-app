@@ -10,7 +10,7 @@ import { useAuth } from '@context/AuthContext'
 import { NAV_GROUPS, NAV_DEFAULT_OPEN } from '@constants/config'
 import clsx from 'clsx'
 
-const ICONS = { LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, MessageSquare, BarChart3, PieChart, Settings, Filter, Megaphone, Calendar, CalendarCheck, UserCog, FileText, ClipboardList, Crown, Bot, Sparkles, Receipt, PhoneCall, Activity, TrendingUp, Target }
+const ICONS = { LayoutDashboard, GitBranch, Users, ContactRound, Plug, Zap, MessageSquare, BarChart3, PieChart, Settings, Filter, Megaphone, Calendar, CalendarCheck, UserCog, FileText, ClipboardList, Crown, Bot, Sparkles, Receipt, PhoneCall, Activity, TrendingUp, Target, Search }
 
 const getInitials = (name = '') =>
   name.split(' ').slice(0, 2).map(w => w[0] ?? '').join('').toUpperCase() || 'U'

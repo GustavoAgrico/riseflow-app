@@ -4,6 +4,7 @@ import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2, MonitorPlay, User, 
 import api from '@services/api'
 import { useAuth } from '@context/AuthContext'
 import { LeadScorePanel } from '@components/LeadScorePanel'
+import { AiCallPanel } from '@components/AiCallPanel'
 import { NotesPanel } from '@components/NotesPanel'
 import { logger } from '@services/activityLogger'
 import { useIsMobile } from '@hooks/useIsMobile'
@@ -204,6 +205,9 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, o
   const [msgs, setMsgs] = useState(null)
   const [nextTask, setNextTask] = useState(null)
   const [timeline, setTimeline] = useState(null)
+  // Recarrega o painel de pontuação quando uma ligação por IA termina qualificada.
+  const [scoreKey, setScoreKey] = useState(0)
+  const onCallQualified = useCallback(() => setScoreKey(k => k + 1), [])
 
   useEffect(() => {
     if (!userId || !contact.phone) { setMsgs([]); return }
@@ -318,7 +322,8 @@ const DetailPanel = ({ contact, onClose, onStageChange, onToggleTag, onDelete, o
             <p key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: val ? C.tx : C.mut, marginBottom: 6 }}><Ic size={14} color={C.mut} /><span>{val || '—'}</span></p>
           ))
         )}
-        <LeadScorePanel contactId={contact.id} userId={userId} />
+        <LeadScorePanel key={scoreKey} contactId={contact.id} userId={userId} />
+        <AiCallPanel clientId={contact.id} phone={contact.phone} onQualified={onCallQualified} />
         <div style={{ marginBottom: 14, marginTop: 14 }}>
           <label style={S.label}>Etapa</label>
           <select value={contact.stage} onChange={e => onStageChange(contact.id, e.target.value)} style={S.select}>

@@ -75,6 +75,7 @@ export const NAV_GROUPS = [
       { id: 'agenda', label: 'Agenda', icon: 'CalendarCheck', path: '/agenda' },
       { id: 'schedules', label: 'Agendamentos', icon: 'Calendar', path: '/schedules' },
       { id: 'calls', label: 'Ligações', icon: 'PhoneCall', path: '/calls' },
+      { id: 'prospecting', label: 'Prospecção com IA', icon: 'Search', path: '/prospeccao', badge: 'IA' },
     ],
   },
   {
