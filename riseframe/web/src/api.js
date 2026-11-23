@@ -452,11 +452,11 @@ export async function analyzeReference(file, onProgress) {
 }
 
 /** Motion por prompt: a IA monta o roteiro da cena (ou ajusta um pronto com `current` + `change`). */
-export async function generatePromptMotion({ prompt, form, current, change }) {
+export async function generatePromptMotion({ prompt, form, current, change, speech = '' }) {
   const r = await fetch(`${BASE}/motion/prompt`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ prompt, form, ...(current ? { current, change } : {}) }),
+    body: JSON.stringify({ prompt, form, ...(speech ? { speech } : {}), ...(current ? { current, change } : {}) }),
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || `erro ${r.status}`);

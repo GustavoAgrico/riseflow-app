@@ -1418,6 +1418,26 @@ export function fallbackPromptSpec(prompt, form = {}) {
   });
 }
 
+// ─────────────────────────────── revisão visual (o Claude olha os quadros) ───────────────────────────────
+/** Instantes (s) dos quadros que vão para a revisão: começo, meio, fim e o quadro final. Puro. */
+export function reviewTimes(spec) {
+  const d = spec.duration;
+  return [0.22, 0.5, 0.78, 0.98].map((f) => +(d * f).toFixed(2));
+}
+
+/** Prompt de sistema da revisão: o mesmo vocabulário + o papel de diretor de arte. */
+export function promptMotionReviewSystem() {
+  return `${promptMotionSystem()}
+
+REVISÃO VISUAL
+Você agora é o diretor de arte revisando a cena acima. Você recebe o roteiro JSON e quadros RENDERIZADOS dele (com o instante de cada um). Olhe os quadros com atenção e corrija só problemas reais:
+- texto cortado na borda, fora do quadro ou fora da área segura (y 0.15–0.85 em 9:16);
+- peças sobrepostas atrapalhando a leitura; texto pequeno demais para celular; pouco contraste com o fundo;
+- momento vazio ou com informação demais; a mensagem principal tem que estar clara no último quadro;
+- algo do pedido que não apareceu.
+Mantenha o que está bom (cores, ideia, ritmo). Responda só com o JSON do roteiro completo corrigido, com um campo extra "review": uma frase curta em português dizendo o que você ajustou (ou "sem ajustes").`;
+}
+
 // ─────────────────────────────── instruções para a IA ───────────────────────────────
 /** Prompt de sistema: o vocabulário do roteiro e as regras de bom motion design. */
 export function promptMotionSystem() {
@@ -1464,10 +1484,11 @@ REGRAS DE BOM MOTION
 }
 
 /** Mensagem do usuário para a IA: prompt + formulário (+ o roteiro atual, para ajustar). */
-export function promptMotionUser(prompt, form = {}, current = null, change = '') {
+export function promptMotionUser(prompt, form = {}, current = null, change = '', speech = '') {
   const pal = PM_PALETTES[form.palette]?.palette || form.colors || null;
   const lines = [
     `Pedido: ${str(prompt, 1200)}`,
+    speech ? `Fala do vídeo neste ponto (a cena entra enquanto a pessoa diz isto — combine com a fala, use as palavras e números dela quando fizer sentido): "${str(speech, 800)}"` : '',
     form.goal ? `Objetivo: ${PM_GOALS[form.goal] || form.goal}` : '',
     form.look ? `Estilo: ${PM_LOOKS[form.look] || form.look}` : '',
     form.pace ? `Ritmo: ${PM_PACES[form.pace] || form.pace}` : '',

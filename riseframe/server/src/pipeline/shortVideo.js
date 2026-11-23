@@ -179,7 +179,7 @@ export async function selectStory(transcript, meta, options = {}, cfg = null) {
   if (cfg && llmAvailable(cfg)) {
     try {
       const lines = sentencesForLLM(S, target, goal).map((s) => `S${s.i} [${s.start.toFixed(1)}s–${s.end.toFixed(1)}s] ${s.text}`).join('\n');
-      const { data, provider } = await askJson(INSTRUCTION({ target, lo: Math.round(target * 0.8), hi: Math.round(target * 1.15), goal }), lines, cfg, { maxTokens: 1500, timeoutMs: 120_000 });
+      const { data, provider } = await askJson(INSTRUCTION({ target, lo: Math.round(target * 0.8), hi: Math.round(target * 1.15), goal }), lines, cfg, { maxTokens: 1500, timeoutMs: 120_000, task: 'edit' });
       if (Array.isArray(data?.parts) && data.parts.length) {
         parts = fixStory(S, data.parts, { target, goal });
         by = `IA (${provider})`;

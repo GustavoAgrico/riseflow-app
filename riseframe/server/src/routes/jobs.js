@@ -1418,7 +1418,8 @@ jobsRouter.post('/remote/llm', requireAuth, requireVerified, requireAppPlan, asy
     const { askText, llmConfig } = await import('../pipeline/llm.js');
     const cfg = llmConfig({});
     if (!cfg.anthropicKey && !cfg.groqKey) return res.status(501).json({ error: 'IA indisponível no servidor' });
-    const out = await askText(system, user, cfg, { maxTokens: Math.min(4000, Number(req.body?.maxTokens) || 3000), json: req.body?.json !== false });
+    const task = ['motion', 'review', 'edit', 'analyze', 'cleanup', 'translate', 'chat'].includes(req.body?.task) ? req.body.task : 'chat';
+    const out = await askText(system, user, cfg, { maxTokens: Math.min(16000, Number(req.body?.maxTokens) || 3000), json: req.body?.json !== false, task });
     res.json({ text: out.text, provider: out.provider });
   } catch (err) {
     res.status(500).json({ error: err.message || 'falha na IA' });

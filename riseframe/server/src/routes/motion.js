@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { requireAuth } from './auth.js';
 import { config } from '../config.js';
-import { askJson, llmAvailable, llmConfig } from '../pipeline/llm.js';
+import { askClaude, askJson, llmAvailable, llmConfig, parseJsonLoose } from '../pipeline/llm.js';
 import { makeLogger } from '../logger.js';
-import { sanitizePromptSpec, fallbackPromptSpec, promptMotionSystem, promptMotionUser, PM_GOALS, PM_LOOKS, PM_PACES, PM_PALETTES } from '../../../shared/promptMotion.js';
+import { sanitizePromptSpec, fallbackPromptSpec, promptMotionSystem, promptMotionUser, promptMotionReviewSystem, reviewTimes, drawPromptMotion, PM_GOALS, PM_LOOKS, PM_PACES, PM_PALETTES } from '../../../shared/promptMotion.js';
 
 // Motion por PROMPT: a pessoa descreve a cena e preenche o formulário (objetivo, estilo,
 // cores, ritmo, duração); a IA devolve o ROTEIRO da cena (JSON, vocabulário fechado —
@@ -37,13 +37,51 @@ export function cleanForm(raw = {}) {
   };
 }
 
-// POST /api/motion/prompt { prompt, form, current?, change? } → { spec, source: 'ia'|'modelo', note? }
+/** Quadros da cena em PNG (base64) para o Claude olhar. */
+async function renderFrames(spec, aspect) {
+  const { createCanvas } = await import('@napi-rs/canvas');
+  const { registerFonts } = await import('../pipeline/motionRender.js');
+  registerFonts();
+  const [aw, ah] = { '16:9': [16, 9], '1:1': [1, 1], '4:5': [4, 5] }[aspect] || [9, 16];
+  const H = aw > ah ? 432 : 768;
+  const W = Math.round((H * aw) / ah);
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext('2d');
+  return reviewTimes(spec).map((t) => {
+    drawPromptMotion(ctx, spec, t, { W, H });
+    return { t, data: canvas.toBuffer('image/png').toString('base64') };
+  });
+}
+
+/**
+ * Revisão visual: o Claude (Opus 5.5) olha quadros renderizados da cena e corrige o que está
+ * ruim (texto cortado, sobreposição, contraste…). Só com a chave do Claude (imagens).
+ * → { spec, note } (a cena original quando não há o que corrigir ou a revisão falha)
+ */
+export async function reviewSpec(spec, form, cfg, ask = askClaude) {
+  const frames = await renderFrames(spec, form.aspect);
+  const content = [
+    ...frames.flatMap((f) => [
+      { type: 'text', text: `Quadro em ${f.t.toFixed(2)} s:` },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: f.data } },
+    ]),
+    { type: 'text', text: `Roteiro atual:\n${JSON.stringify(spec)}\n\nRevise e responda só com o JSON.` },
+  ];
+  const text = await ask(promptMotionReviewSystem(), content, cfg, { maxTokens: 24000, task: 'review' });
+  const data = parseJsonLoose(text);
+  const fixed = sanitizePromptSpec({ ...data, duration: spec.duration });
+  const note = typeof data?.review === 'string' ? data.review.trim().slice(0, 200) : '';
+  return fixed ? { spec: fixed, note } : { spec, note: '' };
+}
+
+// POST /api/motion/prompt { prompt, form, current?, change?, speech? } → { spec, source: 'ia'|'modelo', note?, review? }
 motionRouter.post('/motion/prompt', requireAuth, async (req, res) => {
   const prompt = String(req.body?.prompt || '').trim().slice(0, 1200);
   const change = String(req.body?.change || '').trim().slice(0, 600);
   const current = req.body?.current ? sanitizePromptSpec(req.body.current) : null;
   if (!prompt && !(current && change)) return res.status(400).json({ error: 'descreva a cena que você quer' });
   const form = cleanForm(req.body?.form);
+  const speech = String(req.body?.speech || '').replace(/\s+/g, ' ').trim().slice(0, 800);
   // sem a IA (ou se ela falhar), a cena montada pelo modelo — a pessoa sempre recebe algo
   const fallback = () => (current && change ? current : fallbackPromptSpec(prompt, form));
   let cfg = llmConfig({});
@@ -54,13 +92,25 @@ motionRouter.post('/motion/prompt', requireAuth, async (req, res) => {
     return spec ? res.json({ spec, source: 'modelo', note: 'IA indisponível: montei pelo modelo. Ligue a IA (chave do Claude ou conta do site) para cenas sob medida.' }) : res.status(422).json({ error: 'não deu para montar a cena' });
   }
   try {
-    const { data } = await askJson(promptMotionSystem(), promptMotionUser(prompt || current?.title || '', form, current, change), cfg, { maxTokens: 4000, timeoutMs: 120_000 });
+    const { data } = await askJson(promptMotionSystem(), promptMotionUser(prompt || current?.title || '', form, current, change, speech), cfg, { maxTokens: 24000, timeoutMs: 300_000, task: 'motion' });
     let spec = sanitizePromptSpec(data);
     // duração do formulário manda (a IA às vezes ignora)
     if (spec && !change) spec = sanitizePromptSpec({ ...spec, duration: form.duration });
     if (!spec) throw new Error('a IA devolveu uma cena vazia');
     log.ok(`cena "${spec.title}" (${spec.duration}s, ${spec.elements.length} peças: ${[...new Set(spec.elements.map((e) => e.type))].join(', ')})`);
-    return res.json({ spec, source: 'ia' });
+    // revisão visual (Claude com imagens): olha a cena renderizada e corrige o que ficou ruim
+    let review = '';
+    if (cfg.anthropicKey && req.body?.review !== false) {
+      try {
+        const r = await reviewSpec(spec, form, cfg);
+        spec = r.spec;
+        review = r.note;
+        if (review) log.info(`revisão visual: ${review}`);
+      } catch (err) {
+        log.warn(`revisão visual falhou (${err.message}) — fica a cena sem revisão`);
+      }
+    }
+    return res.json({ spec, source: 'ia', ...(review ? { review } : {}) });
   } catch (err) {
     log.warn(`IA do motion falhou (${err.message}) — usando o modelo`);
     const spec = fallback();

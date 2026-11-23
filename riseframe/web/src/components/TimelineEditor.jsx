@@ -5425,6 +5425,10 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // ─── Motion por prompt (como o Prompt Motion): a pessoa descreve a cena e a IA anima ───
   const [pmStudio, setPmStudio] = useState(null); // null | { key?: string } (key = editando uma cena)
   const promptScenes = media.filter((m) => m.motionScene?.style === 'prompt');
+  /** A fala em volta do ponto onde a cena entra (o Claude combina a cena com ela). */
+  const speechAround = (t0) => segments.flatMap((sg) => sg.words || [])
+    .filter((w) => !w.removed && !w.hidden && Number(w.end) > t0 - 1 && Number(w.start) < t0 + 8)
+    .map((w) => String(w.word || '').trim()).filter(Boolean).join(' ').slice(0, 800);
   function insertPromptMotion(spec, meta) {
     const scene = (start) => ({ start, end: +(start + spec.duration).toFixed(2), style: 'prompt', spec, beats: [], prompt: meta.prompt, form: meta.form, hideCaps: meta.form?.hideCaps !== false });
     if (pmStudio?.key) {
@@ -7943,6 +7947,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           aspect={{ w: FMT_WH[aspectSel]?.[0] || vdim?.w || 1080, h: FMT_WH[aspectSel]?.[1] || vdim?.h || 1920 }}
           aspectLabel={FMT_WH[aspectSel] ? aspectSel : (vdim?.w || 9) > (vdim?.h || 16) ? '16:9' : '9:16'}
           loadFonts={loadExplainerFonts}
+          speech={speechAround(pmStudio.key ? Number(media.find((x) => x.key === pmStudio.key)?.start) || 0 : cur)}
           onInsert={insertPromptMotion}
           onClose={() => setPmStudio(null)}
         />,

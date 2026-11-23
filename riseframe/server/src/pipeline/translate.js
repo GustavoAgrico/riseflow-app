@@ -79,12 +79,8 @@ export async function translateTranscript(transcript, lang, cfg) {
   const segments = (transcript.segments || []).filter((s) => liveWords(s).length);
   if (!segments.length) return { ...transcript, segments: [], language: lang };
 
-  const { default: Anthropic } = remote ? { default: null } : await import('@anthropic-ai/sdk');
-  const client = remote ? null : new Anthropic({
-    apiKey: cfg.anthropicKey,
-    ...(cfg.anthropicWorkspaceId ? { defaultHeaders: { 'anthropic-workspace-id': cfg.anthropicWorkspaceId } } : {}),
-  });
-  const model = cfg.model || 'claude-opus-5';
+  const model = cfg.model || 'claude-opus-5-5';
+  const { askClaude, askRemoteText } = await import('./llm.js');
 
   const out = [];
   for (let i = 0; i < segments.length; i += CHUNK) {
@@ -93,16 +89,9 @@ export async function translateTranscript(transcript, lang, cfg) {
     let text;
     if (remote) {
       // App de PC sem chave: a IA da conta do site traduz (só o texto vai)
-      const { askRemoteText } = await import('./llm.js');
-      text = await askRemoteText(INSTRUCTION(lang), JSON.stringify(lines), cfg, { maxTokens: 4000, json: true });
+      text = await askRemoteText(INSTRUCTION(lang), JSON.stringify(lines), cfg, { maxTokens: 4000, json: true, task: 'translate' });
     } else {
-      const response = await client.messages.create({
-        model,
-        max_tokens: 4000,
-        system: INSTRUCTION(lang),
-        messages: [{ role: 'user', content: JSON.stringify(lines) }],
-      });
-      text = (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+      text = await askClaude(INSTRUCTION(lang), JSON.stringify(lines), { ...cfg, model }, { maxTokens: 16000, task: 'translate' });
     }
     const translated = parseLines(text, chunk.length);
     chunk.forEach((seg, j) => out.push(retimeSegment(seg, translated[j])));
