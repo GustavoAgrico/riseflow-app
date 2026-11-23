@@ -5,7 +5,7 @@ import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import Processing from './Processing.jsx';
 import { pickExportTarget, setPendingExport } from '../exportTarget.js';
-import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, elementUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi, brollFaces, getSubject } from '../api.js';
+import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, elementUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi, brollFaces, getSubject, motionAuto } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -24,6 +24,8 @@ import { suggestSfx, SFX_STYLES } from '../../../shared/autoMoments.js';
 import { kineticPlan, KINETIC_THEMES, KINETIC_AMOUNT } from '../../../shared/kinetic.js';
 import { explainerPlan, drawExplainer, EXPLAINER_FONT_FILES, MOTION_STYLES } from '../../../shared/motionEngine.js';
 import PromptMotionStudio from './PromptMotionStudio.jsx';
+import MotionRefsPanel from './MotionRefsPanel.jsx';
+import { promptMotionSfx } from '../../../shared/promptMotion.js';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
 import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, wordPlan, wordFrame, WORD_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
@@ -5344,8 +5346,43 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setSfxMoments((l) => l.filter((m) => !m.smart || m.motion));
     sayAuto(n ? `${n} sons automáticos tirados` : 'Não havia sons automáticos.');
   }
+  // Premium com IA: o Claude Opus 5.5 lê a fala e cria as cenas sozinho (sem prompt), no
+  // estilo aprendido das referências; sem IA, o servidor manda o Premium por regras
+  const [kinBusy, setKinBusy] = useState(false);
+  async function placePremiumIa() {
+    const keep = textLayers.filter((l) => !l.smart);
+    setKinBusy(true);
+    sayAuto('O Claude está lendo a fala e criando as cenas premium — leva 1 a 3 minutos…');
+    try {
+      const aspect = FMT_WH[aspectSel] ? aspectSel : (vdim?.w || 9) > (vdim?.h || 16) ? '16:9' : '9:16';
+      const r = await motionAuto({ segments: smartSegments(), duration: dur, amount: kinAmount, aspect });
+      const now = Date.now();
+      setTextLayers(keep);
+      setMedia((prev) => {
+        const rest = prev.filter((m) => !m.kinetic);
+        const top = rest.reduce((a, m) => Math.max(a, Number(m.layer) || 0), 0) + 1;
+        return [...rest, ...r.scenes.map((sc, i) => ({
+          key: `k${now}_${i}`, kind: 'video', filename: `motion premium ${i + 1}${sc.spec?.title ? `: ${sc.spec.title}` : ''}`, motionScene: sc, start: sc.start, duration: +(sc.end - sc.start).toFixed(2),
+          srcDuration: 600, mode: 'cover', volume: 0, muted: true, opacity: 1, blend: 'normal', offset: 0, fadeIn: 0, fadeOut: 0, px: 0.5, py: 0.5, scale: 1,
+          animIn: 'none', animOut: 'none', layer: top, kinetic: true, scene: i + 1,
+        }))];
+      });
+      const keepSfx = sfxMoments.filter((m) => !(m.smart && m.motion));
+      const sfx = kinSfx ? (r.sfx || []).map((m, i) => ({ key: `s${now}_k${i}`, t: m.t, type: m.type, volume: m.volume, smart: true, motion: true, why: m.why })) : [];
+      setSfxMoments([...keepSfx, ...sfx].sort((a, b) => a.t - b.t));
+      const inScene = (w) => r.scenes.some((sc) => (w.start + w.end) / 2 >= sc.start && (w.start + w.end) / 2 <= sc.end);
+      setSegments((prev) => prev.map((sg) => ({ ...sg, words: sg.words.map((w) => (w.khid && !inScene(w) ? { ...w, hidden: false, khid: false } : !w.hidden && inScene(w) ? { ...w, hidden: true, khid: true } : w)) })));
+      const how = r.source === 'ia' ? `criadas pelo Claude${r.guide ? ' no seu estilo' : ''}${r.notes?.length ? ` (revisadas: ${r.notes.length} ajuste(s))` : ''}` : `pelo Premium por regras${r.notes?.[0] ? ` — ${r.notes[0]}` : ''}`;
+      sayAuto(r.scenes.length ? `${r.scenes.length} cena(s) de motion premium ${how} — dê play para ver` : 'O Claude não achou momentos bons para motion nesse vídeo.');
+    } catch (e) {
+      sayAuto(`Não deu para criar o motion: ${e.message}`);
+    } finally {
+      setKinBusy(false);
+    }
+  }
   /** Motion tipográfico: cenas de tipografia cinética nos momentos da fala (com os sons). */
   function placeKinetic() {
+    if (kinTheme === 'premium-ia') { placePremiumIa(); return; }
     const keep = textLayers.filter((l) => !l.smart);
     if (Object.hasOwn(MOTION_STYLES, kinTheme)) {
       // motion desenhado (explicativo / estratégia): cada cena é uma camada (mesmo desenho na prévia e no render)
@@ -5421,18 +5458,25 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restored]);
   const smartSfxN = sfxMoments.filter((m) => m.smart && !m.motion).length;
-  const kineticN = new Set(textLayers.filter((l) => l.smart).map((l) => l.scene || l.key)).size + media.filter((m) => m.motionScene && m.motionScene.style !== 'prompt').length;
+  const kineticN = new Set(textLayers.filter((l) => l.smart).map((l) => l.scene || l.key)).size + media.filter((m) => m.motionScene && (m.kinetic || m.motionScene.style !== 'prompt')).length;
   // ─── Motion por prompt (como o Prompt Motion): a pessoa descreve a cena e a IA anima ───
   const [pmStudio, setPmStudio] = useState(null); // null | { key?: string } (key = editando uma cena)
-  const promptScenes = media.filter((m) => m.motionScene?.style === 'prompt');
+  const promptScenes = media.filter((m) => m.motionScene?.style === 'prompt' && !m.kinetic);
   /** A fala em volta do ponto onde a cena entra (o Claude combina a cena com ela). */
   const speechAround = (t0) => segments.flatMap((sg) => sg.words || [])
     .filter((w) => !w.removed && !w.hidden && Number(w.end) > t0 - 1 && Number(w.start) < t0 + 8)
     .map((w) => String(w.word || '').trim()).filter(Boolean).join(' ').slice(0, 800);
   function insertPromptMotion(spec, meta) {
     const scene = (start) => ({ start, end: +(start + spec.duration).toFixed(2), style: 'prompt', spec, beats: [], prompt: meta.prompt, form: meta.form, hideCaps: meta.form?.hideCaps !== false });
+    // desenho de som da cena (ar, batidas, cliques…), trocado quando a cena é atualizada
+    const withSfx = (key, start) => {
+      const sfx = promptMotionSfx(spec, start, sfxAvailable()).map((m, i) => ({ key: `s${key}_${i}`, t: m.t, type: m.type, volume: m.volume, smart: true, pm: key, why: m.why }));
+      setSfxMoments((prev) => [...prev.filter((m) => m.pm !== key), ...sfx].sort((a, b) => a.t - b.t));
+    };
     if (pmStudio?.key) {
+      const old = media.find((m) => m.key === pmStudio.key);
       setMedia((prev) => prev.map((m) => (m.key === pmStudio.key ? { ...m, filename: `motion: ${spec.title}`, motionScene: scene(Number(m.start)), duration: spec.duration } : m)));
+      if (old) withSfx(old.key, Number(old.start));
       sayAuto(`Cena "${spec.title}" atualizada`);
     } else {
       const start = +Math.max(0, Math.min(cur, Math.max(0, dur - 0.5))).toFixed(2);
@@ -5445,6 +5489,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           animIn: 'none', animOut: 'none', layer: top, promptMotion: true,
         }];
       });
+      withSfx(key, start);
       sayAuto(`Cena "${spec.title}" colocada em ${start.toFixed(1)} s — dê play para ver`);
     }
     setPmStudio(null);
@@ -5507,7 +5552,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <div key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, border: `1px solid ${C.border}`, borderRadius: 8, padding: '5px 8px' }}>
               <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.motionScene.spec?.title || 'Motion'} · {Number(m.start).toFixed(1)} s</span>
               <button type="button" onClick={() => setPmStudio({ key: m.key })} style={{ ...miniBtn(false, false), flex: 'none' }}>Editar</button>
-              <button type="button" onClick={() => setMedia((prev) => prev.filter((x) => x.key !== m.key))} style={{ ...miniBtn(false, false), flex: 'none' }}>Tirar</button>
+              <button type="button" onClick={() => { setMedia((prev) => prev.filter((x) => x.key !== m.key)); setSfxMoments((prev) => prev.filter((x) => x.pm !== m.key)); }} style={{ ...miniBtn(false, false), flex: 'none' }}>Tirar</button>
             </div>
           ))}
         </div>
@@ -5550,6 +5595,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             {library && !library.some((it) => (it.kind === 'video' || it.kind === 'image') && it.status === 'ok') && <span style={{ fontSize: 11, color: C.faint }}>Nenhum vídeo/imagem na biblioteca ainda.</span>}
           </div>
         )}
+        {kinTheme === 'premium-ia' && (
+          <>
+            <span style={{ fontSize: 10.5, color: C.muted, lineHeight: 1.4 }}>O <b>Claude Opus 5.5</b> lê a fala, escolhe os momentos (números, listas, contrastes, gancho, chamada final) e cria cada cena de motion premium sincronizada com o que você diz — com câmera, profundidade, transições e sons. Depois ele confere os quadros e corrige o que ficou ruim. Sem precisar escrever nada.</span>
+            <MotionRefsPanel />
+          </>
+        )}
         <span style={{ fontSize: 10.5, color: C.faint, fontWeight: 700 }}>Quanto</span>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
           {Object.entries(KINETIC_AMOUNT).map(([id, label]) => chip(kinAmount === id, () => setKinAmount(id), label, id))}
@@ -5559,7 +5610,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         </div>
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <button type="button" onClick={placeKinetic} style={{ ...miniBtn(true, false) }}>{kineticN ? 'Refazer o motion' : 'Criar motion'}</button>
+        <button type="button" onClick={placeKinetic} disabled={kinBusy} style={{ ...miniBtn(true, kinBusy) }}>{kinBusy ? 'O Claude está criando…' : kineticN ? 'Refazer o motion' : 'Criar motion'}</button>
         {kineticN > 0 && <button type="button" onClick={clearKinetic} style={{ ...miniBtn(false, false) }}>Tirar ({kineticN} {kineticN === 1 ? 'cena' : 'cenas'})</button>}
       </div>
       {autoNote && <span style={{ fontSize: 11.5, color: C.text }}>{autoNote}</span>}

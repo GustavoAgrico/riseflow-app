@@ -8,7 +8,7 @@ import { phraseChunks, wordRole } from './kinetic.js';
 import { conceptsIn } from './sceneElements.js';
 import { emphasisScore } from './keyMoments.js';
 import { STYLE_BEATS, styleBeatsFor, styleSfx, drawStyle, STYLE_FONT_FILES, reelType } from './motionStyles.js';
-import { drawPromptMotion } from './promptMotion.js';
+import { drawPromptMotion, PM_SHOWCASE } from './promptMotion.js';
 
 export const EXPLAINER = {
   bg: '#DADADE', indigo: '#2A0A9A', violet: '#7A1FD6', magenta: '#B0309E', orange: '#F5A623', lime: '#B8E03A',
@@ -214,6 +214,8 @@ export function thinSfx(beats, sfx) {
  * outro formato os desenhos liam `w.w` vazio e escreviam "undefined" na miniatura.
  */
 export function previewScene(style) {
+  // Premium com IA: as cenas são criadas pelo Claude; a miniatura mostra uma cena de vitrine
+  if (style === 'premium-ia') return { style: 'prompt', start: 0, end: 4, spec: PM_SHOWCASE, beats: [] };
   const types = style === 'estrategia' ? ['a-plain'] : STYLE_BEATS[style];
   if (!types) return null;
   const kw = 'DESIGN';

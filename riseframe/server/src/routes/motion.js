@@ -3,6 +3,10 @@ import { requireAuth } from './auth.js';
 import { config } from '../config.js';
 import { askClaude, askJson, llmAvailable, llmConfig, parseJsonLoose } from '../pipeline/llm.js';
 import { makeLogger } from '../logger.js';
+import { resolveMedia, removeFromLibrary } from '../mediaStore.js';
+import { directMotion } from '../pipeline/motionDirector.js';
+import { listRefs, addRef, removeRef, loadGuide, learnGuide, guideText } from '../pipeline/motionRefs.js';
+import { SFX_LIBRARY } from '../pipeline/sfx.js';
 import { sanitizePromptSpec, fallbackPromptSpec, promptMotionSystem, promptMotionUser, promptMotionReviewSystem, reviewTimes, drawPromptMotion, PM_GOALS, PM_LOOKS, PM_PACES, PM_PALETTES } from '../../../shared/promptMotion.js';
 
 // Motion por PROMPT: a pessoa descreve a cena e preenche o formulário (objetivo, estilo,
@@ -74,6 +78,74 @@ export async function reviewSpec(spec, form, cfg, ask = askClaude) {
   return fixed ? { spec: fixed, note } : { spec, note: '' };
 }
 
+/** IA para esta pessoa: chave do servidor; no app de PC sem chave, a IA da conta do site. */
+function cfgFor(req) {
+  let cfg = llmConfig({});
+  if (!llmAvailable(cfg) && config.account.server && bearer(req)) cfg = { ...cfg, remoteServer: config.account.server, remoteToken: bearer(req) };
+  return cfg;
+}
+
+const cleanSegments = (raw) => (Array.isArray(raw) ? raw : []).slice(0, 4000).map((s) => ({
+  start: Number(s?.start) || 0,
+  end: Number(s?.end) || 0,
+  words: (Array.isArray(s?.words) ? s.words : []).slice(0, 400).map((w) => ({ word: String(w?.word ?? '').slice(0, 40), start: Number(w?.start) || 0, end: Number(w?.end) || 0, ...(w?.removed ? { removed: true } : {}) })),
+}));
+
+// POST /api/motion/auto { segments, duration, amount, aspect, palette? } → { scenes, sfx, source, notes }
+// Motion premium AUTOMÁTICO: o Claude lê a fala e cria as cenas (sem prompt).
+motionRouter.post('/motion/auto', requireAuth, async (req, res) => {
+  const segments = cleanSegments(req.body?.segments);
+  const duration = Math.max(1, Math.min(4 * 3600, Number(req.body?.duration) || 0));
+  if (!segments.length) return res.status(400).json({ error: 'sem transcrição para ler' });
+  const form = cleanForm({ aspect: req.body?.aspect, colors: req.body?.palette });
+  try {
+    const guide = await loadGuide(req.user?.id);
+    const r = await directMotion({
+      segments, duration, amount: req.body?.amount === 'muitos' ? 'muitos' : 'chave', aspect: form.aspect,
+      guide, palette: form.colors || null, available: new Set(Object.keys(SFX_LIBRARY)),
+    }, cfgFor(req));
+    res.json({ ...r, ...(guide ? { guide: true } : {}) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Referências de motion (a pasta que ensina o estilo ao Claude)
+motionRouter.get('/motion/references', requireAuth, async (req, res) => {
+  try {
+    const r = await listRefs(req.user?.id);
+    res.json({ files: r.files, guide: r.guide, folder: r.dir, canLearn: Boolean(llmConfig({}).anthropicKey) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+motionRouter.post('/motion/references', requireAuth, async (req, res) => {
+  const id = typeof req.body?.mediaId === 'string' ? req.body.mediaId : '';
+  const media = resolveMedia(id);
+  if (!media || (media.ownerId && String(media.ownerId) !== String(req.user?.id))) return res.status(404).json({ error: 'arquivo não encontrado — envie de novo' });
+  try {
+    const name = await addRef(req.user?.id, media.path, media.originalname || `ref${Date.now()}${media.kind === 'image' ? '.png' : '.mp4'}`);
+    removeFromLibrary(id, req.user?.id ?? null);
+    res.json({ name });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+motionRouter.delete('/motion/references/:name', requireAuth, async (req, res) => {
+  const ok = await removeRef(req.user?.id, req.params.name);
+  res.status(ok ? 200 : 400).json(ok ? { ok: true } : { error: 'arquivo inválido' });
+});
+motionRouter.post('/motion/references/learn', requireAuth, async (req, res) => {
+  const cfg = llmConfig({});
+  if (!cfg.anthropicKey) return res.status(501).json({ error: 'aprender com as referências precisa da chave do Claude (ANTHROPIC_API_KEY): o Claude olha os quadros' });
+  try {
+    const guide = await learnGuide(req.user?.id, cfg);
+    res.json({ guide });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // POST /api/motion/prompt { prompt, form, current?, change?, speech? } → { spec, source: 'ia'|'modelo', note?, review? }
 motionRouter.post('/motion/prompt', requireAuth, async (req, res) => {
   const prompt = String(req.body?.prompt || '').trim().slice(0, 1200);
@@ -92,7 +164,9 @@ motionRouter.post('/motion/prompt', requireAuth, async (req, res) => {
     return spec ? res.json({ spec, source: 'modelo', note: 'IA indisponível: montei pelo modelo. Ligue a IA (chave do Claude ou conta do site) para cenas sob medida.' }) : res.status(422).json({ error: 'não deu para montar a cena' });
   }
   try {
-    const { data } = await askJson(promptMotionSystem(), promptMotionUser(prompt || current?.title || '', form, current, change, speech), cfg, { maxTokens: 24000, timeoutMs: 300_000, task: 'motion' });
+    const guide = await loadGuide(req.user?.id);
+    const system = guide ? `${promptMotionSystem()}\n\n${guideText(guide)}` : promptMotionSystem();
+    const { data } = await askJson(system, promptMotionUser(prompt || current?.title || '', form, current, change, speech), cfg, { maxTokens: 24000, timeoutMs: 300_000, task: 'motion' });
     let spec = sanitizePromptSpec(data);
     // duração do formulário manda (a IA às vezes ignora)
     if (spec && !change) spec = sanitizePromptSpec({ ...spec, duration: form.duration });

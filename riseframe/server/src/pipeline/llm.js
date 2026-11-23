@@ -128,7 +128,7 @@ export async function askText(system, user, cfg, { maxTokens = 3000, json = true
         body: JSON.stringify({
           model: cfg.groqModel || 'llama-3.3-70b-versatile',
           temperature: 0.2,
-          max_tokens: maxTokens,
+          max_tokens: Math.min(8000, maxTokens), // a Groq tem teto menor que o Claude
           ...(json ? { response_format: { type: 'json_object' } } : {}),
           messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
         }),

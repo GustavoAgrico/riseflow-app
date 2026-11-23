@@ -449,4 +449,12 @@ function hookExportDownloads(win) {
 }
 
 ipcMain.handle('get-data-dir', () => dataDir);
+// Pasta de referências de motion: a pessoa solta ali vídeos/imagens de motions de que gosta
+// (o Claude aprende o estilo). Abre no Explorer/Finder; cria se ainda não existir.
+ipcMain.handle('open-motion-refs', async () => {
+  const dir = path.join(dataDir, 'referencias-motion');
+  mkdirSync(dir, { recursive: true });
+  const err = await shell.openPath(dir);
+  return err ? { ok: false, error: err, dir } : { ok: true, dir };
+});
 ipcMain.handle('get-version', () => app.getVersion());

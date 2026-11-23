@@ -668,6 +668,30 @@ export async function runPipeline(job, onUpdate = () => {}) {
     }
   }
 
+  // Motion premium com IA (sem prompt): o Claude Opus 5.5 lê a fala e cria as cenas,
+  // seguindo o guia de estilo das referências da pessoa; sem IA, o Premium por regras
+  if (options.kinetic === true && mode !== 'render' && options.kineticTheme === 'premium-ia') {
+    const { directMotion } = await import('./motionDirector.js');
+    const { loadGuide } = await import('./motionRefs.js');
+    const out = outputTarget(meta, { aspect: options.aspect });
+    const W = out?.w || meta.width || 1080;
+    const H = out?.h || meta.height || 1920;
+    const cfgAi = llmConfig(options);
+    const cfgUse = cfgAi.anthropicKey || cfgAi.groqKey ? cfgAi : { ...cfgAi, ...remoteLlm(job.id) };
+    const r = await directMotion({
+      segments: transcript.segments, duration: meta.duration, amount: options.kineticAmount,
+      aspect: W > H ? '16:9' : W === H ? '1:1' : '9:16', guide: await loadGuide(job.ownerId), available: new Set(Object.keys(SFX_LIBRARY)),
+    }, cfgUse);
+    options.kinetic = false;
+    if (r.scenes.length) {
+      options.motionScenes = r.scenes;
+      options.sfxMoments = [...(options.sfxMoments || []), ...r.sfx];
+      const inScene = (w) => r.scenes.some((sc) => (w.start + w.end) / 2 >= sc.start && (w.start + w.end) / 2 <= sc.end);
+      transcript = { ...transcript, segments: transcript.segments.map((sg) => (sg.words?.length ? { ...sg, words: sg.words.map((w) => (inScene(w) ? { ...w, hidden: true } : w)) } : sg)) };
+    }
+    report.kinetic = { scenes: r.scenes.length, sounds: r.sfx.length, style: 'premium-ia', source: r.source, ...(r.notes.length ? { notes: r.notes.slice(0, 6) } : {}) };
+  }
+
   // motion explicativo (preset B) no automático: cenas desenhadas, com os sons e a legenda escondida
   if (options.kinetic === true && mode !== 'render' && Object.hasOwn(MOTION_STYLES, options.kineticTheme)) {
     // Reel editado: a legenda por cima da pessoa é parte do estilo (palavra dourada em serifa
