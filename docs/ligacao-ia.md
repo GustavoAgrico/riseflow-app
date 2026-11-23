@@ -59,9 +59,20 @@ o painel acompanha por `POST /api/ai-calls/:id/refresh` → no fim, qualificaç�
 2. Informe rótulo, número e as credenciais da Twilio (API Key SID + Secret).
 3. Atribua o número ao agente criado.
 
-## 4. Servidor do RiseFlow
+## 4. RiseFlow: Configurações → Ligações com IA
 
-Preencha no `server/.env` (local) e no `.env` do servidor de produção:
+Cada conta configura as próprias ligações na tela **Configurações → Ligações com IA**
+(dono ou Admin): chave da ElevenLabs, agente, número (o botão *Buscar na ElevenLabs*
+lista os da conta), nome da empresa, dias e horário da fila, números de teste e o
+liga/desliga. A tela também traz o roteiro pronto para copiar e uma **ligação de teste**.
+
+A chave fica na tabela `ai_call_settings` (rodar `supabase/ai_call_settings.sql`),
+cifrada com `TOKEN_ENC_KEY` quando essa variável existe no servidor, e nunca volta ao
+navegador. A tabela não passa pelo proxy REST.
+
+### Padrão do servidor (opcional)
+
+Contas que ainda não salvaram nada na tela usam o `.env` do servidor:
 
 | Variável | Onde pegar |
 |---|---|
@@ -75,7 +86,7 @@ Reinicie o servidor depois de alterar o `.env`.
 
 ## 5. Banco
 
-Rode `supabase/ai_calls.sql` no SQL Editor do Supabase.
+Rode no SQL Editor do Supabase: `supabase/ai_calls.sql` e `supabase/ai_call_settings.sql`.
 
 ## 6. Testar
 
@@ -94,8 +105,11 @@ nicho salvo em `niche_config`.
 Tela **Vendas → Prospecção com IA** (`/prospeccao`, dono e Admin):
 
 1. Informe o que buscar e onde (ex.: "clínica odontológica", "Volta Redonda, Brasil").
-   O servidor busca no Google Maps pelo Apify (`compass/crawler-google-places`), cerca de
-   US$ 0,004 por empresa no plano gratuito.
+   O servidor busca no Google Maps pelo Apify (`compass/crawler-google-places`).
+   **Sem custo:** antes de cada busca o servidor lê o consumo do mês da conta Apify
+   (`/v2/users/me/limits`) e só usa o crédito grátis mensal (US$ 5, cerca de 800 empresas).
+   Se faltar crédito, a busca é reduzida ou bloqueada até a renovação. O teto pode ser
+   mudado em `PROSPECTING_FREE_BUDGET_USD` (manter 5 para custo zero).
 2. Revise a lista. Empresas sem telefone ou já no CRM não podem ser marcadas.
 3. **Importar para o CRM** cria os leads com a tag `Prospect Maps`.
    **Importar e ligar com IA** também coloca cada lead na fila de ligações.

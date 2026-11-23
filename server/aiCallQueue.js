@@ -3,10 +3,12 @@
 //   2. dentro da janela de horário, disca o próximo lead "queued" de cada conta,
 //      uma ligação por vez por conta e com intervalo mínimo entre elas.
 // Liga só onde ENGINES_ENABLED != 'false' (a reserva no Render fica desligada).
-// Janela: AI_CALLS_WINDOW="1-5 09:00-18:00" (dias 0=dom … 6=sáb, horário de Brasília).
+// Janela, chaves, modo teste e liga/desliga vêm da configuração de cada conta
+// (aiCallSettings); a janela tem o formato "1-5 09:00-18:00" (0=dom … 6=sáb, Brasília).
 const { supabase, isConfigured } = require('./supabaseClient')
 const el = require('./elevenlabs')
 const { dial, refreshCall } = require('./aiCallService')
+const { getConfig } = require('./aiCallSettings')
 
 const TICK_MS = 30_000
 const GAP_MS = 90_000            // intervalo mínimo entre ligações da mesma conta
@@ -18,9 +20,8 @@ let running = false
 let timer = null
 const lastDial = new Map() // userId → hora da última ligação
 
-function inWindow(date = new Date()) {
-  const spec = process.env.AI_CALLS_WINDOW || '1-5 09:00-18:00'
-  const m = spec.match(/^(\d)-(\d)\s+(\d{2}):(\d{2})-(\d{2}):(\d{2})$/)
+function inWindow(date = new Date(), spec = el.DEFAULT_WINDOW) {
+  const m = String(spec).match(/^(\d)-(\d)\s+(\d{2}):(\d{2})-(\d{2}):(\d{2})$/)
   if (!m) return false
   const [, d0, d1, h0, m0, h1, m1] = m.map(Number)
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
@@ -57,6 +58,10 @@ async function dialNext() {
     if (Date.now() - (lastDial.get(row.user_id) || 0) < GAP_MS) continue
     picked.add(row.user_id)
 
+    // Conta sem configuração, desativada ou fora do horário: a ligação espera na fila.
+    const cfg = await getConfig(row.user_id)
+    if (!el.isConfigured(cfg) || !cfg.enabled || !inWindow(new Date(), cfg.window)) continue
+
     // "Reserva" a linha; se outra instância já pegou, segue.
     const { data: claimed } = await supabase.from('ai_calls')
       .update({ status: 'dialing', updated_at: new Date().toISOString() })
@@ -82,7 +87,7 @@ async function tick() {
   running = true
   try {
     await followOpenCalls()
-    if (inWindow()) await dialNext()
+    await dialNext()
   } catch (e) {
     console.warn('[ai-calls] fila:', e.message)
   } finally {
@@ -91,14 +96,9 @@ async function tick() {
 }
 
 function start() {
-  if (!isConfigured) return
-  if (!el.isConfigured()) {
-    console.log('[ai-calls] fila desativada: ElevenLabs não configurada')
-    return
-  }
-  if (timer) return
+  if (!isConfigured || timer) return
   timer = setInterval(tick, TICK_MS)
-  console.log(`[ai-calls] fila ativa (janela ${process.env.AI_CALLS_WINDOW || '1-5 09:00-18:00'}, Brasília)`)
+  console.log('[ai-calls] fila ativa (configuração e horário por conta, Brasília)')
 }
 
 module.exports = { start, inWindow }

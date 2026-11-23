@@ -33,6 +33,7 @@ import { Templates } from '@pages/Templates'
 import { Plans } from '@pages/Plans'
 import { Goals } from '@pages/Goals'
 import { Prospecting } from '@pages/Prospecting'
+import NovoAgente from '@pages/Agentes/NovoAgente'
 import { GoalCelebration } from '@components/Goals/GoalCelebration'
 import { Product } from '@pages/Product'
 import { PlanDetails } from '@pages/PlanDetails'
@@ -172,6 +173,7 @@ function App() {
               <Route path="/plans" element={<PrivateRoute><Plans /></PrivateRoute>} />
               <Route path="/goals" element={<PrivateRoute><Goals /></PrivateRoute>} />
               <Route path="/prospeccao" element={<PrivateRoute><Prospecting /></PrivateRoute>} />
+              <Route path="/agentes/novo" element={<PrivateRoute><NovoAgente /></PrivateRoute>} />
               <Route path="/plans/:planId" element={<PrivateRoute><PlanDetails /></PrivateRoute>} />
 
               <Route path="*" element={<Navigate to="/dashboard" replace />} />

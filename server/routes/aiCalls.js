@@ -1,11 +1,11 @@
 // Ligação por IA disparada pelo botão do CRM (a fila automática está em aiCallQueue.js).
+// Chaves, agente, número e modo teste vêm da configuração da conta (aiCallSettings).
 //   POST /api/ai-calls               { client_id }  → liga agora
 //   GET  /api/ai-calls?client_id=                   → ligações do lead
 //   POST /api/ai-calls/:id/refresh                  → atualiza status/transcrição e qualifica no fim
 // Lógica de discar e qualificar: aiCallService.js. Tabela: supabase/ai_calls.sql.
 const { Router } = require('express')
 const { supabase, isConfigured } = require('../supabaseClient')
-const el = require('../elevenlabs')
 const { ACTIVE, dial, refreshCall } = require('../aiCallService')
 
 const router = Router()
@@ -15,9 +15,6 @@ const recentCalls = new Map() // userId → timestamps das últimas ligações (
 
 const guard = (req, res, next) => {
   if (!isConfigured) return res.status(503).json({ error: 'Supabase não configurado' })
-  if (!el.isConfigured()) {
-    return res.status(503).json({ error: 'Ligação por IA não configurada no servidor (ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID, ELEVENLABS_PHONE_NUMBER_ID).' })
-  }
   next()
 }
 

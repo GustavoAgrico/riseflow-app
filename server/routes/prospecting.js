@@ -1,6 +1,7 @@
 // Prospecção com IA: busca empresas no Google Maps, importa para o CRM e,
 // se pedido, coloca os leads na fila de ligações da IA (aiCallQueue.js).
-//   POST /api/prospecting/search            { query, location, max }
+//   GET  /api/prospecting/credit                                  → crédito grátis restante no mês
+//   POST /api/prospecting/search            { query, location, max }  (limitada ao crédito grátis)
 //   POST /api/prospecting/import            { leads: [...], call: boolean }
 //   GET  /api/prospecting/queue                                   → fila e últimas ligações
 //   POST /api/prospecting/queue/:id/cancel                        → tira da fila
@@ -9,6 +10,7 @@ const { supabase, isConfigured } = require('../supabaseClient')
 const { emitSalesUpdate } = require('../realtime')
 const el = require('../elevenlabs')
 const leadSearch = require('../leadSearch')
+const { getConfig } = require('../aiCallSettings')
 
 const router = Router()
 
@@ -54,15 +56,35 @@ router.post('/search', guard, async (req, res) => {
   if (hitSearchLimit(userId)) return res.status(429).json({ error: `Limite de ${MAX_SEARCHES_PER_HOUR} buscas por hora atingido.` })
 
   try {
-    const [places, have] = await Promise.all([leadSearch.searchGoogleMaps({ query, location, max }), crmPhones(userId)])
-    console.log(`[prospecting] busca "${query}" em "${location}": ${places.length} empresas`)
+    // Sem custo: a busca cabe no crédito grátis do mês ou não acontece.
+    const credit = await leadSearch.getCredit()
+    const allowed = Math.min(max, credit.maxPlaces)
+    if (allowed < 5) {
+      return res.status(402).json({ error: 'O crédito grátis do mês acabou. A busca volta quando o crédito renovar.', credit })
+    }
+    const [places, have] = await Promise.all([
+      leadSearch.searchGoogleMaps({ query, location, max: allowed, capUsd: credit.remainingUsd }),
+      crmPhones(userId),
+    ])
+    console.log(`[prospecting] busca "${query}" em "${location}": ${places.length} empresas (limite ${allowed})`)
     res.json({
       results: places.map(p => ({ ...p, inCrm: Boolean(p.phone && have.has(p.phone)) })),
-      estimatedUsd: leadSearch.estimateUsd(max),
+      requested: max,
+      allowed,
+      credit: await leadSearch.getCredit().catch(() => credit),
     })
   } catch (e) {
     console.error('[prospecting] erro na busca:', e?.message)
     res.status(502).json({ error: e?.message ?? 'Erro na busca de leads.' })
+  }
+})
+
+router.get('/credit', guard, async (req, res) => {
+  if (!leadSearch.isConfigured()) return res.status(503).json({ error: 'Busca de leads não configurada no servidor (APIFY_TOKEN).' })
+  try {
+    res.json(await leadSearch.getCredit())
+  } catch (e) {
+    res.status(502).json({ error: e?.message ?? 'Erro ao consultar o crédito.' })
   }
 })
 
@@ -71,11 +93,14 @@ router.post('/import', guard, async (req, res) => {
   const leads = Array.isArray(req.body?.leads) ? req.body.leads.slice(0, MAX_RESULTS) : []
   const call = Boolean(req.body?.call)
   if (!leads.length) return res.status(400).json({ error: 'Nenhum lead selecionado.' })
-  if (call && !el.isConfigured()) return res.status(503).json({ error: 'Ligação por IA não configurada no servidor (ElevenLabs).' })
 
   try {
+    const cfg = await getConfig(userId)
+    if (call && !el.isConfigured(cfg)) {
+      return res.status(503).json({ error: 'Ligações não configuradas. Abra Configurações → Ligações com IA.' })
+    }
     const have = await crmPhones(userId)
-    const allowed = el.testNumbers()
+    const allowed = el.testNumbers(cfg)
     const out = { imported: 0, skipped: 0, queued: 0, notQueued: 0, testMode: allowed.length > 0 }
 
     for (const l of leads) {

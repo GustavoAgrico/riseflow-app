@@ -6,6 +6,7 @@ const { supabase } = require('./supabaseClient')
 const { emitSalesUpdate } = require('./realtime')
 const { chatComplete } = require('./aiProvider')
 const el = require('./elevenlabs')
+const { getConfig } = require('./aiCallSettings')
 
 // queued → dialing → initiated → in-progress → processing → done | failed (ou canceled na fila)
 const ACTIVE = ['queued', 'dialing', 'initiated', 'in-progress', 'processing']
@@ -28,22 +29,26 @@ async function loadNiche(userId) {
   return data || null
 }
 
-// Liga para o lead. Com rowId, atualiza a linha da fila; sem, cria uma nova.
+// Liga para o lead com a configuração da conta. Com rowId, atualiza a linha da fila; sem, cria uma nova.
 async function dial(userId, client, rowId = null) {
+  const cfg = await getConfig(userId)
+  if (!el.isConfigured(cfg)) throw httpError(503, 'Ligações não configuradas. Abra Configurações → Ligações com IA.')
+  if (!cfg.enabled) throw httpError(409, 'As ligações com IA estão desativadas em Configurações → Ligações com IA.')
   const toNumber = el.toE164(client.phone)
   if (!toNumber) throw httpError(400, 'O lead não tem um telefone válido.')
-  const allowed = el.testNumbers()
+  const allowed = el.testNumbers(cfg)
   if (allowed.length && !allowed.includes(toNumber)) {
-    throw httpError(403, 'Modo teste: este número não está em AI_CALLS_TEST_NUMBERS.')
+    throw httpError(403, 'Modo teste: este número não está na lista de números de teste.')
   }
 
   const niche = await loadNiche(userId)
   const call = await el.startOutboundCall({
+    cfg,
     toNumber,
     dynamicVariables: {
       lead_name: firstName(client.name),
       lead_company: client.company || '',
-      business_name: process.env.AI_CALLS_BUSINESS_NAME || 'nossa empresa',
+      business_name: cfg.businessName || 'nossa empresa',
       niche: niche?.niche || '',
       ideal_customer: niche?.ideal_customer || '',
       questions: questionsText(niche?.qualification_questions),
@@ -124,8 +129,10 @@ Responda SOMENTE em JSON:
 // Lê a conversa na ElevenLabs, grava o andamento e qualifica quando terminar.
 async function refreshCall(userId, row) {
   if ((FINAL.has(row.status) && (row.score != null || row.error || row.status === 'canceled')) || !row.conversation_id) return row
+  const cfg = await getConfig(userId)
+  if (!cfg.apiKey) return row
 
-  const conv = await el.getConversation(row.conversation_id)
+  const conv = await el.getConversation(row.conversation_id, cfg)
   const patch = { ...el.mapConversation(conv), updated_at: now() }
   if (!patch.summary) delete patch.summary
   if (!patch.error) delete patch.error

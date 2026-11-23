@@ -31,7 +31,7 @@ const BASE = [
 
 // Extras somados por cargo (cumulativos).
 const SUPERVISOR_EXTRA = ['/monitor', '/reports', '/marketing', '/activity-logs', '/teams']
-const ADMIN_EXTRA = [...SUPERVISOR_EXTRA, '/integrations', '/automation', '/goals', '/prospeccao']
+const ADMIN_EXTRA = [...SUPERVISOR_EXTRA, '/integrations', '/automation', '/goals', '/prospeccao', '/agentes/novo']
 
 const PATHS_BY_ROLE = {
   [ROLES.ATENDENTE]: BASE,

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { NewFlowModal } from '@components/modals/NewFlowModal'
+import { AgentDock } from '@components/Agents/AgentDock'
 import { useApp } from '@context/AppContext'
 import { useIsMobile } from '@hooks/useIsMobile'
 import clsx from 'clsx'
@@ -19,10 +20,14 @@ export const Layout = ({ children, title, subtitle }) => {
       )}
       <div className={clsx('flex-1 min-w-0 flex flex-col transition-all duration-300 overflow-x-hidden', isMobile ? 'ml-0' : (sidebarOpen ? 'ml-64' : 'ml-20'))}>
         <Topbar title={title} subtitle={subtitle} onMenu={isMobile ? () => setDrawerOpen(true) : null} />
-        <main className="flex-1 p-4 sm:p-6 overflow-y-auto overflow-x-hidden animate-fade-in">
+        {/* No celular a aba de agentes fica fixa no rodapé: pb-24 evita que ela cubra o conteúdo. */}
+        <main className={clsx('flex-1 p-4 sm:p-6 overflow-y-auto overflow-x-hidden animate-fade-in', isMobile && 'pb-24')}>
           {children}
         </main>
       </div>
+
+      {/* Aba de agentes (docs/AGENTES_ABA_E_MASCOTES.md): trilho à direita no desktop, barra inferior no celular. */}
+      <AgentDock />
 
       {newFlowModalOpen && (
         <NewFlowModal

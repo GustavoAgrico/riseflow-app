@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { Search, Loader2, MapPin, Star, PhoneCall, Download, ExternalLink, CheckSquare, Square, AlertTriangle } from 'lucide-react'
 import { Layout } from '@components/Layout/Layout'
 import api from '@services/api'
@@ -6,7 +7,7 @@ import { useAuth } from '@context/AuthContext'
 
 // Prospecção com IA: busca empresas no Google Maps (servidor → Apify), importa os
 // escolhidos para o CRM e, se pedido, coloca na fila de ligações da IA (ElevenLabs).
-const PRICE_PER_PLACE = 0.004
+// A busca é sem custo: o servidor limita cada busca ao crédito grátis mensal do Apify.
 const ACTIVE = ['queued', 'dialing', 'initiated', 'in-progress', 'processing']
 const STATUS = { queued: 'Na fila', dialing: 'Discando…', initiated: 'Chamando…', 'in-progress': 'Em ligação', processing: 'Processando', done: 'Concluída', failed: 'Falhou', canceled: 'Cancelada' }
 const RESULT = { answered: 'atendeu', voicemail: 'caixa postal', busy: 'ocupado', no_answer: 'não atendeu', failed: 'falhou' }
@@ -15,6 +16,7 @@ const TEMP = { hot: ['Quente', '#FF6B35'], warm: ['Morno', '#EAB308'], cold: ['F
 const errMsg = e => e?.response?.data?.error || (e?.code === 'ECONNABORTED' ? 'A busca demorou demais. Tente com menos resultados.' : e?.message) || 'Erro inesperado'
 const usd = v => 'US$ ' + v.toFixed(2).replace('.', ',')
 const when = t => new Date(t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+const day = t => new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 const keyOf = (p, i) => p.placeId || `${p.name}-${i}`
 const selectable = p => Boolean(p.phone) && !p.inCrm
 
@@ -28,7 +30,7 @@ const td = { padding: '10px', borderTop: '1px solid var(--border)', fontSize: 13
 export const Prospecting = () => {
   const { isDemoMode } = useAuth()
   const [query, setQuery] = useState('')
-  const [location, setLocation] = useState('')
+  const [location, setLocation] = useState('São Paulo, Brasil')
   const [max, setMax] = useState(20)
   const [searching, setSearching] = useState(false)
   const [results, setResults] = useState(null)
@@ -38,12 +40,17 @@ export const Prospecting = () => {
   const [importing, setImporting] = useState(false)
   const [confirmCall, setConfirmCall] = useState(false)
   const [queue, setQueue] = useState([])
+  const [credit, setCredit] = useState(null)
 
   const loadQueue = useCallback(async () => {
     if (isDemoMode) return
     try { const { data } = await api.get('/prospecting/queue'); setQueue(data || []) } catch { /* tabela ainda não criada */ }
   }, [isDemoMode])
-  useEffect(() => { loadQueue() }, [loadQueue])
+  const loadCredit = useCallback(async () => {
+    if (isDemoMode) return
+    try { const { data } = await api.get('/prospecting/credit'); setCredit(data) } catch { setCredit(null) }
+  }, [isDemoMode])
+  useEffect(() => { loadQueue(); loadCredit() }, [loadQueue, loadCredit])
 
   const queueActive = queue.some(c => ACTIVE.includes(c.status) || (c.status === 'done' && c.score == null && !c.error))
   useEffect(() => {
@@ -61,7 +68,12 @@ export const Prospecting = () => {
       const list = data?.results || []
       setResults(list)
       setSel(new Set(list.map((p, i) => (selectable(p) ? keyOf(p, i) : null)).filter(Boolean)))
-    } catch (e2) { setErr(errMsg(e2)) }
+      if (data?.credit) setCredit(data.credit)
+      if (data?.allowed < data?.requested) setNotice(`A busca foi limitada a ${data.allowed} empresas para caber no crédito grátis do mês.`)
+    } catch (e2) {
+      setErr(errMsg(e2))
+      if (e2?.response?.data?.credit) setCredit(e2.response.data.credit)
+    }
     setSearching(false)
   }
 
@@ -94,6 +106,7 @@ export const Prospecting = () => {
     try { await api.post(`/prospecting/queue/${id}/cancel`); loadQueue() } catch (e) { setErr(errMsg(e)) }
   }
 
+  const noCredit = Boolean(credit) && credit.maxPlaces < 5
   const withPhone = (results || []).filter(p => p.phone).length
   const inCrm = (results || []).filter(p => p.inCrm).length
 
@@ -115,7 +128,7 @@ export const Prospecting = () => {
           </div>
           <div>
             <label style={label}>Onde</label>
-            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Volta Redonda, Brasil" style={input} />
+            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="São Paulo, Brasil" style={input} />
           </div>
           <div>
             <label style={label}>Quantidade</label>
@@ -123,15 +136,25 @@ export const Prospecting = () => {
               {[10, 20, 50].map(n => <option key={n} value={n}>{n} empresas</option>)}
             </select>
           </div>
-          <button type="submit" disabled={searching || isDemoMode || !query.trim() || !location.trim()}
-            style={{ ...btn('#FF6B35'), justifyContent: 'center', opacity: (searching || isDemoMode || !query.trim() || !location.trim()) ? 0.55 : 1 }}>
+          <button type="submit" disabled={searching || isDemoMode || noCredit || !query.trim() || !location.trim()}
+            style={{ ...btn('#FF6B35'), justifyContent: 'center', opacity: (searching || isDemoMode || noCredit || !query.trim() || !location.trim()) ? 0.55 : 1 }}>
             {searching ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
-            {searching ? 'Buscando…' : `Buscar (≈ ${usd(max * PRICE_PER_PLACE)})`}
+            {searching ? 'Buscando…' : 'Buscar grátis'}
           </button>
         </div>
-        <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--ink-4)' }}>
-          {searching ? 'Procurando no Google Maps. Isso leva de 1 a 3 minutos.' : 'Cobrado por empresa encontrada na sua conta Apify. Empresas fechadas ficam de fora.'}
-        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+          {credit && (
+            <span style={chip(noCredit ? '#EF4444' : '#10B981')}>
+              Crédito grátis: {usd(credit.remainingUsd)} de {usd(credit.limitUsd)} · ≈ {credit.maxPlaces} empresas
+              {credit.renewsAt ? ` · renova ${day(credit.renewsAt)}` : ''}
+            </span>
+          )}
+          <span style={{ fontSize: 12, color: 'var(--ink-4)' }}>
+            {searching ? 'Procurando no Google Maps. Isso leva de 1 a 3 minutos.'
+              : noCredit ? 'O crédito grátis do mês acabou. A busca volta quando ele renovar.'
+              : 'Sem custo: cada busca usa só o crédito grátis mensal do Apify e nunca passa dele.'}
+          </span>
+        </div>
       </form>
 
       {err && <p style={{ margin: '0 0 16px', padding: '10px 14px', borderRadius: 10, background: '#EF444418', border: '1px solid #EF444455', color: '#F87171', fontSize: 13 }}>{err}</p>}
@@ -239,6 +262,7 @@ export const Prospecting = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
           <h3 className="rf-section-title">Fila de ligações</h3>
           {queueActive && <span style={chip('#7C3AED')}><Loader2 size={11} className="animate-spin" /> atualizando</span>}
+          <Link to="/settings?secao=calls" style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: '#FF6B35', textDecoration: 'none' }}>Configurar ligações →</Link>
         </div>
         {queue.length === 0 ? (
           <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-4)' }}>Nenhuma ligação ainda. Busque leads e escolha "Importar e ligar com IA".</p>
