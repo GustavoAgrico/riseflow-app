@@ -42,6 +42,18 @@ test('demo: abre o Rizo, aprova e envia mensagem', async () => {
   expect(localStorage.getItem('rf.agentDock.open')).toBe('false')
 })
 
+test('demo: pedido de leads para a Bia responde com o atalho para a Prospecção', async () => {
+  renderDock()
+  fireEvent.click((await screen.findAllByRole('tab'))[1])
+  expect(screen.getByText(/Modo exemplo/)).toBeInTheDocument()
+  const input = document.querySelector('#agent-dock-input')
+  fireEvent.change(input, { target: { value: 'quero que busque contatos para leads' } })
+  fireEvent.submit(input.form)
+  const link = await screen.findByRole('link', { name: /Abrir Prospecção com IA/ })
+  expect(link).toHaveAttribute('href', '/prospeccao')
+  expect(screen.getByText(/Ainda sou um exemplo/)).toBeInTheDocument()
+})
+
 test('sem backend: resposta que não é lista de agentes (index.html) cai no demo', async () => {
   auth.isDemoMode = false
   agentsApi.list.mockResolvedValue('<!doctype html><html></html>')

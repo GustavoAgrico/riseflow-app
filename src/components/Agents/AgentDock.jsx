@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, ArrowUp, X, Check } from 'lucide-react'
 import { RiserAvatar } from './RiserAvatar'
-import { DEMO_AGENTS, DEMO_MESSAGES, DEMO_APPROVALS } from './agentsDemo'
+import { DEMO_AGENTS, DEMO_MESSAGES, DEMO_APPROVALS, demoReply } from './agentsDemo'
 import { agentsApi } from '@services/agents'
 import socket from '@services/socket'
 import { useAuth } from '@context/AuthContext'
@@ -116,7 +116,12 @@ export function AgentDock() {
     if (!body || !current || sending) return
     setText('')
     setMessages((m) => [...m, { id: `local-${Date.now()}`, author_kind: 'user', content: body }])
-    if (demo) return
+    if (demo) {
+      // Sem backend de agentes: responde com honestidade e aponta a tela que faz o pedido.
+      const agent = current
+      setTimeout(() => setMessages((m) => [...m, demoReply(agent, body)]), 500)
+      return
+    }
     setSending(true)
     try { await agentsApi.send(current.id, body) }
     catch { setError('A mensagem não foi enviada. Verifique a conexão e tente de novo.') }
@@ -194,6 +199,11 @@ export function AgentDock() {
         }}><X size={18} /></button>
       </header>
 
+      {demo && (
+        <p style={{ margin: 0, padding: '8px 16px', fontSize: 12, lineHeight: 1.45, color: C.muted, background: 'rgba(255,107,53,0.08)', borderBottom: `1px solid ${C.border}` }}>
+          Modo exemplo: os agentes ainda não executam tarefas sozinhos. Eles indicam a tela que faz o pedido.
+        </p>
+      )}
       <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {messages.map((m) => (
           <div key={m.id} style={{
@@ -203,7 +213,15 @@ export function AgentDock() {
             background: m.author_kind === 'user' ? 'rgba(255,107,53,0.16)' : m.author_kind === 'system' ? 'transparent' : 'var(--bg)',
             border: m.author_kind === 'agent' ? `1px solid ${C.border}` : 'none',
             color: m.author_kind === 'system' ? '#22C55E' : C.text,
-          }}>{m.content}</div>
+          }}>
+            {m.content}
+            {m.link && (
+              <Link to={m.link.to} style={{
+                display: 'inline-flex', alignItems: 'center', marginTop: 10, minHeight: 36, padding: '0 12px', borderRadius: 10,
+                background: ORANGE, color: '#1A0B02', fontWeight: 700, fontSize: 13, textDecoration: 'none',
+              }}>{m.link.label} →</Link>
+            )}
+          </div>
         ))}
 
         {approvals.map((ap) => (

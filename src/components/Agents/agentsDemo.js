@@ -20,6 +20,29 @@ export const DEMO_MESSAGES = {
   'demo-analista': [{ id: 'm1', author_kind: 'agent', content: 'Estou montando o relatório semanal.' }],
 }
 
+// Enquanto os agentes são exemplo, a resposta é honesta e leva à tela que já faz o pedido.
+// A ordem importa: o primeiro tema que casar com o texto vence.
+const DEMO_ROUTES = [
+  { re: /lead|contato|prospec|empresa|cliente(s)? nov/i, to: '/prospeccao', label: 'Abrir Prospecção com IA', does: 'buscar empresas por nicho e cidade no Google Maps e trazer para o CRM' },
+  { re: /lig(ar|ação|acao|ue)|telefon/i, to: '/settings?secao=calls', label: 'Configurar ligações com IA', does: 'ligar para os leads e qualificar a conversa' },
+  { re: /meta|vend(a|i)/i, to: '/goals', label: 'Abrir Metas', does: 'acompanhar a meta e o que falta vender' },
+  { re: /reuni|agenda|marcar/i, to: '/agenda', label: 'Abrir Agenda', does: 'marcar e acompanhar reuniões' },
+  { re: /relat|dado|número|numero|análise|analise/i, to: '/reports', label: 'Abrir Relatórios', does: 'mostrar os números do período' },
+  { re: /whats|conversa|atend|mensage/i, to: '/chat', label: 'Abrir Chat', does: 'atender as conversas do WhatsApp' },
+  { re: /tarefa|funil|etapa|crm/i, to: '/crm', label: 'Abrir CRM', does: 'organizar leads, etapas e tarefas' },
+]
+const KIND_ROUTE = { comercial: '/crm', atendente: '/chat', prospector: '/prospeccao', agenda: '/agenda', metas: '/goals', analista: '/reports' }
+
+export function demoReply(agent, text) {
+  const hit = DEMO_ROUTES.find((r) => r.re.test(text)) || DEMO_ROUTES.find((r) => r.to === KIND_ROUTE[agent?.kind])
+  return {
+    id: `demo-reply-${Date.now()}`,
+    author_kind: 'agent',
+    content: `Ainda sou um exemplo e não consigo fazer isso sozinho. Por enquanto, quem faz isso é a tela certa do RiseFlow: dá para ${hit.does}.`,
+    link: { to: hit.to, label: hit.label },
+  }
+}
+
 export const DEMO_APPROVALS = {
   'demo-comercial': [
     { id: 'a1', tool: 'send_whatsapp', summary: 'Enviar a proposta do plano Pro para Clínica Sorriso por WhatsApp.' },
