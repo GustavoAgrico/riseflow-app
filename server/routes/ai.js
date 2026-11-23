@@ -98,4 +98,40 @@ router.post('/chat', async (req, res) => {
   res.json(result)
 })
 
+// ─── Ações da IA no CRM (fila de aprovação da IA Central) ─────────────────
+// GET  /api/ai/actions?status=pending   → últimas 50 da conta
+// POST /api/ai/actions/:id/approve      → executa a ação pendente
+// POST /api/ai/actions/:id/reject       → recusa
+const { supabase, isConfigured } = require('../supabaseClient')
+const { decideAction } = require('../aiActions')
+const tableMissing = (e) => /does not exist|schema cache|42P01|PGRST205/i.test(`${e?.message || ''} ${e?.code || ''}`)
+
+router.get('/actions', async (req, res) => {
+  const userId = req.user?.sub
+  if (!userId) return res.status(401).json({ error: 'Não autenticado' })
+  if (!isConfigured) return res.status(503).json({ error: 'Supabase não configurado' })
+  let q = supabase.from('ai_actions').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50)
+  if (req.query.status) q = q.eq('status', String(req.query.status))
+  const { data, error } = await q
+  if (error) {
+    if (tableMissing(error)) return res.json({ actions: [], missing: true })
+    return res.status(500).json({ error: error.message })
+  }
+  res.json({ actions: data || [] })
+})
+
+for (const [path, approve] of [['approve', true], ['reject', false]]) {
+  router.post(`/actions/:id/${path}`, async (req, res) => {
+    const userId = req.user?.sub
+    if (!userId) return res.status(401).json({ error: 'Não autenticado' })
+    if (!isConfigured) return res.status(503).json({ error: 'Supabase não configurado' })
+    try {
+      const row = await decideAction(userId, req.params.id, approve, req.user?.member_email || req.user?.email)
+      res.json({ action: row })
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message })
+    }
+  })
+}
+
 module.exports = router

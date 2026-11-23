@@ -4,14 +4,14 @@
 // user_id do JWT do proxy (req.user.sub).
 const { Router } = require('express')
 const { supabase, isConfigured } = require('../supabaseClient')
-const { emitSalesUpdate } = require('../realtime')
+const { emitSalesUpdate, emitConversationNote } = require('../realtime')
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env
 const router = Router()
 
 const USER_TABLES = new Set([
   'activity_logs', 'attendant_config', 'calls', 'campaigns', 'clients', 'contacts',
-  'conversations', 'crm_tasks', 'flows', 'integrations', 'invoices', 'knowledge_base',
+  'conversation_notes', 'conversations', 'crm_tasks', 'flows', 'integrations', 'invoices', 'knowledge_base',
   'lead_scores', 'meetings', 'messages', 'niche_config', 'notes', 'notifications',
   'pipeline_stages', 'products', 'proposals', 'push_subscriptions', 'sales_goals', 'schedules', 'settings',
   'team_members', 'team_queues', 'templates', 'usage', 'user_preferences',
@@ -98,7 +98,15 @@ router.all('/:table', async (req, res) => {
     }
     const text = await upstream.text()
     if (upstream.status >= 400) console.warn(`[rest-proxy] ${method} ${table} → ${upstream.status}: ${text.slice(0, 200)}`)
-    else if (!isRead) emitSalesUpdate(userId, table)
+    else if (!isRead) {
+      emitSalesUpdate(userId, table)
+      if (table === 'conversation_notes' && method === 'POST') {
+        // Com Prefer: return=representation a resposta traz as linhas (com id).
+        let rows = body
+        try { const parsed = JSON.parse(text); if (parsed) rows = parsed } catch { /* corpo vazio */ }
+        emitConversationNote(userId, rows)
+      }
+    }
     res.send(text)
   } catch (e) {
     console.error(`[rest-proxy] ${method} ${table}:`, e.message)

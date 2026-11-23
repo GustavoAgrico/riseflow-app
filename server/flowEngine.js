@@ -7,7 +7,8 @@
 // Os tipos de nó seguem o builder novo (src/pages/Flows/nodes/):
 //   gatilhos: triggerKeyword | triggerFirstContact | triggerSchedule | triggerTag
 //   ações:    actionSendText | actionSendFile | actionWaitReply |
-//             actionApplyTag | actionTransfer | actionWebhook | actionSendEmail
+//             actionApplyTag | actionTransfer | actionWebhook | actionSendEmail |
+//             actionCreateTask | actionMoveStage (ver crmActions.js)
 const axios = require('axios')
 const { supabase, isConfigured } = require('./supabaseClient')
 const { baileys } = require('./baileysClient')
@@ -410,6 +411,19 @@ async function runFlow(flow, execution, startNodeId, ctx) {
           const reply = await aiRespond.generateFlowReply(ctx, data, variables)
           if (reply) await sendText(ctx, reply)
         } catch (e) { console.warn('[flowEngine] actionAIReply falhou:', e?.message ?? e) }
+        currentId = nextNodeId(edges, currentId)
+      } else if (type === 'actionCreateTask' || type === 'actionMoveStage') {
+        // Ações de CRM: falha (ex.: tabela ausente) é registrada e o funil segue.
+        const crm = require('./crmActions')
+        const who = { phone: ctx.contact?.phone || jidToNumber(ctx.jid), name: ctx.contact?.name || ctx.pushName || null }
+        try {
+          if (!ctx.userId) throw new Error('funil sem dono (user_id)')
+          if (type === 'actionCreateTask') {
+            await crm.createTask(ctx.userId, { ...who, title: applyVars(data.title, variables, ctx), due: data.due })
+          } else {
+            await crm.moveStage(ctx.userId, { ...who, stage: data.stage })
+          }
+        } catch (e) { console.warn(`[flowEngine] ${type} falhou:`, e?.message ?? e) }
         currentId = nextNodeId(edges, currentId)
       } else if (type === 'actionRemoveTag') {
         if (ctx.contact && Array.isArray(data.tags) && data.tags.length) {
