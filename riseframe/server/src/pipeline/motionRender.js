@@ -11,7 +11,7 @@ import { log } from '../logger.js';
 
 const FONTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets', 'fonts');
 let fontsReady = false;
-function registerFonts() {
+export function registerFonts() {
   if (fontsReady) return;
   for (const [family, file] of EXPLAINER_FONT_FILES) GlobalFonts.registerFromPath(path.join(FONTS_DIR, file), family);
   fontsReady = true;

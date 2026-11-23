@@ -39,6 +39,17 @@ function num(v, def) {
   return Number.isFinite(n) ? n : def;
 }
 
+/**
+ * Modelo da IA de edição/motion. O valor que vinha no .env.example antigo (Haiku 4.5) era só
+ * o exemplo, não uma escolha: vira o Opus 5.5. Outro modelo escolhido continua valendo. Puro.
+ */
+export const OLD_EXAMPLE_MODEL = 'claude-haiku-4-5-20251001';
+export function analyzeModel(raw) {
+  const m = String(raw || '').trim();
+  if (!m || m === OLD_EXAMPLE_MODEL) return 'claude-opus-5-5';
+  return m;
+}
+
 export const config = {
   root: ROOT,
   port: num(process.env.PORT, 4000),
@@ -95,9 +106,10 @@ export const config = {
     // a Anthropic exige o cabeçalho anthropic-workspace-id. Chave de workspace dispensa.
     anthropicWorkspaceId: process.env.ANTHROPIC_WORKSPACE_ID || '',
     openaiKey: process.env.OPENAI_API_KEY || '',
-    // Haiku por padrão: barato e rápido, suficiente para escolher B-roll e limpar
-    // fala. Troque por claude-sonnet-5/opus se quiser mais capricho (mais caro).
-    model: process.env.ANALYZE_MODEL || 'claude-haiku-4-5-20251001',
+    // Claude Opus 5.5 por padrão (motion por prompt, cortes, B-roll, limpeza da fala) com
+    // pensamento adaptativo e esforço por tarefa (RISEFRAME_CLAUDE_EFFORT / RISEFRAME_CLAUDE_EFFORT_<TAREFA>,
+    // ver pipeline/llm.js). Para gastar menos: ANALYZE_MODEL=claude-sonnet-5-5.
+    model: analyzeModel(process.env.ANALYZE_MODEL),
     openaiModel: process.env.ANALYZE_OPENAI_MODEL || 'gpt-4o-mini',
     // Sem Anthropic/OpenAI: a chave da Groq (a mesma da transcrição) faz a IA do B-roll
     // entender o assunto do vídeo. ANALYZE_GROQ=off desliga.
@@ -276,6 +288,8 @@ export function capabilities() {
     // Sinaliza degradação para mock (whisper indisponível → jobs caem para mock).
     transcribeFallbackToMock: p === 'whisper-local' && config.transcribe.whisperReady === false,
     analyzeProvider: config.analyze.provider,
+    // IA de edição/motion: o modelo do Claude (com a chave dele) — para conferir no /api/health
+    ...(config.analyze.anthropicKey ? { aiModel: config.analyze.model } : {}),
     version: APP_VERSION,
     // Tamanho máximo do vídeo (0 = sem limite; o site confere antes do upload).
     maxUploadBytes: config.maxUploadBytes,

@@ -291,7 +291,7 @@ export async function selectClips(transcript, meta, options = {}, cfg = null) {
       const WIN = 220;
       for (let a = 0; a < S.length; a += WIN - 20) {
         const b = Math.min(S.length, a + WIN);
-        const { data, provider } = await askJson(INSTRUCTION({ min, max, count, goal }), sentenceLines(S, a, b), cfg, { maxTokens: 2500 });
+        const { data, provider } = await askJson(INSTRUCTION({ min, max, count, goal }), sentenceLines(S, a, b), cfg, { maxTokens: 2500, task: 'edit' });
         by = `IA (${provider})`;
         for (const c of Array.isArray(data?.clips) ? data.clips : []) {
           const f = fixClip(S, c, { min, max });

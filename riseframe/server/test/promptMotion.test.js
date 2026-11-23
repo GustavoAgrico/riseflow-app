@@ -16,7 +16,7 @@ import { cleanForm } from '../src/routes/motion.js';
 
 // uma peça de cada tipo (o que a IA pode pedir)
 const ALL = {
-  title: 'Tudo', duration: 4, font: 'heavy', bg: { kind: 'mesh', grain: true },
+  title: 'Tudo', duration: 4, font: 'heavy', bg: { kind: 'mesh', grain: true, leak: true },
   camera: [{ at: 0, dur: 4, zoom: 1.1 }], shake: 0.3,
   elements: [
     { type: 'text', text: 'Você está perdendo dinheiro?', highlight: ['dinheiro'], highlightStyle: 'box', in: { fx: 'words', dur: 0.5 }, y: 0.2 },
@@ -34,6 +34,11 @@ const ALL = {
     { type: 'card', glass: true, loop: 'shimmer', y: 0.5 },
     { type: 'arrow', from: [0.2, 0.8], to: [0.8, 0.2], in: { fx: 'draw', dur: 0.6 } },
     { type: 'particles', kind: 'confetti' },
+    { type: 'transition', kind: 'circle', at: 1, dur: 0.6 },
+    { type: 'text', text: 'efeitos premium', in: { fx: 'scramble', dur: 0.6 }, gradient: ['#FFFFFF', '#FF6B35'], shine: true, shadow: true, depth: 0.5, trail: true, y: 0.45 },
+    { type: 'text', text: 'onda', in: { fx: 'wave', dur: 0.5 }, y: 0.55 },
+    { type: 'text', text: 'contorno', in: { fx: 'outline', dur: 0.6 }, y: 0.6 },
+    { type: 'text', text: 'glitch', in: { fx: 'glitch', dur: 0.4 }, y: 0.65 },
   ],
 };
 

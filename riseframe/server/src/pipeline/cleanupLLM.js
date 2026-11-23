@@ -124,13 +124,9 @@ export function plausibleRemovals(flat, set, strict = null) {
 }
 
 async function askClaude(system, user, cfg) {
-  const { default: Anthropic } = await import('@anthropic-ai/sdk');
-  const client = new Anthropic({
-    apiKey: cfg.anthropicKey,
-    ...(cfg.anthropicWorkspaceId ? { defaultHeaders: { 'anthropic-workspace-id': cfg.anthropicWorkspaceId } } : {}),
-  });
-  const response = await client.messages.create({ model: cfg.model || 'claude-opus-5', max_tokens: 3000, system, messages: [{ role: 'user', content: user }] });
-  return (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+  // Opus 5.5 com pensamento adaptativo (llm.js): acha gaguejos, repetições e regravações
+  const { askClaude: ask } = await import('./llm.js');
+  return ask(system, user, { ...cfg, model: cfg.model || 'claude-opus-5-5' }, { maxTokens: 16000, task: 'cleanup' });
 }
 
 /** Groq (Llama), API no formato OpenAI. Uma nova tentativa se a Groq pedir para esperar (429). */

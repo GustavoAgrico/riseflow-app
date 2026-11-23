@@ -28,6 +28,8 @@ export function textWidthEm(text, font, tracking = 0) {
 // raios, grade ondulada, lâmpada… — e o Explicativo saíram do seletor; projetos antigos
 // com eles voltam para o Estratégia).
 export const KINETIC_THEMES = {
+  // o Claude Opus 5.5 cria as cenas sozinho, lendo a fala (e seguindo as referências da pessoa)
+  'premium-ia': '✨ Premium com IA (Claude)',
   reel: 'Reel editado (sobre a pessoa)',
   estrategia: 'Estratégia (creme e preto)',
   minimalista: 'Minimalista (cards e palavras)',

@@ -73,7 +73,8 @@ test('cada fundo de cena tem a imagem no app; o seletor só mostra os estilos da
   assert.ok(SCENE_BACKGROUNDS.length >= 14);
   for (const b of SCENE_BACKGROUNDS) assert.ok(elementFile(`backgrounds/${b}`), b);
   // todo estilo do seletor é desenhado (vem de uma referência); nada de tema antigo em camadas
-  for (const id of Object.keys(KINETIC_THEMES)) assert.ok(Object.hasOwn(MOTION_STYLES, id), id);
+  // (o "Premium com IA" é desenhado pelo motor do motion por prompt, cenas criadas pelo Claude)
+  for (const id of Object.keys(KINETIC_THEMES)) assert.ok(Object.hasOwn(MOTION_STYLES, id) || id === 'premium-ia', id);
   for (const gone of ['preto-raios', 'grade-ondulada', 'lampada', 'explicativo', 'auto']) assert.equal(KINETIC_THEMES[gone], undefined, gone);
   for (const old of ['holofote', 'papel', 'grade', 'cinema', 'roxo-ondas', 'preto-linha', 'cinza-rasgado', 'branco-grade']) assert.equal(KINETIC_THEMES[old], undefined, `${old} saiu`);
   const segs = Array.from({ length: 8 }, (_, i) => ({ start: i * 5, end: i * 5 + 3, words: words('o segredo do dinheiro é sempre o tempo', i * 5) }));

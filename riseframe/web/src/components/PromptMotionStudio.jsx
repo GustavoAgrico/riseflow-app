@@ -84,13 +84,15 @@ function Preview({ spec, aspect, loadFonts }) {
  * @param {{ initial?: {prompt,form,spec}|null, aspect?: {w,h}, aspectLabel?: string, loadFonts?: () => Promise,
  *   onInsert: (spec, meta) => void, onClose: () => void, editing?: boolean }} props
  */
-export default function PromptMotionStudio({ initial = null, aspect, aspectLabel = '9:16', loadFonts, onInsert, onClose, editing = false }) {
+export default function PromptMotionStudio({ initial = null, aspect, aspectLabel = '9:16', loadFonts, onInsert, onClose, editing = false, speech = '' }) {
   const [prompt, setPrompt] = useState(initial?.prompt || '');
   const [form, setForm] = useState(() => ({ goal: 'explicar', look: 'bold', pace: 'medio', palette: 'laranja', duration: 5, creativity: 'media', hideCaps: true, ...(initial?.form || {}) }));
   const [spec, setSpec] = useState(initial?.spec || null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
   const [change, setChange] = useState('');
+  // a fala do vídeo no ponto onde a cena entra: o Claude combina a cena com ela
+  const [useSpeech, setUseSpeech] = useState(Boolean(speech));
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const customOn = form.palette === 'custom';
   const colors = form.colors || { bg: '#0B0B12', text: '#FFFFFF', accent: '#FF6B35' };
@@ -109,11 +111,13 @@ export default function PromptMotionStudio({ initial = null, aspect, aspectLabel
   async function generate(withChange = '') {
     if (!prompt.trim() && !withChange) { setNote('Descreva a cena (ou escolha um modelo).'); return; }
     setBusy(true);
-    setNote(withChange ? 'Ajustando a cena…' : 'A IA está montando a cena…');
+    setNote(withChange ? 'Ajustando a cena…' : 'O Claude está criando a cena e depois revisa os quadros — leva até 1–2 min…');
     try {
-      const r = await generatePromptMotion({ prompt, form: formOut(), ...(withChange && spec ? { current: spec, change: withChange } : {}) });
+      const r = await generatePromptMotion({ prompt, form: formOut(), speech: useSpeech ? speech : '', ...(withChange && spec ? { current: spec, change: withChange } : {}) });
       setSpec(r.spec);
-      setNote(r.note || (withChange ? 'Pronto — veja a prévia.' : `Cena "${r.spec.title}" pronta (${r.spec.elements.length} peças).`));
+      const base = r.note || (withChange ? 'Pronto — veja a prévia.' : `Cena "${r.spec.title}" pronta (${r.spec.elements.length} peças).`);
+      // revisão visual do Claude: o que ele corrigiu olhando a cena renderizada
+      setNote(r.review && !/^sem ajustes/i.test(r.review) ? `${base} Revisão do Claude: ${r.review}` : r.review ? `${base} Revisada pelo Claude.` : base);
       if (withChange) setChange('');
     } catch (err) {
       // sem conexão com o servidor: monta pelo modelo aqui mesmo
@@ -150,6 +154,12 @@ export default function PromptMotionStudio({ initial = null, aspect, aspectLabel
             <span style={label}>O que você quer na cena</span>
             <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} placeholder='Ex.: contador de 0 a 10 mil seguidores com "em 30 dias" embaixo e confete no final'
               style={{ ...field, resize: 'vertical', lineHeight: 1.45 }} />
+            {speech && (
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: C.muted, cursor: 'pointer', lineHeight: 1.4 }}>
+                <input type="checkbox" checked={useSpeech} onChange={(e) => setUseSpeech(e.target.checked)} style={{ marginTop: 2 }} />
+                <span>Combinar com a fala deste trecho: <i style={{ color: C.text }}>“{speech.length > 140 ? `${speech.slice(0, 140)}…` : speech}”</i></span>
+              </label>
+            )}
             <span style={label}>Objetivo</span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{Object.entries(PM_GOALS).map(([id, l]) => <Chip key={id} on={form.goal === id} onClick={() => set({ goal: id })}>{l}</Chip>)}</div>
             <span style={label}>Estilo</span>

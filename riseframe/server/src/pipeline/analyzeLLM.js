@@ -74,24 +74,11 @@ function normalize(data, duration, maxCount) {
 
 // ─── Anthropic (Claude) via SDK oficial ───────────────────────────────
 export async function analyzeWithClaude(transcript, meta, options, cfg) {
-  const { default: Anthropic } = await import('@anthropic-ai/sdk');
-  const client = new Anthropic({
-    apiKey: cfg.anthropicKey,
-    ...(cfg.anthropicWorkspaceId ? { defaultHeaders: { 'anthropic-workspace-id': cfg.anthropicWorkspaceId } } : {}),
-  });
   const maxCount = options.brollMax ?? 6;
-  const model = cfg.model || 'claude-opus-5';
-
-  const response = await client.messages.create({
-    model,
-    max_tokens: 1500,
-    system: INSTRUCTION(meta.duration, maxCount, cfg.niche, cfg.imageSource),
-    messages: [{ role: 'user', content: compactTranscript(transcript) }],
-  });
-  const text = (response.content || [])
-    .filter((b) => b.type === 'text')
-    .map((b) => b.text)
-    .join('');
+  const model = cfg.model || 'claude-opus-5-5';
+  // Opus 5.5 com pensamento adaptativo (llm.js askClaude): escolhe os momentos de B-roll
+  const { askClaude } = await import('./llm.js');
+  const text = await askClaude(INSTRUCTION(meta.duration, maxCount, cfg.niche, cfg.imageSource), compactTranscript(transcript), { ...cfg, model }, { maxTokens: 16000, task: 'analyze' });
   log.info(`Claude (${model}) respondeu ${text.length} chars`);
   return normalize(parseJson(text), meta.duration, maxCount);
 }

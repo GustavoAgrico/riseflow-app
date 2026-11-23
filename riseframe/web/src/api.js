@@ -452,16 +452,37 @@ export async function analyzeReference(file, onProgress) {
 }
 
 /** Motion por prompt: a IA monta o roteiro da cena (ou ajusta um pronto com `current` + `change`). */
-export async function generatePromptMotion({ prompt, form, current, change }) {
+export async function generatePromptMotion({ prompt, form, current, change, speech = '' }) {
   const r = await fetch(`${BASE}/motion/prompt`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ prompt, form, ...(current ? { current, change } : {}) }),
+    body: JSON.stringify({ prompt, form, ...(speech ? { speech } : {}), ...(current ? { current, change } : {}) }),
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
   return data;
 }
+
+async function jsonCall(path, method = 'GET', body) {
+  const r = await fetch(`${BASE}${path}`, {
+    method,
+    headers: authHeaders(body ? { 'Content-Type': 'application/json' } : {}),
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `erro ${r.status}`);
+  return data;
+}
+/** Motion premium AUTOMÁTICO: o Claude lê a fala e cria as cenas (sem prompt). */
+export const motionAuto = ({ segments, duration, amount, aspect, palette }) => jsonCall('/motion/auto', 'POST', { segments, duration, amount, aspect, ...(palette ? { palette } : {}) });
+/** Referências de motion (a pasta que ensina o estilo ao Claude). */
+export const getMotionRefs = () => jsonCall('/motion/references');
+export async function addMotionRef(file, onProgress) {
+  const media = await uploadMedia(file, onProgress);
+  return jsonCall('/motion/references', 'POST', { mediaId: media.id });
+}
+export const removeMotionRef = (name) => jsonCall(`/motion/references/${encodeURIComponent(name)}`, 'DELETE');
+export const learnMotionRefs = () => jsonCall('/motion/references/learn', 'POST', {});
 
 export const clipPreviewUrl = (id, i) => `${BASE}/jobs/${id}/clips/${i}/preview`;
 export const clipDownloadUrl = (id, i) => `${BASE}/jobs/${id}/clips/${i}/download`;

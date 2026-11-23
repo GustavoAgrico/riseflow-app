@@ -12,8 +12,10 @@
 // notificação, botão com cursor, conversa). Câmera com quadros-chave e fundos animados.
 
 // ─────────────────────────────── vocabulário ───────────────────────────────
-export const PM_TYPES = ['text', 'counter', 'bars', 'line', 'progress', 'shape', 'icon', 'list', 'badge', 'card', 'arrow', 'particles', 'ui'];
-export const PM_IN = ['fade', 'rise', 'drop', 'slide-left', 'slide-right', 'pop', 'zoom', 'blur', 'mask-up', 'typewriter', 'words', 'letters', 'draw', 'spin', 'flip', 'none'];
+export const PM_TYPES = ['text', 'counter', 'bars', 'line', 'progress', 'shape', 'icon', 'list', 'badge', 'card', 'arrow', 'particles', 'ui', 'transition'];
+export const PM_IN = ['fade', 'rise', 'drop', 'slide-left', 'slide-right', 'pop', 'zoom', 'blur', 'mask-up', 'typewriter', 'words', 'letters', 'scramble', 'wave', 'outline', 'glitch', 'draw', 'spin', 'flip', 'none'];
+/** Transições de tela cheia (peça "transition"): cobrem e revelam a tela. */
+export const PM_TRANSITIONS = ['wipe-left', 'wipe-right', 'wipe-up', 'circle', 'diagonal', 'bars', 'flash'];
 export const PM_OUT = ['fade', 'sink', 'rise', 'slide-left', 'slide-right', 'shrink', 'zoom', 'blur', 'none'];
 export const PM_EASE = ['out', 'inout', 'back', 'spring', 'expo', 'linear'];
 export const PM_LOOP = ['none', 'float', 'pulse', 'wiggle', 'spin', 'shimmer'];
@@ -105,6 +107,16 @@ function cleanAnim(a, list, dflt) {
 }
 const xy = (p, d) => (Array.isArray(p) && p.length >= 2 ? [num(p[0], -0.2, 1.2, d[0]), num(p[1], -0.2, 1.2, d[1])] : d);
 
+/** Pintura do texto: degradê, brilho passando e sombra suave. Puro. */
+function paintOf(e) {
+  const g = (Array.isArray(e.gradient) ? e.gradient : []).map((c) => color(c, null)).filter(Boolean).slice(0, 3);
+  return {
+    ...(g.length >= 2 ? { gradient: g } : {}),
+    ...(e.shine ? { shine: true } : {}),
+    ...(e.shadow ? { shadow: true } : {}),
+  };
+}
+
 function cleanElement(e, dur, pal) {
   const type = pick(e?.type, PM_TYPES, null);
   if (!type) return null;
@@ -124,6 +136,9 @@ function cleanElement(e, dur, pal) {
     loop: pick(e.loop, PM_LOOP, 'none'),
     ...(e.fixed ? { fixed: true } : {}),
     ...(e.glow ? { glow: num(e.glow, 0, 1, 0.5) } : {}),
+    // profundidade (paralaxe: a câmera mexe mais o que está "na frente") e rastro de movimento
+    ...(e.depth ? { depth: num(e.depth, -1, 1, 0) } : {}),
+    ...(e.trail ? { trail: true } : {}),
   };
   const size = (d, lo = 0.01, hi = 0.4) => num(e.size, lo, hi, d);
   const font = pick(e.font, Object.keys(PM_FONTS), null);
@@ -140,13 +155,14 @@ function cleanElement(e, dur, pal) {
         highlight: (Array.isArray(e.highlight) ? e.highlight : typeof e.highlight === 'string' ? [e.highlight] : []).map((w) => str(w, 40)).filter(Boolean).slice(0, 6),
         highlightColor: color(e.highlightColor, pal.accent),
         highlightStyle: pick(e.highlightStyle, PM_HIGHLIGHT, 'color'),
+        ...paintOf(e),
       };
     }
     case 'counter': {
       const to = num(e.to, -1e12, 1e12, 100);
       return {
         ...base, from: num(e.from, -1e12, 1e12, 0), to, decimals: num(e.decimals, 0, 2, 0),
-        prefix: str(e.prefix, 8), suffix: str(e.suffix, 12), size: size(0.12, 0.02, 0.4), ...(font ? { font } : {}),
+        prefix: str(e.prefix, 8), suffix: str(e.suffix, 12), size: size(0.12, 0.02, 0.4), ...(font ? { font } : {}), ...paintOf(e),
         count: num(e.count, 0.2, 8, 1.6), countEase: pick(e.countEase, PM_EASE, 'out'),
         label: str(e.label, 60),
       };
@@ -190,7 +206,7 @@ function cleanElement(e, dur, pal) {
     case 'badge': {
       const text = str(e.text, 40);
       if (!text) return null;
-      return { ...base, text, size: size(0.035, 0.01, 0.12), fill: color(e.fill, pal.accent), ...(font ? { font } : {}), upper: e.upper !== false };
+      return { ...base, text, size: size(0.035, 0.01, 0.12), fill: color(e.fill, pal.accent), ...(font ? { font } : {}), upper: e.upper !== false, ...(e.shine ? { shine: true } : {}) };
     }
     case 'card':
       return {
@@ -206,6 +222,13 @@ function cleanElement(e, dur, pal) {
       return {
         ...base, kind: pick(e.kind, PM_PARTICLES, 'confetti'), count: Math.round(num(e.count, 4, 160, 50)),
         colors: (Array.isArray(e.colors) ? e.colors : []).map((c) => color(c, null)).filter(Boolean).slice(0, 6),
+      };
+    case 'transition':
+      return {
+        ...base, fixed: true, kind: pick(e.kind, PM_TRANSITIONS, 'wipe-left'),
+        fill: color(e.fill, pal.accent), fill2: color(e.fill2, null),
+        in: { ...base.in, fx: 'none', dur: num(e.in?.dur ?? e.dur, 0.2, 2, 0.7) },
+        dur: num(e.in?.dur ?? e.dur, 0.2, 2, 0.7),
       };
     case 'ui':
       return {
@@ -238,6 +261,7 @@ export function sanitizePromptSpec(raw) {
     motion: pick(b.motion, ['none', 'drift', 'pulse'], 'drift'),
     grain: Boolean(b.grain),
     vignette: b.vignette !== false,
+    ...(b.leak ? { leak: true } : {}),
   };
   if (!bg.colors.length) bg.colors = [palette.bg, palette.bg2];
   const camera = (Array.isArray(raw.camera) ? raw.camera : []).slice(0, 12).map((k) => ({
@@ -359,6 +383,22 @@ function drawBackground(ctx, spec, t, W, H) {
     for (let x = -R - step * 2 + off; x < R; x += step * 2) ctx.fillRect(x, -R, step, R * 2);
     ctx.restore();
   }
+  if (bg.leak) {
+    // vazamento de luz: duas manchas quentes passeando, somadas à imagem (como filme)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const u = Math.max(W, H);
+    for (const [bx, by, col, ph] of [[0.1, 0.15, 'rgba(255,140,60,0.22)', 0], [0.95, 0.75, 'rgba(255,60,120,0.16)', 2.4]]) {
+      const x = W * (bx + 0.12 * Math.sin(t * 0.35 + ph));
+      const y = H * (by + 0.08 * Math.cos(t * 0.3 + ph));
+      const g = ctx.createRadialGradient(x, y, 0, x, y, u * 0.6);
+      g.addColorStop(0, col);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.restore();
+  }
   if (bg.vignette) {
     const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.hypot(W, H) * 0.6);
     g.addColorStop(0, 'rgba(0,0,0,0)');
@@ -462,6 +502,42 @@ function wrapWords(ctx, words, maxW) {
 
 const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}%$]/gu, '');
 
+const SCRAMBLE = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#$%&*@';
+
+/** Pintura de um bloco de texto: cor, degradê ou brilho passando (faixa clara que atravessa). */
+function blockPaint(ctx, el, x0, y0, x1, y1, lt, base) {
+  if (!el.gradient && !el.shine) return base;
+  const cols = el.gradient || [base, base];
+  if (!el.shine) {
+    const g = ctx.createLinearGradient(0, y0, 0, y1);
+    cols.forEach((c, i) => g.addColorStop(i / (cols.length - 1), c));
+    return g;
+  }
+  // brilho: a cada 2,4 s uma faixa clara passa da esquerda para a direita
+  const w = x1 - x0 || 1;
+  const k = ((Math.max(0, lt) % 2.4) / 1.2) - 0.25;
+  const g = ctx.createLinearGradient(x0, y0, x1, y1);
+  const c0 = cols[0];
+  const c1 = cols[cols.length - 1];
+  const at = (v) => clamp(v);
+  g.addColorStop(0, c0);
+  if (k > 0 && k < 1) {
+    g.addColorStop(at(k - 0.12), lerpColor(c0, c1, at(k - 0.12)));
+    g.addColorStop(at(k), '#FFFFFF');
+    g.addColorStop(at(k + 0.12), lerpColor(c0, c1, at(k + 0.12)));
+  }
+  g.addColorStop(1, c1);
+  void w;
+  return g;
+}
+
+function lerpColor(a, b, t) {
+  const p = (h) => { const x = String(h).replace('#', ''); const f = x.length <= 4 ? x.split('').map((c) => c + c).join('') : x; return [0, 2, 4].map((i) => parseInt(f.slice(i, i + 2), 16) || 0); };
+  const A = p(a);
+  const B = p(b);
+  return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], t))).join(',')})`;
+}
+
 function drawText(ctx, spec, el, life, W, H) {
   let size = el.size * H;
   const fam = fontOf(spec, el);
@@ -482,6 +558,10 @@ function drawText(ctx, spec, el, life, W, H) {
   const chars = text.length;
   const stag = el.in.stagger ?? Math.min(0.12, (el.in.dur * 1.6) / Math.max(1, n));
   const space = ctx.measureText(' ').width;
+  // degradê / brilho passando: uma pintura só para o bloco de texto inteiro
+  const paint = blockPaint(ctx, el, -maxW / 2, -total / 2, maxW / 2, total / 2, life.lt, el.color);
+  if (el.shadow) { ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = size * 0.35; ctx.shadowOffsetY = size * 0.08; }
+  const perLetter = fx === 'letters' || fx === 'typewriter' || fx === 'scramble' || fx === 'wave';
   let ci = 0;
   lines.forEach((line, li) => {
     const lw = line.reduce((a, w) => a + ctx.measureText(w.t).width, 0) + space * (line.length - 1);
@@ -530,26 +610,66 @@ function drawText(ctx, spec, el, life, W, H) {
         }
         ctx.restore();
       }
-      const fill = w.hi && el.highlightStyle === 'color' ? el.highlightColor : w.hi && el.highlightStyle === 'box' ? spec.palette.bg : el.color;
-      if (fx === 'letters' || fx === 'typewriter') {
-        // letra a letra (ou máquina de escrever)
+      const fill = w.hi && el.highlightStyle === 'color' ? el.highlightColor : w.hi && el.highlightStyle === 'box' ? spec.palette.bg : paint;
+      if (perLetter) {
+        // letra a letra: aparecer, máquina de escrever, embaralhar (decodifica) ou onda
         let lx = x;
+        const step = fx === 'typewriter' ? el.in.dur / Math.max(1, chars) : fx === 'scramble' ? el.in.dur / Math.max(1, chars) * 0.8 : Math.min(0.05, stag / 2);
         for (const ch of w.t) {
-          const p = (life.lt - ci * (fx === 'typewriter' ? el.in.dur / Math.max(1, chars) : Math.min(0.05, stag / 2))) / (fx === 'typewriter' ? 0.001 : el.in.dur * 0.6);
+          const p = fx === 'typewriter' ? (life.lt - ci * step) / 0.001 : (life.lt - ci * step) / (el.in.dur * (fx === 'scramble' ? 0.35 : 0.6));
           const cw = ctx.measureText(ch).width;
           if (p > 0) {
             ctx.save();
-            ctx.globalAlpha *= clamp(p);
-            if (fx === 'letters') ctx.translate(0, (1 - ease('back', p)) * size * 0.35);
-            ctx.fillStyle = fill;
-            if (el.stroke) { ctx.lineWidth = size * 0.06; ctx.strokeStyle = el.stroke; ctx.strokeText(ch, lx, y); }
-            ctx.fillText(ch, lx, y);
+            let glyph = ch;
+            let col = fill;
+            if (fx === 'scramble') {
+              // antes de "travar", letras aleatórias trocando (cor de destaque)
+              if (p < 1) {
+                const r = rand(((ci + 1) * 2654435761 + Math.floor(life.lt * 30) * 40503) % 2147483647);
+                r();
+                glyph = SCRAMBLE[Math.floor(r() * SCRAMBLE.length)];
+                col = el.highlightColor;
+                ctx.globalAlpha *= 0.85;
+              }
+            } else {
+              ctx.globalAlpha *= clamp(p);
+              if (fx === 'letters') ctx.translate(0, (1 - ease('back', p)) * size * 0.35);
+              if (fx === 'wave') ctx.translate(0, (1 - ease('out', p)) * size * 0.55 + Math.sin(life.lt * 7 - ci * 0.55) * size * 0.05 * (1 - clamp(p - 1)));
+            }
+            ctx.fillStyle = col;
+            if (el.stroke) { ctx.lineWidth = size * 0.06; ctx.strokeStyle = el.stroke; ctx.strokeText(glyph, lx, y); }
+            ctx.fillText(glyph, lx, y);
             ctx.restore();
           }
           lx += cw;
           ci += 1;
         }
         ci += 1;
+      } else if (fx === 'outline') {
+        // contorno desenhado primeiro, o preenchimento vem depois
+        const p = clamp(life.lt / el.in.dur);
+        ctx.lineWidth = Math.max(1.5, size * 0.035);
+        ctx.strokeStyle = typeof fill === 'string' ? fill : el.color;
+        ctx.lineJoin = 'round';
+        ctx.strokeText(w.t, x, y);
+        ctx.save();
+        ctx.globalAlpha *= EASE.out(clamp((p - 0.45) / 0.55));
+        ctx.fillStyle = fill;
+        ctx.fillText(w.t, x, y);
+        ctx.restore();
+      } else if (fx === 'glitch' && life.lt < el.in.dur) {
+        // glitch de entrada: cópias deslocadas em ciano e magenta tremendo
+        const r = rand(Math.floor(life.lt * 40) * 53 + w.i * 7);
+        const j = size * 0.06;
+        ctx.save();
+        ctx.globalAlpha *= 0.75;
+        ctx.fillStyle = '#00E5FF';
+        ctx.fillText(w.t, x - j * (0.5 + r()), y + j * (r() - 0.5));
+        ctx.fillStyle = '#FF2D95';
+        ctx.fillText(w.t, x + j * (0.5 + r()), y + j * (r() - 0.5));
+        ctx.restore();
+        ctx.fillStyle = fill;
+        if (r() > 0.25) ctx.fillText(w.t, x + j * (r() - 0.5), y);
       } else {
         ctx.fillStyle = fill;
         if (el.stroke) { ctx.lineWidth = size * 0.06; ctx.strokeStyle = el.stroke; ctx.lineJoin = 'round'; ctx.strokeText(w.t, x, y); }
@@ -579,7 +699,8 @@ function drawCounter(ctx, spec, el, life, W, H) {
   ctx.font = `${size}px "${fontOf(spec, el)}"`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = el.color;
+  ctx.fillStyle = blockPaint(ctx, el, -W * 0.4, -size / 2, W * 0.4, size / 2, life.lt, el.color);
+  if (el.shadow) { ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = size * 0.3; ctx.shadowOffsetY = size * 0.06; }
   // tamanho fixo pela largura final (não "pula" enquanto conta)
   const final = `${el.prefix}${pmNumber(el.to, el.decimals)}${el.suffix}`;
   const fw = ctx.measureText(final).width;
@@ -926,6 +1047,16 @@ function drawBadge(ctx, spec, el, life, W, H) {
   ctx.beginPath();
   ctx.rect(-pw / 2, -ph / 2, pw * open, ph);
   ctx.clip();
+  if (el.shine) {
+    // brilho atravessando o selo
+    const x = lerp(-pw, pw, ((Math.max(0, life.lt) % 2.2) / 1.1) - 0.2);
+    const g = ctx.createLinearGradient(x - pw * 0.25, 0, x + pw * 0.25, 0);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0.45)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(-pw / 2, -ph / 2, pw, ph);
+  }
   ctx.fillStyle = el.color;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -1206,7 +1337,64 @@ function drawUi(ctx, spec, el, life, W, H) {
   ctx.textBaseline = 'alphabetic';
 }
 
-const DRAW = { text: drawText, counter: drawCounter, bars: drawBars, line: drawLine, progress: drawProgress, shape: drawShape, icon: drawIcon, list: drawList, badge: drawBadge, card: drawCard, arrow: drawArrow, particles: drawParticles, ui: drawUi };
+/** Transição de tela cheia: na 1ª metade cobre a tela, na 2ª revela (a cena de baixo muda). */
+function drawTransition(ctx, spec, el, life, W, H) {
+  const d = el.in.dur;
+  const q = clamp(Math.max(0, life.lt) / d);
+  // ctx já está no centro da peça; a transição usa o quadro inteiro
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  const cover = q < 0.5 ? EASE.inout(q * 2) : 1;
+  const reveal = q < 0.5 ? 0 : EASE.inout((q - 0.5) * 2);
+  const c1 = el.fill;
+  const c2 = el.fill2 || c1;
+  ctx.fillStyle = c1;
+  switch (el.kind) {
+    case 'wipe-right':
+      ctx.fillRect(W * reveal, 0, W * (cover - reveal), H);
+      break;
+    case 'wipe-up':
+      ctx.fillRect(0, H * (1 - cover), W, H * (cover - reveal));
+      break;
+    case 'circle': {
+      const R = Math.hypot(W, H) / 2;
+      ctx.beginPath();
+      ctx.arc(W / 2, H / 2, R * cover, 0, Math.PI * 2);
+      if (reveal > 0) ctx.arc(W / 2, H / 2, R * reveal, 0, Math.PI * 2, true);
+      ctx.fill('evenodd');
+      break;
+    }
+    case 'diagonal': {
+      const L = W + H;
+      const a = L * reveal;
+      const b = L * cover;
+      ctx.beginPath();
+      ctx.moveTo(W - a, 0); ctx.lineTo(W - b, 0); ctx.lineTo(W - b - H, H); ctx.lineTo(W - a - H, H);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'bars': {
+      const n = 5;
+      for (let i = 0; i < n; i++) {
+        const k = clamp(cover * 1.4 - i * 0.08);
+        const r2 = clamp(reveal * 1.4 - i * 0.08);
+        ctx.fillStyle = i % 2 ? c2 : c1;
+        ctx.fillRect((W / n) * i, H * r2, W / n + 1, H * (k - r2));
+      }
+      break;
+    }
+    case 'flash': {
+      ctx.fillStyle = withAlpha(c1 || '#FFFFFF', q < 0.3 ? q / 0.3 : clamp(1 - (q - 0.3) / 0.7));
+      ctx.fillRect(0, 0, W, H);
+      break;
+    }
+    default: // wipe-left: entra pela direita, sai pela esquerda
+      ctx.fillRect(W * (1 - cover), 0, W * (cover - reveal), H);
+  }
+}
+
+const DRAW = { transition: drawTransition, text: drawText, counter: drawCounter, bars: drawBars, line: drawLine, progress: drawProgress, shape: drawShape, icon: drawIcon, list: drawList, badge: drawBadge, card: drawCard, arrow: drawArrow, particles: drawParticles, ui: drawUi };
 
 /**
  * Desenha o quadro do instante `t` (segundos desde o início da cena).
@@ -1227,14 +1415,32 @@ export function drawPromptMotion(ctx, spec, t, env) {
   for (const el of spec.elements) {
     const life = lifeOf(el, t, spec.duration);
     if (!life.visible) continue;
-    ctx.save();
-    if (!el.fixed) {
-      ctx.translate(W / 2, H / 2);
-      ctx.scale(cam.zoom, cam.zoom);
-      if (cam.rotate) ctx.rotate((cam.rotate * Math.PI) / 180);
-      ctx.translate(-W / 2 - cam.x * W + (shake ? Math.sin(t * 47) * shake : 0), -H / 2 - cam.y * H + (shake ? Math.cos(t * 39) * shake : 0));
+    const place = (lf, tt) => {
+      if (!el.fixed) {
+        // paralaxe: o que está "na frente" (depth > 0) anda e aproxima mais com a câmera
+        const k = 1 + (el.depth || 0) * 0.8;
+        const z = 1 + (cam.zoom - 1) * k;
+        ctx.translate(W / 2, H / 2);
+        ctx.scale(z, z);
+        if (cam.rotate) ctx.rotate((cam.rotate * Math.PI) / 180);
+        ctx.translate(-W / 2 - cam.x * W * k + (shake ? Math.sin(tt * 47) * shake : 0), -H / 2 - cam.y * H * k + (shake ? Math.cos(tt * 39) * shake : 0));
+      }
+      applyTransform(ctx, el, lf, tt, W, H);
+    };
+    // rastro de movimento na entrada: cópias fracas de instantes anteriores (motion blur barato)
+    if (el.trail && life.pIn < 1 && life.lt > 0) {
+      for (const [dt, a] of [[0.05, 0.22], [0.1, 0.12], [0.15, 0.06]]) {
+        const lf = lifeOf(el, t - dt, spec.duration);
+        if (!lf.visible) continue;
+        ctx.save();
+        ctx.globalAlpha = a;
+        place(lf, t - dt);
+        (DRAW[el.type] || (() => {}))(ctx, spec, el, lf, W, H);
+        ctx.restore();
+      }
     }
-    applyTransform(ctx, el, life, t, W, H);
+    ctx.save();
+    place(life, t);
     (DRAW[el.type] || (() => {}))(ctx, spec, el, life, W, H);
     ctx.restore();
   }
@@ -1418,6 +1624,26 @@ export function fallbackPromptSpec(prompt, form = {}) {
   });
 }
 
+// ─────────────────────────────── revisão visual (o Claude olha os quadros) ───────────────────────────────
+/** Instantes (s) dos quadros que vão para a revisão: começo, meio, fim e o quadro final. Puro. */
+export function reviewTimes(spec) {
+  const d = spec.duration;
+  return [0.22, 0.5, 0.78, 0.98].map((f) => +(d * f).toFixed(2));
+}
+
+/** Prompt de sistema da revisão: o mesmo vocabulário + o papel de diretor de arte. */
+export function promptMotionReviewSystem() {
+  return `${promptMotionSystem()}
+
+REVISÃO VISUAL
+Você agora é o diretor de arte revisando a cena acima. Você recebe o roteiro JSON e quadros RENDERIZADOS dele (com o instante de cada um). Olhe os quadros com atenção e corrija só problemas reais:
+- texto cortado na borda, fora do quadro ou fora da área segura (y 0.15–0.85 em 9:16);
+- peças sobrepostas atrapalhando a leitura; texto pequeno demais para celular; pouco contraste com o fundo;
+- momento vazio ou com informação demais; a mensagem principal tem que estar clara no último quadro;
+- algo do pedido que não apareceu.
+Mantenha o que está bom (cores, ideia, ritmo). Responda só com o JSON do roteiro completo corrigido, com um campo extra "review": uma frase curta em português dizendo o que você ajustou (ou "sem ajustes").`;
+}
+
 // ─────────────────────────────── instruções para a IA ───────────────────────────────
 /** Prompt de sistema: o vocabulário do roteiro e as regras de bom motion design. */
 export function promptMotionSystem() {
@@ -1429,7 +1655,7 @@ FORMATO
  "duration": segundos (2–12),
  "font": ${Object.keys(PM_FONTS).map((f) => `"${f}"`).join('|')},
  "palette": {"bg":"#hex","bg2":"#hex","text":"#hex","accent":"#hex","accent2":"#hex","muted":"#hex"},
- "bg": {"kind": ${PM_BG.map((b) => `"${b}"`).join('|')}, "colors":["#hex","#hex","#hex"], "motion":"none|drift|pulse", "grain":bool, "vignette":bool},
+ "bg": {"kind": ${PM_BG.map((b) => `"${b}"`).join('|')}, "colors":["#hex","#hex","#hex"], "motion":"none|drift|pulse", "grain":bool, "vignette":bool, "leak":bool (vazamento de luz quente, cinematográfico)},
  "camera": [{"at":s,"dur":s,"zoom":0.5–3,"x":-0.5–0.5,"y":-0.5–0.5,"rotate":graus,"ease":"out|inout|back|spring|expo|linear"}],
  "shake": 0–1 (tremida de câmera, opcional),
  "elements": [ ...até 24 peças... ]
@@ -1437,9 +1663,10 @@ FORMATO
 Cada peça: {"type":..., "at": segundo em que entra, "dur": quanto fica (opcional; sem = até o fim), "x":0–1, "y":0–1 (centro da peça, fração do quadro), "scale", "rotate", "color":"#hex", "opacity",
  "in": {"fx": ${PM_IN.map((f) => `"${f}"`).join('|')}, "dur": s, "ease": ..., "delay": s, "stagger": s},
  "out": {"fx": ${PM_OUT.map((f) => `"${f}"`).join('|')}, "dur": s},
- "loop": ${PM_LOOP.map((f) => `"${f}"`).join('|')}, "glow": 0–1, "fixed": true (não segue a câmera)}
+ "loop": ${PM_LOOP.map((f) => `"${f}"`).join('|')}, "glow": 0–1, "fixed": true (não segue a câmera),
+ "depth": -1–1 (paralaxe: positivo = mais perto, anda mais com a câmera; negativo = fundo), "trail": true (rastro de movimento na entrada)}
 Tipos e campos próprios:
-- "text": text, size (fração da ALTURA do quadro, 0.03–0.14), font, align, maxWidth (0–1), upper, stroke, highlight:[palavras], highlightColor, highlightStyle: ${PM_HIGHLIGHT.map((f) => `"${f}"`).join('|')}. Efeitos bons: "words" (palavra a palavra), "letters", "typewriter", "mask-up".
+- "text": text, size (fração da ALTURA do quadro, 0.03–0.14), font, align, maxWidth (0–1), upper, stroke, highlight:[palavras], highlightColor, highlightStyle: ${PM_HIGHLIGHT.map((f) => `"${f}"`).join('|')}, gradient:["#hex","#hex"], shine:bool (faixa de brilho passando), shadow:bool. Efeitos: "words" (palavra a palavra), "letters", "typewriter", "mask-up", "scramble" (letras embaralhando até travar), "wave", "outline" (contorno e depois preenchimento), "glitch".
 - "counter": from, to, prefix ("R$ "), suffix ("%", " mil"), decimals, size, count (segundos contando), label.
 - "bars": values:[números], labels:[curtos], w, h, colors, showValues, prefix, suffix. "line": igual, mais area:bool (use in.fx "draw").
 - "progress": value 0–100, kind "ring"|"bar", size, w, label, fill.
@@ -1451,6 +1678,7 @@ Tipos e campos próprios:
 - "arrow": from:[x,y], to:[x,y] (frações do quadro), curve -1–1, width, head. Use in.fx "draw".
 - "particles": kind ${PM_PARTICLES.map((f) => `"${f}"`).join('|')}, count, colors. "burst" explode a partir de x,y.
 - "ui": kind ${PM_UI.map((f) => `"${f}"`).join('|')} (barra de busca digitando, notificação de celular, botão com cursor clicando, balão de conversa), text, title, w, size, accent.
+- "transition": kind ${PM_TRANSITIONS.map((f) => `"${f}"`).join('|')}, fill, fill2, dur (0.4–0.9). Cobre a tela na 1ª metade e revela na 2ª: use ENTRE duas ideias (tire as peças antigas com "dur" terminando no meio da transição e faça as novas entrarem no meio dela).
 
 REGRAS DE BOM MOTION
 - Hierarquia: 1 mensagem principal por momento, no máximo 3–4 peças na tela ao mesmo tempo. Textos CURTOS, em português do Brasil.
@@ -1460,14 +1688,24 @@ REGRAS DE BOM MOTION
 - Easing: entradas com "out", "back" ou "spring"; nada de "linear" em texto.
 - Cores: use a paleta pedida; contraste alto entre texto e fundo; destaque (accent) só no que importa.
 - Números: use "counter" para valores, "bars"/"line" para evolução, "progress" para porcentagem.
-- Respeite o pedido: se a pessoa pediu uma peça (ex.: botão, notificação, gráfico), ela tem que estar lá.`;
+- Respeite o pedido: se a pessoa pediu uma peça (ex.: botão, notificação, gráfico), ela tem que estar lá.
+
+RECEITAS DE MOTION PREMIUM (o que separa o amador do profissional)
+- Estrutura em batidas: gancho visual (0–1 s) → informação (1–N s) → fechamento com a ideia principal parada e legível no fim.
+- Tipografia: título grande em "display"/"heavy" com "mask-up" ou "scramble"; palavra-chave com destaque "box" ou gradient+shine; texto de apoio pequeno em "sans" com cor muted.
+- Camadas e profundidade: fundo "mesh" ou "radial" com leak e grain; cartões de vidro (card glass) atrás do conteúdo (depth -0.3); o número/palavra principal à frente (depth 0.5); a câmera faz um empurrão lento (zoom 1→1.08) e um punch rápido (zoom +0.12 em 0.25 s, ease "back") no clímax.
+- Movimento: entradas com "spring" ou "back", rastro (trail) em entradas rápidas; nada entra todo de uma vez — stagger de 0.06–0.12 s; saídas rápidas (0.2–0.3 s) para limpar a tela.
+- Transições entre ideias: "transition" (wipe/circle/bars) na cor de destaque, 0.5–0.7 s.
+- Detalhes que dão acabamento: brilho (shine) no número final, partículas "sparkle"/"burst" na conquista, sublinhado que se desenha, ícone em círculo, glow leve no destaque em fundos escuros.
+- Menos é mais: 2–4 cores, 1–2 fontes por cena, espaço livre em volta do que importa.`;
 }
 
 /** Mensagem do usuário para a IA: prompt + formulário (+ o roteiro atual, para ajustar). */
-export function promptMotionUser(prompt, form = {}, current = null, change = '') {
+export function promptMotionUser(prompt, form = {}, current = null, change = '', speech = '') {
   const pal = PM_PALETTES[form.palette]?.palette || form.colors || null;
   const lines = [
     `Pedido: ${str(prompt, 1200)}`,
+    speech ? `Fala do vídeo neste ponto (a cena entra enquanto a pessoa diz isto — combine com a fala, use as palavras e números dela quando fizer sentido): "${str(speech, 800)}"` : '',
     form.goal ? `Objetivo: ${PM_GOALS[form.goal] || form.goal}` : '',
     form.look ? `Estilo: ${PM_LOOKS[form.look] || form.look}` : '',
     form.pace ? `Ritmo: ${PM_PACES[form.pace] || form.pace}` : '',
@@ -1481,3 +1719,78 @@ export function promptMotionUser(prompt, form = {}, current = null, change = '')
   lines.push('\nResponda só com o JSON do roteiro.');
   return lines.filter(Boolean).join('\n');
 }
+
+// ─────────────────────────────── desenho de som ───────────────────────────────
+/**
+ * Sons da cena (como um motion designer faria): ar nas entradas de texto, subida no contador
+ * e batida quando ele chega, passagem nas transições, brilho na conquista, clique no botão,
+ * notificação na notificação… Discretos, sem repetir colado, no máximo 7 por cena.
+ * @param {object} spec roteiro validado
+ * @param {number} start instante da cena no vídeo (s)
+ * @param {Set<string>|null} available sons que existem (null = todos)
+ * @returns {Array<{t:number,type:string,volume:number,why:string}>}
+ */
+export function promptMotionSfx(spec, start = 0, available = null) {
+  const out = [];
+  const add = (t, type, volume, why, alt = []) => {
+    const pickType = [type, ...alt].find((x) => !available || available.has(x));
+    if (!pickType || !(t >= 0) || t > spec.duration + 0.05) return;
+    out.push({ t: +(start + t).toFixed(2), type: pickType, volume, why });
+  };
+  for (const e of spec.elements) {
+    const at = e.at + (e.in?.delay || 0);
+    switch (e.type) {
+      case 'transition': add(at, 'whoosh', 0.55, 'transição', ['swoosh', 'pr-air']); break;
+      case 'text':
+        if (e.in.fx === 'typewriter') add(at, 'typing', 0.45, 'digitando', ['cn-key']);
+        else if (e.in.fx === 'glitch' || e.in.fx === 'scramble') add(at, 'glitch', 0.4, 'texto embaralhando', ['pr-air']);
+        else if (e.size >= 0.06) add(at, 'pr-air', 0.5, 'título entrando', ['whoosh']);
+        break;
+      case 'counter':
+        add(at, 'riser', 0.35, 'contador subindo', ['pr-rise']);
+        add(at + e.count, /R\$|\$/.test(e.prefix) ? 'cash' : 'pr-hit', 0.6, 'contador chegou', ['impact', 'pop']);
+        break;
+      case 'bars':
+      case 'line': add(at, 'pr-rise', 0.45, 'gráfico crescendo', ['riser']); break;
+      case 'progress': add(at + e.in.dur, 'ding', 0.45, 'progresso completo', ['mi-ding']); break;
+      case 'badge': add(at, 'pop', 0.5, 'selo', ['mi-pop']); break;
+      case 'icon': add(at, e.icon === 'x' ? 'error' : e.icon === 'check' ? 'ding' : 'pop', 0.45, `ícone ${e.icon}`, ['mi-pop']); break;
+      case 'list': e.items.slice(0, 4).forEach((_, i) => add(at + i * e.stagger, 'mi-pop', 0.4, 'item da lista', ['pop'])); break;
+      case 'particles':
+        if (e.kind === 'burst' || e.kind === 'confetti') add(at, 'p-conquista-complete-glass', 0.55, 'conquista', ['success', 'sparkle']);
+        else if (e.kind === 'sparkle') add(at, 'sparkle', 0.3, 'brilho', ['mi-shine']);
+        break;
+      case 'ui':
+        if (e.kind === 'notification') add(at, 'p-notificacao-notification-glass', 0.55, 'notificação', ['notify', 'ding']);
+        else if (e.kind === 'button') add(at + e.in.dur + 0.7, 'p-interface-press-glass', 0.55, 'clique', ['click']);
+        else if (e.kind === 'search') add(at + e.in.dur * 0.6, 'typing', 0.4, 'digitando', ['cn-key']);
+        else add(at, 'pop', 0.4, 'mensagem', ['bubble']);
+        break;
+      default: break;
+    }
+  }
+  // punch de câmera (aproximação rápida): batida
+  for (const k of spec.camera || []) if (k.dur <= 0.4 && k.zoom > 1.1) add(k.at, 'pr-hit', 0.5, 'punch de câmera', ['impact']);
+  out.sort((a, b) => a.t - b.t);
+  const kept = [];
+  for (const m of out) {
+    if (kept.some((k) => Math.abs(k.t - m.t) < 0.3)) continue;
+    kept.push(m);
+    if (kept.length >= 7) break;
+  }
+  return kept;
+}
+
+/** Cena de vitrine do "Premium com IA" (miniatura do estilo no assistente de criação). */
+export const PM_SHOWCASE = sanitizePromptSpec({
+  title: 'Premium com IA', duration: 4, font: 'display',
+  palette: { bg: '#07070D', bg2: '#2A0F4F', text: '#FFFFFF', accent: '#FF6B35', accent2: '#7C3AED', muted: '#A1A1B5' },
+  bg: { kind: 'mesh', grain: true, leak: true },
+  camera: [{ at: 0, dur: 4, zoom: 1.08, ease: 'inout' }],
+  elements: [
+    { type: 'card', glass: true, at: 0.1, y: 0.5, w: 0.84, h: 0.36, depth: -0.3, in: { fx: 'rise', dur: 0.5, ease: 'spring' } },
+    { type: 'counter', from: 0, to: 340, suffix: '%', at: 0.3, y: 0.45, size: 0.15, count: 1.2, shine: true, gradient: ['#FFFFFF', '#FF6B35'], in: { fx: 'zoom', dur: 0.4 } },
+    { type: 'text', text: 'mais retenção', at: 0.8, y: 0.58, size: 0.05, font: 'heavy', in: { fx: 'outline', dur: 0.6 } },
+    { type: 'particles', kind: 'sparkle', count: 24, at: 1 },
+  ],
+});

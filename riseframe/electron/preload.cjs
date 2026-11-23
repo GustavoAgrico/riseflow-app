@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('electron', {
     }
   },
   getDataDir: () => ipcRenderer.invoke('get-data-dir'),
+  // abre a pasta de referências de motion no computador
+  openMotionRefs: () => ipcRenderer.invoke('open-motion-refs'),
   getVersion: () => ipcRenderer.invoke('get-version'),
   // Menu Ver › Abas do editor: o editor informa as abas e recebe os cliques do menu
   setEditorTabs: (state) => ipcRenderer.send('editor-tabs-state', state),
