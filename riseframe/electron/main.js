@@ -22,7 +22,28 @@ const logFile = path.join(logsDir, 'server.log');
 // Chaves de API do usuário (Deepgram, Pexels, Anthropic...). Menu → Configurar chaves.
 const keysFile = path.join(userDataPath, 'chaves.env');
 
-for (const dir of [dataDir, logsDir]) mkdirSync(dir, { recursive: true });
+// Referências de motion: vídeos/imagens de motions de que a pessoa gosta (o Claude aprende o
+// estilo). A pasta já nasce com o app, com um LEIA-ME, para a pessoa achar sem procurar.
+const motionRefsDir = path.join(dataDir, 'referencias-motion');
+
+for (const dir of [dataDir, logsDir, motionRefsDir]) mkdirSync(dir, { recursive: true });
+try {
+  const readme = path.join(motionRefsDir, 'LEIA-ME.txt');
+  if (!existsSync(readme)) {
+    writeFileSync(readme, [
+      'PASTA DE REFERÊNCIAS DE MOTION DO RISEFRAME',
+      '',
+      'Coloque aqui vídeos (.mp4 .mov .webm .mkv .m4v) e imagens (.png .jpg .webp .gif)',
+      'de motions de que você gosta: prints, Reels baixados, trabalhos de referência.',
+      '3 a 10 referências do mesmo estilo já bastam; vídeos curtos (5 a 30 s) funcionam melhor.',
+      '',
+      'Depois, no editor: Motion tipográfico → "✨ Premium com IA (Claude)" →',
+      'painel "Referências de motion" → Atualizar → Aprender o estilo.',
+      '(precisa da chave do Claude: menu Arquivo → Configurar chaves)',
+      '',
+    ].join('\r\n'));
+  }
+} catch { /* sem LEIA-ME não tem problema */ }
 
 const KEYS_TEMPLATE = `# Chaves do Riseframe (este arquivo fica só no seu computador).
 # Preencha depois do "=" e salve. Depois feche e abra o Riseframe de novo.
@@ -370,6 +391,7 @@ function buildMenu() {
           },
         },
         { label: 'Abrir pasta dos vídeos e dados', click: () => shell.openPath(dataDir) },
+        { label: 'Abrir pasta de referências de motion', click: () => { mkdirSync(motionRefsDir, { recursive: true }); shell.openPath(motionRefsDir); } },
         { label: 'Abrir registro do servidor (log)', click: () => shell.openPath(logFile) },
         { type: 'separator' },
         { label: 'Sair', accelerator: 'CmdOrCtrl+Q', click: () => app.quit() },
@@ -452,7 +474,7 @@ ipcMain.handle('get-data-dir', () => dataDir);
 // Pasta de referências de motion: a pessoa solta ali vídeos/imagens de motions de que gosta
 // (o Claude aprende o estilo). Abre no Explorer/Finder; cria se ainda não existir.
 ipcMain.handle('open-motion-refs', async () => {
-  const dir = path.join(dataDir, 'referencias-motion');
+  const dir = motionRefsDir;
   mkdirSync(dir, { recursive: true });
   const err = await shell.openPath(dir);
   return err ? { ok: false, error: err, dir } : { ok: true, dir };
