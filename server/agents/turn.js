@@ -32,6 +32,8 @@ function systemPrompt(agent, now = new Date()) {
 
 const NO_KEY_MESSAGE = 'Ainda não consigo responder: falta uma chave de IA (Claude, OpenAI ou Groq) em Configurações → API & Webhooks.'
 const REFUSAL_MESSAGE = 'Não posso ajudar com esse pedido.'
+const CLAIMS_APPROVAL = /aprova[çc][ãa]o|aguardando (sua )?aprova|cart[ãa]o da conversa/i
+const NO_APPROVAL_NOTE = '(Aviso do sistema: nenhum pedido de aprovação foi criado nesta resposta, então nada será enviado. Peça de novo, se quiser.)'
 
 // toolkit: { tools, execute, log } do executor (tools/executor.js); sem ele, o turno só conversa.
 // deps permite trocar a cadeia nos testes.
@@ -49,6 +51,8 @@ async function runTurn({ agent, history, keys, toolkit }, deps = { runChain }) {
     const refused = r.stopReason === 'refusal'
     let text = refused ? REFUSAL_MESSAGE : r.text
     if (!text) text = approvals().length ? 'Pedi sua aprovação no cartão abaixo.' : 'Pronto.'
+    // Trava: o modelo diz que pediu aprovação sem ter chamado a ferramenta → avisa que nada ficou pendente.
+    if (!refused && !approvals().length && CLAIMS_APPROVAL.test(text)) text += `\n\n${NO_APPROVAL_NOTE}`
     return {
       authorKind: refused ? 'system' : 'agent',
       text,
@@ -69,4 +73,4 @@ async function runTurn({ agent, history, keys, toolkit }, deps = { runChain }) {
   }
 }
 
-module.exports = { runTurn, toModelMessages, systemPrompt, instructionsOf, NO_KEY_MESSAGE, REFUSAL_MESSAGE }
+module.exports = { runTurn, toModelMessages, systemPrompt, instructionsOf, NO_KEY_MESSAGE, REFUSAL_MESSAGE, NO_APPROVAL_NOTE }

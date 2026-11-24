@@ -153,3 +153,21 @@ describe('catálogo', () => {
     expect(toolsForAgent({ kind: 'prospector' }).map(t => t.name)).toContain('search_leads')
   })
 })
+
+describe('trava de aprovação no turno', () => {
+  const { runTurn, NO_APPROVAL_NOTE } = require('./turn')
+  const agent = { name: 'Bia', role: 'Atendente', kind: 'atendente', is_default: true }
+  const history = [{ author_kind: 'user', content: 'mande um WhatsApp' }]
+  const reply = (text) => ({ runChain: vi.fn().mockResolvedValue({ text, stopReason: 'end_turn', provider: 'groq' }) })
+
+  it('diz que pediu aprovação sem ter pedido → o sistema avisa que nada ficou pendente', async () => {
+    const r = await runTurn({ agent, history, keys: {}, toolkit: { tools: [], log: { approvals: [] } } }, reply('Está aguardando sua aprovação.'))
+    expect(r.text).toContain(NO_APPROVAL_NOTE)
+  })
+
+  it('com pedido criado de verdade, a resposta fica como está', async () => {
+    const r = await runTurn({ agent, history, keys: {}, toolkit: { tools: [], log: { approvals: [{ id: 'ap1' }] } } }, reply('Está aguardando sua aprovação.'))
+    expect(r.text).toBe('Está aguardando sua aprovação.')
+    expect(r.approvals).toHaveLength(1)
+  })
+})
