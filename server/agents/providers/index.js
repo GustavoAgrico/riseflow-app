@@ -1,27 +1,29 @@
 // Cadeia de provedores com troca automática (docs/AGENTES_ARQUITETURA.md, seção 4).
-// Tenta na ordem do agente (provider_chain) e, depois, nos demais provedores com chave
-// na conta, como último recurso. Troca em erro de rede, limite, 5xx ou chave inválida;
-// a troca vale só para este turno.
+// Ordem padrão "sem custo": primeiro os planos gratuitos (Gemini do Google AI Studio e três
+// modelos do Groq, cada um com limite próprio), e só depois Claude e OpenAI, que são pagos.
+// Agentes com provider_chain próprio usam a ordem deles e, depois, o resto como reserva.
+// Troca em erro de rede, limite, 5xx ou chave inválida; a troca vale só para este turno.
 const claude = require('./claude')
-const { openai, groq } = require('./openai')
+const gemini = require('./gemini')
+const { openai, groq, groqQwen, groqFast } = require('./openai')
 const { NoProviderError } = require('./errors')
 
-const ADAPTERS = { claude, openai, groq }
-const KEY_FIELD = { claude: 'anthropic_key', openai: 'openai_key', groq: 'groq_key' }
-const DEFAULT_CHAIN = ['claude', 'openai', 'groq']
-const LABEL = { claude: 'Claude', openai: 'OpenAI', groq: 'Groq' }
+const ADAPTERS = { gemini, groq, groq_qwen: groqQwen, groq_fast: groqFast, claude, openai }
+const KEY_FIELD = { gemini: 'gemini_key', groq: 'groq_key', groq_qwen: 'groq_key', groq_fast: 'groq_key', claude: 'anthropic_key', openai: 'openai_key' }
+const DEFAULT_CHAIN = ['gemini', 'groq', 'groq_qwen', 'groq_fast', 'claude', 'openai']
+const LABEL = { gemini: 'Gemini', groq: 'Groq', groq_qwen: 'Groq', groq_fast: 'Groq', claude: 'Claude', openai: 'OpenAI' }
 
 // Todas as chaves tentadas foram recusadas (401/403): não adianta tentar de novo depois.
 class KeysRejectedError extends Error {
   constructor(providers) {
-    super(`Chave de IA recusada: ${providers.map(p => LABEL[p] || p).join(', ')}.`)
+    super(`Chave de IA recusada: ${[...new Set(providers.map(p => LABEL[p] || p))].join(', ')}.`)
     this.name = 'KeysRejectedError'
     this.providers = providers
   }
 }
 
 function orderFor(chain, keys, adapters) {
-  const first = Array.isArray(chain) ? chain : []
+  const first = Array.isArray(chain) && chain.length ? chain : DEFAULT_CHAIN
   const all = [...first, ...DEFAULT_CHAIN.filter(n => !first.includes(n)), ...Object.keys(adapters)]
   return [...new Set(all)].filter(name => adapters[name] && keys?.[KEY_FIELD[name]])
 }
@@ -51,4 +53,4 @@ async function runChain({ chain, keys, system, messages, tools = [], execute, ad
   throw lastError
 }
 
-module.exports = { runChain, KEY_FIELD, DEFAULT_CHAIN, KeysRejectedError }
+module.exports = { runChain, orderFor, KEY_FIELD, DEFAULT_CHAIN, KeysRejectedError }

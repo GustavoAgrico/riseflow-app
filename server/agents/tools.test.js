@@ -194,3 +194,55 @@ describe('limpeza da resposta', () => {
     expect(r.text).toBe('Pedi sua aprovação: Enviar WhatsApp para X: "oi" A ação só acontece quando você clicar em Aprovar.')
   })
 })
+
+describe('provedores gratuitos', () => {
+  const gemini = require('./providers/gemini')
+  const { createAdapter, retryAfter } = require('./providers/openai')
+  const { orderFor, DEFAULT_CHAIN } = require('./providers')
+
+  it('Gemini: escolhe o flash estável mais novo e faz o ciclo de ferramentas devolvendo o conteúdo intacto', async () => {
+    const get = vi.fn().mockResolvedValue({ data: { models: [
+      { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
+      { name: 'models/gemini-3.5-flash', supportedGenerationMethods: ['generateContent'] },
+      { name: 'models/gemini-3.5-flash-lite', supportedGenerationMethods: ['generateContent'] },
+      { name: 'models/gemini-9-flash-preview-0101', supportedGenerationMethods: ['generateContent'] },
+    ] } })
+    const modelTurn = { role: 'model', parts: [{ functionCall: { name: 'list_tasks', args: { filter: 'hoje' } }, thoughtSignature: 'sig' }] }
+    const post = vi.fn()
+      .mockResolvedValueOnce({ data: { candidates: [{ content: modelTurn, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 4 } } })
+      .mockResolvedValueOnce({ data: { candidates: [{ content: { role: 'model', parts: [{ text: 'Você tem 1 tarefa.' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 5 } } })
+    const execute = vi.fn().mockResolvedValue({ tasks: [{ id: 't1' }] })
+    const r = await gemini.run({ apiKey: 'chave-teste-1', system: 's', messages: [{ role: 'user', content: 'tarefas?' }], tools: [{ name: 'list_tasks', description: 'd', schema: TOOLS.list_tasks.schema }], execute, http: { get, post } })
+    expect(r).toMatchObject({ text: 'Você tem 1 tarefa.', model: 'gemini-3.5-flash', steps: 1, usage: { in: 30, out: 9 } })
+    expect(post.mock.calls[0][0]).toContain('/gemini-3.5-flash:generateContent')
+    const contents = post.mock.calls[1][1].contents
+    expect(contents[1]).toEqual(modelTurn)
+    expect(contents[2]).toEqual({ role: 'user', parts: [{ functionResponse: { name: 'list_tasks', response: { result: { tasks: [{ id: 't1' }] } } } }] })
+  })
+
+  it('Gemini: esquema sem additionalProperties/maxLength e tipos em maiúsculas', () => {
+    const s = gemini.toGeminiSchema(TOOLS.create_task.schema)
+    expect(JSON.stringify(s)).not.toMatch(/additionalProperties|maxLength/)
+    expect(s.type).toBe('OBJECT')
+    expect(s.properties.title.type).toBe('STRING')
+    expect(s.required).toEqual(['title'])
+  })
+
+  it('Groq: no 429 com espera curta, espera e tenta de novo uma vez', async () => {
+    const err429 = Object.assign(new Error('429'), { response: { status: 429, headers: {}, data: { error: { message: 'Rate limit reached. Please try again in 4.0875s.' } } } })
+    expect(retryAfter(err429)).toBe(4.0875)
+    const wait = vi.fn().mockResolvedValue()
+    const adapter = createAdapter({ name: 'groq', label: 'Groq', url: 'u', model: 'm', wait })
+    const post = vi.fn().mockRejectedValueOnce(err429).mockResolvedValueOnce({ data: { choices: [{ message: { content: 'ok' } }] } })
+    const r = await adapter.run({ apiKey: 'k', system: 's', messages: [{ role: 'user', content: 'oi' }], http: { post } })
+    expect(r.text).toBe('ok')
+    expect(wait).toHaveBeenCalledWith(4338)
+  })
+
+  it('ordem sem custo: grátis primeiro, pagos no fim, só com chave', () => {
+    expect(DEFAULT_CHAIN).toEqual(['gemini', 'groq', 'groq_qwen', 'groq_fast', 'claude', 'openai'])
+    const all = { gemini: 1, groq: 1, groq_qwen: 1, groq_fast: 1, claude: 1, openai: 1 }
+    expect(orderFor(null, { groq_key: 'g', anthropic_key: 'a' }, all)).toEqual(['groq', 'groq_qwen', 'groq_fast', 'claude'])
+    expect(orderFor(['claude'], { groq_key: 'g', anthropic_key: 'a' }, all)).toEqual(['claude', 'groq', 'groq_qwen', 'groq_fast'])
+  })
+})

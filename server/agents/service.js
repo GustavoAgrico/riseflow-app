@@ -3,7 +3,8 @@ const { supabase } = require('../supabaseClient')
 const { DEFAULT_AGENTS } = require('./defaults')
 
 const PUBLIC_FIELDS = 'id, kind, name, role, status'
-const HISTORY_LIMIT = 30
+// Histórico curto: cada turno com ferramentas precisa caber no limite grátis por minuto (Groq ~8 mil tokens).
+const HISTORY_LIMIT = 12
 
 // Cria a equipe padrão no primeiro acesso (idempotente: índice único por user_id + kind).
 async function ensureDefaultAgents(userId) {
@@ -66,7 +67,7 @@ async function historyForModel(userId, threadId) {
 }
 
 async function getAiKeys(userId) {
-  const { data } = await supabase.from('settings').select('openai_key, anthropic_key, groq_key').eq('user_id', userId).maybeSingle()
+  const { data } = await supabase.from('settings').select('openai_key, anthropic_key, groq_key, gemini_key').eq('user_id', userId).maybeSingle()
   return data || {}
 }
 

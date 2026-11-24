@@ -64,7 +64,8 @@ async function runTurn({ agent, history, keys, toolkit }, deps = { runChain }) {
   const approvals = () => toolkit?.log?.approvals || []
   try {
     const r = await deps.runChain({
-      chain: agent.provider_chain, keys, system: systemPrompt(agent), messages,
+      // Agentes padrão: ordem "sem custo" (grátis primeiro). Os criados pelo usuário: a cadeia deles.
+      chain: agent.is_default ? null : agent.provider_chain, keys, system: systemPrompt(agent), messages,
       tools: toolkit?.tools || [], execute: toolkit?.execute,
     })
     const refused = r.stopReason === 'refusal'

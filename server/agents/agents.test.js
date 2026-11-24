@@ -40,10 +40,10 @@ describe('runChain (troca automática de modelo)', () => {
     const adapters = { claude: auth(), openai: auth(), groq: auth() }
     const err = await runChain({ chain: ['claude'], keys: { ...keys, groq_key: 'g' }, system: 's', messages: [], adapters }).catch(e => e)
     expect(err.name).toBe('KeysRejectedError')
-    expect(err.message).toBe('Chave de IA recusada: Claude, OpenAI, Groq.')
+    expect(err.message).toBe('Chave de IA recusada: Claude, Groq, OpenAI.')
     const turn = await runTurn({ agent: { name: 'Rizo', role: 'r', instructions: 'i' }, history: [{ author_kind: 'user', content: 'oi' }], keys },
       { runChain: vi.fn().mockRejectedValue(err) })
-    expect(turn).toMatchObject({ authorKind: 'system', text: 'Chave de IA recusada: Claude, OpenAI, Groq. Atualize em Configurações → API & Webhooks.' })
+    expect(turn).toMatchObject({ authorKind: 'system', text: 'Chave de IA recusada: Claude, Groq, OpenAI. Atualize em Configurações → API & Webhooks.' })
   })
 
   it('pula provedor sem chave e falha sem nenhuma chave', async () => {

@@ -6,7 +6,7 @@
 // O resultado volta ao modelo como dado; erro vira { error } para o modelo explicar ao usuário.
 
 const DEFAULT_POLICY = { baixo: 'auto', medio: 'auto', alto: 'ask' }
-const RESULT_CHARS = 6000
+const RESULT_CHARS = 3500 // resultado curto para caber no limite grátis por minuto dos provedores
 
 function typeOk(schema, v) {
   switch (schema.type) {
