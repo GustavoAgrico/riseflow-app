@@ -171,3 +171,26 @@ describe('trava de aprovação no turno', () => {
     expect(r.approvals).toHaveLength(1)
   })
 })
+
+describe('limpeza da resposta', () => {
+  const { runTurn, cleanText, looksBroken } = require('./turn')
+  const agent = { name: 'Bia', role: 'Atendente', kind: 'atendente', is_default: true }
+  const history = [{ author_kind: 'user', content: 'mande um WhatsApp' }]
+  const reply = (text) => ({ runChain: vi.fn().mockResolvedValue({ text, stopReason: 'end_turn', provider: 'groq' }) })
+
+  it('tira markdown, invisíveis e linhas em excesso', () => {
+    expect(cleanText('A mensagem está **pendente**\u200B\n\n\n\nok')).toBe('A mensagem está pendente\n\nok')
+  })
+
+  it('reconhece texto degenerado (o caso real do teste ao vivo)', () => {
+    const real = 'Enviei o pedido de aprovação para o WhatsApp de dsf‑ ​​​​​  ​ ​  ​\n\n\n\n.........\n\n\n\n... \n\n... \n\n\n\n​ \n\n\n\n... \n\n\n\n...\n\n\n\n...\n\n\n\n...\n\n\n\n…'
+    expect(looksBroken(cleanText(real))).toBe(true)
+    expect(looksBroken('O pedido de WhatsApp para a Clínica Sorriso está aguardando sua aprovação no cartão.')).toBe(false)
+  })
+
+  it('texto degenerado com pedido criado vira mensagem fixa com o resumo do pedido', async () => {
+    const r = await runTurn({ agent, history, keys: {}, toolkit: { tools: [], log: { approvals: [{ id: 'a', summary: 'Enviar WhatsApp para X: "oi"' }] } } },
+      reply('ok ... ... ... ... ... ... ... ... ... ... ... ...'))
+    expect(r.text).toBe('Pedi sua aprovação: Enviar WhatsApp para X: "oi" A ação só acontece quando você clicar em Aprovar.')
+  })
+})

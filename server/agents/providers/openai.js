@@ -59,11 +59,12 @@ function createAdapter({ name, label, url, model, extraBody = {} }) {
 
 const openai = createAdapter({ name: 'openai', label: 'OpenAI', url: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' })
 // Groq: plano gratuito, a mesma chave que o atendente do WhatsApp usa (server/aiAttendant.js).
-// O llama-3.3-70b-versatile saiu do Groq; o gpt-oss-120b raciocina antes de responder, e o
-// esforço baixo evita que o raciocínio consuma o limite de tokens da resposta.
+// O llama-3.3-70b-versatile saiu do Groq; o gpt-oss-120b raciocina antes de responder. Com
+// esforço 'low' ele às vezes degenera em ciclos de ferramentas (texto com '...' repetido);
+// 'medium' respondeu coerente nos testes. Limite do plano gratuito: 8 mil tokens/minuto (429).
 const groq = createAdapter({
   name: 'groq', label: 'Groq', url: 'https://api.groq.com/openai/v1/chat/completions',
-  model: 'openai/gpt-oss-120b', extraBody: { reasoning_effort: 'low' },
+  model: 'openai/gpt-oss-120b', extraBody: { reasoning_effort: 'medium' },
 })
 
 module.exports = { openai, groq, createAdapter }

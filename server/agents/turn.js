@@ -33,6 +33,25 @@ function systemPrompt(agent, now = new Date()) {
 const NO_KEY_MESSAGE = 'Ainda não consigo responder: falta uma chave de IA (Claude, OpenAI ou Groq) em Configurações → API & Webhooks.'
 const REFUSAL_MESSAGE = 'Não posso ajudar com esse pedido.'
 const CLAIMS_APPROVAL = /aprova[çc][ãa]o|aguardando (sua )?aprova|cart[ãa]o da conversa/i
+
+// O chat mostra texto puro: tira markdown de ênfase, caracteres invisíveis e excesso de linhas.
+function cleanText(text) {
+  return String(text || '')
+    .replace(/[​-‍⁠﻿]/g, '')
+    .replace(/\*\*|__/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+// Resposta degenerada (modelos pequenos às vezes repetem '...' e linhas vazias): pouca letra
+// para o tamanho, ou reticências em série.
+function looksBroken(text) {
+  const t = String(text || '')
+  if (t.length < 40) return false
+  const letters = (t.match(/\p{L}/gu) || []).length
+  return letters / t.length < 0.45 || /((\.{3}|…)\s*){4,}/.test(t)
+}
 const NO_APPROVAL_NOTE = '(Aviso do sistema: nenhum pedido de aprovação foi criado nesta resposta, então nada será enviado. Peça de novo, se quiser.)'
 
 // toolkit: { tools, execute, log } do executor (tools/executor.js); sem ele, o turno só conversa.
@@ -49,7 +68,13 @@ async function runTurn({ agent, history, keys, toolkit }, deps = { runChain }) {
       tools: toolkit?.tools || [], execute: toolkit?.execute,
     })
     const refused = r.stopReason === 'refusal'
-    let text = refused ? REFUSAL_MESSAGE : r.text
+    let text = refused ? REFUSAL_MESSAGE : cleanText(r.text)
+    if (looksBroken(text)) {
+      const asked = approvals()
+      text = asked.length
+        ? `Pedi sua aprovação: ${asked.map(a => a.summary).join('; ')} A ação só acontece quando você clicar em Aprovar.`
+        : 'Não consegui montar a resposta direito. Pode repetir o pedido?'
+    }
     if (!text) text = approvals().length ? 'Pedi sua aprovação no cartão abaixo.' : 'Pronto.'
     // Trava: o modelo diz que pediu aprovação sem ter chamado a ferramenta → avisa que nada ficou pendente.
     if (!refused && !approvals().length && CLAIMS_APPROVAL.test(text)) text += `\n\n${NO_APPROVAL_NOTE}`
@@ -73,4 +98,4 @@ async function runTurn({ agent, history, keys, toolkit }, deps = { runChain }) {
   }
 }
 
-module.exports = { runTurn, toModelMessages, systemPrompt, instructionsOf, NO_KEY_MESSAGE, REFUSAL_MESSAGE, NO_APPROVAL_NOTE }
+module.exports = { runTurn, toModelMessages, systemPrompt, instructionsOf, cleanText, looksBroken, NO_KEY_MESSAGE, REFUSAL_MESSAGE, NO_APPROVAL_NOTE }
