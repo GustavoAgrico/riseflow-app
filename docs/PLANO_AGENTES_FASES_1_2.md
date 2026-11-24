@@ -5,7 +5,12 @@ Base: `docs/AGENTES_ARQUITETURA.md` (seções 3 a 5 e roteiro da seção 11) e a
 Status: plano aprovado. **Fase 1 implementada** (2026-11-24): `supabase/agents_core.sql`,
 `server/agents/`, `server/routes/agents.js`, socket autenticado com sala por conta. Modelo:
 Claude Opus 5.5 (`claude-opus-5-5`, esforço baixo, fallback do servidor da Anthropic ligado),
-reserva OpenAI `gpt-4o-mini`. Fase 2 pendente.
+reserva OpenAI `gpt-4o-mini` e Groq `openai/gpt-oss-120b` (último recurso).
+**Fase 2 implementada** (2026-11-24): `supabase/agents_tools.sql`, `server/agents/tools/`
+(catálogo + executor), `server/agents/approvals.js`, `/api/approvals`. Diferença do plano: o
+turno não fica pausado esperando a decisão — a ação de risco alto é guardada no pedido e
+executada no "Aprovar"; o resultado aparece como mensagem de sistema na conversa. Também entrou
+`schedule_meeting` e `get_goal_progress`. Push no celular continua pendente (aviso pelo sino).
 
 ## Ajustes da especificação à realidade do projeto
 

@@ -1,14 +1,22 @@
-// Worker dos agentes (no mesmo processo da API, fase 1). A cada 2 s pega mensagens
-// prontas da fila (agent_claim_next), roda o turno e grava a resposta uma única vez
-// (agent_complete). Falha transitória volta à fila com espera de 10 s → 1 min → 5 min;
+// Worker dos agentes (no mesmo processo da API). A cada 2 s pega mensagens prontas da fila
+// (agent_claim_next), roda o turno com as ferramentas do agente e grava a resposta uma única
+// vez (agent_complete). Falha transitória volta à fila com espera de 10 s → 1 min → 5 min;
 // depois da 3ª tentativa vira 'failed' e o agente avisa na conversa.
-// Liga só onde ENGINES_ENABLED != 'false'.
+// Cada chamada de ferramenta fica no log com chave por item da fila: a retentativa reaproveita
+// o resultado em vez de repetir a ação. Liga só onde ENGINES_ENABLED != 'false'.
+const crypto = require('crypto')
 const { supabase, isConfigured } = require('../supabaseClient')
 const { emitToUser } = require('../realtime')
 const service = require('./service')
 const { runTurn } = require('./turn')
+const { toolsForAgent } = require('./tools/catalog')
+const { createExecutor } = require('./tools/executor')
+const { buildToolContext } = require('./toolContext')
+const approvals = require('./approvals')
 
 const TICK_MS = 2000
+const EXPIRE_EVERY_MS = 10 * 60_000
+let lastExpire = 0
 const MAX_PER_TICK = 5
 const MAX_ATTEMPTS = 3
 const BACKOFF_S = [10, 60, 300]
@@ -56,6 +64,28 @@ async function fail(job, err) {
   await setStatus(job, 'error')
 }
 
+const callKeyOf = (job, key) => `tool:${job.id}:${crypto.createHash('sha1').update(key).digest('hex')}`
+
+async function buildToolkit(job, agent) {
+  const ctx = await buildToolContext({ userId: job.user_id, agent, threadId: job.thread_id, queueId: job.id })
+  const tools = toolsForAgent(agent)
+  const executor = createExecutor({
+    ctx, tools, policy: agent.approval_policy,
+    requestApproval: (tool, input) => approvals.create({ userId: job.user_id, agent, threadId: job.thread_id, queueId: job.id, tool, input, ctx }),
+    recall: async (key) => {
+      const { data } = await supabase.from('agent_events').select('payload').eq('idempotency_key', callKeyOf(job, key)).maybeSingle()
+      return data?.payload?.result || null
+    },
+    logEvent: async ({ callKey, ...payload }) => {
+      await supabase.from('agent_events').insert({
+        user_id: job.user_id, agent_id: job.agent_id, thread_id: job.thread_id, type: 'tool_call',
+        payload, idempotency_key: callKeyOf(job, callKey),
+      })
+    },
+  })
+  return { tools, execute: executor.execute, log: executor.log }
+}
+
 async function processJob(job) {
   await setStatus(job, 'thinking')
   try {
@@ -65,9 +95,10 @@ async function processJob(job) {
       service.historyForModel(job.user_id, job.thread_id),
       service.getAiKeys(job.user_id),
     ])
-    const result = await runTurn({ agent, history, keys })
+    const toolkit = await buildToolkit(job, agent)
+    const result = await runTurn({ agent, history, keys, toolkit })
     await complete(job, result.authorKind, result.text, result.run)
-    await setStatus(job, 'idle')
+    await setStatus(job, result.approvals?.length ? 'waiting_approval' : 'idle')
   } catch (e) {
     console.warn('[agents] turno falhou', job.id, e?.message)
     await fail(job, e).catch(err => console.error('[agents] falha ao registrar erro', job.id, err?.message))
@@ -78,6 +109,10 @@ async function tick() {
   if (running || Date.now() < pausedUntil) return
   running = true
   try {
+    if (Date.now() - lastExpire > EXPIRE_EVERY_MS) {
+      lastExpire = Date.now()
+      await approvals.expireOld().catch(() => {}) // pedidos com mais de 24 h viram 'expired'
+    }
     const jobs = []
     for (let i = 0; i < MAX_PER_TICK; i++) {
       const { data, error } = await supabase.rpc('agent_claim_next')

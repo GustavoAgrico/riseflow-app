@@ -8,6 +8,7 @@ const { supabase, isConfigured } = require('../supabaseClient')
 const el = require('../elevenlabs')
 const { getConfig, publicView, saveConfig } = require('../aiCallSettings')
 const { dial } = require('../aiCallService')
+const { requireAdmin: adminOnly } = require('../middleware/requireAdmin')
 
 const router = Router()
 
@@ -16,16 +17,7 @@ const guard = (req, res, next) => {
   next()
 }
 
-// Membros de equipe têm sub = dono e member_id no token; só o dono ou cargo Admin altera.
-async function requireAdmin(req, res, next) {
-  const memberId = req.user?.member_id
-  if (!memberId) return next()
-  try {
-    const { data } = await supabase.from('team_members').select('role').eq('id', memberId).eq('user_id', req.user.sub).maybeSingle()
-    if (/admin/i.test(data?.role || '')) return next()
-  } catch { /* cai no 403 */ }
-  res.status(403).json({ error: 'Só o dono da conta ou um Admin pode alterar as ligações com IA.' })
-}
+const requireAdmin = adminOnly('Só o dono da conta ou um Admin pode alterar as ligações com IA.')
 
 const fail = (res, e, fallback) => res.status(e?.status >= 400 && e?.status < 600 ? e.status : 500).json({ error: e?.message ?? fallback })
 

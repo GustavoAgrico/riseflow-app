@@ -26,7 +26,9 @@ function orderFor(chain, keys, adapters) {
   return [...new Set(all)].filter(name => adapters[name] && keys?.[KEY_FIELD[name]])
 }
 
-async function runChain({ chain, keys, system, messages, adapters = ADAPTERS }) {
+// tools/execute: ciclo de ferramentas dentro do provedor. O executor memoriza as chamadas,
+// então refazer o turno no próximo provedor não repete ações já feitas.
+async function runChain({ chain, keys, system, messages, tools = [], execute, adapters = ADAPTERS }) {
   const order = orderFor(chain, keys, adapters)
   if (!order.length) throw new NoProviderError()
 
@@ -35,7 +37,7 @@ async function runChain({ chain, keys, system, messages, adapters = ADAPTERS }) 
   const rejected = []
   for (const name of order) {
     try {
-      const result = await adapters[name].chat({ apiKey: keys[KEY_FIELD[name]], system, messages })
+      const result = await adapters[name].run({ apiKey: keys[KEY_FIELD[name]], system, messages, tools, execute })
       return { ...result, provider: name, fallbackFrom: firstFailed }
     } catch (e) {
       lastError = e

@@ -11,8 +11,8 @@ const claude = require('./providers/claude')
 const { runTurn, toModelMessages, NO_KEY_MESSAGE, REFUSAL_MESSAGE } = require('./turn')
 const realtime = require('../realtime')
 
-const ok = (text) => ({ chat: vi.fn().mockResolvedValue({ text, stopReason: 'end_turn', model: 'm', usage: { in: 1, out: 2 } }) })
-const fails = (switchable) => ({ chat: vi.fn().mockRejectedValue(new ProviderError('falhou', { switchable, retryable: switchable })) })
+const ok = (text) => ({ run: vi.fn().mockResolvedValue({ text, stopReason: 'end_turn', model: 'm', usage: { in: 1, out: 2 } }) })
+const fails = (switchable) => ({ run: vi.fn().mockRejectedValue(new ProviderError('falhou', { switchable, retryable: switchable })) })
 const keys = { anthropic_key: 'a', openai_key: 'o' }
 
 describe('runChain (troca automática de modelo)', () => {
@@ -25,18 +25,18 @@ describe('runChain (troca automática de modelo)', () => {
   it('não troca em pedido inválido (o erro se repetiria)', async () => {
     const adapters = { claude: fails(false), openai: ok('oi') }
     await expect(runChain({ chain: ['claude', 'openai'], keys, system: 's', messages: [], adapters })).rejects.toThrow('falhou')
-    expect(adapters.openai.chat).not.toHaveBeenCalled()
+    expect(adapters.openai.run).not.toHaveBeenCalled()
   })
 
   it('usa o Groq como último recurso mesmo fora da cadeia do agente', async () => {
-    const auth = () => ({ chat: vi.fn().mockRejectedValue(new ProviderError('401', { switchable: true, status: 401 })) })
+    const auth = () => ({ run: vi.fn().mockRejectedValue(new ProviderError('401', { switchable: true, status: 401 })) })
     const adapters = { claude: auth(), openai: auth(), groq: ok('groq ok') }
     const r = await runChain({ chain: ['claude', 'openai'], keys: { ...keys, groq_key: 'g' }, system: 's', messages: [], adapters })
     expect(r).toMatchObject({ text: 'groq ok', provider: 'groq', fallbackFrom: 'claude' })
   })
 
   it('todas as chaves recusadas viram aviso claro, sem nova tentativa', async () => {
-    const auth = () => ({ chat: vi.fn().mockRejectedValue(new ProviderError('401', { switchable: true, status: 401 })) })
+    const auth = () => ({ run: vi.fn().mockRejectedValue(new ProviderError('401', { switchable: true, status: 401 })) })
     const adapters = { claude: auth(), openai: auth(), groq: auth() }
     const err = await runChain({ chain: ['claude'], keys: { ...keys, groq_key: 'g' }, system: 's', messages: [], adapters }).catch(e => e)
     expect(err.name).toBe('KeysRejectedError')
@@ -50,7 +50,7 @@ describe('runChain (troca automática de modelo)', () => {
     const adapters = { claude: ok('c'), openai: ok('o') }
     const r = await runChain({ chain: ['claude', 'openai'], keys: { openai_key: 'o' }, system: 's', messages: [], adapters })
     expect(r.provider).toBe('openai')
-    expect(adapters.claude.chat).not.toHaveBeenCalled()
+    expect(adapters.claude.run).not.toHaveBeenCalled()
     await expect(runChain({ chain: ['claude'], keys: {}, system: 's', messages: [], adapters })).rejects.toBeInstanceOf(NoProviderError)
   })
 })
@@ -61,8 +61,8 @@ describe('adaptador Claude', () => {
       content: [{ type: 'thinking', thinking: '' }, { type: 'text', text: 'Olá!' }],
       stop_reason: 'end_turn', model: 'claude-opus-5-5', usage: { input_tokens: 10, output_tokens: 3 },
     })
-    const r = await claude.chat({ system: 's', messages: [{ role: 'user', content: 'oi' }], client: { beta: { messages: { create } } } })
-    expect(r).toEqual({ text: 'Olá!', stopReason: 'end_turn', model: 'claude-opus-5-5', usage: { in: 10, out: 3 } })
+    const r = await claude.run({ system: 's', messages: [{ role: 'user', content: 'oi' }], client: { beta: { messages: { create } } } })
+    expect(r).toEqual({ text: 'Olá!', stopReason: 'end_turn', model: 'claude-opus-5-5', usage: { in: 10, out: 3 }, steps: 0 })
     expect(create.mock.calls[0][0]).toMatchObject({
       model: 'claude-opus-5-5', fallbacks: 'default', betas: ['server-side-fallback-2026-07-01'], output_config: { effort: 'low' },
     })
@@ -72,8 +72,8 @@ describe('adaptador Claude', () => {
     const limit = Object.assign(Object.create(Anthropic.RateLimitError.prototype), { status: 429, message: 'limite' })
     const bad = Object.assign(Object.create(Anthropic.BadRequestError.prototype), { status: 400, message: 'inválido' })
     const client = (err) => ({ beta: { messages: { create: vi.fn().mockRejectedValue(err) } } })
-    await expect(claude.chat({ system: 's', messages: [], client: client(limit) })).rejects.toMatchObject({ switchable: true, retryable: true })
-    await expect(claude.chat({ system: 's', messages: [], client: client(bad) })).rejects.toMatchObject({ switchable: false, retryable: false })
+    await expect(claude.run({ system: 's', messages: [], client: client(limit) })).rejects.toMatchObject({ switchable: true, retryable: true })
+    await expect(claude.run({ system: 's', messages: [], client: client(bad) })).rejects.toMatchObject({ switchable: false, retryable: false })
   })
 })
 
