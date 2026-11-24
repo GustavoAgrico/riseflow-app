@@ -26,4 +26,12 @@ function emitConversationNote(userId, rows) {
   }
 }
 
-module.exports = { setIo, emitSalesUpdate, emitConversationNote }
+// Sala da conta: só os navegadores autenticados dessa conta (evento 'authenticate'
+// em server/index.js) entram. Use para eventos com conteúdo, como os dos agentes.
+const userRoom = (userId) => `user:${userId}`
+
+function emitToUser(userId, event, payload) {
+  if (io && userId) io.to(userRoom(userId)).emit(event, payload)
+}
+
+module.exports = { setIo, emitSalesUpdate, emitConversationNote, emitToUser, userRoom }

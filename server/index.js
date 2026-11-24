@@ -33,6 +33,9 @@ const aiCallsRoutes = require('./routes/aiCalls')
 const prospectingRoutes = require('./routes/prospecting')
 const aiCallSettingsRoutes = require('./routes/aiCallSettings')
 const aiCallQueue = require('./aiCallQueue')
+const agentsRoutes = require('./routes/agents')
+const agentsWorker = require('./agents/worker')
+const { userRoom } = require('./realtime')
 const restProxy = require('./routes/restProxy')
 const accessRequestsRoutes = require('./routes/accessRequests')
 const telegram = require('./telegramClient')
@@ -113,6 +116,25 @@ io.on('connection', (socket) => {
   console.log(`[socket] cliente conectado: ${socket.id}`)
   let presenceMemberId = null
 
+  // Autentica o socket com o JWT do proxy e põe na sala da conta. Eventos com conteúdo
+  // (agentes, transferências) vão só para a sala; o broadcast global fica para quem
+  // ainda não se autenticou (compatível com abas abertas antes da atualização).
+  socket.on('authenticate', ({ token } = {}) => {
+    try {
+      const payload = jwt.verify(String(token || ''), JWT_SECRET, { clockTolerance: 30 })
+      if (!payload?.sub) throw new Error('token sem conta')
+      if (socket.data.userId && socket.data.userId !== payload.sub) socket.leave(userRoom(socket.data.userId))
+      socket.data.userId = payload.sub
+      socket.join(userRoom(payload.sub))
+      socket.emit('authenticated', { ok: true })
+    } catch {
+      socket.emit('authenticated', { ok: false })
+    }
+  })
+  const emitScoped = (event, payload) => (
+    socket.data.userId ? io.to(userRoom(socket.data.userId)).emit(event, payload) : io.emit(event, payload)
+  )
+
   // Presença automática: um MEMBRO da equipe anuncia 'online' ao conectar; ao
   // cair a conexão, volta a 'offline'. O dono (tela Equipe) recebe 'team_status'
   // em tempo real. (MVP: não conta múltiplas abas — última desconexão = offline.)
@@ -121,7 +143,7 @@ io.on('connection', (socket) => {
     presenceMemberId = memberId
     try {
       await supabase.from('team_members').update({ status: 'online' }).eq('id', memberId)
-      io.emit('team_status', { memberId, status: 'online' })
+      emitScoped('team_status', { memberId, status: 'online' })
     } catch (e) { console.warn('[presence] online falhou:', e?.message ?? e) }
   })
 
@@ -130,7 +152,7 @@ io.on('connection', (socket) => {
     if (presenceMemberId && isConfigured) {
       try {
         await supabase.from('team_members').update({ status: 'offline' }).eq('id', presenceMemberId)
-        io.emit('team_status', { memberId: presenceMemberId, status: 'offline' })
+        emitScoped('team_status', { memberId: presenceMemberId, status: 'offline' })
       } catch (e) { console.warn('[presence] offline falhou:', e?.message ?? e) }
     }
   })
@@ -138,7 +160,7 @@ io.on('connection', (socket) => {
   // Transferência manual disparada pelo frontend: rebroadcast para todos os clientes.
   socket.on('transfer_request', (data) => {
     console.log('[socket] transfer_request recebido de', socket.id, '→', data?.agentName)
-    io.emit('transfer_notification', {
+    emitScoped('transfer_notification', {
       ...data,
       source: 'manual',
       timestamp: data.timestamp || new Date().toISOString(),
@@ -301,6 +323,7 @@ app.use('/api/meetings', auth, meetingsRoutes)
 app.use('/api/ai-calls', auth, aiCallsRoutes)
 app.use('/api/prospecting', auth, prospectingRoutes)
 app.use('/api/ai-call-settings', auth, aiCallSettingsRoutes)
+app.use('/api/agents', auth, agentsRoutes)
 app.use('/api/rest/v1', auth, restProxy)
 app.use('/api/access-requests', auth, accessRequestsRoutes)
 
@@ -345,5 +368,6 @@ server.listen(PORT, () => {
     campaignEngine.start()
     scheduleEngine.start()
     aiCallQueue.start()
+    agentsWorker.start()
   }
 })

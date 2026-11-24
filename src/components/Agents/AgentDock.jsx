@@ -7,7 +7,7 @@ import { Plus, ArrowUp, X, Check } from 'lucide-react'
 import { RiserAvatar } from './RiserAvatar'
 import { DEMO_AGENTS, DEMO_MESSAGES, DEMO_APPROVALS, demoReply } from './agentsDemo'
 import { agentsApi } from '@services/agents'
-import socket from '@services/socket'
+import socket, { authenticateSocket } from '@services/socket'
 import { useAuth } from '@context/AuthContext'
 import { useIsMobile } from '@hooks/useIsMobile'
 
@@ -76,10 +76,14 @@ export function AgentDock() {
       setApprovals(DEMO_APPROVALS[current.id] || [])
       return
     }
-    Promise.all([agentsApi.messages(current.id), agentsApi.approvals(current.id)])
+    // Aprovações chegam na fase 2: enquanto a rota não existir, a lista fica vazia.
+    Promise.all([agentsApi.messages(current.id), agentsApi.approvals(current.id).catch(() => [])])
       .then(([m, a]) => { setMessages(Array.isArray(m) ? m : []); setApprovals(Array.isArray(a) ? a : []) })
       .catch(() => setError('Não foi possível carregar a conversa. Tente de novo.'))
   }, [current?.id, demo])
+
+  // Com agentes reais, garante que este navegador está na sala da conta no servidor.
+  useEffect(() => { if (!demo) authenticateSocket() }, [demo])
 
   // Tempo real (contrato da seção 5): status, mensagens e pedidos de aprovação vindos do worker.
   useEffect(() => {
@@ -87,7 +91,7 @@ export function AgentDock() {
     const onStatus = ({ agent_id, status }) =>
       setAgents((list) => list.map((a) => (a.id === agent_id ? { ...a, status } : a)))
     const onMessage = ({ agent_id, message }) => {
-      if (agent_id === current?.id && message) setMessages((m) => [...m, message])
+      if (agent_id === current?.id && message) setMessages((m) => (m.some((x) => x.id === message.id) ? m : [...m, message]))
     }
     const onApproval = ({ agent_id, approval }) => {
       if (agent_id === current?.id && approval) setApprovals((l) => [...l, approval])
@@ -123,9 +127,30 @@ export function AgentDock() {
       return
     }
     setSending(true)
-    try { await agentsApi.send(current.id, body) }
-    catch { setError('A mensagem não foi enviada. Verifique a conexão e tente de novo.') }
+    const agentId = current.id
+    const key = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    try {
+      await agentsApi.send(agentId, body, key)
+      waitForReply(agentId)
+    } catch { setError('A mensagem não foi enviada. Verifique a conexão e tente de novo.') }
     finally { setSending(false) }
+  }
+
+  // Reserva do socket: se a resposta não chegar em tempo real, relê a conversa por até 2 min.
+  const waitForReply = (agentId) => {
+    let tries = 0
+    const poll = setInterval(async () => {
+      tries += 1
+      try {
+        const list = await agentsApi.messages(agentId)
+        const last = Array.isArray(list) ? list[list.length - 1] : null
+        if (last && last.author_kind !== 'user') {
+          clearInterval(poll)
+          setMessages((m) => (m.some((x) => x.id === last.id) ? m : list))
+        }
+      } catch { /* tenta de novo */ }
+      if (tries >= 40) clearInterval(poll)
+    }, 3000)
   }
 
   const decide = async (ap, decision) => {
