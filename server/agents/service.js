@@ -66,7 +66,7 @@ async function historyForModel(userId, threadId) {
 }
 
 async function getAiKeys(userId) {
-  const { data } = await supabase.from('settings').select('openai_key, anthropic_key').eq('user_id', userId).maybeSingle()
+  const { data } = await supabase.from('settings').select('openai_key, anthropic_key, groq_key').eq('user_id', userId).maybeSingle()
   return data || {}
 }
 

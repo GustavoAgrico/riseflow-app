@@ -20,10 +20,11 @@ function toModelMessages(history) {
 
 function systemPrompt(agent, now = new Date()) {
   const today = now.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
-  return `${agent.instructions}\n\nVocê se chama ${agent.name} (${agent.role}). Hoje é ${today}.`
+  return `${agent.instructions}\n\nVocê se chama ${agent.name} (${agent.role}). Hoje é ${today}.\n` +
+    'O chat mostra texto puro: não use markdown (nada de asteriscos, # ou tabelas); para listas, use hífen no início da linha.'
 }
 
-const NO_KEY_MESSAGE = 'Ainda não consigo responder: falta uma chave de IA (Claude ou OpenAI) em Configurações → API & Webhooks.'
+const NO_KEY_MESSAGE = 'Ainda não consigo responder: falta uma chave de IA (Claude, OpenAI ou Groq) em Configurações → API & Webhooks.'
 const REFUSAL_MESSAGE = 'Não posso ajudar com esse pedido.'
 
 // deps permite trocar a cadeia nos testes.
@@ -46,6 +47,9 @@ async function runTurn({ agent, history, keys }, deps = { runChain }) {
   } catch (e) {
     if (e?.name === 'NoProviderError') {
       return { authorKind: 'system', text: NO_KEY_MESSAGE, run: { status: 'failed', error: e.message } }
+    }
+    if (e?.name === 'KeysRejectedError') {
+      return { authorKind: 'system', text: `${e.message} Atualize em Configurações → API & Webhooks.`, run: { status: 'failed', error: e.message } }
     }
     throw e
   }

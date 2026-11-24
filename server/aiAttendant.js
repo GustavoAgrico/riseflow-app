@@ -78,17 +78,20 @@ async function askGemini(key, systemPrompt, userMessage, maxTokens = 300) {
   }
 }
 
-// Groq — tier gratuito, Llama 3.3 70B (API compatível com OpenAI).
+// Groq — tier gratuito, GPT-OSS 120B (API compatível com OpenAI). O llama-3.3-70b-versatile
+// saiu do Groq. O gpt-oss raciocina antes de responder: esforço baixo e +300 tokens de folga
+// para o raciocínio não comer a resposta.
 async function askGroq(key, systemPrompt, userMessage, maxTokens = 300) {
   if (!key) return null
   try {
     const { data } = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
+      reasoning_effort: 'low',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
-      max_tokens: maxTokens,
+      max_tokens: maxTokens + 300,
       temperature: 0.7,
     }, { headers: { Authorization: `Bearer ${key}` }, timeout: 30_000 })
     return data.choices?.[0]?.message?.content ?? null

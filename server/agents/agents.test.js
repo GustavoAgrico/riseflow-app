@@ -28,6 +28,24 @@ describe('runChain (troca automática de modelo)', () => {
     expect(adapters.openai.chat).not.toHaveBeenCalled()
   })
 
+  it('usa o Groq como último recurso mesmo fora da cadeia do agente', async () => {
+    const auth = () => ({ chat: vi.fn().mockRejectedValue(new ProviderError('401', { switchable: true, status: 401 })) })
+    const adapters = { claude: auth(), openai: auth(), groq: ok('groq ok') }
+    const r = await runChain({ chain: ['claude', 'openai'], keys: { ...keys, groq_key: 'g' }, system: 's', messages: [], adapters })
+    expect(r).toMatchObject({ text: 'groq ok', provider: 'groq', fallbackFrom: 'claude' })
+  })
+
+  it('todas as chaves recusadas viram aviso claro, sem nova tentativa', async () => {
+    const auth = () => ({ chat: vi.fn().mockRejectedValue(new ProviderError('401', { switchable: true, status: 401 })) })
+    const adapters = { claude: auth(), openai: auth(), groq: auth() }
+    const err = await runChain({ chain: ['claude'], keys: { ...keys, groq_key: 'g' }, system: 's', messages: [], adapters }).catch(e => e)
+    expect(err.name).toBe('KeysRejectedError')
+    expect(err.message).toBe('Chave de IA recusada: Claude, OpenAI, Groq.')
+    const turn = await runTurn({ agent: { name: 'Rizo', role: 'r', instructions: 'i' }, history: [{ author_kind: 'user', content: 'oi' }], keys },
+      { runChain: vi.fn().mockRejectedValue(err) })
+    expect(turn).toMatchObject({ authorKind: 'system', text: 'Chave de IA recusada: Claude, OpenAI, Groq. Atualize em Configurações → API & Webhooks.' })
+  })
+
   it('pula provedor sem chave e falha sem nenhuma chave', async () => {
     const adapters = { claude: ok('c'), openai: ok('o') }
     const r = await runChain({ chain: ['claude', 'openai'], keys: { openai_key: 'o' }, system: 's', messages: [], adapters })
