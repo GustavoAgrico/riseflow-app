@@ -18,10 +18,12 @@ export const Layout = ({ children, title, subtitle }) => {
       {isMobile && drawerOpen && (
         <div onClick={() => setDrawerOpen(false)} className="fixed inset-0 bg-black/50 z-40" />
       )}
-      <div className={clsx('flex-1 min-w-0 flex flex-col transition-all duration-300 overflow-x-hidden', isMobile ? 'ml-0' : (sidebarOpen ? 'ml-64' : 'ml-20'))}>
+      {/* overflow-x-clip (e não hidden): corta o que vaza para o lado sem criar uma área de rolagem,
+          então position: sticky dentro da página funciona (coluna lateral do Dashboard). */}
+      <div className={clsx('flex-1 min-w-0 flex flex-col transition-all duration-300 overflow-x-clip', isMobile ? 'ml-0' : (sidebarOpen ? 'ml-64' : 'ml-20'))}>
         <Topbar title={title} subtitle={subtitle} onMenu={isMobile ? () => setDrawerOpen(true) : null} />
         {/* No celular a aba de agentes fica fixa no rodapé: pb-24 evita que ela cubra o conteúdo. */}
-        <main className={clsx('flex-1 p-4 sm:p-6 overflow-y-auto overflow-x-hidden animate-fade-in', isMobile && 'pb-24')}>
+        <main className={clsx('flex-1 p-4 sm:p-6 overflow-x-clip animate-fade-in', isMobile && 'pb-24')}>
           {children}
         </main>
       </div>

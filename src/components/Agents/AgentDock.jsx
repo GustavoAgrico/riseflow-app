@@ -114,6 +114,14 @@ export function AgentDock() {
   }
   const close = () => { setOpen(false); writeLS(OPEN_KEY, false) }
 
+  // Esc fecha a conversa (o painel fica por cima da página).
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e) => { if (e.key === 'Escape') { setOpen(false); writeLS(OPEN_KEY, false) } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
   const send = async (e) => {
     e.preventDefault()
     const body = text.trim()
@@ -296,9 +304,16 @@ export function AgentDock() {
       </div>
     )
   }
+  // Desktop: só o trilho ocupa espaço no layout; a conversa abre por cima da página, ao lado
+  // do trilho, para não espremer o conteúdo (gráficos e grades do Dashboard).
   return (
-    <aside aria-label="Agentes" style={{ display: 'flex', height: '100vh', position: 'sticky', top: 0, flexShrink: 0 }}>
-      {panel}
+    <aside aria-label="Agentes" style={{ display: 'flex', height: '100vh', position: 'sticky', top: 0, flexShrink: 0, zIndex: 40 }}>
+      {panel && (
+        <div style={{
+          position: 'fixed', top: 0, right: 64, height: '100vh', zIndex: 40,
+          boxShadow: '-24px 0 48px -24px rgba(0,0,0,0.55)',
+        }}>{panel}</div>
+      )}
       {rail}
     </aside>
   )

@@ -82,8 +82,12 @@
 .rf-dash-main { min-width: 0; }
 .rf-rail { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 .rf-rail > * { margin-bottom: 0 !important; }
-@media (min-width: 1280px) {
+/* 1440px: o menu (256px) e o trilho de agentes (64px) já ocupam a lateral. */
+@media (min-width: 1440px) {
   .rf-dash { grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; }
+  /* A coluna lateral acompanha a rolagem em vez de deixar um vazio ao lado dos gráficos. */
+  /* top: abaixo da barra do topo (sticky, 64px) com folga para o aviso do modo demo. */
+  .rf-rail { position: sticky; top: 88px; max-height: calc(100vh - 104px); overflow-y: auto; scrollbar-width: thin; }
 }
 
 /* Painel premium — superfície única das seções do Dashboard (substitui o glass translúcido) */
