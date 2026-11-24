@@ -11,10 +11,12 @@ async function ensureDefaultAgents(userId) {
   if (error) throw error
   const have = new Set((existing || []).map(a => a.kind))
   const missing = DEFAULT_AGENTS.filter(a => !have.has(a.kind)).map(a => ({ ...a, user_id: userId, is_default: true }))
-  if (!missing.length) return
-  const { error: insErr } = await supabase.from('agents').upsert(missing, { onConflict: 'user_id,kind', ignoreDuplicates: true })
-  // A disputa com outra aba aberta ao mesmo tempo pode bater no índice único: a equipe já existe.
-  if (insErr && insErr.code !== '23505') throw insErr
+  // Um por vez: o índice único é parcial (só agentes padrão), e o upsert do PostgREST não
+  // consegue usá-lo (erro 42P10). A disputa com outra aba bate no índice (23505): já existe.
+  for (const row of missing) {
+    const { error: insErr } = await supabase.from('agents').insert(row)
+    if (insErr && insErr.code !== '23505') throw insErr
+  }
 }
 
 const ORDER = DEFAULT_AGENTS.map(a => a.kind)
