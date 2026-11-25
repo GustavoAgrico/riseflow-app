@@ -12,7 +12,19 @@ import { ytdlpAvailableNow } from './pipeline/youtube.js';
 export async function appCapabilities() {
   // importar vídeo pelo link do YouTube (precisa do yt-dlp no servidor)
   const caps = { ...capabilities(), youtubeImport: ytdlpAvailableNow() };
-  if (!searchesViaSite({ apiKey: config.broll.pexelsKey, pixabayKey: config.broll.pixabayKey, googleReady: googleReady(googleConfig()) })) return caps;
+  const localGoogle = googleReady(googleConfig());
+  if (!searchesViaSite({ apiKey: config.broll.pexelsKey, pixabayKey: config.broll.pixabayKey, googleReady: localGoogle })) {
+    // Tem ALGUMA chave aqui, mas não todas: as fontes que faltam vão pela conta do site
+    // (ex.: Pexels aqui e Google pelo site) — então aparecem para escolher.
+    if (!config.account.server || (localGoogle && config.broll.pexelsKey && config.broll.pixabayKey)) return caps;
+    const site = await siteCapabilities();
+    return {
+      ...caps,
+      brollReady: Boolean(caps.brollReady || !site || site.brollReady),
+      pixabayReady: Boolean(caps.pixabayReady || site?.pixabayReady),
+      googleImagesReady: Boolean(localGoogle || !site || site.googleImagesReady),
+    };
+  }
   const site = await siteCapabilities();
   // O site (plano grátis) pode estar "dormindo" e demorar para responder: enquanto isso as
   // fontes dele (Pexels e Google Imagens) aparecem mesmo assim — antes o app de PC/Mac

@@ -109,9 +109,52 @@ test('app de PC sem chaves: a fonte escolhida vai para o site (que tem as chaves
     assert.equal(resolveSource('pixabay', {}), 'pixabay');
     assert.equal(resolveSource('google', {}), 'google');
     assert.equal(resolveSource('youtube', {}), 'mix');
-    // com chave local, vale a regra local
-    assert.equal(resolveSource('google', { apiKey: 'k' }), 'mix');
+    // com a chave do Pexels aqui mas sem a do Google: "Google" continua SÓ Google (pelo site)
+    assert.equal(resolveSource('google', { apiKey: 'k' }), 'google');
+    assert.equal(resolveSource('pexels', { googleReady: true }), 'pexels');
   } finally {
     config.account.server = before;
+  }
+});
+
+test('"Google" escolhido sem chave em lugar nenhum (sem site): cai na mistura', () => {
+  assert.equal(resolveSource('google', { apiKey: 'k' }), 'mix');
+  assert.equal(resolveSource('google', { googleReady: true }), 'google');
+});
+
+test('needsSite: só a fonte que falta aqui vai pela conta do site', async () => {
+  const { needsSite } = await import('../src/pipeline/broll.js');
+  assert.equal(needsSite('google', { apiKey: 'k', google: {} }), true);
+  assert.equal(needsSite('google', { google: { serperKey: 's' } }), false);
+  assert.equal(needsSite('pexels', { apiKey: 'k', google: {} }), false);
+  assert.equal(needsSite('mix', { apiKey: 'k', google: {} }), false);
+  assert.equal(needsSite('mix', { google: {} }), true);
+  assert.equal(needsSite('wikimedia', { google: {} }), false);
+});
+
+test('Google escolhido: só resultados do Google (nada de Pexels/Wikimedia), inclusive para marca', async () => {
+  const { brollCandidates, shorterQuery } = await import('../src/pipeline/broll.js');
+  assert.equal(shorterQuery('carro elétrico na estrada'), 'carro elétrico');
+  assert.equal(shorterQuery('carro'), '');
+  const realFetch = globalThis.fetch;
+  const hosts = [];
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    hosts.push(new URL(u).host);
+    if (u.includes('serper.dev')) {
+      return new Response(JSON.stringify({ images: [{ imageUrl: 'https://img.exemplo/a.jpg', thumbnailUrl: 'https://img.exemplo/a_t.jpg', imageWidth: 1200, imageHeight: 1600 }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({ videos: [{ id: 1, image: 'x', video_files: [{ link: 'https://pexels/v.mp4', width: 720, height: 1280, quality: 'hd', file_type: 'video/mp4' }] }], photos: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const google = { serperKey: 's' };
+    const generic = await brollCandidates('carro elétrico', { source: 'google', apiKey: 'pexels-key', google, limit: 6 });
+    assert.ok(generic.length > 0);
+    assert.ok(generic.every((c) => c.source === 'google'));
+    const brand = await brollCandidates('Nike logo', { source: 'google', apiKey: 'pexels-key', google, limit: 6, entity: 'brand' });
+    assert.ok(brand.every((c) => c.source === 'google'));
+    assert.ok(!hosts.some((h) => /pexels|wikimedia|pixabay/.test(h)), `buscou fora do Google: ${hosts.join(', ')}`);
+  } finally {
+    globalThis.fetch = realFetch;
   }
 });
