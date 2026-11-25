@@ -330,13 +330,35 @@ export function searchesViaSite({ apiKey, pixabayKey, googleReady } = {}) {
   return Boolean(config.account.server) && !apiKey && !pixabayKey && !googleReady;
 }
 
+/**
+ * Fonte que vai ser usada. A escolha da pessoa vale ao pé da letra: "Google" busca SÓ no
+ * Google (antes, sem a chave do Google neste servidor, virava "Tudo" e vinha Pexels,
+ * Pixabay e Wikimedia junto). No app de PC sem a chave local, a busca daquela fonte vai
+ * pela conta do site. Só sem chave em lugar nenhum é que cai na mistura.
+ */
 export function resolveSource(wanted, { apiKey, pixabayKey, googleReady } = {}) {
   if (searchesViaSite({ apiKey, pixabayKey, googleReady }) && ['pexels', 'pixabay', 'google', 'wikimedia', 'mix'].includes(wanted)) return wanted;
-  if (wanted === 'pexels') return apiKey ? 'pexels' : 'mix';
-  if (wanted === 'pixabay') return pixabayKey ? 'pixabay' : 'mix';
-  if (wanted === 'google') return googleReady ? 'google' : 'mix';
+  const site = Boolean(config.account.server);
+  if (wanted === 'pexels') return apiKey || site ? 'pexels' : 'mix';
+  if (wanted === 'pixabay') return pixabayKey || site ? 'pixabay' : 'mix';
+  if (wanted === 'google') return googleReady || site ? 'google' : 'mix';
   if (['wikimedia', 'mix'].includes(wanted)) return wanted; // NASA/Openverse saíram: viram a mistura
   return 'mix';
+}
+
+/** Esta fonte precisa ir pela conta do site (não há a chave dela aqui)? Puro. */
+export function needsSite(source, { apiKey, pixabayKey, google } = {}) {
+  if (source === 'google') return !googleReady(google);
+  if (source === 'pexels') return !apiKey;
+  if (source === 'pixabay') return !pixabayKey;
+  if (source === 'mix') return !apiKey && !pixabayKey && !googleReady(google);
+  return false;
+}
+
+/** Busca mais curta para tentar de novo no Google ("carro elétrico na estrada" → "carro elétrico"). Puro. */
+export function shorterQuery(query) {
+  const w = String(query || '').trim().split(/\s+/).filter(Boolean);
+  return w.length > 2 ? w.slice(0, 2).join(' ') : '';
 }
 
 /** Extensão do arquivo a partir da URL (para o FFmpeg reconhecer webm/ogv/png…). */
@@ -357,6 +379,13 @@ async function entityCandidates(query, opts) {
   const { source, google, limit = 6 } = opts;
   const brand = opts.entity === 'brand';
   const name = brand ? query.replace(/\s+logo$/i, '').trim() : query;
+  // Escolheu "Google": só o Google (sem Wikimedia nem os bancos de vídeo)
+  if (source === 'google') {
+    if (!googleReady(google)) return [];
+    let out = await googleImageCandidates(brand ? `${name} logo` : name, google, limit, { minWidth: brand ? 250 : 500 }).catch(() => []);
+    if (!out.length && brand) out = await googleImageCandidates(name, google, limit, { minWidth: 250 }).catch(() => []);
+    return out.map((c) => (brand ? { ...c, logo: true } : c));
+  }
   const useGoogle = (source === 'mix' || source === 'google') && googleReady(google);
   const safe = (p) => p.catch((err) => { log.warn(`busca de "${query}": ${err.message}`); return []; });
   const lists = await Promise.all([
@@ -379,7 +408,7 @@ export async function brollCandidates(query, opts = {}) {
   const { source, apiKey, google, pixabayKey, orientation = 'portrait', targetH = 1280, limit = 6, unrestricted = false, lang = '' } = opts;
   // App de PC sem chaves de banco de imagens: a busca vai pela conta do site (Pexels,
   // Pixabay, Google com as chaves do servidor). Se não der, segue com o acervo livre.
-  if (config.account.server && !opts.noRemote && source !== 'wikimedia' && !apiKey && !pixabayKey && !googleReady(google)) {
+  if (config.account.server && !opts.noRemote && needsSite(source, { apiKey, pixabayKey, google })) {
     try {
       const { jobAccountToken, fetchWaking } = await import('../account.js');
       const token = jobAccountToken(opts.jobId);
@@ -397,8 +426,9 @@ export async function brollCandidates(query, opts = {}) {
     } catch (err) {
       log.warn(`busca de B-roll pela conta falhou (${err.message}); usando o acervo livre`);
     }
-    // sem a conta: aqui só há o acervo livre (a mistura sem chaves = Wikimedia)
-    if (source !== 'mix') return brollCandidates(query, { ...opts, source: 'mix', noRemote: true });
+    // Fonte escolhida que só o site tem (ex.: Google): não troca por outra — fica sem.
+    if (source !== 'mix') return [];
+    // "Tudo" sem a conta: o que houver aqui (no mínimo o acervo livre, Wikimedia)
   }
   if (opts.entity) return entityCandidates(query, opts);
   // 'mix': junta VÍDEOS (Pexels, Pixabay), Google Imagens e o acervo livre (Wikimedia
@@ -426,22 +456,14 @@ export async function brollCandidates(query, opts = {}) {
       const [vids, imgs] = await Promise.all([wikimediaCandidates(query, { kind: 'video', limit: 2 }), wikimediaCandidates(query, { kind: 'image', limit })]);
       out.push(...vids, ...imgs);
     } else if (source === 'google') {
+      // SÓ Google: sem resultado, tenta uma busca mais curta — não troca de fonte
       if (googleReady(google)) {
         out.push(...await googleImageCandidates(query, google, limit));
-        if (!out.length) log.warn(`Google Imagens sem resultados para "${query}"; caindo para Pexels`);
+        const short = out.length ? '' : shorterQuery(query);
+        if (short) out.push(...await googleImageCandidates(short, google, limit));
+        if (!out.length) log.warn(`Google Imagens sem resultados para "${query}"`);
       } else {
-        log.warn('Google Imagens selecionado mas nenhuma chave configurada (CSE/Serper/Brave); caindo para Pexels');
-      }
-      if (!out.length && apiKey) {
-        const loc = lang === 'pt' ? '&locale=pt-BR' : '';
-        const rv = await http(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${limit}&orientation=${orientation}${loc}`, { headers: { Authorization: apiKey } });
-        if (rv.ok) {
-          const d = await rv.json();
-          for (const v of d.videos || []) {
-            const f = pickBestVideoFile(v.video_files, targetH);
-            if (f) out.push({ id: String(v.id), link: f.link, thumb: v.image, kind: 'video', source: 'pexels' });
-          }
-        }
+        log.warn('Google Imagens selecionado mas sem chave aqui nem conta do site (CSE/Serper/Brave)');
       }
     } else if (apiKey) {
       const loc = lang === 'pt' ? '&locale=pt-BR' : '';
