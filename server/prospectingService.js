@@ -32,7 +32,7 @@ async function searchFreeLeads(userId, { query, location, max }) {
   if (!leadSearch.isConfigured()) throw httpError(503, 'Busca de leads não configurada no servidor (APIFY_TOKEN).')
   const credit = await leadSearch.getCredit()
   const allowed = Math.min(max, credit.maxPlaces)
-  if (allowed < 5) throw httpError(402, 'O crédito grátis do mês acabou. A busca volta quando o crédito renovar.', { credit })
+  if (allowed < 5 || credit.remainingUsd < leadSearch.APIFY_MIN_CAP_USD) throw httpError(402, 'O crédito grátis do mês acabou. A busca volta quando o crédito renovar.', { credit })
   const [places, have] = await Promise.all([
     leadSearch.searchGoogleMaps({ query, location, max: allowed, capUsd: credit.remainingUsd }),
     crmPhones(userId),

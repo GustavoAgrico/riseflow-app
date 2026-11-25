@@ -7,6 +7,16 @@ const el = require('./elevenlabs')
 const ACTOR = process.env.APIFY_MAPS_ACTOR || 'compass~crawler-google-places'
 const PRICE_PER_PLACE = 0.004 // US$, plano gratuito do Apify (planos pagos cobram menos)
 const SAFETY = 1.5            // folga sobre o preço por empresa ao reservar crédito
+// O Apify recusa execução com teto de gasto (maxTotalChargeUsd) abaixo de US$ 0,50.
+// O teto é só um limite: o gasto real continua sendo o das empresas buscadas (max).
+const APIFY_MIN_CAP_USD = 0.5
+
+// Teto enviado ao Apify: no mínimo US$ 0,50, nunca acima do crédito grátis que resta.
+// Devolve null quando o crédito restante não cobre o mínimo (a busca não deve acontecer).
+function capFor(max, remainingUsd = Infinity) {
+  if (remainingUsd < APIFY_MIN_CAP_USD) return null
+  return Math.min(remainingUsd, Math.max(APIFY_MIN_CAP_USD, max * PRICE_PER_PLACE * SAFETY))
+}
 const API = 'https://api.apify.com/v2'
 
 const isConfigured = () => Boolean(process.env.APIFY_TOKEN)
@@ -49,9 +59,23 @@ function mapPlace(p) {
   }
 }
 
+// Erro do Apify em português para a tela (o detalhe técnico vai para o log do servidor).
+function friendlyApifyError(status, body) {
+  let type = ''
+  try { type = JSON.parse(body)?.error?.type || '' } catch { /* corpo não é JSON */ }
+  console.warn(`[leadSearch] Apify ${status}: ${String(body).slice(0, 300)}`)
+  if (status === 401 || type.includes('token')) return 'A chave do Apify (APIFY_TOKEN) foi recusada. Confira o token no servidor.'
+  if (status === 402 || type.includes('limit') || type.includes('usage')) return 'O crédito do Apify não cobre esta busca agora. Tente uma quantidade menor ou aguarde a renovação.'
+  if (status === 408 || status === 504 || type.includes('timeout')) return 'A busca demorou demais. Tente de novo com menos empresas.'
+  if (status === 429) return 'Muitas buscas seguidas. Espere um minuto e tente de novo.'
+  return `Não foi possível buscar agora (Apify ${status}). Tente de novo em instantes.`
+}
+
 // capUsd: teto de gasto da execução; o próprio Apify interrompe ao chegar nele.
 async function searchGoogleMaps({ query, location, max, capUsd }) {
-  const cap = Math.max(0.01, Math.min(capUsd ?? Infinity, max * PRICE_PER_PLACE * SAFETY)).toFixed(3)
+  const capValue = capFor(max, capUsd ?? Infinity)
+  if (capValue == null) throw Object.assign(new Error('O crédito grátis restante do mês é menor que o mínimo por busca (US$ 0,50).'), { status: 402, expected: true })
+  const cap = capValue.toFixed(3)
   const url = `${API}/acts/${ACTOR}/run-sync-get-dataset-items?timeout=240&maxTotalChargeUsd=${cap}`
   const res = await fetch(url, {
     method: 'POST',
@@ -65,10 +89,10 @@ async function searchGoogleMaps({ query, location, max, capUsd }) {
     signal: AbortSignal.timeout(280_000),
   })
   const text = await res.text()
-  if (!res.ok) throw new Error(`Apify ${res.status}: ${text.slice(0, 300)}`)
+  if (!res.ok) throw Object.assign(new Error(friendlyApifyError(res.status, text)), { status: res.status >= 500 ? 502 : 400, expected: true })
   let items = []
   try { items = JSON.parse(text) } catch { throw new Error('Resposta inesperada do Apify.') }
   return (Array.isArray(items) ? items : []).map(mapPlace).filter(p => p.name && !p.closed)
 }
 
-module.exports = { isConfigured, estimateUsd, getCredit, searchGoogleMaps, mapPlace, PRICE_PER_PLACE }
+module.exports = { isConfigured, estimateUsd, getCredit, searchGoogleMaps, mapPlace, capFor, PRICE_PER_PLACE, APIFY_MIN_CAP_USD }
