@@ -24,9 +24,10 @@ function instructionsOf(agent) {
   return (agent.is_default && DEFAULT_BY_KIND[agent.kind]?.instructions) || agent.instructions || ''
 }
 
-function systemPrompt(agent, now = new Date()) {
+function systemPrompt(agent, now = new Date(), pageNote = '') {
   const today = now.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
   return `${instructionsOf(agent)}\n\nVocê se chama ${agent.name} (${agent.role}). Hoje é ${today}.\n` +
+    (pageNote ? `${pageNote}\n` : '') +
     'O chat mostra texto puro: não use markdown (nada de asteriscos, # ou tabelas); para listas, use hífen no início da linha.'
 }
 
@@ -56,7 +57,7 @@ const NO_APPROVAL_NOTE = '(Aviso do sistema: nenhum pedido de aprovação foi cr
 
 // toolkit: { tools, execute, log } do executor (tools/executor.js); sem ele, o turno só conversa.
 // deps permite trocar a cadeia nos testes.
-async function runTurn({ agent, history, keys, toolkit }, deps = { runChain }) {
+async function runTurn({ agent, history, keys, toolkit, pageNote = '' }, deps = { runChain }) {
   const messages = toModelMessages(history)
   if (!messages.length || messages[messages.length - 1].role !== 'user') {
     return { authorKind: 'system', text: 'Não há mensagem nova para responder.', run: { status: 'done' }, approvals: [] }
@@ -65,7 +66,7 @@ async function runTurn({ agent, history, keys, toolkit }, deps = { runChain }) {
   try {
     const r = await deps.runChain({
       // Agentes padrão: ordem "sem custo" (grátis primeiro). Os criados pelo usuário: a cadeia deles.
-      chain: agent.is_default ? null : agent.provider_chain, keys, system: systemPrompt(agent), messages,
+      chain: agent.is_default ? null : agent.provider_chain, keys, system: systemPrompt(agent, new Date(), pageNote), messages,
       tools: toolkit?.tools || [], execute: toolkit?.execute,
     })
     const refused = r.stopReason === 'refusal'

@@ -67,9 +67,9 @@ function Kpi({ icon: Icon, label, value, hint, color, spark }) {
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.mut }}>
         <span style={{ width: 28, height: 28, borderRadius: 9, display: 'grid', placeItems: 'center', background: color + '22', boxShadow: `0 0 14px ${color}44` }}><Icon size={15} color={color} /></span>
         {label}
-        {spark && <span style={{ marginLeft: 'auto' }}><Sparkline values={spark} color={color} /></span>}
+        {spark && <span className="rf-hide-sm" style={{ marginLeft: 'auto' }}><Sparkline values={spark} color={color} /></span>}
       </div>
-      <div style={{ position: 'relative', fontSize: 30, fontWeight: 800, letterSpacing: '-.03em', marginTop: 8, fontVariantNumeric: 'tabular-nums' }}><CountUp value={value} /></div>
+      <div style={{ position: 'relative', fontSize: 'clamp(20px, 5.5vw, 30px)', fontWeight: 800, letterSpacing: '-.03em', marginTop: 8, fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><CountUp value={value} /></div>
       <div style={{ position: 'relative', fontSize: 12, color: C.mut, marginTop: 2 }}>{hint}</div>
     </div>
   )
@@ -157,7 +157,7 @@ export const PipelineBoard = () => {
     <div style={{ minHeight: '100vh', background: C.bg, color: C.tx, fontFamily: F, display: 'flex', flexDirection: 'column', position: 'relative', isolation: 'isolate' }}>
       <div className="rf-ambient" aria-hidden="true" />
       {/* Cabeçalho */}
-      <header style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 24px', borderBottom: `1px solid ${C.bd}`, background: 'color-mix(in srgb, var(--panel) 85%, transparent)', backdropFilter: 'blur(10px)', flexWrap: 'wrap', position: 'sticky', top: 0, zIndex: 5 }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px clamp(12px, 3vw, 24px)', borderBottom: `1px solid ${C.bd}`, background: 'color-mix(in srgb, var(--panel) 85%, transparent)', backdropFilter: 'blur(10px)', flexWrap: 'wrap', position: 'sticky', top: 0, zIndex: 5 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 38, height: 38, borderRadius: 11, background: 'linear-gradient(135deg,#FF6B35,#E55100)', display: 'grid', placeItems: 'center', color: '#fff', fontWeight: 900, fontSize: 14, boxShadow: '0 0 24px rgba(255,107,53,.45)' }}>RF</div>
           <div>
@@ -170,7 +170,7 @@ export const PipelineBoard = () => {
             <span className="rf-live-dot" style={{ width: 9, height: 9, borderRadius: '50%', background: '#22C55E', '--c': pulse ? '#22C55E' : '#22C55E88' }} />
             {isDemoMode ? 'demo' : 'ao vivo'} · atualizado {updatedAt ? updatedAt.toLocaleTimeString('pt-BR') : '—'}
           </span>
-          <span style={{ fontSize: 26, fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '.5px', textShadow: '0 0 18px rgba(255,255,255,.15)' }}>{hhmmss}</span>
+          <span style={{ fontSize: 'clamp(18px, 5vw, 26px)', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '.5px', textShadow: '0 0 18px rgba(255,255,255,.15)' }}>{hhmmss}</span>
         </div>
       </header>
 
@@ -179,7 +179,7 @@ export const PipelineBoard = () => {
       ) : (
         <>
           {/* KPIs */}
-          <div className="rf-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 14, padding: '18px 20px 0' }}>
+          <div className="rf-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,150px),1fr))', gap: 'clamp(8px, 2vw, 14px)', padding: 'clamp(12px, 3vw, 18px) clamp(12px, 3vw, 20px) 0' }}>
             <Kpi icon={Users} label="Negócios abertos" value={m.open} hint={`${health.newToday} entraram hoje`} color="#7C3AED" spark={spark} />
             <Kpi icon={Wallet} label="Pipeline em aberto" value={brl(m.pipeline)} hint={health.noValue ? `${health.noValue} sem valor definido` : 'valor somado das etapas abertas'} color="#22D3EE" />
             <Kpi icon={Target} label="Previsão ponderada" value={brl(m.weightedForecast)} hint="valor × chance de cada etapa" color="#22C55E" />
@@ -187,7 +187,7 @@ export const PipelineBoard = () => {
           </div>
 
           {/* Gráficos */}
-          <div className="rf-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 14, padding: '14px 20px 0' }}>
+          <div className="rf-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,260px),1fr))', gap: 14, padding: '14px clamp(12px, 3vw, 20px) 0' }}>
             <Panel title="Funil de alcance" icon={Filter} accent="#7C3AED"><FunnelBars steps={reach.steps} compact /></Panel>
             <Panel title="Onde estão os negócios" icon={PieChart} accent="#22D3EE"><Donut data={donut} size={118} sub="negócios" /></Panel>
             <Panel title="Entrada de leads · 14 dias" icon={TrendingUp} accent="#FF6B35" right={<span style={{ fontSize: 12, fontWeight: 800 }}><CountUp value={spark.reduce((a, b) => a + b, 0)} /></span>}>
@@ -202,14 +202,14 @@ export const PipelineBoard = () => {
           </div>
 
           {/* Colunas */}
-          <div style={{ flex: 1, display: 'flex', gap: 16, padding: 20, overflowX: 'auto', alignItems: 'stretch' }}>
+          <div style={{ flex: 1, display: 'flex', gap: 16, padding: 'clamp(12px, 3vw, 20px)', overflowX: 'auto', alignItems: 'stretch', scrollSnapType: 'x proximity' }}>
             {stages.map((stage, si) => {
               const col = byStage.get(stage.key)
               const cards = rows.filter(r => stageOf(r, stages) === stage.key)
                 .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0) || String(b.created_at || '').localeCompare(String(a.created_at || '')))
               const share = m.total ? (col?.count ?? 0) / m.total : 0
               return (
-                <section key={stage.key} className="rf-feed-in" style={{ animationDelay: `${si * 70}ms`, minWidth: 300, width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', background: `linear-gradient(180deg, ${stage.color}14, transparent 140px), var(--panel)`, border: `1px solid ${C.bd}`, borderRadius: 18, overflow: 'hidden' }}>
+                <section key={stage.key} className="rf-feed-in" style={{ animationDelay: `${si * 70}ms`, minWidth: 'min(300px, 86vw)', width: 'min(300px, 86vw)', scrollSnapAlign: 'start', flexShrink: 0, display: 'flex', flexDirection: 'column', background: `linear-gradient(180deg, ${stage.color}14, transparent 140px), var(--panel)`, border: `1px solid ${C.bd}`, borderRadius: 18, overflow: 'hidden' }}>
                   <div style={{ padding: '14px 16px 12px', borderBottom: `1px solid ${C.bd}`, borderTop: `3px solid ${stage.color}`, boxShadow: `inset 0 10px 24px -18px ${stage.color}` }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ width: 9, height: 9, borderRadius: '50%', background: stage.color, boxShadow: `0 0 10px ${stage.color}` }} />

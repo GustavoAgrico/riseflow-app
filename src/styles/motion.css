@@ -63,6 +63,11 @@
 .rf-rail > *:nth-child(n+3) { animation-delay: calc(var(--rf-step) * 5); }
 /* O Dashboard anima por dentro (rf-dash-main / rf-rail); o invólucro não entra de novo. */
 .rf-stagger > .rf-dash { animation: none; }
+/* Janelas e avisos são filhos diretos da página, mas não entram "em sequência":
+   abrem na hora, cada um com a própria animação (seletores mais fortes que o nth-child acima). */
+.rf-stagger > div[style*="position: fixed"],
+.rf-stagger > .rf-scrim.rf-scrim { animation: rf-scrim .22s ease-out backwards; animation-delay: 0s; }
+.rf-stagger > .rf-toast.rf-toast { animation: rf-toast .42s var(--rf-ease-spring) both; animation-delay: 0s; }
 
 /* ── Cartões e grades: cada item sobe em sequência (em qualquer tela) ──────────
    Itens que chegam depois (lista carregada, filtro) também entram suavemente. */
@@ -206,6 +211,12 @@ div[style*="position: fixed"][style*="inset: 0"]:not([aria-hidden="true"]):not(.
 .rf-feed-in { animation: rf-feed .45s var(--rf-ease-spring) backwards; }
 @keyframes rf-floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
 .rf-float { animation: rf-floaty 3.6s ease-in-out infinite; }
+
+/* ── Celular ───────────────────────────────────────────────────────────────────── */
+.rf-swipe { scrollbar-width: none; }
+.rf-swipe::-webkit-scrollbar { display: none; }
+.rf-swipe > * { flex: 0 0 86%; scroll-snap-align: start; }
+@media (max-width: 640px) { .rf-hide-sm { display: none !important; } }
 
 /* ── Brilho ambiente lento atrás do conteúdo (Layout) ────────────────────────── */
 .rf-ambient {

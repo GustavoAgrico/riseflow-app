@@ -48,3 +48,19 @@ export const DEMO_APPROVALS = {
     { id: 'a1', tool: 'send_whatsapp', summary: 'Enviar a proposta do plano Pro para Clínica Sorriso por WhatsApp.' },
   ],
 }
+
+// Ações sugeridas no modo exemplo (na conta real vêm de GET /api/agents/suggestions).
+export const DEMO_SUGGESTIONS = [
+  { id: 'demo-hot', agent_kind: 'comercial', agent_id: 'demo-comercial', agent_name: 'Rizo', risk: 'medio', actions: 2, pages: ['/vendas-ia', '/crm', '/dashboard'],
+    title: 'Criar retorno para 2 leads prontos para comprar', why: 'Mostraram intenção de compra alta e ainda não foram contatados.',
+    preview: ['Marina Alves — 96%: “Quero comprar agora! Me manda o pix?”', 'Rafael Costa — 92%: “Quanto fica a implantação?”'] },
+  { id: 'demo-nudge', agent_kind: 'metas', agent_id: 'demo-metas', agent_name: 'Topo', risk: 'alto', actions: 1, pages: ['/monitor', '/chat', '/dashboard'],
+    title: 'Chamar Mariana: 3 clientes esperando há 1h35', why: 'Cliente esperando muito tempo derruba a conversão.', preview: ['Recado na tela de Mariana'] },
+  { id: 'demo-billing', agent_kind: 'analista', agent_id: 'demo-analista', agent_name: 'Dado', risk: 'alto', actions: 2, pages: ['/billing', '/dashboard'],
+    title: 'Enviar lembrete de cobrança para 2 clientes pelo WhatsApp', why: 'Somam R$ 2.050,00 vencidos. Mensagem gentil, uma por cliente.',
+    preview: ['BestPay — R$ 1.200,00 (venceu 10/10)', 'Auto Center Sul — R$ 850,00 (venceu 15/08)'] },
+  { id: 'demo-prospect', agent_kind: 'prospector', agent_id: 'demo-prospector', agent_name: 'Pino', risk: 'baixo', actions: 0, pages: ['/prospeccao', '/crm', '/dashboard'],
+    title: 'Buscar leads novos para o funil', why: 'Só 3 leads novos nesta semana.',
+    preview: ['O Pino pergunta o nicho e a cidade', 'Busca no Google Maps usando o crédito grátis', 'Mostra os melhores antes de cadastrar'],
+    prompt: 'Quero leads novos. Me pergunte o nicho e a cidade, busque no Google Maps (só no crédito grátis) e me mostre os melhores com telefone antes de cadastrar.' },
+]

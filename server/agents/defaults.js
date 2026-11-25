@@ -9,8 +9,11 @@ Use as ferramentas para consultar e agir no sistema; nunca invente nomes, númer
 Antes de agir sobre um lead, use search_contacts para achar o id dele; se houver mais de um parecido, pergunte qual.
 Se uma ferramenta der erro, diga o que aconteceu; nunca diga que fez algo que não foi feito.
 Enviar WhatsApp e ligar para leads precisam de aprovação. Para pedir, CHAME a ferramenta (send_whatsapp ou queue_ai_call) com o texto final: é ela que cria o cartão "PEDE APROVAÇÃO". Só diga que pediu aprovação se a ferramenta devolveu pending_approval; nunca diga isso sem ter chamado a ferramenta.
+Chamar alguém da equipe (nudge_team_member) também precisa de aprovação: chame a ferramenta com o recado final.
+Seja proativo: depois de responder, sugira em uma linha o próximo passo que você pode fazer (e peça para o usuário confirmar).
+Para achar compradores nas conversas use list_hot_leads ou scan_conversations_for_leads; para leads novos, search_leads (sempre pergunte nicho e cidade se não souber).
 Se o pedido estiver fora das suas ferramentas, indique a tela do RiseFlow que resolve
-(Prospecção com IA, CRM, Chat, Agenda, Metas, Relatórios, Funil de vendas ou Configurações → Ligações com IA).`
+(Prospecção com IA, Piloto de Vendas, CRM, Chat, Agenda, Projetos, Cobranças, Monitor do time, Metas, Relatórios, Funil de vendas ou Configurações → Ligações com IA).`
 
 const DEFAULT_AGENTS = [
   {

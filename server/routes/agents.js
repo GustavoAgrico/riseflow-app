@@ -6,6 +6,8 @@
 const { Router } = require('express')
 const { supabase, isConfigured } = require('../supabaseClient')
 const service = require('../agents/service')
+const pageContext = require('../agents/pageContext')
+const suggestions = require('../agents/suggestions')
 
 const router = Router()
 const MAX_TEXT = 4000
@@ -29,6 +31,26 @@ router.get('/', guard, async (req, res) => {
   try { res.json(await service.listAgents(req.user.sub)) } catch (e) { fail(res, e, 'Erro ao carregar os agentes.') }
 })
 
+// Tela atual do usuário (a aba de agentes avisa a cada troca de página).
+router.post('/context', guard, (req, res) => {
+  res.json({ ok: pageContext.setPage(req.user.sub, String(req.body?.path || '')) })
+})
+
+// Ações sugeridas pelos agentes — só executam com o clique do usuário.
+router.get('/suggestions', guard, async (req, res) => {
+  try { res.json(await suggestions.list(req.user.sub, { path: String(req.query.path || '') })) }
+  catch (e) { fail(res, e, 'Erro ao montar as sugestões.') }
+})
+router.post('/suggestions/run', guard, async (req, res) => {
+  const id = String(req.body?.id || '').slice(0, 300)
+  if (!id) return res.status(400).json({ error: 'Sugestão inválida.' })
+  try { res.json(await suggestions.run(req.user.sub, id, { decidedBy: req.user.member_id || req.user.sub })) }
+  catch (e) {
+    if (e?.status && e.status < 500) return res.status(e.status).json({ error: e.message })
+    fail(res, e, 'Não foi possível executar a sugestão.')
+  }
+})
+
 router.get('/:id/messages', guard, async (req, res) => {
   try {
     const agent = await service.getAgent(req.user.sub, req.params.id)
@@ -43,6 +65,7 @@ router.post('/:id/messages', guard, async (req, res) => {
   const text = String(req.body?.text || '').trim()
   const key = req.body?.idempotency_key ? String(req.body.idempotency_key).slice(0, 100) : null
   if (!text) return res.status(400).json({ error: 'Escreva uma mensagem.' })
+  if (req.body?.context?.path) pageContext.setPage(userId, String(req.body.context.path))
   if (text.length > MAX_TEXT) return res.status(400).json({ error: `A mensagem passa de ${MAX_TEXT} caracteres.` })
   try {
     const agent = await service.getAgent(userId, req.params.id)

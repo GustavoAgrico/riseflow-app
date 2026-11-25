@@ -7,6 +7,7 @@ import { NotificationToast } from '@components/NotificationToast'
 import { InstallPrompt } from '@components/InstallPrompt'
 import { PrivateRoute } from '@components/PrivateRoute'
 import { CommandCenter } from '@components/Command/CommandCenter'
+import { TeamNudgeListener } from '@components/TeamNudge'
 import { Dashboard } from '@pages/Dashboard'
 import { Clients } from '@pages/Clients'
 import { CRM } from '@pages/CRM'
@@ -115,7 +116,7 @@ function GlobalToasts() {
 function GlobalCommands() {
   const { user, loading, isDemoMode } = useAuth()
   if (loading || (!user && !isDemoMode)) return null
-  return <CommandCenter />
+  return <><CommandCenter /><TeamNudgeListener /></>
 }
 
 // Raiz: todos (dono, membro de equipe e demo) caem no mesmo Dashboard, ou /login.

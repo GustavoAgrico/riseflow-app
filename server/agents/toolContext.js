@@ -18,6 +18,8 @@ async function buildToolContext({ userId, agentId, agent, threadId, queueId }) {
       emitSalesUpdate,
       // require tardio: evita ciclos (prospecção → ligações → agentes; flowEngine → canais).
       get prospecting() { return require('../prospectingService') },
+      get salesPilot() { return require('../sales/pilot') },
+      get team() { return require('../team/nudge') },
       sendText: (...args) => require('../flowEngine').sendText(...args),
     },
   }

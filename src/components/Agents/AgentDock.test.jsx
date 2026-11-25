@@ -9,8 +9,14 @@ vi.mock('@context/AuthContext', () => ({ useAuth: () => auth }))
 vi.mock('@hooks/useIsMobile', () => ({ useIsMobile: () => false }))
 vi.mock('@services/socket', () => ({ default: { on: vi.fn(), off: vi.fn() }, authenticateSocket: vi.fn() }))
 vi.mock('@services/agents', () => ({
-  agentsApi: { list: vi.fn(), messages: vi.fn(), send: vi.fn(), approvals: vi.fn(), decide: vi.fn() },
+  agentsApi: {
+    list: vi.fn(), messages: vi.fn(), send: vi.fn(), approvals: vi.fn(), decide: vi.fn(),
+    setContext: vi.fn(() => Promise.resolve({ ok: true })), suggestions: vi.fn(() => Promise.resolve([])), runSuggestion: vi.fn(),
+  },
+  promptsFor: () => ['O que faço primeiro hoje?'],
 }))
+// Dados do "Seu dia" sem banco nos testes.
+vi.mock('@hooks/useCoachData', () => ({ useCoachData: () => null }))
 
 const renderDock = () => render(<MemoryRouter><AgentDock /></MemoryRouter>)
 

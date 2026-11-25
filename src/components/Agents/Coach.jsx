@@ -2,10 +2,11 @@
 // As dicas vêm de src/lib/coach.js; os números, de useCoachData.
 import React, { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { X, ArrowRight, RefreshCw, Zap, TrendingUp, Compass } from 'lucide-react'
+import { X, ArrowRight, RefreshCw, Zap, TrendingUp, Compass, Sparkles } from 'lucide-react'
 import { RiserAvatar } from './RiserAvatar'
 
 const F = 'DM Sans, sans-serif'
+const MUT_C = 'var(--ink-3)'
 const ORANGE = 'linear-gradient(135deg,#FF9A2E,#FF6A1F)'
 
 // Preferências por navegador (só conveniência): dicas vistas hoje e pausa do dia.
@@ -86,7 +87,7 @@ export function CoachBubble({ tip, agent, anchorY, mobile, onClose, onNext, onPa
 }
 
 // Painel "Seu dia": todas as dicas agrupadas, cada uma com o mascote que fala dela.
-export function CoachPanel({ tips, headline, agentFor, onClose, onGo, paused, onTogglePause, mobile, onAsk }) {
+export function CoachPanel({ tips, headline, agentFor, onClose, onGo, paused, onTogglePause, mobile, onAsk, topSlot }) {
   const groups = ['acao', 'desempenho', 'processo']
     .map(k => ({ k, ...KIND_META[k], items: tips.filter(t => t.kind === k) }))
     .filter(g => g.items.length)
@@ -110,6 +111,7 @@ export function CoachPanel({ tips, headline, agentFor, onClose, onGo, paused, on
       </header>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'grid', gap: 16, alignContent: 'start' }}>
+        {topSlot}
         {!tips.length && <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-3)' }}>Carregando seus números…</p>}
         {groups.map(g => (
           <div key={g.k}>
@@ -165,6 +167,101 @@ export function AgentTips({ tips, onGo }) {
           </div>
           <TipCta tip={t} onGo={onGo} compact />
         </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Ações sugeridas pelos agentes (só executam com aprovação) ────────────────
+const RISK = {
+  baixo: { label: 'conversa', color: '#53BDEB' },
+  medio: { label: 'muda dados no CRM', color: '#EAB308' },
+  alto: { label: 'envia para fora', color: '#FF6B35' },
+}
+const dismissKey = () => `rf.coach.dismissed.${todayKey()}`
+export const suggestionPrefs = {
+  dismissed: () => read(dismissKey(), []),
+  dismiss: (id) => { const l = suggestionPrefs.dismissed(); if (!l.includes(id)) write(dismissKey(), [...l, id]) },
+}
+
+function SuggestionCard({ s, agent, state, onApprove, onAsk, onDismiss, compact }) {
+  const [open, setOpen] = React.useState(!compact)
+  const risk = RISK[s.risk] || RISK.medio
+  const isAsk = !s.actions && s.prompt
+  const busy = state === 'running'
+  return (
+    <div className="rf-feed-in" style={{ padding: 12, borderRadius: 14, border: `1px solid ${s.on_page ? 'rgba(255,107,53,.45)' : 'var(--border)'}`, background: s.on_page ? 'linear-gradient(135deg, rgba(255,107,53,.10), transparent 70%), var(--bg)' : 'var(--bg)', fontFamily: F, color: 'var(--ink-1)' }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <RiserAvatar kind={agent?.kind || s.agent_kind} size={32} motion={busy ? 'think' : undefined} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, color: MUT_C, fontWeight: 700 }}>{agent?.name || s.agent_name || 'Agente'} sugere</span>
+            {s.on_page && <span style={{ fontSize: 9.5, fontWeight: 800, color: '#FF8A3D', border: '1px solid rgba(255,107,53,.45)', borderRadius: 20, padding: '0 6px' }}>NESTA TELA</span>}
+            <span title="O que esta ação faz" style={{ marginLeft: 'auto', fontSize: 9.5, fontWeight: 800, color: risk.color, background: risk.color + '18', borderRadius: 20, padding: '1px 7px' }}>{risk.label}</span>
+          </div>
+          <div style={{ fontWeight: 800, fontSize: 13.5, marginTop: 2 }}>{s.title}</div>
+          <p style={{ margin: '3px 0 0', fontSize: 12, lineHeight: 1.45, color: 'var(--ink-2, var(--ink-1))' }}>{s.why}</p>
+          {s.preview?.length > 0 && (
+            <>
+              <button type="button" onClick={() => setOpen(o => !o)} style={{ marginTop: 6, background: 'none', border: 'none', padding: 0, color: MUT_C, fontSize: 11.5, cursor: 'pointer', fontFamily: F, textDecoration: 'underline' }}>
+                {open ? 'Esconder detalhes' : isAsk ? 'Como funciona' : `Ver o que será feito (${s.preview.length})`}
+              </button>
+              {open && (
+                <ul style={{ margin: '6px 0 0', paddingLeft: 16, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-2, var(--ink-1))' }}>
+                  {s.preview.slice(0, 8).map(p => <li key={p}>{p}</li>)}
+                </ul>
+              )}
+            </>
+          )}
+          {state && state !== 'running' && (
+            <p role="status" style={{ margin: '6px 0 0', fontSize: 12, fontWeight: 700, color: state.ok ? '#22C55E' : '#EF4444' }}>{state.text}</p>
+          )}
+          {(!state || state === 'running') && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              {isAsk ? (
+                <button type="button" onClick={() => onAsk(s)} className="rf-press" style={{ minHeight: 32, padding: '0 12px', borderRadius: 9, border: 'none', background: ORANGE, color: '#1A0B02', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: F }}>
+                  Conversar com {agent?.name || s.agent_name || 'o agente'}
+                </button>
+              ) : (
+                <button type="button" disabled={busy} onClick={() => onApprove(s)} className="rf-press" style={{ minHeight: 32, padding: '0 12px', borderRadius: 9, border: 'none', background: ORANGE, color: '#1A0B02', fontWeight: 800, fontSize: 12.5, cursor: busy ? 'wait' : 'pointer', fontFamily: F, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {busy ? 'Fazendo…' : `Aprovar e fazer${s.actions > 1 ? ` (${s.actions})` : ''}`}
+                </button>
+              )}
+              <button type="button" onClick={() => onDismiss(s)} disabled={busy} style={{ minHeight: 32, padding: '0 10px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-1)', fontSize: 12, cursor: 'pointer', fontFamily: F }}>Agora não</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function SuggestionList({ items, agentFor, states = {}, onApprove, onAsk, onDismiss, compact = false, title = true }) {
+  if (!items.length) return null
+  return (
+    <div>
+      {title && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: '#FF8A3D', marginBottom: 8 }}>
+          <Sparkles size={13} /> Ações sugeridas · com sua aprovação
+        </div>
+      )}
+      <div style={{ display: 'grid', gap: 8 }}>
+        {items.map(s => <SuggestionCard key={s.id} s={s} agent={agentFor(s.agent_kind)} state={states[s.id]} onApprove={onApprove} onAsk={onAsk} onDismiss={onDismiss} compact={compact} />)}
+      </div>
+    </div>
+  )
+}
+
+// Atalhos de pergunta da tela atual, na conversa com o agente.
+export function PromptChips({ prompts, onPick }) {
+  if (!prompts?.length) return null
+  return (
+    <div className="rf-swipe" style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '8px 16px 0' }} aria-label="Perguntas sugeridas para esta tela">
+      {prompts.map(p => (
+        <button key={p} type="button" onClick={() => onPick(p)} className="rf-press"
+          style={{ flex: '0 0 auto', maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '6px 11px', borderRadius: 20, border: '1px solid rgba(255,107,53,.4)', background: 'rgba(255,107,53,.08)', color: 'var(--ink-1)', fontSize: 12, cursor: 'pointer', fontFamily: F }}>
+          {p}
+        </button>
       ))}
     </div>
   )

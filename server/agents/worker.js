@@ -13,6 +13,7 @@ const { toolsForAgent } = require('./tools/catalog')
 const { createExecutor } = require('./tools/executor')
 const { buildToolContext } = require('./toolContext')
 const approvals = require('./approvals')
+const pageContext = require('./pageContext')
 
 const TICK_MS = 2000
 const EXPIRE_EVERY_MS = 10 * 60_000
@@ -96,7 +97,7 @@ async function processJob(job) {
       service.getAiKeys(job.user_id),
     ])
     const toolkit = await buildToolkit(job, agent)
-    const result = await runTurn({ agent, history, keys, toolkit })
+    const result = await runTurn({ agent, history, keys, toolkit, pageNote: pageContext.pageNote(job.user_id) })
     await complete(job, result.authorKind, result.text, result.run)
     await setStatus(job, result.approvals?.length ? 'waiting_approval' : 'idle')
   } catch (e) {

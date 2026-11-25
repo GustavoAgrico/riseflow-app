@@ -529,7 +529,12 @@ export function CRM() {
   const [members, setMembers] = useState([])
   const [dragOver, setDragOver] = useState(null)
   const [landedId, setLandedId] = useState(null) // card que acabou de mudar de etapa (animação de pouso)
-  const [showInsights, setShowInsights] = useState(() => { try { return localStorage.getItem('rf.crm.insights') !== '0' } catch { return true } })
+  // Gráficos: preferência salva; sem preferência, abertos no computador e recolhidos no celular
+  // (no celular a tela é do quadro).
+  const [showInsights, setShowInsights] = useState(() => {
+    try { const v = localStorage.getItem('rf.crm.insights'); if (v !== null) return v !== '0' } catch { /* sem storage */ }
+    return typeof window === 'undefined' || window.innerWidth >= 768
+  })
   const toggleInsights = () => setShowInsights(v => { try { localStorage.setItem('rf.crm.insights', v ? '0' : '1') } catch { /* sem storage */ } return !v })
   const [expanded, setExpanded] = useState({}) // coluna → mostrar todos os cards
 
@@ -733,7 +738,9 @@ export function CRM() {
         </button>
       </div>
       {showInsights && (
-        <div className="rf-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 10, padding: '10px 20px 0', flexShrink: 0 }}>
+        <div className={isMobile ? 'rf-cards rf-swipe' : 'rf-cards'} style={isMobile
+          ? { display: 'flex', gap: 10, padding: '10px 12px 2px', flexShrink: 0, overflowX: 'auto', scrollSnapType: 'x mandatory' }
+          : { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 10, padding: '10px 20px 0', flexShrink: 0 }}>
           <Panel title="Funil de alcance" icon={Filter} accent="#7C3AED"><FunnelBars steps={reach.steps} compact /></Panel>
           <Panel title="Distribuição por etapa" icon={PieChartIcon} accent="#22D3EE"><Donut data={m.byStage.map(s => ({ label: s.label, value: s.count, color: s.color }))} size={104} thickness={14} sub="negócios" /></Panel>
           <Panel title="Entrada de leads · 14 dias" icon={TrendingUp} accent="#FF6B35" right={<span style={{ fontSize: 12, fontWeight: 800 }}><CountUp value={trend.reduce((a, t) => a + t.count, 0)} /></span>}>

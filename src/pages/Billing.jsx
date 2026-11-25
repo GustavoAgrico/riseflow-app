@@ -268,7 +268,7 @@ export const Billing = () => {
       )}
 
       {/* KPIs */}
-      <div className="rf-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginBottom: 16 }}>
+      <div className="rf-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,150px),1fr))', gap: 12, marginBottom: 16 }}>
         {kpis.map(k => (
           <div key={k.label} style={{ ...cardS, borderLeft: `3px solid ${k.color}` }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: C.mut, fontSize: 12 }}><k.Icon size={14} color={k.color} /> {k.label}</div>

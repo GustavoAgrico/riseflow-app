@@ -5,11 +5,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Plus, ArrowUp, X, Check, Lightbulb } from 'lucide-react'
 import { RiserAvatar } from './RiserAvatar'
-import { CoachBubble, CoachPanel, AgentTips, coachPrefs } from './Coach'
+import { CoachBubble, CoachPanel, AgentTips, coachPrefs, SuggestionList, PromptChips, suggestionPrefs } from './Coach'
 import { useCoachData } from '@hooks/useCoachData'
 import { buildTips, pickTip, dayHeadline } from '@lib/coach'
-import { DEMO_AGENTS, DEMO_MESSAGES, DEMO_APPROVALS, demoReply } from './agentsDemo'
-import { agentsApi } from '@services/agents'
+import { DEMO_AGENTS, DEMO_MESSAGES, DEMO_APPROVALS, DEMO_SUGGESTIONS, demoReply } from './agentsDemo'
+import { agentsApi, promptsFor } from '@services/agents'
 import socket, { authenticateSocket } from '@services/socket'
 import { useAuth } from '@context/AuthContext'
 import { useIsMobile } from '@hooks/useIsMobile'
@@ -63,6 +63,10 @@ export function AgentDock() {
   const tips = useMemo(() => (snapshot ? buildTips(snapshot, { path: pathname }) : []), [snapshot, pathname])
   const agentFor = useCallback((kind) => agents.find((a) => a.kind === kind) || null, [agents])
   const urgent = tips.filter((t) => t.kind === 'acao' && t.priority >= 50)
+  // Ações sugeridas pelos agentes (só rodam com "Aprovar e fazer").
+  const [suggestions, setSuggestions] = useState([])
+  const [sugState, setSugState] = useState({}) // id → 'running' | { ok, text }
+  const pagePrompts = useMemo(() => promptsFor(pathname), [pathname])
   const actionCount = (kind) => urgent.filter((t) => t.agent === kind).length
 
   // Carrega os agentes; sem API (antes da fase 1) ou em modo demo, usa os dados de exemplo.
@@ -98,6 +102,28 @@ export function AgentDock() {
       .then(([m, a]) => { setMessages(Array.isArray(m) ? m : []); setApprovals(Array.isArray(a) ? a : []) })
       .catch(() => setError('Não foi possível carregar a conversa. Tente de novo.'))
   }, [current?.id, demo])
+
+  // Os agentes acompanham a aba aberta: o servidor guarda a tela atual para o prompt.
+  useEffect(() => {
+    if (demo || !agents.length) return
+    const t = setTimeout(() => { agentsApi.setContext(pathname).catch(() => {}) }, 400)
+    return () => clearTimeout(t)
+  }, [pathname, demo, agents.length])
+
+  const loadSuggestions = useCallback(() => {
+    const hidden = suggestionPrefs.dismissed()
+    const onPage = (x) => (x.pages || []).some((pg) => pathname === pg || pathname.startsWith(pg + '/'))
+    if (demo) {
+      setSuggestions(DEMO_SUGGESTIONS.filter((x) => !hidden.includes(x.id)).map((x) => ({ ...x, on_page: onPage(x) })).sort((a, b) => Number(b.on_page) - Number(a.on_page)))
+      return
+    }
+    agentsApi.suggestions(pathname).then((list) => setSuggestions(Array.isArray(list) ? list.filter((x) => !hidden.includes(x.id)) : [])).catch(() => {})
+  }, [demo, pathname])
+  useEffect(() => {
+    if (!agents.length) return
+    const t = setTimeout(loadSuggestions, 900)
+    return () => clearTimeout(t)
+  }, [agents.length, loadSuggestions])
 
   // Com agentes reais, garante que este navegador está na sala da conta no servidor.
   useEffect(() => { if (!demo) authenticateSocket() }, [demo])
@@ -156,6 +182,27 @@ export function AgentDock() {
     return () => clearTimeout(t)
   }, [pathname, tips.length, paused, open, agents.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const approveSuggestion = async (sg) => {
+    setSugState((m) => ({ ...m, [sg.id]: 'running' }))
+    const finish = (ok, text) => {
+      setSugState((m) => ({ ...m, [sg.id]: { ok, text } }))
+      if (ok) setTimeout(() => { setSuggestions((l) => l.filter((x) => x.id !== sg.id)); loadSuggestions() }, 2600)
+    }
+    if (demo) { setTimeout(() => finish(true, 'Feito (modo exemplo). Na sua conta, a ação roda de verdade e fica registrada na conversa do agente.'), 700); return }
+    try {
+      const r = await agentsApi.runSuggestion(sg.id)
+      finish(r.ok, r.ok ? `Feito: ${r.done} de ${r.total}.${r.error ? ` Um item falhou: ${r.error}` : ''}` : `Não deu certo: ${r.error || 'tente de novo'}`)
+    } catch (e) { finish(false, e?.response?.data?.error || 'Não foi possível executar agora.') }
+  }
+  const askSuggestion = (sg) => {
+    const a = agentFor(sg.agent_kind) || agents[0]
+    if (!a) return
+    setMode('chat'); setSelected(a.id); writeLS(SEL_KEY, a.id); setOpen(true)
+    setText(sg.prompt || sg.title)
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }
+  const dismissSuggestion = (sg) => { suggestionPrefs.dismiss(sg.id); setSuggestions((l) => l.filter((x) => x.id !== sg.id)) }
+
   const nextTip = () => {
     const tip = pickTip(tips.filter((t) => t.id !== bubble?.id), { seen: coachPrefs.seen(), path: pathname })
     if (tip) { coachPrefs.markSeen(tip.id); setBubble(tip) } else setBubble(null)
@@ -172,9 +219,9 @@ export function AgentDock() {
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
-  const send = async (e) => {
-    e.preventDefault()
-    const body = text.trim()
+  const send = async (e, preset) => {
+    e?.preventDefault?.()
+    const body = String(preset ?? text).trim()
     if (!body || !current || sending) return
     setText('')
     setMessages((m) => [...m, { id: `local-${Date.now()}`, author_kind: 'user', content: body }])
@@ -188,7 +235,7 @@ export function AgentDock() {
     const agentId = current.id
     const key = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
     try {
-      await agentsApi.send(agentId, body, key)
+      await agentsApi.send(agentId, body, key, { path: pathname })
       waitForReply(agentId)
     } catch { setError('A mensagem não foi enviada. Verifique a conexão e tente de novo.') }
     finally { setSending(false) }
@@ -244,9 +291,9 @@ export function AgentDock() {
           border: '1px solid rgba(255,107,53,0.45)', boxShadow: '0 6px 18px rgba(255,107,53,0.18)',
         }}>
         <Lightbulb size={19} />
-        {urgent.length > 0 && (
+        {urgent.length + suggestions.length > 0 && (
           <span className="rf-tip-badge" aria-hidden="true" style={{ position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 9, background: '#FF6B35', color: '#fff', fontSize: 10, fontWeight: 800, display: 'grid', placeItems: 'center', border: '2px solid var(--card)', boxSizing: 'border-box' }}>
-            {urgent.length}
+            {urgent.length + suggestions.length}
           </span>
         )}
       </button>
@@ -290,7 +337,8 @@ export function AgentDock() {
 
   const coachPanel = open && mode === 'coach' && (
     <CoachPanel tips={tips} headline={snapshot ? dayHeadline(snapshot) : 'Carregando…'} agentFor={agentFor} mobile={isMobile}
-      onClose={close} onGo={close} paused={paused} onTogglePause={togglePause} onAsk={askAbout} />
+      onClose={close} onGo={close} paused={paused} onTogglePause={togglePause} onAsk={askAbout}
+      topSlot={<SuggestionList items={suggestions} agentFor={agentFor} states={sugState} onApprove={approveSuggestion} onAsk={askSuggestion} onDismiss={dismissSuggestion} />} />
   )
   const panel = coachPanel || (open && current && (
     <section aria-label={`Conversa com ${current.name}`} style={{
@@ -317,6 +365,11 @@ export function AgentDock() {
         </p>
       )}
       <AgentTips tips={tips.filter((t) => t.agent === current.kind)} onGo={close} />
+      {suggestions.some((x) => x.agent_kind === current.kind) && (
+        <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, maxHeight: '38%', overflowY: 'auto' }}>
+          <SuggestionList items={suggestions.filter((x) => x.agent_kind === current.kind).slice(0, 2)} agentFor={agentFor} states={sugState} onApprove={approveSuggestion} onAsk={(sg) => setText(sg.prompt || sg.title)} onDismiss={dismissSuggestion} compact />
+        </div>
+      )}
       <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {messages.map((m) => (
           <div key={m.id} style={{
@@ -359,6 +412,7 @@ export function AgentDock() {
         {error && <div role="alert" style={{ color: '#EF4444', fontSize: 13 }}>{error}</div>}
       </div>
 
+      <PromptChips prompts={pagePrompts} onPick={(p) => send(null, p)} />
       <form onSubmit={send} style={{ display: 'flex', gap: 8, padding: '12px 16px 16px', borderTop: `1px solid ${C.border}` }}>
         <label htmlFor="agent-dock-input" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
           Mensagem para {current.name}

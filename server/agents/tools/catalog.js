@@ -265,6 +265,98 @@ const TOOLS = {
     },
   },
 
+  // ── Piloto de Vendas, cobranças, projetos e equipe ──────────────────────
+  list_hot_leads: {
+    risk: 'baixo',
+    description: 'Lista as oportunidades do Piloto de Vendas (quem demonstrou intenção de compra nas conversas), da maior nota para a menor, com a frase do cliente e o status.',
+    schema: obj({ status: str('abertas (padrão), ganhas ou todas', { enum: ['abertas', 'ganhas', 'todas'] }), limit: int('Máximo (até 20)', { minimum: 1, maximum: LIMIT }) }),
+    async run(ctx, { status = 'abertas', limit }) {
+      const map = { abertas: 'open', ganhas: 'won', todas: 'all' }
+      const list = await ctx.deps.salesPilot.listOpportunities(ctx.userId, { status: map[status] || 'open', limit: Math.min(Number(limit) || 10, LIMIT) })
+      return {
+        opportunities: list.map(o => ({
+          opportunity_id: o.id, client_id: o.client_id, name: o.contact_name, phone: o.contact_phone, score: o.score, level: o.level,
+          status: o.status, product: o.product, said: o.last_message, signals: o.signals, last_message_at: o.last_inbound_at,
+        })),
+      }
+    },
+  },
+
+  update_opportunity: {
+    risk: 'medio',
+    description: 'Avança uma oportunidade do Piloto de Vendas: contacted (contatado), proposal (proposta), negotiation (negociação), won (venda fechada, pode informar valor), lost (perdida) ou dismissed (tirar da fila). A etapa do lead no CRM acompanha.',
+    schema: obj({
+      opportunity_id: str('Id da oportunidade (de list_hot_leads)'),
+      status: str('Novo status', { enum: ['contacted', 'proposal', 'negotiation', 'won', 'lost', 'dismissed'] }),
+      value: { type: 'number', description: 'Valor da venda em reais (só para won, opcional)' },
+    }, ['opportunity_id', 'status']),
+    async run(ctx, { opportunity_id, status, value }) {
+      const o = await ctx.deps.salesPilot.updateOpportunity(ctx.userId, opportunity_id, { status, value })
+      return { updated: true, name: o.contact_name, status: o.status }
+    },
+  },
+
+  scan_conversations_for_leads: {
+    risk: 'medio',
+    description: 'Lê as mensagens recebidas nos últimos dias e acha quem demonstrou intenção de compra (cria oportunidades no Piloto de Vendas). Não envia nada a ninguém.',
+    schema: obj({ days: int('Quantos dias para trás (1 a 30, padrão 14)', { minimum: 1, maximum: 30 }) }),
+    async run(ctx, { days = 14 }) {
+      return ctx.deps.salesPilot.backfill(ctx.userId, { days: Math.min(Math.max(Number(days) || 14, 1), 30) })
+    },
+  },
+
+  list_invoices: {
+    risk: 'baixo',
+    description: 'Lista cobranças em aberto: atrasadas (padrão) ou vencendo nos próximos 7 dias, com cliente, valor e dias de atraso.',
+    schema: obj({ filter: str('atrasadas ou a_vencer', { enum: ['atrasadas', 'a_vencer'] }) }),
+    async run(ctx, { filter = 'atrasadas' }) {
+      const today = todayBrt()
+      let q = ctx.db.from('invoices').select('id, client_id, client_name, description, amount, due_date').eq('user_id', ctx.userId).neq('status', 'paid').order('due_date', { ascending: true }).limit(30)
+      q = filter === 'a_vencer' ? q.gte('due_date', today).lte('due_date', addDays(today, 7)) : q.lt('due_date', today)
+      const { data, error } = await q
+      if (error) throw error
+      const rows = (data || []).map(i => ({ ...i, amount: Number(i.amount) || 0, days_late: i.due_date < today ? Math.round((Date.parse(today) - Date.parse(i.due_date)) / 86_400_000) : 0 }))
+      return { today, total: rows.reduce((a, i) => a + i.amount, 0), invoices: rows }
+    },
+  },
+
+  list_projects: {
+    risk: 'baixo',
+    description: 'Lista projetos de implantação em aberto com progresso do checklist, próximo passo e se estão atrasados.',
+    schema: obj({ only_late: { type: 'boolean', description: 'Só os atrasados' } }),
+    async run(ctx, { only_late }) {
+      const today = todayBrt()
+      const { data, error } = await ctx.db.from('projects').select('id, name, client_name, status, due_date, lead_name, steps').eq('user_id', ctx.userId).neq('status', 'done').order('due_date', { ascending: true }).limit(30)
+      if (error) throw error
+      const rows = (data || []).map(p => {
+        const steps = Array.isArray(p.steps) ? p.steps : []
+        const done = steps.filter(x => x.done).length
+        return { id: p.id, name: p.name, client: p.client_name, status: p.status, due_date: p.due_date, lead: p.lead_name, progress: `${done}/${steps.length}`, next_step: steps.find(x => !x.done)?.title || null, late: Boolean(p.due_date && p.due_date < today) }
+      })
+      return { projects: only_late ? rows.filter(r => r.late) : rows }
+    },
+  },
+
+  team_overview: {
+    risk: 'baixo',
+    description: 'Situação da equipe agora: quem está online, conversas abertas, clientes esperando resposta e a maior espera de cada pessoa.',
+    schema: obj({}),
+    async run(ctx) { return ctx.deps.team.teamOverview(ctx.userId) },
+  },
+
+  nudge_team_member: {
+    risk: 'alto',
+    description: 'Manda um recado curto para alguém da equipe (aparece na tela da pessoa). Use para pedir que atenda cliente esperando ou para elogiar. Precisa de aprovação do dono.',
+    schema: obj({ name: str('Nome da pessoa da equipe'), message: str('Recado (curto e respeitoso)', { maxLength: 400 }) }, ['name', 'message']),
+    async describe(ctx, { name, message }) {
+      const m = await ctx.deps.team.findMember(ctx.userId, { name })
+      return `Chamar ${m.name}: "${String(message).slice(0, 160)}"`
+    },
+    async run(ctx, { name, message }) {
+      return ctx.deps.team.sendNudge(ctx.userId, { name, message, from: ctx.agent?.name || 'Agente' })
+    },
+  },
+
   // ── Mundo externo (alto: só roda depois de aprovado) ────────────────────
   queue_ai_call: {
     risk: 'alto',
@@ -300,12 +392,12 @@ const TOOLS = {
 
 // Ferramentas de cada agente padrão (agents.tools vazio = usa esta lista).
 const TOOLS_BY_KIND = {
-  comercial: ['search_contacts', 'list_tasks', 'list_pipeline', 'get_calendar', 'get_goal_progress', 'create_task', 'move_pipeline_stage', 'create_note', 'schedule_meeting', 'queue_ai_call', 'send_whatsapp', 'remember', 'search_memories'],
-  atendente: ['search_contacts', 'list_tasks', 'create_task', 'create_note', 'send_whatsapp', 'remember', 'search_memories'],
-  prospector: ['search_leads', 'import_leads', 'search_contacts', 'queue_ai_call', 'remember', 'search_memories'],
-  agenda: ['get_calendar', 'list_tasks', 'create_task', 'schedule_meeting', 'search_contacts', 'remember', 'search_memories'],
-  metas: ['get_goal_progress', 'list_pipeline', 'search_contacts', 'remember', 'search_memories'],
-  analista: ['list_pipeline', 'get_goal_progress', 'list_tasks', 'search_contacts', 'remember', 'search_memories'],
+  comercial: ['search_contacts', 'list_tasks', 'list_pipeline', 'list_hot_leads', 'update_opportunity', 'get_calendar', 'get_goal_progress', 'create_task', 'move_pipeline_stage', 'create_note', 'schedule_meeting', 'queue_ai_call', 'send_whatsapp', 'remember', 'search_memories'],
+  atendente: ['search_contacts', 'list_tasks', 'list_hot_leads', 'team_overview', 'create_task', 'create_note', 'send_whatsapp', 'nudge_team_member', 'remember', 'search_memories'],
+  prospector: ['search_leads', 'import_leads', 'scan_conversations_for_leads', 'list_hot_leads', 'search_contacts', 'queue_ai_call', 'remember', 'search_memories'],
+  agenda: ['get_calendar', 'list_tasks', 'list_projects', 'create_task', 'schedule_meeting', 'search_contacts', 'remember', 'search_memories'],
+  metas: ['get_goal_progress', 'list_pipeline', 'team_overview', 'nudge_team_member', 'search_contacts', 'remember', 'search_memories'],
+  analista: ['list_pipeline', 'get_goal_progress', 'list_tasks', 'list_invoices', 'list_projects', 'team_overview', 'search_contacts', 'send_whatsapp', 'remember', 'search_memories'],
 }
 
 function toolsForAgent(agent) {

@@ -127,7 +127,7 @@ export const Topbar = ({ title, subtitle, onMenu }) => {
           onClick={toggle}
           aria-label={theme === 'light' ? 'Ativar tema escuro' : 'Ativar tema claro'}
           title={theme === 'light' ? 'Tema escuro' : 'Tema claro'}
-          className="p-2.5 glass rounded-xl hover:border-brand-orange/40 transition-all"
+          className="hidden sm:block p-2.5 glass rounded-xl hover:border-brand-orange/40 transition-all"
         >
           {theme === 'light'
             ? <Moon size={17} className="text-slate-300" />
@@ -201,6 +201,14 @@ export const Topbar = ({ title, subtitle, onMenu }) => {
                 >
                   <User size={15} />
                   Minha conta
+                </button>
+                {/* No celular o botão de tema sai do topo (falta espaço) e fica aqui. */}
+                <button
+                  onClick={() => { toggle(); setShowUserMenu(false) }}
+                  className="sm:hidden w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-300 hover:text-white hover:bg-dark-500 transition-all text-sm"
+                >
+                  {theme === 'light' ? <Moon size={15} /> : <Sun size={15} />}
+                  {theme === 'light' ? 'Tema escuro' : 'Tema claro'}
                 </button>
                 <button
                   disabled={loggingOut}
