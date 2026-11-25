@@ -4,7 +4,7 @@ import path from 'path';
 import net from 'net';
 import http from 'http';
 import { fileURLToPath } from 'url';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, createWriteStream } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, createWriteStream } from 'fs';
 
 // Riseframe Desktop: sobe o servidor do Riseframe (o mesmo do site) em segundo plano e
 // abre a janela apontando para ele. Não precisa de Node.js instalado: o servidor roda
@@ -115,10 +115,71 @@ function listenOn(port) {
   });
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** /api/health de quem está na porta (ou null se não for um servidor do Riseframe). */
+function healthAt(port) {
+  return new Promise((resolve) => {
+    const req = http.get({ host: '127.0.0.1', port, path: '/api/health', timeout: 2500 }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => {
+        try {
+          const d = JSON.parse(body);
+          resolve(d?.service === 'riseframe' ? d : null);
+        } catch {
+          resolve(null);
+        }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
+/** PID de quem escuta na porta (Windows). */
+function windowsPidOn(port) {
+  return new Promise((resolve) => {
+    const ps = spawn('powershell', ['-NoProfile', '-Command', `(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess`], { windowsHide: true });
+    let out = '';
+    ps.stdout.on('data', (c) => { out += c; });
+    ps.on('error', () => resolve(0));
+    ps.on('close', () => resolve(Number.parseInt(out.trim(), 10) || 0));
+  });
+}
+
+/**
+ * A porta de sempre está ocupada por um servidor do Riseframe que ficou para trás (ex.:
+ * o instalador fechou o app e o servidor antigo continuou rodando). Encerra ele para o app
+ * abrir no MESMO endereço — senão login, Brand Kit e modelos pareciam ter sumido.
+ */
+async function reclaimPort(port) {
+  const h = await healthAt(port);
+  if (!h) return false;
+  const pid = Number(h.pid) || (process.platform === 'win32' ? await windowsPidOn(port) : 0);
+  if (!pid || pid === process.pid) return false;
+  try {
+    process.kill(pid);
+  } catch {
+    return false;
+  }
+  for (let i = 0; i < 25; i++) {
+    await sleep(200);
+    try {
+      return (await listenOn(port)) === port;
+    } catch {
+      /* ainda fechando */
+    }
+  }
+  return false;
+}
+
 async function freePort() {
   try {
     return await listenOn(PREFERRED_PORT);
   } catch {
+    if (await reclaimPort(PREFERRED_PORT).catch(() => false)) return PREFERRED_PORT;
     return listenOn(0);
   }
 }
@@ -190,7 +251,8 @@ async function startServer() {
     cwd: path.join(projectRoot, 'server'),
     env,
     windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    // canal 'ipc': se o app fechar de repente, o servidor percebe e encerra junto
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
   serverProcess.stdout.pipe(log, { end: false });
   serverProcess.stderr.pipe(log, { end: false });
@@ -480,3 +542,23 @@ ipcMain.handle('open-motion-refs', async () => {
   return err ? { ok: false, error: err, dir } : { ok: true, dir };
 });
 ipcMain.handle('get-version', () => app.getVersion());
+// Cópia das preferências do navegador interno (Brand Kit, modelos do assistente, login…):
+// o navegador guarda por endereço; com esta cópia elas voltam mesmo se a porta mudar.
+const storageFile = path.join(userDataPath, 'navegador.json');
+ipcMain.on('storage-load', (e) => {
+  try {
+    e.returnValue = JSON.parse(readFileSync(storageFile, 'utf8'));
+  } catch {
+    e.returnValue = null;
+  }
+});
+ipcMain.on('storage-save', (_e, json) => {
+  try {
+    if (typeof json !== 'string' || json.length > 16 * 1024 * 1024) return;
+    JSON.parse(json);
+    writeFileSync(`${storageFile}.tmp`, json);
+    renameSync(`${storageFile}.tmp`, storageFile);
+  } catch {
+    /* tenta na próxima */
+  }
+});

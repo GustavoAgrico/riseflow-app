@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('electron', {
   // abre a pasta de referências de motion no computador
   openMotionRefs: () => ipcRenderer.invoke('open-motion-refs'),
   getVersion: () => ipcRenderer.invoke('get-version'),
+  // cópia das preferências do navegador interno num arquivo (sobrevive à troca de porta)
+  storageLoad: () => ipcRenderer.sendSync('storage-load'),
+  storageSave: (json) => ipcRenderer.send('storage-save', json),
   // Menu Ver › Abas do editor: o editor informa as abas e recebe os cliques do menu
   setEditorTabs: (state) => ipcRenderer.send('editor-tabs-state', state),
   // Menu Exportar: 'export' abre a janela de exportação; 'format:9:16' muda o formato
