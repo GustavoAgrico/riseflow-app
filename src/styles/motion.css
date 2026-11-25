@@ -1,8 +1,12 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   Movimento do RiseFlow
+   Movimento do RiseFlow — vale para o sistema todo
    Entradas em sequência, títulos por letra, barras que crescem, pílula que desliza,
-   janelas com zoom sobre fundo desfocado e brilho ambiente lento.
-   Tudo desliga com "reduzir movimento" do sistema (fim do arquivo).
+   janelas com zoom sobre fundo desfocado, linhas de tabela e cartões que sobem,
+   brilho ambiente lento. Tudo desliga com "reduzir movimento" (fim do arquivo).
+
+   Regra de ouro: animações de entrada usam fill-mode "backwards" e keyframes só com
+   "from". Ao terminar, o elemento volta ao próprio estilo — nada fica preso em
+   transform/filter (o que deslocaria janelas fixas e menus posicionados).
    ───────────────────────────────────────────────────────────────────────────── */
 :root {
   --rf-ease: cubic-bezier(.2, .8, .2, 1);
@@ -10,24 +14,27 @@
   --rf-step: 55ms;
 }
 
-@keyframes rf-rise {
-  from { opacity: 0; transform: translateY(14px) scale(.985); filter: blur(6px); }
-  to   { opacity: 1; transform: none; filter: none; }
-}
-@keyframes rf-letter {
-  from { opacity: 0; transform: translateY(.45em); filter: blur(4px); }
-  to   { opacity: 1; transform: none; filter: none; }
-}
-@keyframes rf-grow-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
-@keyframes rf-grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-@keyframes rf-scrim  { from { opacity: 0; backdrop-filter: blur(0); } to { opacity: 1; } }
-@keyframes rf-pop {
-  from { opacity: 0; transform: translateY(10px) scale(.96); filter: blur(4px); }
-  to   { opacity: 1; transform: none; filter: none; }
-}
+@keyframes rf-rise   { from { opacity: 0; transform: translateY(14px) scale(.985); filter: blur(6px); } }
+@keyframes rf-row    { from { opacity: 0; transform: translateY(6px); } }
+@keyframes rf-fade   { from { opacity: 0; } }
+@keyframes rf-letter { from { opacity: 0; transform: translateY(.45em); filter: blur(4px); } }
+@keyframes rf-grow-y { from { transform: scaleY(0); } }
+@keyframes rf-grow-x { from { transform: scaleX(0); } }
+@keyframes rf-scrim  { from { opacity: 0; } }
+@keyframes rf-pop    { from { opacity: 0; transform: translateY(10px) scale(.96); filter: blur(4px); } }
 @keyframes rf-toast {
   from { opacity: 0; transform: translate(-50%, 24px) scale(.94); }
   to   { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+@keyframes rf-landed {
+  0%   { transform: scale(.94); box-shadow: 0 0 0 0 rgba(255, 107, 53, .55); }
+  45%  { transform: scale(1.03); box-shadow: 0 0 0 6px rgba(255, 107, 53, .18); }
+  100% { transform: none; box-shadow: 0 0 0 0 rgba(255, 107, 53, 0); }
+}
+@keyframes rf-check {
+  0%   { transform: scale(.6); }
+  60%  { transform: scale(1.18); }
+  100% { transform: none; }
 }
 @keyframes rf-drift-a {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
@@ -38,49 +45,80 @@
   50%      { transform: translate3d(-6vw, -8vh, 0) scale(.95); }
 }
 
-/* Filhos entram um depois do outro. O contêiner pode ser display:contents. */
+/* ── Blocos da página entram um depois do outro ─────────────────────────────── */
 .rf-stagger > *,
 .rf-dash-main > *,
 .rf-rail > * {
-  animation: rf-rise .6s var(--rf-ease) both;
+  animation: rf-rise .6s var(--rf-ease) backwards;
 }
-.rf-stagger > *:nth-child(2), .rf-dash-main > *:nth-child(2), .rf-rail > *:nth-child(2) { animation-delay: calc(var(--rf-step) * 1); }
-.rf-stagger > *:nth-child(3), .rf-dash-main > *:nth-child(3), .rf-rail > *:nth-child(3) { animation-delay: calc(var(--rf-step) * 2); }
-.rf-stagger > *:nth-child(4), .rf-dash-main > *:nth-child(4), .rf-rail > *:nth-child(4) { animation-delay: calc(var(--rf-step) * 3); }
-.rf-stagger > *:nth-child(5), .rf-dash-main > *:nth-child(5), .rf-rail > *:nth-child(5) { animation-delay: calc(var(--rf-step) * 4); }
-.rf-stagger > *:nth-child(6), .rf-dash-main > *:nth-child(6), .rf-rail > *:nth-child(6) { animation-delay: calc(var(--rf-step) * 5); }
-.rf-stagger > *:nth-child(7), .rf-dash-main > *:nth-child(7), .rf-rail > *:nth-child(7) { animation-delay: calc(var(--rf-step) * 6); }
-.rf-stagger > *:nth-child(n+8), .rf-dash-main > *:nth-child(n+8), .rf-rail > *:nth-child(n+8) { animation-delay: calc(var(--rf-step) * 7); }
+.rf-stagger > *:nth-child(2), .rf-dash-main > *:nth-child(2) { animation-delay: calc(var(--rf-step) * 1); }
+.rf-stagger > *:nth-child(3), .rf-dash-main > *:nth-child(3) { animation-delay: calc(var(--rf-step) * 2); }
+.rf-stagger > *:nth-child(4), .rf-dash-main > *:nth-child(4) { animation-delay: calc(var(--rf-step) * 3); }
+.rf-stagger > *:nth-child(5), .rf-dash-main > *:nth-child(5) { animation-delay: calc(var(--rf-step) * 4); }
+.rf-stagger > *:nth-child(6), .rf-dash-main > *:nth-child(6) { animation-delay: calc(var(--rf-step) * 5); }
+.rf-stagger > *:nth-child(7), .rf-dash-main > *:nth-child(7) { animation-delay: calc(var(--rf-step) * 6); }
+.rf-stagger > *:nth-child(n+8), .rf-dash-main > *:nth-child(n+8) { animation-delay: calc(var(--rf-step) * 7); }
 .rf-rail > * { animation-delay: calc(var(--rf-step) * 3); }
+.rf-rail > *:nth-child(2) { animation-delay: calc(var(--rf-step) * 4); }
+.rf-rail > *:nth-child(n+3) { animation-delay: calc(var(--rf-step) * 5); }
 /* O Dashboard anima por dentro (rf-dash-main / rf-rail); o invólucro não entra de novo. */
 .rf-stagger > .rf-dash { animation: none; }
 
-/* Grade de cartões (KPIs etc.): cada cartão entra em sequência. */
-.rf-cards > * { animation: rf-rise .55s var(--rf-ease) both; }
-.rf-cards > *:nth-child(2) { animation-delay: 60ms; }
-.rf-cards > *:nth-child(3) { animation-delay: 120ms; }
-.rf-cards > *:nth-child(4) { animation-delay: 180ms; }
-.rf-cards > *:nth-child(n+5) { animation-delay: 240ms; }
+/* ── Cartões e grades: cada item sobe em sequência (em qualquer tela) ──────────
+   Itens que chegam depois (lista carregada, filtro) também entram suavemente. */
+.rf-cards > *,
+.grid > * {
+  animation: rf-rise .55s var(--rf-ease) backwards;
+}
+.rf-cards > *:nth-child(2), .grid > *:nth-child(2) { animation-delay: 50ms; }
+.rf-cards > *:nth-child(3), .grid > *:nth-child(3) { animation-delay: 100ms; }
+.rf-cards > *:nth-child(4), .grid > *:nth-child(4) { animation-delay: 150ms; }
+.rf-cards > *:nth-child(5), .grid > *:nth-child(5) { animation-delay: 200ms; }
+.rf-cards > *:nth-child(6), .grid > *:nth-child(6) { animation-delay: 240ms; }
+.rf-cards > *:nth-child(n+7), .grid > *:nth-child(n+7) { animation-delay: 280ms; }
 
-/* Título por letra (RevealText). --i vem do componente. */
+/* ── Linhas de tabela ─────────────────────────────────────────────────────────── */
+tbody > tr { animation: rf-row .4s var(--rf-ease) backwards; }
+tbody > tr:nth-child(2) { animation-delay: 25ms; }
+tbody > tr:nth-child(3) { animation-delay: 50ms; }
+tbody > tr:nth-child(4) { animation-delay: 75ms; }
+tbody > tr:nth-child(5) { animation-delay: 100ms; }
+tbody > tr:nth-child(6) { animation-delay: 125ms; }
+tbody > tr:nth-child(7) { animation-delay: 150ms; }
+tbody > tr:nth-child(8) { animation-delay: 175ms; }
+tbody > tr:nth-child(n+9) { animation-delay: 200ms; }
+
+/* ── Telas que não usam o Layout comum: a página toda aparece em fade ──────────
+   (só opacidade: transform no topo da página deslocaria menus fixos). */
+.rf-route > * { animation: rf-fade .35s ease-out backwards; }
+
+/* ── Título por letra (RevealText) ───────────────────────────────────────────── */
 .rf-reveal { display: inline-block; }
 .rf-reveal .rf-ch {
   display: inline-block;
   white-space: pre;
-  animation: rf-letter .5s var(--rf-ease) both;
+  animation: rf-letter .5s var(--rf-ease) backwards;
   animation-delay: calc(var(--i) * 18ms);
 }
 
-/* Barras de gráfico crescendo a partir da base. --i opcional para atraso. */
-.rf-bar-y { transform-origin: bottom; animation: rf-grow-y .8s var(--rf-ease) both; animation-delay: calc(var(--i, 0) * 45ms + 150ms); }
-.rf-bar-x { transform-origin: left;   animation: rf-grow-x .8s var(--rf-ease) both; animation-delay: calc(var(--i, 0) * 60ms + 150ms); }
+/* ── Barras de gráfico crescendo ─────────────────────────────────────────────── */
+.rf-bar-y { transform-origin: bottom; animation: rf-grow-y .8s var(--rf-ease) backwards; animation-delay: calc(var(--i, 0) * 45ms + 150ms); }
+.rf-bar-x { transform-origin: left;   animation: rf-grow-x .8s var(--rf-ease) backwards; animation-delay: calc(var(--i, 0) * 60ms + 150ms); }
 
-/* Janelas: fundo escurece/desfoca, painel abre com zoom. */
-.rf-scrim { animation: rf-scrim .22s ease-out both; }
-.rf-pop   { animation: rf-pop .32s var(--rf-ease) both; }
+/* ── Janelas: fundo escurece, painel abre com zoom ───────────────────────────────
+   Classes explícitas e, de forma geral, qualquer sobreposição fixa de tela cheia
+   (modais antigos com style inline). Quem já tem animação inline não é afetado. */
+.rf-scrim,
+div[style*="position: fixed"][style*="inset: 0"]:not([aria-hidden="true"]):not(.rf-ambient) {
+  animation: rf-scrim .22s ease-out backwards;
+}
+.rf-pop,
+div[style*="position: fixed"][style*="inset: 0"]:not([aria-hidden="true"]):not(.rf-ambient) > div:only-child {
+  animation: rf-pop .32s var(--rf-ease) backwards;
+}
 .rf-toast { animation: rf-toast .42s var(--rf-ease-spring) both; }
 
-/* Pílula deslizante dos seletores (Segmented). */
+/* ── Pílula deslizante dos seletores (Segmented) ─────────────────────────────── */
 .rf-segmented { position: relative; display: inline-flex; isolation: isolate; }
 .rf-segmented__pill {
   position: absolute; top: 3px; bottom: 3px; left: 0; z-index: -1;
@@ -90,11 +128,74 @@
 }
 .rf-segmented button { position: relative; transition: color .25s ease; }
 
-/* Microfeedback de toque. */
-.rf-press { transition: transform .15s var(--rf-ease); }
-.rf-press:active { transform: scale(.96); }
+/* ── Microinterações ─────────────────────────────────────────────────────────── */
+.rf-press, .btn-primary, .btn-secondary { transition: transform .15s var(--rf-ease), box-shadow .2s ease, background-color .2s ease; }
+.rf-press:active, .btn-primary:active, .btn-secondary:active { transform: scale(.96); }
 
-/* Brilho ambiente lento atrás do conteúdo (Layout). */
+.rf-lift, .stat-card, .rf-panel { transition: transform .25s var(--rf-ease), box-shadow .25s ease, border-color .2s ease; }
+.rf-lift:hover, .stat-card:hover { transform: translateY(-3px); box-shadow: 0 14px 32px rgba(0, 0, 0, .28); }
+.rf-panel:hover { box-shadow: 0 10px 28px rgba(0, 0, 0, .18); }
+
+.sidebar-item { transition: transform .2s var(--rf-ease), background-color .2s ease, color .2s ease; }
+.sidebar-item:hover { transform: translateX(3px); }
+
+/* Card arrastado no quadro e card que acabou de mudar de etapa. */
+.rf-dragging { opacity: .45; transform: scale(.97) rotate(-1deg); }
+.rf-landed { animation: rf-landed .7s var(--rf-ease) both; }
+.rf-check-pop { animation: rf-check .35s var(--rf-ease-spring); }
+
+/* Cards do quadro do CRM: entram em sequência por coluna, sobem no hover. */
+.rf-crm-card {
+  animation: rf-rise .5s var(--rf-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms + 180ms);
+  transition: transform .22s var(--rf-ease), box-shadow .22s ease, border-color .2s ease, opacity .2s ease;
+}
+.rf-crm-card:hover { transform: translateY(-3px); border-color: var(--st, var(--border)) !important; box-shadow: 0 12px 26px rgba(0, 0, 0, .3); }
+.rf-crm-card.rf-landed { animation: rf-landed .7s var(--rf-ease) both; }
+.rf-crm-card.rf-dragging { opacity: .45; transform: scale(.97) rotate(-1.5deg); box-shadow: none; }
+
+/* Painel lateral (Projetos) desliza da direita; passos do checklist entram em sequência. */
+@keyframes rf-drawer { from { transform: translateX(40px); opacity: 0; } }
+.rf-drawer { animation: rf-drawer .38s var(--rf-ease) backwards; }
+.rf-step { animation: rf-row .35s var(--rf-ease) backwards; animation-delay: calc(var(--i, 0) * 35ms + 120ms); }
+
+/* Coluna que recebe o card. */
+.rf-dropzone { transition: background-color .2s ease, border-color .2s ease, padding .2s var(--rf-ease); }
+
+/* ── Mascotes dos agentes (RiserAvatar motion=…) ──────────────────────────────── */
+@keyframes rf-riser-bob    { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes rf-riser-shadow { 0%, 100% { transform: scaleX(1); opacity: 1; } 50% { transform: scaleX(.82); opacity: .7; } }
+@keyframes rf-riser-blink  { 0%, 91%, 97%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.08); } }
+@keyframes rf-riser-hop {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  20% { transform: translateY(0) scale(1.08, .9); }
+  45% { transform: translateY(-10px) scale(.95, 1.06); }
+  70% { transform: translateY(0) scale(1.05, .94); }
+}
+@keyframes rf-riser-sway   { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+@keyframes rf-riser-jump   { 0%, 60%, 100% { transform: translateY(0); } 70% { transform: translateY(-7px); } 80% { transform: translateY(0); } 88% { transform: translateY(-3px); } }
+@keyframes rf-riser-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-9deg); } 50% { transform: rotate(7deg); } 75% { transform: rotate(-4deg); } }
+
+.rf-riser .rf-riser-body, .rf-riser .rf-riser-eyes, .rf-riser .rf-riser-shadow { transform-box: fill-box; }
+.rf-riser .rf-riser-body   { transform-origin: 50% 100%; }
+.rf-riser .rf-riser-eyes   { transform-origin: center; animation: rf-riser-blink 4.8s infinite; animation-delay: var(--d, 0s); }
+.rf-riser .rf-riser-shadow { transform-origin: center; }
+.rf-riser-idle .rf-riser-body   { animation: rf-riser-bob 3.4s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.rf-riser-idle .rf-riser-shadow { animation: rf-riser-shadow 3.4s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.rf-riser-talk .rf-riser-body   { animation: rf-riser-hop .75s var(--rf-ease) 0s 4; }
+.rf-riser-think .rf-riser-body  { animation: rf-riser-sway 1.4s ease-in-out infinite; }
+.rf-riser-alert .rf-riser-body  { animation: rf-riser-jump 1.6s ease-in-out infinite; }
+.rf-riser-btn:hover .rf-riser-body { animation: rf-riser-wiggle .55s var(--rf-ease); }
+
+/* Balão de dica dos agentes. */
+@keyframes rf-bubble { from { opacity: 0; transform: translateX(14px) scale(.9); } }
+@keyframes rf-bubble-up { from { opacity: 0; transform: translateY(14px) scale(.94); } }
+.rf-bubble { animation: rf-bubble .42s var(--rf-ease-spring) backwards; transform-origin: right center; }
+.rf-bubble-up { animation: rf-bubble-up .42s var(--rf-ease-spring) backwards; transform-origin: bottom center; }
+@keyframes rf-badge { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+.rf-tip-badge { animation: rf-badge 1.8s ease-in-out infinite; }
+
+/* ── Brilho ambiente lento atrás do conteúdo (Layout) ────────────────────────── */
 .rf-ambient {
   position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
 }
@@ -113,14 +214,17 @@
   background: radial-gradient(circle, #7C3AED 0%, transparent 62%);
   animation: rf-drift-b 46s ease-in-out infinite;
 }
-html.light .rf-ambient::before, html.light .rf-ambient::after,
 [data-theme='light'] .rf-ambient::before, [data-theme='light'] .rf-ambient::after { opacity: .09; }
 
 @media (prefers-reduced-motion: reduce) {
-  .rf-stagger > *, .rf-dash-main > *, .rf-rail > *, .rf-cards > *,
-  .rf-reveal .rf-ch, .rf-bar-y, .rf-bar-x, .rf-scrim, .rf-pop, .rf-toast,
+  .rf-stagger > *, .rf-dash-main > *, .rf-rail > *, .rf-cards > *, .grid > *, tbody > tr, .rf-route > *,
+  .rf-reveal .rf-ch, .rf-crm-card, .rf-drawer, .rf-step, .rf-riser .rf-riser-body, .rf-riser .rf-riser-eyes, .rf-riser .rf-riser-shadow, .rf-bubble, .rf-bubble-up, .rf-tip-badge, .rf-bar-y, .rf-bar-x, .rf-scrim, .rf-pop, .rf-toast, .rf-landed, .rf-check-pop,
+  div[style*="position: fixed"][style*="inset: 0"], div[style*="position: fixed"][style*="inset: 0"] > div,
   .rf-ambient::before, .rf-ambient::after {
     animation: none !important;
   }
-  .rf-segmented__pill, .rf-press { transition: none !important; }
+  .rf-segmented__pill, .rf-press, .btn-primary, .btn-secondary, .rf-lift, .stat-card, .rf-panel, .sidebar-item, .rf-dropzone {
+    transition: none !important;
+  }
+  .rf-lift:hover, .stat-card:hover, .sidebar-item:hover, .rf-dragging, .rf-crm-card:hover { transform: none !important; }
 }

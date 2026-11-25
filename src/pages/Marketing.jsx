@@ -9,6 +9,7 @@ import { DollarSign, TrendingUp, Target, Users, Megaphone, ArrowUpRight, ArrowDo
 import { exportCSV, exportPremiumPDF } from '@utils/exportUtils'
 import { SkeletonKPI, SkeletonTable } from '@components/ui/Skeleton'
 import { EmptyState } from '@components/ui/EmptyState'
+import { CountUp } from '@components/motion'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED', org: '#FF6B35' }
 
@@ -26,7 +27,7 @@ const KPI = ({ icon: Ic, label, value, sub, color }) => (
   <div style={{ background: C.card, border: `1px solid ${C.bd}`, borderRadius: 14, padding: '16px 18px', flex: 1, minWidth: 160 }}>
     <Ic size={20} color={color} />
     <p style={{ margin: '8px 0 2px', fontSize: 12, color: C.mut }}>{label}</p>
-    <p style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>{value}</p>
+    <p style={{ margin: 0, fontSize: 22, fontWeight: 800 }}><CountUp value={value} /></p>
     {sub && <p style={{ margin: '4px 0 0', fontSize: 11, color: C.mut }}>{sub}</p>}
   </div>
 )

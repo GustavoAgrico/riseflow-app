@@ -6,6 +6,7 @@ import { logger } from '@services/activityLogger'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { api } from '@services/api'
+import { CountUp } from '@components/motion'
 
 const STATUS = {
   draft:        { label: 'Rascunho',         color: '#6B7280', bg: '#6B728020' },
@@ -474,7 +475,7 @@ export function Campaigns() {
         {kpis.map(k => (
           <div key={k.label} style={S.card}>
             <div style={{ marginBottom:8 }}><k.Icon size={22} color="#7C3AED" /></div>
-            <p style={{ fontSize:26, fontWeight:800, margin:'0 0 2px' }}>{k.value}</p>
+            <p style={{ fontSize:26, fontWeight:800, margin:'0 0 2px' }}><CountUp value={k.value} /></p>
             <p style={{ fontSize:12, color:'var(--ink-3)', margin:'0 0 2px', fontWeight:600 }}>{k.label}</p>
             <p style={{ fontSize:10, color:'#475569', margin:0 }}>{k.sub}</p>
           </div>

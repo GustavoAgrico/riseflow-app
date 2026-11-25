@@ -6,6 +6,7 @@ import { socket } from '@services/socket'
 import { useIsMobile } from '@hooks/useIsMobile'
 import { useAuth } from '@context/AuthContext'
 import { logger } from '@services/activityLogger'
+import { CountUp } from '@components/motion'
 
 const EMAIL_RE = /^\S+@\S+\.\S+$/
 
@@ -324,7 +325,7 @@ export const Teams = () => {
         {kpis.map(k => (
           <div key={k.label} style={cardS}>
             <div><k.Icon size={22} color={C.purple} /></div>
-            <div style={{ fontSize: 26, fontWeight: 700, marginTop: 6 }}>{k.value}</div>
+            <div style={{ fontSize: 26, fontWeight: 700, marginTop: 6 }}><CountUp value={k.value} /></div>
             <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{k.label}</div>
           </div>
         ))}

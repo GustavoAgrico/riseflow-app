@@ -28,6 +28,7 @@ export const CREATE_ACTIONS = [
   { id: 'novo-contato', label: 'Novo contato no CRM', path: '/crm?novo=1', icon: 'UserPlus', keywords: 'lead cliente negocio deal' },
   { id: 'nova-reuniao', label: 'Nova reunião', path: '/agenda?novo=1', icon: 'CalendarPlus', keywords: 'agenda compromisso evento' },
   { id: 'nova-proposta', label: 'Nova proposta', path: '/proposals?novo=1', icon: 'FileText', keywords: 'orcamento' },
+  { id: 'novo-projeto', label: 'Novo projeto', path: '/projetos?novo=1', icon: 'FolderPlus', keywords: 'implantacao checklist onboarding pos-venda' },
   { id: 'nova-cobranca', label: 'Nova cobrança', path: '/billing?novo=1', icon: 'Receipt', keywords: 'fatura parcela mensalidade boleto' },
   // O modal de fluxo vive no Layout: abre na tela de Fluxos (algumas telas, como o CRM, não usam o Layout).
   { id: 'novo-fluxo', label: 'Novo fluxo de automação', path: '/flows', action: 'new-flow', icon: 'GitBranch', keywords: 'funil bot automacao' },
@@ -36,7 +37,7 @@ export const CREATE_ACTIONS = [
 // Atalhos "G e depois letra". Só aparecem os que o cargo pode abrir.
 export const GO_KEYS = {
   d: '/dashboard', h: '/hoje', m: '/chat', c: '/crm', l: '/clients',
-  f: '/funnel', a: '/agenda', b: '/billing', r: '/reports', s: '/settings',
+  f: '/funnel', a: '/agenda', p: '/projetos', v: '/vendas-ia', b: '/billing', r: '/reports', s: '/settings',
 }
 
 export function pageItems(navGroups, canAccess = () => true) {

@@ -35,6 +35,12 @@ async function saveIncomingMessage({ userId, phone, name, text, channel = 'chat'
   } catch (e) {
     console.warn(`[${channel}] não espelhou msg recebida:`, e?.message ?? e)
   }
+  // Piloto de Vendas: ficha, nota de intenção e organização do lead (não responde ao cliente).
+  // Carregado aqui dentro para evitar dependência circular; nunca derruba o recebimento.
+  if (text) {
+    require('./sales/pilot').onInbound({ userId, phone, name, text, channel: channel === 'chat' ? 'whatsapp' : channel })
+      .catch((err) => console.warn('[piloto-vendas]', err?.message ?? err))
+  }
 }
 
 module.exports = { saveIncomingMessage }

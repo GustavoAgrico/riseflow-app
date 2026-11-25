@@ -29,7 +29,10 @@ const easeOut = (t) => 1 - Math.pow(1 - t, 3)
 
 export function CountUp({ value, duration = 900, format }) {
   const isText = typeof value === 'string'
-  const parsed = isText ? parseLocaleNumber(value) : { value: Number(value) || 0, decimals: 0, grouped: true }
+  const isNum = typeof value === 'number' && Number.isFinite(value)
+  // Elemento React, null etc.: mostra como está.
+  const parsed = isText ? parseLocaleNumber(value)
+    : isNum ? { value, decimals: Number.isInteger(value) ? 0 : 1, grouped: true } : null
   const target = parsed?.value ?? 0
   const from = useRef(0)
   const [shown, setShown] = useState(() => (prefersReducedMotion() ? target : 0))

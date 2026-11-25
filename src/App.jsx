@@ -12,6 +12,8 @@ import { Clients } from '@pages/Clients'
 import { CRM } from '@pages/CRM'
 import { PipelineBoard } from '@pages/PipelineBoard'
 import { Billing } from '@pages/Billing'
+import { Projects } from '@pages/Projects'
+import { SalesPilot } from '@pages/SalesPilot'
 import { Calls } from '@pages/Calls'
 import { Integrations } from '@pages/Integrations'
 import { Analytics } from '@pages/Analytics'
@@ -137,6 +139,8 @@ function App() {
           <BrowserRouter>
             <PageTransition />
             <GlobalCommands />
+            {/* Cada tela aparece em fade ao trocar de rota (src/styles/motion.css). */}
+            <div className="rf-route" style={{ display: 'contents' }}>
             <Routes>
               {/* Public routes */}
               <Route path="/login" element={<Login />} />
@@ -161,6 +165,8 @@ function App() {
               <Route path="/crm" element={<PrivateRoute><CRM /></PrivateRoute>} />
               <Route path="/crm/board" element={<PrivateRoute><PipelineBoard /></PrivateRoute>} />
               <Route path="/billing" element={<PrivateRoute><Billing /></PrivateRoute>} />
+              <Route path="/projetos" element={<PrivateRoute><Projects /></PrivateRoute>} />
+              <Route path="/vendas-ia" element={<PrivateRoute><SalesPilot /></PrivateRoute>} />
               <Route path="/calls" element={<PrivateRoute><Calls /></PrivateRoute>} />
               <Route path="/clients" element={<PrivateRoute><Clients /></PrivateRoute>} />
               <Route path="/campaigns" element={<PrivateRoute><Campaigns /></PrivateRoute>} />
@@ -188,6 +194,7 @@ function App() {
 
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
+            </div>
           </BrowserRouter>
         </AppProvider>
       </AuthProvider>

@@ -5,6 +5,7 @@ import { useGoalProgress } from '@hooks/useGoalProgress'
 import { useAuth } from '@context/AuthContext'
 import { brl } from '@lib/metrics'
 import { SalesThermometer } from './SalesThermometer'
+import { CountUp } from '@components/motion'
 
 const card = {
   background: 'linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01)), var(--card)',
@@ -16,7 +17,7 @@ const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'jul
 const Stat = ({ label, value, color }) => (
   <div style={{ flex: '1 1 120px', minWidth: 0 }}>
     <p style={{ margin: 0, fontSize: 11, color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>{label}</p>
-    <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: color || 'var(--ink-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</p>
+    <p style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 800, color: color || 'var(--ink-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><CountUp value={value} /></p>
   </div>
 )
 

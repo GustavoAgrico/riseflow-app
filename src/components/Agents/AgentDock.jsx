@@ -1,10 +1,13 @@
 // Aba de agentes: faixa lateral direita, presente em todas as páginas do Layout.
 // Mostra um mascote por agente; clicar abre o chat daquele agente com aprovações pendentes.
 // Spec: docs/AGENTES_ABA_E_MASCOTES.md
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Plus, ArrowUp, X, Check } from 'lucide-react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
+import { Plus, ArrowUp, X, Check, Lightbulb } from 'lucide-react'
 import { RiserAvatar } from './RiserAvatar'
+import { CoachBubble, CoachPanel, AgentTips, coachPrefs } from './Coach'
+import { useCoachData } from '@hooks/useCoachData'
+import { buildTips, pickTip, dayHeadline } from '@lib/coach'
 import { DEMO_AGENTS, DEMO_MESSAGES, DEMO_APPROVALS, demoReply } from './agentsDemo'
 import { agentsApi } from '@services/agents'
 import socket, { authenticateSocket } from '@services/socket'
@@ -47,6 +50,20 @@ export function AgentDock() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const listRef = useRef(null)
+  const inputRef = useRef(null)
+
+  // ── Dicas dos agentes (src/lib/coach.js) ──
+  const { pathname } = useLocation()
+  const snapshot = useCoachData()
+  const [mode, setMode] = useState('chat') // painel aberto: 'chat' (conversa) | 'coach' (Seu dia)
+  const [bubble, setBubble] = useState(null) // dica mostrada no balão
+  const [paused, setPaused] = useState(() => coachPrefs.paused())
+  const btnRefs = useRef({})
+  const lastBubbleAt = useRef(0)
+  const tips = useMemo(() => (snapshot ? buildTips(snapshot, { path: pathname }) : []), [snapshot, pathname])
+  const agentFor = useCallback((kind) => agents.find((a) => a.kind === kind) || null, [agents])
+  const urgent = tips.filter((t) => t.kind === 'acao' && t.priority >= 50)
+  const actionCount = (kind) => urgent.filter((t) => t.agent === kind).length
 
   // Carrega os agentes; sem API (antes da fase 1) ou em modo demo, usa os dados de exemplo.
   useEffect(() => {
@@ -109,9 +126,42 @@ export function AgentDock() {
   useEffect(() => { listRef.current?.scrollTo?.({ top: listRef.current.scrollHeight }) }, [messages.length, approvals.length])
 
   const pick = (id) => {
-    if (open && current?.id === id) { setOpen(false); writeLS(OPEN_KEY, false); return }
-    setSelected(id); writeLS(SEL_KEY, id); setOpen(true); writeLS(OPEN_KEY, true)
+    setBubble(null)
+    if (open && mode === 'chat' && current?.id === id) { setOpen(false); writeLS(OPEN_KEY, false); return }
+    setMode('chat'); setSelected(id); writeLS(SEL_KEY, id); setOpen(true); writeLS(OPEN_KEY, true)
   }
+  const openCoach = () => {
+    setBubble(null)
+    if (open && mode === 'coach') { setOpen(false); return }
+    setMode('coach'); setOpen(true)
+  }
+  // "Perguntar a …" no Seu dia: abre a conversa com o agente e deixa o pedido pronto para enviar.
+  const askAbout = (agent, tip) => {
+    setMode('chat'); setSelected(agent.id); writeLS(SEL_KEY, agent.id); setOpen(true)
+    setText(`Me ajude com isto: ${tip.title}. ${tip.text}`)
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }
+
+  // Ao trocar de tela, um mascote fala uma dica (no máximo a cada 30 s; nunca com o painel aberto).
+  useEffect(() => {
+    if (paused || open || !tips.length || !agents.length) return
+    const t = setTimeout(() => {
+      if (Date.now() - lastBubbleAt.current < 30000) return
+      const tip = pickTip(tips, { seen: coachPrefs.seen(), path: pathname })
+      if (!tip) return
+      coachPrefs.markSeen(tip.id)
+      lastBubbleAt.current = Date.now()
+      setBubble(tip)
+    }, 2500)
+    return () => clearTimeout(t)
+  }, [pathname, tips.length, paused, open, agents.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const nextTip = () => {
+    const tip = pickTip(tips.filter((t) => t.id !== bubble?.id), { seen: coachPrefs.seen(), path: pathname })
+    if (tip) { coachPrefs.markSeen(tip.id); setBubble(tip) } else setBubble(null)
+  }
+  const pauseTips = () => { coachPrefs.pause(); setPaused(true); setBubble(null) }
+  const togglePause = () => { if (paused) { coachPrefs.resume(); setPaused(false) } else pauseTips() }
   const close = () => { setOpen(false); writeLS(OPEN_KEY, false) }
 
   // Esc fecha a conversa (o painel fica por cima da página).
@@ -185,12 +235,34 @@ export function AgentDock() {
         background: C.panel, borderLeft: isMobile ? 'none' : `1px solid ${C.border}`,
         borderTop: isMobile ? `1px solid ${C.border}` : 'none', boxSizing: 'border-box', flexShrink: 0,
       }}>
-      {agents.map((a) => {
-        const active = open && current?.id === a.id
+      <button type="button" onClick={openCoach} aria-label="Seu dia: tarefas, dicas e desempenho" title="Seu dia"
+        className="rf-press"
+        style={{
+          position: 'relative', width: 44, height: 44, flexShrink: 0, borderRadius: 12, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: open && mode === 'coach' ? ORANGE : 'rgba(255,107,53,0.12)', color: open && mode === 'coach' ? '#1A0B02' : '#FF8A3D',
+          border: '1px solid rgba(255,107,53,0.45)', boxShadow: '0 6px 18px rgba(255,107,53,0.18)',
+        }}>
+        <Lightbulb size={19} />
+        {urgent.length > 0 && (
+          <span className="rf-tip-badge" aria-hidden="true" style={{ position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 9, background: '#FF6B35', color: '#fff', fontSize: 10, fontWeight: 800, display: 'grid', placeItems: 'center', border: '2px solid var(--card)', boxSizing: 'border-box' }}>
+            {urgent.length}
+          </span>
+        )}
+      </button>
+      <span aria-hidden="true" style={{ width: isMobile ? 1 : 28, height: isMobile ? 28 : 1, background: C.border, flexShrink: 0 }} />
+      {agents.map((a, i) => {
+        const active = open && mode === 'chat' && current?.id === a.id
         const s = STATUS[a.status] || STATUS.idle
+        const speaking = bubble && !open && agentFor(bubble.agent)?.id === a.id
+        const motion = speaking ? 'talk'
+          : a.status === 'thinking' || a.status === 'working' ? 'think'
+            : a.status === 'waiting_approval' ? 'alert' : 'idle'
+        const count = actionCount(a.kind)
         return (
           <button key={a.id} type="button" role="tab" aria-selected={active}
-            aria-label={`${a.name}, ${a.role}, ${s.label}`} title={`${a.name} · ${s.label}`}
+            ref={(el) => { btnRefs.current[a.id] = el }} className="rf-riser-btn"
+            aria-label={`${a.name}, ${a.role}, ${s.label}${count ? `, ${count} dica(s) para hoje` : ''}`} title={`${a.name} · ${s.label}`}
             onClick={() => pick(a.id)}
             style={{
               position: 'relative', width: 50, height: 50, flexShrink: 0, borderRadius: 14, padding: 0, cursor: 'pointer',
@@ -198,11 +270,14 @@ export function AgentDock() {
               background: active ? 'rgba(255,107,53,0.16)' : 'transparent',
               border: `1px solid ${active ? 'rgba(255,107,53,0.6)' : 'transparent'}`,
             }}>
-            <RiserAvatar kind={a.kind} size={40} />
+            <RiserAvatar kind={a.kind} size={40} motion={motion} delay={i * 0.55} />
             <span aria-hidden="true" style={{
               position: 'absolute', right: 3, bottom: 3, width: 11, height: 11, borderRadius: '50%',
               background: s.dot, border: '2px solid var(--card)',
             }} />
+            {count > 0 && (
+              <span aria-hidden="true" className="rf-tip-badge" style={{ position: 'absolute', top: 0, left: 0, minWidth: 15, height: 15, padding: '0 3px', borderRadius: 8, background: '#FF6B35', color: '#fff', fontSize: 9, fontWeight: 800, display: 'grid', placeItems: 'center', border: '2px solid var(--card)', boxSizing: 'border-box', animationDelay: `${i * 0.3}s` }}>{count}</span>
+            )}
           </button>
         )
       })}
@@ -213,14 +288,18 @@ export function AgentDock() {
     </div>
   )
 
-  const panel = open && current && (
+  const coachPanel = open && mode === 'coach' && (
+    <CoachPanel tips={tips} headline={snapshot ? dayHeadline(snapshot) : 'Carregando…'} agentFor={agentFor} mobile={isMobile}
+      onClose={close} onGo={close} paused={paused} onTogglePause={togglePause} onAsk={askAbout} />
+  )
+  const panel = coachPanel || (open && current && (
     <section aria-label={`Conversa com ${current.name}`} style={{
       width: isMobile ? '100%' : 380, height: isMobile ? '70vh' : '100%', display: 'flex', flexDirection: 'column',
       background: C.panel, borderLeft: isMobile ? 'none' : `1px solid ${C.border}`,
       borderTop: isMobile ? `1px solid ${C.border}` : 'none', fontFamily: F, color: C.text, boxSizing: 'border-box',
     }}>
       <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: `1px solid ${C.border}` }}>
-        <RiserAvatar kind={current.kind} size={48} label={current.name} />
+        <RiserAvatar kind={current.kind} size={48} label={current.name} motion={sending || current.status === 'thinking' ? 'think' : 'idle'} />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontWeight: 700, fontSize: 16 }}>{current.name}</div>
           <div style={{ fontSize: 13, color: C.muted }}>
@@ -237,6 +316,7 @@ export function AgentDock() {
           Modo exemplo: os agentes ainda não executam tarefas sozinhos. Eles indicam a tela que faz o pedido.
         </p>
       )}
+      <AgentTips tips={tips.filter((t) => t.agent === current.kind)} onGo={close} />
       <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {messages.map((m) => (
           <div key={m.id} style={{
@@ -283,7 +363,7 @@ export function AgentDock() {
         <label htmlFor="agent-dock-input" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
           Mensagem para {current.name}
         </label>
-        <input id="agent-dock-input" value={text} onChange={(e) => setText(e.target.value)} placeholder={`Peça algo a ${current.name}…`}
+        <input id="agent-dock-input" ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} placeholder={`Peça algo a ${current.name}…`}
           style={{
             flex: 1, minWidth: 0, minHeight: 44, padding: '0 14px', borderRadius: 12, border: `1px solid ${C.border}`,
             background: 'var(--bg)', color: C.text, fontFamily: F, fontSize: 14, outline: 'none',
@@ -294,14 +374,31 @@ export function AgentDock() {
         }}><ArrowUp size={18} /></button>
       </form>
     </section>
+  ))
+
+  // Balão de dica: aponta para o mascote que está falando.
+  const bubbleAgent = bubble ? agentFor(bubble.agent) || agents[0] : null
+  const anchorY = (() => {
+    const el = bubbleAgent && btnRefs.current[bubbleAgent.id]
+    if (!el) return 120
+    const r = el.getBoundingClientRect()
+    return r.top + r.height / 2
+  })()
+  const bubbleEl = bubble && !open && (
+    <CoachBubble tip={bubble} agent={bubbleAgent} mobile={isMobile} anchorY={anchorY}
+      onClose={() => setBubble(null)} onNext={nextTip} onPause={pauseTips} onGo={() => setBubble(null)}
+      hasNext={tips.some((t) => t.id !== bubble.id && !coachPrefs.seen().includes(t.id))} />
   )
 
   if (isMobile) {
     return (
-      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 45, display: 'flex', flexDirection: 'column' }}>
-        {panel}
-        {rail}
-      </div>
+      <>
+        {bubbleEl}
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 45, display: 'flex', flexDirection: 'column' }}>
+          {panel}
+          {rail}
+        </div>
+      </>
     )
   }
   // Desktop: só o trilho ocupa espaço no layout; a conversa abre por cima da página, ao lado
@@ -315,6 +412,7 @@ export function AgentDock() {
         }}>{panel}</div>
       )}
       {rail}
+      {bubbleEl}
     </aside>
   )
 }

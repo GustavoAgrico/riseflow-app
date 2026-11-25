@@ -13,7 +13,7 @@ const USER_TABLES = new Set([
   'activity_logs', 'attendant_config', 'calls', 'campaigns', 'clients', 'contacts',
   'conversation_notes', 'conversations', 'crm_tasks', 'flows', 'integrations', 'invoices', 'knowledge_base',
   'lead_scores', 'meetings', 'messages', 'niche_config', 'notes', 'notifications',
-  'pipeline_stages', 'products', 'proposals', 'push_subscriptions', 'sales_goals', 'schedules', 'settings',
+  'pipeline_stages', 'products', 'projects', 'proposals', 'sales_opportunities', 'push_subscriptions', 'sales_goals', 'schedules', 'settings',
   'team_members', 'team_queues', 'templates', 'usage', 'user_preferences',
 ])
 // Plano/limite só mudam pelo servidor (webhook de pagamento).

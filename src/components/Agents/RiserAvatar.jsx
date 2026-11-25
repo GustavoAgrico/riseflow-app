@@ -16,12 +16,12 @@ export const RISER_KINDS = Object.keys(GRADIENTS)
 
 const INK = '#1B1410'
 const Eyes = ({ lx, rx, y, r = 7, glint = 2.4 }) => (
-  <>
+  <g className="rf-riser-eyes">
     <circle cx={lx} cy={y} r={r} fill={INK} />
     <circle cx={rx} cy={y} r={r} fill={INK} />
     <circle cx={lx + 2.4} cy={y - 2.6} r={glint} fill="#fff" />
     <circle cx={rx + 2.4} cy={y - 2.6} r={glint} fill="#fff" />
-  </>
+  </g>
 )
 const Cheeks = ({ lx, rx, y, color = '#FF6F91', opacity = 0.35 }) => (
   <>
@@ -136,12 +136,15 @@ function Body({ kind, fill }) {
   }
 }
 
-export function RiserAvatar({ kind = 'comercial', size = 40, label, shadow = true, style }) {
+// motion: undefined (parado) | 'idle' (respira e pisca) | 'talk' (pula ao falar)
+//         | 'think' (balança pensando) | 'alert' (saltinhos pedindo atenção). delay desencontra os mascotes.
+export function RiserAvatar({ kind = 'comercial', size = 40, label, shadow = true, style, motion, delay = 0 }) {
   const k = GRADIENTS[kind] ? kind : 'comercial'
   const gid = `riser-${k}-${useId().replace(/:/g, '')}`
   const [from, to] = GRADIENTS[k]
   return (
-    <svg viewBox="0 0 100 100" width={size} height={size} style={style}
+    <svg viewBox="0 0 100 100" width={size} height={size} style={{ overflow: 'visible', ...style, '--d': `${delay}s` }}
+      className={motion ? `rf-riser rf-riser-${motion}` : undefined}
       role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
       <defs>
         <linearGradient id={gid} x1="0.15" y1="0" x2="0.85" y2="1">
@@ -149,8 +152,8 @@ export function RiserAvatar({ kind = 'comercial', size = 40, label, shadow = tru
           <stop offset="1" stopColor={to} />
         </linearGradient>
       </defs>
-      {shadow && <ellipse cx="50" cy="95" rx="27" ry="3.6" fill="#000" fillOpacity="0.32" />}
-      <Body kind={k} fill={`url(#${gid})`} />
+      {shadow && <ellipse className="rf-riser-shadow" cx="50" cy="95" rx="27" ry="3.6" fill="#000" fillOpacity="0.32" />}
+      <g className="rf-riser-body"><Body kind={k} fill={`url(#${gid})`} /></g>
     </svg>
   )
 }

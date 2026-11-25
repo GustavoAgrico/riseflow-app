@@ -54,13 +54,19 @@ const parseMoney = (v) => {
 /* linha da tabela clients -> formato do card do CRM */
 const mapRow = r => ({ id: r.id, name: r.name || '', phone: r.phone || '', email: r.email || '', company: r.company || '', value: Number(r.value) || 0, stage: r.stage || 'lead', tags: r.tags || [], lastMsg: r.last_message || '', time: rel(r.created_at), assignedTo: r.assigned_to || '' })
 
-const ContactCard = ({ contact, onDragStart, onClick, onDelete, onEditClick, stages }) => {
+const ContactCard = ({ contact, onDragStart, onClick, onDelete, onEditClick, stages, index = 0, landed = false }) => {
   const [hov, setHov] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const st = stageAt(stages, contact.stage)
+  // Entrada em sequência dentro da coluna; card recém-movido "pousa" com um brilho.
+  const cls = ['rf-crm-card', landed && 'rf-landed', dragging && 'rf-dragging'].filter(Boolean).join(' ')
   return (
-    <div draggable onDragStart={e => onDragStart(e, contact.id)} onClick={() => onClick(contact)}
+    <div draggable className={cls}
+      onDragStart={e => { setDragging(true); onDragStart(e, contact.id) }}
+      onDragEnd={() => setDragging(false)}
+      onClick={() => onClick(contact)}
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ ...S.card, position: 'relative' }}>
+      style={{ ...S.card, position: 'relative', '--i': index, '--st': st.color + '88' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <div style={{ width: 32, height: 32, borderRadius: '50%', background: st.color + '22', color: st.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{ini(contact.name)}</div>
         <div style={{ minWidth: 0, flex: 1 }}>
@@ -513,6 +519,7 @@ export function CRM() {
   const [filterOwner, setFilterOwner] = useState('')
   const [members, setMembers] = useState([])
   const [dragOver, setDragOver] = useState(null)
+  const [landedId, setLandedId] = useState(null) // card que acabou de mudar de etapa (animação de pouso)
 
   /* Membros da equipe (para atribuir responsável e filtrar). */
   useEffect(() => {
@@ -563,7 +570,9 @@ export function CRM() {
 
   /* Move etapa (drag/select) — atualização otimista + persiste em clients. */
   const moveContact = async (id, stage) => {
+    if (contacts.find(c => c.id === id)?.stage === stage) return
     setContacts(p => p.map(c => c.id === id ? { ...c, stage } : c))
+    setLandedId(id); setTimeout(() => setLandedId(l => (l === id ? null : l)), 900)
     if (selected?.id === id) setSelected(p => ({ ...p, stage }))
     logger.log(user?.id, 'stage_changed', { category: 'crm', description: (contacts.find(c => c.id === id)?.name || 'Contato') + ' movido para ' + (stageAt(stages, stage).label || stage) })
     if (isDemoMode) return
@@ -714,13 +723,16 @@ export function CRM() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color, flexShrink: 0 }} />
                     <span style={{ fontSize: 13, fontWeight: 700, color: C.tx, flex: 1 }}>{stage.label}</span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: stage.color, background: stage.color + '18', borderRadius: 10, padding: '1px 8px' }}>{cols.length}</span>
+                    <span key={cols.length} className="rf-check-pop" style={{ fontSize: 11, fontWeight: 700, color: stage.color, background: stage.color + '18', borderRadius: 10, padding: '1px 8px', display: 'inline-block' }}>{cols.length}</span>
                   </div>
-                  {stageSum(stage.key) > 0 && <p style={{ margin: '4px 0 0 16px', fontSize: 11, fontWeight: 700, color: C.mut, fontVariantNumeric: 'tabular-nums' }}>{brl(stageSum(stage.key))}</p>}
+                  {stageSum(stage.key) > 0 && <p style={{ margin: '4px 0 0 16px', fontSize: 11, fontWeight: 700, color: C.mut, fontVariantNumeric: 'tabular-nums' }}><CountUp value={brl(stageSum(stage.key))} /></p>}
                 </div>
-                <div style={{ minHeight: 60, borderRadius: 12, border: over ? '2px dashed #2563EB66' : '2px dashed transparent', background: over ? '#2563EB06' : 'transparent', padding: over ? 4 : 0, transition: 'all .15s' }}>
-                  {cols.map(c => (
-                    <ContactCard key={c.id} contact={c} stages={stages}
+                <div className="rf-dropzone" style={{ minHeight: 60, borderRadius: 12, border: over ? `2px dashed ${stage.color}aa` : '2px dashed transparent', background: over ? stage.color + '12' : 'transparent', boxShadow: over ? `inset 0 0 24px ${stage.color}22` : 'none', padding: over ? 6 : 0 }}>
+                  {cols.length === 0 && (
+                    <div style={{ height: 60, borderRadius: 10, border: `1px dashed ${over ? 'transparent' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: C.mut, opacity: over ? 0 : 0.7, transition: 'opacity .2s' }}>Arraste um card para cá</div>
+                  )}
+                  {cols.map((c, ci) => (
+                    <ContactCard key={c.id} contact={c} stages={stages} index={ci} landed={landedId === c.id}
                       onClick={(item) => { setOpenInEdit(false); setSelected(item) }}
                       onDragStart={(e, id) => e.dataTransfer.setData('cid', id)}
                       onEditClick={(item) => { setOpenInEdit(true); setEditTick(t => t + 1); setSelected(item) }}

@@ -6,6 +6,7 @@ import {
   Search, X, CornerDownLeft, Keyboard, UserPlus, CalendarPlus, FileText, Receipt, GitBranch, ContactRound,
   LayoutDashboard, Users, Plug, Zap, MessageSquare, BarChart3, PieChart, Settings, Filter, Megaphone,
   Calendar, CalendarCheck, UserCog, ClipboardList, Crown, Bot, Sparkles, PhoneCall, Activity, TrendingUp, Target, ArrowRight,
+  FolderKanban, FolderPlus,
 } from 'lucide-react'
 import api from '@services/api'
 import { useApp } from '@context/AppContext'
@@ -16,7 +17,7 @@ import { buildSections, createItems, pageItems, GO_KEYS, isTypingTarget } from '
 const ICONS = {
   UserPlus, CalendarPlus, FileText, Receipt, GitBranch, LayoutDashboard, Users, ContactRound, Plug, Zap, MessageSquare,
   BarChart3, PieChart, Settings, Filter, Megaphone, Calendar, CalendarCheck, UserCog, ClipboardList, Crown, Bot,
-  Sparkles, PhoneCall, Activity, TrendingUp, Target, Search,
+  Sparkles, PhoneCall, Activity, TrendingUp, Target, Search, FolderKanban, FolderPlus,
 }
 const F = "'DM Sans', sans-serif"
 const GO_WINDOW_MS = 1200
@@ -41,7 +42,7 @@ const SHORTCUTS = [
   ['Esta ajuda', ['?']],
   ['Ir para Dashboard', ['G', 'D']], ['Ir para Hoje', ['G', 'H']], ['Ir para Chat', ['G', 'M']],
   ['Ir para CRM', ['G', 'C']], ['Ir para Clientes', ['G', 'L']], ['Ir para Funil', ['G', 'F']],
-  ['Ir para Agenda', ['G', 'A']], ['Ir para Cobranças', ['G', 'B']], ['Ir para Relatórios', ['G', 'R']],
+  ['Ir para Agenda', ['G', 'A']], ['Ir para Projetos', ['G', 'P']], ['Ir para Piloto de Vendas', ['G', 'V']], ['Ir para Cobranças', ['G', 'B']], ['Ir para Relatórios', ['G', 'R']],
   ['Ir para Configurações', ['G', 'S']],
   ['Fechar janela', ['Esc']],
 ]

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { socket } from '@services/socket'
 import { useAuth } from '@context/AuthContext'
 import { Layout } from '@components/Layout/Layout'
+import { CountUp } from '@components/motion'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-3)', pur: '#7C3AED', org: '#FF6B35' }
 
@@ -55,7 +56,7 @@ const KpiCard = ({ Icon, label, value, color, sub }) => (
         <Icon size={17} color={color || C.pur} />
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+        <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}><CountUp value={value} /></div>
         <div style={{ fontSize: 11, color: C.mut, marginTop: 3 }}>{label}</div>
       </div>
     </div>
