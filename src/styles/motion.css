@@ -195,6 +195,18 @@ div[style*="position: fixed"][style*="inset: 0"]:not([aria-hidden="true"]):not(.
 @keyframes rf-badge { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
 .rf-tip-badge { animation: rf-badge 1.8s ease-in-out infinite; }
 
+/* ── Gráficos do pipeline (src/components/Pipeline/Charts.jsx) ─────────────────── */
+@keyframes rf-draw { from { stroke-dasharray: 1; stroke-dashoffset: 1; } to { stroke-dasharray: 1; stroke-dashoffset: 0; } }
+.rf-draw { stroke-dasharray: 1; animation: rf-draw 1.4s var(--rf-ease) both; }
+.rf-fade-late { animation: rf-fade .9s ease-out .5s backwards; }
+.rf-bar-c { transform-origin: center; animation: rf-grow-x .8s var(--rf-ease) backwards; animation-delay: calc(var(--i, 0) * 70ms + 120ms); }
+@keyframes rf-live { 0% { box-shadow: 0 0 0 0 var(--c, #22C55E); } 70%, 100% { box-shadow: 0 0 0 9px transparent; } }
+.rf-live-dot { animation: rf-live 1.8s ease-out infinite; }
+@keyframes rf-feed { from { opacity: 0; transform: translateX(-12px) scale(.98); } }
+.rf-feed-in { animation: rf-feed .45s var(--rf-ease-spring) backwards; }
+@keyframes rf-floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.rf-float { animation: rf-floaty 3.6s ease-in-out infinite; }
+
 /* ── Brilho ambiente lento atrás do conteúdo (Layout) ────────────────────────── */
 .rf-ambient {
   position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
@@ -218,7 +230,7 @@ div[style*="position: fixed"][style*="inset: 0"]:not([aria-hidden="true"]):not(.
 
 @media (prefers-reduced-motion: reduce) {
   .rf-stagger > *, .rf-dash-main > *, .rf-rail > *, .rf-cards > *, .grid > *, tbody > tr, .rf-route > *,
-  .rf-reveal .rf-ch, .rf-crm-card, .rf-drawer, .rf-step, .rf-riser .rf-riser-body, .rf-riser .rf-riser-eyes, .rf-riser .rf-riser-shadow, .rf-bubble, .rf-bubble-up, .rf-tip-badge, .rf-bar-y, .rf-bar-x, .rf-scrim, .rf-pop, .rf-toast, .rf-landed, .rf-check-pop,
+  .rf-reveal .rf-ch, .rf-crm-card, .rf-drawer, .rf-step, .rf-riser .rf-riser-body, .rf-riser .rf-riser-eyes, .rf-riser .rf-riser-shadow, .rf-bubble, .rf-bubble-up, .rf-tip-badge, .rf-draw, .rf-fade-late, .rf-bar-c, .rf-live-dot, .rf-feed-in, .rf-float, .rf-bar-y, .rf-bar-x, .rf-scrim, .rf-pop, .rf-toast, .rf-landed, .rf-check-pop,
   div[style*="position: fixed"][style*="inset: 0"], div[style*="position: fixed"][style*="inset: 0"] > div,
   .rf-ambient::before, .rf-ambient::after {
     animation: none !important;

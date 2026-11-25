@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2, MonitorPlay, User, Plus, Square, CheckSquare, X, ChevronUp, ChevronDown, Layers, Flame, Snowflake, CloudSun, Clock, CalendarCheck, Pencil, Building2 } from 'lucide-react'
+import { Phone, Mail, DollarSign, Target, ArrowLeft, Trash2, MonitorPlay, User, Plus, Square, CheckSquare, X, ChevronUp, ChevronDown, Layers, Flame, Snowflake, CloudSun, Clock, CalendarCheck, Pencil, Building2, BarChart3, Filter, PieChart as PieChartIcon, TrendingUp, HeartPulse, Percent } from 'lucide-react'
 import api from '@services/api'
 import { useAuth } from '@context/AuthContext'
 import { LeadScorePanel } from '@components/LeadScorePanel'
@@ -11,6 +11,8 @@ import { useIsMobile } from '@hooks/useIsMobile'
 import { DEFAULT_STAGES, useStages, saveStages, newStageKey } from '@hooks/useStages'
 import { useQueryAction } from '@hooks/useQueryAction'
 import { CountUp } from '@components/motion'
+import { Panel, FunnelBars, Donut, AreaTrend, Sparkline, HealthList, EmptyColumn } from '@components/Pipeline/Charts'
+import { leadsPerDay, stageReach, pipelineHealth, ageTone } from '@lib/pipelineStats'
 import { computeSalesMetrics, brl } from '@lib/metrics'
 
 // Etapas do funil agora são dinâmicas (por conta) — ver @hooks/useStages.
@@ -52,7 +54,8 @@ const parseMoney = (v) => {
   return Math.max(0, Number(s) || 0)
 }
 /* linha da tabela clients -> formato do card do CRM */
-const mapRow = r => ({ id: r.id, name: r.name || '', phone: r.phone || '', email: r.email || '', company: r.company || '', value: Number(r.value) || 0, stage: r.stage || 'lead', tags: r.tags || [], lastMsg: r.last_message || '', time: rel(r.created_at), assignedTo: r.assigned_to || '' })
+const CARDS_PER_COLUMN = 40
+const mapRow = r => ({ id: r.id, name: r.name || '', phone: r.phone || '', email: r.email || '', company: r.company || '', value: Number(r.value) || 0, stage: r.stage || 'lead', tags: r.tags || [], lastMsg: r.last_message || '', time: rel(r.created_at), created_at: r.created_at || null, assignedTo: r.assigned_to || '' })
 
 const ContactCard = ({ contact, onDragStart, onClick, onDelete, onEditClick, stages, index = 0, landed = false }) => {
   const [hov, setHov] = useState(false)
@@ -66,9 +69,10 @@ const ContactCard = ({ contact, onDragStart, onClick, onDelete, onEditClick, sta
       onDragEnd={() => setDragging(false)}
       onClick={() => onClick(contact)}
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ ...S.card, position: 'relative', '--i': index, '--st': st.color + '88' }}>
+      style={{ ...S.card, position: 'relative', overflow: 'hidden', '--i': index, '--st': st.color + '88', background: `linear-gradient(160deg, ${st.color}12, transparent 55%), var(--card)` }}>
+      <span aria-hidden="true" style={{ position: 'absolute', left: 0, top: 9, bottom: 9, width: 3, borderRadius: 3, background: st.color, boxShadow: `0 0 8px ${st.color}` }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <div style={{ width: 32, height: 32, borderRadius: '50%', background: st.color + '22', color: st.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{ini(contact.name)}</div>
+        <div style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg, ${st.color}, ${st.color}77)`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0, boxShadow: `0 4px 12px ${st.color}44` }}>{ini(contact.name)}</div>
         <div style={{ minWidth: 0, flex: 1 }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: C.tx, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.name}</p>
           <p style={{ fontSize: 11, color: C.mut, margin: 0 }}>{contact.company}</p>
@@ -104,7 +108,12 @@ const ContactCard = ({ contact, onDragStart, onClick, onDelete, onEditClick, sta
       </div>}
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: C.mut, gap: 8 }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.lastMsg}</span>
-        <span style={{ flexShrink: 0 }}>há {contact.time}</span>
+        {(() => {
+          const age = ageTone(contact.created_at)
+          return age
+            ? <span title={`Entrou há ${age.days} dia(s)`} style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, color: age.color, background: age.color + '18', border: `1px solid ${age.color}40`, borderRadius: 20, padding: '0 7px' }}>{age.label}</span>
+            : <span style={{ flexShrink: 0 }}>há {contact.time}</span>
+        })()}
       </div>
     </div>
   )
@@ -520,6 +529,9 @@ export function CRM() {
   const [members, setMembers] = useState([])
   const [dragOver, setDragOver] = useState(null)
   const [landedId, setLandedId] = useState(null) // card que acabou de mudar de etapa (animação de pouso)
+  const [showInsights, setShowInsights] = useState(() => { try { return localStorage.getItem('rf.crm.insights') !== '0' } catch { return true } })
+  const toggleInsights = () => setShowInsights(v => { try { localStorage.setItem('rf.crm.insights', v ? '0' : '1') } catch { /* sem storage */ } return !v })
+  const [expanded, setExpanded] = useState({}) // coluna → mostrar todos os cards
 
   /* Membros da equipe (para atribuir responsável e filtrar). */
   useEffect(() => {
@@ -534,7 +546,7 @@ export function CRM() {
   useEffect(() => {
     let on = true
     ;(async () => {
-      if (isDemoMode) { setContacts(initContacts); setContactsLoaded(true); return }
+      if (isDemoMode) { setContacts(initContacts.map((c, i) => ({ ...c, created_at: new Date(Date.now() - [0, 1, 2, 4, 6, 9, 12, 13][i % 8] * 86400000).toISOString() }))); setContactsLoaded(true); return }
       if (!ownerUserId) return
       try {
         const { data } = await api.get('/clients', { params: { owner: ownerUserId } })
@@ -660,11 +672,14 @@ export function CRM() {
   const m = computeSalesMetrics(filtered, stages)
   const byStage = new Map(m.byStage.map(s => [s.key, s]))
   const stageSum = key => byStage.get(key)?.value ?? 0
+  const trend = leadsPerDay(filtered, 14)
+  const reach = stageReach(filtered, stages)
+  const health = pipelineHealth(filtered, stages)
   const kpis = [
-    { label: 'No funil', value: brl(m.pipeline), color: C.pur, hint: `${m.open} em aberto` },
-    { label: 'Previsão ponderada', value: brl(m.weightedForecast), color: '#059669', hint: 'por probabilidade de etapa' },
-    { label: 'Conversão', value: `${Math.round(m.convRate)}%`, color: '#2563EB', hint: `${m.won} ganhos / ${m.lost} perdidos` },
-    { label: 'Negócios', value: String(m.total), color: '#D97706', hint: 'total exibido' },
+    { label: 'No funil', value: brl(m.pipeline), color: C.pur, hint: health.noValue ? `${m.open} em aberto · ${health.noValue} sem valor` : `${m.open} em aberto`, Icon: DollarSign },
+    { label: 'Previsão ponderada', value: brl(m.weightedForecast), color: '#059669', hint: 'por probabilidade de etapa', Icon: Target },
+    { label: 'Conversão', value: `${Math.round(m.convRate)}%`, color: '#2563EB', hint: `${m.won} ganhos / ${m.lost} perdidos`, Icon: Percent },
+    { label: 'Negócios', value: String(m.total), color: '#D97706', hint: `${health.newToday} novos hoje`, Icon: Layers, spark: trend.map(t => t.count) },
   ]
 
   return (
@@ -701,43 +716,78 @@ export function CRM() {
       )}
       <div className="rf-cards" style={{ display: 'flex', gap: 10, padding: '12px 20px 0', flexShrink: 0, overflowX: 'auto' }}>
         {kpis.map(k => (
-          <div key={k.label} style={{ flex: '1 1 0', minWidth: 150, background: C.card, border: `1px solid ${C.bd}`, borderLeft: `3px solid ${k.color}`, borderRadius: 12, padding: '10px 14px' }}>
-            <p style={{ margin: 0, fontSize: 11, color: C.mut }}>{k.label}</p>
-            <p style={{ margin: '3px 0 1px', fontSize: 19, fontWeight: 800, color: C.tx, fontVariantNumeric: 'tabular-nums' }}><CountUp value={k.value} /></p>
-            <p style={{ margin: 0, fontSize: 10, color: k.color, fontWeight: 600 }}>{k.hint}</p>
+          <div key={k.label} className="rf-lift" style={{ position: 'relative', overflow: 'hidden', flex: '1 1 0', minWidth: 170, background: C.card, border: `1px solid ${k.color}40`, borderRadius: 14, padding: '10px 14px' }}>
+            <span aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: `radial-gradient(ellipse at 0% 0%, ${k.color}24, transparent 60%)` }} />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span style={{ width: 24, height: 24, borderRadius: 8, display: 'grid', placeItems: 'center', background: k.color + '22', boxShadow: `0 0 12px ${k.color}44` }}><k.Icon size={13} color={k.color} /></span>
+              <p style={{ margin: 0, fontSize: 11, color: C.mut }}>{k.label}</p>
+              {k.spark && <span style={{ marginLeft: 'auto' }}><Sparkline values={k.spark} color={k.color} width={70} height={22} /></span>}
+            </div>
+            <p style={{ position: 'relative', margin: '5px 0 1px', fontSize: 21, fontWeight: 800, color: C.tx, fontVariantNumeric: 'tabular-nums' }}><CountUp value={k.value} /></p>
+            <p style={{ position: 'relative', margin: 0, fontSize: 10.5, color: k.color, fontWeight: 600 }}>{k.hint}</p>
           </div>
         ))}
+        <button type="button" onClick={toggleInsights} aria-expanded={showInsights} title={showInsights ? 'Esconder gráficos' : 'Mostrar gráficos'}
+          style={{ flexShrink: 0, alignSelf: 'stretch', minWidth: 44, borderRadius: 14, border: `1px solid ${C.bd}`, background: showInsights ? 'rgba(124,58,237,0.14)' : C.card, color: showInsights ? '#A78BFA' : C.mut, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+          {showInsights ? <ChevronUp size={18} /> : <BarChart3 size={18} />}
+        </button>
       </div>
+      {showInsights && (
+        <div className="rf-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 10, padding: '10px 20px 0', flexShrink: 0 }}>
+          <Panel title="Funil de alcance" icon={Filter} accent="#7C3AED"><FunnelBars steps={reach.steps} compact /></Panel>
+          <Panel title="Distribuição por etapa" icon={PieChartIcon} accent="#22D3EE"><Donut data={m.byStage.map(s => ({ label: s.label, value: s.count, color: s.color }))} size={104} thickness={14} sub="negócios" /></Panel>
+          <Panel title="Entrada de leads · 14 dias" icon={TrendingUp} accent="#FF6B35" right={<span style={{ fontSize: 12, fontWeight: 800 }}><CountUp value={trend.reduce((a, t) => a + t.count, 0)} /></span>}>
+            <AreaTrend points={trend} id="crm" height={78} />
+          </Panel>
+          <Panel title="Saúde do funil" icon={HeartPulse} accent="#EF4444"><HealthList health={health} /></Panel>
+        </div>
+      )}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div className="rf-stagger" style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12, padding: '16px 20px', overflowX: isMobile ? 'hidden' : 'auto', overflowY: isMobile ? 'auto' : 'visible', alignItems: isMobile ? 'stretch' : 'flex-start' }}>
-          {stages.map(stage => {
+          {stages.map((stage, si) => {
             const cols = filtered.filter(c => c.stage === stage.key)
             const over = dragOver === stage.key
+            const share = filtered.length ? cols.length / filtered.length : 0
+            // Coluna com muitos cards: mostra os primeiros e o resto sob demanda (rápido mesmo com milhares).
+            const limit = expanded[stage.key] ? cols.length : CARDS_PER_COLUMN
+            const shown = cols.slice(0, limit)
             return (
               <div key={stage.key}
                 onDragOver={e => { e.preventDefault(); setDragOver(stage.key) }}
                 onDragLeave={() => setDragOver(null)}
                 onDrop={e => { const id = e.dataTransfer.getData('cid'); if (id) moveContact(id, stage.key); setDragOver(null) }}
                 style={{ minWidth: isMobile ? 0 : 240, width: isMobile ? '100%' : undefined, flexShrink: 0 }}>
-                <div style={{ marginBottom: 10 }}>
+                <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 14, background: `linear-gradient(135deg, ${stage.color}1c, transparent 70%), var(--card)`, border: `1px solid ${stage.color}33`, boxShadow: `inset 0 2px 0 ${stage.color}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color, flexShrink: 0 }} />
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color, flexShrink: 0, boxShadow: `0 0 8px ${stage.color}` }} />
                     <span style={{ fontSize: 13, fontWeight: 700, color: C.tx, flex: 1 }}>{stage.label}</span>
                     <span key={cols.length} className="rf-check-pop" style={{ fontSize: 11, fontWeight: 700, color: stage.color, background: stage.color + '18', borderRadius: 10, padding: '1px 8px', display: 'inline-block' }}>{cols.length}</span>
                   </div>
-                  {stageSum(stage.key) > 0 && <p style={{ margin: '4px 0 0 16px', fontSize: 11, fontWeight: 700, color: C.mut, fontVariantNumeric: 'tabular-nums' }}><CountUp value={brl(stageSum(stage.key))} /></p>}
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '4px 0 0 16px' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: stageSum(stage.key) > 0 ? C.tx : C.mut, fontVariantNumeric: 'tabular-nums' }}><CountUp value={brl(stageSum(stage.key))} /></span>
+                    <span style={{ fontSize: 10, color: C.mut }}>{Math.round(share * 100)}%</span>
+                  </div>
+                  <div style={{ height: 3, borderRadius: 99, background: 'var(--bg)', margin: '7px 0 0 16px', overflow: 'hidden' }}>
+                    <div className="rf-bar-x" style={{ '--i': si, height: '100%', width: `${Math.max(share ? 3 : 0, share * 100)}%`, background: stage.color, borderRadius: 99, boxShadow: `0 0 6px ${stage.color}` }} />
+                  </div>
                 </div>
                 <div className="rf-dropzone" style={{ minHeight: 60, borderRadius: 12, border: over ? `2px dashed ${stage.color}aa` : '2px dashed transparent', background: over ? stage.color + '12' : 'transparent', boxShadow: over ? `inset 0 0 24px ${stage.color}22` : 'none', padding: over ? 6 : 0 }}>
                   {cols.length === 0 && (
-                    <div style={{ height: 60, borderRadius: 10, border: `1px dashed ${over ? 'transparent' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: C.mut, opacity: over ? 0 : 0.7, transition: 'opacity .2s' }}>Arraste um card para cá</div>
+                    <div style={{ opacity: over ? 0 : 1, transition: 'opacity .2s' }}><EmptyColumn color={stage.color} /></div>
                   )}
-                  {cols.map((c, ci) => (
-                    <ContactCard key={c.id} contact={c} stages={stages} index={ci} landed={landedId === c.id}
+                  {shown.map((c, ci) => (
+                    <ContactCard key={c.id} contact={c} stages={stages} index={Math.min(ci, 10)} landed={landedId === c.id}
                       onClick={(item) => { setOpenInEdit(false); setSelected(item) }}
                       onDragStart={(e, id) => e.dataTransfer.setData('cid', id)}
                       onEditClick={(item) => { setOpenInEdit(true); setEditTick(t => t + 1); setSelected(item) }}
                       onDelete={deleteContact} />
                   ))}
+                  {cols.length > CARDS_PER_COLUMN && (
+                    <button type="button" onClick={() => setExpanded(x => ({ ...x, [stage.key]: !x[stage.key] }))} className="rf-press"
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: 10, border: `1px dashed ${stage.color}66`, background: stage.color + '0d', color: stage.color, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans,sans-serif' }}>
+                      {expanded[stage.key] ? 'Mostrar menos' : `Mostrar mais ${cols.length - CARDS_PER_COLUMN}`}
+                    </button>
+                  )}
                 </div>
               </div>
             )
