@@ -26,6 +26,7 @@ import { LeadStatusPanel } from '@components/Dashboard/LeadStatusPanel'
 import { useApp } from '@context/AppContext'
 import { useAuth } from '@context/AuthContext'
 import clsx from 'clsx'
+import { CountUp } from '@components/motion'
 
 const CH_COLOR = {
   whatsapp: '#22C55E',
@@ -101,7 +102,7 @@ const StatCard =({ icon: Icon, label, value, change, color, hex = '#FF6B35', spa
       </div>
       <p className="font-display font-bold text-white"
          style={{ fontSize: 26, fontVariantNumeric: 'tabular-nums', letterSpacing: '-.03em', lineHeight: 1, marginBottom: 5 }}>
-        {value}
+        <CountUp value={value} />
       </p>
       <p style={{ fontSize: 11, color: 'var(--ink-4)', marginBottom: 10 }}>{label}</p>
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: `${dColor}14`, border: `1px solid ${dColor}2b`, color: dColor, borderRadius: 20, padding: '3px 9px' }}>
@@ -443,7 +444,7 @@ export const Dashboard = () => {
       </div>
 
       {/* ── KPIs do topo — vendas (CRM) OU atividade real de WhatsApp quando o CRM está vazio ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="rf-cards grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {topCards.map((s, i) => <StatCard key={i} sparkData={sparkline} {...s} />)}
       </div>
 

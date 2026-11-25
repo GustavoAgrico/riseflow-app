@@ -9,6 +9,8 @@ import { NotesPanel } from '@components/NotesPanel'
 import { logger } from '@services/activityLogger'
 import { useIsMobile } from '@hooks/useIsMobile'
 import { DEFAULT_STAGES, useStages, saveStages, newStageKey } from '@hooks/useStages'
+import { useQueryAction } from '@hooks/useQueryAction'
+import { CountUp } from '@components/motion'
 import { computeSalesMetrics, brl } from '@lib/metrics'
 
 // Etapas do funil agora são dinâmicas (por conta) — ver @hooks/useStages.
@@ -500,6 +502,7 @@ export function CRM() {
   const [stagesOpen, setStagesOpen] = useState(false)
   const [navHov, setNavHov] = useState(false)
   const [contacts, setContacts] = useState([])
+  const [contactsLoaded, setContactsLoaded] = useState(false)
   const [selected, setSelected] = useState(null)
   const [openInEdit, setOpenInEdit] = useState(false)
   const [editTick, setEditTick] = useState(0)
@@ -524,15 +527,23 @@ export function CRM() {
   useEffect(() => {
     let on = true
     ;(async () => {
-      if (isDemoMode) { setContacts(initContacts); return }
+      if (isDemoMode) { setContacts(initContacts); setContactsLoaded(true); return }
       if (!ownerUserId) return
       try {
         const { data } = await api.get('/clients', { params: { owner: ownerUserId } })
         if (on) { setContacts((data || []).map(mapRow)); console.log(`[CRM] ${(data || []).length} contatos carregados`) }
       } catch (e) { console.warn('[CRM] erro ao carregar contatos:', e?.response?.data?.error ?? e?.message ?? e); if (on) setContacts([]) }
+      if (on) setContactsLoaded(true)
     })()
     return () => { on = false }
   }, [ownerUserId, isDemoMode])
+
+  // Vindo da busca global: /crm?abrir=<id> abre o contato; /crm?novo=1 abre o cadastro.
+  useQueryAction('abrir', (id) => {
+    const c = contacts.find(x => String(x.id) === id)
+    if (c) { setOpenInEdit(false); setSelected(c) }
+  }, contactsLoaded)
+  useQueryAction('novo', () => setModal(true))
 
   const allTags = [...new Set(contacts.flatMap(c => c.tags))]
   const filtered = contacts.filter(c =>
@@ -679,17 +690,17 @@ export function CRM() {
           Modo demo — os contatos abaixo são apenas exemplo. Crie uma conta para gerenciar seu CRM de verdade.
         </div>
       )}
-      <div style={{ display: 'flex', gap: 10, padding: '12px 20px 0', flexShrink: 0, overflowX: 'auto' }}>
+      <div className="rf-cards" style={{ display: 'flex', gap: 10, padding: '12px 20px 0', flexShrink: 0, overflowX: 'auto' }}>
         {kpis.map(k => (
           <div key={k.label} style={{ flex: '1 1 0', minWidth: 150, background: C.card, border: `1px solid ${C.bd}`, borderLeft: `3px solid ${k.color}`, borderRadius: 12, padding: '10px 14px' }}>
             <p style={{ margin: 0, fontSize: 11, color: C.mut }}>{k.label}</p>
-            <p style={{ margin: '3px 0 1px', fontSize: 19, fontWeight: 800, color: C.tx, fontVariantNumeric: 'tabular-nums' }}>{k.value}</p>
+            <p style={{ margin: '3px 0 1px', fontSize: 19, fontWeight: 800, color: C.tx, fontVariantNumeric: 'tabular-nums' }}><CountUp value={k.value} /></p>
             <p style={{ margin: 0, fontSize: 10, color: k.color, fontWeight: 600 }}>{k.hint}</p>
           </div>
         ))}
       </div>
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12, padding: '16px 20px', overflowX: isMobile ? 'hidden' : 'auto', overflowY: isMobile ? 'auto' : 'visible', alignItems: isMobile ? 'stretch' : 'flex-start' }}>
+        <div className="rf-stagger" style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12, padding: '16px 20px', overflowX: isMobile ? 'hidden' : 'auto', overflowY: isMobile ? 'auto' : 'visible', alignItems: isMobile ? 'stretch' : 'flex-start' }}>
           {stages.map(stage => {
             const cols = filtered.filter(c => c.stage === stage.key)
             const over = dragOver === stage.key

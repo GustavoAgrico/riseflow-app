@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from '@context/AuthContext'
 import { NotificationToast } from '@components/NotificationToast'
 import { InstallPrompt } from '@components/InstallPrompt'
 import { PrivateRoute } from '@components/PrivateRoute'
+import { CommandCenter } from '@components/Command/CommandCenter'
 import { Dashboard } from '@pages/Dashboard'
 import { Clients } from '@pages/Clients'
 import { CRM } from '@pages/CRM'
@@ -107,6 +108,14 @@ function GlobalToasts() {
   return <NotificationToast notifications={toasts} onDismiss={dismissToast} />
 }
 
+// Busca global (Ctrl+K), menu Criar (N), atalhos (?) e "G + letra" — em todas as telas logadas,
+// inclusive as que não usam o Layout comum (CRM, Chat…).
+function GlobalCommands() {
+  const { user, loading, isDemoMode } = useAuth()
+  if (loading || (!user && !isDemoMode)) return null
+  return <CommandCenter />
+}
+
 // Raiz: todos (dono, membro de equipe e demo) caem no mesmo Dashboard, ou /login.
 function RootRedirect() {
   const { user, loading, isDemoMode } = useAuth()
@@ -127,6 +136,7 @@ function App() {
           <InstallPrompt />
           <BrowserRouter>
             <PageTransition />
+            <GlobalCommands />
             <Routes>
               {/* Public routes */}
               <Route path="/login" element={<Login />} />

@@ -8,6 +8,7 @@ import { FileText, Plus, Send, Check, X, Clock, Trash2, Download, Search, UserPl
 import { exportCSV, exportPremiumPDF } from '@utils/exportUtils'
 import { SkeletonKPI, SkeletonTable } from '@components/ui/Skeleton'
 import { EmptyState } from '@components/ui/EmptyState'
+import { useQueryAction } from '@hooks/useQueryAction'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED', org: '#FF6B35' }
 
@@ -131,6 +132,7 @@ export const Proposals = () => {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ title: '', client_name: '', client_id: null, value: '', valid_until: '', items: '' })
   const [error, setError] = useState(null)
+  useQueryAction('novo', () => setShowForm(true)) // menu "Criar" da busca global
 
   useEffect(() => {
     if (isDemoMode) { setLoading(false); return }

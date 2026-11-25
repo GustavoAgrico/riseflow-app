@@ -7,6 +7,8 @@ export const AppProvider = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [newFlowModalOpen, setNewFlowModalOpen] = useState(false)
   const [flowsVersion, setFlowsVersion] = useState(0)
+  // Paleta de comandos: null (fechada) | 'search' (Ctrl+K) | 'create' (N) | 'help' (?)
+  const [command, setCommand] = useState(null)
 
   // Notificações em tempo real (sino da topbar + toasts globais)
   const notif = useNotifications()
@@ -22,6 +24,7 @@ export const AppProvider = ({ children }) => {
       ...notif,
       newFlowModalOpen, setNewFlowModalOpen,
       flowsVersion, onFlowCreated,
+      command, setCommand,
     }}>
       {children}
     </AppContext.Provider>

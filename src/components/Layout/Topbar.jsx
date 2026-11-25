@@ -5,6 +5,7 @@ import { useApp } from '@context/AppContext'
 import { useAuth } from '@context/AuthContext'
 import { useTheme } from '@hooks/useTheme'
 import clsx from 'clsx'
+import { RevealText } from '@components/motion'
 
 const getInitials = (name) => {
   if (!name) return 'U'
@@ -21,7 +22,7 @@ const relTime = (t) => {
 }
 
 export const Topbar = ({ title, subtitle, onMenu }) => {
-  const { notifications, markAllRead, unreadCount, clearAll, setNewFlowModalOpen } = useApp()
+  const { notifications, markAllRead, unreadCount, clearAll, setCommand } = useApp()
   const { user, signOut, isDemoMode } = useAuth()
   const { theme, toggle } = useTheme()
   const [showNotif, setShowNotif] = useState(false)
@@ -86,31 +87,39 @@ export const Topbar = ({ title, subtitle, onMenu }) => {
           style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer', padding: '4px 8px', borderRadius: 6 }}
         >←</button>
         <div className="min-w-0">
-          <h1 className="font-display font-bold text-base sm:text-lg text-white truncate">{title}</h1>
+          <h1 className="font-display font-bold text-base sm:text-lg text-white truncate"><RevealText key={title} text={title} /></h1>
           {subtitle && <p className="text-xs text-slate-400 truncate">{subtitle}</p>}
         </div>
       </div>
 
       {/* Right */}
       <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-        {/* Search */}
-        <div className="hidden md:flex items-center gap-2 glass rounded-xl px-3 py-2 w-52">
-          <Search size={14} className="text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar..."
-            className="bg-transparent text-sm text-white placeholder-slate-500 outline-none flex-1"
-          />
-          <kbd className="text-[10px] text-slate-500 font-mono bg-dark-500 px-1.5 py-0.5 rounded">⌘K</kbd>
-        </div>
-
-        {/* New Flow Button */}
+        {/* Busca global: abre a paleta de comandos (Ctrl+K) */}
         <button
-          onClick={() => setNewFlowModalOpen(true)}
+          onClick={() => setCommand('search')}
+          aria-label="Buscar (Ctrl+K)"
+          className="hidden lg:flex items-center gap-2 glass rounded-xl px-3 py-2 w-52 text-left hover:border-brand-orange/40 transition-all"
+        >
+          <Search size={14} className="text-slate-400" />
+          <span className="text-sm text-slate-500 flex-1">Buscar...</span>
+          <kbd className="text-[10px] text-slate-500 font-mono bg-dark-500 px-1.5 py-0.5 rounded">Ctrl K</kbd>
+        </button>
+        <button
+          onClick={() => setCommand('search')}
+          aria-label="Buscar"
+          className="lg:hidden p-2.5 glass rounded-xl hover:border-brand-orange/40 transition-all"
+        >
+          <Search size={17} className="text-slate-300" />
+        </button>
+
+        {/* Criar: contato, reunião, proposta, cobrança ou fluxo (atalho N) */}
+        <button
+          onClick={() => setCommand('create')}
           className="btn-primary"
+          title="Criar (N)"
         >
           <Plus size={15} />
-          <span className="hidden md:inline">Novo Fluxo</span>
+          <span className="hidden md:inline">Criar</span>
         </button>
 
         {/* Alternar tema (claro/escuro) */}

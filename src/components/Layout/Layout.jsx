@@ -13,7 +13,9 @@ export const Layout = ({ children, title, subtitle }) => {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   return (
-    <div className="min-h-screen bg-dark-900 flex">
+    <div className="min-h-screen bg-dark-900 flex relative isolate">
+      {/* Brilho ambiente lento (src/styles/motion.css) */}
+      <div className="rf-ambient" aria-hidden="true" />
       <Sidebar mobile={isMobile} drawerOpen={drawerOpen} onNavigate={() => setDrawerOpen(false)} />
       {isMobile && drawerOpen && (
         <div onClick={() => setDrawerOpen(false)} className="fixed inset-0 bg-black/50 z-40" />
@@ -24,7 +26,8 @@ export const Layout = ({ children, title, subtitle }) => {
         <Topbar title={title} subtitle={subtitle} onMenu={isMobile ? () => setDrawerOpen(true) : null} />
         {/* No celular a aba de agentes fica fixa no rodapé: pb-24 evita que ela cubra o conteúdo. */}
         <main className={clsx('flex-1 p-4 sm:p-6 overflow-x-clip animate-fade-in', isMobile && 'pb-24')}>
-          {children}
+          {/* Blocos da página entram em sequência (display: contents não altera o layout). */}
+          <div className="rf-stagger" style={{ display: 'contents' }}>{children}</div>
         </main>
       </div>
 
