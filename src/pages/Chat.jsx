@@ -551,13 +551,23 @@ export const Chat = () => {
       if (userRef.current) loadConvs(userRef.current)
     }
 
+    // Histórico do pareamento chegando em lotes: recarrega a lista uma vez a cada leva.
+    let historyTimer = null
+    const onHistorySynced = () => {
+      clearTimeout(historyTimer)
+      historyTimer = setTimeout(() => { if (userRef.current) loadConvs(userRef.current) }, 1500)
+    }
+
     socket.on('new_message', onNewMessage)
     socket.on('new_chat', onNewChat)
     socket.on('integration_connected', onIntegrationConnected)
+    socket.on('history_synced', onHistorySynced)
     return () => {
+      clearTimeout(historyTimer)
       socket.off('new_message', onNewMessage)
       socket.off('new_chat', onNewChat)
       socket.off('integration_connected', onIntegrationConnected)
+      socket.off('history_synced', onHistorySynced)
     }
   }, [])
 

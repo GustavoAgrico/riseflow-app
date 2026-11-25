@@ -88,6 +88,18 @@ module.exports = function createWebhookRouter(io) {
             .then((handled) => (handled ? null : handleIncomingMessage({ jid, text, pushName, fromMe, userId })))
             .catch((err) => console.error('[webhook] IA/flowEngine:', err?.message ?? err))
         }
+      } else if (event === 'HISTORY_BATCH') {
+        // Histórico do pareamento: grava conversas/mensagens antigas sem IA, funis nem avisos.
+        if (userId) {
+          const { importHistory } = require('../inbox')
+          const { emitToUser } = require('../realtime')
+          importHistory({ userId, messages: body.data?.messages || [] })
+            .then((r) => {
+              console.log(`[history] ${userId}: ${r.messages} mensagens em ${r.conversations} conversas (${r.newConversations} novas)`)
+              if (r.messages || r.newConversations) emitToUser(userId, 'history_synced', r)
+            })
+            .catch((err) => console.error('[webhook] histórico:', err?.message ?? err))
+        }
       } else if (event === 'CHATS_UPSERT') {
         const chats = Array.isArray(body.data) ? body.data : [body.data].filter(Boolean)
         for (const chat of chats) io.emit('new_chat', { chat })

@@ -9,6 +9,8 @@ export const AppProvider = ({ children }) => {
   const [flowsVersion, setFlowsVersion] = useState(0)
   // Paleta de comandos: null (fechada) | 'search' (Ctrl+K) | 'create' (N) | 'help' (?)
   const [command, setCommand] = useState(null)
+  // Quantos trilhos de agentes estão montados (Layout). Zero → telas sem Layout mostram a versão flutuante.
+  const [dockMounted, setDockMounted] = useState(0)
 
   // Notificações em tempo real (sino da topbar + toasts globais)
   const notif = useNotifications()
@@ -25,6 +27,7 @@ export const AppProvider = ({ children }) => {
       newFlowModalOpen, setNewFlowModalOpen,
       flowsVersion, onFlowCreated,
       command, setCommand,
+      dockMounted, setDockMounted,
     }}>
       {children}
     </AppContext.Provider>

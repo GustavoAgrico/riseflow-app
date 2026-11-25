@@ -38,7 +38,7 @@ function TipCta({ tip, onGo, compact }) {
 }
 
 // Balão: desktop ao lado do trilho, na altura do mascote; celular acima da barra inferior.
-export function CoachBubble({ tip, agent, anchorY, mobile, onClose, onNext, onPause, hasNext, onGo }) {
+export function CoachBubble({ tip, agent, anchorY, mobile, onClose, onNext, onPause, hasNext, onGo, onPrompt }) {
   const hover = useRef(false)
   const closeRef = useRef(onClose)
   closeRef.current = onClose
@@ -75,6 +75,12 @@ export function CoachBubble({ tip, agent, anchorY, mobile, onClose, onNext, onPa
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <TipCta tip={tip} onGo={onGo} compact />
+        {tip.prompts?.length > 0 && onPrompt && tip.prompts.map(p => (
+          <button key={p} type="button" onClick={() => onPrompt(tip, p)} className="rf-press"
+            style={{ minHeight: 30, maxWidth: '100%', padding: '0 11px', borderRadius: 9, border: '1px solid rgba(255,107,53,.45)', background: 'rgba(255,107,53,.1)', color: 'var(--ink-1)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: F, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {p}
+          </button>
+        ))}
         {hasNext && (
           <button type="button" onClick={onNext} className="rf-press" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minHeight: 30, padding: '0 10px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--ink-1)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: F }}>
             <RefreshCw size={12} /> Outra dica

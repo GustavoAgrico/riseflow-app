@@ -15,6 +15,7 @@ vi.mock('@services/agents', () => ({
   },
   promptsFor: () => ['O que faço primeiro hoje?'],
 }))
+vi.mock('@context/AppContext', () => ({ useApp: () => ({ setDockMounted: vi.fn() }) }))
 // Dados do "Seu dia" sem banco nos testes.
 vi.mock('@hooks/useCoachData', () => ({ useCoachData: () => null }))
 

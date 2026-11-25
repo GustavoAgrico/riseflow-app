@@ -3,11 +3,13 @@
 // Spec: docs/AGENTES_ABA_E_MASCOTES.md
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Plus, ArrowUp, X, Check, Lightbulb } from 'lucide-react'
+import { Plus, ArrowUp, X, Check, Lightbulb, MoreHorizontal } from 'lucide-react'
 import { RiserAvatar } from './RiserAvatar'
 import { CoachBubble, CoachPanel, AgentTips, coachPrefs, SuggestionList, PromptChips, suggestionPrefs } from './Coach'
 import { useCoachData } from '@hooks/useCoachData'
 import { buildTips, pickTip, dayHeadline } from '@lib/coach'
+import { agentsForPage, orderAgents, helloTip } from '@lib/agentPages'
+import { useApp } from '@context/AppContext'
 import { DEMO_AGENTS, DEMO_MESSAGES, DEMO_APPROVALS, DEMO_SUGGESTIONS, demoReply } from './agentsDemo'
 import { agentsApi, promptsFor } from '@services/agents'
 import socket, { authenticateSocket } from '@services/socket'
@@ -37,8 +39,10 @@ const writeLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } c
 // Fora de /api o servidor devolve o index.html; só uma lista de agentes de verdade tira do demo.
 const isAgentList = (v) => Array.isArray(v) && v.every((a) => a && a.id && a.name)
 
-export function AgentDock() {
+// floating: versão flutuante para telas sem o Layout comum (Chat, CRM, IA Central…).
+export function AgentDock({ floating = false } = {}) {
   const { isDemoMode } = useAuth()
+  const { setDockMounted } = useApp()
   const isMobile = useIsMobile()
   const [agents, setAgents] = useState([])
   const [demo, setDemo] = useState(isDemoMode)
@@ -68,6 +72,16 @@ export function AgentDock() {
   const [sugState, setSugState] = useState({}) // id → 'running' | { ok, text }
   const pagePrompts = useMemo(() => promptsFor(pathname), [pathname])
   const actionCount = (kind) => urgent.filter((t) => t.agent === kind).length
+  // Agentes da função desta tela: sobem no trilho com destaque e se apresentam.
+  const pageKinds = useMemo(() => agentsForPage(pathname), [pathname])
+  const [showAll, setShowAll] = useState(false)
+
+  // O trilho fixo (Layout) avisa que existe; sem ele, o App mostra a versão flutuante.
+  useEffect(() => {
+    if (floating) return undefined
+    setDockMounted((c) => c + 1)
+    return () => setDockMounted((c) => c - 1)
+  }, [floating, setDockMounted])
 
   // Carrega os agentes; sem API (antes da fase 1) ou em modo demo, usa os dados de exemplo.
   useEffect(() => {
@@ -84,9 +98,10 @@ export function AgentDock() {
   }, [isDemoMode])
 
   const current = useMemo(
-    () => agents.find((a) => a.id === selected) || agents[0] || null,
-    [agents, selected],
+    () => agents.find((a) => a.id === selected) || agents.find((a) => a.kind === agentsForPage(pathname)[0]) || agents[0] || null,
+    [agents, selected, pathname],
   )
+  const currentAgent = current
 
   // Mensagens e aprovações do agente aberto.
   useEffect(() => {
@@ -170,17 +185,22 @@ export function AgentDock() {
 
   // Ao trocar de tela, um mascote fala uma dica (no máximo a cada 30 s; nunca com o painel aberto).
   useEffect(() => {
-    if (paused || open || !tips.length || !agents.length) return
+    if (paused || open || !agents.length || (!tips.length && !pageKinds.length)) return
     const t = setTimeout(() => {
       if (Date.now() - lastBubbleAt.current < 30000) return
-      const tip = pickTip(tips, { seen: coachPrefs.seen(), path: pathname })
+      const seen = coachPrefs.seen()
+      // 1) algo urgente do agente desta tela; 2) ele se apresenta (1x por dia por tela); 3) dica geral.
+      const urgentMine = tips.find((x) => !seen.includes(x.id) && x.priority >= 80 && pageKinds.includes(x.agent))
+      const owner = pageKinds.map((k) => agentFor(k)).find(Boolean)
+      const hello = owner ? helloTip(owner, pathname, pagePrompts) : null
+      const tip = urgentMine || (hello && !seen.includes(hello.id) ? hello : null) || pickTip(tips, { seen, path: pathname })
       if (!tip) return
       coachPrefs.markSeen(tip.id)
       lastBubbleAt.current = Date.now()
       setBubble(tip)
     }, 2500)
     return () => clearTimeout(t)
-  }, [pathname, tips.length, paused, open, agents.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pathname, tips.length, paused, open, agents.length, pageKinds.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const approveSuggestion = async (sg) => {
     setSugState((m) => ({ ...m, [sg.id]: 'running' }))
@@ -208,6 +228,14 @@ export function AgentDock() {
     if (tip) { coachPrefs.markSeen(tip.id); setBubble(tip) } else setBubble(null)
   }
   const pauseTips = () => { coachPrefs.pause(); setPaused(true); setBubble(null) }
+  // Atalho do balão: abre a conversa com o agente que falou e já envia a pergunta.
+  const promptFromBubble = (tip, prompt) => {
+    const a = agentFor(tip.agent) || current
+    if (!a) return
+    setBubble(null); setMode('chat'); setSelected(a.id); writeLS(SEL_KEY, a.id); setOpen(true); writeLS(OPEN_KEY, true)
+    if (a.id !== current?.id) setMessages([])
+    send(null, prompt, a)
+  }
   const togglePause = () => { if (paused) { coachPrefs.resume(); setPaused(false) } else pauseTips() }
   const close = () => { setOpen(false); writeLS(OPEN_KEY, false) }
 
@@ -219,9 +247,10 @@ export function AgentDock() {
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
-  const send = async (e, preset) => {
+  const send = async (e, preset, target) => {
     e?.preventDefault?.()
     const body = String(preset ?? text).trim()
+    const current = target || currentAgent
     if (!body || !current || sending) return
     setText('')
     setMessages((m) => [...m, { id: `local-${Date.now()}`, author_kind: 'user', content: body }])
@@ -274,9 +303,19 @@ export function AgentDock() {
   if (!agents.length) return null
   const st = STATUS[current?.status] || STATUS.idle
 
+  const ordered = orderAgents(agents, pathname)
+  const mine = ordered.filter((a) => pageKinds.includes(a.kind))
+  // Flutuante: só os agentes da função desta tela (ou os 2 primeiros); "⋯" mostra todos.
+  const railAgents = floating && !showAll ? (mine.length ? mine : ordered.slice(0, 2)) : ordered
+  const vertical = floating || !isMobile
+  const avatarSize = floating ? 36 : 40
   const rail = (
-    <div role="tablist" aria-label="Agentes" aria-orientation={isMobile ? 'horizontal' : 'vertical'}
-      style={{
+    <div role="tablist" aria-label="Agentes" aria-orientation={vertical ? 'vertical' : 'horizontal'}
+      style={floating ? {
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '10px 6px',
+        background: 'color-mix(in srgb, var(--card) 92%, transparent)', backdropFilter: 'blur(10px)',
+        border: `1px solid ${C.border}`, borderRadius: 22, boxShadow: '0 18px 40px rgba(0,0,0,.4)', maxHeight: '80vh', overflowY: 'auto',
+      } : {
         display: 'flex', flexDirection: isMobile ? 'row' : 'column', alignItems: 'center', gap: 10,
         padding: isMobile ? '8px 10px' : '14px 0', width: isMobile ? '100%' : 64, overflowX: isMobile ? 'auto' : 'visible',
         background: C.panel, borderLeft: isMobile ? 'none' : `1px solid ${C.border}`,
@@ -297,8 +336,9 @@ export function AgentDock() {
           </span>
         )}
       </button>
-      <span aria-hidden="true" style={{ width: isMobile ? 1 : 28, height: isMobile ? 28 : 1, background: C.border, flexShrink: 0 }} />
-      {agents.map((a, i) => {
+      <span aria-hidden="true" style={{ width: vertical ? 28 : 1, height: vertical ? 1 : 28, background: C.border, flexShrink: 0 }} />
+      {railAgents.map((a, i) => {
+        const here = pageKinds.includes(a.kind)
         const active = open && mode === 'chat' && current?.id === a.id
         const s = STATUS[a.status] || STATUS.idle
         const speaking = bubble && !open && agentFor(bubble.agent)?.id === a.id
@@ -309,15 +349,18 @@ export function AgentDock() {
         return (
           <button key={a.id} type="button" role="tab" aria-selected={active}
             ref={(el) => { btnRefs.current[a.id] = el }} className="rf-riser-btn"
-            aria-label={`${a.name}, ${a.role}, ${s.label}${count ? `, ${count} dica(s) para hoje` : ''}`} title={`${a.name} · ${s.label}`}
+            aria-label={`${a.name}, ${a.role}, ${s.label}${here ? ', cuida desta tela' : ''}${count ? `, ${count} dica(s) para hoje` : ''}`}
+            title={`${a.name} · ${here ? 'cuida desta tela' : s.label}`}
             onClick={() => pick(a.id)}
             style={{
-              position: 'relative', width: 50, height: 50, flexShrink: 0, borderRadius: 14, padding: 0, cursor: 'pointer',
+              position: 'relative', width: avatarSize + 10, height: avatarSize + 10, flexShrink: 0, borderRadius: 14, padding: 0, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: active ? 'rgba(255,107,53,0.16)' : 'transparent',
-              border: `1px solid ${active ? 'rgba(255,107,53,0.6)' : 'transparent'}`,
+              background: active ? 'rgba(255,107,53,0.16)' : here ? 'rgba(255,107,53,0.07)' : 'transparent',
+              border: `1px solid ${active ? 'rgba(255,107,53,0.6)' : here ? 'rgba(255,107,53,0.35)' : 'transparent'}`,
+              boxShadow: here && !active ? '0 0 16px rgba(255,107,53,0.22)' : 'none',
+              opacity: here || active || !pageKinds.length ? 1 : 0.62, transition: 'opacity .25s ease, box-shadow .25s ease',
             }}>
-            <RiserAvatar kind={a.kind} size={40} motion={motion} delay={i * 0.55} />
+            <RiserAvatar kind={a.kind} size={avatarSize} motion={motion} delay={i * 0.55} />
             <span aria-hidden="true" style={{
               position: 'absolute', right: 3, bottom: 3, width: 11, height: 11, borderRadius: '50%',
               background: s.dot, border: '2px solid var(--card)',
@@ -328,10 +371,16 @@ export function AgentDock() {
           </button>
         )
       })}
-      <Link to="/agentes/novo" aria-label="Criar agente" title="Criar agente" style={{
+      {floating && ordered.length > railAgents.length && (
+        <button type="button" onClick={() => setShowAll(true)} aria-label="Mostrar todos os agentes" title="Todos os agentes"
+          style={{ width: 40, height: 32, borderRadius: 10, border: `1px solid ${C.border}`, background: 'transparent', color: C.muted, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+          <MoreHorizontal size={16} />
+        </button>
+      )}
+      {!floating && <Link to="/agentes/novo" aria-label="Criar agente" title="Criar agente" style={{
         width: 44, height: 44, flexShrink: 0, borderRadius: 12, border: `1px dashed ${C.border}`, color: C.muted,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}><Plus size={18} /></Link>
+      }}><Plus size={18} /></Link>}
     </div>
   )
 
@@ -364,7 +413,7 @@ export function AgentDock() {
           Modo exemplo: os agentes ainda não executam tarefas sozinhos. Eles indicam a tela que faz o pedido.
         </p>
       )}
-      <AgentTips tips={tips.filter((t) => t.agent === current.kind)} onGo={close} />
+      <AgentTips tips={tips.filter((t) => t.agent === current.kind).map((t) => (t.cta?.to?.split('?')[0] === pathname ? { ...t, cta: null } : t))} onGo={close} />
       {suggestions.some((x) => x.agent_kind === current.kind) && (
         <div style={{ padding: '10px 16px', borderBottom: `1px solid ${C.border}`, maxHeight: '38%', overflowY: 'auto' }}>
           <SuggestionList items={suggestions.filter((x) => x.agent_kind === current.kind).slice(0, 2)} agentFor={agentFor} states={sugState} onApprove={approveSuggestion} onAsk={(sg) => setText(sg.prompt || sg.title)} onDismiss={dismissSuggestion} compact />
@@ -439,11 +488,27 @@ export function AgentDock() {
     return r.top + r.height / 2
   })()
   const bubbleEl = bubble && !open && (
-    <CoachBubble tip={bubble} agent={bubbleAgent} mobile={isMobile} anchorY={anchorY}
-      onClose={() => setBubble(null)} onNext={nextTip} onPause={pauseTips} onGo={() => setBubble(null)}
+    <CoachBubble tip={bubble.cta?.to?.split('?')[0] === pathname ? { ...bubble, cta: null } : bubble} agent={bubbleAgent} mobile={isMobile} anchorY={anchorY}
+      onClose={() => setBubble(null)} onNext={nextTip} onPause={pauseTips} onGo={() => setBubble(null)} onPrompt={promptFromBubble}
       hasNext={tips.some((t) => t.id !== bubble.id && !coachPrefs.seen().includes(t.id))} />
   )
 
+  if (floating) {
+    // Telas sem o Layout comum: pílula flutuante na lateral direita; a conversa abre por cima.
+    return (
+      <>
+        {panel && (
+          <div style={isMobile
+            ? { position: 'fixed', left: 0, right: 0, bottom: 0, height: '78vh', zIndex: 60, boxShadow: '0 -20px 50px rgba(0,0,0,.5)' }
+            : { position: 'fixed', top: 0, right: 76, height: '100vh', zIndex: 60, boxShadow: '-24px 0 48px -24px rgba(0,0,0,0.55)' }}>{panel}</div>
+        )}
+        <aside aria-label="Agentes" style={{ position: 'fixed', right: isMobile ? 6 : 12, top: '50%', transform: 'translateY(-50%)', zIndex: 61 }}>
+          {rail}
+        </aside>
+        {bubbleEl}
+      </>
+    )
+  }
   if (isMobile) {
     return (
       <>
