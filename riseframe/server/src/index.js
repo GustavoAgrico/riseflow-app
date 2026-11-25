@@ -77,6 +77,8 @@ app.get('/api/health', async (_req, res) => {
     ok: true,
     service: 'riseframe',
     version: APP_VERSION,
+    // app de PC: o Electron encerra um servidor antigo que ficou preso na porta
+    ...(process.env.ELECTRON_RUN_AS_NODE === '1' ? { pid: process.pid } : {}),
     ffmpeg: Boolean(ffmpegPath),
     capabilities: await appCapabilities(),
     // link do YouTube: { ready, how (como chama o yt-dlp), error }
@@ -154,6 +156,10 @@ const server = app.listen(config.port, () => {
   // App de PC/Mac: usa a placa de vídeo nas etapas intermediárias, se houver (em segundo plano)
   if (process.env.RISEFRAME_DESKTOP === '1' || process.env.FFMPEG_HWENC) detectHwEncoder().catch(() => {});
 });
+// App de PC: o Electron abre o servidor com um canal 'ipc'. Se o app fechar de repente
+// (instalador da atualização, Gerenciador de Tarefas), o canal cai e o servidor encerra
+// junto — senão ficava preso na porta e o app novo abria em outro endereço.
+if (typeof process.send === 'function') process.on('disconnect', () => process.exit(0));
 // Vídeos grandes (até dezenas de GB) levam bem mais que os 5 min padrão do Node para
 // subir: sem isto a conexão cai no meio do upload.
 server.requestTimeout = 0;
