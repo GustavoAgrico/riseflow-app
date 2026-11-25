@@ -49,7 +49,36 @@ function cleanData(raw) {
   return out;
 }
 
+/**
+ * App de PC: o computador é de uma pessoa só. Modelos gravados com outra identificação
+ * de conta (ex.: entrou com Google em vez de e-mail, ou a conta do site foi recriada)
+ * passam para a conta que está usando o app agora — antes eles "sumiam" da lista.
+ */
+const desktop = () => process.env.RISEFRAME_DESKTOP === '1';
+export function adoptLocalTemplates(userId) {
+  if (!desktop() || !userId) return 0;
+  load();
+  const others = Object.keys(all).filter((k) => k !== String(userId) && Array.isArray(all[k]) && all[k].length);
+  if (!others.length) return 0;
+  const mine = all[userId] || (all[userId] = []);
+  let hasDefault = mine.some((t) => t.isDefault);
+  let n = 0;
+  for (const k of others) {
+    for (const t of all[k]) {
+      if (!t || mine.some((x) => x.id === t.id)) continue;
+      const isDefault = Boolean(t.isDefault) && !hasDefault;
+      if (isDefault) hasDefault = true;
+      mine.push({ ...t, isDefault });
+      n++;
+    }
+    delete all[k];
+  }
+  persist();
+  return n;
+}
+
 export function listTemplates(userId) {
+  adoptLocalTemplates(userId);
   return (load()[userId] || []).slice().sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || String(b.updatedAt).localeCompare(String(a.updatedAt)));
 }
 
@@ -62,6 +91,7 @@ export function templateMediaIds() {
 
 /** Cria ou atualiza (mesmo id ou mesmo nome) um modelo. */
 export function saveTemplate(userId, { id, name, data, isDefault }) {
+  adoptLocalTemplates(userId);
   load();
   const nm = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 60);
   if (!nm) throw Object.assign(new Error('dê um nome ao modelo'), { status: 400 });
@@ -83,6 +113,7 @@ export function saveTemplate(userId, { id, name, data, isDefault }) {
 }
 
 export function setDefaultTemplate(userId, id) {
+  adoptLocalTemplates(userId);
   const list = load()[userId] || [];
   for (const x of list) x.isDefault = Boolean(id) && x.id === id;
   persist();
@@ -90,6 +121,7 @@ export function setDefaultTemplate(userId, id) {
 }
 
 export function deleteTemplate(userId, id) {
+  adoptLocalTemplates(userId);
   const list = load()[userId] || [];
   const i = list.findIndex((x) => x.id === id);
   if (i < 0) return false;

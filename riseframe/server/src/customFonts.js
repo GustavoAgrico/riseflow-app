@@ -17,7 +17,59 @@ const indexOf = (userId) => path.join(dirOf(userId), 'index.json');
 const validId = (id) => /^[A-Za-z0-9_-]{8,24}$/.test(String(id || ''));
 export const customFamily = (id) => `RFU ${id}`;
 
+/**
+ * App de PC (uma pessoa só no computador): fontes enviadas com outra identificação de conta
+ * passam para a conta que está usando o app agora, em vez de "sumirem". Os ids das fontes
+ * não mudam, então os projetos que usam a fonte continuam achando ela.
+ */
+export function adoptLocalFonts(userId) {
+  if (process.env.RISEFRAME_DESKTOP !== '1' || !userId) return 0;
+  const root = path.join(config.paths.data, 'fonts');
+  const mineDir = dirOf(userId);
+  let dirs = [];
+  try {
+    dirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => path.join(root, d.name));
+  } catch {
+    return 0;
+  }
+  let n = 0;
+  for (const dir of dirs) {
+    if (path.resolve(dir) === path.resolve(mineDir)) continue;
+    let theirs;
+    try {
+      theirs = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'));
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(theirs)) continue;
+    const mine = rawIndex(userId);
+    fs.mkdirSync(mineDir, { recursive: true });
+    for (const f of theirs) {
+      if (!f?.file || !validId(f.id) || mine.some((x) => x.id === f.id)) continue;
+      const src = path.join(dir, path.basename(f.file));
+      if (!fs.existsSync(src)) continue;
+      fs.copyFileSync(src, path.join(mineDir, path.basename(f.file)));
+      mine.push(f);
+      n++;
+    }
+    fs.mkdirSync(mineDir, { recursive: true });
+    fs.writeFileSync(indexOf(userId), JSON.stringify(mine));
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  return n;
+}
+
+function rawIndex(userId) {
+  try {
+    const v = JSON.parse(fs.readFileSync(indexOf(userId), 'utf8'));
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
 function readIndex(userId) {
+  adoptLocalFonts(userId);
   try {
     const v = JSON.parse(fs.readFileSync(indexOf(userId), 'utf8'));
     return Array.isArray(v) ? v : [];
