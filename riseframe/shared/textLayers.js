@@ -237,6 +237,11 @@ export const VIDEO_FX = {
   matrix: 'Matrix (verde)',
   noir: 'Noir',
   popart: 'Pop art',
+  // Tempo
+  echo: 'Eco (rastro de movimento)',
+  trails: 'Rastro de luz',
+  ghost: 'Fantasma (quadro duplo)',
+  motionpop: 'Realçar movimento',
 };
 /** Aproximação do efeito na prévia do editor (CSS). O render usa FFmpeg. */
 export const VIDEO_FX_CSS = {
@@ -306,6 +311,10 @@ export const VIDEO_FX_CSS = {
   matrix: 'hue-rotate(60deg) saturate(1.2) contrast(1.15)',
   noir: 'grayscale(1) contrast(1.5) brightness(0.95)',
   popart: 'saturate(2.2) contrast(1.4)',
+  echo: 'blur(0.8px) contrast(1.05)',
+  trails: 'brightness(1.08) contrast(1.08)',
+  ghost: 'blur(0.5px) opacity(0.92)',
+  motionpop: 'contrast(1.25) saturate(1.1)',
 };
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
@@ -518,4 +527,27 @@ export function cleanFxMoments(raw, max = 40) {
     if (out.length >= max) break;
   }
   return out;
+}
+
+/**
+ * Chroma key (fundo verde/azul) das mídias, como o "Keying" dos programas de motion: a cor
+ * vira transparência e o vazamento de cor nas bordas é tirado. Puro.
+ * → { color: '#rrggbb', similarity 0.05–0.6, smooth 0–0.4, spill: 'green'|'blue' } | null
+ */
+export const KEY_PRESETS = { green: '#00FF00', blue: '#0047FF' };
+export function cleanKey(k) {
+  if (!k || typeof k !== 'object') return null;
+  const preset = Object.hasOwn(KEY_PRESETS, k.color) ? k.color : null;
+  const hex = preset ? KEY_PRESETS[preset] : /^#[0-9a-f]{6}$/i.test(String(k.color || '')) ? String(k.color).toUpperCase() : null;
+  if (!hex) return null;
+  const num = (v, lo, hi, def) => (Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : def);
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return {
+    color: hex,
+    similarity: +num(k.similarity, 0.05, 0.6, 0.3).toFixed(3),
+    smooth: +num(k.smooth, 0, 0.4, 0.08).toFixed(3),
+    spill: g > r && g > b ? 'green' : b > r && b > g ? 'blue' : null,
+  };
 }

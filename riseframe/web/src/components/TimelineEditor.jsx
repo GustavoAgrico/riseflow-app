@@ -27,6 +27,7 @@ import PromptMotionStudio from './PromptMotionStudio.jsx';
 import MotionRefsPanel from './MotionRefsPanel.jsx';
 import { promptMotionSfx } from '../../../shared/promptMotion.js';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
+import { AUDIOGRAM_STYLES, AUDIOGRAM_POSITIONS, cleanAudiogram } from '../../../shared/audiogram.js';
 import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, wordPlan, wordFrame, WORD_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
@@ -169,6 +170,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   });
   // Tratamento e modificadores da voz (aba Áudio) + prévia ouvível.
   const [voice, setVoice] = useState(() => voiceOf(cap0));
+  // Audiograma: a onda do áudio desenhada no vídeo (podcast), como o "Audio Spectrum"
+  const [audiogram, setAudiogram] = useState(() => cleanAudiogram(options?.audiogram));
   const [voicePrev, setVoicePrev] = useState({ busy: false, url: null, err: '' });
   const voiceAudioRef = useRef(null);
   async function playVoicePreview() {
@@ -743,7 +746,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const histState = {
     segments, cuts, keptPauses, keptNoises, gains, videoCrop, cropRanges, fitRanges, blanks, projMediaIds, avLinked, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs, brollLayoutSel, imageSource, volKeys, pauseAuto, aiCleaned, lead, v1Gaps,
-    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, splitManual, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
+    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, splitManual, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps, audiogram,
   };
   const histSet = {
     segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, cropRanges: setCropRanges, fitRanges: setFitRanges, blanks: setBlanks, projMediaIds: setProjMediaIds, avLinked: setAvLinked, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
@@ -752,7 +755,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths, brollLayoutSel: setBrollLayoutSel, imageSource: setImageSource, volKeys: setVolKeys, pauseAuto: setPauseAuto, aiCleaned: setAiCleaned, lead: setLead, v1Gaps: setV1Gaps,
     cutCoughs: setCutCoughs, aspectSel: setAspectSel, quality: setQuality, reframeMode: setReframeMode,
     splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom, splitManual: setSplitManual,
-    vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, extraCaps: setExtraCaps, fxMoments: setFxMoments, transitions: setTransitions, laneHide: setLaneHide, laneLock: setLaneLock, markers: setMarkers, speedRanges: setSpeedRanges, freezes: setFreezes,
+    vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, extraCaps: setExtraCaps, fxMoments: setFxMoments, transitions: setTransitions, laneHide: setLaneHide, laneLock: setLaneLock, markers: setMarkers, speedRanges: setSpeedRanges, freezes: setFreezes, audiogram: setAudiogram,
   };
   const histRef = useRef({ past: [], future: [], prev: null, skip: false, at: 0 });
   const [, setHistTick] = useState(0);
@@ -3385,6 +3388,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         ...(exportFps ? { fps: exportFps } : {}),
         ...(exportStreams !== 'av' ? { streams: exportStreams } : {}),
         ...(exportLoudness !== 'social' ? { loudness: exportLoudness } : {}),
+        ...(cleanAudiogram(audiogram) ? { audiogram: cleanAudiogram(audiogram) } : {}),
         ...(noTxRanges.length ? { noCutRanges: noTxRanges } : {}),
         ...(blanks.length || seqHoles.length ? { videoBlanks: [...blanks, ...seqHoles].map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2), ...(b.audio === false ? { audio: false } : {}) })) } : {}),
         audioGains: gains.map((g) => ({ start: +g.start.toFixed(2), end: +g.end.toFixed(2), volume: +Number(g.volume).toFixed(2) })),
@@ -3416,6 +3420,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           ...(m.cx != null ? { cx: +Number(m.cx).toFixed(3), cy: +Number(m.cy ?? 0.5).toFixed(3) } : {}),
           ...(m.kind !== 'audio' && Math.abs(Number(m.rot) || 0) > 0.05 ? { rot: +Number(m.rot).toFixed(1) } : {}),
           ...(m.kind !== 'audio' && m.crop ? { crop: m.crop } : {}),
+          ...(m.kind !== 'audio' && m.chroma ? { chroma: m.chroma } : {}),
           ...(m.kind !== 'audio' && m.kf ? { kf: m.kf } : {}),
           ...(m.kind !== 'audio' && m.motion && m.motion !== 'none' ? { motion: m.motion, motionSpeed: +Number(m.motionSpeed ?? 1).toFixed(2), motionAmp: +Number(m.motionAmp ?? 1).toFixed(2) } : {}),
           ...(m.animEase ? { animEase: m.animEase } : {}),
@@ -5234,7 +5239,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     { id: 'tempo', label: 'Tempo', icon: '⏱' },
     { id: 'som', label: 'Sons', icon: '♪' },
   ];
-  const VFX_GROUP = { bw: 'cor', nostalgic: 'cor', cold: 'cor', warm: 'cor', saturated: 'cor', negative: 'imagem', retro: 'estilo', vhs: 'distorcao', glitch: 'distorcao', shake: 'transformar', pixel: 'distorcao', mirror: 'distorcao', strobe: 'luz', glow: 'luz', grain: 'ruido', vignette: 'gerar', film: 'gerar', blur: 'nitidez', blursoft: 'nitidez', bokeh: 'nitidez', chblur: 'nitidez', motionblur: 'nitidez', sharpen: 'nitidez', faded: 'cor', contrast: 'cor', tealorange: 'cor', cinematic: 'cor', desat: 'cor', tint: 'cor', brighten: 'imagem', darken: 'imagem', exposure: 'imagem', vflip: 'distorcao', fisheye: 'distorcao', tilt: 'perspectiva', posterize: 'estilo', edges: 'estilo', sketch: 'estilo', emboss: 'estilo', noisehard: 'ruido', goldlight: 'luz', zoomfix: 'transformar', zoomfix2: 'transformar', sway: 'transformar', handheld: 'transformar', shakehard: 'transformar', persp3d: 'perspectiva', tiltr: 'perspectiva', wideangle: 'distorcao', rgbsplit: 'distorcao', pixelbig: 'distorcao', grid3: 'gerar', frame: 'gerar', black: 'utilitario', white: 'utilitario', letterbox: 'utilitario', pillarbox: 'utilitario', pulse: 'luz', coolglow: 'luz', scanlines: 'ruido', static: 'ruido', summer: 'cor', winter: 'cor', matrix: 'cor', noir: 'estilo', popart: 'estilo' };
+  const VFX_GROUP = { bw: 'cor', nostalgic: 'cor', cold: 'cor', warm: 'cor', saturated: 'cor', negative: 'imagem', retro: 'estilo', vhs: 'distorcao', glitch: 'distorcao', shake: 'transformar', pixel: 'distorcao', mirror: 'distorcao', strobe: 'luz', glow: 'luz', grain: 'ruido', vignette: 'gerar', film: 'gerar', blur: 'nitidez', blursoft: 'nitidez', bokeh: 'nitidez', chblur: 'nitidez', motionblur: 'nitidez', sharpen: 'nitidez', faded: 'cor', contrast: 'cor', tealorange: 'cor', cinematic: 'cor', desat: 'cor', tint: 'cor', brighten: 'imagem', darken: 'imagem', exposure: 'imagem', vflip: 'distorcao', fisheye: 'distorcao', tilt: 'perspectiva', posterize: 'estilo', edges: 'estilo', sketch: 'estilo', emboss: 'estilo', noisehard: 'ruido', goldlight: 'luz', zoomfix: 'transformar', zoomfix2: 'transformar', sway: 'transformar', handheld: 'transformar', shakehard: 'transformar', persp3d: 'perspectiva', tiltr: 'perspectiva', wideangle: 'distorcao', rgbsplit: 'distorcao', pixelbig: 'distorcao', grid3: 'gerar', frame: 'gerar', black: 'utilitario', white: 'utilitario', letterbox: 'utilitario', pillarbox: 'utilitario', pulse: 'luz', coolglow: 'luz', scanlines: 'ruido', static: 'ruido', summer: 'cor', winter: 'cor', matrix: 'cor', noir: 'estilo', popart: 'estilo', echo: 'tempo', trails: 'tempo', ghost: 'tempo', motionpop: 'tempo' };
   const shortLabel = (l) => String(l).replace(/\s*\(.*\)\s*$/, '');
   const fxLibrary = [
     ...transOpts.map((o) => ({ cat: 'trans', kind: 'trans', id: o.id, label: shortLabel(o.label), anim: `tr-${o.id}` })),
@@ -8637,6 +8642,31 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {tab === 'audio' && (
             <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
               <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}`, display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>Audiograma (onda do áudio)</div>
+                  <button onClick={() => setAudiogram((a) => (a ? null : cleanAudiogram({ style: 'wave', color: '#FFFFFF' })))} style={miniBtn(Boolean(audiogram), false)}>{audiogram ? 'Ligado' : 'Desligado'}</button>
+                </div>
+                {audiogram && <>
+                  <CapRow label="Estilo">
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {Object.entries(AUDIOGRAM_STYLES).map(([id, label]) => <button key={id} onClick={() => setAudiogram((a) => ({ ...a, style: id }))} style={miniBtn(audiogram.style === id, false)}>{label}</button>)}
+                    </div>
+                  </CapRow>
+                  <CapRow label="Posição">
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {Object.entries(AUDIOGRAM_POSITIONS).map(([id, label]) => <button key={id} onClick={() => setAudiogram((a) => ({ ...a, position: id }))} style={{ ...miniBtn(audiogram.position === id, false), flex: 1 }}>{label}</button>)}
+                    </div>
+                  </CapRow>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
+                    <span style={{ width: 44 }}>Cor</span>
+                    <input type="color" value={audiogram.color} onChange={(e) => setAudiogram((a) => ({ ...a, color: e.target.value.toUpperCase() }))} aria-label="Cor do audiograma" style={{ width: 34, height: 24, border: 'none', background: 'transparent', cursor: 'pointer' }} />
+                    <span style={{ width: 44, marginLeft: 6 }}>Altura</span>
+                    <input type="range" min="0.06" max="0.4" step="0.01" value={audiogram.height} onChange={(e) => setAudiogram((a) => ({ ...a, height: Number(e.target.value) }))} aria-label="Altura do audiograma" style={{ flex: 1 }} />
+                  </div>
+                </>}
+                <div style={{ fontSize: 11, color: C.faint, lineHeight: 1.45 }}>Desenha a onda (ou o espectro) da fala no vídeo, sincronizada com o som — o visual dos cortes de podcast. Aparece no vídeo final.</div>
+              </div>
+              <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}`, display: 'grid', gap: 8 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>Silêncios, respirações e tosse</div>
                 <CapRow label="Respirações entre as frases">
                   <div style={{ display: 'flex', gap: 6 }}>
@@ -9351,6 +9381,22 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                                 <button onClick={() => updateMedia(m.key, { flip: !m.flip })} style={framingTab(!!m.flip)}>⇋ Espelhar</button>
                                 <button onClick={() => updateMedia(m.key, { bright: 0, contrast: 1, sat: 1, opacity: 1, flip: false })} style={framingTab(false)}>Restaurar</button>
                               </div>
+                            </details>
+                            <details style={{ marginTop: 8 }} open={Boolean(m.chroma)}>
+                              <summary style={{ fontSize: 11.5, fontWeight: 700, color: C.text, cursor: 'pointer' }}>Chroma key (fundo verde)</summary>
+                              <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                                {[[null, 'Desligado'], ['green', 'Verde'], ['blue', 'Azul']].map(([id, label]) => (
+                                  <button key={label} onClick={() => updateMedia(m.key, { chroma: id ? { ...(m.chroma || {}), color: id } : null })} style={framingTab((m.chroma?.color || null) === id)}>{label}</button>
+                                ))}
+                              </div>
+                              {m.chroma && [['similarity', 'Tolerância', 0.05, 0.6, 0.3], ['smooth', 'Suavizar borda', 0, 0.4, 0.08]].map(([k, label, min, max, def]) => (
+                                <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted, marginTop: 6 }}>
+                                  <span style={{ width: 86 }}>{label}</span>
+                                  <input type="range" min={min} max={max} step="0.01" value={m.chroma[k] ?? def} onChange={(e) => updateMedia(m.key, { chroma: { ...m.chroma, [k]: Number(e.target.value) } })} onDoubleClick={() => updateMedia(m.key, { chroma: { ...m.chroma, [k]: def } })} style={{ flex: 1 }} />
+                                  <span style={{ width: 34, textAlign: 'right' }}>{Math.round((m.chroma[k] ?? def) * 100)}</span>
+                                </label>
+                              ))}
+                              <div style={{ fontSize: 10.5, color: C.faint, marginTop: 6, lineHeight: 1.4 }}>Tira o fundo verde (ou azul) de vídeos e imagens de "green screen": botões de inscrever-se, efeitos, você gravado na frente do pano. A prévia é aproximada; o vídeo final usa o recorte completo.</div>
                             </details>
                             {catalog?.layerAnimations && (
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 8 }}>
@@ -10600,6 +10646,22 @@ function RenderError({ err, onDisable, onClose }) {
  * Editável: arraste para posicionar (PiP e textos) e puxe o canto da mídia para mudar o
  * tamanho — as mesmas frações (px/py/scale, x/y) que o servidor usa no render.
  */
+/**
+ * Chroma key na prévia: filtros SVG que transformam o verde (ou o azul) em transparência
+ * (alfa = 1 + 1,5·R − 3·G + 1,5·B para o verde). Aproximado; o render usa colorkey + despill.
+ */
+function ChromaKeyDefs() {
+  return (
+    <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+      <filter id="rf-key-green" colorInterpolationFilters="sRGB">
+        <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  1.5 -3 1.5 0 1" />
+      </filter>
+      <filter id="rf-key-blue" colorInterpolationFilters="sRGB">
+        <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  1.5 1.5 -3 0 1" />
+      </filter>
+    </svg>
+  );
+}
 /** Ajustes da camada na prévia (a mesma ideia do eq/hflip do render). */
 function layerCss(m) {
   const b = Number(m.bright || 0);
@@ -10609,6 +10671,8 @@ function layerCss(m) {
   if (Math.abs(b) > 0.005) f.push(`brightness(${(1 + b * 1.2).toFixed(2)})`);
   if (Math.abs(c - 1) > 0.005) f.push(`contrast(${c.toFixed(2)})`);
   if (Math.abs(s - 1) > 0.005) f.push(`saturate(${s.toFixed(2)})`);
+  // Chroma key: aproximação por filtro SVG (o render usa colorkey + despill)
+  if (m.chroma?.color === 'green' || m.chroma?.color === 'blue') f.unshift(`url(#rf-key-${m.chroma.color})`);
   // Recorte (Propriedades): as bordas somem e o resto fica no mesmo lugar (como no Premiere)
   const cr = m.crop || null;
   const crop = cr && (cr.l || cr.t || cr.r || cr.b)
@@ -10752,6 +10816,7 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
   };
   return (
     <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', pointerEvents: 'none', zIndex: z }}>
+      {visible.some((m) => m.chroma) && <ChromaKeyDefs />}
       {guides && <SnapGuides x={guides.x} y={guides.y} />}
       {visible.filter((m) => !m.above).map(drawMedia)}
       {liveTexts.map((l) => {

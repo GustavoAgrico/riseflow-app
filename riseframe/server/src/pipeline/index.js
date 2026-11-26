@@ -22,6 +22,8 @@ import { applyMotion, dynamicZoomWindows } from './motion.js';
 import { enhanceVoice, voiceActive, voiceSettings } from './voice.js';
 import { applyAudioGain, gainAf } from './gain.js';
 import { normalizeLoudness } from './loudness.js';
+import { applyAudiogram } from './audiogram.js';
+import { cleanAudiogram } from '../../../shared/audiogram.js';
 import { markFillers } from './cleanup.js';
 import { classifyNarrative } from './narrative.js';
 import { cleanupWithLLM } from './cleanupLLM.js';
@@ -178,6 +180,7 @@ function buildPlan(mode, options) {
       { key: 'headline', label: 'Colocando o título (headline)', weight: 6, enabled: Boolean(options.headline?.text) },
       { key: 'watermark', label: 'Aplicando o seu logo', weight: 6, enabled: Boolean(options.watermark?.file) },
       { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true || (Array.isArray(options.sfxMoments) && options.sfxMoments.length > 0) || ((options.kinetic === true || options.vsl === true) && mode !== 'render') },
+      { key: 'audiogram', label: 'Desenhando a onda do áudio', weight: 6, enabled: Boolean(cleanAudiogram(options.audiogram)) },
       { key: 'color', label: 'Analisando as cores', weight: 3, enabled: (options.colorLook || 'teal-orange') !== 'none' || hasColorAdjust(options.colorAdjust) },
       { key: 'render', label: 'Renderização final', weight: 18, enabled: true },
     ].filter((s) => s.enabled);
@@ -1165,6 +1168,15 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (r.applied) input = r.output;
     report.sfx = { count: r.count, byType: r.byType || {} };
     st.record(report.sfx);
+    st.onProgress(1);
+  }
+
+  // Audiograma (onda do áudio na tela): depois dos efeitos sonoros, com o som final
+  if (has('audiogram')) {
+    const st = enter('audiogram');
+    const r = await applyAudiogram(input, work, meta, options.audiogram, st.onProgress);
+    if (r.applied) input = r.output;
+    report.audiogram = { applied: r.applied, style: options.audiogram?.style };
     st.onProgress(1);
   }
 

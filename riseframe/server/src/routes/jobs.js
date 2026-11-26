@@ -39,7 +39,8 @@ const CAPTION_TEMPLATE_IDS = Object.keys(CAPTION_TEMPLATES);
 import { CAPTION_LANGUAGES } from '../pipeline/translate.js';
 import { MOMENT_EFFECTS, cleanKeys } from '../../../shared/transform.js';
 import { INTERCHANGE } from '../../../shared/interchange.js';
-import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
+import { cleanAudiogram } from '../../../shared/audiogram.js';
+import { cleanTextLayers, cleanFxMoments, cleanKey } from '../../../shared/textLayers.js';
 import { ELEMENT_MOTIONS } from '../../../shared/elementMotion.js';
 import { KINETIC_THEMES } from '../../../shared/kinetic.js';
 import { DEFAULT_NOTE_OPEN, DEFAULT_NOTE_CLOSE } from '../../../shared/editFlow.js';
@@ -535,6 +536,8 @@ function sanitizeUserMedia(raw) {
       ...(kind !== 'audio' && Object.hasOwn(ELEMENT_MOTIONS, m.motion) && m.motion !== 'none'
         ? { motion: m.motion, motionSpeed: clampNum(m.motionSpeed, 0.2, 5, 1), motionAmp: clampNum(m.motionAmp, 0.1, 3, 1) } : {}),
       ...(kind !== 'audio' && /^#[0-9a-f]{6}$/i.test(String(m.tint || '')) ? { tint: m.tint } : {}),
+      // chroma key (fundo verde/azul vira transparência)
+      ...(kind !== 'audio' && cleanKey(m.chroma) ? { chroma: cleanKey(m.chroma) } : {}),
       // vídeo em loop (fundo animado das cenas): repete até o fim da camada
       ...(kind === 'video' && m.loop === true ? { loop: true } : {}),
     };
@@ -769,6 +772,8 @@ export function parseOptions(raw) {
     ...(['video', 'audio'].includes(o.streams) ? { streams: o.streams } : {}),
     // volume padrão do vídeo final: social (−14 LUFS, padrão) | podcast (−16) | tv (−23) | off
     ...(['off', 'podcast', 'tv'].includes(o.loudness) ? { loudness: o.loudness } : {}),
+    // audiograma: a onda do áudio desenhada no vídeo (podcast)
+    ...(cleanAudiogram(o.audiogram) ? { audiogram: cleanAudiogram(o.audiogram) } : {}),
     audioVolume: clampNum(o.audioVolume, 0, 4, 1),
     ...(cleanVolKeys(o.audioVolKeys).length ? { audioVolKeys: cleanVolKeys(o.audioVolKeys) } : {}),
     // Recorte (Crop) do vídeo principal: quanto sai de cada lado (fração).
