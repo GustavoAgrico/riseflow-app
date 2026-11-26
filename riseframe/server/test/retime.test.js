@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { retimePieces, retimedDuration, atempoChain, retimeGraph, clampSpeed } from '../src/pipeline/retime.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 test('retime: sem trechos nem congelamentos não muda nada', () => {
   assert.equal(retimePieces([], [], 10), null);
@@ -45,7 +46,7 @@ test('render final: velocidade por trecho + congelar quadro mudam a duração de
   const fs = await import('node:fs');
   const { finalRender } = await import('../src/pipeline/render.js');
   const { runFfmpeg, probeSummary } = await import('../src/pipeline/ffmpeg.js');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-retime-'));
+  const dir = tmpDir('rf-retime-');
   const src = path.join(dir, 'in.mp4');
   await runFfmpeg(['-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=30:d=4', '-f', 'lavfi', '-i', 'sine=d=4', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', '-shortest', '-y', src]);
   const meta = await probeSummary(src);

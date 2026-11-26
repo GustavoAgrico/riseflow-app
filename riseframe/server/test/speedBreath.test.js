@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import { envelopeFrom, fitPausesToAudio, wordGapRanges } from '../src/pipeline/cutRefine.js';
 import { speedFilters, finalRender } from '../src/pipeline/render.js';
 import { runFfmpeg, probeSummary } from '../src/pipeline/ffmpeg.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 function env(duration, parts, base = -90) {
   const db = new Float32Array(Math.round(duration / 0.01)).fill(base);
@@ -53,7 +54,7 @@ test('velocidade: filtros só quando diferente de 1×, com fps mantido e voz sem
 });
 
 test('render final em 1,5× encurta o vídeo e o áudio na mesma proporção', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-speed-'));
+  const dir = tmpDir('rf-speed-');
   const src = path.join(dir, 'in.mp4');
   await runFfmpeg(['-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=30:duration=3', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3',
     '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', '-y', src], { label: 'teste' });
@@ -66,7 +67,7 @@ test('render final em 1,5× encurta o vídeo e o áudio na mesma proporção', a
 });
 
 test('áudio real: a inspiração antes da frase é cortada só com "remover respirações"', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-breath-'));
+  const dir = tmpDir('rf-breath-');
   const wav = path.join(dir, 'fala.wav');
   // "fala" (tom alto) 0–1 s · silêncio · "respiração" 1.4–1.85 s · "fala" 1.85–3 s. A respiração
   // é chiado de ar: energia nos agudos (ruído acima de 1 kHz), ~30 dB abaixo da voz.
@@ -87,7 +88,7 @@ test('áudio real: a inspiração antes da frase é cortada só com "remover res
 });
 
 test('áudio real: palavra que a transcrição "pulou" não é cortada (voz no meio do vão)', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-pulou-'));
+  const dir = tmpDir('rf-pulou-');
   const wav = path.join(dir, 'fala.wav');
   // fala 0–1 s · silêncio · PALAVRA FALADA 1.6–1.9 s (fora da transcrição) · silêncio · fala 2.6–3.5 s
   await runFfmpeg(['-f', 'lavfi', '-i', 'sine=frequency=200:duration=3.5:sample_rate=16000',

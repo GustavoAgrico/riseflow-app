@@ -5,6 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { voiceAf, voiceChain, voiceActive, previewVoice, VOICE_NOISE, VOICE_PRESETS, VOICE_EFFECTS } from '../src/pipeline/voice.js';
 import { runFfmpeg } from '../src/pipeline/ffmpeg.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 test('voiceAf: monta a cadeia (denoise + normalização) e varia com a intensidade', () => {
   const m = voiceAf('medio');
@@ -34,7 +35,7 @@ test('voz: limpeza antes da transcrição, tom/efeito depois (não atrapalha a I
 });
 
 test('voz: todos os ruídos, tratamentos e efeitos rodam de verdade no FFmpeg', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-voice-'));
+  const dir = tmpDir('rf-voice-');
   const src = path.join(dir, 'fala.m4a');
   await runFfmpeg(['-f', 'lavfi', '-i', "aevalsrc='0.3*sin(2*PI*220*t)+0.05*(random(0)-0.5)':s=44100:d=2.5", '-c:a', 'aac', '-y', src], { label: 'gera' });
   const combos = [

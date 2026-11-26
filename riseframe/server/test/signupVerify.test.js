@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { tmpDir } from '../testkit/tmp.js';
 
-process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-signup-'));
+process.env.DATA_DIR = tmpDir('rf-signup-');
 const { config } = await import('../src/config.js');
 const contact = await import('../src/auth/contact.js');
 const express = (await import('express')).default;

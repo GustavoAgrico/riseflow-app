@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { tmpDir } from '../testkit/tmp.js';
 
 // Sem yt-dlp no sistema (como no app de PC): o servidor baixa o executável oficial,
 // confere o SHA-256 e passa a usar. Aqui a "release" é falsa (fetch simulado).
 test('sem yt-dlp instalado: baixa o executável, confere o SHA-256 e usa', async (t) => {
   if (process.platform === 'win32') return t.skip('script de teste é shell');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-ytdlp-'));
+  const dir = tmpDir('rf-ytdlp-');
   process.env.DATA_DIR = dir;
   process.env.PATH = '/nonexistent';
   process.env.PYTHON_BIN = '/nonexistent/python';

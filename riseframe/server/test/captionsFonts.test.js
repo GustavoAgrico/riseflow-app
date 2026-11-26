@@ -4,9 +4,10 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import { fontsDirArg } from '../src/pipeline/captions.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 test('fontsDirArg: caminho relativo simples é usado direto; com espaço copia as fontes para o job', async () => {
-  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'rf-fonts-'));
+  const base = tmpDir('rf-fonts-');
   const work = path.join(base, 'work', 'job1');
   await fs.mkdir(work, { recursive: true });
 

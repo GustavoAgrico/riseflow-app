@@ -10,6 +10,7 @@ import { renderExplainerScene, explainerLayers } from '../src/pipeline/motionRen
 import { probeSummary } from '../src/pipeline/ffmpeg.js';
 import { SFX_LIBRARY, STYLE_PACK_SOUNDS } from '../src/pipeline/sfx.js';
 import { remapMotionScenes } from '../src/pipeline/timeline.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 const seg = (t0, text) => { let t = t0; const words = text.split(' ').map((w) => { const o = { start: +t.toFixed(2), end: +(t + 0.26).toFixed(2), word: w }; t += 0.3; return o; }); return { start: t0, end: t, words }; };
 const SEGS = [seg(0.2, 'você sabia disso'), seg(1.3, 'pesquisas mostram'), seg(2.2, 'que o cérebro toma'), seg(3.2, '35 mil decisões todo dia'),
@@ -49,7 +50,7 @@ test('explicativo: desenha todos os tipos de batida em qualquer instante sem err
 });
 
 test('explicativo: render real vira vídeo do tamanho e duração da cena', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-motion-'));
+  const dir = tmpDir('rf-motion-');
   try {
     const sc = { ...plan.scenes[0], end: plan.scenes[0].start + 2 };
     const file = await renderExplainerScene(sc, { W: 360, H: 640, fps: 15 }, path.join(dir, 'm.mp4'));
