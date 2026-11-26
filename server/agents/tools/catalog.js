@@ -246,6 +246,27 @@ const TOOLS = {
     },
   },
 
+  enrich_leads: {
+    risk: 'baixo',
+    description: 'Enriquece leads por fontes públicas (sem custo): visita o site de cada empresa e consulta o CNPJ para achar e-mail, Instagram, WhatsApp, redes, situação do CNPJ e sócios (donos). Use depois de search_leads, nos que têm site.',
+    schema: obj({
+      leads: { type: 'array', maxItems: 10, items: obj({ name: str('Nome da empresa'), website: str('Site'), cnpj: str('CNPJ (opcional)') }, ['name']) },
+    }, ['leads']),
+    async run(ctx, { leads }) {
+      const items = leads.filter(l => l.website || l.cnpj).map((l, i) => ({ key: String(i), website: l.website || '', cnpj: l.cnpj || '' }))
+      if (!items.length) return { error: 'Nenhum lead com site ou CNPJ.' }
+      const out = await require('../../prospecting/enrich').enrichMany(items, 3)
+      return {
+        enriched: out.map(r => {
+          const l = leads.filter(x => x.website || x.cnpj)[Number(r.key)]
+          return { name: l?.name, emails: r.emails || [], instagram: r.instagram || null, whatsapp: r.whatsapp || null, linkedin: r.linkedin || null,
+            cnpj: r.cnpj || r.company?.cnpj || null, situacao: r.company?.situacao || null, porte: r.company?.porte || null,
+            socios: (r.company?.socios || []).map(s => s.nome), error: r.error || null }
+        }),
+      }
+    },
+  },
+
   import_leads: {
     risk: 'medio',
     description: 'Cadastra no CRM leads vindos de search_leads (só os que têm telefone e ainda não existem).',
@@ -394,7 +415,7 @@ const TOOLS = {
 const TOOLS_BY_KIND = {
   comercial: ['search_contacts', 'list_tasks', 'list_pipeline', 'list_hot_leads', 'update_opportunity', 'get_calendar', 'get_goal_progress', 'create_task', 'move_pipeline_stage', 'create_note', 'schedule_meeting', 'queue_ai_call', 'send_whatsapp', 'remember', 'search_memories'],
   atendente: ['search_contacts', 'list_tasks', 'list_hot_leads', 'team_overview', 'create_task', 'create_note', 'send_whatsapp', 'nudge_team_member', 'remember', 'search_memories'],
-  prospector: ['search_leads', 'import_leads', 'scan_conversations_for_leads', 'list_hot_leads', 'search_contacts', 'queue_ai_call', 'remember', 'search_memories'],
+  prospector: ['search_leads', 'enrich_leads', 'import_leads', 'scan_conversations_for_leads', 'list_hot_leads', 'search_contacts', 'queue_ai_call', 'remember', 'search_memories'],
   agenda: ['get_calendar', 'list_tasks', 'list_projects', 'create_task', 'schedule_meeting', 'search_contacts', 'remember', 'search_memories'],
   metas: ['get_goal_progress', 'list_pipeline', 'team_overview', 'nudge_team_member', 'search_contacts', 'remember', 'search_memories'],
   analista: ['list_pipeline', 'get_goal_progress', 'list_tasks', 'list_invoices', 'list_projects', 'team_overview', 'search_contacts', 'send_whatsapp', 'remember', 'search_memories'],

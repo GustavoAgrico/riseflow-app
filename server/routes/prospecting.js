@@ -2,7 +2,8 @@
 // se pedido, coloca os leads na fila de ligações da IA (aiCallQueue.js).
 //   GET  /api/prospecting/credit                                  → crédito grátis restante no mês
 //   POST /api/prospecting/search            { query, location, max }  (limitada ao crédito grátis)
-//   POST /api/prospecting/import            { leads: [...], call: boolean }
+//   POST /api/prospecting/enrich            { leads: [{ key, website, cnpj }] } → e-mail, redes, WhatsApp, CNPJ e sócios (grátis)
+//   POST /api/prospecting/import            { leads: [...], call: boolean, source }
 //   GET  /api/prospecting/queue                                   → fila e últimas ligações
 //   POST /api/prospecting/queue/:id/cancel                        → tira da fila
 // As regras de busca e importação ficam em server/prospectingService.js (também usadas pelos agentes).
@@ -10,6 +11,7 @@ const { Router } = require('express')
 const { supabase, isConfigured } = require('../supabaseClient')
 const leadSearch = require('../leadSearch')
 const prospecting = require('../prospectingService')
+const enrich = require('../prospecting/enrich')
 
 const router = Router()
 
@@ -56,9 +58,30 @@ router.get('/credit', guard, async (req, res) => {
   }
 })
 
+// Enriquecimento por fontes públicas (site da empresa + CNPJ na BrasilAPI). Até 20 por chamada.
+const recentEnrich = new Map()
+router.post('/enrich', guard, async (req, res) => {
+  const userId = req.user?.sub
+  const items = (Array.isArray(req.body?.leads) ? req.body.leads : []).slice(0, 20)
+    .map(l => ({ key: String(l?.key || '').slice(0, 120), website: String(l?.website || '').slice(0, 300), cnpj: String(l?.cnpj || '').slice(0, 20) }))
+    .filter(l => l.key && (l.website || l.cnpj))
+  if (!items.length) return res.status(400).json({ error: 'Nenhum lead com site ou CNPJ para enriquecer.' })
+  const now = Date.now()
+  const used = (recentEnrich.get(userId) || []).filter(t => now - t < 3600_000)
+  if (used.length + items.length > 300) return res.status(429).json({ error: 'Limite de 300 enriquecimentos por hora atingido.' })
+  recentEnrich.set(userId, [...used, ...items.map(() => now)])
+  try {
+    res.json({ results: await enrich.enrichMany(items) })
+  } catch (e) {
+    console.error('[prospecting] erro no enriquecimento:', e?.message)
+    res.status(500).json({ error: 'Não foi possível enriquecer agora.' })
+  }
+})
+
 router.post('/import', guard, async (req, res) => {
   try {
-    const { clientIds, ...out } = await prospecting.importLeads(req.user?.sub, req.body?.leads, { call: Boolean(req.body?.call) })
+    const source = req.body?.source === 'lista' ? 'lista' : 'google_maps'
+    const { clientIds, ...out } = await prospecting.importLeads(req.user?.sub, req.body?.leads, { call: Boolean(req.body?.call), source })
     res.json(out)
   } catch (e) {
     console.error('[prospecting] erro ao importar:', e?.message)
