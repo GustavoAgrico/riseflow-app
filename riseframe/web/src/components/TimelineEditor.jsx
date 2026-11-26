@@ -5,7 +5,7 @@ import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import Processing from './Processing.jsx';
 import { pickExportTarget, setPendingExport } from '../exportTarget.js';
-import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, elementUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi, brollFaces, getSubject, motionAuto } from '../api.js';
+import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, elementUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi, brollFaces, getSubject, motionAuto, exportInterchange } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -3384,6 +3384,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         ...((cropRanges || []).length ? { cropRanges: cropRanges.map((x) => ({ start: +x.start.toFixed(3), end: +x.end.toFixed(3), l: x.l || 0, t: x.t || 0, r: x.r || 0, b: x.b || 0 })) } : {}),
         ...(exportFps ? { fps: exportFps } : {}),
         ...(exportStreams !== 'av' ? { streams: exportStreams } : {}),
+        ...(exportLoudness !== 'social' ? { loudness: exportLoudness } : {}),
         ...(noTxRanges.length ? { noCutRanges: noTxRanges } : {}),
         ...(blanks.length || seqHoles.length ? { videoBlanks: [...blanks, ...seqHoles].map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2), ...(b.audio === false ? { audio: false } : {}) })) } : {}),
         audioGains: gains.map((g) => ({ start: +g.start.toFixed(2), end: +g.end.toFixed(2), volume: +Number(g.volume).toFixed(2) })),
@@ -3851,6 +3852,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [exportScope, setExportScope] = useState('all'); // linha toda | só o trecho entre a entrada e a saída (I/O)
   const exportRange = exportScope === 'range' && range && range.b - range.a >= 0.3 ? range : null;
   const [exportStreams, setExportStreams] = useState(() => (['video', 'audio'].includes(options?.streams) ? options.streams : 'av')); // vídeo e áudio / só vídeo / só áudio
+  // Volume padrão do vídeo final (medido na mistura toda, como os medidores de loudness)
+  const [exportLoudness, setExportLoudness] = useState(() => (['off', 'podcast', 'tv'].includes(options?.loudness) ? options.loudness : 'social'));
   const [exportFps, setExportFps] = useState(() => ([24, 25, 30, 50, 60, 120].includes(Number(options?.fps)) ? Number(options.fps) : 0)); // 0 = o do vídeo
   function openExport() {
     if (busy || allGone) return;
@@ -3927,6 +3930,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </div>
                 )}
               </div>
+              {exportStreams !== 'video' && <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8, marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Volume padrão</div>
+                <div role="radiogroup" aria-label="Volume padrão" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
+                  {[['social', 'Redes', '−14 LUFS'], ['podcast', 'Podcast', '−16 LUFS'], ['tv', 'TV', '−23 LUFS'], ['off', 'Como está', 'sem ajuste']].map(([id, label, sub]) => (
+                    <button key={id} role="radio" aria-checked={exportLoudness === id} onClick={() => setExportLoudness(id)} style={{ ...framingTab(exportLoudness === id), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px' }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 800 }}>{label}</span>
+                      <span style={{ fontSize: 10, color: C.faint, fontWeight: 600 }}>{sub}</span>
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: C.faint, lineHeight: 1.45 }}>
+                  {exportLoudness === 'off' ? 'O som sai exatamente como está na timeline.' : 'Mede o som final (fala, música e efeitos juntos) e deixa no volume que a plataforma espera, sem distorcer: o vídeo não fica baixo nem estoura perto dos outros.'}
+                </div>
+              </div>}
               {!onlyAudio && exportSettingsJsx()}
               {!onlyAudio && <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8, marginBottom: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>Quadros por segundo (fps)</div>
@@ -3953,7 +3970,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <div style={{ display: 'grid', gap: 10, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
               <div style={{ fontSize: 13, fontWeight: 700 }}>Saída</div>
               {row('Vídeo', onlyAudio ? '— (só áudio)' : `H.264 · ${ow}×${oh} · ${exportFps ? `${exportFps} fps` : 'fps do vídeo gravado'}`)}
-              {row('Áudio', onlyAudio ? 'MP3 · 192 kbps · estéreo' : exportStreams === 'video' ? '— (sem som)' : 'AAC · 192 kbps · 48 kHz · estéreo')}
+              {row('Áudio', onlyAudio ? `MP3 · 192 kbps · estéreo${exportLoudness !== 'off' ? ` · ${{ social: '−14', podcast: '−16', tv: '−23' }[exportLoudness]} LUFS` : ''}` : exportStreams === 'video' ? '— (sem som)' : `AAC · 192 kbps · 48 kHz · estéreo${exportLoudness !== 'off' ? ` · ${{ social: '−14', podcast: '−16', tv: '−23' }[exportLoudness]} LUFS` : ''}`)}
               {!onlyAudio && row('Formato', aspectSel === 'original' ? 'Original (como foi gravado)' : aspectSel)}
               {!onlyAudio && row('Qualidade', hdAllowed && quality !== 'original' ? QUALITY_OPTS.find((q) => q.id === quality)?.label : 'Original')}
               {row('Salvar', window.electron ? 'você escolhe a pasta ao clicar em Exportar' : typeof window.showSaveFilePicker === 'function' ? 'você escolhe a pasta ao clicar em Exportar' : 'baixa sozinho quando ficar pronto')}
@@ -4993,9 +5010,36 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     setCapExportOpen(false);
   }
+  // Exportar a EDIÇÃO para o Premiere / DaVinci / Final Cut (como os editores profissionais):
+  // os cortes do vídeo principal viram uma sequência que aponta para os arquivos originais.
+  const [ixBusy, setIxBusy] = useState('');
+  async function exportEdit(format) {
+    const clips = v1Pieces
+      .filter((p) => p.clip && !p.clip.blank && p.clip.kind !== 'blank' && p.clip.kind !== 'image' && (p.clip.sourceId || p.clip.mediaId || sourceId))
+      .map((p) => {
+        const off = (Number(p.clip.in) || 0) - (Number(p.clip.start) || 0);
+        return { ...(p.clip.mediaId && !p.clip.sourceId ? { mediaId: p.clip.mediaId } : { sourceId: p.clip.sourceId || sourceId }), in: +(p.va + off).toFixed(3), out: +(p.vb + off).toFixed(3) };
+      });
+    if (!clips.length) { window.alert('Não há vídeo na timeline para exportar.'); return; }
+    setIxBusy(format);
+    try {
+      const { blob, filename } = await exportInterchange(sourceId, { format, title: projectTitle || '', clips });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      setCapExportOpen(false);
+      if (speed !== 1) window.alert('A velocidade geral do vídeo não vai junto: a sequência sai em 1x (ajuste a velocidade no outro editor).');
+    } catch (e) {
+      window.alert(`Não deu para exportar a edição: ${e.message}`);
+    } finally {
+      setIxBusy('');
+    }
+  }
   const capExportBtn = (
     <div style={{ position: 'relative' }}>
-      <button onClick={() => setCapExportOpen((v) => !v)} title="Exportar a legenda (.srt, .vtt, .txt) no tempo do vídeo final"
+      <button onClick={() => setCapExportOpen((v) => !v)} title="Exportar a legenda (.srt, .vtt, .txt) ou a edição para o Premiere, DaVinci e Final Cut"
         style={{ ...zoomBtn, display: 'inline-flex', alignItems: 'center', gap: 5, width: 'auto', height: 32, padding: '0 9px', fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap' }}>
         <Icon name="download" size={13} strokeWidth={2} /> Exportar
       </button>
@@ -5005,6 +5049,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <button key={fmt} role="menuitem" onClick={() => exportCaptions(fmt)}
               style={{ display: 'grid', width: '100%', textAlign: 'left', padding: '7px 9px', borderRadius: 7, border: 'none', background: 'transparent', color: C.text, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
               {label}<span style={{ fontSize: 11, fontWeight: 500, color: C.faint }}>{hint}</span>
+            </button>
+          ))}
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.6, color: C.faint, padding: '8px 9px 3px', borderTop: `1px solid ${C.border}`, marginTop: 4 }}>EDIÇÃO (CORTES) PARA OUTRO EDITOR</div>
+          {[['xml', 'Premiere Pro (.xml)', 'também abre no DaVinci Resolve'], ['fcpxml', 'Final Cut Pro (.fcpxml)', 'também abre no DaVinci Resolve'], ['edl', 'EDL (.edl)', 'qualquer editor profissional']].map(([fmt, label, hint]) => (
+            <button key={fmt} role="menuitem" disabled={Boolean(ixBusy)} onClick={() => exportEdit(fmt)}
+              title="Os cortes do vídeo principal como uma sequência que aponta para o arquivo original: termine a cor, o áudio e os efeitos no outro editor"
+              style={{ display: 'grid', width: '100%', textAlign: 'left', padding: '7px 9px', borderRadius: 7, border: 'none', background: 'transparent', color: C.text, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: ixBusy ? 'wait' : 'pointer', opacity: ixBusy && ixBusy !== fmt ? 0.5 : 1 }}>
+              {ixBusy === fmt ? 'Gerando…' : label}<span style={{ fontSize: 11, fontWeight: 500, color: C.faint }}>{hint}</span>
             </button>
           ))}
         </div>
