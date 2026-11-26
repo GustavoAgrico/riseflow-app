@@ -21,6 +21,9 @@ import { applyUserMedia } from './overlay.js';
 import { applyMotion, dynamicZoomWindows } from './motion.js';
 import { enhanceVoice, voiceActive, voiceSettings } from './voice.js';
 import { applyAudioGain, gainAf } from './gain.js';
+import { normalizeLoudness } from './loudness.js';
+import { applyAudiogram } from './audiogram.js';
+import { cleanAudiogram } from '../../../shared/audiogram.js';
 import { markFillers } from './cleanup.js';
 import { classifyNarrative } from './narrative.js';
 import { cleanupWithLLM } from './cleanupLLM.js';
@@ -35,7 +38,7 @@ import { elementFile } from './elements.js';
 import { explainerPlan, MOTION_STYLES } from '../../../shared/motionEngine.js';
 import { explainerLayers } from './motionRender.js';
 import { vslPlan } from '../../../shared/vslPlan.js';
-import { applyVslCamera, applyLoudness } from './vsl.js';
+import { applyVslCamera } from './vsl.js';
 import { averageSubjectCenter } from './reframe.js';
 import { cleanTextLayers } from '../../../shared/textLayers.js';
 import { CAPTION_FONTS } from '../../../shared/captionStyle.js';
@@ -177,6 +180,7 @@ function buildPlan(mode, options) {
       { key: 'headline', label: 'Colocando o título (headline)', weight: 6, enabled: Boolean(options.headline?.text) },
       { key: 'watermark', label: 'Aplicando o seu logo', weight: 6, enabled: Boolean(options.watermark?.file) },
       { key: 'sfx', label: 'Adicionando efeitos sonoros', weight: 8, enabled: options.soundEffects === true || (Array.isArray(options.sfxMoments) && options.sfxMoments.length > 0) || ((options.kinetic === true || options.vsl === true) && mode !== 'render') },
+      { key: 'audiogram', label: 'Desenhando a onda do áudio', weight: 6, enabled: Boolean(cleanAudiogram(options.audiogram)) },
       { key: 'color', label: 'Analisando as cores', weight: 3, enabled: (options.colorLook || 'teal-orange') !== 'none' || hasColorAdjust(options.colorAdjust) },
       { key: 'render', label: 'Renderização final', weight: 18, enabled: true },
     ].filter((s) => s.enabled);
@@ -1167,6 +1171,15 @@ export async function runPipeline(job, onUpdate = () => {}) {
     st.onProgress(1);
   }
 
+  // Audiograma (onda do áudio na tela): depois dos efeitos sonoros, com o som final
+  if (has('audiogram')) {
+    const st = enter('audiogram');
+    const r = await applyAudiogram(input, work, meta, options.audiogram, st.onProgress);
+    if (r.applied) input = r.output;
+    report.audiogram = { applied: r.applied, style: options.audiogram?.style };
+    st.onProgress(1);
+  }
+
   // 7. Color grade: só decide o filtro aqui; ele é aplicado no render final, na
   // mesma passada (uma recodificação do vídeo inteiro a menos).
   let colorVf = null;
@@ -1220,11 +1233,14 @@ export async function runPipeline(job, onUpdate = () => {}) {
     if (manual.length) report.transitions = manual.length;
     const vf = [colorVf, tVf, ...mVf].filter(Boolean).join(',') || null;
     const r = await finalRender(input, job.outputsDir, job.id, meta, { ...options, trackInput, colorVf: vf, reframe: aspectReframe, coverFile: options.cover?.intro ? coverFile : null }, st.onProgress);
-    // Reel VSL: áudio final a -14 LUFS (sem recodificar a imagem)
-    if (vsl) {
+    // Volume padrão no vídeo final (a mistura toda: fala, música, efeitos, B-roll): −14 LUFS
+    // para as redes, medido em 2 passadas e sem recodificar a imagem. 'off' mantém como está.
+    {
+      const loudOpt = vsl && options.loudness === 'off' ? 'social' : options.loudness || 'social';
       try {
-        const loud = await applyLoudness(r.output, work, await probeSummary(r.output));
+        const loud = await normalizeLoudness(r.output, work, await probeSummary(r.output), loudOpt);
         if (loud.applied) await fs.promises.copyFile(loud.output, r.output);
+        if (loud.before) report.loudness = { target: loud.target.I, before: loud.before.I, peakBefore: loud.before.TP, applied: loud.applied };
       } catch (err) { log.warn(`não deu para ajustar o volume final: ${err.message}`); }
     }
     // Exportar só o vídeo (sem som) ou só o áudio (MP3), como no Premiere

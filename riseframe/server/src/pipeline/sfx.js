@@ -455,6 +455,77 @@ export const SFX_LIBRARY = {
     src: "aevalsrc='(random(0)*2-1)*abs(sin(2*PI*7*t))':d=0.5:s=44100",
     af: ['bandpass=f=1400:w=900', 'volume=60', 'alimiter=limit=0.8', 'aformat=channel_layouts=stereo'],
   },
+  // ── novos (sintetizados: nada de arquivo, sem direitos de terceiros) ──
+  whip: {
+    label: 'Chicote (whoosh rápido)', base: 'whoosh', gain: 1, lead: 0.12,
+    src: 'anoisesrc=d=0.28:c=pink:a=0.9:r=44100',
+    af: ['highpass=f=600', 'lowpass=f=7000', 'afade=t=in:st=0:d=0.18:curve=exp', 'afade=t=out:st=0.18:d=0.1', 'volume=1.4', 'aformat=channel_layouts=stereo'],
+  },
+  tapestop: {
+    label: 'Fita parando', base: 'swipe', gain: 0.9, lead: 0,
+    src: "aevalsrc='0.6*sin(2*PI*(220*(1-t/0.8)^2+30)*t)+0.25*sin(2*PI*(440*(1-t/0.8)^2+60)*t)':d=0.8:s=44100",
+    af: ['lowpass=f=1800', 'afade=t=out:st=0.55:d=0.25', 'aformat=channel_layouts=stereo'],
+  },
+  vibrate: {
+    label: 'Celular vibrando', base: 'thud', gain: 0.9, lead: 0,
+    src: "aevalsrc='0.8*sin(2*PI*150*t)*lt(mod(t,0.45),0.3)':d=0.9:s=44100",
+    af: ['lowpass=f=400', 'volume=1.3', 'aformat=channel_layouts=stereo'],
+  },
+  beep: {
+    label: 'Bipe', base: 'ding', gain: 0.8, lead: 0,
+    src: "aevalsrc='0.5*sin(2*PI*1000*t)':d=0.18:s=44100",
+    af: ['afade=t=in:st=0:d=0.005', 'afade=t=out:st=0.14:d=0.04', 'aformat=channel_layouts=stereo'],
+  },
+  countdown: {
+    label: 'Contagem regressiva (3 bipes)', base: 'ding', gain: 0.8, lead: 0,
+    src: "aevalsrc='0.5*sin(2*PI*(880+if(gte(t,2),880,0))*t)*lt(mod(t,1),0.16)':d=2.3:s=44100",
+    af: ['aformat=channel_layouts=stereo'],
+  },
+  alarm: {
+    label: 'Alarme', base: 'ding', gain: 0.6, lead: 0,
+    src: "aevalsrc='0.45*sin(2*PI*(700+300*gt(sin(2*PI*4*t),0))*t)':d=1:s=44100",
+    af: ['afade=t=out:st=0.8:d=0.2', 'aformat=channel_layouts=stereo'],
+  },
+  levelup: {
+    label: 'Subiu de nível (arpejo)', base: 'ding', gain: 0.8, lead: 0,
+    src: "aevalsrc='0.4*sin(2*PI*(523.25*lt(t,0.1)+659.25*between(t,0.1,0.2)+783.99*between(t,0.2,0.3)+1046.5*gt(t,0.3))*t)*exp(-max(0,t-0.3)*5)':d=0.75:s=44100",
+    af: ['aformat=channel_layouts=stereo'],
+  },
+  drumroll: {
+    label: 'Rufar de tambor', base: 'impact', gain: 0.7, lead: 0,
+    src: "aevalsrc='(random(0)*2-1)*exp(-mod(t,0.05)*60)*(0.4+0.6*t/1.6)':d=1.6:s=44100",
+    af: ['bandpass=f=900:w=1200', 'volume=150', 'alimiter=limit=0.8', 'afade=t=out:st=1.45:d=0.15', 'aformat=channel_layouts=stereo'],
+  },
+  punch: {
+    label: 'Soco', base: 'impact', gain: 1, lead: 0,
+    src: "aevalsrc='0.9*sin(2*PI*(70+90*exp(-t*30))*t)*exp(-t*14)+0.5*(random(0)*2-1)*exp(-t*60)':d=0.35:s=44100",
+    af: ['lowpass=f=2500', 'volume=1.4', 'alimiter=limit=0.9', 'aformat=channel_layouts=stereo'],
+  },
+  sweepup: {
+    label: 'Varredura subindo', base: 'riser', gain: 0.8, lead: 0.6,
+    src: "aevalsrc='0.35*sin(2*PI*(200+1800*(t/0.9)^2)*t)':d=0.9:s=44100",
+    af: ['afade=t=in:st=0:d=0.5', 'afade=t=out:st=0.82:d=0.08', 'aformat=channel_layouts=stereo'],
+  },
+  sweepdown: {
+    label: 'Varredura descendo', base: 'riser', gain: 0.8, lead: 0,
+    src: "aevalsrc='0.35*sin(2*PI*(2000-1800*sqrt(t/0.9))*t)':d=0.9:s=44100",
+    af: ['afade=t=in:st=0:d=0.03', 'afade=t=out:st=0.5:d=0.4', 'aformat=channel_layouts=stereo'],
+  },
+  wind: {
+    label: 'Vento', base: 'whoosh', gain: 0.6, lead: 0,
+    src: 'anoisesrc=d=2.2:c=brown:a=0.8:r=44100',
+    af: ['bandpass=f=500:w=700', 'tremolo=f=0.8:d=0.6', 'volume=40', 'alimiter=limit=0.6', 'afade=t=in:st=0:d=0.6', 'afade=t=out:st=1.5:d=0.7', 'aformat=channel_layouts=stereo'],
+  },
+  camera: {
+    label: 'Flash de câmera', base: 'click', gain: 0.9, lead: 0,
+    src: "aevalsrc='0.7*(random(0)*2-1)*exp(-t*70)+0.25*sin(2*PI*3200*t)*exp(-t*12)*gt(t,0.04)':d=0.4:s=44100",
+    af: ['highpass=f=900', 'aformat=channel_layouts=stereo'],
+  },
+  chime: {
+    label: 'Sino suave', base: 'ding', gain: 0.8, lead: 0,
+    src: "aevalsrc='0.3*(sin(2*PI*1318.5*t)+0.6*sin(2*PI*1975.5*t)+0.3*sin(2*PI*2637*t))*exp(-t*3.2)':d=1.3:s=44100",
+    af: ['aformat=channel_layouts=stereo'],
+  },
 };
 
 /** Categorias da biblioteca (como as do CapCut). */
@@ -535,6 +606,11 @@ const SFX_CAT = {
   shutter: 'interface', click: 'interface', typing: 'interface', pop: 'interface', bubble: 'interface', ding: 'interface', notify: 'interface', clock: 'interface',
   glitch: 'divertido', cash: 'divertido', error: 'divertido', success: 'divertido', fail: 'divertido', boing: 'divertido', coin: 'divertido', laser: 'divertido', zap: 'divertido', scratch: 'divertido',
   bling: 'clima', drone: 'clima', sparkle: 'clima', magic: 'clima', heartbeat: 'clima',
+  whip: 'transicao', tapestop: 'transicao', sweepup: 'transicao', sweepdown: 'transicao',
+  punch: 'impacto', drumroll: 'impacto',
+  beep: 'interface', countdown: 'interface', vibrate: 'interface', camera: 'interface',
+  alarm: 'divertido', levelup: 'divertido',
+  wind: 'clima', chime: 'clima',
 };
 // ── Pacote de sons em arquivo (assets/sfx/pack/<categoria>/<som>.mp3) ──
 // Entra no site e no app de PC. pack.json traz nome/categoria/duração; qualquer arquivo

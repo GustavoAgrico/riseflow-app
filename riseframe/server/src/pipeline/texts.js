@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { fontsDirArg, jobFontsDir } from './captions.js';
 import { fontById, fontStyles } from '../../../shared/captionStyle.js';
-import { textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan, letterPlan, letterTiming, letterSegments, LETTER_ANIMS, LETTER_SAMPLED, wordPlan, wordTiming, wordSegments, wordFrame, WORD_ANIMS, WORD_SAMPLED, expandCounterLayers } from '../../../shared/textLayers.js';
+import { TEXT_OUT_FADES, TEXT_OUT_MOVES, textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan, letterPlan, letterTiming, letterSegments, LETTER_ANIMS, LETTER_SAMPLED, wordPlan, wordTiming, wordSegments, wordFrame, WORD_ANIMS, WORD_SAMPLED, expandCounterLayers } from '../../../shared/textLayers.js';
 import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
 import { makeLogger } from '../logger.js';
 
@@ -97,7 +97,7 @@ export function buildTextAss(rawLayers, meta) {
       const cy = l.y * H;
       const shape = l.shape === 'ellipse' ? ellipse(bw, bh) : roundRect(bw, bh, (Number(l.radius) || 0) * Math.min(bw, bh) / 2);
       const fin = ['fade', 'slide-up', 'slide-left', 'zoom'].includes(l.animIn) ? a : 0;
-      const fout = l.animOut === 'fade' ? a : 0;
+      const fout = TEXT_OUT_FADES.has(l.animOut) ? a : 0;
       const rotT = L.rot ? `\\org(${Math.round(cx)},${Math.round(cy)})\\frz${(-L.rot).toFixed(2)}` : '';
       // câmera: a forma escala em torno do centro (camFrom → camTo, linear, na duração da cena)
       const camF = Number(l.camFrom) || 1;
@@ -146,16 +146,29 @@ export function buildTextAss(rawLayers, meta) {
       const px = Math.round(px0);
       const py = Math.round(py0);
       const tags = [];
+      // saída que anda (descer/subir/esquerda/direita): o \\move é um só por linha, então só
+      // quando a entrada não usa o seu
+      const outMv = TEXT_OUT_MOVES[l.animOut];
       if (l.animIn === 'slide-up') tags.push(`\\an5\\move(${px},${py + Math.round(H * 0.06)},${px},${py},0,${a})`);
       else if (l.animIn === 'slide-left') tags.push(`\\an5\\move(${px + Math.round(W * 0.2)},${py},${px},${py},0,${a})`);
+      else if (l.animIn === 'slide-down') tags.push(`\\an5\\move(${px},${py - Math.round(H * 0.06)},${px},${py},0,${a})`);
+      else if (outMv) tags.push(`\\an5\\move(${px},${py},${px + Math.round(outMv[0] * W)},${py + Math.round(outMv[1] * H)},${durMs - a},${durMs})`);
       else tags.push(`\\an5\\pos(${px},${py})`);
       if (rot) tags.push(`\\org(${Math.round(org[0])},${Math.round(org[1])})${rot}`);
-      const fin = ['fade', 'slide-up', 'slide-left', 'zoom'].includes(l.animIn) ? a : 0;
-      const fout = l.animOut === 'fade' ? a : 0;
+      const fin = ['fade', 'slide-up', 'slide-left', 'zoom', 'blur-in', 'slide-down', 'grow', 'spin-in'].includes(l.animIn) ? a : 0;
+      const fout = TEXT_OUT_FADES.has(l.animOut) ? a : 0;
       if (fin || fout) tags.push(`\\fad(${fin},${fout})`);
       if (l.animIn === 'pop') tags.push(`\\fscx0\\fscy0\\t(0,${Math.round(a * 0.6)},\\fscx115\\fscy115)\\t(${Math.round(a * 0.6)},${a},\\fscx100\\fscy100)`);
       if (l.animIn === 'zoom') tags.push(`\\fscx60\\fscy60\\t(0,${a},\\fscx100\\fscy100)`);
+      if (l.animIn === 'grow') tags.push(`\\fscx0\\fscy0\\t(0,${a},\\fscx100\\fscy100)`);
+      if (l.animIn === 'blur-in') tags.push(`\\blur18\\t(0,${a},\\blur0)`);
+      if (l.animIn === 'spin-in') tags.push(`${rot ? '' : `\\org(${Math.round(org[0])},${Math.round(org[1])})`}\\frz${(-(L.rot || 0) - 360).toFixed(2)}\\fscx0\\fscy0\\t(0,${a},\\frz${(-(L.rot || 0)).toFixed(2)}\\fscx100\\fscy100)`);
       if (l.animOut === 'zoom') tags.push(`\\t(${durMs - a},${durMs},\\fscx0\\fscy0)`);
+      const o6 = durMs - Math.round(a * 0.4);
+      if (l.animOut === 'pop') tags.push(`\\t(${durMs - a},${o6},\\fscx115\\fscy115)\\t(${o6},${durMs},\\fscx0\\fscy0)`);
+      if (l.animOut === 'grow') tags.push(`\\t(${durMs - a},${durMs},\\fscx150\\fscy150)`);
+      if (l.animOut === 'blur') tags.push(`\\t(${durMs - a},${durMs},\\blur18)`);
+      if (l.animOut === 'spin') tags.push(`${rot ? '' : `\\org(${Math.round(org[0])},${Math.round(org[1])})`}\\t(${durMs - a},${durMs},\\frz${(-(L.rot || 0) + 360).toFixed(2)}\\fscx0\\fscy0)`);
       return tags.join('');
     };
     const clean = (t) => String(t).replace(/[{}]/g, '').replace(/\\/g, '');

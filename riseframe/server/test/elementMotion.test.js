@@ -13,8 +13,8 @@ test('ELEMENT_ANIMS tem 18 entradas', () => {
   assert.ok('spin' in ELEMENT_ANIMS);
 });
 
-test('ELEMENT_MOTIONS tem 11 entradas', () => {
-  assert.equal(Object.keys(ELEMENT_MOTIONS).length, 11);
+test('ELEMENT_MOTIONS tem 19 entradas (11 + 8 novos)', () => {
+  assert.equal(Object.keys(ELEMENT_MOTIONS).length, 19);
   assert.ok('none' in ELEMENT_MOTIONS);
   assert.ok('float' in ELEMENT_MOTIONS);
   assert.ok('jelly' in ELEMENT_MOTIONS);

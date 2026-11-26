@@ -613,6 +613,19 @@ export async function transcribeRange(id, start, end, language = '') {
 export function authFetch(url, init = {}) {
   return fetch(url, { ...init, headers: authHeaders(init.headers || {}) });
 }
+/** Edição para o Premiere/DaVinci/Final Cut: { blob, filename }. */
+export async function exportInterchange(jobId, body) {
+  const r = await authFetch(`${BASE}/jobs/${encodeURIComponent(jobId)}/interchange`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(d.error || `erro ${r.status}`);
+  }
+  const cd = r.headers.get('content-disposition') || '';
+  const m = cd.match(/filename\*=UTF-8''([^;]+)/i);
+  return { blob: await r.blob(), filename: m ? decodeURIComponent(m[1]) : `riseframe.${body.format}` };
+}
 export const customFontFileUrl = (id) => `${BASE}/custom-fonts/${id}/file`;
 export async function listCustomFontsApi() {
   const r = await authFetch(`${BASE}/custom-fonts`);

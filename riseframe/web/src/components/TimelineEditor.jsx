@@ -5,7 +5,7 @@ import { PrimaryButton, GhostButton } from './ui.jsx';
 import Icon from './Icon.jsx';
 import Processing from './Processing.jsx';
 import { pickExportTarget, setPendingExport } from '../exportTarget.js';
-import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, elementUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi, brollFaces, getSubject, motionAuto } from '../api.js';
+import { sourceUrl, editSourceUrl, editSourceStatus, coverUrl, colorFrameUrl, colorScopeUrl, filmstripUrl, getPeaks, uploadMedia, addProjectMedia, sfxUrl, sfxOnlineUrl, searchSfxOnline, mediaFileUrl, mediaPreviewUrl, elementUrl, mediaStatus, relinkMedia, sourceStatus, relinkSource, saveProject, loadProject, fetchBrollPlan, previewVoice, searchBroll, preciseCuts, getMediaLibrary, removeLibraryMedia, getJob, subscribeJob, createSequence, transcribeRange, cleanSpeechApi, listTemplatesApi, saveTemplateApi, deleteTemplateApi, defaultTemplateApi, brollFaces, getSubject, motionAuto, exportInterchange } from '../api.js';
 import CostLine, { openPlans } from './CostLine.jsx';
 import { APP_VERSION } from '../version.js';
 import { useAuth } from '../AuthContext.jsx';
@@ -27,7 +27,8 @@ import PromptMotionStudio from './PromptMotionStudio.jsx';
 import MotionRefsPanel from './MotionRefsPanel.jsx';
 import { promptMotionSfx } from '../../../shared/promptMotion.js';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
-import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, wordPlan, wordFrame, WORD_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
+import { AUDIOGRAM_STYLES, AUDIOGRAM_POSITIONS, cleanAudiogram } from '../../../shared/audiogram.js';
+import { textOutFrame, textInFrame, VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, wordPlan, wordFrame, WORD_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
 import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
@@ -169,6 +170,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   });
   // Tratamento e modificadores da voz (aba Áudio) + prévia ouvível.
   const [voice, setVoice] = useState(() => voiceOf(cap0));
+  // Audiograma: a onda do áudio desenhada no vídeo (podcast), como o "Audio Spectrum"
+  const [audiogram, setAudiogram] = useState(() => cleanAudiogram(options?.audiogram));
   const [voicePrev, setVoicePrev] = useState({ busy: false, url: null, err: '' });
   const voiceAudioRef = useRef(null);
   async function playVoicePreview() {
@@ -743,7 +746,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const histState = {
     segments, cuts, keptPauses, keptNoises, gains, videoCrop, cropRanges, fitRanges, blanks, projMediaIds, avLinked, media, brollReview, brollOn, zoomMoments, headline, cover,
     colorLook, colorAdj, cap, fx, voice, audioVolume, audioMute, speed, cutBreaths, cutCoughs, brollLayoutSel, imageSource, volKeys, pauseAuto, aiCleaned, lead, v1Gaps,
-    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, splitManual, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps,
+    aspectSel, quality, reframeMode, splitSwap, framingMode, focus, zoom, splitManual, vsplits, sfxMoments, transformKeys, textLayers, fxMoments, transitions, laneHide, laneLock, markers, speedRanges, freezes, extraCaps, audiogram,
   };
   const histSet = {
     segments: setSegments, cuts: setCuts, videoCrop: setVideoCrop, cropRanges: setCropRanges, fitRanges: setFitRanges, blanks: setBlanks, projMediaIds: setProjMediaIds, avLinked: setAvLinked, keptPauses: setKeptPauses, keptNoises: setKeptNoises, gains: setGains, media: setMedia,
@@ -752,7 +755,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     audioVolume: setAudioVolume, audioMute: setAudioMute, speed: setSpeed, cutBreaths: setCutBreaths, brollLayoutSel: setBrollLayoutSel, imageSource: setImageSource, volKeys: setVolKeys, pauseAuto: setPauseAuto, aiCleaned: setAiCleaned, lead: setLead, v1Gaps: setV1Gaps,
     cutCoughs: setCutCoughs, aspectSel: setAspectSel, quality: setQuality, reframeMode: setReframeMode,
     splitSwap: setSplitSwap, framingMode: setFramingMode, focus: setFocus, zoom: setZoom, splitManual: setSplitManual,
-    vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, extraCaps: setExtraCaps, fxMoments: setFxMoments, transitions: setTransitions, laneHide: setLaneHide, laneLock: setLaneLock, markers: setMarkers, speedRanges: setSpeedRanges, freezes: setFreezes,
+    vsplits: setVsplits, sfxMoments: setSfxMoments, transformKeys: setTransformKeys, textLayers: setTextLayers, extraCaps: setExtraCaps, fxMoments: setFxMoments, transitions: setTransitions, laneHide: setLaneHide, laneLock: setLaneLock, markers: setMarkers, speedRanges: setSpeedRanges, freezes: setFreezes, audiogram: setAudiogram,
   };
   const histRef = useRef({ past: [], future: [], prev: null, skip: false, at: 0 });
   const [, setHistTick] = useState(0);
@@ -1380,7 +1383,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           const stat = best?.type === 'static';
           const iris = best?.type === 'iris';
           tro.style.opacity = E > 0 ? String(best.type === 'flash' ? 0.9 * E : best.type === 'dip' ? 0.95 * E : best.type === 'whiteout' ? E : iris ? 1 : best.type === 'glow' ? 0.4 * E : glitch ? (Math.sin(t * 90) > 0 ? 0.8 : 0.35) : 1) : tm?.blur ? '1' : '0';
-          if (leak) {
+          if (best && TRANS_LOOK[best.type]) {
+            const lk = TRANS_LOOK[best.type](E, t);
+            tro.style.background = lk.bg || 'transparent';
+            tro.style.mixBlendMode = lk.blend || 'normal';
+            tro.style.backdropFilter = lk.bd || 'none';
+            tro.style.opacity = String(lk.op ?? 1);
+          } else if (leak) {
             // vazamento de luz: clarão laranja por cima (tela)
             tro.style.background = 'radial-gradient(circle at 30% 40%, rgba(255,170,60,0.95), rgba(255,90,40,0.55) 45%, transparent 75%)';
             tro.style.mixBlendMode = 'screen'; tro.style.backdropFilter = 'none'; tro.style.opacity = String(0.9 * E);
@@ -3384,6 +3393,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         ...((cropRanges || []).length ? { cropRanges: cropRanges.map((x) => ({ start: +x.start.toFixed(3), end: +x.end.toFixed(3), l: x.l || 0, t: x.t || 0, r: x.r || 0, b: x.b || 0 })) } : {}),
         ...(exportFps ? { fps: exportFps } : {}),
         ...(exportStreams !== 'av' ? { streams: exportStreams } : {}),
+        ...(exportLoudness !== 'social' ? { loudness: exportLoudness } : {}),
+        ...(cleanAudiogram(audiogram) ? { audiogram: cleanAudiogram(audiogram) } : {}),
         ...(noTxRanges.length ? { noCutRanges: noTxRanges } : {}),
         ...(blanks.length || seqHoles.length ? { videoBlanks: [...blanks, ...seqHoles].map((b) => ({ start: +b.start.toFixed(2), end: +b.end.toFixed(2), ...(b.audio === false ? { audio: false } : {}) })) } : {}),
         audioGains: gains.map((g) => ({ start: +g.start.toFixed(2), end: +g.end.toFixed(2), volume: +Number(g.volume).toFixed(2) })),
@@ -3415,6 +3426,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           ...(m.cx != null ? { cx: +Number(m.cx).toFixed(3), cy: +Number(m.cy ?? 0.5).toFixed(3) } : {}),
           ...(m.kind !== 'audio' && Math.abs(Number(m.rot) || 0) > 0.05 ? { rot: +Number(m.rot).toFixed(1) } : {}),
           ...(m.kind !== 'audio' && m.crop ? { crop: m.crop } : {}),
+          ...(m.kind !== 'audio' && m.chroma ? { chroma: m.chroma } : {}),
           ...(m.kind !== 'audio' && m.kf ? { kf: m.kf } : {}),
           ...(m.kind !== 'audio' && m.motion && m.motion !== 'none' ? { motion: m.motion, motionSpeed: +Number(m.motionSpeed ?? 1).toFixed(2), motionAmp: +Number(m.motionAmp ?? 1).toFixed(2) } : {}),
           ...(m.animEase ? { animEase: m.animEase } : {}),
@@ -3851,6 +3863,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   const [exportScope, setExportScope] = useState('all'); // linha toda | só o trecho entre a entrada e a saída (I/O)
   const exportRange = exportScope === 'range' && range && range.b - range.a >= 0.3 ? range : null;
   const [exportStreams, setExportStreams] = useState(() => (['video', 'audio'].includes(options?.streams) ? options.streams : 'av')); // vídeo e áudio / só vídeo / só áudio
+  // Volume padrão do vídeo final (medido na mistura toda, como os medidores de loudness)
+  const [exportLoudness, setExportLoudness] = useState(() => (['off', 'podcast', 'tv'].includes(options?.loudness) ? options.loudness : 'social'));
   const [exportFps, setExportFps] = useState(() => ([24, 25, 30, 50, 60, 120].includes(Number(options?.fps)) ? Number(options.fps) : 0)); // 0 = o do vídeo
   function openExport() {
     if (busy || allGone) return;
@@ -3927,6 +3941,20 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                   </div>
                 )}
               </div>
+              {exportStreams !== 'video' && <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8, marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Volume padrão</div>
+                <div role="radiogroup" aria-label="Volume padrão" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
+                  {[['social', 'Redes', '−14 LUFS'], ['podcast', 'Podcast', '−16 LUFS'], ['tv', 'TV', '−23 LUFS'], ['off', 'Como está', 'sem ajuste']].map(([id, label, sub]) => (
+                    <button key={id} role="radio" aria-checked={exportLoudness === id} onClick={() => setExportLoudness(id)} style={{ ...framingTab(exportLoudness === id), display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 4px' }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 800 }}>{label}</span>
+                      <span style={{ fontSize: 10, color: C.faint, fontWeight: 600 }}>{sub}</span>
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: C.faint, lineHeight: 1.45 }}>
+                  {exportLoudness === 'off' ? 'O som sai exatamente como está na timeline.' : 'Mede o som final (fala, música e efeitos juntos) e deixa no volume que a plataforma espera, sem distorcer: o vídeo não fica baixo nem estoura perto dos outros.'}
+                </div>
+              </div>}
               {!onlyAudio && exportSettingsJsx()}
               {!onlyAudio && <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: 'grid', gap: 8, marginBottom: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>Quadros por segundo (fps)</div>
@@ -3953,7 +3981,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <div style={{ display: 'grid', gap: 10, background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
               <div style={{ fontSize: 13, fontWeight: 700 }}>Saída</div>
               {row('Vídeo', onlyAudio ? '— (só áudio)' : `H.264 · ${ow}×${oh} · ${exportFps ? `${exportFps} fps` : 'fps do vídeo gravado'}`)}
-              {row('Áudio', onlyAudio ? 'MP3 · 192 kbps · estéreo' : exportStreams === 'video' ? '— (sem som)' : 'AAC · 192 kbps · 48 kHz · estéreo')}
+              {row('Áudio', onlyAudio ? `MP3 · 192 kbps · estéreo${exportLoudness !== 'off' ? ` · ${{ social: '−14', podcast: '−16', tv: '−23' }[exportLoudness]} LUFS` : ''}` : exportStreams === 'video' ? '— (sem som)' : `AAC · 192 kbps · 48 kHz · estéreo${exportLoudness !== 'off' ? ` · ${{ social: '−14', podcast: '−16', tv: '−23' }[exportLoudness]} LUFS` : ''}`)}
               {!onlyAudio && row('Formato', aspectSel === 'original' ? 'Original (como foi gravado)' : aspectSel)}
               {!onlyAudio && row('Qualidade', hdAllowed && quality !== 'original' ? QUALITY_OPTS.find((q) => q.id === quality)?.label : 'Original')}
               {row('Salvar', window.electron ? 'você escolhe a pasta ao clicar em Exportar' : typeof window.showSaveFilePicker === 'function' ? 'você escolhe a pasta ao clicar em Exportar' : 'baixa sozinho quando ficar pronto')}
@@ -4993,9 +5021,36 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     setCapExportOpen(false);
   }
+  // Exportar a EDIÇÃO para o Premiere / DaVinci / Final Cut (como os editores profissionais):
+  // os cortes do vídeo principal viram uma sequência que aponta para os arquivos originais.
+  const [ixBusy, setIxBusy] = useState('');
+  async function exportEdit(format) {
+    const clips = v1Pieces
+      .filter((p) => p.clip && !p.clip.blank && p.clip.kind !== 'blank' && p.clip.kind !== 'image' && (p.clip.sourceId || p.clip.mediaId || sourceId))
+      .map((p) => {
+        const off = (Number(p.clip.in) || 0) - (Number(p.clip.start) || 0);
+        return { ...(p.clip.mediaId && !p.clip.sourceId ? { mediaId: p.clip.mediaId } : { sourceId: p.clip.sourceId || sourceId }), in: +(p.va + off).toFixed(3), out: +(p.vb + off).toFixed(3) };
+      });
+    if (!clips.length) { window.alert('Não há vídeo na timeline para exportar.'); return; }
+    setIxBusy(format);
+    try {
+      const { blob, filename } = await exportInterchange(sourceId, { format, title: projectTitle || '', clips });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      setCapExportOpen(false);
+      if (speed !== 1) window.alert('A velocidade geral do vídeo não vai junto: a sequência sai em 1x (ajuste a velocidade no outro editor).');
+    } catch (e) {
+      window.alert(`Não deu para exportar a edição: ${e.message}`);
+    } finally {
+      setIxBusy('');
+    }
+  }
   const capExportBtn = (
     <div style={{ position: 'relative' }}>
-      <button onClick={() => setCapExportOpen((v) => !v)} title="Exportar a legenda (.srt, .vtt, .txt) no tempo do vídeo final"
+      <button onClick={() => setCapExportOpen((v) => !v)} title="Exportar a legenda (.srt, .vtt, .txt) ou a edição para o Premiere, DaVinci e Final Cut"
         style={{ ...zoomBtn, display: 'inline-flex', alignItems: 'center', gap: 5, width: 'auto', height: 32, padding: '0 9px', fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap' }}>
         <Icon name="download" size={13} strokeWidth={2} /> Exportar
       </button>
@@ -5005,6 +5060,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             <button key={fmt} role="menuitem" onClick={() => exportCaptions(fmt)}
               style={{ display: 'grid', width: '100%', textAlign: 'left', padding: '7px 9px', borderRadius: 7, border: 'none', background: 'transparent', color: C.text, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
               {label}<span style={{ fontSize: 11, fontWeight: 500, color: C.faint }}>{hint}</span>
+            </button>
+          ))}
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.6, color: C.faint, padding: '8px 9px 3px', borderTop: `1px solid ${C.border}`, marginTop: 4 }}>EDIÇÃO (CORTES) PARA OUTRO EDITOR</div>
+          {[['xml', 'Premiere Pro (.xml)', 'também abre no DaVinci Resolve'], ['fcpxml', 'Final Cut Pro (.fcpxml)', 'também abre no DaVinci Resolve'], ['edl', 'EDL (.edl)', 'qualquer editor profissional']].map(([fmt, label, hint]) => (
+            <button key={fmt} role="menuitem" disabled={Boolean(ixBusy)} onClick={() => exportEdit(fmt)}
+              title="Os cortes do vídeo principal como uma sequência que aponta para o arquivo original: termine a cor, o áudio e os efeitos no outro editor"
+              style={{ display: 'grid', width: '100%', textAlign: 'left', padding: '7px 9px', borderRadius: 7, border: 'none', background: 'transparent', color: C.text, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: ixBusy ? 'wait' : 'pointer', opacity: ixBusy && ixBusy !== fmt ? 0.5 : 1 }}>
+              {ixBusy === fmt ? 'Gerando…' : label}<span style={{ fontSize: 11, fontWeight: 500, color: C.faint }}>{hint}</span>
             </button>
           ))}
         </div>
@@ -5182,7 +5245,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     { id: 'tempo', label: 'Tempo', icon: '⏱' },
     { id: 'som', label: 'Sons', icon: '♪' },
   ];
-  const VFX_GROUP = { bw: 'cor', nostalgic: 'cor', cold: 'cor', warm: 'cor', saturated: 'cor', negative: 'imagem', retro: 'estilo', vhs: 'distorcao', glitch: 'distorcao', shake: 'transformar', pixel: 'distorcao', mirror: 'distorcao', strobe: 'luz', glow: 'luz', grain: 'ruido', vignette: 'gerar', film: 'gerar', blur: 'nitidez', blursoft: 'nitidez', bokeh: 'nitidez', chblur: 'nitidez', motionblur: 'nitidez', sharpen: 'nitidez', faded: 'cor', contrast: 'cor', tealorange: 'cor', cinematic: 'cor', desat: 'cor', tint: 'cor', brighten: 'imagem', darken: 'imagem', exposure: 'imagem', vflip: 'distorcao', fisheye: 'distorcao', tilt: 'perspectiva', posterize: 'estilo', edges: 'estilo', sketch: 'estilo', emboss: 'estilo', noisehard: 'ruido', goldlight: 'luz', zoomfix: 'transformar', zoomfix2: 'transformar', sway: 'transformar', handheld: 'transformar', shakehard: 'transformar', persp3d: 'perspectiva', tiltr: 'perspectiva', wideangle: 'distorcao', rgbsplit: 'distorcao', pixelbig: 'distorcao', grid3: 'gerar', frame: 'gerar', black: 'utilitario', white: 'utilitario', letterbox: 'utilitario', pillarbox: 'utilitario', pulse: 'luz', coolglow: 'luz', scanlines: 'ruido', static: 'ruido', summer: 'cor', winter: 'cor', matrix: 'cor', noir: 'estilo', popart: 'estilo' };
+  const VFX_GROUP = { bw: 'cor', nostalgic: 'cor', cold: 'cor', warm: 'cor', saturated: 'cor', negative: 'imagem', retro: 'estilo', vhs: 'distorcao', glitch: 'distorcao', shake: 'transformar', pixel: 'distorcao', mirror: 'distorcao', strobe: 'luz', glow: 'luz', grain: 'ruido', vignette: 'gerar', film: 'gerar', blur: 'nitidez', blursoft: 'nitidez', bokeh: 'nitidez', chblur: 'nitidez', motionblur: 'nitidez', sharpen: 'nitidez', faded: 'cor', contrast: 'cor', tealorange: 'cor', cinematic: 'cor', desat: 'cor', tint: 'cor', brighten: 'imagem', darken: 'imagem', exposure: 'imagem', vflip: 'distorcao', fisheye: 'distorcao', tilt: 'perspectiva', posterize: 'estilo', edges: 'estilo', sketch: 'estilo', emboss: 'estilo', noisehard: 'ruido', goldlight: 'luz', zoomfix: 'transformar', zoomfix2: 'transformar', sway: 'transformar', handheld: 'transformar', shakehard: 'transformar', persp3d: 'perspectiva', tiltr: 'perspectiva', wideangle: 'distorcao', rgbsplit: 'distorcao', pixelbig: 'distorcao', grid3: 'gerar', frame: 'gerar', black: 'utilitario', white: 'utilitario', letterbox: 'utilitario', pillarbox: 'utilitario', pulse: 'luz', coolglow: 'luz', scanlines: 'ruido', static: 'ruido', summer: 'cor', winter: 'cor', matrix: 'cor', noir: 'estilo', popart: 'estilo', echo: 'tempo', trails: 'tempo', ghost: 'tempo', motionpop: 'tempo' };
   const shortLabel = (l) => String(l).replace(/\s*\(.*\)\s*$/, '');
   const fxLibrary = [
     ...transOpts.map((o) => ({ cat: 'trans', kind: 'trans', id: o.id, label: shortLabel(o.label), anim: `tr-${o.id}` })),
@@ -8585,6 +8648,31 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           {tab === 'audio' && (
             <div style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
               <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}`, display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>Audiograma (onda do áudio)</div>
+                  <button onClick={() => setAudiogram((a) => (a ? null : cleanAudiogram({ style: 'wave', color: '#FFFFFF' })))} style={miniBtn(Boolean(audiogram), false)}>{audiogram ? 'Ligado' : 'Desligado'}</button>
+                </div>
+                {audiogram && <>
+                  <CapRow label="Estilo">
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {Object.entries(AUDIOGRAM_STYLES).map(([id, label]) => <button key={id} onClick={() => setAudiogram((a) => ({ ...a, style: id }))} style={miniBtn(audiogram.style === id, false)}>{label}</button>)}
+                    </div>
+                  </CapRow>
+                  <CapRow label="Posição">
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {Object.entries(AUDIOGRAM_POSITIONS).map(([id, label]) => <button key={id} onClick={() => setAudiogram((a) => ({ ...a, position: id }))} style={{ ...miniBtn(audiogram.position === id, false), flex: 1 }}>{label}</button>)}
+                    </div>
+                  </CapRow>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: C.muted }}>
+                    <span style={{ width: 44 }}>Cor</span>
+                    <input type="color" value={audiogram.color} onChange={(e) => setAudiogram((a) => ({ ...a, color: e.target.value.toUpperCase() }))} aria-label="Cor do audiograma" style={{ width: 34, height: 24, border: 'none', background: 'transparent', cursor: 'pointer' }} />
+                    <span style={{ width: 44, marginLeft: 6 }}>Altura</span>
+                    <input type="range" min="0.06" max="0.4" step="0.01" value={audiogram.height} onChange={(e) => setAudiogram((a) => ({ ...a, height: Number(e.target.value) }))} aria-label="Altura do audiograma" style={{ flex: 1 }} />
+                  </div>
+                </>}
+                <div style={{ fontSize: 11, color: C.faint, lineHeight: 1.45 }}>Desenha a onda (ou o espectro) da fala no vídeo, sincronizada com o som — o visual dos cortes de podcast. Aparece no vídeo final.</div>
+              </div>
+              <div style={{ paddingBottom: 10, marginBottom: 10, borderBottom: `1px solid ${C.border}`, display: 'grid', gap: 8 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>Silêncios, respirações e tosse</div>
                 <CapRow label="Respirações entre as frases">
                   <div style={{ display: 'flex', gap: 6 }}>
@@ -9299,6 +9387,22 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                                 <button onClick={() => updateMedia(m.key, { flip: !m.flip })} style={framingTab(!!m.flip)}>⇋ Espelhar</button>
                                 <button onClick={() => updateMedia(m.key, { bright: 0, contrast: 1, sat: 1, opacity: 1, flip: false })} style={framingTab(false)}>Restaurar</button>
                               </div>
+                            </details>
+                            <details style={{ marginTop: 8 }} open={Boolean(m.chroma)}>
+                              <summary style={{ fontSize: 11.5, fontWeight: 700, color: C.text, cursor: 'pointer' }}>Chroma key (fundo verde)</summary>
+                              <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                                {[[null, 'Desligado'], ['green', 'Verde'], ['blue', 'Azul']].map(([id, label]) => (
+                                  <button key={label} onClick={() => updateMedia(m.key, { chroma: id ? { ...(m.chroma || {}), color: id } : null })} style={framingTab((m.chroma?.color || null) === id)}>{label}</button>
+                                ))}
+                              </div>
+                              {m.chroma && [['similarity', 'Tolerância', 0.05, 0.6, 0.3], ['smooth', 'Suavizar borda', 0, 0.4, 0.08]].map(([k, label, min, max, def]) => (
+                                <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: C.muted, marginTop: 6 }}>
+                                  <span style={{ width: 86 }}>{label}</span>
+                                  <input type="range" min={min} max={max} step="0.01" value={m.chroma[k] ?? def} onChange={(e) => updateMedia(m.key, { chroma: { ...m.chroma, [k]: Number(e.target.value) } })} onDoubleClick={() => updateMedia(m.key, { chroma: { ...m.chroma, [k]: def } })} style={{ flex: 1 }} />
+                                  <span style={{ width: 34, textAlign: 'right' }}>{Math.round((m.chroma[k] ?? def) * 100)}</span>
+                                </label>
+                              ))}
+                              <div style={{ fontSize: 10.5, color: C.faint, marginTop: 6, lineHeight: 1.4 }}>Tira o fundo verde (ou azul) de vídeos e imagens de "green screen": botões de inscrever-se, efeitos, você gravado na frente do pano. A prévia é aproximada; o vídeo final usa o recorte completo.</div>
                             </details>
                             {catalog?.layerAnimations && (
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 8 }}>
@@ -10548,6 +10652,24 @@ function RenderError({ err, onDisable, onClose }) {
  * Editável: arraste para posicionar (PiP e textos) e puxe o canto da mídia para mudar o
  * tamanho — as mesmas frações (px/py/scale, x/y) que o servidor usa no render.
  */
+/**
+ * Chroma key na prévia: filtros SVG que transformam o verde (ou o azul) em transparência
+ * (alfa = 1 + 1,5·R − 3·G + 1,5·B para o verde). Aproximado; o render usa colorkey + despill.
+ */
+function ChromaKeyDefs() {
+  return (
+    <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+      <filter id="rf-key-green" colorInterpolationFilters="sRGB">
+        <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  1.5 -3 1.5 0 1" />
+      </filter>
+      <filter id="rf-key-blue" colorInterpolationFilters="sRGB">
+        <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  1.5 1.5 -3 0 1" />
+      </filter>
+    </svg>
+  );
+}
+/** Duração da entrada/saída dos textos (a mesma ANIM_MS do render, em segundos). */
+const TEXT_ANIM_S = 0.35;
 /** Ajustes da camada na prévia (a mesma ideia do eq/hflip do render). */
 function layerCss(m) {
   const b = Number(m.bright || 0);
@@ -10557,6 +10679,8 @@ function layerCss(m) {
   if (Math.abs(b) > 0.005) f.push(`brightness(${(1 + b * 1.2).toFixed(2)})`);
   if (Math.abs(c - 1) > 0.005) f.push(`contrast(${c.toFixed(2)})`);
   if (Math.abs(s - 1) > 0.005) f.push(`saturate(${s.toFixed(2)})`);
+  // Chroma key: aproximação por filtro SVG (o render usa colorkey + despill)
+  if (m.chroma?.color === 'green' || m.chroma?.color === 'blue') f.unshift(`url(#rf-key-${m.chroma.color})`);
   // Recorte (Propriedades): as bordas somem e o resto fica no mesmo lugar (como no Premiere)
   const cr = m.crop || null;
   const crop = cr && (cr.l || cr.t || cr.r || cr.b)
@@ -10700,6 +10824,7 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
   };
   return (
     <div style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, overflow: 'hidden', pointerEvents: 'none', zIndex: z }}>
+      {visible.some((m) => m.chroma) && <ChromaKeyDefs />}
       {guides && <SnapGuides x={guides.x} y={guides.y} />}
       {visible.filter((m) => !m.above).map(drawMedia)}
       {liveTexts.map((l) => {
@@ -10749,9 +10874,15 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
         const sh = L.shadow ? { dx: -Math.cos((L.shadowAngle * Math.PI) / 180) * L.shadowDist * box.h, dy: Math.sin((L.shadowAngle * Math.PI) / 180) * L.shadowDist * box.h, b: L.shadowBlur * box.h * 2, c: rgba(L.shadowColor, L.shadowOpacity) } : null;
         const ty = L.valign === 'top' ? '0%' : L.valign === 'bottom' ? '-100%' : '-50%';
         const shift = L.baseline * box.h + (L.script === 'super' ? -0.33 * emBase : L.script === 'sub' ? 0.12 * emBase : 0);
+        // saída do texto (descer, estourar, desfocar, girar…): as mesmas contas do render
+        const outA = Math.min(TEXT_ANIM_S, (l.end - l.start) / 3);
+        const SIMPLE_IN = ['fade', 'pop', 'zoom', 'slide-up', 'slide-left', 'blur-in', 'slide-down', 'grow', 'spin-in'];
+        const of = l.animOut && l.animOut !== 'none' && cur > l.end - outA ? textOutFrame(l.animOut, (cur - (l.end - outA)) / outA)
+          : SIMPLE_IN.includes(l.animIn) && cur < l.start + outA ? textInFrame(l.animIn, (cur - l.start) / outA) : null;
+        const outTf = of ? ` translate(${(of.dx * box.w).toFixed(1)}px, ${(of.dy * box.h).toFixed(1)}px)${of.scale !== 1 ? ` scale(${of.scale.toFixed(3)})` : ''}${of.rot ? ` rotate(${of.rot.toFixed(1)}deg)` : ''}` : '';
         return (
           <div key={l.key} onPointerDown={(e) => start(e, { kind: 'text', key: l.key, ox: l.x, oy: l.y })}
-            style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, transform: `translate(-50%, ${ty}) translateY(${shift}px)${L.rot ? ` rotate(${L.rot}deg)` : ''}`, opacity: L.opacity,
+            style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, transform: `translate(-50%, ${ty}) translateY(${shift}px)${L.rot ? ` rotate(${L.rot}deg)` : ''}${outTf}`, opacity: L.opacity * (of ? of.alpha : 1), ...(of?.blur ? { filter: `blur(${(of.blur * box.h / 1080).toFixed(1)}px)` } : {}),
               ...(L.bg && g.block ? { background: rgba(L.bgColor, L.bgOpacity), padding: `${g.padY * px}px ${g.padX * px}px`, borderRadius: g.r * (lines.length * TEXT_LINE_H * px + (lines.length - 1) * L.leading * box.h + 2 * g.padY * px) / 2, ...(sh ? { boxShadow: `${sh.dx}px ${sh.dy}px ${sh.b}px ${sh.c}` } : null) } : null),
               display: 'flex', flexDirection: 'column', alignItems: L.align === 'right' ? 'flex-end' : L.align === 'center' || L.align === 'justify-center' ? 'center' : 'flex-start', lineHeight: TEXT_LINE_H,
               fontFamily: `'${f.family}'`, fontWeight: f.bold === false && !L.bold ? 400 : 700, fontStyle: L.italic ? 'italic' : 'normal', fontSize: px,
@@ -10929,6 +11060,15 @@ const FX_ANIM_CSS = `
 .a-tr-spin { animation-name: rfTrSpin; } @keyframes rfTrSpin { 0%, 100% { transform: rotate(0) scale(1); } 48% { transform: rotate(30deg) scale(1.7); filter: blur(2px); } 52% { transform: rotate(-30deg) scale(1.7); filter: blur(2px); } }
 .a-tr-shake { animation-name: rfShake; animation-duration: 0.4s !important; }
 .a-tr-glitch { animation-name: rfGlitch; animation-duration: 0.6s !important; animation-timing-function: steps(1) !important; }
+.a-tr-pixelate { animation-name: rfTrPix; } @keyframes rfTrPix { 0%, 100% { filter: none; } 50% { filter: blur(3px) contrast(1.4); } }
+.a-tr-burn { animation-name: rfTrBurn; } @keyframes rfTrBurn { 0%, 100% { filter: none; } 50% { filter: brightness(2.2) sepia(0.8) saturate(2.2); } }
+.a-tr-chroma { animation-name: rfTrChroma; } @keyframes rfTrChroma { 0%, 100% { filter: none; } 50% { filter: hue-rotate(180deg) saturate(2.2); } }
+.a-tr-strobe { animation-name: rfTrStrobe; animation-duration: 0.5s !important; animation-timing-function: steps(1) !important; } @keyframes rfTrStrobe { 0% { filter: none; } 50% { filter: brightness(2.6); } }
+.a-tr-negative { animation-name: rfTrNeg; animation-timing-function: steps(1) !important; } @keyframes rfTrNeg { 0%, 40%, 60%, 100% { filter: none; } 45%, 55% { filter: invert(1); } }
+.a-tr-vhs { animation-name: rfGlitch; animation-duration: 0.6s !important; animation-timing-function: steps(1) !important; }
+.a-tr-swipeblur { animation-name: rfTrSwipe; } @keyframes rfTrSwipe { 0%, 100% { filter: none; transform: none; } 50% { filter: blur(3px); transform: scaleX(1.08); } }
+.a-tr-exposure { animation-name: rfTrExp; } @keyframes rfTrExp { 0%, 100% { filter: none; } 50% { filter: brightness(2.4) contrast(1.5); } }
+.a-tr-desat { animation-name: rfTrDesat; } @keyframes rfTrDesat { 0%, 100% { filter: none; } 50% { filter: grayscale(1); } }
 .o-fx-strobe { background: #fff; opacity: 0; animation-name: rfStrobe; animation-duration: 0.5s !important; animation-timing-function: steps(1) !important; } @keyframes rfStrobe { 0% { opacity: 0; } 50% { opacity: 0.85; } }
 .o-fx-vignette { background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.75) 100%); }
 .o-fx-film { border-top: 9px solid #000; border-bottom: 9px solid #000; box-sizing: border-box; }
@@ -10940,7 +11080,7 @@ const FX_ANIM_CSS = `
 `;
 
 // Meia duração de cada transição (igual ao servidor) e textura de grão para a prévia.
-const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3, lightleak: 0.35, static: 0.2, rgbsplit: 0.2, rgbblur: 0.22 };
+const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3, lightleak: 0.35, static: 0.2, rgbsplit: 0.2, rgbblur: 0.22, pixelate: 0.25, burn: 0.4, chroma: 0.25, strobe: 0.3, negative: 0.15, vhs: 0.25, swipeblur: 0.22, exposure: 0.25, desat: 0.35 };
 const TRANS_DUR = Object.fromEntries(Object.entries(TRANS_HALF).map(([k, h]) => [k, +(h * 2).toFixed(2)]));
 // Camadas por cima do vídeo na prévia (molduras, faixas, grade, linhas de TV…)
 const FX_OVERLAY_BG = {
@@ -10957,15 +11097,28 @@ const FX_OVERLAY_BG = {
 const FX_THUMB_TF = { mirror: 'scaleX(-1)', vflip: 'scaleY(-1)', tilt: 'rotate(-4deg) scale(1.1)', tiltr: 'rotate(4deg) scale(1.1)', fisheye: 'scale(1.08)', zoomfix: 'scale(1.25)', zoomfix2: 'scale(1.5)', persp3d: 'perspective(300px) rotateX(12deg)', wideangle: 'scale(0.94)' };
 // Cursor da navalha (C), como o do Premiere: uma lâmina; o corte acontece no ponto laranja (9,27).
 const RAZOR_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><defs><linearGradient id='b' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#FFFFFF'/><stop offset='1' stop-color='#C3C9D2'/></linearGradient></defs><g transform='rotate(-40 18 13)' filter=''><path d='M7.5 8h21a1.5 1.5 0 0 1 1.5 1.5V15H6V9.5A1.5 1.5 0 0 1 7.5 8z' fill='url(#b)' stroke='#0B0C10' stroke-width='1.3'/><path d='M6 15h24v3.2H6z' fill='#8E97A4' stroke='#0B0C10' stroke-width='1.3'/><path d='M6.6 17.4h22.8' stroke='#FFFFFF' stroke-width='0.9'/><rect x='12.5' y='10.4' width='11' height='2.6' rx='1.3' fill='#0B0C10'/><circle cx='10' cy='11.7' r='1.2' fill='#0B0C10'/><circle cx='26' cy='11.7' r='1.2' fill='#0B0C10'/></g><circle cx='9' cy='27' r='2.4' fill='#FF6B35' stroke='#FFFFFF' stroke-width='1.1'/></svg>")}") 9 27, crosshair`;
-const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch', 'whiteout', 'iris', 'lightleak', 'static', 'rgbsplit', 'rgbblur']);
+const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch', 'whiteout', 'iris', 'lightleak', 'static', 'rgbsplit', 'rgbblur', 'pixelate', 'burn', 'chroma', 'strobe', 'negative', 'vhs', 'swipeblur', 'exposure', 'desat']);
+// Prévia das transições novas (aproximada; o render usa os filtros do FFmpeg): E = 0→1→0 no corte
+const TRANS_LOOK = {
+  pixelate: (E) => ({ bg: `linear-gradient(rgba(0,0,0,0.18) 1px, transparent 1px) 0 0 / ${Math.round(4 + 22 * E)}px ${Math.round(4 + 22 * E)}px, linear-gradient(90deg, rgba(0,0,0,0.18) 1px, transparent 1px) 0 0 / ${Math.round(4 + 22 * E)}px ${Math.round(4 + 22 * E)}px`, bd: `blur(${(5 * E).toFixed(1)}px)`, op: E > 0.05 ? 1 : 0 }),
+  burn: (E) => ({ bg: 'radial-gradient(circle at 70% 35%, rgba(255,240,200,0.95), rgba(255,120,30,0.8) 35%, rgba(200,30,0,0.5) 65%, transparent 85%)', blend: 'screen', op: E }),
+  chroma: (E) => ({ bd: `hue-rotate(${Math.round(360 * E)}deg) saturate(${(1 + 1.2 * E).toFixed(2)})`, op: 1 }),
+  strobe: (E, t) => ({ bg: '#fff', op: Math.sin(2 * Math.PI * t * 12) > 0 ? 0.85 * E : 0 }),
+  negative: (E) => ({ bd: E > 0.02 ? 'invert(1)' : 'none', op: 1 }),
+  vhs: (E) => ({ bg: `url("${GRAIN_SVG}"), linear-gradient(90deg, rgba(255,0,90,0.25), transparent 40%, transparent 60%, rgba(0,220,255,0.25))`, blend: 'screen', bd: `saturate(${(1 + 0.5 * E).toFixed(2)}) contrast(1.15)`, op: E }),
+  swipeblur: (E) => ({ bd: `blur(${(8 * E).toFixed(1)}px)`, op: 1 }),
+  exposure: (E) => ({ bd: `brightness(${(1 + 1.3 * E).toFixed(2)}) contrast(${(1 + 0.7 * E).toFixed(2)})`, op: 1 }),
+  desat: (E) => ({ bd: `grayscale(${E.toFixed(2)})`, op: 1 }),
+};
 // Grupos das transições, como o painel do Film Impact
 const TRANS_GROUPS = [
   ['dissolver', 'Dissolver', ['dip', 'whiteout']],
   ['luzes', 'Luzes e desfoques', ['flash', 'glow', 'blur', 'rgbblur', 'lightleak']],
   ['deslizar', 'Deslizar', ['slideleft', 'slideright', 'slideup', 'slidedown']],
   ['transformadores', 'Transformadores', ['zoomin', 'zoomout', 'spin']],
-  ['grunge', 'Grunge e distorção', ['glitch', 'shake', 'static', 'rgbsplit']],
+  ['grunge', 'Grunge e distorção', ['glitch', 'shake', 'static', 'rgbsplit', 'vhs', 'pixelate', 'negative']],
   ['abertura', 'Abertura', ['iris']],
+  ['cor', 'Cor e exposição', ['chroma', 'burn', 'exposure', 'desat', 'strobe', 'swipeblur']],
 ];
 const TRANS_GROUP_OF = Object.fromEntries(TRANS_GROUPS.flatMap(([g, , ids]) => ids.map((id) => [id, g])));
 /**

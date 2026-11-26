@@ -38,7 +38,9 @@ import { VOICE_NOISE, VOICE_PRESETS, VOICE_EFFECTS, previewVoice } from '../pipe
 const CAPTION_TEMPLATE_IDS = Object.keys(CAPTION_TEMPLATES);
 import { CAPTION_LANGUAGES } from '../pipeline/translate.js';
 import { MOMENT_EFFECTS, cleanKeys } from '../../../shared/transform.js';
-import { cleanTextLayers, cleanFxMoments } from '../../../shared/textLayers.js';
+import { INTERCHANGE } from '../../../shared/interchange.js';
+import { cleanAudiogram } from '../../../shared/audiogram.js';
+import { cleanTextLayers, cleanFxMoments, cleanKey } from '../../../shared/textLayers.js';
 import { ELEMENT_MOTIONS } from '../../../shared/elementMotion.js';
 import { KINETIC_THEMES } from '../../../shared/kinetic.js';
 import { DEFAULT_NOTE_OPEN, DEFAULT_NOTE_CLOSE } from '../../../shared/editFlow.js';
@@ -534,6 +536,8 @@ function sanitizeUserMedia(raw) {
       ...(kind !== 'audio' && Object.hasOwn(ELEMENT_MOTIONS, m.motion) && m.motion !== 'none'
         ? { motion: m.motion, motionSpeed: clampNum(m.motionSpeed, 0.2, 5, 1), motionAmp: clampNum(m.motionAmp, 0.1, 3, 1) } : {}),
       ...(kind !== 'audio' && /^#[0-9a-f]{6}$/i.test(String(m.tint || '')) ? { tint: m.tint } : {}),
+      // chroma key (fundo verde/azul vira transparência)
+      ...(kind !== 'audio' && cleanKey(m.chroma) ? { chroma: cleanKey(m.chroma) } : {}),
       // vídeo em loop (fundo animado das cenas): repete até o fim da camada
       ...(kind === 'video' && m.loop === true ? { loop: true } : {}),
     };
@@ -766,6 +770,10 @@ export function parseOptions(raw) {
     // Quadros por segundo da exportação (0 = o do vídeo gravado): 24, 25, 30, 50, 60 ou 120.
     ...([24, 25, 30, 50, 60, 120].includes(Number(o.fps)) ? { fps: Number(o.fps) } : {}),
     ...(['video', 'audio'].includes(o.streams) ? { streams: o.streams } : {}),
+    // volume padrão do vídeo final: social (−14 LUFS, padrão) | podcast (−16) | tv (−23) | off
+    ...(['off', 'podcast', 'tv'].includes(o.loudness) ? { loudness: o.loudness } : {}),
+    // audiograma: a onda do áudio desenhada no vídeo (podcast)
+    ...(cleanAudiogram(o.audiogram) ? { audiogram: cleanAudiogram(o.audiogram) } : {}),
     audioVolume: clampNum(o.audioVolume, 0, 4, 1),
     ...(cleanVolKeys(o.audioVolKeys).length ? { audioVolKeys: cleanVolKeys(o.audioVolKeys) } : {}),
     // Recorte (Crop) do vídeo principal: quanto sai de cada lado (fração).
@@ -2019,6 +2027,56 @@ jobsRouter.get('/jobs/:id/cover', async (req, res) => {
     res.type('image/jpeg').sendFile(path.resolve(out));
   } catch (err) {
     res.status(500).json({ error: err.message || 'falha ao gerar a capa' });
+  }
+});
+
+// POST /api/jobs/:id/interchange  { format: 'xml'|'fcpxml'|'edl', title, clips: [{ sourceId|mediaId,
+// in, out }] } → a edição (cortes do vídeo principal) para abrir no Premiere, DaVinci ou Final
+// Cut, apontando para os arquivos ORIGINAIS. No app de PC os caminhos são os do computador
+// (abre direto); no site, o editor pede para religar a mídia pelo nome do arquivo.
+jobsRouter.post('/jobs/:id/interchange', requireAuth, async (req, res) => {
+  const fmt = INTERCHANGE[String(req.body?.format || '')];
+  if (!fmt) return res.status(400).json({ error: 'formato inválido (xml, fcpxml ou edl)' });
+  const own = (x) => x && (!x.ownerId || String(x.ownerId) === String(req.user.id));
+  const main = queue.get(String(req.params.id));
+  if (!own(main)) return res.status(404).json({ error: 'vídeo não encontrado' });
+  const raw = Array.isArray(req.body?.clips) ? req.body.clips.slice(0, 500) : [];
+  const probes = new Map();
+  const info = async (p) => {
+    if (!probes.has(p)) probes.set(p, await probeSummary(p).catch(() => null));
+    return probes.get(p);
+  };
+  try {
+    const clips = [];
+    for (const c of raw) {
+      let p = null;
+      let name = '';
+      if (typeof c?.mediaId === 'string' && c.mediaId) {
+        const m = resolveMedia(c.mediaId);
+        if (!m || (m.ownerId && String(m.ownerId) !== String(req.user.id)) || m.kind === 'audio' || m.kind === 'image') continue;
+        p = m.path;
+        name = m.filename || '';
+      } else {
+        const src = queue.get(String(c?.sourceId || req.params.id));
+        if (!own(src) || !src.inputPath || !fs.existsSync(src.inputPath)) continue;
+        p = src.inputPath;
+        name = src.filename || '';
+      }
+      const a = clampNum(c.in, 0, 1e6, 0);
+      const b = clampNum(c.out, 0, 1e6, 0);
+      if (b - a < 0.02) continue;
+      // eslint-disable-next-line no-await-in-loop
+      const m = await info(p);
+      clips.push({ path: p, name: name || path.basename(p), srcIn: a, srcOut: b, srcDuration: m?.duration || b, hasAudio: m ? m.hasAudio : true, width: m?.width, height: m?.height, fps: m?.fps });
+    }
+    if (!clips.length) return res.status(400).json({ error: 'não há clipes de vídeo para exportar (o vídeo de origem expirou ou a timeline está vazia)' });
+    const first = clips[0];
+    const title = String(req.body?.title || main.filename || 'Riseframe').replace(/\.[a-z0-9]{2,4}$/i, '').slice(0, 80) || 'Riseframe';
+    const body = fmt.build({ title, fps: first.fps || 30, width: first.width || 1080, height: first.height || 1920, clips });
+    const file = `${title.replace(/[^\w\-À-ú ]+/g, '').trim() || 'riseframe'}.${fmt.ext}`;
+    res.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file)}`).type(fmt.type).send(body);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'falha ao exportar a edição' });
   }
 });
 

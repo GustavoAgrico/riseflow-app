@@ -7,6 +7,7 @@ import { isFontStyle } from './captionStyle.js';
 /** Animações de entrada e saída de um texto. */
 export const TEXT_ANIMS_IN = {
   none: 'Nenhuma', fade: 'Fade', pop: 'Pop', zoom: 'Zoom', 'slide-up': 'Subir', 'slide-left': 'Entrar da direita', typewriter: 'Máquina de escrever', words: 'Palavra por palavra',
+  'blur-in': 'Entrar do desfoque', 'slide-down': 'Descer de cima', grow: 'Crescer do zero', 'spin-in': 'Girar entrando',
   'letras-subir': 'Letras subindo', 'letras-pop': 'Letras pulando', 'letras-desfoque': 'Letras entrando do desfoque',
   'letras-desfoque-subir': 'Letras subindo do desfoque', 'letras-mola': 'Letras com mola (passa do ponto)',
   'letras-queda': 'Letras caindo e quicando', 'letras-escala': 'Letras assentando (zoom suave)',
@@ -128,7 +129,46 @@ export function revealPlan(l, lines) {
   let k = 0;
   return units.map((us) => us.map((u) => ({ u, t: u.trim() ? +((k++ * total) / count).toFixed(3) : null })));
 }
-export const TEXT_ANIMS_OUT = { none: 'Nenhuma', fade: 'Fade', zoom: 'Encolher' };
+export const TEXT_ANIMS_OUT = {
+  none: 'Nenhuma', fade: 'Fade', zoom: 'Encolher',
+  'slide-down': 'Descer saindo', 'slide-up': 'Subir saindo', 'slide-left': 'Sair pela esquerda', 'slide-right': 'Sair pela direita',
+  pop: 'Pop (estoura)', grow: 'Crescer e sumir', blur: 'Desfocar saindo', spin: 'Girar saindo',
+};
+/** Saídas que também esmaecem (o \\fad do render). */
+export const TEXT_OUT_FADES = new Set(['fade', 'slide-down', 'slide-up', 'slide-left', 'slide-right', 'grow', 'blur', 'spin']);
+/** Deslocamento das saídas que andam (fração da tela). */
+export const TEXT_OUT_MOVES = { 'slide-down': [0, 0.06], 'slide-up': [0, -0.06], 'slide-left': [-0.2, 0], 'slide-right': [0.2, 0] };
+/**
+ * Quadro da saída do texto no progresso q (0 = começou a sair, 1 = sumiu), para a prévia —
+ * as mesmas contas do render (texts.js). → { alpha, scale, dx, dy (fração), rot (graus), blur (px a 1080) }
+ */
+export function textInFrame(anim, q) {
+  const p = Math.max(0, Math.min(1, Number(q) || 0));
+  const f = { alpha: 1, scale: 1, dx: 0, dy: 0, rot: 0, blur: 0 };
+  if (['fade', 'slide-up', 'slide-left', 'zoom', 'blur-in', 'slide-down', 'grow', 'spin-in'].includes(anim)) f.alpha = p;
+  if (anim === 'slide-up') f.dy = 0.06 * (1 - p);
+  if (anim === 'slide-down') f.dy = -0.06 * (1 - p);
+  if (anim === 'slide-left') f.dx = 0.2 * (1 - p);
+  if (anim === 'zoom') f.scale = 0.6 + 0.4 * p;
+  if (anim === 'pop') f.scale = p < 0.6 ? 1.15 * (p / 0.6) : 1.15 - 0.15 * ((p - 0.6) / 0.4);
+  if (anim === 'grow') f.scale = p;
+  if (anim === 'blur-in') f.blur = 18 * (1 - p);
+  if (anim === 'spin-in') { f.rot = -360 * (1 - p); f.scale = p; }
+  return f;
+}
+/** Quadro da saída (ver textInFrame). */
+export function textOutFrame(anim, q) {
+  const p = Math.max(0, Math.min(1, Number(q) || 0));
+  const f = { alpha: TEXT_OUT_FADES.has(anim) ? 1 - p : 1, scale: 1, dx: 0, dy: 0, rot: 0, blur: 0 };
+  const mv = TEXT_OUT_MOVES[anim];
+  if (mv) { f.dx = mv[0] * p; f.dy = mv[1] * p; }
+  if (anim === 'zoom') f.scale = 1 - p;
+  if (anim === 'pop') f.scale = p < 0.6 ? 1 + 0.15 * (p / 0.6) : 1.15 * (1 - (p - 0.6) / 0.4);
+  if (anim === 'grow') f.scale = 1 + 0.5 * p;
+  if (anim === 'blur') f.blur = 18 * p;
+  if (anim === 'spin') { f.rot = -360 * p; f.scale = 1 - p; }
+  return f;
+}
 /** Fundo do texto: só contorno, caixa sólida ou nada. */
 export const TEXT_BOXES = { outline: 'Contorno', box: 'Caixa', none: 'Sem fundo' };
 
@@ -237,6 +277,11 @@ export const VIDEO_FX = {
   matrix: 'Matrix (verde)',
   noir: 'Noir',
   popart: 'Pop art',
+  // Tempo
+  echo: 'Eco (rastro de movimento)',
+  trails: 'Rastro de luz',
+  ghost: 'Fantasma (quadro duplo)',
+  motionpop: 'Realçar movimento',
 };
 /** Aproximação do efeito na prévia do editor (CSS). O render usa FFmpeg. */
 export const VIDEO_FX_CSS = {
@@ -306,6 +351,10 @@ export const VIDEO_FX_CSS = {
   matrix: 'hue-rotate(60deg) saturate(1.2) contrast(1.15)',
   noir: 'grayscale(1) contrast(1.5) brightness(0.95)',
   popart: 'saturate(2.2) contrast(1.4)',
+  echo: 'blur(0.8px) contrast(1.05)',
+  trails: 'brightness(1.08) contrast(1.08)',
+  ghost: 'blur(0.5px) opacity(0.92)',
+  motionpop: 'contrast(1.25) saturate(1.1)',
 };
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
@@ -518,4 +567,27 @@ export function cleanFxMoments(raw, max = 40) {
     if (out.length >= max) break;
   }
   return out;
+}
+
+/**
+ * Chroma key (fundo verde/azul) das mídias, como o "Keying" dos programas de motion: a cor
+ * vira transparência e o vazamento de cor nas bordas é tirado. Puro.
+ * → { color: '#rrggbb', similarity 0.05–0.6, smooth 0–0.4, spill: 'green'|'blue' } | null
+ */
+export const KEY_PRESETS = { green: '#00FF00', blue: '#0047FF' };
+export function cleanKey(k) {
+  if (!k || typeof k !== 'object') return null;
+  const preset = Object.hasOwn(KEY_PRESETS, k.color) ? k.color : null;
+  const hex = preset ? KEY_PRESETS[preset] : /^#[0-9a-f]{6}$/i.test(String(k.color || '')) ? String(k.color).toUpperCase() : null;
+  if (!hex) return null;
+  const num = (v, lo, hi, def) => (Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : def);
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return {
+    color: hex,
+    similarity: +num(k.similarity, 0.05, 0.6, 0.3).toFixed(3),
+    smooth: +num(k.smooth, 0, 0.4, 0.08).toFixed(3),
+    spill: g > r && g > b ? 'green' : b > r && b > g ? 'blue' : null,
+  };
 }

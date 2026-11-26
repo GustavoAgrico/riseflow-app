@@ -5,6 +5,7 @@ import { makeLogger } from '../logger.js';
 import { cleanLayerKf, kfExpr, kfMax } from '../../../shared/layerKeys.js';
 import { cleanEase, easeExpr } from '../../../shared/easing.js';
 import { ELEMENT_ANIMS, elemMotionExpr } from '../../../shared/elementMotion.js';
+import { cleanKey } from '../../../shared/textLayers.js';
 
 const log = makeLogger('usermedia');
 
@@ -31,6 +32,15 @@ const DUCK = {
  * @param {string[]} musLabels rótulos das músicas já preparadas (ex.: ['[am0]'])
  * @returns {string[]}
  */
+
+/** Filtro do chroma key (colorkey + tirar o vazamento de cor nas bordas). Puro. */
+export function keyVf(key) {
+  const k = cleanKey(key);
+  if (!k) return '';
+  const spill = k.spill ? `,despill=type=${k.spill}:mix=1:expand=0` : '';
+  return `,format=rgba,colorkey=0x${k.color.slice(1)}:${k.similarity}:${k.smooth}${spill}`;
+}
+
 export function musicMixParts(musLabels, { hasAudio, dur, ducking = 'medio' }) {
   const tail = `alimiter=limit=0.95,atrim=0:${dur.toFixed(3)}[aout]`;
   const mixAll = (labels, n) => `${labels}amix=inputs=${n}:normalize=0:dropout_transition=0`;
@@ -176,6 +186,12 @@ export function visualLayerParts(vis, { W, H, fps, dur }) {
     }
     chain += layerAdjustVf(m);
     let rgba = false;
+    // Chroma key: o fundo verde/azul vira transparência (antes do resto da camada)
+    const kv = keyVf(m.chroma);
+    if (kv) {
+      chain += kv;
+      rgba = true;
+    }
     // cor dos rabiscos (PNG branco × cor escolhida)
     if (/^#[0-9a-f]{6}$/i.test(String(m.tint || ''))) {
       const [r, g, b] = [1, 3, 5].map((k) => f3(parseInt(m.tint.slice(k, k + 2), 16) / 255));

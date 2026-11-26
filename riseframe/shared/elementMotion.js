@@ -83,6 +83,24 @@ export function elemAnimFrame(anim, p) {
 
 // ────────────────────────── Movimentos contínuos (loop) ──────────────────────────
 
+/** Batimento: duas pulsadas rápidas a cada 1 s (tum-tum), 0→1. Puro. */
+function heartbeatAt(s) {
+  const p = ((s % 1) + 1) % 1;
+  return Math.exp(-((p - 0.1) ** 2) / 0.002) + 0.7 * Math.exp(-((p - 0.32) ** 2) / 0.002);
+}
+/** O mesmo batimento como expressão do FFmpeg. */
+function heartbeatExpr(s) {
+  const p = `mod(${s},1)`;
+  return `(exp(-pow(${p}-0.1,2)/0.002)+0.7*exp(-pow(${p}-0.32,2)/0.002))`;
+}
+/** Tcharam: a cada 2 s, cresce e balança por 1 s e descansa 1 s. Puro. */
+function tadaAt(s) {
+  const ph = ((s % 2) + 2) % 2;
+  if (ph >= 1) return { scale: 0, rot: 0 };
+  const env = Math.sin(Math.PI * ph);
+  return { scale: 0.1 * env, rot: Math.sin(ph * Math.PI * 8) * 6 * env };
+}
+
 export const ELEMENT_MOTIONS = {
   none: 'Nenhum',
   float: 'Flutuar (sobe e desce)',
@@ -95,6 +113,14 @@ export const ELEMENT_MOTIONS = {
   'float-rotate': 'Flutuar + girar sutil',
   breathe: 'Respirar (escala + opacidade)',
   jelly: 'Gelatina (escala alternada)',
+  heartbeat: 'Batimento (pulsa duas vezes)',
+  swing: 'Pêndulo (balança largo)',
+  hop: 'Pular (quica no lugar)',
+  orbit: 'Órbita (gira em volta)',
+  shake: 'Tremor forte',
+  tada: 'Tcharam (chama atenção)',
+  wave: 'Onda (vai e volta de lado)',
+  zoomloop: 'Zoom lento (aproxima e volta)',
 };
 
 /**
@@ -127,6 +153,24 @@ export function elemMotionAt(motion, t, { speed = 1, amp = 1 } = {}) {
       const ph = Math.sin(s * TAU * 0.6);
       return { dx: 0, dy: 0, scaleX: 1 + ph * 0.04 * amp, scaleY: 1 - ph * 0.04 * amp, scale: 1, rot: 0, alpha: 1 };
     }
+    case 'heartbeat':
+      return { dx: 0, dy: 0, scale: 1 + heartbeatAt(s) * 0.12 * amp, rot: 0, alpha: 1 };
+    case 'swing':
+      return { dx: 0, dy: 0, scale: 1, rot: Math.sin(s * TAU * 0.5) * 18 * amp, alpha: 1 };
+    case 'hop':
+      return { dx: 0, dy: -Math.abs(Math.sin(s * TAU * 0.6)) * 0.03 * amp, scale: 1, rot: 0, alpha: 1 };
+    case 'orbit':
+      return { dx: Math.cos(s * TAU * 0.25) * 0.02 * amp, dy: Math.sin(s * TAU * 0.25) * 0.02 * amp, scale: 1, rot: 0, alpha: 1 };
+    case 'shake':
+      return { dx: Math.sin(s * 47) * 0.01 * amp, dy: Math.cos(s * 53) * 0.008 * amp, scale: 1, rot: Math.sin(s * 37) * 4 * amp, alpha: 1 };
+    case 'tada': {
+      const k = tadaAt(s);
+      return { dx: 0, dy: 0, scale: 1 + k.scale * amp, rot: k.rot * amp, alpha: 1 };
+    }
+    case 'wave':
+      return { dx: Math.sin(s * TAU * 0.5) * 0.02 * amp, dy: 0, scale: 1, rot: Math.sin(s * TAU * 0.5) * 3 * amp, alpha: 1 };
+    case 'zoomloop':
+      return { dx: 0, dy: 0, scale: 1 + (0.5 - 0.5 * Math.cos(s * TAU * 0.15)) * 0.12 * amp, rot: 0, alpha: 1 };
     default:
       return { dx: 0, dy: 0, scale: 1, rot: 0, alpha: 1 };
   }
@@ -160,6 +204,28 @@ export function elemMotionExpr(motion, tVar, { speed = 1, amp = 1 } = {}) {
       return { scale: `(1+sin(${s}*${f(TAU * 0.4)})*${f(0.05 * amp)})` };
     case 'jelly':
       return { scale: `(1+sin(${s}*${f(TAU * 0.6)})*${f(0.04 * amp)})` };
+    case 'heartbeat':
+      return { scale: `(1+(${heartbeatExpr(s)})*${f(0.12 * amp)})` };
+    case 'swing':
+      return { rot: `sin(${s}*${f(TAU * 0.5)})*${f(18 * amp)}*PI/180` };
+    case 'hop':
+      return { dy: `-abs(sin(${s}*${f(TAU * 0.6)}))*${f(0.03 * amp)}` };
+    case 'orbit':
+      return { dx: `cos(${s}*${f(TAU * 0.25)})*${f(0.02 * amp)}`, dy: `sin(${s}*${f(TAU * 0.25)})*${f(0.02 * amp)}` };
+    case 'shake':
+      return { dx: `sin(${s}*47)*${f(0.01 * amp)}`, dy: `cos(${s}*53)*${f(0.008 * amp)}`, rot: `sin(${s}*37)*${f(4 * amp)}*PI/180` };
+    case 'tada': {
+      const ph = `mod(${s},2)`;
+      const on = `lt(${ph},1)`;
+      return {
+        scale: `(1+${on}*(0.1*sin(PI*${ph}))*${f(amp)})`,
+        rot: `${on}*sin(${ph}*PI*8)*${f(6 * amp)}*sin(PI*${ph})*PI/180`,
+      };
+    }
+    case 'wave':
+      return { dx: `sin(${s}*${f(TAU * 0.5)})*${f(0.02 * amp)}`, rot: `sin(${s}*${f(TAU * 0.5)})*${f(3 * amp)}*PI/180` };
+    case 'zoomloop':
+      return { scale: `(1+(0.5-0.5*cos(${s}*${f(TAU * 0.15)}))*${f(0.12 * amp)})` };
     default:
       return {};
   }

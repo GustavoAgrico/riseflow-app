@@ -76,6 +76,15 @@ const FX = {
   matrix: ['colorbalance=gs=0.2:gm=0.15:rm=-0.1:bm=-0.1', 'eq=contrast=1.15'],
   noir: ['hue=s=0', 'eq=contrast=1.5:brightness=-0.05', 'vignette=PI/4'],
   popart: ['eq=saturation=2.2:contrast=1.35', "lutrgb=r='floor(val/85)*85':g='floor(val/85)*85':b='floor(val/85)*85'"],
+  // ── Tempo (como Echo / Time Displacement dos programas de motion) ──
+  // eco: cada quadro mistura os 5 anteriores, cada vez mais fracos (rastro de movimento)
+  echo: ["tmix=frames=6:weights='1 0.8 0.6 0.45 0.3 0.2'"],
+  // rastro de luz: o claro demora a apagar (o movimento deixa um risco luminoso)
+  trails: ['lagfun=decay=0.95'],
+  // fantasma: média com o quadro anterior (movimento duplicado, sonhador)
+  ghost: ['tblend=all_mode=average'],
+  // realce de movimento: o que se mexe ganha contraste (vibração "nervosa")
+  motionpop: ['amplify=radius=2:factor=3:threshold=8'],
 };
 
 /** Janela de cada efeito; alguns piscam dentro dela (glitch). */
