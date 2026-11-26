@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { runFfmpeg, x264Fast } from './ffmpeg.js';
 import { fontsDirArg, jobFontsDir } from './captions.js';
 import { fontById, fontStyles } from '../../../shared/captionStyle.js';
-import { TEXT_OUT_FADES, TEXT_OUT_MOVES, textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan, letterPlan, letterTiming, letterSegments, LETTER_ANIMS, LETTER_SAMPLED, wordPlan, wordTiming, wordSegments, wordFrame, WORD_ANIMS, WORD_SAMPLED, expandCounterLayers } from '../../../shared/textLayers.js';
+import { SHAPE_REVEALS, TEXT_OUT_FADES, TEXT_OUT_MOVES, textBoxMetrics, textLook, textEm, textShown, lineAlign, revealPlan, letterPlan, letterTiming, letterSegments, LETTER_ANIMS, LETTER_SAMPLED, wordPlan, wordTiming, wordSegments, wordFrame, WORD_ANIMS, WORD_SAMPLED, expandCounterLayers } from '../../../shared/textLayers.js';
 import { fontMetrics, fontMetricsFile } from './fontMetrics.js';
 import { makeLogger } from '../logger.js';
 
@@ -55,19 +55,25 @@ function ellipse(W, H) {
  * (a letra começa no seu instante). Mesma conta da prévia: letrFrame em shared/textLayers.js.
  */
 /** Pose de uma letra num passo amostrado (posição, escala, alfa e desfoque do quadro). */
-function letterPose(f, px, py, H, W, col, outCol) {
-  const a = Math.round((1 - f.alpha) * 255).toString(16).toUpperCase().padStart(2, '0');
+// `bord` = contorno da letra (o do texto); `sh` = { op 0–1, blur px } quando é a SOMBRA da letra:
+// a mesma pose, na opacidade da sombra e desfocada (como o text-shadow da prévia, letra a letra)
+function letterPose(f, px, py, H, W, col, outCol, bord = 0, sh = null) {
+  const op = Math.max(0, Math.min(1, f.alpha)) * (sh ? sh.op : 1);
+  const a = Math.round((1 - op) * 255).toString(16).toUpperCase().padStart(2, '0');
   const sc = Math.round(f.scale * 100);
-  return `\\an5\\bord0\\shad0\\1c${col}&\\3c${outCol}&\\pos(${Math.round(px + (f.dx || 0) * W)},${Math.round(py + f.dy * H)})\\fscx${sc}\\fscy${sc}\\alpha&H${a}&\\blur${Math.round(f.blur * H)}`;
+  const blur = Math.max(Math.round(f.blur * H), sh ? Math.round(sh.blur) : 0);
+  return `\\an5\\bord${bord}\\shad0\\1c${col}&\\3c${outCol}&\\pos(${Math.round(px + (f.dx || 0) * W)},${Math.round(py + f.dy * H)})\\fscx${sc}\\fscy${sc}\\alpha&H${a}&\\blur${blur}`;
 }
-function letterTags(anim, px, py, dMs, off, col, outCol) {
-  const base = `\\an5\\bord0\\shad0\\1c${col}&\\3c${outCol}&`;
-  if (anim === 'letras-subir') return `${base}\\move(${px},${py + off},${px},${py},0,${Math.round(dMs)})\\alpha&HFF&\\t(0,${Math.round(dMs)},\\alpha&H00&)`;
+function letterTags(anim, px, py, dMs, off, col, outCol, bord = 0, sh = null) {
+  const base = `\\an5\\bord${bord}\\shad0\\1c${col}&\\3c${outCol}&`;
+  const fin = sh ? `&H${Math.round((1 - sh.op) * 255).toString(16).toUpperCase().padStart(2, '0')}&` : '&H00&';
+  const b = sh ? Math.round(sh.blur) : 0;
+  if (anim === 'letras-subir') return `${base}\\move(${px},${py + off},${px},${py},0,${Math.round(dMs)})${b ? `\\blur${b}` : ''}\\alpha&HFF&\\t(0,${Math.round(dMs)},\\alpha${fin})`;
   if (anim === 'letras-pop') {
     const d1 = Math.round(dMs * 0.6);
-    return `${base}\\pos(${px},${py})\\fscx0\\fscy0\\t(0,${d1},\\fscx115\\fscy115)\\t(${d1},${Math.round(dMs)},\\fscx100\\fscy100)`;
+    return `${base}\\pos(${px},${py})${sh ? `\\alpha${fin}` : ''}${b ? `\\blur${b}` : ''}\\fscx0\\fscy0\\t(0,${d1},\\fscx115\\fscy115)\\t(${d1},${Math.round(dMs)},\\fscx100\\fscy100)`;
   }
-  return `${base}\\pos(${px},${py})\\blur8\\alpha&HFF&\\t(0,${Math.round(dMs)},\\blur0\\alpha&H00&)`;
+  return `${base}\\pos(${px},${py})\\blur${Math.max(8, b)}\\alpha&HFF&\\t(0,${Math.round(dMs)},\\blur${b}\\alpha${fin})`;
 }
 
 /**
@@ -96,13 +102,15 @@ export function buildTextAss(rawLayers, meta) {
       const cx = l.x * W;
       const cy = l.y * H;
       const shape = l.shape === 'ellipse' ? ellipse(bw, bh) : roundRect(bw, bh, (Number(l.radius) || 0) * Math.min(bw, bh) / 2);
-      const fin = ['fade', 'slide-up', 'slide-left', 'zoom'].includes(l.animIn) ? a : 0;
-      const fout = TEXT_OUT_FADES.has(l.animOut) ? a : 0;
-      const rotT = L.rot ? `\\org(${Math.round(cx)},${Math.round(cy)})\\frz${(-L.rot).toFixed(2)}` : '';
-      // câmera: a forma escala em torno do centro (camFrom → camTo, linear, na duração da cena)
+      // câmera da forma: escala de camFrom a camTo (a "revelação" por um lado fica de fora)
       const camF = Number(l.camFrom) || 1;
       const camT = Number(l.camTo) || 1;
       const cam = camF !== 1 || camT !== 1;
+      // estica a partir de um lado: o ponto de ancoragem (\an) fica no lado fixo e a escala vai de 0 a 100%
+      const rv = !cam && Object.hasOwn(SHAPE_REVEALS, l.reveal) ? l.reveal : null;
+      const fin = !rv && ['fade', 'slide-up', 'slide-left', 'zoom'].includes(l.animIn) ? a : 0;
+      const fout = TEXT_OUT_FADES.has(l.animOut) ? a : 0;
+      const rotT = L.rot ? `\\org(${Math.round(cx)},${Math.round(cy)})\\frz${(-L.rot).toFixed(2)}` : '';
       const camTags = (px, py) => {
         const x0 = Math.round(px - (bw * camF) / 2);
         const y0 = Math.round(py - (bh * camF) / 2);
@@ -110,7 +118,13 @@ export function buildTextAss(rawLayers, meta) {
         const y1 = Math.round(py - (bh * camT) / 2);
         return `\\move(${x0},${y0},${x1},${y1},0,${durMs})\\fscx${(camF * 100).toFixed(2)}\\fscy${(camF * 100).toFixed(2)}\\t(0,${durMs},\\fscx${(camT * 100).toFixed(2)}\\fscy${(camT * 100).toFixed(2)})`;
       };
-      const base = (px, py) => `\\an7${cam ? camTags(px, py) : `\\pos(${Math.round(px - bw / 2)},${Math.round(py - bh / 2)})`}${rotT}${fin || fout ? `\\fad(${fin},${fout})` : ''}\\shad0`;
+      const revealPos = (px, py) => {
+        if (rv === 'right') return `\\an9\\pos(${Math.round(px + bw / 2)},${Math.round(py - bh / 2)})\\fscx0\\t(0,${a},\\fscx100)`;
+        if (rv === 'up') return `\\an1\\pos(${Math.round(px - bw / 2)},${Math.round(py + bh / 2)})\\fscy0\\t(0,${a},\\fscy100)`;
+        if (rv === 'center') return `\\an8\\pos(${Math.round(px)},${Math.round(py - bh / 2)})\\fscx0\\t(0,${a},\\fscx100)`;
+        return `\\an7\\pos(${Math.round(px - bw / 2)},${Math.round(py - bh / 2)})\\fscx0\\t(0,${a},\\fscx100)`;
+      };
+      const base = (px, py) => `${cam ? `\\an7${camTags(px, py)}` : rv ? revealPos(px, py) : `\\an7\\pos(${Math.round(px - bw / 2)},${Math.round(py - bh / 2)})`}${rotT}${fin || fout ? `\\fad(${fin},${fout})` : ''}\\shad0`;
       const bord = L.stroke ? +(L.strokeW * H).toFixed(2) : 0;
       if (L.shadow) {
         const dx = -Math.cos((L.shadowAngle * Math.PI) / 180) * L.shadowDist * H;
@@ -217,11 +231,14 @@ export function buildTextAss(rawLayers, meta) {
         const blur = (L.shadowBlur * H).toFixed(1);
         const sa = alpha(L.shadowOpacity * L.opacity);
         if (shape) events.push(`Dialogue: ${i * 4},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${tagsAt(cx + sh.dx, cy + sh.dy, [org[0] + sh.dx, org[1] + sh.dy])}\\bord0\\shad0\\blur${blur}\\1c${bgr(L.shadowColor)}&\\1a${sa}\\p1}${shape}`);
-        else events.push(`Dialogue: ${i * 4},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${fsp}${tagsAt(cx + sh.dx, ty + sh.dy, [org[0] + sh.dx, org[1] + sh.dy])}\\blur${blur}\\1c${bgr(L.shadowColor)}&\\3c${bgr(L.shadowColor)}&\\1a${sa}\\3a${sa}}${plan ? revealAss(j, sa, sa) : lineAss(line)}`);
+        // (texto animado por letra/palavra: a sombra vai com cada letra/palavra, lá embaixo)
+        else if (!letters && !words) events.push(`Dialogue: ${i * 4},${assTime(l.start)},${assTime(l.end)},T${i},,0,0,0,,{${fsp}${tagsAt(cx + sh.dx, ty + sh.dy, [org[0] + sh.dx, org[1] + sh.dy])}\\blur${blur}\\1c${bgr(L.shadowColor)}&\\3c${bgr(L.shadowColor)}&\\1a${sa}\\3a${sa}}${plan ? revealAss(j, sa, sa) : lineAss(line)}`);
       }
       if (shape) {
         events.push(`Dialogue: ${i * 4 + 1},${assTime(l.start)},${assTime(l.end)},TBox,,0,0,0,,{${tagsAt(cx, cy, org)}\\bord0\\shad0\\1c${bgr(L.bgColor)}&\\1a${alpha(L.bgOpacity * L.opacity)}\\p1}${shape}`);
       }
+      // sombra de cada letra/palavra animada: a mesma pose, deslocada, na cor/opacidade da sombra
+      const shU = sh ? { dx: sh.dx, dy: sh.dy, c: bgr(L.shadowColor), o: { op: L.shadowOpacity * L.opacity, blur: L.shadowBlur * H } } : null;
       if (letters) {
         // animação por letra: cada letra é um evento com a sua posição e o seu tempo
         const lx = cx - lineW(line) / 2;
@@ -238,10 +255,12 @@ export function buildTextAss(rawLayers, meta) {
             // curva amostrada em passos (overshoot, desfoque): um evento por passo, com a pose do instante
             for (const st of letterSegments(l.animIn, c.d, 10, l)) {
               const t1 = st.t1 == null ? l.end : l.start + c.t + st.t1;
-              events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${letterPose(st.f, Math.round(cxk), Math.round(ty), H, W, fillC, outC)}}${clean(ch)}`);
+              if (shU) events.push(`Dialogue: ${i * 4},${assTime(l.start + c.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${letterPose(st.f, Math.round(cxk + shU.dx), Math.round(ty + shU.dy), H, W, shU.c, shU.c, bord, shU.o)}}${clean(ch)}`);
+              events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${letterPose(st.f, Math.round(cxk), Math.round(ty), H, W, fillC, outC, bord)}}${clean(ch)}`);
             }
           } else {
-            events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t)},${assTime(l.end)},T${i},,0,0,0,,{${letterTags(l.animIn, Math.round(cxk), Math.round(ty), c.d * 1000, Math.round(H * 0.06), fillC, outC)}}${clean(ch)}`);
+            if (shU) events.push(`Dialogue: ${i * 4},${assTime(l.start + c.t)},${assTime(l.end)},T${i},,0,0,0,,{${letterTags(l.animIn, Math.round(cxk + shU.dx), Math.round(ty + shU.dy), c.d * 1000, Math.round(H * 0.06), shU.c, shU.c, bord, shU.o)}}${clean(ch)}`);
+            events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + c.t)},${assTime(l.end)},T${i},,0,0,0,,{${letterTags(l.animIn, Math.round(cxk), Math.round(ty), c.d * 1000, Math.round(H * 0.06), fillC, outC, bord)}}${clean(ch)}`);
           }
         });
         return;
@@ -264,10 +283,12 @@ export function buildTextAss(rawLayers, meta) {
           if (WORD_SAMPLED.includes(l.animIn)) {
             for (const st of wordSegments(l.animIn, w.d, 10, l)) {
               const t1 = st.t1 == null ? l.end : l.start + w.t + st.t1;
-              events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + w.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${fsp}${letterPose(st.f, Math.round(cxw), Math.round(ty), H, W, fillC, outC)}}${wText}`);
+              if (shU) events.push(`Dialogue: ${i * 4},${assTime(l.start + w.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${fsp}${letterPose(st.f, Math.round(cxw + shU.dx), Math.round(ty + shU.dy), H, W, shU.c, shU.c, bord, shU.o)}}${wText}`);
+              events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + w.t + st.t0)},${assTime(t1)},T${i},,0,0,0,,{${fsp}${letterPose(st.f, Math.round(cxw), Math.round(ty), H, W, fillC, outC, bord)}}${wText}`);
             }
           } else {
-            events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + w.t)},${assTime(l.end)},T${i},,0,0,0,,{${fsp}${letterTags(l.animIn.replace('palavras-', 'letras-'), Math.round(cxw), Math.round(ty), w.d * 1000, Math.round(H * 0.06), fillC, outC)}}${wText}`);
+            if (shU) events.push(`Dialogue: ${i * 4},${assTime(l.start + w.t)},${assTime(l.end)},T${i},,0,0,0,,{${fsp}${letterTags(l.animIn.replace('palavras-', 'letras-'), Math.round(cxw + shU.dx), Math.round(ty + shU.dy), w.d * 1000, Math.round(H * 0.06), shU.c, shU.c, bord, shU.o)}}${wText}`);
+            events.push(`Dialogue: ${i * 4 + 3},${assTime(l.start + w.t)},${assTime(l.end)},T${i},,0,0,0,,{${fsp}${letterTags(l.animIn.replace('palavras-', 'letras-'), Math.round(cxw), Math.round(ty), w.d * 1000, Math.round(H * 0.06), fillC, outC, bord)}}${wText}`);
           }
         });
         return;

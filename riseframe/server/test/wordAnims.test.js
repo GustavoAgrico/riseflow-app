@@ -11,8 +11,8 @@ import { tmpDir } from '../testkit/tmp.js';
 
 const meta = { width: 960, height: 540, duration: 4 };
 
-test('WORD_ANIMS lista 8 entradas', () => {
-  assert.equal(WORD_ANIMS.length, 8);
+test('WORD_ANIMS lista 11 entradas', () => {
+  assert.equal(WORD_ANIMS.length, 11);
   assert.ok(WORD_ANIMS.every((a) => a.startsWith('palavras-')));
 });
 
