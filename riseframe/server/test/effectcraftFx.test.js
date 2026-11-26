@@ -12,7 +12,7 @@ test('chroma key: verde/azul viram a cor certa, com limites e tirando o vazament
   assert.equal(cleanKey({ color: '#ff00ff' }).spill, null);
   assert.equal(cleanKey({ color: 'roxo' }), null);
   assert.equal(cleanKey(null), null);
-  assert.equal(keyVf({ color: 'green' }), ',format=rgba,colorkey=0x00FF00:0.3:0.08,despill=type=green:mix=0.5:expand=0');
+  assert.equal(keyVf({ color: 'green' }), ',format=rgba,colorkey=0x00FF00:0.3:0.08,despill=type=green:mix=1:expand=0');
   assert.equal(keyVf(null), '');
 });
 

@@ -37,7 +37,7 @@ const DUCK = {
 export function keyVf(key) {
   const k = cleanKey(key);
   if (!k) return '';
-  const spill = k.spill ? `,despill=type=${k.spill}:mix=0.5:expand=0` : '';
+  const spill = k.spill ? `,despill=type=${k.spill}:mix=1:expand=0` : '';
   return `,format=rgba,colorkey=0x${k.color.slice(1)}:${k.similarity}:${k.smooth}${spill}`;
 }
 

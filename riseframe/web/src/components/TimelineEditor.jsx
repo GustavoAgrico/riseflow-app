@@ -28,7 +28,7 @@ import MotionRefsPanel from './MotionRefsPanel.jsx';
 import { promptMotionSfx } from '../../../shared/promptMotion.js';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
 import { AUDIOGRAM_STYLES, AUDIOGRAM_POSITIONS, cleanAudiogram } from '../../../shared/audiogram.js';
-import { VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, wordPlan, wordFrame, WORD_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
+import { textOutFrame, textInFrame, VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, wordPlan, wordFrame, WORD_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
 import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
@@ -1383,7 +1383,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
           const stat = best?.type === 'static';
           const iris = best?.type === 'iris';
           tro.style.opacity = E > 0 ? String(best.type === 'flash' ? 0.9 * E : best.type === 'dip' ? 0.95 * E : best.type === 'whiteout' ? E : iris ? 1 : best.type === 'glow' ? 0.4 * E : glitch ? (Math.sin(t * 90) > 0 ? 0.8 : 0.35) : 1) : tm?.blur ? '1' : '0';
-          if (leak) {
+          if (best && TRANS_LOOK[best.type]) {
+            const lk = TRANS_LOOK[best.type](E, t);
+            tro.style.background = lk.bg || 'transparent';
+            tro.style.mixBlendMode = lk.blend || 'normal';
+            tro.style.backdropFilter = lk.bd || 'none';
+            tro.style.opacity = String(lk.op ?? 1);
+          } else if (leak) {
             // vazamento de luz: clarão laranja por cima (tela)
             tro.style.background = 'radial-gradient(circle at 30% 40%, rgba(255,170,60,0.95), rgba(255,90,40,0.55) 45%, transparent 75%)';
             tro.style.mixBlendMode = 'screen'; tro.style.backdropFilter = 'none'; tro.style.opacity = String(0.9 * E);
@@ -10662,6 +10668,8 @@ function ChromaKeyDefs() {
     </svg>
   );
 }
+/** Duração da entrada/saída dos textos (a mesma ANIM_MS do render, em segundos). */
+const TEXT_ANIM_S = 0.35;
 /** Ajustes da camada na prévia (a mesma ideia do eq/hflip do render). */
 function layerCss(m) {
   const b = Number(m.bright || 0);
@@ -10866,9 +10874,15 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
         const sh = L.shadow ? { dx: -Math.cos((L.shadowAngle * Math.PI) / 180) * L.shadowDist * box.h, dy: Math.sin((L.shadowAngle * Math.PI) / 180) * L.shadowDist * box.h, b: L.shadowBlur * box.h * 2, c: rgba(L.shadowColor, L.shadowOpacity) } : null;
         const ty = L.valign === 'top' ? '0%' : L.valign === 'bottom' ? '-100%' : '-50%';
         const shift = L.baseline * box.h + (L.script === 'super' ? -0.33 * emBase : L.script === 'sub' ? 0.12 * emBase : 0);
+        // saída do texto (descer, estourar, desfocar, girar…): as mesmas contas do render
+        const outA = Math.min(TEXT_ANIM_S, (l.end - l.start) / 3);
+        const SIMPLE_IN = ['fade', 'pop', 'zoom', 'slide-up', 'slide-left', 'blur-in', 'slide-down', 'grow', 'spin-in'];
+        const of = l.animOut && l.animOut !== 'none' && cur > l.end - outA ? textOutFrame(l.animOut, (cur - (l.end - outA)) / outA)
+          : SIMPLE_IN.includes(l.animIn) && cur < l.start + outA ? textInFrame(l.animIn, (cur - l.start) / outA) : null;
+        const outTf = of ? ` translate(${(of.dx * box.w).toFixed(1)}px, ${(of.dy * box.h).toFixed(1)}px)${of.scale !== 1 ? ` scale(${of.scale.toFixed(3)})` : ''}${of.rot ? ` rotate(${of.rot.toFixed(1)}deg)` : ''}` : '';
         return (
           <div key={l.key} onPointerDown={(e) => start(e, { kind: 'text', key: l.key, ox: l.x, oy: l.y })}
-            style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, transform: `translate(-50%, ${ty}) translateY(${shift}px)${L.rot ? ` rotate(${L.rot}deg)` : ''}`, opacity: L.opacity,
+            style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, transform: `translate(-50%, ${ty}) translateY(${shift}px)${L.rot ? ` rotate(${L.rot}deg)` : ''}${outTf}`, opacity: L.opacity * (of ? of.alpha : 1), ...(of?.blur ? { filter: `blur(${(of.blur * box.h / 1080).toFixed(1)}px)` } : {}),
               ...(L.bg && g.block ? { background: rgba(L.bgColor, L.bgOpacity), padding: `${g.padY * px}px ${g.padX * px}px`, borderRadius: g.r * (lines.length * TEXT_LINE_H * px + (lines.length - 1) * L.leading * box.h + 2 * g.padY * px) / 2, ...(sh ? { boxShadow: `${sh.dx}px ${sh.dy}px ${sh.b}px ${sh.c}` } : null) } : null),
               display: 'flex', flexDirection: 'column', alignItems: L.align === 'right' ? 'flex-end' : L.align === 'center' || L.align === 'justify-center' ? 'center' : 'flex-start', lineHeight: TEXT_LINE_H,
               fontFamily: `'${f.family}'`, fontWeight: f.bold === false && !L.bold ? 400 : 700, fontStyle: L.italic ? 'italic' : 'normal', fontSize: px,
@@ -11046,6 +11060,15 @@ const FX_ANIM_CSS = `
 .a-tr-spin { animation-name: rfTrSpin; } @keyframes rfTrSpin { 0%, 100% { transform: rotate(0) scale(1); } 48% { transform: rotate(30deg) scale(1.7); filter: blur(2px); } 52% { transform: rotate(-30deg) scale(1.7); filter: blur(2px); } }
 .a-tr-shake { animation-name: rfShake; animation-duration: 0.4s !important; }
 .a-tr-glitch { animation-name: rfGlitch; animation-duration: 0.6s !important; animation-timing-function: steps(1) !important; }
+.a-tr-pixelate { animation-name: rfTrPix; } @keyframes rfTrPix { 0%, 100% { filter: none; } 50% { filter: blur(3px) contrast(1.4); } }
+.a-tr-burn { animation-name: rfTrBurn; } @keyframes rfTrBurn { 0%, 100% { filter: none; } 50% { filter: brightness(2.2) sepia(0.8) saturate(2.2); } }
+.a-tr-chroma { animation-name: rfTrChroma; } @keyframes rfTrChroma { 0%, 100% { filter: none; } 50% { filter: hue-rotate(180deg) saturate(2.2); } }
+.a-tr-strobe { animation-name: rfTrStrobe; animation-duration: 0.5s !important; animation-timing-function: steps(1) !important; } @keyframes rfTrStrobe { 0% { filter: none; } 50% { filter: brightness(2.6); } }
+.a-tr-negative { animation-name: rfTrNeg; animation-timing-function: steps(1) !important; } @keyframes rfTrNeg { 0%, 40%, 60%, 100% { filter: none; } 45%, 55% { filter: invert(1); } }
+.a-tr-vhs { animation-name: rfGlitch; animation-duration: 0.6s !important; animation-timing-function: steps(1) !important; }
+.a-tr-swipeblur { animation-name: rfTrSwipe; } @keyframes rfTrSwipe { 0%, 100% { filter: none; transform: none; } 50% { filter: blur(3px); transform: scaleX(1.08); } }
+.a-tr-exposure { animation-name: rfTrExp; } @keyframes rfTrExp { 0%, 100% { filter: none; } 50% { filter: brightness(2.4) contrast(1.5); } }
+.a-tr-desat { animation-name: rfTrDesat; } @keyframes rfTrDesat { 0%, 100% { filter: none; } 50% { filter: grayscale(1); } }
 .o-fx-strobe { background: #fff; opacity: 0; animation-name: rfStrobe; animation-duration: 0.5s !important; animation-timing-function: steps(1) !important; } @keyframes rfStrobe { 0% { opacity: 0; } 50% { opacity: 0.85; } }
 .o-fx-vignette { background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.75) 100%); }
 .o-fx-film { border-top: 9px solid #000; border-bottom: 9px solid #000; box-sizing: border-box; }
@@ -11057,7 +11080,7 @@ const FX_ANIM_CSS = `
 `;
 
 // Meia duração de cada transição (igual ao servidor) e textura de grão para a prévia.
-const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3, lightleak: 0.35, static: 0.2, rgbsplit: 0.2, rgbblur: 0.22 };
+const TRANS_HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3, lightleak: 0.35, static: 0.2, rgbsplit: 0.2, rgbblur: 0.22, pixelate: 0.25, burn: 0.4, chroma: 0.25, strobe: 0.3, negative: 0.15, vhs: 0.25, swipeblur: 0.22, exposure: 0.25, desat: 0.35 };
 const TRANS_DUR = Object.fromEntries(Object.entries(TRANS_HALF).map(([k, h]) => [k, +(h * 2).toFixed(2)]));
 // Camadas por cima do vídeo na prévia (molduras, faixas, grade, linhas de TV…)
 const FX_OVERLAY_BG = {
@@ -11074,15 +11097,28 @@ const FX_OVERLAY_BG = {
 const FX_THUMB_TF = { mirror: 'scaleX(-1)', vflip: 'scaleY(-1)', tilt: 'rotate(-4deg) scale(1.1)', tiltr: 'rotate(4deg) scale(1.1)', fisheye: 'scale(1.08)', zoomfix: 'scale(1.25)', zoomfix2: 'scale(1.5)', persp3d: 'perspective(300px) rotateX(12deg)', wideangle: 'scale(0.94)' };
 // Cursor da navalha (C), como o do Premiere: uma lâmina; o corte acontece no ponto laranja (9,27).
 const RAZOR_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><defs><linearGradient id='b' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#FFFFFF'/><stop offset='1' stop-color='#C3C9D2'/></linearGradient></defs><g transform='rotate(-40 18 13)' filter=''><path d='M7.5 8h21a1.5 1.5 0 0 1 1.5 1.5V15H6V9.5A1.5 1.5 0 0 1 7.5 8z' fill='url(#b)' stroke='#0B0C10' stroke-width='1.3'/><path d='M6 15h24v3.2H6z' fill='#8E97A4' stroke='#0B0C10' stroke-width='1.3'/><path d='M6.6 17.4h22.8' stroke='#FFFFFF' stroke-width='0.9'/><rect x='12.5' y='10.4' width='11' height='2.6' rx='1.3' fill='#0B0C10'/><circle cx='10' cy='11.7' r='1.2' fill='#0B0C10'/><circle cx='26' cy='11.7' r='1.2' fill='#0B0C10'/></g><circle cx='9' cy='27' r='2.4' fill='#FF6B35' stroke='#FFFFFF' stroke-width='1.1'/></svg>")}") 9 27, crosshair`;
-const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch', 'whiteout', 'iris', 'lightleak', 'static', 'rgbsplit', 'rgbblur']);
+const TRANS_OVERLAY = new Set(['flash', 'dip', 'glow', 'blur', 'glitch', 'whiteout', 'iris', 'lightleak', 'static', 'rgbsplit', 'rgbblur', 'pixelate', 'burn', 'chroma', 'strobe', 'negative', 'vhs', 'swipeblur', 'exposure', 'desat']);
+// Prévia das transições novas (aproximada; o render usa os filtros do FFmpeg): E = 0→1→0 no corte
+const TRANS_LOOK = {
+  pixelate: (E) => ({ bg: `linear-gradient(rgba(0,0,0,0.18) 1px, transparent 1px) 0 0 / ${Math.round(4 + 22 * E)}px ${Math.round(4 + 22 * E)}px, linear-gradient(90deg, rgba(0,0,0,0.18) 1px, transparent 1px) 0 0 / ${Math.round(4 + 22 * E)}px ${Math.round(4 + 22 * E)}px`, bd: `blur(${(5 * E).toFixed(1)}px)`, op: E > 0.05 ? 1 : 0 }),
+  burn: (E) => ({ bg: 'radial-gradient(circle at 70% 35%, rgba(255,240,200,0.95), rgba(255,120,30,0.8) 35%, rgba(200,30,0,0.5) 65%, transparent 85%)', blend: 'screen', op: E }),
+  chroma: (E) => ({ bd: `hue-rotate(${Math.round(360 * E)}deg) saturate(${(1 + 1.2 * E).toFixed(2)})`, op: 1 }),
+  strobe: (E, t) => ({ bg: '#fff', op: Math.sin(2 * Math.PI * t * 12) > 0 ? 0.85 * E : 0 }),
+  negative: (E) => ({ bd: E > 0.02 ? 'invert(1)' : 'none', op: 1 }),
+  vhs: (E) => ({ bg: `url("${GRAIN_SVG}"), linear-gradient(90deg, rgba(255,0,90,0.25), transparent 40%, transparent 60%, rgba(0,220,255,0.25))`, blend: 'screen', bd: `saturate(${(1 + 0.5 * E).toFixed(2)}) contrast(1.15)`, op: E }),
+  swipeblur: (E) => ({ bd: `blur(${(8 * E).toFixed(1)}px)`, op: 1 }),
+  exposure: (E) => ({ bd: `brightness(${(1 + 1.3 * E).toFixed(2)}) contrast(${(1 + 0.7 * E).toFixed(2)})`, op: 1 }),
+  desat: (E) => ({ bd: `grayscale(${E.toFixed(2)})`, op: 1 }),
+};
 // Grupos das transições, como o painel do Film Impact
 const TRANS_GROUPS = [
   ['dissolver', 'Dissolver', ['dip', 'whiteout']],
   ['luzes', 'Luzes e desfoques', ['flash', 'glow', 'blur', 'rgbblur', 'lightleak']],
   ['deslizar', 'Deslizar', ['slideleft', 'slideright', 'slideup', 'slidedown']],
   ['transformadores', 'Transformadores', ['zoomin', 'zoomout', 'spin']],
-  ['grunge', 'Grunge e distorção', ['glitch', 'shake', 'static', 'rgbsplit']],
+  ['grunge', 'Grunge e distorção', ['glitch', 'shake', 'static', 'rgbsplit', 'vhs', 'pixelate', 'negative']],
   ['abertura', 'Abertura', ['iris']],
+  ['cor', 'Cor e exposição', ['chroma', 'burn', 'exposure', 'desat', 'strobe', 'swipeblur']],
 ];
 const TRANS_GROUP_OF = Object.fromEntries(TRANS_GROUPS.flatMap(([g, , ids]) => ids.map((id) => [id, g])));
 /**

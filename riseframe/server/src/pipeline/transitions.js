@@ -29,6 +29,16 @@ export const TRANSITIONS = {
   static: 'Estática (TV)',
   rgbsplit: 'Divisão RGB',
   rgbblur: 'Desfoque com RGB (VSL)',
+  // ── novas ──
+  pixelate: 'Pixelar',
+  burn: 'Queima de filme',
+  chroma: 'Flash colorido',
+  strobe: 'Piscar (estrobo)',
+  negative: 'Flash negativo',
+  vhs: 'VHS',
+  swipeblur: 'Desfoque de movimento',
+  exposure: 'Estourar exposição',
+  desat: 'Descolorir',
 };
 /** Transições de câmera (mexem no quadro): vão juntas num zoompan/rotate só. */
 export const MOTION_TRANSITIONS = ['zoomin', 'zoomout', 'slideleft', 'slideright', 'slideup', 'slidedown', 'spin', 'shake'];
@@ -40,7 +50,7 @@ export const TRANSITION_TARGETS = {
 };
 
 /** Metade da duração de cada transição (s): o efeito vai de p-HALF a p+HALF. */
-const HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3, lightleak: 0.35, static: 0.2, rgbsplit: 0.2, rgbblur: 0.22 };
+const HALF = { flash: 0.18, dip: 0.22, glow: 0.3, blur: 0.25, zoomin: 0.3, zoomout: 0.3, slideleft: 0.25, slideright: 0.25, slideup: 0.25, slidedown: 0.25, spin: 0.3, shake: 0.3, glitch: 0.2, whiteout: 0.3, iris: 0.3, lightleak: 0.35, static: 0.2, rgbsplit: 0.2, rgbblur: 0.22, pixelate: 0.25, burn: 0.4, chroma: 0.25, strobe: 0.3, negative: 0.15, vhs: 0.25, swipeblur: 0.22, exposure: 0.25, desat: 0.35 };
 /** Duração padrão (s) de cada transição — a mesma que a prévia usa. */
 export const TRANSITION_DUR = Object.fromEntries(Object.entries(HALF).map(([k, h]) => [k, +(h * 2).toFixed(2)]));
 const MAX_POINTS = 40; // a expressão do FFmpeg cresce com os pontos — teto de segurança
@@ -141,6 +151,44 @@ export function transitionVf(type, points, duration, half = null) {
         `gblur=sigma=12:enable='${windowExpr(pts, h * 0.35)}'`,
         `eq=brightness='0.12*${E}':eval=frame`,
       ].join(',');
+    case 'pixelate':
+      // os blocos crescem até o corte e diminuem depois (três degraus)
+      return [
+        `pixelize=w=12:h=12:enable='${windowExpr(pts, h)}'`,
+        `pixelize=w=28:h=28:enable='${windowExpr(pts, h * 0.6)}'`,
+        `pixelize=w=56:h=56:enable='${windowExpr(pts, h * 0.3)}'`,
+      ].join(',');
+    case 'burn':
+      // queima de filme: clarão quente e forte (laranja → branco) que estoura no corte
+      return `eq=brightness='0.55*${E}':contrast='1+0.25*${E}':saturation='1+0.6*${E}':gamma_r='1+1.4*${E}':gamma_g='1+0.5*${E}':gamma_b='1-0.6*${E}':eval=frame`;
+    case 'chroma':
+      // flash colorido: as cores giram no círculo cromático e saturam no corte
+      return `hue=H='2*PI*${E}':s='1+1.2*${E}',eq=brightness='0.18*${E}':eval=frame`;
+    case 'strobe':
+      // piscar: flashes brancos rápidos (12 por segundo) perto do corte
+      return `eq=brightness='0.85*${E}*gt(sin(2*PI*t*12),0)':eval=frame`;
+    case 'negative':
+      // flash negativo: as cores invertem por um instante no corte
+      return `negate=enable='${windowExpr(pts, h)}'`;
+    case 'vhs':
+      // VHS: cores separadas, chuvisco e cor lavada, mais forte no corte
+      return [
+        `rgbashift=rh=-8:bh=8:rv=2:enable='${windowExpr(pts, h)}'`,
+        `noise=alls=34:allf=t:enable='${windowExpr(pts, h)}'`,
+        `eq=saturation=1.5:contrast=1.15:enable='${windowExpr(pts, h * 0.5)}'`,
+      ].join(',');
+    case 'swipeblur':
+      // desfoque de movimento horizontal, como um chicote de câmera sem mexer o quadro
+      return [
+        `dblur=angle=0:radius=12:enable='${windowExpr(pts, h)}'`,
+        `dblur=angle=0:radius=30:enable='${windowExpr(pts, h * 0.5)}'`,
+      ].join(',');
+    case 'exposure':
+      // estourar exposição: a imagem "queima" para o branco com contraste e volta
+      return `eq=brightness='0.5*${E}':contrast='1+0.7*${E}':saturation='1-0.3*${E}':eval=frame`;
+    case 'desat':
+      // descolorir: as cores somem até o corte e voltam
+      return `hue=s='1-${E}'`;
     case 'iris':
       // como a Íris do Premiere: a borda escurece fechando em círculo até o corte e reabre
       return `vignette=angle='1.5*${E}':eval=frame,eq=brightness='-0.6*(${E})^2':eval=frame`;
