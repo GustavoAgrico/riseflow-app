@@ -6,11 +6,17 @@ import { AuthProvider, useAuth } from '@context/AuthContext'
 import { NotificationToast } from '@components/NotificationToast'
 import { InstallPrompt } from '@components/InstallPrompt'
 import { PrivateRoute } from '@components/PrivateRoute'
+import { CommandCenter } from '@components/Command/CommandCenter'
+import { TeamNudgeListener } from '@components/TeamNudge'
+import { AgentDock } from '@components/Agents/AgentDock'
+import { useLocation } from 'react-router-dom'
 import { Dashboard } from '@pages/Dashboard'
 import { Clients } from '@pages/Clients'
 import { CRM } from '@pages/CRM'
 import { PipelineBoard } from '@pages/PipelineBoard'
 import { Billing } from '@pages/Billing'
+import { Projects } from '@pages/Projects'
+import { SalesPilot } from '@pages/SalesPilot'
 import { Calls } from '@pages/Calls'
 import { Integrations } from '@pages/Integrations'
 import { Analytics } from '@pages/Analytics'
@@ -32,6 +38,8 @@ import Flows from '@pages/Flows'
 import { Templates } from '@pages/Templates'
 import { Plans } from '@pages/Plans'
 import { Goals } from '@pages/Goals'
+import { Prospecting } from '@pages/Prospecting'
+import NovoAgente from '@pages/Agentes/NovoAgente'
 import { GoalCelebration } from '@components/Goals/GoalCelebration'
 import { Product } from '@pages/Product'
 import { PlanDetails } from '@pages/PlanDetails'
@@ -105,6 +113,32 @@ function GlobalToasts() {
   return <NotificationToast notifications={toasts} onDismiss={dismissToast} />
 }
 
+// Busca global (Ctrl+K), menu Criar (N), atalhos (?) e "G + letra" — em todas as telas logadas,
+// inclusive as que não usam o Layout comum (CRM, Chat…).
+// Telas sem o Layout comum (Chat, CRM, IA Central, Funil, Fluxos…) também têm os agentes:
+// uma pílula flutuante com o agente da função da tela. Espera um instante para não piscar
+// nas telas que já montam o trilho fixo.
+const NO_AGENTS = ['/crm/board', '/login', '/register', '/forgot-password', '/reset-password', '/auth/callback']
+function FloatingAgents() {
+  const { dockMounted } = useApp()
+  const { pathname } = useLocation()
+  const [ready, setReady] = React.useState(false)
+  React.useEffect(() => {
+    setReady(false)
+    if (dockMounted) return undefined
+    const t = setTimeout(() => setReady(true), 450)
+    return () => clearTimeout(t)
+  }, [dockMounted, pathname])
+  if (dockMounted || !ready || NO_AGENTS.some(p => pathname === p || pathname.startsWith(p + '/'))) return null
+  return <AgentDock floating />
+}
+
+function GlobalCommands() {
+  const { user, loading, isDemoMode } = useAuth()
+  if (loading || (!user && !isDemoMode)) return null
+  return <><CommandCenter /><TeamNudgeListener /><FloatingAgents /></>
+}
+
 // Raiz: todos (dono, membro de equipe e demo) caem no mesmo Dashboard, ou /login.
 function RootRedirect() {
   const { user, loading, isDemoMode } = useAuth()
@@ -125,6 +159,9 @@ function App() {
           <InstallPrompt />
           <BrowserRouter>
             <PageTransition />
+            <GlobalCommands />
+            {/* Cada tela aparece em fade ao trocar de rota (src/styles/motion.css). */}
+            <div className="rf-route" style={{ display: 'contents' }}>
             <Routes>
               {/* Public routes */}
               <Route path="/login" element={<Login />} />
@@ -149,6 +186,8 @@ function App() {
               <Route path="/crm" element={<PrivateRoute><CRM /></PrivateRoute>} />
               <Route path="/crm/board" element={<PrivateRoute><PipelineBoard /></PrivateRoute>} />
               <Route path="/billing" element={<PrivateRoute><Billing /></PrivateRoute>} />
+              <Route path="/projetos" element={<PrivateRoute><Projects /></PrivateRoute>} />
+              <Route path="/vendas-ia" element={<PrivateRoute><SalesPilot /></PrivateRoute>} />
               <Route path="/calls" element={<PrivateRoute><Calls /></PrivateRoute>} />
               <Route path="/clients" element={<PrivateRoute><Clients /></PrivateRoute>} />
               <Route path="/campaigns" element={<PrivateRoute><Campaigns /></PrivateRoute>} />
@@ -170,10 +209,13 @@ function App() {
               <Route path="/produto" element={<PrivateRoute><Product /></PrivateRoute>} />
               <Route path="/plans" element={<PrivateRoute><Plans /></PrivateRoute>} />
               <Route path="/goals" element={<PrivateRoute><Goals /></PrivateRoute>} />
+              <Route path="/prospeccao" element={<PrivateRoute><Prospecting /></PrivateRoute>} />
+              <Route path="/agentes/novo" element={<PrivateRoute><NovoAgente /></PrivateRoute>} />
               <Route path="/plans/:planId" element={<PrivateRoute><PlanDetails /></PrivateRoute>} />
 
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
+            </div>
           </BrowserRouter>
         </AppProvider>
       </AuthProvider>

@@ -5,6 +5,7 @@ import { Layout } from '@components/Layout/Layout'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@context/AuthContext'
 import { Plus, Loader2, X, Trash2, Phone, PhoneCall, PhoneIncoming, PhoneOutgoing, TrendingUp, CheckCircle2 } from 'lucide-react'
+import { CountUp } from '@components/motion'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-3)', pur: '#7C3AED',
   green: '#22C55E', yellow: '#EAB308', red: '#EF4444', blue: '#3B82F6', gray: 'var(--ink-4)' }
@@ -123,7 +124,7 @@ export const Calls = () => {
         {kpis.map(k => (
           <div key={k.label} style={{ ...cardS, borderLeft: `3px solid ${k.color}` }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: C.mut, fontSize: 12 }}><k.Icon size={14} color={k.color} /> {k.label}</div>
-            <p style={{ margin: '8px 0 0', fontSize: 22, fontWeight: 800, color: C.tx, fontVariantNumeric: 'tabular-nums' }}>{k.value}</p>
+            <p style={{ margin: '8px 0 0', fontSize: 22, fontWeight: 800, color: C.tx, fontVariantNumeric: 'tabular-nums' }}><CountUp value={k.value} /></p>
             {k.hint && <p style={{ margin: '2px 0 0', fontSize: 11, color: k.color, fontWeight: 600 }}>{k.hint}</p>}
           </div>
         ))}

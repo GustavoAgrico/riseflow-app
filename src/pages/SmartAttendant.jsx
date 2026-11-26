@@ -4,6 +4,7 @@ import { Bot, Trash2, Plus, Upload, Send, Sparkles } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { AIService } from '@services/aiService'
 import { useAuth } from '@context/AuthContext'
+import { AiActionsPanel } from '@components/AiActionsPanel'
 
 const ai = new AIService(supabase)
 
@@ -121,6 +122,7 @@ export const SmartAttendant = () => {
   const [status, setStatus] = useState('')
   const [stats, setStats] = useState(STATS_LOADING)
   const fileRef = useRef(null)
+  const c0 = useRef(null) // config como veio do banco (saber se a coluna ai_actions_mode existe)
   const set = (k, v) => setCfg(p => ({ ...p, [k]: v }))
 
   useEffect(() => {
@@ -135,7 +137,7 @@ export const SmartAttendant = () => {
         supabase.from('conversations').select('*', { count: 'exact', head: true }).eq('user_id', ownerUserId).not('assigned_to', 'is', null).neq('assigned_to', ''),
       ])
 
-      if (c) setCfg({ ...DEFAULTS, ...c })
+      if (c) { c0.current = c; setCfg({ ...DEFAULTS, ...c }) }
       if (kb) setFaqs(kb)
 
       // Mensagens de saída hoje em conversas com IA
@@ -180,6 +182,8 @@ export const SmartAttendant = () => {
     setSaving(true); setStatus('')
     try {
       const { id, created_at, ...rest } = cfg
+      // Sem o SQL ai_crm_actions.sql a coluna não existe: só envia se foi usada.
+      if (!rest.ai_actions_mode || rest.ai_actions_mode === 'off') { if (!('ai_actions_mode' in (c0.current || {}))) delete rest.ai_actions_mode }
       await supabase.from('attendant_config').upsert(
         { ...rest, user_id: ownerUserId, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
       await supabase.from('knowledge_base').delete().eq('user_id', ownerUserId)
@@ -273,6 +277,9 @@ export const SmartAttendant = () => {
           <Row label="Responder fora do horário comercial"><Toggle on={cfg.respond_outside_hours} onClick={() => set('respond_outside_hours', !cfg.respond_outside_hours)} /></Row>
           <Row label="Responder em grupos"><Toggle on={cfg.respond_groups} onClick={() => set('respond_groups', !cfg.respond_groups)} /></Row>
         </div>
+
+        {/* 4b — IA que age no CRM */}
+        <AiActionsPanel mode={cfg.ai_actions_mode || 'off'} onModeChange={v => set('ai_actions_mode', v)} isDemoMode={isDemoMode} />
 
         {/* 5 — Estatísticas */}
         <div style={S.card}>

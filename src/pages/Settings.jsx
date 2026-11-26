@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { Layout } from '@components/Layout/Layout'
-import { User, Lock, Bell, CreditCard, Key, Shield, ChevronRight, Crown, Check, Loader2, CheckCircle, Eye, EyeOff, ExternalLink, Camera, Monitor, Smartphone, LogOut, Download, X, Bot, Brain, Sparkles, Zap } from 'lucide-react'
+import { User, Lock, Bell, CreditCard, Key, Shield, ChevronRight, Crown, Check, Loader2, CheckCircle, Eye, EyeOff, ExternalLink, Camera, Monitor, Smartphone, LogOut, Download, X, Bot, Brain, Sparkles, Zap, PhoneCall } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { NicheSetup } from '@components/NicheSetup'
+import { AiCallSettings } from '@components/Settings/AiCallSettings'
 import { usePlan } from '@hooks/usePlan'
 import { downloadInvoicePDF } from '@utils/exportUtils'
 import { logger } from '@services/activityLogger'
@@ -16,6 +17,7 @@ const sections = [
   { id: 'notifications', label: 'Notificações', icon: Bell },
   { id: 'billing', label: 'Planos & Faturamento', icon: CreditCard },
   { id: 'api', label: 'API & Webhooks', icon: Key },
+  { id: 'calls', label: 'Ligações com IA', icon: PhoneCall },
 ]
 
 const timezones = [
@@ -202,7 +204,11 @@ export const Settings = () => {
   const navigate = useNavigate()
   const isMobile = useIsMobile()
   const { plan: usagePlan } = usePlan()
-  const [active, setActive]         = useState('profile')
+  // ?secao=calls abre direto uma seção (ex.: link "Configurar ligações" da Prospecção).
+  const [active, setActive]         = useState(() => {
+    const s = new URLSearchParams(window.location.search).get('secao')
+    return sections.some(x => x.id === s) ? s : 'profile'
+  })
   const [name, setName]             = useState('')
   const [plan, setPlan]             = useState('starter')
   const [saving, setSaving]         = useState(false)
@@ -1069,6 +1075,9 @@ export const Settings = () => {
               </div>
             </div>
           )}
+
+          {/* ── Ligações com IA ── */}
+          {active === 'calls' && <AiCallSettings />}
 
           {/* ── Notifications ── */}
           {active === 'notifications' && (

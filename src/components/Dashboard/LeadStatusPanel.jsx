@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Users, UserPlus, CalendarDays, Wallet } from 'lucide-react'
 import { useLeadStats } from '@hooks/useLeadStats'
 import { brl } from '@lib/metrics'
+import { CountUp } from '@components/motion'
 
 const card = {
   background: 'linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01)), var(--card)',
@@ -23,7 +24,7 @@ const Kpi = ({ icon: Icon, label, value, hint, color }) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--ink-4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
       <Icon size={13} color={color} /> {label}
     </div>
-    <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink-1)', marginTop: 4, ...num }}>{value}</div>
+    <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--ink-1)', marginTop: 4, ...num }}><CountUp value={value} /></div>
     {hint && <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>{hint}</div>}
   </div>
 )

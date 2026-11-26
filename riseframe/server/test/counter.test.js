@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { countText, countTarget, countDur, expandCounterLayers, cleanTextLayers } from '../../shared/textLayers.js';
 import { buildTextAss } from '../src/pipeline/texts.js';
 import { ffmpegPath } from '../src/pipeline/ffmpeg.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 const meta = { width: 1080, height: 1920 };
 const base = { text: '25.000 vendas', start: 1, end: 5, count: true };
@@ -41,7 +42,7 @@ test('contador: a limpeza guarda o campo só quando há número', () => {
 test('contador no ASS: vira vários passos, com números crescentes, e o libass aceita o arquivo', () => {
   const layers = expandCounterLayers(cleanTextLayers([{ ...base }]));
   assert.ok(layers.length >= 10, `${layers.length} passos`);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-counter-'));
+  const dir = tmpDir('rf-counter-');
   try {
     const f = path.join(dir, 'counter.ass');
     const ass = buildTextAss(cleanTextLayers([{ ...base }]), meta);

@@ -4,8 +4,9 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { tmpDir } from '../testkit/tmp.js';
 
-process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-cloud-'));
+process.env.DATA_DIR = tmpDir('rf-cloud-');
 const DATA = process.env.DATA_DIR;
 
 // Supabase Storage falso (em memória), com as respostas do real: objeto inexistente

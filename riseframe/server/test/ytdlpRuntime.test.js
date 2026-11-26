@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
+import { tmpDir } from '../testkit/tmp.js';
 
 // .zip mínimo (um arquivo), como o do Deno
 function makeZip(name, data, method = 8) {
@@ -38,7 +39,7 @@ function makeZip(name, data, method = 8) {
 // SHA-256 e passa ao yt-dlp. Aqui a "release" é falsa (fetch simulado).
 test('sem Deno nem Node 22: baixa o Deno, confere o SHA-256, descompacta e entrega ao yt-dlp', async (t) => {
   if (process.platform === 'win32') return t.skip('script de teste é shell');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-deno-'));
+  const dir = tmpDir('rf-deno-');
   process.env.DATA_DIR = dir;
   process.env.PATH = '/nonexistent';
   delete process.env.YTDLP_AUTO_DOWNLOAD;

@@ -1,7 +1,7 @@
 // Registro central dos nós customizados do builder de funis.
 // `nodeTypes` é passado direto para o <ReactFlow nodeTypes={...} />.
 // `NODE_CATALOG` alimenta a paleta lateral (label, cor e categoria de cada nó).
-import { Key, UserPlus, Clock, Tag, MessageSquare, Paperclip, Hourglass, Tags, Headphones, Webhook, Mail, Timer, GitFork, Sparkles } from 'lucide-react'
+import { Key, UserPlus, Clock, Tag, MessageSquare, Paperclip, Hourglass, Tags, Headphones, Webhook, Mail, Timer, GitFork, Sparkles, ListTodo, MoveRight } from 'lucide-react'
 import { T } from './_shared'
 
 import TriggerKeyword from './TriggerKeyword'
@@ -19,6 +19,8 @@ import ActionDelay from './ActionDelay'
 import ActionCondition from './ActionCondition'
 import ActionAIReply from './ActionAIReply'
 import ActionRemoveTag from './ActionRemoveTag'
+import ActionCreateTask from './ActionCreateTask'
+import ActionMoveStage from './ActionMoveStage'
 
 /* Mapa type → componente — registrado no React Flow. */
 export const nodeTypes = {
@@ -37,6 +39,8 @@ export const nodeTypes = {
   actionCondition: ActionCondition,
   actionAIReply: ActionAIReply,
   actionRemoveTag: ActionRemoveTag,
+  actionCreateTask: ActionCreateTask,
+  actionMoveStage: ActionMoveStage,
 }
 
 /* Catálogo para a paleta (arrastar/soltar). */
@@ -59,6 +63,10 @@ export const NODE_CATALOG = [
     { type: 'actionCondition', Icon: GitFork,       label: 'Condição (Se/Senão)' },
     { type: 'actionAIReply',   Icon: Sparkles,      label: 'Resposta com IA' },
     { type: 'actionRemoveTag', Icon: Tags,           label: 'Remover tag' },
+  ] },
+  { group: 'CRM', color: T.blue, items: [
+    { type: 'actionCreateTask', Icon: ListTodo,  label: 'Criar tarefa' },
+    { type: 'actionMoveStage',  Icon: MoveRight, label: 'Mover etapa do funil' },
   ] },
 ]
 

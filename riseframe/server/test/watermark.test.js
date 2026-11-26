@@ -5,6 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { watermarkFilter, applyWatermark } from '../src/pipeline/watermark.js';
 import { runFfmpeg, probeSummary } from '../src/pipeline/ffmpeg.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 test('marca d\'água: logo no canto escolhido, escala pela largura e transparência', () => {
   const f = watermarkFilter({ width: 1080, height: 1920 }, { position: 'br', scale: 0.2, opacity: 0.5 });
@@ -15,7 +16,7 @@ test('marca d\'água: logo no canto escolhido, escala pela largura e transparên
 });
 
 test('marca d\'água: aplica de verdade num vídeo (mantém duração e áudio)', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-wm-'));
+  const dir = tmpDir('rf-wm-');
   const vid = path.join(dir, 'v.mp4');
   const logo = path.join(dir, 'logo.png');
   await runFfmpeg(['-f', 'lavfi', '-i', 'color=c=0x223344:s=360x640:d=1.5', '-f', 'lavfi', '-i', 'sine=f=300:d=1.5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', '-y', vid], { label: 't' });

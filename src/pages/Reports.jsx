@@ -10,6 +10,7 @@ import { Layout } from '@components/Layout/Layout'
 import { exportCSV, exportPremiumPDF } from '@utils/exportUtils'
 import { SkeletonKPI, SkeletonTable } from '@components/ui/Skeleton'
 import { EmptyState } from '@components/ui/EmptyState'
+import { CountUp } from '@components/motion'
 
 const C = { bg: 'var(--bg)', card: 'var(--card)', bd: 'var(--border)', tx: 'var(--ink-1)', mut: 'var(--ink-4)', pur: '#7C3AED', org: '#FF6B35' }
 const PAL = ['#7C3AED', '#2563EB', '#059669', '#D97706', '#EC4899', '#0891B2', '#8B5CF6', '#EF4444', '#FF6B35', '#14B8A6']
@@ -111,7 +112,7 @@ export const Reports = () => {
           <div key={label} style={{ background: C.card, border: `1px solid ${C.bd}`, borderRadius: 14, padding: '16px 18px' }}>
             <Ic size={20} color={color} />
             <p style={{ margin: '8px 0 2px', fontSize: 12, color: C.mut }}>{label}</p>
-            <p style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>{value}</p>
+            <p style={{ margin: 0, fontSize: 22, fontWeight: 800 }}><CountUp value={value} /></p>
           </div>
         ))}
       </div>

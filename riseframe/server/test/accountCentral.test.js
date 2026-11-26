@@ -7,13 +7,12 @@ import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ffmpegPath } from '../src/pipeline/ffmpeg.js';
+import { TEST_SERVER_ENV, tmpDir, trackProc } from '../testkit/tmp.js';
 
 // Conta central: o "site" (cobra) e o "app de PC/Mac" (ACCOUNT_SERVER=site, processa)
 // rodando de verdade, como no uso real.
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-conta-'));
-const procs = [];
-after(() => procs.forEach((p) => p.kill()));
+const tmp = tmpDir('rf-conta-');
 
 const freePort = () => new Promise((resolve) => {
   const s = net.createServer().listen(0, () => {
@@ -26,10 +25,10 @@ async function startServer(name, env) {
   const port = await freePort();
   const p = spawn(process.execPath, ['src/index.js'], {
     cwd: root,
-    env: { ...process.env, PORT: String(port), DATA_DIR: path.join(tmp, name), CLOUD_SYNC: 'off', EMAIL_VERIFY: 'off', TRANSCRIBE_PROVIDER: 'mock', ADMIN_EMAILS: '', ...env },
+    env: { ...process.env, ...TEST_SERVER_ENV, PORT: String(port), DATA_DIR: path.join(tmp, name), CLOUD_SYNC: 'off', EMAIL_VERIFY: 'off', TRANSCRIBE_PROVIDER: 'mock', ADMIN_EMAILS: '', ...env },
     stdio: 'ignore',
   });
-  procs.push(p);
+  trackProc(p);
   const base = `http://127.0.0.1:${port}/api`;
   for (let i = 0; i < 100; i++) {
     try {

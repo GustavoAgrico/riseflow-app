@@ -6,6 +6,7 @@ import fs from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
 import { splitAudio, transcribeDeepgram } from '../src/pipeline/transcribe/providers.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 async function makeAudioVideo(dest, seconds) {
   const r = spawnSync(ffmpegPath, ['-hide_banner', '-y', '-f', 'lavfi', '-i', `sine=frequency=300:duration=${seconds}`, '-c:a', 'aac', dest], { stdio: 'ignore' });
@@ -13,7 +14,7 @@ async function makeAudioVideo(dest, seconds) {
 }
 
 test('splitAudio: divide o mp3 em pedaços com o tempo de início de cada um', async () => {
-  const work = await fs.mkdtemp(path.join(os.tmpdir(), 'dg-split-'));
+  const work = tmpDir('dg-split-');
   const mp3 = path.join(work, 'a.mp3');
   spawnSync(ffmpegPath, ['-hide_banner', '-y', '-f', 'lavfi', '-i', 'sine=duration=25', '-c:a', 'libmp3lame', '-b:a', '48k', mp3], { stdio: 'ignore' });
   const parts = await splitAudio(mp3, work, 10);
@@ -25,7 +26,7 @@ test('splitAudio: divide o mp3 em pedaços com o tempo de início de cada um', a
 });
 
 test('transcribeDeepgram: áudio longo vai em pedaços e os tempos das palavras são somados', async () => {
-  const work = await fs.mkdtemp(path.join(os.tmpdir(), 'dg-long-'));
+  const work = tmpDir('dg-long-');
   const input = path.join(work, 'in.m4a');
   await makeAudioVideo(input, 25);
   const mod = await import('../src/pipeline/transcribe/providers.js');
@@ -55,7 +56,7 @@ test('transcribeDeepgram: áudio longo vai em pedaços e os tempos das palavras 
 });
 
 test('transcribeDeepgram: vídeo com duração quebrada (ex.: 465,43 s) não estoura o tempo máximo', async () => {
-  const work = await fs.mkdtemp(path.join(os.tmpdir(), 'dg-frac-'));
+  const work = tmpDir('dg-frac-');
   const input = path.join(work, 'in.m4a');
   await makeAudioVideo(input, 3);
   const realFetch = globalThis.fetch;

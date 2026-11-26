@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { behindPlan, behindAss, behindFilter, ensureMaskModel, behindFontSize, BEHIND_FILL } from '../src/pipeline/textBehind.js';
 import { fontMetrics } from '../src/pipeline/fontMetrics.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 const seg = (t0, text) => {
   let t = t0;
@@ -45,7 +46,7 @@ test('texto atrás: palavra ocupa ~94% da largura (medida da Anton), sem passar 
 });
 
 test('modelo de recorte: download que não confere é recusado (o vídeo segue sem o efeito)', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-mask-'));
+  const dir = tmpDir('rf-mask-');
   try {
     const fake = async () => ({ ok: true, status: 200, arrayBuffer: async () => new Uint8Array(10).buffer });
     assert.equal(await ensureMaskModel({ fetchImpl: fake, dir }), null);

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Paperclip, Send, Mic, Trash2, Play, Pause, Image as ImageIcon, FileText, Download, RefreshCw, Check, CheckCheck, Clock, ArrowLeft, PanelRight, ArrowRightLeft, Plus, Sparkles, Bot, Loader2, Pencil, MessageSquareText, Save, User, Phone, Mail, Tag, Bell, X, AlertCircle } from 'lucide-react'
+import { Paperclip, Send, Mic, Trash2, Play, Pause, Image as ImageIcon, FileText, Download, RefreshCw, Check, CheckCheck, Clock, ArrowLeft, PanelRight, ArrowRightLeft, Plus, Sparkles, Bot, Loader2, Pencil, MessageSquareText, Save, User, Phone, Mail, Tag, Bell, X, AlertCircle, Lock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { usageService } from '@services/usageService'
 import { fetchConversations, fetchMessages, sendChatMessage, markConversationRead, syncWhatsAppChats, deleteConversation, loadConversationMessages, createConversation } from '@services/chatService'
@@ -16,6 +16,9 @@ import { useIsMobile } from '@hooks/useIsMobile'
 import { socket } from '@services/socket'
 import { sanitizeMessage } from '@utils/sanitize'
 import { useAuth } from '@context/AuthContext'
+import { NoteBubble, MentionPicker, NOTE } from '@components/Chat/InternalNotes'
+import { listConversationNotes, getConversationNote, addConversationNote, deleteConversationNote, isTableMissing } from '@services/conversationNotesService'
+import { OWNER_ID, mentionQuery, filterPeople, insertMention, extractMentions } from '@lib/mentions'
 
 const C = { bg: 'var(--bg)', panel: 'var(--card)', border: 'var(--border)', text: 'var(--ink-1)',
   muted: 'var(--ink-3)', dim: 'var(--ink-4)', purple: '#7C3AED', green: '#22C55E', blue: '#53BDEB' }
@@ -64,7 +67,7 @@ const Audio = ({ src, out, dur }) => {
 export const Chat = () => {
   const nav = useNavigate()
   const location = useLocation()
-  const { isMember, memberRecord, ownerUserId, loading: authLoading, isDemoMode } = useAuth()
+  const { user, isMember, memberRecord, ownerUserId, loading: authLoading, isDemoMode } = useAuth()
   const [conversations, setConversations] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const isMobile = useIsMobile()
@@ -102,6 +105,10 @@ export const Chat = () => {
   const [flashIds, setFlashIds] = useState(() => new Set()) // conversas com mensagem nova (badge piscando)
   const [templates, setTemplates] = useState([])
   const [showTemplates, setShowTemplates] = useState(false)
+  // Notas internas (só o time vê). notes = { [conversationId]: rows[] }
+  const [noteMode, setNoteMode] = useState(false)
+  const [notes, setNotes] = useState({})
+  const [notesMissing, setNotesMissing] = useState(false)
   const userRef = useRef(null)
   const selRef = useRef(null)
   const endRef = useRef(null)
@@ -114,6 +121,22 @@ export const Chat = () => {
 
   const sel = conversations.find(c => c.id === selectedId)
   const msgs = messages[selectedId] || []
+
+  // Quem sou eu nas notas internas: o membro da equipe ou o dono da conta.
+  const meId = isMember && memberRecord ? memberRecord.id : OWNER_ID
+  const meName = isMember && memberRecord ? memberRecord.name
+    : (user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'Administrador')
+  const people = [
+    { id: OWNER_ID, name: isMember ? 'Administrador' : meName, role: 'Dono da conta' },
+    ...teamMembers.map(m => ({ id: m.id, name: m.name, role: m.role })),
+  ].filter(p => p.name && p.id !== meId)
+  const mq = noteMode ? mentionQuery(input) : null
+  const mentionOptions = mq !== null ? filterPeople(people, mq) : []
+  // Mensagens e notas na mesma linha do tempo.
+  const thread = [
+    ...msgs.map(m => ({ kind: 'msg', key: 'm-' + m.id, t: m.t, m })),
+    ...(notes[selectedId] || []).map(n => ({ kind: 'note', key: 'n-' + n.id, t: new Date(n.created_at).getTime(), n })),
+  ].sort((a, b) => a.t - b.t)
   useEffect(() => { selRef.current = selectedId }, [selectedId])
   useEffect(() => { convIdsRef.current = new Set(conversations.map(c => c.id)); convsRef.current = conversations }, [conversations])
 
@@ -123,7 +146,7 @@ export const Chat = () => {
     setTimeout(() => setFlashIds(s => { const n = new Set(s); n.delete(id); return n }), 4000)
   }
   const onlyDigits = (s) => String(s ?? '').replace(/\D/g, '')
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs, notes[selectedId]])
 
   /* Carrega dados do cliente vinculado à conversa selecionada */
   useEffect(() => {
@@ -364,6 +387,78 @@ export const Chat = () => {
     return () => { on = false }
   }, [selectedId])
 
+  /* Notas internas da conversa selecionada (no demo ficam só na memória). */
+  const loadNotes = async (cid) => {
+    if (!cid || isDemoMode) return
+    try {
+      const rows = await listConversationNotes(cid)
+      setNotes(p => ({ ...p, [cid]: rows }))
+      setNotesMissing(false)
+    } catch (e) {
+      if (isTableMissing(e)) setNotesMissing(true)
+      else console.warn('[Chat] notas internas indisponíveis:', e?.message ?? e)
+    }
+  }
+  useEffect(() => { loadNotes(selectedId) }, [selectedId, isDemoMode])
+
+  /* Nota nova (de qualquer pessoa do time) e aviso para quem foi mencionado.
+     O evento só traz ids; o conteúdo é relido pelo proxy, que filtra por conta. */
+  useEffect(() => {
+    const onNote = async ({ userId: uid, conversationId, noteId, mentionIds } = {}) => {
+      if (!uid || uid !== userRef.current) return
+      if (conversationId === selRef.current) loadNotes(conversationId)
+      if (!noteId || !Array.isArray(mentionIds) || !mentionIds.includes(meId)) return
+      try {
+        const note = await getConversationNote(noteId)
+        if (!note) return
+        const fromMe = (note.author_member_id || OWNER_ID) === meId
+        if (fromMe) return
+        const contactName = convsRef.current.find(c => c.id === conversationId)?.name || 'uma conversa'
+        const item = {
+          type: 'mention', conversationId, contactName,
+          title: `${note.author_name || 'Alguém do time'} mencionou você`,
+          body: `${contactName}: ${note.content.slice(0, 90)}`,
+          timestamp: note.created_at,
+        }
+        setNotifications(prev => [{ ...item, id: Date.now(), read: false }, ...prev])
+        setTransferToast(item)
+        setTimeout(() => setTransferToast(null), 6000)
+      } catch (e) { console.warn('[Chat] aviso de menção falhou:', e?.message ?? e) }
+    }
+    socket.on('conversation_note', onNote)
+    return () => { socket.off('conversation_note', onNote) }
+  }, [meId])
+
+  const saveNote = async () => {
+    const content = input.trim(); if (!content || !selectedId) return
+    const mentions = extractMentions(content, people)
+    const cid = selectedId
+    if (isDemoMode) {
+      const row = { id: 'demo-' + Date.now(), conversation_id: cid, content, author_name: meName, author_member_id: isMember ? meId : null, mentions, created_at: new Date().toISOString() }
+      setNotes(p => ({ ...p, [cid]: [...(p[cid] || []), row] }))
+      setInput('')
+      return
+    }
+    try {
+      const row = await addConversationNote({ userId: userRef.current, conversationId: cid, content, authorName: meName, authorMemberId: isMember ? meId : null, mentions })
+      setNotes(p => ({ ...p, [cid]: [...(p[cid] || []).filter(n => n.id !== row.id), row] }))
+      setInput('')
+      logger.log(userRef.current, 'internal_note_added', { category: 'messages', description: `Nota interna em ${sel?.name || 'conversa'}${mentions.length ? ` (mencionou ${mentions.map(m => m.name).join(', ')})` : ''}` })
+    } catch (e) {
+      if (isTableMissing(e)) { setNotesMissing(true); window.alert('As notas internas ainda não estão ativas.\n\nRode o SQL supabase/conversation_notes.sql no Supabase.') }
+      else window.alert('Não foi possível salvar a nota: ' + (e?.message ?? e))
+    }
+  }
+
+  const removeNote = async (n) => {
+    if (!window.confirm('Excluir esta nota interna?')) return
+    const cid = n.conversation_id
+    if (!isDemoMode) {
+      try { await deleteConversationNote(n.id) } catch (e) { window.alert('Não foi possível excluir: ' + (e?.message ?? e)); return }
+    }
+    setNotes(p => ({ ...p, [cid]: (p[cid] || []).filter(x => x.id !== n.id) }))
+  }
+
   /* PASSO 5: tempo real — novas mensagens via Supabase */
   useEffect(() => {
     if (!userId) return
@@ -456,13 +551,23 @@ export const Chat = () => {
       if (userRef.current) loadConvs(userRef.current)
     }
 
+    // Histórico do pareamento chegando em lotes: recarrega a lista uma vez a cada leva.
+    let historyTimer = null
+    const onHistorySynced = () => {
+      clearTimeout(historyTimer)
+      historyTimer = setTimeout(() => { if (userRef.current) loadConvs(userRef.current) }, 1500)
+    }
+
     socket.on('new_message', onNewMessage)
     socket.on('new_chat', onNewChat)
     socket.on('integration_connected', onIntegrationConnected)
+    socket.on('history_synced', onHistorySynced)
     return () => {
+      clearTimeout(historyTimer)
       socket.off('new_message', onNewMessage)
       socket.off('new_chat', onNewChat)
       socket.off('integration_connected', onIntegrationConnected)
+      socket.off('history_synced', onHistorySynced)
     }
   }, [])
 
@@ -664,9 +769,9 @@ export const Chat = () => {
         <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 1000, background: '#7C3AED', color: '#fff', borderRadius: 12, padding: '12px 16px', boxShadow: '0 8px 28px rgba(124,58,237,.5)', fontSize: 13, fontWeight: 600, maxWidth: 290, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <Bell size={16} style={{ flexShrink: 0, marginTop: 1 }} />
           <div style={{ flex: 1 }}>
-            <p style={{ margin: 0 }}>Conversa atribuída</p>
+            <p style={{ margin: 0 }}>{transferToast.title || 'Conversa atribuída'}</p>
             <p style={{ margin: '3px 0 0', fontWeight: 400, fontSize: 12, opacity: .85 }}>
-              {transferToast.contactName} → {transferToast.agentName || transferToast.assignTo}
+              {transferToast.body || `${transferToast.contactName} → ${transferToast.agentName || transferToast.assignTo}`}
             </p>
           </div>
           <button onClick={() => setTransferToast(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', opacity: .7, padding: 0, display: 'flex', flexShrink: 0 }}><X size={14} /></button>
@@ -700,7 +805,7 @@ export const Chat = () => {
           {showNotifs && (
             <div style={{ position: 'absolute', top: 60, left: 0, right: 0, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10, padding: 8, maxHeight: 280, overflowY: 'auto', zIndex: 100, boxShadow: '0 8px 24px rgba(0,0,0,.5)', margin: '0 8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 4px 8px', borderBottom: `1px solid ${C.border}`, marginBottom: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>Transferências recebidas</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>Transferências e menções</span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {notifications.length > 0 && <button onClick={() => setNotifications([])} style={{ background: 'none', border: 'none', color: C.muted, fontSize: 11, cursor: 'pointer', fontFamily: F }}>Limpar</button>}
                   <button onClick={() => setShowNotifs(false)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 0, display: 'flex' }}><X size={14} /></button>
@@ -708,7 +813,15 @@ export const Chat = () => {
               </div>
               {notifications.length === 0 ? (
                 <p style={{ margin: '12px 4px', fontSize: 12, color: C.dim }}>Nenhuma notificação ainda</p>
-              ) : notifications.map(n => (
+              ) : notifications.map(n => n.type === 'mention' ? (
+                <div key={n.id} onClick={() => { if (convIdsRef.current.has(n.conversationId)) { setSelectedId(n.conversationId); setShowNotifs(false) } }}
+                  style={{ padding: '8px 6px', borderRadius: 6, marginBottom: 2, cursor: 'pointer', background: n.read ? 'transparent' : NOTE.bg }}>
+                  <p style={{ margin: 0, fontSize: 12.5, color: C.text, fontWeight: n.read ? 400 : 600 }}>{n.title}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: C.dim }}>
+                    🔒 {n.body} · {n.timestamp ? new Date(n.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'agora'}
+                  </p>
+                </div>
+              ) : (
                 <div key={n.id} style={{ padding: '8px 6px', borderRadius: 6, marginBottom: 2, background: n.read ? 'transparent' : C.purple + '18' }}>
                   <p style={{ margin: 0, fontSize: 12.5, color: C.text, fontWeight: n.read ? 400 : 600 }}>
                     <strong>{n.contactName}</strong> → <strong>{n.agentName || n.assignTo}</strong>
@@ -831,12 +944,17 @@ export const Chat = () => {
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 8%', display: 'flex', flexDirection: 'column', gap: 6 }}>
           {loadingMsgs ? (
             <div style={{ margin: 'auto', color: C.muted, fontSize: 13 }}>Carregando...</div>
-          ) : msgs.length === 0 ? (
+          ) : thread.length === 0 ? (
             <div style={{ margin: 'auto', color: C.muted, fontSize: 13 }}>Envie a primeira mensagem</div>
-          ) : msgs.map(m => {
+          ) : thread.map(item => {
+            if (item.kind === 'note') {
+              const n = item.n
+              return <NoteBubble key={item.key} note={n} mine={(n.author_member_id || OWNER_ID) === meId} onDelete={removeNote} />
+            }
+            const m = item.m
             const out = m.dir === 'out'
             return (
-              <div key={m.id} style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start' }}>
+              <div key={item.key} style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start' }}>
                 <div style={{ maxWidth: '70%', padding: '8px 12px', background: out ? C.purple : C.panel, color: C.text, fontSize: 13.5, lineHeight: 1.45, borderRadius: out ? '16px 16px 0 16px' : '16px 16px 16px 0', boxShadow: '0 1px 1px rgba(0,0,0,.2)' }}>
                   {m.type === 'image' ? (
                     <div>
@@ -915,13 +1033,27 @@ export const Chat = () => {
                   </>
                 )}
               </div>
-              <button onClick={suggestReply} disabled={aiBusy} title="Sugerir resposta com IA"
-                style={{ ...iBtn, color: aiBusy ? C.dim : C.purple, flexShrink: 0, cursor: aiBusy ? 'default' : 'pointer' }}>
+              <button onClick={suggestReply} disabled={aiBusy || noteMode} title="Sugerir resposta com IA"
+                style={{ ...iBtn, color: aiBusy || noteMode ? C.dim : C.purple, flexShrink: 0, cursor: aiBusy || noteMode ? 'default' : 'pointer' }}>
                 {aiBusy ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} />}
               </button>
-              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder={aiBusy ? 'Gerando sugestão...' : 'Mensagem'}
-                style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 24, padding: '11px 16px', color: C.text, fontSize: 14, outline: 'none', fontFamily: F }} />
-              {input.trim()
+              <button onClick={() => setNoteMode(v => !v)}
+                title={noteMode ? 'Voltar para mensagem ao contato' : (notesMissing ? 'Nota interna (rode supabase/conversation_notes.sql para ativar)' : 'Nota interna: só o time vê. Use @ para mencionar')}
+                style={{ ...iBtn, color: noteMode ? NOTE.accent : C.muted, flexShrink: 0 }}><Lock size={19} /></button>
+              <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
+                {mq !== null && <MentionPicker people={mentionOptions} onPick={p => setInput(t => insertMention(t, p))} />}
+                <input value={input} onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key !== 'Enter') return
+                    if (noteMode && mentionOptions.length > 0 && mq !== null) { e.preventDefault(); setInput(t => insertMention(t, mentionOptions[0])); return }
+                    noteMode ? saveNote() : send()
+                  }}
+                  placeholder={aiBusy ? 'Gerando sugestão...' : noteMode ? 'Nota interna: só o time vê. Use @ para mencionar' : 'Mensagem'}
+                  style={{ width: '100%', boxSizing: 'border-box', background: noteMode ? NOTE.bg : C.bg, border: `1px solid ${noteMode ? NOTE.border : C.border}`, borderRadius: 24, padding: '11px 16px', color: C.text, fontSize: 14, outline: 'none', fontFamily: F }} />
+              </div>
+              {noteMode
+                ? <button onClick={saveNote} disabled={!input.trim()} title="Salvar nota interna" style={{ width: 44, height: 44, borderRadius: '50%', background: NOTE.accent, border: 'none', cursor: input.trim() ? 'pointer' : 'default', opacity: input.trim() ? 1 : .5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Lock size={19} color="#1F1300" /></button>
+                : input.trim()
                 ? <button onClick={send} title="Enviar" style={{ width: 44, height: 44, borderRadius: '50%', background: C.purple, border: 'none', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Send size={20} color="#fff" /></button>
                 : <button onClick={startRec} title="Gravar áudio" style={{ width: 44, height: 44, borderRadius: '50%', background: C.purple, border: 'none', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Mic size={21} color="#fff" /></button>
               }

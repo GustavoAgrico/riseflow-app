@@ -7,6 +7,7 @@ import { sanitizeHeadline, sanitizeCover, headlineAss, burnHeadline, makeCover }
 import { finalRender } from '../src/pipeline/render.js';
 import { runFfmpeg, probeSummary, ffmpegPath } from '../src/pipeline/ffmpeg.js';
 import { spawnSync } from 'node:child_process';
+import { tmpDir } from '../testkit/tmp.js';
 
 test('headline e capa: só com texto, valores seguros', () => {
   assert.equal(sanitizeHeadline({ text: '   ' }), null);
@@ -22,7 +23,7 @@ test('headline e capa: só com texto, valores seguros', () => {
 });
 
 test('headline queimada no topo e capa no tamanho do vídeo final', { timeout: 120000 }, async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-head-'));
+  const dir = tmpDir('rf-head-');
   const src = path.join(dir, 'src.mp4');
   await runFfmpeg(['-f', 'lavfi', '-i', 'color=c=0x204060:s=540x960:r=30:d=3', '-f', 'lavfi', '-i', 'sine=d=3', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', '-shortest', '-y', src]);
   const meta = await probeSummary(src);

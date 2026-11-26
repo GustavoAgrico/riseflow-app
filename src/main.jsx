@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './styles/globals.css'
 import './styles/tokens.css'
+import './styles/motion.css'
 import { applyTheme, readTheme } from './hooks/useTheme'
 
 // Aplica o tema salvo antes do render — evita "flash" do tema errado.

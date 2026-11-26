@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { tmpDir } from '../testkit/tmp.js';
 
 // "YouTube bloqueou o download (pediu login)": em vez de desistir na 1ª, o app tenta de
 // novo com outros clientes do YouTube. O yt-dlp aqui é um script falso que só responde ao
 // 2º jeito.
 test('YouTube pede login: tenta com outros clientes e baixa; outro erro não repete', async (t) => {
   if (process.platform === 'win32') return t.skip('script de teste é shell');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-ytbot-'));
+  const dir = tmpDir('rf-ytbot-');
   const calls = path.join(dir, 'calls.log');
   const bin = path.join(dir, 'yt-dlp');
   fs.writeFileSync(bin, `#!/bin/sh

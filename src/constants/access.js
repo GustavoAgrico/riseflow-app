@@ -26,12 +26,12 @@ const BASE = [
   '/dashboard', '/hoje', '/chat', '/smart-attendant',
   '/flows', '/flows-novo', '/flow-builder',
   '/crm', '/clients', '/analytics', '/funnel',
-  '/campaigns', '/schedules', '/templates', '/calls', '/proposals', '/agenda', '/notifications',
+  '/campaigns', '/schedules', '/templates', '/calls', '/proposals', '/agenda', '/notifications', '/projetos', '/vendas-ia',
 ]
 
 // Extras somados por cargo (cumulativos).
 const SUPERVISOR_EXTRA = ['/monitor', '/reports', '/marketing', '/activity-logs', '/teams']
-const ADMIN_EXTRA = [...SUPERVISOR_EXTRA, '/integrations', '/automation', '/goals']
+const ADMIN_EXTRA = [...SUPERVISOR_EXTRA, '/integrations', '/automation', '/goals', '/prospeccao', '/agentes/novo']
 
 const PATHS_BY_ROLE = {
   [ROLES.ATENDENTE]: BASE,

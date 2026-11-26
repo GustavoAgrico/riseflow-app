@@ -6,8 +6,9 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { insertBroll } from '../src/pipeline/broll.js';
 import { probeSummary, ffmpegPath } from '../src/pipeline/ffmpeg.js';
+import { tmpDir } from '../testkit/tmp.js';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-brsplit-'));
+const tmp = tmpDir('rf-brsplit-');
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 test('tela dividida: o Transformar do vídeo vale na metade da pessoa, depois do recorte (como a prévia)', { timeout: 120000 }, async () => {

@@ -70,11 +70,14 @@ export const NAV_GROUPS = [
   {
     id: 'vendas', label: 'Vendas', kind: 'op',
     items: [
+      { id: 'sales-pilot', label: 'Piloto de Vendas', icon: 'Bot', path: '/vendas-ia', badge: 'IA' },
       { id: 'funnel', label: 'Funil de vendas', icon: 'Filter', path: '/funnel' },
       { id: 'proposals', label: 'Propostas', icon: 'FileText', path: '/proposals' },
+      { id: 'projects', label: 'Projetos', icon: 'FolderKanban', path: '/projetos' },
       { id: 'agenda', label: 'Agenda', icon: 'CalendarCheck', path: '/agenda' },
       { id: 'schedules', label: 'Agendamentos', icon: 'Calendar', path: '/schedules' },
       { id: 'calls', label: 'Ligações', icon: 'PhoneCall', path: '/calls' },
+      { id: 'prospecting', label: 'Prospecção com IA', icon: 'Search', path: '/prospeccao', badge: 'IA' },
     ],
   },
   {

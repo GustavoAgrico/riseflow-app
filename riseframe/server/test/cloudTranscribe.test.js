@@ -9,6 +9,7 @@ import ffmpegPath from 'ffmpeg-static';
 import { config } from '../src/config.js';
 import { rememberJobToken } from '../src/account.js';
 import { transcribe } from '../src/pipeline/transcribe/index.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 /** Áudio curto de teste (tom de 2 s). */
 function tone(dir) {
@@ -18,7 +19,7 @@ function tone(dir) {
 }
 
 test('app de PC sem chave: transcreve pela conta do site (só o áudio vai) com o token do job', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rtx-'));
+  const dir = tmpDir('rtx-');
   let got = null;
   const srv = http.createServer((req, res) => {
     let size = 0;
@@ -50,7 +51,7 @@ test('app de PC sem chave: transcreve pela conta do site (só o áudio vai) com 
 });
 
 test('app de PC sem internet e sem Whisper: erro claro em vez de legenda de exemplo', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rtx-'));
+  const dir = tmpDir('rtx-');
   const prev = { server: config.account.server, provider: config.transcribe.provider, python: config.transcribe.pythonBin };
   config.account.server = 'http://127.0.0.1:9'; // ninguém escuta
   config.transcribe.provider = 'whisper-local';

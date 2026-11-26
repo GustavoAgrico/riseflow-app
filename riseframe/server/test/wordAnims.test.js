@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { buildTextAss } from '../src/pipeline/texts.js';
 import { ffmpegPath } from '../src/pipeline/ffmpeg.js';
 import { wordPlan, wordFrame, wordSegments, WORD_ANIMS, WORD_SAMPLED, wordTiming } from '../../shared/textLayers.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 const meta = { width: 960, height: 540, duration: 4 };
 
@@ -91,7 +92,7 @@ test('buildTextAss gera múltiplos passos para animação amostrada por palavra'
 });
 
 test('o libass aceita o ASS das animações por palavra', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-wordanim-'));
+  const dir = tmpDir('rf-wordanim-');
   try {
     for (const anim of ['palavras-subir', 'palavras-pop', 'palavras-mola', 'palavras-empurrao']) {
       const layers = [{ text: 'Teste de palavras', start: 0, end: 3, font: 'poppins', size: 0.05, color: '#FFFFFF', box: 'outline', boxColor: '#000000', x: 0.5, y: 0.5, animIn: anim, animOut: 'fade' }];

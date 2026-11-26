@@ -65,3 +65,6 @@ ios/DerivedData
 *.p12
 
 *.patch
+
+# Leads exportados pelo agente buscar-leads (dados pessoais, nunca commitar)
+exports/

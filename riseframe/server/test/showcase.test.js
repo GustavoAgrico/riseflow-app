@@ -4,8 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { tmpDir } from '../testkit/tmp.js';
 
-process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-show-'));
+process.env.DATA_DIR = tmpDir('rf-show-');
 const { buildShowcase, showcaseInfo } = await import('../src/showcase.js');
 
 test('sem demonstração própria: usa a que vem com o site (web/dist/demo) ou a ilustração', () => {

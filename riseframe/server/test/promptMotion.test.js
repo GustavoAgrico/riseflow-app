@@ -13,6 +13,7 @@ import { parseOptions } from '../src/routes/jobs.js';
 import { remapMotionScenes } from '../src/pipeline/timeline.js';
 import { carveScenes, fitBrollWithScenes } from '../src/pipeline/broll.js';
 import { cleanForm } from '../src/routes/motion.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 // uma peça de cada tipo (o que a IA pode pedir)
 const ALL = {
@@ -145,7 +146,7 @@ test('motion por prompt: formulário e instruções da IA', () => {
 test('motion por prompt: renderiza um MP4 da cena (o mesmo caminho do render do vídeo)', async () => {
   const { renderExplainerScene } = await import('../src/pipeline/motionRender.js');
   const spec = fallbackPromptSpec('Siga para mais dicas', { goal: 'cta', duration: 2 });
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-pm-'));
+  const dir = tmpDir('rf-pm-');
   const out = path.join(dir, 'pm.mp4');
   await renderExplainerScene({ start: 0, end: 2, style: 'prompt', spec, beats: [] }, { W: 180, H: 320, fps: 10 }, out);
   assert.ok(fs.statSync(out).size > 1000);

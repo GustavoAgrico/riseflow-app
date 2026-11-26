@@ -6,8 +6,9 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { runPipeline } from '../src/pipeline/index.js';
 import { ffmpegPath } from '../src/pipeline/ffmpeg.js';
+import { tmpDir } from '../testkit/tmp.js';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-parity-'));
+const tmp = tmpDir('rf-parity-');
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 const ff = (args) => { const r = spawnSync(ffmpegPath, ['-v', 'error', '-y', ...args]); assert.equal(r.status, 0, r.stderr?.toString()); };
 const psnr = (a, b) => Number(/average:([\d.]+|inf)/.exec(spawnSync(ffmpegPath, ['-i', a, '-i', b, '-lavfi', 'psnr', '-f', 'null', '-']).stderr.toString())?.[1].replace('inf', '99'));

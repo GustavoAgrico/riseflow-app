@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { tmpDir } from '../testkit/tmp.js';
 
-process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-soundza-'));
+process.env.DATA_DIR = tmpDir('rf-soundza-');
 const { config } = await import('../src/config.js');
 const { okSfxUrl, isSoundza, fromSoundza, searchSoundza, knownSoundza, soundzaSync } = await import('../src/pipeline/sfxOnline.js');
 const billing = await import('../src/auth/billing.js');
@@ -37,7 +38,7 @@ test('resultado do Soundza vira item da biblioteca (sem expor links)', () => {
 });
 
 test('busca manda a chave no cabeçalho, só efeitos curtos, e lembra dos sons', async () => {
-  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-sz-cache-'));
+  const cacheDir = tmpDir('rf-sz-cache-');
   let seen = null;
   const fetchImpl = async (u, opts) => {
     seen = { u: new URL(u), auth: opts.headers.Authorization };

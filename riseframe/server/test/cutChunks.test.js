@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { planCutChunks, remuxByKeepSegments, snapKeep, keptDuration, remapTime } from '../src/pipeline/timeline.js';
 import { runFfmpeg, ffmpegPath, ffprobePath } from '../src/pipeline/ffmpeg.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 test('blocos do corte: janelas curtas, trechos longos partidos sem fade interno', () => {
   const keep = [{ start: 0, end: 2 }, { start: 3, end: 5 }, { start: 6, end: 150 }, { start: 151, end: 152 }];
@@ -36,7 +37,7 @@ function flashesAndBeeps(file) {
 }
 
 test('corte em blocos: frames exatos e som/imagem em sincronia em todas as emendas', { timeout: 120000 }, async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-cutchunks-'));
+  const dir = tmpDir('rf-cutchunks-');
   const src = path.join(dir, 'src.mp4');
   // A cada 1 s (em t = k + 0.5): 0.1 s de tela branca e um apito no MESMO instante.
   await runFfmpeg([

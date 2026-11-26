@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { tmpDir } from '../testkit/tmp.js';
 
-process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-tkey-'));
+process.env.DATA_DIR = tmpDir('rf-tkey-');
 const { config } = await import('../src/config.js');
 const { runFfmpeg } = await import('../src/pipeline/ffmpeg.js');
 const { transcribe, checkTranscribeKey } = await import('../src/pipeline/transcribe/index.js');
@@ -24,7 +25,7 @@ globalThis.fetch = async (url, init) => {
 };
 
 test('chave da Deepgram recusada: mensagem amigável ao cliente, status para o admin e aviso por e-mail', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-tkey-a-'));
+  const dir = tmpDir('rf-tkey-a-');
   const wav = path.join(dir, 'fala.wav');
   await runFfmpeg(['-f', 'lavfi', '-i', 'sine=d=2:f=300', '-y', wav], { label: 'teste' });
   await assert.rejects(
@@ -73,7 +74,7 @@ test('Groq: palavras com tempo e pontuação; e entra sozinha quando a Deepgram 
     }
     return new Response('{}', { status: 404 });
   };
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-groq-'));
+  const dir = tmpDir('rf-groq-');
   const wav = path.join(dir, 'fala.wav');
   await runFfmpeg(['-f', 'lavfi', '-i', 'sine=d=2:f=300', '-y', wav], { label: 'teste' });
   const t = await transcribe(wav, dir, { duration: 2, hasAudio: true }, () => {});

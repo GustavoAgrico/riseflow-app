@@ -9,6 +9,7 @@ import { snapKeep, subtractRanges } from '../src/pipeline/timeline.js';
 import {
   audioEnvelope, envelopeFrom, fitPausesToAudio, keptWords, preciseRemovals, protectWords, removedWordRanges,
 } from '../src/pipeline/cutRefine.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 /** Envelope sintético: dB por quadro de 10 ms a partir de trechos [start, end, dB]. */
 function env(duration, parts, base = -90) {
@@ -59,7 +60,7 @@ test('ajuste ao frame arredonda para FORA (não tira pedaço da fala)', () => {
 });
 
 test('áudio real: o fim baixinho da palavra não é mais cortado junto com a pausa', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-cut-'));
+  const dir = tmpDir('rf-cut-');
   const wav = path.join(dir, 'fala.wav');
   // "palavra" alta 0.5–1.5 + final baixinho (−34 dB) 1.5–1.68 + silêncio + palavra 2.5–3.5
   const expr = "if(between(t,0.5,1.5),0.7*sin(2*PI*220*t),if(between(t,1.5,1.68),0.02*sin(2*PI*3000*t),if(between(t,2.5,3.5),0.7*sin(2*PI*220*t),0)))";

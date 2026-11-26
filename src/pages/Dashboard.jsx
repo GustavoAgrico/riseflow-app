@@ -6,7 +6,7 @@ import {
   MessageCircle, Users, Users2, Zap, TrendingUp, ArrowUpRight, ArrowDownRight,
   CheckCircle, AlertCircle, Wifi, Sparkles, GitBranch, DollarSign, Target, Ticket,
   Instagram, Facebook, Link as LinkIcon, Activity,
-  AlertTriangle, Clock, Flame, Calendar,
+  AlertTriangle, Clock, Flame, Calendar, Filter, HeartPulse,
 } from 'lucide-react'
 import {
   AreaChart, Area, BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid,
@@ -26,6 +26,9 @@ import { LeadStatusPanel } from '@components/Dashboard/LeadStatusPanel'
 import { useApp } from '@context/AppContext'
 import { useAuth } from '@context/AuthContext'
 import clsx from 'clsx'
+import { CountUp, RevealText, Segmented } from '@components/motion'
+import { Panel, FunnelBars, Donut, AreaTrend, HealthList } from '@components/Pipeline/Charts'
+import { leadsPerDay, stageReach, pipelineHealth } from '@lib/pipelineStats'
 
 const CH_COLOR = {
   whatsapp: '#22C55E',
@@ -101,7 +104,7 @@ const StatCard =({ icon: Icon, label, value, change, color, hex = '#FF6B35', spa
       </div>
       <p className="font-display font-bold text-white"
          style={{ fontSize: 26, fontVariantNumeric: 'tabular-nums', letterSpacing: '-.03em', lineHeight: 1, marginBottom: 5 }}>
-        {value}
+        <CountUp value={value} />
       </p>
       <p style={{ fontSize: 11, color: 'var(--ink-4)', marginBottom: 10 }}>{label}</p>
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: `${dColor}14`, border: `1px solid ${dColor}2b`, color: dColor, borderRadius: 20, padding: '3px 9px' }}>
@@ -122,6 +125,34 @@ const StatCard =({ icon: Icon, label, value, change, color, hex = '#FF6B35', spa
     return <Link to={to} className={cls} style={{ ...statCardSurface, display: 'block', textDecoration: 'none' }}>{content}</Link>
   }
   return <div className={cls} style={statCardSurface}>{content}</div>
+}
+
+// ── Anel de conversão do hero: o arco cresce até a taxa e brilha ──────────────
+const ConvRing = ({ pct = 0, size = 70 }) => {
+  const r = (size - 8) / 2, c = 2 * Math.PI * r
+  const [shown, setShown] = React.useState(0)
+  React.useEffect(() => { const t = requestAnimationFrame(() => setShown(Math.max(0, Math.min(100, pct)))); return () => cancelAnimationFrame(t) }, [pct])
+  return (
+    <div title="Taxa de conversão no período" style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-label={`Conversão ${pct}%`} role="img" style={{ filter: 'drop-shadow(0 0 10px rgba(16,185,129,.45))' }}>
+        <defs>
+          <linearGradient id="convRingGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#34D399" /><stop offset="100%" stopColor="#10B981" />
+          </linearGradient>
+        </defs>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--hero-tile-border)" strokeWidth="7" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="url(#convRingGrad)" strokeWidth="7" strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={c * (1 - shown / 100)} transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          style={{ transition: 'stroke-dashoffset 1.3s cubic-bezier(.2,.8,.2,1)' }} />
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--hero-ink-1)', lineHeight: 1 }}><CountUp value={`${pct}%`} /></div>
+          <div style={{ fontSize: 8.5, color: 'var(--hero-ink-3)', marginTop: 2, letterSpacing: '.06em', textTransform: 'uppercase' }}>conversão</div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Channel dot (inline style) ────────────────────────────────────────────────
@@ -267,6 +298,7 @@ export const Dashboard = () => {
     try { localStorage.setItem('rf_dash_chart', id) } catch {}
   }
 
+  const [stageMode, setStageMode] = useState(null) // 'value' | 'count' (null = automático)
   const fullName = user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? ''
   const firstName = fullName.split(' ')[0]
 
@@ -350,6 +382,13 @@ export const Dashboard = () => {
     return b.map(x => ({ ...x, label: new Date(x.t0).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }))
   })()
   const stagePie = stageRows.filter(s => s.count > 0).map(s => ({ name: s.label, value: s.count, color: s.color }))
+  // Pulso do funil (src/lib/pipelineStats): mesmas leituras do CRM e do Painel ao vivo.
+  const pulseTrend = leadsPerDay(dealRows, 14)
+  const pulseReach = stageReach(dealRows, stages)
+  const pulseHealth = pipelineHealth(dealRows, stages)
+  const totalStageValue = stageRows.reduce((a, s2) => a + (s2.value || 0), 0)
+  const barMode = stageMode || (totalStageValue > 0 ? 'value' : 'count')
+  const stageBars = stageRows.map(s2 => ({ label: s2.label, value: barMode === 'value' ? s2.value : s2.count, color: s2.color }))
   const hasCrm = dealRows.length > 0
 
   // ── Atividade REAL de mensagens (fallback quando o CRM ainda está vazio) ──
@@ -405,10 +444,10 @@ export const Dashboard = () => {
         <div style={{ position: 'absolute', left: -50, bottom: -90, width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,107,53,0.18), transparent 62%)', pointerEvents: 'none' }} />
         <div style={{ position: 'relative', display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'center', justifyContent: 'space-between', padding: '16px 22px' }}>
           <div style={{ minWidth: 220 }}>
-            <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--hero-eyebrow)' }}>Olá{firstName ? `, ${firstName}` : ''} 👋</p>
+            <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--hero-eyebrow)' }}><RevealText text={`Olá${firstName ? `, ${firstName}` : ''}`} /> 👋</p>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginTop: 7, flexWrap: 'wrap' }}>
               <p className="font-display" style={{ margin: 0, fontSize: 30, fontWeight: 800, letterSpacing: '-.02em', lineHeight: 1, color: 'var(--hero-ink-1)', fontVariantNumeric: 'tabular-nums' }}>
-                {hasCrm ? ('R$ ' + Math.round(pipelineValue).toLocaleString('pt-BR')) : totalMessages.toLocaleString('pt-BR')}
+                <CountUp value={hasCrm ? ('R$ ' + Math.round(pipelineValue).toLocaleString('pt-BR')) : totalMessages.toLocaleString('pt-BR')} />
               </p>
               <span style={{ fontSize: 12, color: 'var(--hero-ink-2)' }}>{hasCrm ? 'em aberto' : 'mensagens processadas'}</span>
             </div>
@@ -421,6 +460,7 @@ export const Dashboard = () => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {hasCrm && <ConvRing pct={convRate} />}
             {hasAnyIntegration ? (
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.30)', borderRadius: 999, padding: '6px 12px' }}>
                 <Wifi size={13} className="text-brand-green animate-pulse-slow" />
@@ -434,7 +474,7 @@ export const Dashboard = () => {
             )}
             {[{ l: 'Mensagens', v: totalMessages.toLocaleString('pt-BR') }, { l: 'Conversas', v: totalConversations.toLocaleString('pt-BR') }].map(t => (
               <div key={t.l} style={{ minWidth: 96, background: 'var(--hero-tile-bg)', border: '1px solid var(--hero-tile-border)', borderRadius: 12, padding: '9px 14px' }}>
-                <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--hero-ink-1)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{t.v}</p>
+                <p style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--hero-ink-1)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}><CountUp value={t.v} /></p>
                 <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--hero-ink-3)' }}>{t.l}</p>
               </div>
             ))}
@@ -443,9 +483,24 @@ export const Dashboard = () => {
       </div>
 
       {/* ── KPIs do topo — vendas (CRM) OU atividade real de WhatsApp quando o CRM está vazio ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="rf-cards grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {topCards.map((s, i) => <StatCard key={i} sparkData={sparkline} {...s} />)}
       </div>
+
+      {/* ── Pulso do funil: alcance por etapa, ritmo de entrada e saúde (mesmas leituras do CRM) ── */}
+      {hasCrm && (
+        <div className="rf-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
+          <Panel title="Funil de alcance" icon={Filter} accent="#7C3AED" right={<Link to="/funnel" style={{ fontSize: 11, color: '#A78BFA', textDecoration: 'none' }}>Funil →</Link>}>
+            <FunnelBars steps={pulseReach.steps} compact />
+          </Panel>
+          <Panel title="Entrada de leads · 14 dias" icon={TrendingUp} accent="#FF6B35" right={<span style={{ fontSize: 13, fontWeight: 800 }}><CountUp value={pulseTrend.reduce((a, t) => a + t.count, 0)} /></span>}>
+            <AreaTrend points={pulseTrend} id="dash" height={96} />
+          </Panel>
+          <Panel title="Saúde do funil" icon={HeartPulse} accent="#EF4444" right={<Link to="/crm" style={{ fontSize: 11, color: '#FCA5A5', textDecoration: 'none' }}>Resolver →</Link>}>
+            <HealthList health={pulseHealth} onAction={() => navigate('/crm')} />
+          </Panel>
+        </div>
+      )}
 
       {/* ── Gráfico grande — desempenho ao longo do tempo (destaque no topo, estilo referência) ── */}
       <div className="rf-panel rounded-2xl p-5 mb-6">
@@ -482,8 +537,8 @@ export const Dashboard = () => {
               <YAxis yAxisId="v" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} width={46} tickFormatter={v => brlShort(v)} />
               <YAxis yAxisId="n" orientation="right" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} width={26} allowDecimals={false} />
               <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.07)', strokeWidth: 1, strokeDasharray: '4 4' }} />
-              <Area yAxisId="v" type="monotone" dataKey="valor" name="Valor" stroke="#FF6B35" strokeWidth={2.5} fill="url(#perfBlue)" dot={false} activeDot={<ActiveDot fill="#FF6B35" />} />
-              <Line yAxisId="n" type="monotone" dataKey="negocios" name="Negócios" stroke="#A855F7" strokeWidth={2} dot={false} activeDot={<ActiveDot fill="#A855F7" />} />
+              <Area yAxisId="v" type="monotone" dataKey="valor" name="Valor" stroke="#FF6B35" strokeWidth={2.5} fill="url(#perfBlue)" dot={false} activeDot={<ActiveDot fill="#FF6B35" animationDuration={1400} animationEasing="ease-out" />} />
+              <Line yAxisId="n" type="monotone" dataKey="negocios" name="Negócios" stroke="#A855F7" strokeWidth={2} dot={false} activeDot={<ActiveDot fill="#A855F7" animationDuration={1400} animationEasing="ease-out" />} />
             </ComposedChart>
           </ResponsiveContainer>
         ) : hasActivity ? (
@@ -505,8 +560,8 @@ export const Dashboard = () => {
               <XAxis dataKey="day" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} dy={6} />
               <YAxis tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
               <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.07)', strokeWidth: 1, strokeDasharray: '4 4' }} />
-              <Area type="monotone" dataKey="messages" name="Total" stroke="#FF6B35" strokeWidth={2.5} fill="url(#actOrange)" dot={false} activeDot={<ActiveDot fill="#FF6B35" />} />
-              <Area type="monotone" dataKey="sent" name="Enviadas" stroke="#3B82F6" strokeWidth={2} fill="url(#actBlue)" dot={false} activeDot={<ActiveDot fill="#3B82F6" />} />
+              <Area type="monotone" dataKey="messages" name="Total" stroke="#FF6B35" strokeWidth={2.5} fill="url(#actOrange)" dot={false} activeDot={<ActiveDot fill="#FF6B35" animationDuration={1400} animationEasing="ease-out" />} />
+              <Area type="monotone" dataKey="sent" name="Enviadas" stroke="#3B82F6" strokeWidth={2} fill="url(#actBlue)" dot={false} activeDot={<ActiveDot fill="#3B82F6" animationDuration={1400} animationEasing="ease-out" />} />
             </AreaChart>
           </ResponsiveContainer>
         ) : (
@@ -525,16 +580,30 @@ export const Dashboard = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Barras horizontais — valor por etapa (estilo "campaign performance" do modelo) */}
           <div className="rf-panel rounded-2xl p-5">
-            <h3 className="rf-section-title" style={{ fontSize: 14, marginBottom: 10 }}>Valor por etapa</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+              <h3 className="rf-section-title" style={{ fontSize: 14 }}>{barMode === 'value' ? 'Valor por etapa' : 'Negócios por etapa'}</h3>
+              <span style={{ marginLeft: 'auto' }}>
+                <Segmented label="Medir etapas por" size="sm" accent="#FF6B35" options={[['count', 'Quantidade'], ['value', 'Valor']]} value={barMode} onChange={setStageMode} />
+              </span>
+            </div>
             {hasCrm ? (
               <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={barData} layout="vertical" margin={{ top: 6, right: 16, bottom: 0, left: 0 }} barCategoryGap="28%">
+                <BarChart key={barMode} data={stageBars} layout="vertical" margin={{ top: 6, right: 58, bottom: 0, left: 0 }} barCategoryGap="28%">
+                  <defs>
+                    {stageBars.map((d, i) => (
+                      <linearGradient key={i} id={`stg${i}`} x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor={d.color} stopOpacity={0.55} />
+                        <stop offset="100%" stopColor={d.color} stopOpacity={1} />
+                      </linearGradient>
+                    ))}
+                  </defs>
                   <CartesianGrid horizontal={false} stroke="rgba(255,255,255,0.05)" />
-                  <XAxis type="number" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => brlShort(v)} />
+                  <XAxis type="number" tick={{ fill: '#475569', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} tickFormatter={v => (barMode === 'value' ? brlShort(v) : v)} />
                   <YAxis type="category" dataKey="label" width={92} tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={v => brlShort(v)} contentStyle={{ background: 'var(--bg)', border: '1px solid #26324A', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: 'var(--ink-1)' }} itemStyle={{ color: 'var(--ink-1)' }} />
-                  <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={20}>
-                    {barData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} formatter={v => (barMode === 'value' ? brlShort(v) : `${v} negócio(s)`)} contentStyle={{ background: 'var(--bg)', border: '1px solid #26324A', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: 'var(--ink-1)' }} itemStyle={{ color: 'var(--ink-1)' }} />
+                  <Bar dataKey="value" radius={[0, 8, 8, 0]} maxBarSize={22} animationDuration={1200} animationEasing="ease-out"
+                    label={{ position: 'right', fill: 'var(--ink-2)', fontSize: 11, fontWeight: 700, formatter: v => (v ? (barMode === 'value' ? brlShort(v) : v) : '') }}>
+                    {stageBars.map((d, i) => <Cell key={i} fill={`url(#stg${i})`} style={{ filter: `drop-shadow(0 0 6px ${d.color}66)` }} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -547,24 +616,8 @@ export const Dashboard = () => {
           <div className="rf-panel rounded-2xl p-5">
             <h3 className="rf-section-title" style={{ fontSize: 14, marginBottom: 10 }}>Distribuição do funil</h3>
             {stagePie.length ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <ResponsiveContainer width="55%" height={220}>
-                  <PieChart>
-                    <Pie data={stagePie} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={48} outerRadius={82} paddingAngle={2} stroke="none">
-                      {stagePie.map((s, i) => <Cell key={i} fill={s.color} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ background: 'var(--bg)', border: '1px solid #26324A', borderRadius: 10, fontSize: 12 }} labelStyle={{ color: 'var(--ink-1)' }} itemStyle={{ color: 'var(--ink-1)' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div style={{ flex: 1, display: 'grid', gap: 7 }}>
-                  {stagePie.map(s => (
-                    <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-                      <span style={{ width: 9, height: 9, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-                      <span style={{ color: 'var(--ink-2)', flex: 1 }}>{s.name}</span>
-                      <span style={{ color: '#fff', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{s.value}</span>
-                    </div>
-                  ))}
-                </div>
+              <div style={{ paddingTop: 8 }}>
+                <Donut data={stageRows.map(s2 => ({ label: s2.label, value: s2.count, color: s2.color }))} size={176} thickness={20} sub="negócios" />
               </div>
             ) : (
               <div style={{ height: 220, display: 'grid', placeItems: 'center', color: '#2D3A55', fontSize: 13 }}>Sem dados de funil ainda</div>
@@ -587,27 +640,7 @@ export const Dashboard = () => {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
               {/* Seletor de tipo de gráfico (dois estilos premium) */}
-              <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: 2 }}>
-                {[{ id: 'area', label: 'Área' }, { id: 'bar', label: 'Barras' }].map(opt => {
-                  const on = chartType === opt.id
-                  return (
-                    <button
-                      key={opt.id}
-                      onClick={() => changeChart(opt.id)}
-                      style={{
-                        border: 'none', cursor: 'pointer', borderRadius: 8, padding: '4px 12px',
-                        fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
-                        background: on ? 'rgba(255,107,53,0.16)' : 'transparent',
-                        color: on ? '#FF6B35' : 'var(--ink-4)',
-                        boxShadow: on ? '0 0 0 1px rgba(255,107,53,0.28)' : 'none',
-                        transition: 'all .15s',
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  )
-                })}
-              </div>
+              <Segmented label="Tipo de gráfico" size="sm" accent="#FF6B35" options={[['area', 'Área'], ['bar', 'Barras']]} value={chartType} onChange={changeChart} />
               {/* Legenda */}
               <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
                 {[{ color: '#FF6B35', label: 'Total' }, { color: '#3B82F6', label: 'Enviadas' }].map(({ color, label }) => (
@@ -652,12 +685,12 @@ export const Dashboard = () => {
                   <Area
                     type="monotone" dataKey="messages" name="Total"
                     stroke="#FF6B35" fill="url(#gOrange)" strokeWidth={2.5}
-                    dot={false} activeDot={<ActiveDot fill="#FF6B35" />}
+                    dot={false} activeDot={<ActiveDot fill="#FF6B35" animationDuration={1400} animationEasing="ease-out" />}
                   />
                   <Area
                     type="monotone" dataKey="sent" name="Enviadas"
                     stroke="#3B82F6" fill="url(#gBlue)" strokeWidth={2}
-                    dot={false} activeDot={<ActiveDot fill="#3B82F6" />}
+                    dot={false} activeDot={<ActiveDot fill="#3B82F6" animationDuration={1400} animationEasing="ease-out" />}
                   />
                 </AreaChart>
               ) : (
@@ -679,8 +712,8 @@ export const Dashboard = () => {
                     content={<CustomTooltip />}
                     cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                   />
-                  <Bar dataKey="messages" name="Total"    fill="url(#bOrange)" radius={[5, 5, 0, 0]} maxBarSize={18} />
-                  <Bar dataKey="sent"     name="Enviadas" fill="url(#bBlue)"   radius={[5, 5, 0, 0]} maxBarSize={18} />
+                  <Bar dataKey="messages" name="Total"    fill="url(#bOrange)" radius={[5, 5, 0, 0]} maxBarSize={18} animationDuration={1100} animationEasing="ease-out" />
+                  <Bar dataKey="sent"     name="Enviadas" fill="url(#bBlue)"   radius={[5, 5, 0, 0]} maxBarSize={18} animationDuration={1100} animationEasing="ease-out" />
                 </BarChart>
               )}
             </ResponsiveContainer>
@@ -728,7 +761,7 @@ export const Dashboard = () => {
           </div>
 
           {/* Channel list */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          <div className="rf-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {channels.map(({ id, label, Icon, connected, flowCount }) => {
               const chColor = CH_COLOR[id]
               return (
@@ -774,7 +807,7 @@ export const Dashboard = () => {
               <Link to="/clients" style={{ fontSize: 12, color: '#FF6B35', textDecoration: 'none' }}>Adicionar →</Link>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div className="rf-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {dealRows.slice(0, 5).map(c => {
                 const initials = c.name.split(' ').map(x => x[0]).slice(0, 2).join('')
                 return (
@@ -820,7 +853,7 @@ export const Dashboard = () => {
               <button onClick={() => setNewFlowModalOpen(true)} style={{ background: 'none', border: 'none', fontSize: 12, color: '#FF6B35', cursor: 'pointer', padding: 0 }}>Criar primeiro fluxo →</button>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="rf-stagger" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {flows.slice(0, 4).map(f => {
                 const convRate = f.triggers > 0 ? (f.conversions / f.triggers) * 100 : 0
                 const isActive = f.status === 'active'
@@ -859,7 +892,7 @@ export const Dashboard = () => {
                     </div>
                     {/* Gradient conversion bar with glow */}
                     <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
-                      <div style={{
+                      <div className="rf-bar-x" style={{
                         height: '100%', borderRadius: 3,
                         width: `${Math.min(convRate, 100)}%`,
                         background: 'linear-gradient(90deg, #FF6B35, #A855F7)',

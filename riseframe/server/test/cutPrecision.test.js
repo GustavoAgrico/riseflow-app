@@ -9,8 +9,9 @@ import {
   envelopeFrom, fitCutEdges, trimWordsToSound, edgePads, preciseRemovals, readPcm, protectQuietSpeech,
 } from '../src/pipeline/cutRefine.js';
 import { plausibleRemovals } from '../src/pipeline/cleanupLLM.js';
+import { tmpDir } from '../testkit/tmp.js';
 
-const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'rf-precisao-'));
+const tmp = tmpDir('rf-precisao-');
 after(() => fs.rm(tmp, { recursive: true, force: true }));
 
 /** Envelope sintético: dB por quadro de 10 ms a partir de trechos [start, end, dB]. */

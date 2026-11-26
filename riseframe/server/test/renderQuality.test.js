@@ -7,6 +7,7 @@ import { outputTarget, convertAspect, finalRender } from '../src/pipeline/render
 import { runFfmpeg, probeSummary } from '../src/pipeline/ffmpeg.js';
 import { creditItems, lockedItems } from '../../shared/credits.js';
 import { parseOptions } from '../src/routes/jobs.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 test('qualidade de exportação: tamanho do quadro final pelo lado menor', () => {
   const vert = { width: 464, height: 824 };
@@ -30,7 +31,7 @@ test('720p/1080p/4K é recurso do Premium (bloqueado no Pro) e não custa crédi
 });
 
 test('vídeo pequeno exportado em 1080p sai em 1080p (ampliado antes das legendas)', { timeout: 60000 }, async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-qual-'));
+  const dir = tmpDir('rf-qual-');
   const src = path.join(dir, 'src.mp4');
   await runFfmpeg(['-f', 'lavfi', '-i', 'testsrc2=s=464x824:r=30:d=1.5', '-f', 'lavfi', '-i', 'sine=d=1.5', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', '-shortest', '-y', src]);
   const meta = await probeSummary(src);

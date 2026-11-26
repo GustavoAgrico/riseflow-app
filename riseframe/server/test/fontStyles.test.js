@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fontStyles, resolveFontFace, CAPTION_FONTS, CAPTION_FONT_FILES } from '../../shared/captionStyle.js';
 import { buildAss } from '../src/pipeline/captions.js';
 import { readTables, fontNames, renameFont } from '../src/customFonts.js';
+import { cleanupLater } from '../testkit/tmp.js';
 
 const FONTS = path.resolve('assets/fonts');
 const words = [{ word: 'Estilo', start: 0, end: 1 }, { word: 'da', start: 1, end: 1.5 }, { word: 'fonte', start: 1.5, end: 2 }];
@@ -50,7 +51,7 @@ test('fonte própria: renomeada para o nome único, o resto do arquivo intacto',
   const again = readTables(out);
   assert.equal(fontNames(again.tables)[1], 'RFU teste123');
   assert.equal(again.tables.find((t) => t.tag === 'glyf').data.length, parsed.tables.find((t) => t.tag === 'glyf').data.length);
-  const tmp = path.join(os.tmpdir(), `rfu_${Date.now()}.ttf`);
+  const tmp = cleanupLater(path.join(os.tmpdir(), `rfu_${Date.now()}.ttf`));
   fs.writeFileSync(tmp, out);
   const ass = buildAss(seg, { width: 1080, height: 1920 }, { template: 'clean', customFont: { family: 'RFU teste123', file: tmp } });
   assert.equal(styleLine(ass)[1], 'RFU teste123');

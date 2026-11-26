@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { buildAss, CAPTION_ANIMATIONS } from '../src/pipeline/captions.js';
 import { ffmpegPath } from '../src/pipeline/ffmpeg.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 const words = [
   { word: 'Motion', start: 0.2, end: 0.6 },
@@ -54,7 +55,7 @@ test('máquina de escrever no modo palavra por vez cai no fade (sem letras nem c
 });
 
 test('o libass aceita o ASS das duas animações novas', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-capanim-'));
+  const dir = tmpDir('rf-capanim-');
   try {
     for (const [tpl, anim, hl] of [['clean', 'typewriter', false], ['karaoke', 'typewriter', true], ['clean', 'zoomblur', false]]) {
       const assPath = path.join(dir, `${anim}-${hl}.ass`);
@@ -80,7 +81,7 @@ test('animações no estilo do After Effects (Animation Kit): tags certas e o li
   const neon = dialogues(buildAss(segments, meta, { template: 'neon', animation: 'blurin', color: 'white' }))[0];
   assert.match(neon, /\\blur14\\t\(0,300,\\blur3\)/);
   assert.ok(!/\\t\(0,300,\\blur3\)\\blur3/.test(neon));
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-anim-ae-'));
+  const dir = tmpDir('rf-anim-ae-');
   try {
     for (const a of NEW) {
       const assPath = path.join(dir, `${a}.ass`);

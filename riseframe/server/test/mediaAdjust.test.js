@@ -6,8 +6,9 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { applyUserMedia, layerAdjustVf, videoSoundParts } from '../src/pipeline/overlay.js';
 import { ffmpegPath } from '../src/pipeline/ffmpeg.js';
+import { tmpDir } from '../testkit/tmp.js';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-madj-'));
+const tmp = tmpDir('rf-madj-');
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 const ff = (...a) => spawnSync(ffmpegPath, ['-v', 'error', ...a, '-y'], { encoding: 'buffer' });
 

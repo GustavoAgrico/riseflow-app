@@ -6,8 +6,9 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { insertBroll } from '../src/pipeline/broll.js';
 import { probeSummary, ffmpegPath } from '../src/pipeline/ffmpeg.js';
+import { tmpDir } from '../testkit/tmp.js';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-cards-'));
+const tmp = tmpDir('rf-cards-');
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 test('layout Cartões: o B-roll vira cartão arredondado, inclinado e com sombra (FFmpeg roda)', { timeout: 120000 }, async () => {

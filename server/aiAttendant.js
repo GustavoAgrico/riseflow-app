@@ -12,6 +12,10 @@
 const axios = require('axios')
 const { supabase, isConfigured } = require('./supabaseClient')
 const { sendText, getWaitingExecution, hasMatchingFlow } = require('./flowEngine')
+const { pickGeminiModel, forgetGeminiModel } = require('./geminiModels')
+const { parseActions, actionsPrompt } = require('./aiActionParser')
+const aiActions = require('./aiActions')
+const crm = require('./crmActions')
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const jidToNumber = (jid) => String(jid || '').split('@')[0].split(':')[0]
@@ -55,47 +59,63 @@ ${historyText || '(sem histórico)'}
 Cliente se chama: ${contactName || 'Cliente'}`
 }
 
-// Google Gemini — tier gratuito. (gemini-2.0-flash ficou com cota zero no free
-// tier em 2026; o 2.5-flash é o que tem free tier ativo nas chaves novas.)
-async function askGemini(key, systemPrompt, userMessage) {
+// Google Gemini — tier gratuito (chave do Google AI Studio). O modelo é o "flash" estável mais
+// novo que a chave enxerga (geminiModels.js): nomes fixos quebram quando o Google aposenta um.
+// Os modelos novos raciocinam antes de responder: +1024 tokens de folga para o raciocínio.
+async function askGemini(key, systemPrompt, userMessage, maxTokens = 300) {
   if (!key) return null
   try {
+    const model = await pickGeminiModel(key)
     const { data } = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
       {
-        contents: [{ parts: [{ text: `${systemPrompt}\n\nMensagem do cliente: ${userMessage}` }] }],
-        generationConfig: { maxOutputTokens: 300, temperature: 0.7 },
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+        generationConfig: { maxOutputTokens: maxTokens + 1024, temperature: 0.7 },
       },
-      { headers: { 'Content-Type': 'application/json' }, timeout: 30_000 }
+      { params: { key }, headers: { 'Content-Type': 'application/json' }, timeout: 30_000 }
     )
-    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? null
+    const text = (data.candidates?.[0]?.content?.parts || []).filter(p => p.text && !p.thought).map(p => p.text).join('').trim()
+    return text || null
   } catch (e) {
+    if (e.response?.status === 404) forgetGeminiModel(key)
     console.warn('[IA] Gemini falhou:', e.response?.data?.error?.message ?? e.message)
     return null
   }
 }
 
-// Groq — tier gratuito, Llama 3.3 70B (API compatível com OpenAI).
-async function askGroq(key, systemPrompt, userMessage) {
+// Groq — tier gratuito (API compatível com OpenAI). O limite grátis é por modelo, então tenta
+// três em sequência. O llama-3.3-70b-versatile saiu do Groq. Os gpt-oss raciocinam antes de
+// responder: +300 tokens de folga para o raciocínio não comer a resposta.
+const GROQ_MODELS = [
+  { model: 'openai/gpt-oss-120b', reasoning_effort: 'low' },
+  { model: 'qwen/qwen3.8-27b' },
+  { model: 'openai/gpt-oss-20b', reasoning_effort: 'low' },
+]
+async function askGroq(key, systemPrompt, userMessage, maxTokens = 300) {
   if (!key) return null
-  try {
-    const { data } = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
-      ],
-      max_tokens: 300,
-      temperature: 0.7,
-    }, { headers: { Authorization: `Bearer ${key}` }, timeout: 30_000 })
-    return data.choices?.[0]?.message?.content ?? null
-  } catch (e) {
-    console.warn('[IA] Groq falhou:', e.response?.data?.error?.message ?? e.message)
-    return null
+  for (const opt of GROQ_MODELS) {
+    try {
+      const { data } = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+        ...opt,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        max_tokens: maxTokens + 300,
+        temperature: 0.7,
+      }, { headers: { Authorization: `Bearer ${key}` }, timeout: 30_000 })
+      const text = data.choices?.[0]?.message?.content?.trim()
+      if (text) return text
+    } catch (e) {
+      console.warn(`[IA] Groq ${opt.model} falhou:`, e.response?.data?.error?.message ?? e.message)
+      if (e.response?.status === 401) return null // chave inválida: os outros modelos também falhariam
+    }
   }
+  return null
 }
 
-async function askOpenAI(key, systemPrompt, userMessage) {
+async function askOpenAI(key, systemPrompt, userMessage, maxTokens = 300) {
   if (!key) return null
   try {
     const { data } = await axios.post('https://api.openai.com/v1/chat/completions', {
@@ -104,7 +124,7 @@ async function askOpenAI(key, systemPrompt, userMessage) {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
-      max_tokens: 300,
+      max_tokens: maxTokens,
       temperature: 0.7,
     }, { headers: { Authorization: `Bearer ${key}` }, timeout: 30_000 })
     return data.choices?.[0]?.message?.content ?? null
@@ -114,14 +134,14 @@ async function askOpenAI(key, systemPrompt, userMessage) {
   }
 }
 
-async function askClaude(key, systemPrompt, userMessage) {
+async function askClaude(key, systemPrompt, userMessage, maxTokens = 300) {
   if (!key) return null
   try {
     const { data } = await axios.post('https://api.anthropic.com/v1/messages', {
       model: 'claude-haiku-4-5-20251001',
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
-      max_tokens: 300,
+      max_tokens: maxTokens,
     }, {
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       timeout: 30_000,
@@ -189,17 +209,31 @@ async function aiRespond({ jid, text, pushName, fromMe, userId: ownerId }) {
     const { data: faqs } = await supabase.from('knowledge_base')
       .select('question, answer').eq('user_id', userId).limit(20)
 
-    const systemPrompt = buildSystemPrompt(config, faqs, historyText, pushName || phone)
+    let systemPrompt = buildSystemPrompt(config, faqs, historyText, pushName || phone)
+
+    // IA que age no CRM (attendant_config.ai_actions_mode): ensina os marcadores de ação.
+    const actionsMode = aiActions.modeOf(config)
+    let stages = null
+    if (actionsMode !== 'off') {
+      try { stages = await crm.getStages(userId) } catch { stages = crm.DEFAULT_STAGES }
+      systemPrompt += '\n' + actionsPrompt({ stages, today: aiActions.todayBrt(), mode: actionsMode })
+    }
+    const maxTokens = actionsMode !== 'off' ? 450 : 300
 
     // Gratuitos primeiro (Gemini → Groq), pagos como fallback (OpenAI → Claude).
-    let response = await askGemini(settings.gemini_key, systemPrompt, text)
-    if (!response) response = await askGroq(settings.groq_key, systemPrompt, text)
-    if (!response) response = await askOpenAI(settings.openai_key, systemPrompt, text)
-    if (!response) response = await askClaude(settings.anthropic_key, systemPrompt, text)
+    let response = await askGemini(settings.gemini_key, systemPrompt, text, maxTokens)
+    if (!response) response = await askGroq(settings.groq_key, systemPrompt, text, maxTokens)
+    if (!response) response = await askOpenAI(settings.openai_key, systemPrompt, text, maxTokens)
+    if (!response) response = await askClaude(settings.anthropic_key, systemPrompt, text, maxTokens)
     if (!response) {
       console.log('[IA] Nenhuma resposta gerada (chave inválida/sem créditos) — funis seguem')
       return false
     }
+
+    // Tira os marcadores de ação SEMPRE (mesmo com ações desligadas) para o
+    // contato nunca receber "[[ACAO ...]]".
+    const parsed = parseActions(response)
+    response = parsed.text
 
     if (response.includes('[TRANSFERIR]')) {
       response = 'Vou transferir você para um atendente humano. Um momento, por favor! 🙏'
@@ -215,10 +249,20 @@ async function aiRespond({ jid, text, pushName, fromMe, userId: ownerId }) {
     // sendText (flowEngine) já espelha a mensagem em conversations/messages.
     const delay = Math.min(Number(config.response_delay) || 0, 60)
     if (delay > 0) await sleep(delay * 1000)
-    await sendText({ jid, userId, pushName, contact: { name: pushName } }, response)
-    bump(phone)
-    console.log('[IA] 🤖 Respondeu:', response.slice(0, 60))
-    return true
+    if (response) {
+      await sendText({ jid, userId, pushName, contact: { name: pushName } }, response)
+      bump(phone)
+      console.log('[IA] 🤖 Respondeu:', response.slice(0, 60))
+    }
+
+    // Ações no CRM depois da resposta (falhas ficam registradas em ai_actions).
+    if (actionsMode !== 'off' && parsed.actions.length) {
+      await aiActions.handleAiActions({
+        userId, conversationId: conv?.id, who: { phone, name: pushName || null },
+        actions: parsed.actions, config, stages,
+      })
+    }
+    return Boolean(response) || parsed.actions.length > 0
   } catch (e) {
     console.error('[IA] Erro:', e?.message ?? e)
     return false

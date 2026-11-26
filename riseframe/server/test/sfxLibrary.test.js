@@ -5,8 +5,9 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { SFX_LIBRARY, SFX_CATEGORIES, sfxInfo, sfxPreviewFile, buildSfxMix } from '../src/pipeline/sfx.js';
 import { probeSummary } from '../src/pipeline/ffmpeg.js';
+import { tmpDir } from '../testkit/tmp.js';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-sfxlib-'));
+const tmp = tmpDir('rf-sfxlib-');
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 test('biblioteca de efeitos sonoros: todo som tem categoria e duração e é gerado', { timeout: 120000 }, async () => {
