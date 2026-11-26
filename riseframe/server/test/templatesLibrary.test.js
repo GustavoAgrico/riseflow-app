@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { tmpDir } from '../testkit/tmp.js';
 
-process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-tpl-'));
+process.env.DATA_DIR = tmpDir('rf-tpl-');
 process.env.OUTPUT_TTL_HOURS = '1';
 const { config } = await import('../src/config.js');
 const tpl = await import('../src/userTemplates.js');

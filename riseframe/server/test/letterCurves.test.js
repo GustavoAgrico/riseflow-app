@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { letterFrame, letterSegments, letterTiming, LETTER_ANIMS, LETTER_SAMPLED, TEXT_ANIMS_IN, cleanTextLayers, TEXT_TEMPLATES } from '../../shared/textLayers.js';
 import { buildTextAss } from '../src/pipeline/texts.js';
 import { ffmpegPath } from '../src/pipeline/ffmpeg.js';
+import { tmpDir } from '../testkit/tmp.js';
 
 const meta = { width: 1080, height: 1920 };
 
@@ -54,7 +55,7 @@ test('ASS: cada letra vira vários eventos (um por passo) e o libass aceita o ar
   const ass = buildTextAss([l], meta);
   const letterEvents = ass.split('\n').filter((x) => x.startsWith('Dialogue') && x.includes('\\pos(') && x.includes('\\fscx'));
   assert.ok(letterEvents.length >= 2 * 10, `${letterEvents.length} eventos`);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-letter-'));
+  const dir = tmpDir('rf-letter-');
   try {
     const f = path.join(dir, 'mola.ass');
     fs.writeFileSync(f, ass);
@@ -90,7 +91,7 @@ test('empurrão lateral: chega de 5% da largura e assenta no lugar, sem passar',
 
 test('ASS do empurrão lateral: o libass aceita o arquivo', () => {
   const [l] = cleanTextLayers([{ ...TEXT_TEMPLATES.nome, text: 'Oi', start: 1, end: 4, animIn: 'letras-empurrao' }]);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-letter-'));
+  const dir = tmpDir('rf-letter-');
   try {
     const f = path.join(dir, 'empurrao.ass');
     fs.writeFileSync(f, buildTextAss([l], meta));

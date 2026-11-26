@@ -6,8 +6,9 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { ffmpegPath, probeSummary } from '../src/pipeline/ffmpeg.js';
 import { padInput } from '../src/pipeline/index.js';
+import { tmpDir } from '../testkit/tmp.js';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-pad-'));
+const tmp = tmpDir('rf-pad-');
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 const ff = (...a) => spawnSync(ffmpegPath, ['-v', 'error', ...a, '-y']);
 const luma = (file, t) => spawnSync(ffmpegPath, ['-v', 'error', '-ss', String(t), '-i', file, '-frames:v', '1', '-vf', 'scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'gray', '-']).stdout[0];

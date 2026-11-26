@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { tmpDir } from '../testkit/tmp.js';
 
 // Dados isolados e modo "app de PC" (mídias podem apontar para o arquivo original).
-process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-proj-'));
+process.env.DATA_DIR = tmpDir('rf-proj-');
 process.env.RISEFRAME_DESKTOP = '1';
 const { config } = await import('../src/config.js');
 const projects = await import('../src/projects.js');
@@ -31,7 +32,7 @@ test('arquivos usados por um projeto salvo não expiram na limpeza', () => {
 });
 
 test('mídia ligada ao original: offline quando o arquivo some, volta com o relink', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-orig-'));
+  const dir = tmpDir('rf-orig-');
   const orig = path.join(dir, 'logo.png');
   fs.writeFileSync(orig, 'x');
   const pub = media.registerMedia({ id: 'm_link1', filePath: orig, kind: 'image', originalname: 'logo.png', linked: true });

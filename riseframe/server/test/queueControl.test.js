@@ -7,12 +7,11 @@ import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ffmpegPath } from '../src/pipeline/ffmpeg.js';
+import { TEST_SERVER_ENV, tmpDir, trackProc } from '../testkit/tmp.js';
 
 // Pausar / cancelar / retomar vídeos da fila — servidor de verdade, cobrança ligada.
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-fila-'));
-const procs = [];
-after(() => procs.forEach((p) => p.kill()));
+const tmp = tmpDir('rf-fila-');
 
 const freePort = () => new Promise((resolve) => {
   const s = net.createServer().listen(0, () => {
@@ -26,10 +25,10 @@ test('fila: pausar, cancelar (devolve a edição grátis) e retomar — só o do
   const port = await freePort();
   const p = spawn(process.execPath, ['src/index.js'], {
     cwd: root,
-    env: { ...process.env, PORT: String(port), DATA_DIR: path.join(tmp, 'data'), CLOUD_SYNC: 'off', EMAIL_VERIFY: 'off', TRANSCRIBE_PROVIDER: 'mock', ADMIN_EMAILS: '', BILLING_MODE: 'on', BILLING_FREE_EDITS: '3' },
+    env: { ...process.env, ...TEST_SERVER_ENV, PORT: String(port), DATA_DIR: path.join(tmp, 'data'), CLOUD_SYNC: 'off', EMAIL_VERIFY: 'off', TRANSCRIBE_PROVIDER: 'mock', ADMIN_EMAILS: '', BILLING_MODE: 'on', BILLING_FREE_EDITS: '3' },
     stdio: 'ignore',
   });
-  procs.push(p);
+  trackProc(p);
   const base = `http://127.0.0.1:${port}/api`;
   for (let i = 0; i < 100; i++) {
     try { if ((await fetch(`${base}/health`)).ok) break; } catch { /* subindo */ }

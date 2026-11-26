@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { tmpDir } from '../testkit/tmp.js';
 
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-adopt-'));
+const dir = tmpDir('rf-adopt-');
 process.env.DATA_DIR = dir;
 process.env.RISEFRAME_DESKTOP = '1';
 process.env.CLOUD_SYNC = 'off';

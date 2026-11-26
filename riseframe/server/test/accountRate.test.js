@@ -7,14 +7,14 @@ import http from 'node:http';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { TEST_SERVER_ENV, tmpDir, trackProc } from '../testkit/tmp.js';
 
 // App de PC/Mac falando com o site: pedidos juntos viram UMA conferência do login, e um
 // 429 do site (pedidos demais) espera e tenta de novo em vez de recusar o login na hora.
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-rate-'));
-const procs = [];
+const tmp = tmpDir('rf-rate-');
 let site;
-after(() => { procs.forEach((p) => p.kill()); site?.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
+after(() => site?.close());
 
 const freePort = () => new Promise((resolve) => {
   const s = net.createServer().listen(0, () => { const { port } = s.address(); s.close(() => resolve(port)); });
@@ -42,10 +42,10 @@ test('conta central: 429 no login espera e tenta de novo; pedidos juntos = 1 con
   const port = await freePort();
   const p = spawn(process.execPath, ['src/index.js'], {
     cwd: root,
-    env: { ...process.env, PORT: String(port), DATA_DIR: path.join(tmp, 'app'), CLOUD_SYNC: 'off', EMAIL_VERIFY: 'off', TRANSCRIBE_PROVIDER: 'mock', BILLING_MODE: 'off', ADMIN_EMAILS: '', ACCOUNT_SERVER: `http://127.0.0.1:${sitePort}` },
+    env: { ...process.env, ...TEST_SERVER_ENV, PORT: String(port), DATA_DIR: path.join(tmp, 'app'), CLOUD_SYNC: 'off', EMAIL_VERIFY: 'off', TRANSCRIBE_PROVIDER: 'mock', BILLING_MODE: 'off', ADMIN_EMAILS: '', ACCOUNT_SERVER: `http://127.0.0.1:${sitePort}` },
     stdio: 'ignore',
   });
-  procs.push(p);
+  trackProc(p);
   const base = `http://127.0.0.1:${port}/api`;
   for (let i = 0; i < 100; i++) {
     try { if ((await fetch(`${base}/health`)).ok) break; } catch { /* subindo */ }

@@ -5,8 +5,9 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { runFfmpeg, x264Fast, setHwEncoder, hwEncoder, probeSummary } from '../src/pipeline/ffmpeg.js';
 import { runPipeline } from '../src/pipeline/index.js';
+import { tmpDir } from '../testkit/tmp.js';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-hw-'));
+const tmp = tmpDir('rf-hw-');
 after(() => { setHwEncoder(null); fs.rmSync(tmp, { recursive: true, force: true }); });
 
 // Placa de vídeo nas etapas intermediárias: se o codificador da placa falhar, a etapa é

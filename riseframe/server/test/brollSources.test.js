@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pixabayCandidates, wikimediaCandidates, brollCandidates, resolveSource, extOf } from '../src/pipeline/broll.js';
+import { cleanupLater } from '../testkit/tmp.js';
 
 const json = (d) => ({ ok: true, json: async () => d });
 async function withFetch(fn, body) {
@@ -90,7 +91,7 @@ test('download de B-roll: recusa arquivo acima do teto e não deixa lixo', async
   const os = await import('node:os');
   const path = await import('node:path');
   const fs = await import('node:fs');
-  const dest = path.join(os.tmpdir(), `rf-dl-${Date.now()}.mp4`);
+  const dest = cleanupLater(path.join(os.tmpdir(), `rf-dl-${Date.now()}.mp4`));
   await withFetch(async () => new Response(new Uint8Array(5000), { headers: { 'content-length': '5000' } }), async () => {
     await assert.rejects(download('https://x/v.mp4', dest, { maxBytes: 1000 }), /grande demais/);
     assert.equal(fs.existsSync(dest), false);

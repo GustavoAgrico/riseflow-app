@@ -5,8 +5,9 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { runFfmpeg, probeSummary } from '../src/pipeline/ffmpeg.js';
 import { runPipeline } from '../src/pipeline/index.js';
+import { tmpDir } from '../testkit/tmp.js';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-pre-'));
+const tmp = tmpDir('rf-pre-');
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 // Vídeo bem maior que o final (ex.: 4K exportando em 1080p): reduz uma vez no começo e

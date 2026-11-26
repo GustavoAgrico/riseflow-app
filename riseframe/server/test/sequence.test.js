@@ -1,4 +1,4 @@
-import { test, after } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,11 +8,10 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { ffmpegPath, probeSummary } from '../src/pipeline/ffmpeg.js';
 import { assembleSequence, frameSize, clipDuration, canCopyWhole } from '../src/pipeline/sequence.js';
+import { TEST_SERVER_ENV, tmpDir, trackProc } from '../testkit/tmp.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-seq-'));
-const procs = [];
-after(() => { procs.forEach((p) => p.kill()); fs.rmSync(tmp, { recursive: true, force: true }); });
+const tmp = tmpDir('rf-seq-');
 const ff = (...a) => spawnSync(ffmpegPath, ['-v', 'error', ...a, '-y']);
 
 const vertical = path.join(tmp, 'v.mp4');
@@ -75,8 +74,8 @@ test('um vídeo inteiro entra original (sem recodificar)', { timeout: 60000 }, a
 const freePort = () => new Promise((resolve) => { const s = net.createServer().listen(0, () => { const { port } = s.address(); s.close(() => resolve(port)); }); });
 async function startServer() {
   const port = await freePort();
-  const p = spawn(process.execPath, ['src/index.js'], { cwd: root, env: { ...process.env, PORT: String(port), DATA_DIR: path.join(tmp, 'data'), CLOUD_SYNC: 'off', EMAIL_VERIFY: 'off', TRANSCRIBE_PROVIDER: 'mock', ADMIN_EMAILS: '', BILLING_MODE: 'off' }, stdio: 'ignore' });
-  procs.push(p);
+  const p = spawn(process.execPath, ['src/index.js'], { cwd: root, env: { ...process.env, ...TEST_SERVER_ENV, PORT: String(port), DATA_DIR: path.join(tmp, 'data'), CLOUD_SYNC: 'off', EMAIL_VERIFY: 'off', TRANSCRIBE_PROVIDER: 'mock', ADMIN_EMAILS: '', BILLING_MODE: 'off' }, stdio: 'ignore' });
+  trackProc(p);
   const base = `http://127.0.0.1:${port}/api`;
   for (let i = 0; i < 100; i++) {
     try { if ((await fetch(`${base}/health`)).ok) return base; } catch { /* subindo */ }

@@ -4,9 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { tmpDir } from '../testkit/tmp.js';
 
 // pasta de dados só deste teste (as referências ficam nela)
-const DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-mdir-'));
+const DATA = tmpDir('rf-mdir-');
 process.env.DATA_DIR = DATA;
 const { speechLines, sceneCount, cleanDirectorScenes, directMotion } = await import('../src/pipeline/motionDirector.js');
 const refs = await import('../src/pipeline/motionRefs.js');

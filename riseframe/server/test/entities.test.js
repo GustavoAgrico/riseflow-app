@@ -7,8 +7,9 @@ import { spawnSync } from 'node:child_process';
 import { brandIn, entityQuery, findEntityMentions, withEntityMoments } from '../src/pipeline/entities.js';
 import { insertBroll } from '../src/pipeline/broll.js';
 import { ffmpegPath } from '../src/pipeline/ffmpeg.js';
+import { tmpDir } from '../testkit/tmp.js';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-ent-'));
+const tmp = tmpDir('rf-ent-');
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 // frase com tempos de palavra (0,5 s cada)

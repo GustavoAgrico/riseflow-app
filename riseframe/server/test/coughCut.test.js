@@ -8,8 +8,9 @@ import {
   readPcm, soundFeatures, isNonSpeech, preciseRemovals, wordGapRanges,
   removedWordRanges, dropSlivers, phantomWords, envelopeFrom, splitBursts,
 } from '../src/pipeline/cutRefine.js';
+import { tmpDir } from '../testkit/tmp.js';
 
-const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'rf-tosse-'));
+const tmp = tmpDir('rf-tosse-');
 after(() => fs.rm(tmp, { recursive: true, force: true }));
 
 // "Vogal" sintética: tom de voz de 130 Hz com harmônicos (periódica, como a fala).
