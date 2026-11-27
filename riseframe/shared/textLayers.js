@@ -462,9 +462,14 @@ export function expandCounterLayers(layers, steps = 12) {
       const t0 = Math.min(dur, (d * k) / steps);
       const t1 = k < steps ? Math.min(dur, (d * (k + 1)) / steps) : dur;
       if (t1 - t0 < 0.02) continue;
-      out.push({ ...l, count: false, text: countText(l, t0), start: +(l.start + t0).toFixed(3), end: +(l.start + t1).toFixed(3) });
+      // só o 1º passo faz a entrada e só o último faz a saída (senão cada número novo
+      // entraria de novo com a animação e o contador piscaria no vídeo final)
+      const first = !out.some((x) => x.countOf === l);
+      const last = t1 >= dur - 1e-6;
+      out.push({ ...l, count: false, countOf: l, text: countText(l, t0), start: +(l.start + t0).toFixed(3), end: +(l.start + t1).toFixed(3), ...(first ? {} : { animIn: 'none' }), ...(last ? {} : { animOut: 'none' }) });
     }
   }
+  for (const x of out) delete x.countOf;
   return out;
 }
 export function textShown(l) {

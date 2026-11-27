@@ -137,3 +137,22 @@ test('render: todos os modelos geram um ASS que o libass aceita', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('contador: só o 1º passo faz a entrada e só o último faz a saída (não pisca no render)', async () => {
+  const { expandCounterLayers } = await import('../../shared/textLayers.js');
+  const steps = expandCounterLayers([{ text: '30%', count: true, start: 0, end: 4, animIn: 'zoom', animOut: 'fade' }]);
+  assert.ok(steps.length > 3);
+  assert.equal(steps[0].animIn, 'zoom');
+  assert.ok(steps.slice(1).every((s) => s.animIn === 'none'), 'os outros passos entram sem animação');
+  assert.equal(steps.at(-1).animOut, 'fade');
+  assert.ok(steps.slice(0, -1).every((s) => s.animOut === 'none'), 'só o último sai');
+  assert.ok(steps.every((s) => !('countOf' in s)));
+  assert.equal(steps.at(-1).text, '30%');
+});
+
+test('pacote "Textos animados": entra nas categorias da biblioteca', async () => {
+  const ids = PACK_ITEMS.map((x) => x.id);
+  for (const id of ['tt-entre-linhas', 'tt-3d-camadas', 'cit-nome-grande', 'balao-preco', 'barra-inscrever', 'fa-serifa-italica']) assert.ok(ids.includes(id), id);
+  assert.ok(PACK_ITEMS.filter((x) => x.cat === 'titulos').length >= 30);
+  assert.equal(fontPackLook('fa-serifa-italica').italic, true);
+});

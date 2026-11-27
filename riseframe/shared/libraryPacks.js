@@ -1,3 +1,4 @@
+import { textPacks } from './textPacks.js';
 // Biblioteca de modelos prontos para a timeline (como os "packs" de um painel de motion no
 // Premiere): Títulos, Componentes gráficos e Fontes animadas. Cada modelo é montado com as
 // camadas que o app já sabe desenhar e renderizar (textos e formas de shared/textLayers.js),
@@ -382,8 +383,14 @@ const FONTS = [
   { id: 'fa-maquina', label: 'Máquina de escrever', font: 'inter', animIn: 'typewriter', color: '#FFFFFF', bg: true, bgColor: '#000000', bgOpacity: 0.7, bgMode: 'block', pad: 0.35, text: 'Seu texto aqui' },
 ];
 
+// Pacote "Textos animados" (shared/textPacks.js): entra nas mesmas categorias
+const EXTRA = textPacks({ T, S, textWidth, fitSize });
+TITLES.push(...EXTRA.titles);
+COMPONENTS.push(...EXTRA.components);
+FONTS.push(...EXTRA.fonts);
+
 /** Os campos de aparência que uma fonte animada leva para o texto. */
-export const FONT_LOOK_KEYS = ['font', 'animIn', 'color', 'stroke', 'strokeColor', 'strokeW', 'shadow', 'shadowColor', 'shadowOpacity', 'shadowDist', 'shadowBlur', 'tracking', 'bg', 'bgColor', 'bgOpacity', 'bgMode', 'pad'];
+export const FONT_LOOK_KEYS = ['font', 'animIn', 'italic', 'color', 'stroke', 'strokeColor', 'strokeW', 'shadow', 'shadowColor', 'shadowOpacity', 'shadowDist', 'shadowBlur', 'tracking', 'bg', 'bgColor', 'bgOpacity', 'bgMode', 'pad'];
 
 export const PACK_CATEGORIES = [
   { id: 'titulos', label: 'Títulos' },

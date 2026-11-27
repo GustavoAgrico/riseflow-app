@@ -11889,7 +11889,7 @@ function PackThumb({ id }) {
         const lf = life(l);
         return (
           <div key={i} className={lf.className} style={{ ...lf.style, position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, transform: `translate(-50%, -50%)${l.rot ? ` rotate(${l.rot}deg)` : ''}`, whiteSpace: 'pre', textAlign: l.align === 'left' ? 'left' : 'center', lineHeight: l.leading ? 1.15 + l.leading / l.size : 1.15,
-            fontFamily: `'${f.family}'`, fontWeight: f.bold === false ? 400 : f.weight || 800, fontSize: cq(l.size), letterSpacing: l.tracking ? `${l.tracking / 1000}em` : undefined,
+            fontFamily: `'${f.family}'`, fontWeight: f.bold === false ? 400 : f.weight || 800, fontStyle: l.italic ? 'italic' : undefined, opacity: l.opacity ?? 1, fontSize: cq(l.size), letterSpacing: l.tracking ? `${l.tracking / 1000}em` : undefined,
             color: l.fill === false ? 'transparent' : l.color, WebkitTextStroke: l.stroke ? `${cq(Math.max(0.0015, l.strokeW || 0.003))} ${l.strokeColor || '#000'}` : undefined, textShadow: shadow,
             ...(l.bg ? { background: l.bgColor, opacity: undefined, padding: `${cq(l.size * (l.pad ?? 0.28) * 0.6)} ${cq(l.size * (l.pad ?? 0.28))}`, borderRadius: cq(l.size * (l.radius ?? 0) * 0.5) } : null) }}>
             {units ? units.map((u, j) => (u.trim()
