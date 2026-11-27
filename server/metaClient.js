@@ -239,13 +239,16 @@ async function handleWebhookEvent(body) {
 /* ─── Envio ────────────────────────────────────────────────────────────── */
 /* Resolve o token da página para um contato: dono conhecido do chat → única
    página conectada do canal → PAGE_ACCESS_TOKEN do .env (fallback global). */
-function resolvePage(number) {
+// Com dono informado, só vale página DESSE dono — senão a conta A responderia
+// pelo Facebook/Instagram da conta B só por saber o id do contato.
+function resolvePage(number, userId = null) {
+  const mine = (p) => userId == null || String(p.userId) === String(userId)
   const known = chats.get(String(number))
-  if (known && pages.has(known.pageId)) return pages.get(known.pageId)
+  if (known && pages.has(known.pageId) && mine(pages.get(known.pageId))) return pages.get(known.pageId)
   const channel = channelOf(number)
-  const ofChannel = [...pages.values()].filter((p) => p.channel === channel)
+  const ofChannel = [...pages.values()].filter((p) => p.channel === channel && mine(p))
   if (ofChannel.length === 1) return ofChannel[0]
-  if (process.env.PAGE_ACCESS_TOKEN) return { token: process.env.PAGE_ACCESS_TOKEN }
+  if (userId == null && process.env.PAGE_ACCESS_TOKEN) return { token: process.env.PAGE_ACCESS_TOKEN }
   return null
 }
 
@@ -265,7 +268,7 @@ async function within24h(number, userId) {
 
 async function sendTextTo(number, text, userId = null) {
   if (!isMetaNumber(number)) throw new Error(`Contato Meta inválido: ${number}`)
-  const page = resolvePage(number)
+  const page = resolvePage(number, userId)
   if (!page) throw new Error(`Nenhuma página ${channelOf(number) === 'instagram' ? 'do Instagram' : 'do Facebook'} conectada para este contato.`)
   if (!(await within24h(number, userId))) {
     throw new Error('Fora da janela de 24h da Meta: só é possível responder até 24h após a última mensagem do contato.')

@@ -221,11 +221,12 @@ router.get('/status', (req, res) => {
 })
 
 // POST /api/meta/send — envio direto (diagnóstico). Body: { number, text, userId? }
+// O dono é SEMPRE o do JWT (userId do corpo é ignorado — ver telegram.js).
 router.post('/send', async (req, res) => {
-  const { number, text, userId } = req.body || {}
+  const { number, text } = req.body || {}
   if (!number || !text) return res.status(400).json({ error: 'number e text são obrigatórios.' })
   try {
-    res.json(await meta.sendTextTo(number, text, userId || null))
+    res.json(await meta.sendTextTo(number, text, req.user.sub))
   } catch (err) {
     res.status(400).json({ error: err.message })
   }

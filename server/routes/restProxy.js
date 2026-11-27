@@ -33,29 +33,60 @@ async function campaignIdsOf(userId) {
   return (data || []).map(c => c.id)
 }
 
-router.all('/:table', async (req, res) => {
-  if (!isConfigured) return res.status(503).json({ message: 'Supabase não configurado' })
-  const { table } = req.params
-  const userId = req.user?.sub
-  if (!userId) return res.status(401).json({ message: 'Não autenticado' })
-
-  const method = req.method.toUpperCase()
-  const isRead = method === 'GET' || method === 'HEAD'
-  const params = new URLSearchParams(req.originalUrl.split('?')[1] || '')
-
-  let body = ['POST', 'PATCH', 'PUT'].includes(method) ? req.body : undefined
-  const headers = {
-    apikey: SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+// Recursos embutidos no select (ex.: "*, clients(name)") são lidos por chave
+// estrangeira, SEM o filtro de user_id da tabela principal. Uma linha minha que
+// aponte para o id de outra conta exporia essa conta. Por isso: só um nível,
+// só tabelas por usuário, e cada embutido recebe <nome>.user_id=eq.<sub>.
+function embeddedResources(select) {
+  const out = []
+  let depth = 0, start = 0
+  const items = []
+  for (let i = 0; i <= select.length; i++) {
+    const ch = select[i]
+    if (ch === '(') depth++
+    else if (ch === ')') depth--
+    if ((ch === ',' && depth === 0) || i === select.length) { items.push(select.slice(start, i).trim()); start = i + 1 }
+    if (depth < 0) return { error: 'select inválido' }
   }
-  for (const h of FORWARD_REQ_HEADERS) if (req.headers[h]) headers[h] = req.headers[h]
-  if (body !== undefined) headers['content-type'] = 'application/json'
+  if (depth !== 0) return { error: 'select inválido' }
+  for (const item of items) {
+    const open = item.indexOf('(')
+    if (open < 0) continue
+    const head = item.slice(0, open).trim()
+    const inner = item.slice(open + 1, item.lastIndexOf(')'))
+    if (inner.includes('(')) return { error: 'Relacionamento aninhado não permitido' }
+    if (head.startsWith('...')) return { error: 'Relacionamento não permitido' }
+    const colon = head.search(/(?<!:):(?!:)/)
+    const alias = colon >= 0 ? head.slice(0, colon).trim() : ''
+    const target = (colon >= 0 ? head.slice(colon + 1) : head).split('!')[0].trim()
+    if (!USER_TABLES.has(target)) return { error: `Relacionamento com '${target}' não permitido` }
+    out.push(alias || target)
+  }
+  return { names: out }
+}
+
+// Regras de isolamento por conta (função pura, testada em restProxy.test.js).
+// Devolve { status, message } quando a chamada é recusada, ou o que mandar ao PostgREST.
+function scopeRequest({ table, method, params, body, headers, userId, campaignIds = [] }) {
+  // PUT no PostgREST é upsert pela chave primária, sem filtro de dono: trocaria a
+  // linha de outra conta. O supabase-js não usa PUT (upsert vai por POST).
+  if (method === 'PUT') return { status: 405, message: 'Método não permitido' }
+
+  const select = params.get('select')
+  if (select && select.includes('(')) {
+    const emb = embeddedResources(select)
+    if (emb.error) return { status: 403, message: emb.error }
+    for (const name of emb.names) {
+      params.delete(`${name}.user_id`)
+      params.append(`${name}.user_id`, `eq.${userId}`)
+    }
+  }
 
   if (USER_TABLES.has(table)) {
     // O cliente às vezes filtra por user.id (membro) e às vezes por ownerUserId;
     // o escopo real é sempre o sub do JWT. Outros operadores (ex.: neq) ficam.
     for (const v of params.getAll('user_id')) if (v.startsWith('eq.')) params.delete('user_id', v)
-    if (method !== 'POST' && method !== 'PUT') params.append('user_id', `eq.${userId}`)
+    if (method !== 'POST') params.append('user_id', `eq.${userId}`)
     if (body !== undefined) {
       const clean = r => sanitizeRow(table, r, userId)
       body = Array.isArray(body) ? body.map(clean) : clean(body)
@@ -64,25 +95,51 @@ router.all('/:table', async (req, res) => {
     // Upsert cujo conflito não é por user_id poderia sobrescrever linha de outro tenant.
     const prefer = headers.prefer || ''
     const onConflict = params.get('on_conflict') || ''
-    if (method === 'POST' && prefer.includes('resolution=merge-duplicates') && !onConflict.split(',').includes('user_id')) {
+    if (method === 'POST' && prefer.includes('resolution=merge-duplicates') && !onConflict.split(',').map(s => s.trim()).includes('user_id')) {
       headers.prefer = prefer.replace('resolution=merge-duplicates', 'resolution=ignore-duplicates')
     }
   } else if (table === 'profiles') {
-    if (!isRead && method !== 'PATCH') return res.status(403).json({ message: 'Operação não permitida' })
+    const isRead = method === 'GET' || method === 'HEAD'
+    if (!isRead && method !== 'PATCH') return { status: 403, message: 'Operação não permitida' }
     params.delete('id')
     params.append('id', `eq.${userId}`)
     if (body) { body = { ...body }; delete body.id; delete body.plan }
   } else if (table === 'campaign_messages') {
-    const ids = await campaignIdsOf(userId)
     if (method === 'POST') {
       const rows = Array.isArray(body) ? body : [body]
-      if (rows.some(r => !ids.includes(r.campaign_id))) return res.status(403).json({ message: 'Campanha não pertence ao usuário' })
+      if (rows.some(r => !r || !campaignIds.includes(r.campaign_id))) return { status: 403, message: 'Campanha não pertence ao usuário' }
     } else {
-      params.append('campaign_id', `in.(${ids.length ? ids.join(',') : '00000000-0000-0000-0000-000000000000'})`)
+      params.append('campaign_id', `in.(${campaignIds.length ? campaignIds.join(',') : '00000000-0000-0000-0000-000000000000'})`)
+      if (method === 'PATCH' && body && !Array.isArray(body)) { body = { ...body }; delete body.campaign_id }
     }
   } else {
-    return res.status(403).json({ message: `Tabela '${table}' não permitida` })
+    return { status: 403, message: `Tabela '${table}' não permitida` }
   }
+  return { params, body, headers }
+}
+
+router.all('/:table', async (req, res) => {
+  if (!isConfigured) return res.status(503).json({ message: 'Supabase não configurado' })
+  const { table } = req.params
+  const userId = req.user?.sub
+  if (!userId) return res.status(401).json({ message: 'Não autenticado' })
+
+  const method = req.method.toUpperCase()
+  const isRead = method === 'GET' || method === 'HEAD'
+  const rawParams = new URLSearchParams(req.originalUrl.split('?')[1] || '')
+
+  const rawBody = ['POST', 'PATCH', 'PUT'].includes(method) ? req.body : undefined
+  const rawHeaders = {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+  }
+  for (const h of FORWARD_REQ_HEADERS) if (req.headers[h]) rawHeaders[h] = req.headers[h]
+  if (rawBody !== undefined) rawHeaders['content-type'] = 'application/json'
+
+  const campaignIds = table === 'campaign_messages' ? await campaignIdsOf(userId) : []
+  const scoped = scopeRequest({ table, method, params: rawParams, body: rawBody, headers: rawHeaders, userId, campaignIds })
+  if (scoped.status) return res.status(scoped.status).json({ message: scoped.message })
+  const { params, body, headers } = scoped
 
   try {
     const qs = params.toString()
@@ -115,3 +172,6 @@ router.all('/:table', async (req, res) => {
 })
 
 module.exports = router
+module.exports.scopeRequest = scopeRequest
+module.exports.embeddedResources = embeddedResources
+module.exports.USER_TABLES = USER_TABLES

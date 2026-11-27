@@ -36,7 +36,7 @@ router.post('/send', async (req, res, next) => {
     // Telegram: contato "tg<chatId>" → envia pelo bot conectado.
     if (telegram.isTelegramNumber(number)) {
       try {
-        return res.json(await telegram.sendTextTo(number, text))
+        return res.json(await telegram.sendTextTo(number, text, req.user.sub))
       } catch (err) {
         return res.status(400).json({ error: err.message })
       }
@@ -45,7 +45,7 @@ router.post('/send', async (req, res, next) => {
     // Meta: contato "fb<PSID>"/"ig<IGSID>" → envia pela página conectada.
     if (meta.isMetaNumber(number)) {
       try {
-        return res.json(await meta.sendTextTo(number, text))
+        return res.json(await meta.sendTextTo(number, text, req.user.sub))
       } catch (err) {
         return res.status(400).json({ error: err.message })
       }
