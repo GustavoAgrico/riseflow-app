@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   Search, Loader2, MapPin, Star, PhoneCall, Download, ExternalLink, CheckSquare, Square, AlertTriangle,
   Mail, Instagram, Globe, MessageCircle, Linkedin, Facebook, Sparkles, Target, ChevronDown, ChevronUp, Upload, FileText, Building2,
+  Ban, History, ShieldCheck, Trash2, EyeOff, Eye,
 } from 'lucide-react'
 import { Layout } from '@components/Layout/Layout'
 import { CountUp, Segmented } from '@components/motion'
@@ -28,7 +29,19 @@ const errMsg = e => e?.response?.data?.error || (e?.code === 'ECONNABORTED' ? 'A
 const usd = v => 'US$ ' + v.toFixed(2).replace('.', ',')
 const when = t => new Date(t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 const day = t => new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-const selectable = p => Boolean(p.phone || p.whatsapp) && !p.inCrm
+// Situação do lead em relação à conta (servidor): novo | no_crm | excluido | repetido.
+const SCREEN = {
+  no_crm: ['Já no CRM', '#10B981'],
+  excluido: ['Excluído', '#EF4444'],
+  repetido: ['Repetido', '#94A3B8'],
+}
+const EXCL_REASON = { descartado: 'descartado', opt_out: 'pediu para sair', cliente: 'já é cliente', manual: 'manual' }
+const KIND = { phone: 'Telefone', cnpj_root: 'CNPJ (raiz)', domain: 'Site/domínio' }
+const blocked = p => Boolean(p.inCrm) || ['excluido', 'repetido', 'no_crm'].includes(p.screen?.status)
+const selectable = p => Boolean(p.phone || p.whatsapp) && !blocked(p)
+const leadForApi = p => ({ key: p.key, name: p.name, phone: p.phone || p.whatsapp || '', whatsapp: p.whatsapp || '', website: p.website || '', email: p.email || '', cnpj: p.cnpj || p.company?.cnpj || '' })
+// Mesmo formato do servidor (5511…): sem "+", número de 10/11 dígitos ganha o 55.
+const phoneDigits = v => { const d = String(v || '').replace(/\D/g, ''); return (d.length === 10 || d.length === 11) && !String(v).trim().startsWith('+') ? '55' + d : d }
 const loadProfile = () => { try { return { ...DEFAULT_PROFILE, ...JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}') } } catch { return DEFAULT_PROFILE } }
 
 const input = { width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 10, fontSize: 13, outline: 'none', color: 'var(--ink-1)', background: 'var(--card)', fontFamily: 'inherit' }
@@ -42,6 +55,20 @@ const ContactIcon = ({ href, Icon, label: l, color, text }) => {
   const style = { width: 26, height: 26, borderRadius: 8, display: 'grid', placeItems: 'center', background: href || text ? color + '1f' : 'transparent', border: `1px solid ${href || text ? color + '55' : 'var(--border)'}`, color: href || text ? color : 'var(--ink-4)', opacity: href || text ? 1 : 0.4 }
   if (href) return <a href={href} target="_blank" rel="noopener noreferrer" title={l} aria-label={l} style={style}><Icon size={13} /></a>
   return <span title={text ? `${l}: ${text}` : `Sem ${l.toLowerCase()}`} aria-label={text ? l : `Sem ${l.toLowerCase()}`} style={style}><Icon size={13} /></span>
+}
+
+// Situação do lead: CRM / excluído / repetido; senão, o resultado da validação de WhatsApp.
+const StatusChip = ({ p }) => {
+  const st = p.inCrm ? 'no_crm' : p.screen?.status
+  if (SCREEN[st]) {
+    const [l, c] = SCREEN[st]
+    const why = st === 'excluido' ? EXCL_REASON[p.screen?.reason] : st === 'repetido' ? 'mesmo telefone, CNPJ ou site de outro lead da lista' : ''
+    return <span style={chip(c)} title={why}>{l}{st === 'excluido' && why ? ` · ${why}` : ''}</span>
+  }
+  if (!(p.phone || p.whatsapp)) return <span style={chip('#94A3B8')}>Sem telefone</span>
+  if (p.hasWhatsapp === true) return <span style={chip('#25D366')}><ShieldCheck size={11} /> WhatsApp</span>
+  if (p.hasWhatsapp === false) return <span style={chip('#EAB308')}>Sem WhatsApp</span>
+  return null
 }
 
 export const Prospecting = () => {
@@ -66,10 +93,38 @@ export const Prospecting = () => {
   const [profile, setProfile] = useState(loadProfile)
   const [showProfile, setShowProfile] = useState(false)
   const [listText, setListText] = useState('')
+  const [listName, setListName] = useState('Lista colada')
+  const [screens, setScreens] = useState({}) // key → { status, reason, … } (servidor)
+  const [wa, setWa] = useState({})           // key → true | false | null (WhatsApp validado)
+  const [checking, setChecking] = useState(null) // { done, total }
+  const [hideNoise, setHideNoise] = useState(true)
+  const [profileSync, setProfileSync] = useState('local') // local | account
+  const [showLog, setShowLog] = useState(false)
+  const [logTab, setLogTab] = useState('searches')
+  const [searchLog, setSearchLog] = useState(null)
+  const [exclusions, setExclusions] = useState(null)
   const fileRef = useRef(null)
+  const profileLoaded = useRef(false)
 
   useEffect(() => { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)) } catch { /* sem storage */ } }, [profile])
   const setP = (k, v) => setProfile(p => ({ ...p, [k]: v }))
+
+  // Perfil de cliente ideal: vem da conta (vale em qualquer aparelho e para os agentes).
+  useEffect(() => {
+    if (isDemoMode) return
+    let alive = true
+    api.get('/prospecting/profile').then(({ data }) => {
+      if (!alive || data?.unavailable) return
+      setProfileSync('account')
+      if (data?.profile && Object.keys(data.profile).length) setProfile(p => ({ ...p, ...data.profile }))
+    }).catch(() => {}).finally(() => { profileLoaded.current = true })
+    return () => { alive = false }
+  }, [isDemoMode])
+  useEffect(() => {
+    if (isDemoMode || !profileLoaded.current || profileSync !== 'account') return
+    const t = setTimeout(() => { api.put('/prospecting/profile', { profile }).catch(() => {}) }, 800)
+    return () => clearTimeout(t)
+  }, [profile, profileSync, isDemoMode])
 
   const loadQueue = useCallback(async () => {
     if (isDemoMode) return
@@ -93,6 +148,8 @@ export const Prospecting = () => {
     const e = enriched[p.key] || {}
     const lead = {
       ...p,
+      screen: screens[p.key] || p.screen || null,
+      hasWhatsapp: wa[p.key] ?? undefined,
       email: p.email || e.emails?.[0] || '',
       instagram: p.instagram || e.instagram || '', facebook: e.facebook || '', linkedin: e.linkedin || '',
       whatsapp: p.whatsapp || e.whatsapp || '', cnpj: p.cnpj || e.cnpj || '', company: e.company || null,
@@ -100,12 +157,27 @@ export const Prospecting = () => {
     }
     const icp = scoreLead(lead, profile)
     return { ...lead, icpScore: icp.score, tier: icp.tier, icpReasons: icp.reasons }
-  }).sort((a, b) => b.icpScore - a.icpScore), [results, enriched, profile])
-  const visible = tierFilter === 'all' ? rows : rows.filter(r => r.tier === tierFilter)
+  }).sort((a, b) => (blocked(a) - blocked(b)) || b.icpScore - a.icpScore), [results, enriched, profile, screens, wa])
+  const noise = rows.filter(r => ['excluido', 'repetido'].includes(r.screen?.status)).length
+  const visible = rows.filter(r => (tierFilter === 'all' || r.tier === tierFilter) && !(hideNoise && ['excluido', 'repetido'].includes(r.screen?.status)))
 
   const resetResults = (list, src) => {
     setResults(list); setResultSource(src); setEnriched({}); setTierFilter('all'); setConfirmCall(false)
+    setScreens({}); setWa({})
     setSel(new Set(list.filter(selectable).map(p => p.key)))
+  }
+
+  // Confere a lista no servidor: CRM, lista de exclusão e repetidos (telefone, CNPJ raiz, domínio).
+  const rescreen = async (list) => {
+    if (isDemoMode || !list?.length) return null
+    try {
+      const { data } = await api.post('/prospecting/screen', { leads: list.map(leadForApi) })
+      const map = {}
+      for (const r of data.results || []) map[r.key] = r
+      setScreens(map)
+      setSel(s => new Set([...s].filter(k => !['excluido', 'repetido', 'no_crm'].includes(map[k]?.status))))
+      return data.summary
+    } catch { return null }
   }
 
   const search = async (e) => {
@@ -116,7 +188,12 @@ export const Prospecting = () => {
       const { data } = await api.post('/prospecting/search', { query, location, max }, { timeout: 300000 })
       resetResults((data?.results || []).map((p, i) => ({ ...p, key: p.placeId || `maps-${i}-${p.name}` })), 'maps')
       if (data?.credit) setCredit(data.credit)
-      if (data?.allowed < data?.requested) setNotice(`A busca foi limitada a ${data.allowed} empresas para caber no crédito grátis do mês.`)
+      const notes = []
+      if (data?.allowed < data?.requested) notes.push(`A busca foi limitada a ${data.allowed} empresas para caber no crédito grátis do mês.`)
+      const sm = data?.summary
+      if (sm && sm.found) notes.push(`${sm.new_count} nova${sm.new_count !== 1 ? 's' : ''} de ${sm.found}${sm.in_crm ? ` · ${sm.in_crm} já no CRM` : ''}${sm.excluded ? ` · ${sm.excluded} na lista de exclusão` : ''}.`)
+      if (notes.length) setNotice(notes.join(' '))
+      if (showLog && logTab === 'searches') loadLog('searches')
     } catch (e2) {
       setErr(errMsg(e2))
       if (e2?.response?.data?.credit) setCredit(e2.response.data.credit)
@@ -128,8 +205,19 @@ export const Prospecting = () => {
     setErr(''); setNotice('')
     const { leads, skipped } = parseLeadList(text)
     if (!leads.length) { setErr('Não encontrei leads nessa lista. Use uma coluna de nome e outra de telefone (ou cole uma empresa por linha).'); return }
-    resetResults(leads.map((l, i) => ({ ...l, key: `lista-${i}-${l.name}` })), 'lista')
-    setNotice(`${leads.length} lead${leads.length !== 1 ? 's' : ''} lido${leads.length !== 1 ? 's' : ''} da lista${skipped ? ` · ${skipped} linha(s) ignorada(s)` : ''}. Clique em "Enriquecer" para achar e-mail, Instagram e dados do CNPJ.`)
+    const list = leads.map((l, i) => ({ ...l, key: `lista-${i}-${l.name}` }))
+    resetResults(list, 'lista')
+    const base = `${leads.length} lead${leads.length !== 1 ? 's' : ''} lido${leads.length !== 1 ? 's' : ''} da lista${skipped ? ` · ${skipped} linha(s) ignorada(s)` : ''}`
+    setNotice(`${base}. Clique em "Enriquecer" para achar e-mail, Instagram e dados do CNPJ.`)
+    rescreen(list).then(sum => {
+      if (!sum) return
+      const parts = [`${sum.new_count} novo${sum.new_count !== 1 ? 's' : ''}`]
+      if (sum.in_crm) parts.push(`${sum.in_crm} já no CRM`)
+      if (sum.excluded) parts.push(`${sum.excluded} na lista de exclusão`)
+      const dup = sum.found - sum.new_count - sum.in_crm - sum.excluded
+      if (dup) parts.push(`${dup} repetido${dup !== 1 ? 's' : ''}`)
+      setNotice(`${base}: ${parts.join(' · ')}. Clique em "Enriquecer" para achar e-mail, Instagram e dados do CNPJ.`)
+    })
   }
   const onFile = async (ev) => {
     const f = ev.target.files?.[0]
@@ -138,6 +226,7 @@ export const Prospecting = () => {
     if (f.size > 2_000_000) { setErr('Arquivo grande demais (máx. 2 MB). Divida a lista.'); return }
     const text = await f.text()
     setListText(text.slice(0, 20000))
+    setListName(f.name.slice(0, 120))
     loadList(text)
   }
 
@@ -156,6 +245,62 @@ export const Prospecting = () => {
     }
     setEnriching(null)
   }
+  // Depois do enriquecimento surgem CNPJ e domínio: confere de novo contra CRM/exclusões.
+  const enrichedCount = Object.keys(enriched).length
+  useEffect(() => {
+    if (!enrichedCount || enriching) return
+    rescreen(rows)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enrichedCount, enriching])
+
+  // Validação de WhatsApp pelo número conectado: selecionados (ou visíveis) com telefone, 25 por vez.
+  const checkWhatsapp = async () => {
+    if (isDemoMode) { setNotice('Modo demo: a validação roda com o seu WhatsApp conectado.'); return }
+    const base = chosen.length ? chosen : visible.filter(selectable)
+    const todo = base.filter(p => wa[p.key] === undefined && (p.phone || p.whatsapp))
+    if (!todo.length) { setNotice('Esses leads já foram validados.'); return }
+    setErr(''); setNotice(''); setChecking({ done: 0, total: todo.length })
+    const found = {}
+    for (let i = 0; i < todo.length; i += 25) {
+      const part = todo.slice(i, i + 25)
+      try {
+        const { data } = await api.post('/prospecting/check-whatsapp', { phones: part.map(p => p.phone || p.whatsapp) }, { timeout: 180000 })
+        const byPhone = new Map((data.results || []).map(r => [r.phone, r.whatsapp]))
+        for (const p of part) found[p.key] = byPhone.get(phoneDigits(p.phone || p.whatsapp)) ?? null
+        setWa(m => ({ ...m, ...found }))
+      } catch (e) { setErr(errMsg(e)); break }
+      setChecking({ done: Math.min(i + 25, todo.length), total: todo.length })
+    }
+    setChecking(null)
+    const vals = Object.values(found)
+    if (vals.length) setNotice(`WhatsApp validado: ${vals.filter(v => v === true).length} com WhatsApp, ${vals.filter(v => v === false).length} sem${vals.some(v => v === null) ? `, ${vals.filter(v => v === null).length} sem resposta` : ''}.`)
+  }
+
+  // Descartar: entra na lista de exclusão da conta e não volta em buscas futuras.
+  const discard = async (leads) => {
+    if (!leads.length) return
+    if (isDemoMode) { setNotice('Modo demo: a lista de exclusão fica na sua conta.'); return }
+    try {
+      await api.post('/prospecting/exclusions', { leads: leads.map(leadForApi), reason: 'descartado' })
+      const keys = new Set(leads.map(l => l.key))
+      setScreens(m => { const n = { ...m }; keys.forEach(k => { n[k] = { status: 'excluido', reason: 'descartado' } }); return n })
+      setSel(s => new Set([...s].filter(k => !keys.has(k))))
+      setNotice(`${leads.length} lead${leads.length !== 1 ? 's' : ''} descartado${leads.length !== 1 ? 's' : ''}: não aparece${leads.length !== 1 ? 'm' : ''} mais em novas buscas.`)
+      if (showLog && logTab === 'exclusions') loadLog('exclusions')
+    } catch (e) { setErr(errMsg(e)) }
+  }
+
+  const loadLog = useCallback(async (tab) => {
+    if (isDemoMode) { if (tab === 'searches') setSearchLog([]); else setExclusions([]); return }
+    try {
+      if (tab === 'searches') { const { data } = await api.get('/prospecting/searches'); setSearchLog(data || []) }
+      else { const { data } = await api.get('/prospecting/exclusions'); setExclusions(data || []) }
+    } catch { if (tab === 'searches') setSearchLog([]); else setExclusions([]) }
+  }, [isDemoMode])
+  useEffect(() => { if (showLog) loadLog(logTab) }, [showLog, logTab, loadLog])
+  const unexclude = async (id) => {
+    try { await api.delete(`/prospecting/exclusions/${id}`); setExclusions(list => (list || []).filter(x => x.id !== id)) } catch (e) { setErr(errMsg(e)) }
+  }
 
   const toggle = (k) => setSel(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n })
   const valid = visible.filter(selectable)
@@ -169,8 +314,10 @@ export const Prospecting = () => {
     setImporting(true); setErr(''); setNotice('')
     try {
       const payload = chosen.map(p => ({ ...p, phone: p.phone || p.whatsapp, icpReasons: p.icpReasons.map(r => r.text) }))
-      const { data } = await api.post('/prospecting/import', { leads: payload, call, source: resultSource === 'lista' ? 'lista' : 'google_maps' }, { timeout: 60000 })
+      const record = resultSource === 'lista' ? { name: listName, found: rows.length } : undefined
+      const { data } = await api.post('/prospecting/import', { leads: payload, call, source: resultSource === 'lista' ? 'lista' : 'google_maps', record }, { timeout: 60000 })
       const parts = [`${data.imported} importado${data.imported !== 1 ? 's' : ''} para o CRM`]
+      if (data.excluded) parts.push(`${data.excluded} na lista de exclusão`)
       if (data.skipped) parts.push(`${data.skipped} já existia${data.skipped !== 1 ? 'm' : ''} ou sem telefone`)
       if (call) parts.push(`${data.queued} na fila de ligações`)
       if (data.notQueued) parts.push(`${data.notQueued} fora da fila (modo teste)`)
@@ -195,7 +342,10 @@ export const Prospecting = () => {
     email: rows.filter(r => r.email).length,
     instagram: rows.filter(r => r.instagram).length,
     tierA: rows.filter(r => r.tier === 'A').length,
+    fresh: rows.filter(r => !blocked(r)).length,
+    wa: rows.filter(r => r.hasWhatsapp === true).length,
   }
+  const canCheck = !checking && (chosen.length ? chosen : visible.filter(selectable)).some(p => wa[p.key] === undefined)
   const canEnrich = rows.some(r => !enriched[r.key] && (r.website || r.cnpj))
 
   return (
@@ -311,14 +461,14 @@ export const Prospecting = () => {
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ ...label, margin: 0 }}>Obrigatório:</span>
-              {[['needPhone', 'Telefone'], ['needEmail', 'E-mail'], ['needInstagram', 'Instagram'], ['needSite', 'Site']].map(([k, l]) => (
+              {[['needPhone', 'Telefone'], ['needWhatsapp', 'WhatsApp'], ['needEmail', 'E-mail'], ['needInstagram', 'Instagram'], ['needSite', 'Site']].map(([k, l]) => (
                 <button key={k} type="button" role="switch" aria-checked={profile[k]} onClick={() => setP(k, !profile[k])} className="rf-press"
                   style={{ ...chip(profile[k] ? '#22C55E' : '#94A3B8'), border: `1px solid ${profile[k] ? '#22C55E66' : 'var(--border)'}`, cursor: 'pointer', fontFamily: 'inherit', padding: '5px 12px' }}>
                   {profile[k] ? '✓ ' : ''}{l}
                 </button>
               ))}
             </div>
-            <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-4)' }}>A nota vai de 0 a 100: Tier A (70+) é prioridade, B (45–69) vale testar, C fica por último. Fica salvo neste navegador.</p>
+            <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-4)' }}>A nota vai de 0 a 100: Tier A (70+) é prioridade, B (45–69) vale testar, C fica por último. {profileSync === 'account' ? 'Fica salvo na sua conta (vale em qualquer aparelho e para os agentes).' : 'Fica salvo neste navegador.'}</p>
           </div>
         )}
       </div>
@@ -331,8 +481,8 @@ export const Prospecting = () => {
         <div className="rf-panel" style={{ padding: 20, marginBottom: 20 }}>
           <div className="rf-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 120px), 1fr))', gap: 10, marginBottom: 16 }}>
             {[
-              ['Encontrados', stats.total, '#94A3B8', Building2], ['Com telefone', stats.phone, '#22C55E', PhoneCall],
-              ['Com e-mail', stats.email, '#38BDF8', Mail], ['Com Instagram', stats.instagram, '#E1306C', Instagram], ['Tier A', stats.tierA, TIER_COLORS.A, Target],
+              ['Encontrados', stats.total, '#94A3B8', Building2], ['Novos', stats.fresh, '#FF6B35', Sparkles], ['Com telefone', stats.phone, '#22C55E', PhoneCall],
+              ['WhatsApp ok', stats.wa, '#25D366', ShieldCheck], ['Com e-mail', stats.email, '#38BDF8', Mail], ['Com Instagram', stats.instagram, '#E1306C', Instagram], ['Tier A', stats.tierA, TIER_COLORS.A, Target],
             ].map(([l, v, c, Icon]) => (
               <div key={l} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--ink-3)' }}><Icon size={12} color={c} /> {l}</div>
@@ -351,9 +501,22 @@ export const Prospecting = () => {
                 {enriching ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
                 {enriching ? `Enriquecendo ${enriching.done}/${enriching.total}…` : canEnrich ? 'Enriquecer contatos (grátis)' : Object.keys(enriched).length ? 'Contatos enriquecidos' : 'Nenhum site para enriquecer'}
               </button>
+              <button type="button" onClick={checkWhatsapp} disabled={!canCheck}
+                title="Confere, pelo seu WhatsApp conectado, quais números têm WhatsApp. Devagar de propósito (até 200 por hora) para proteger o seu número."
+                style={{ ...btn('transparent', '#25D366'), border: '1px solid #25D36666', opacity: canCheck ? 1 : 0.55 }}>
+                {checking ? <Loader2 size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
+                {checking ? `Validando ${checking.done}/${checking.total}…` : `Validar WhatsApp${chosen.length ? ` (${chosen.length})` : ''}`}
+              </button>
               {stats.tierA > 0 && <button type="button" onClick={selectTierA} style={{ ...btn('transparent', TIER_COLORS.A), border: `1px solid ${TIER_COLORS.A}66` }}><Target size={14} /> Selecionar Tier A</button>}
             </span>
           </div>
+          {noise > 0 && (
+            <button type="button" onClick={() => setHideNoise(h => !h)} aria-pressed={!hideNoise}
+              style={{ ...btn('transparent', 'var(--ink-3)'), border: '1px dashed var(--border)', padding: '6px 12px', fontSize: 12, marginBottom: 12 }}>
+              {hideNoise ? <Eye size={13} /> : <EyeOff size={13} />}
+              {hideNoise ? `Mostrar ${noise} excluído${noise !== 1 ? 's' : ''}/repetido${noise !== 1 ? 's' : ''}` : 'Esconder excluídos e repetidos'}
+            </button>
+          )}
 
           {rows.length === 0 ? (
             <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-4)' }}>Nenhuma empresa encontrada. Tente outro termo ou uma região maior.</p>
@@ -419,8 +582,16 @@ export const Prospecting = () => {
                           <td style={{ ...td, whiteSpace: 'nowrap', color: 'var(--ink-3)' }}>
                             {p.rating != null ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Star size={12} color="#EAB308" fill="#EAB308" />{p.rating.toFixed(1)} · {p.reviews}</span> : '—'}
                           </td>
-                          <td style={td}>
-                            {p.inCrm ? <span style={chip('#10B981')}>Já no CRM</span> : !(p.phone || p.whatsapp) ? <span style={chip('#94A3B8')}>Sem telefone</span> : null}
+                          <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              <StatusChip p={p} />
+                              {p.screen?.status !== 'excluido' && !p.inCrm && p.screen?.status !== 'no_crm' && (
+                                <button type="button" onClick={() => discard([p])} title="Descartar: não aparece mais em novas buscas" aria-label={`Descartar ${p.name}`}
+                                  style={{ background: 'none', border: 'none', color: 'var(--ink-4)', cursor: 'pointer', padding: 2, display: 'flex' }}>
+                                  <Ban size={14} />
+                                </button>
+                              )}
+                            </span>
                           </td>
                         </tr>
                       )
@@ -432,6 +603,11 @@ export const Prospecting = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
                 <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>{chosen.length} selecionado{chosen.length !== 1 ? 's' : ''}</span>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => discard(chosen)} disabled={!chosen.length || importing}
+                    title="Os selecionados vão para a lista de exclusão e não voltam em novas buscas"
+                    style={{ ...btn('transparent', '#F87171'), border: '1px solid #EF444455', opacity: (!chosen.length || importing) ? 0.5 : 1 }}>
+                    <Ban size={15} /> Descartar
+                  </button>
                   <button type="button" onClick={() => importLeads(false)} disabled={!chosen.length || importing}
                     style={{ ...btn('transparent', 'var(--ink-1)'), border: '1px solid var(--border)', opacity: (!chosen.length || importing) ? 0.5 : 1 }}>
                     {importing ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Importar para o CRM
@@ -467,6 +643,64 @@ export const Prospecting = () => {
           )}
         </div>
       )}
+
+      {/* ── Histórico de buscas e lista de exclusão ── */}
+      <div className="rf-panel" style={{ padding: '14px 20px', marginBottom: 16 }}>
+        <button type="button" onClick={() => setShowLog(s => !s)} aria-expanded={showLog}
+          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--ink-1)', fontFamily: 'inherit', textAlign: 'left' }}>
+          <History size={17} color="#38BDF8" />
+          <span style={{ flex: 1 }}>
+            <span style={{ display: 'block', fontSize: 14, fontWeight: 800 }}>Histórico e lista de exclusão</span>
+            <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>O que já foi buscado e quem nunca mais deve aparecer (descartados e quem pediu para sair)</span>
+          </span>
+          {showLog ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </button>
+        {showLog && (
+          <div className="rf-pop" style={{ marginTop: 14 }}>
+            <Segmented label="Ver" size="sm" accent="#38BDF8" options={[['searches', 'Buscas'], ['exclusions', 'Exclusões']]} value={logTab} onChange={setLogTab} />
+            <div style={{ marginTop: 12 }}>
+              {logTab === 'searches' ? (
+                searchLog === null ? <Loader2 size={16} className="animate-spin" /> : searchLog.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-4)' }}>Nenhuma busca registrada ainda.</p>
+                ) : (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {searchLog.map(s => (
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 12px', borderRadius: 10, background: 'var(--surface-1)', border: '1px solid var(--border)', fontSize: 13 }}>
+                        <span style={chip(s.source === 'lista' ? '#A78BFA' : '#FF6B35')}>{s.source === 'lista' ? 'Lista' : 'Maps'}</span>
+                        <b style={{ color: 'var(--ink-1)' }}>{s.query || '—'}</b>
+                        {s.location && <span style={{ color: 'var(--ink-3)' }}>em {s.location}</span>}
+                        <span style={{ marginLeft: 'auto', color: 'var(--ink-3)', fontVariantNumeric: 'tabular-nums' }}>
+                          {s.found} encontrados · {s.new_count} {s.source === 'lista' ? 'importados' : 'novos'}{s.excluded ? ` · ${s.excluded} excluídos` : ''}{Number(s.cost_usd) > 0 ? ` · ${usd(Number(s.cost_usd))}` : ''}
+                        </span>
+                        <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>{when(s.created_at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                exclusions === null ? <Loader2 size={16} className="animate-spin" /> : exclusions.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-4)' }}>Lista vazia. Use "Descartar" nos resultados; quem responder "SAIR" no WhatsApp entra aqui sozinho.</p>
+                ) : (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {exclusions.map(x => (
+                      <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 12px', borderRadius: 10, background: 'var(--surface-1)', border: '1px solid var(--border)', fontSize: 13 }}>
+                        <span style={chip(x.reason === 'opt_out' ? '#EF4444' : '#94A3B8')}>{EXCL_REASON[x.reason] || x.reason}</span>
+                        <b style={{ color: 'var(--ink-1)' }}>{x.label || '—'}</b>
+                        <span style={{ color: 'var(--ink-3)' }}>{KIND[x.kind] || x.kind}: {x.kind === 'phone' ? `+${x.value}` : x.value}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--ink-4)' }}>{when(x.created_at)}</span>
+                        <button type="button" onClick={() => unexclude(x.id)} title="Tirar da lista de exclusão" aria-label={`Tirar ${x.label || x.value} da lista de exclusão`}
+                          style={{ background: 'none', border: 'none', color: 'var(--ink-4)', cursor: 'pointer', padding: 2, display: 'flex' }}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ── Fila de ligações ── */}
       <div className="rf-panel" style={{ padding: 20 }}>

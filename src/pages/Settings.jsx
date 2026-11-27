@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { NicheSetup } from '@components/NicheSetup'
 import { AiCallSettings } from '@components/Settings/AiCallSettings'
+import { OrganizationCard } from '@components/Settings/OrganizationCard'
 import { usePlan } from '@hooks/usePlan'
 import { downloadInvoicePDF } from '@utils/exportUtils'
 import { logger } from '@services/activityLogger'
@@ -496,6 +497,8 @@ export const Settings = () => {
           {active === 'profile' && (
             <div style={{ fontFamily: FONT, color: C.text }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 24 }}>Perfil</h2>
+
+              <OrganizationCard disabled={isDemoMode} />
 
               {isDemoMode && (
                 <div style={{ marginBottom: 24, padding: '12px 16px', borderRadius: 10,

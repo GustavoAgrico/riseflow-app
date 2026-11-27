@@ -40,6 +40,8 @@ const teamRoutes = require('./routes/team')
 const agentsWorker = require('./agents/worker')
 const { userRoom } = require('./realtime')
 const restProxy = require('./routes/restProxy')
+const orgRoutes = require('./routes/org')
+const orgs = require('./orgs')
 const accessRequestsRoutes = require('./routes/accessRequests')
 const telegram = require('./telegramClient')
 const metaClient = require('./metaClient')
@@ -230,6 +232,11 @@ app.post('/api/auth/login', async (req, res) => {
         }
       }
 
+      // Organização (E2): garante a do dono e o papel de quem entra. Sem a
+      // migração rodada, devolve null e o login segue igual.
+      const org = await orgs.resolveLogin({ sub, memberId: extraClaims.member_id || null, authUserId: data.user.id })
+      if (org) extraClaims = { ...extraClaims, org: org.orgId, org_role: org.role }
+
       const proxyToken = jwt.sign(
         { sub, email: data.user.email, ...extraClaims },
         JWT_SECRET,
@@ -331,6 +338,7 @@ app.use('/api/approvals', auth, approvalsRoutes)
 app.use('/api/sales-pilot', auth, salesPilotRoutes)
 app.use('/api/team', auth, teamRoutes)
 app.use('/api/rest/v1', auth, restProxy)
+app.use('/api/org', auth, orgRoutes)
 app.use('/api/access-requests', auth, accessRequestsRoutes)
 
 // Páginas legais públicas (Política de Privacidade / Exclusão de dados) — exigidas

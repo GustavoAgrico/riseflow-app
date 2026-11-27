@@ -24,6 +24,7 @@ const FORWARD_RES_HEADERS = ['content-range', 'content-type', 'preference-applie
 
 function sanitizeRow(table, row, userId) {
   const out = { ...row, user_id: userId }
+  delete out.organization_id // o banco deriva do user_id (gatilho rf_set_org)
   for (const f of PROTECTED_FIELDS[table] || []) delete out[f]
   return out
 }

@@ -22,6 +22,17 @@ describe('cliente ideal (Tier A/B/C)', () => {
     expect(noPhone.reasons.at(-1).text).toBe('falta telefone')
   })
 
+  it('WhatsApp validado sobe a nota; sem WhatsApp desce e, se exigido, limita a Tier C', () => {
+    const base = { ...rich, rating: 4.2, reviews: 20, company: null, instagram: '' }
+    const plain = scoreLead(base, profile).score
+    expect(scoreLead({ ...base, hasWhatsapp: true }, profile).score).toBe(plain + 8)
+    expect(scoreLead({ ...base, hasWhatsapp: false }, profile).score).toBe(plain - 12)
+    const strict = scoreLead({ ...base, hasWhatsapp: false }, { ...profile, needWhatsapp: true })
+    expect(strict.tier).toBe('C')
+    expect(strict.reasons.at(-1).text).toBe('falta WhatsApp')
+    expect(scoreLead(base, { ...profile, needWhatsapp: true }).tier).not.toBe('C') // ainda não conferido: não pune
+  })
+
   it('CNPJ baixado derruba a nota', () => {
     expect(scoreLead({ ...rich, company: { situacao: 'BAIXADA' } }, profile).tier).not.toBe('A')
   })

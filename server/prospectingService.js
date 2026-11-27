@@ -5,6 +5,7 @@ const { emitSalesUpdate } = require('./realtime')
 const el = require('./elevenlabs')
 const leadSearch = require('./leadSearch')
 const { getConfig } = require('./aiCallSettings')
+const quality = require('./prospecting/quality')
 
 const MAX_RESULTS = 50
 const ACTIVE_CALL = ['queued', 'dialing', 'initiated', 'in-progress', 'processing']
@@ -33,16 +34,21 @@ async function searchFreeLeads(userId, { query, location, max }) {
   const credit = await leadSearch.getCredit()
   const allowed = Math.min(max, credit.maxPlaces)
   if (allowed < 5 || credit.remainingUsd < leadSearch.APIFY_MIN_CAP_USD) throw httpError(402, 'O crédito grátis do mês acabou. A busca volta quando o crédito renovar.', { credit })
-  const [places, have] = await Promise.all([
-    leadSearch.searchGoogleMaps({ query, location, max: allowed, capUsd: credit.remainingUsd }),
-    crmPhones(userId),
-  ])
-  console.log(`[prospecting] busca "${query}" em "${location}": ${places.length} empresas (limite ${allowed})`)
+  const places = await leadSearch.searchGoogleMaps({ query, location, max: allowed, capUsd: credit.remainingUsd })
+  // Triagem: já no CRM (telefone, CNPJ raiz ou domínio), na lista de exclusão ou repetido.
+  const screen = await quality.screenFor(userId, places)
+  const after = await leadSearch.getCredit().catch(() => credit)
+  const summary = quality.summarize(screen)
+  const costUsd = Math.max(0, (credit.remainingUsd ?? 0) - (after.remainingUsd ?? credit.remainingUsd ?? 0))
+  quality.recordSearch(userId, { source: 'google_maps', query, location, requested: max, ...summary, cost_usd: costUsd })
+  console.log(`[prospecting] busca "${query}" em "${location}": ${places.length} empresas (limite ${allowed}, novas ${summary.new_count})`)
   return {
-    results: places.map(p => ({ ...p, inCrm: Boolean(p.phone && have.has(p.phone)) })),
+    results: places.map((p, i) => ({ ...p, inCrm: screen[i].status === 'no_crm', screen: screen[i] })),
     requested: max,
     allowed,
-    credit: await leadSearch.getCredit().catch(() => credit),
+    summary,
+    costUsd,
+    credit: after,
   }
 }
 
@@ -54,11 +60,14 @@ async function importLeads(userId, leadsIn, { call = false, source = 'google_map
   if (call && !el.isConfigured(cfg)) throw httpError(503, 'Ligações não configuradas. Abra Configurações → Ligações com IA.')
   const have = await crmPhones(userId)
   const allowed = el.testNumbers(cfg)
-  const out = { imported: 0, skipped: 0, queued: 0, notQueued: 0, testMode: allowed.length > 0, clientIds: [] }
+  const out = { imported: 0, skipped: 0, excluded: 0, queued: 0, notQueued: 0, testMode: allowed.length > 0, clientIds: [] }
+  // A lista de exclusão vale também aqui (tela, agentes e importação de lista).
+  const excluded = await quality.exclusionMap(userId)
 
   for (const l of leads) {
     const phone = el.toE164(l?.phone)
     const name = String(l?.name || '').trim().slice(0, 200)
+    if (quality.leadKeys({ ...l, phone: l?.phone }).some(k => excluded.has(k))) { out.excluded++; continue }
     if (!phone || !name || have.has(phone)) { out.skipped++; continue }
 
     const str = (v, n = 300) => (v == null || v === '' ? null : String(v).slice(0, n))

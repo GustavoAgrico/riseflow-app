@@ -10,6 +10,7 @@ export const DEFAULT_PROFILE = {
   needEmail: false,
   needInstagram: false,
   needSite: false,
+  needWhatsapp: false, // só conta depois de "Validar WhatsApp"
 }
 
 const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
@@ -25,6 +26,9 @@ export function scoreLead(lead, profile = DEFAULT_PROFILE) {
   const hasPhone = Boolean(lead.phone || lead.whatsapp)
   const hasEmail = Boolean(lead.email || lead.emails?.length)
   if (hasPhone) { score += 15; good(lead.whatsapp ? 'tem WhatsApp' : 'tem telefone') }
+  // hasWhatsapp: true/false depois de validar pelo número conectado; undefined = não conferido.
+  if (lead.hasWhatsapp === true) { score += 8; good('WhatsApp confirmado') }
+  else if (lead.hasWhatsapp === false) { score -= 12; bad('telefone sem WhatsApp') }
   if (hasEmail) { score += 12; good('tem e-mail comercial') }
   if (lead.instagram) { score += 10; good('tem Instagram') }
   if (lead.website) { score += 8 }
@@ -64,6 +68,7 @@ export function scoreLead(lead, profile = DEFAULT_PROFILE) {
   if (p.needEmail && !hasEmail) missing.push('e-mail')
   if (p.needInstagram && !lead.instagram) missing.push('Instagram')
   if (p.needSite && !lead.website) missing.push('site')
+  if (p.needWhatsapp && lead.hasWhatsapp === false) missing.push('WhatsApp')
   score = Math.max(0, Math.min(100, Math.round(score)))
   if (missing.length) { score = Math.min(score, 39); bad(`falta ${missing.join(', ')}`) }
 
