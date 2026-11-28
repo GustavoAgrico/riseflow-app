@@ -6115,12 +6115,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (v1Busy || !list.length) return;
     let total = 0;
     let failed = '';
+    let noAudio = false;
     try {
       for (let i = 0; i < list.length; i++) {
         const [a, b] = list[i];
         setV1Busy(list.length > 1 ? `Transcrevendo ${i + 1} de ${list.length}…` : 'Transcrevendo…');
         try {
           const r = await transcribeRange(sourceId, +a.toFixed(2), +b.toFixed(2), language);
+          if (r.noAudio) noAudio = true;
           const fresh = (r.segments || []).map((sg) => ({ ...sg, words: (sg.words || []).map((w) => ({ ...w, removed: !!w.removed })) })).filter((sg) => sg.words.length);
           setSegments((prev) => [
             ...prev.map((sg) => ({ ...sg, words: sg.words.filter((w) => !(w.start >= a - 0.05 && w.end <= b + 0.05)) })).filter((sg) => sg.words.length),
@@ -6136,6 +6138,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if (captions && total) setCap((c) => (c.captions === false ? { ...c, captions: true } : c));
       flashNote(failed && !total ? `Não deu para transcrever: ${failed}`
         : total ? `Transcrição pronta: ${total} palavras${failed ? ` (um trecho falhou: ${failed})` : ''}. ${captions ? 'A legenda já aparece na faixa C1' : 'A legenda está desligada (aba Legenda)'}; ${pausesAutoCut ? 'as pausas e respirações saem do vídeo' : 'o vídeo continua original (para tirar silêncios e erros: Edição automática)'} e dá para clicar nas palavras para cortar erros.`
+          : noAudio ? 'Esse trecho do vídeo não tem áudio — não há fala para transcrever. Coloque um clipe com som na V1 (ou um áudio) e tente de novo.'
           : 'Não achei fala para transcrever.');
     } finally {
       setV1Busy('');
@@ -6248,11 +6251,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if (regions.length) {
         let words = 0;
         let failed = '';
+        let noAudio = false;
         for (let i = 0; i < regions.length; i++) {
           const [a, b] = regions[i];
           step('transcribe', i / regions.length, regions.length > 1 ? `Transcrevendo a fala (${i + 1} de ${regions.length})` : null);
           try {
             const r = await transcribeRange(sourceId, +a.toFixed(2), +b.toFixed(2), txLang);
+            if (r.noAudio) noAudio = true;
             const fresh = (r.segments || []).map((sg) => ({ ...sg, words: (sg.words || []).map((w) => ({ ...w, removed: !!w.removed })) })).filter((sg) => sg.words.length);
             segs = [
               ...segs.map((sg) => ({ ...sg, words: sg.words.filter((w) => !(w.start >= a - 0.05 && w.end <= b + 0.05)) })).filter((sg) => sg.words.length),
@@ -6265,7 +6270,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         }
         setSegments(segs);
         if (!words && failed) throw new Error(`não deu para transcrever: ${failed}`);
-        notes.push(words ? `${words} palavras transcritas` : 'nenhuma fala encontrada');
+        notes.push(words ? `${words} palavras transcritas` : noAudio ? 'o vídeo não tem áudio, então não há fala para transcrever' : 'nenhuma fala encontrada');
       }
       const hasWords = segs.some((sg) => sg.words.length);
       if (cfg.clean && hasWords) {

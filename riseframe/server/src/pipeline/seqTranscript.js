@@ -6,11 +6,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
 import { makeLogger } from '../logger.js';
-import { runFfmpeg } from './ffmpeg.js';
+import { runFfmpeg, probeSummary } from './ffmpeg.js';
 import { clipDuration } from './sequence.js';
 import { transcribe } from './transcribe/index.js';
 
 const log = makeLogger('seq-fala');
+
+/**
+ * O vídeo tem faixa de áudio? (montagem só com clipes mudos, timeline em branco, gravação de
+ * tela sem som…) Sem áudio, recortar a fala faz o FFmpeg falhar ("Output file does not contain
+ * any stream"): quem chama pula a transcrição. Se a sondagem falhar, tenta mesmo assim.
+ */
+async function hasAudioTrack(input, meta) {
+  if (meta && typeof meta.hasAudio === 'boolean') return meta.hasAudio;
+  try { return (await probeSummary(input)).hasAudio !== false; } catch { return true; }
+}
 
 /** Frases com as palavras dentro de [a, b] (tempo da origem), deslocadas por `shift`. Puro. */
 export function sliceSegments(segments, a, b, shift) {
@@ -94,7 +104,11 @@ export async function sequenceTranscript(job, input, work, meta, onProgress = ()
     for (const p of todo) saveCache(p.c.mediaId, p.cin, p.cin + p.len, sliceSegments(full.segments, p.a, p.a + p.len, p.cin - p.a));
     return { ...full, reused: 0, transcribed: todo.length };
   }
-  // só os clipes novos: recorta o áudio de cada um e transcreve
+  // só os clipes novos: recorta o áudio de cada um e transcreve (montagem sem áudio: não há fala)
+  if (!(await hasAudioTrack(input, meta))) {
+    log.warn('a montagem não tem áudio: os clipes novos entram sem transcrever');
+    return done(reused ? 'reaproveitada' : 'none', { noAudio: true, untranscribed: todo.map((p) => [p.a, p.a + p.len]) });
+  }
   let provider = 'reaproveitada';
   for (let i = 0; i < todo.length; i++) {
     const p = todo[i];
@@ -112,9 +126,16 @@ export async function sequenceTranscript(job, input, work, meta, onProgress = ()
   return done(provider, { transcribed: todo.length });
 }
 
-/** Transcreve só [a, b] do vídeo `input` (tempo do vídeo). → frases já no tempo do vídeo. */
+/**
+ * Transcreve só [a, b] do vídeo `input` (tempo do vídeo). → frases já no tempo do vídeo.
+ * Vídeo sem faixa de áudio: { segments: [], noAudio: true } (sem erro).
+ */
 export async function transcribeRange(input, work, a, b, ctx = {}) {
   const len = Math.max(0.3, b - a);
+  if (!(await hasAudioTrack(input, ctx.meta))) {
+    log.warn('trecho sem áudio: nada para transcrever');
+    return { provider: 'none', segments: [], noAudio: true };
+  }
   const dir = path.join(work, `trecho_${Date.now()}`);
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, 'trecho.m4a');
