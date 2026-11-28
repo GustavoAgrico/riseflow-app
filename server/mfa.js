@@ -81,11 +81,13 @@ async function evaluate(user, token) {
   return { ...policy, satisfied, aal: claims.aal || 'aal1', sessionId: claims.session_id || null }
 }
 
+// null = tabela ausente (migração não rodada). Sem "head": pedidos HEAD não trazem o
+// erro PGRST205 e a tabela ausente parecia existir com 0 códigos.
 async function recoveryLeft(userId) {
-  const { count, error } = await supabase.from('mfa_recovery_codes').select('id', { count: 'exact', head: true })
-    .eq('user_id', userId).is('used_at', null)
+  const { data, error } = await supabase.from('mfa_recovery_codes').select('id')
+    .eq('user_id', userId).is('used_at', null).limit(50)
   if (error) { if (missing(error)) return null; throw error }
-  return count || 0
+  return (data || []).length
 }
 
 async function generateRecovery(userId) {

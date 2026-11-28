@@ -123,9 +123,10 @@ export function TwoFactorSettings({ disabled = false }) {
             </div>
           )}
 
-          {st.totp && !st.recoveryAvailable && (
+          {!st.recoveryAvailable && (
             <p style={{ margin: '10px 0 0', fontSize: 12, color: '#EAB308', display: 'flex', gap: 6 }}>
-              <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} /> Códigos de recuperação indisponíveis até rodar a migração supabase/mfa.sql. Sem eles, perder o celular exige suporte para recuperar a conta.
+              <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+              {st.totp ? 'Códigos de recuperação indisponíveis' : 'Antes de ativar: os códigos de recuperação ainda não estão disponíveis'} (migração supabase/mfa.sql não encontrada no banco). Sem eles, perder o celular exige suporte para recuperar a conta.
             </p>
           )}
 

@@ -19,6 +19,7 @@ function fakeSupabase() {
       eq(k, v) { filters.push(r => r[k] === v); return api },
       is(k, v) { filters.push(r => (r[k] ?? null) === v); return api },
       gt(k, v) { filters.push(r => r[k] > v); return api },
+      limit() { return api },
       insert(p) { op = 'insert'; payload = p; return api },
       update(p) { op = 'update'; payload = p; return api },
       upsert(p, o) { op = 'upsert'; payload = p; opts = o; return api },
