@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { native } from './services/nativeService'
 import { AppProvider, useApp } from '@context/AppContext'
 import { AuthProvider, useAuth } from '@context/AuthContext'
+import { MfaGate } from '@components/Auth/MfaGate'
 import { NotificationToast } from '@components/NotificationToast'
 import { InstallPrompt } from '@components/InstallPrompt'
 import { PrivateRoute } from '@components/PrivateRoute'
@@ -158,6 +159,7 @@ function App() {
           <GoalCelebration />
           <InstallPrompt />
           <BrowserRouter>
+          <MfaGate>
             <PageTransition />
             <GlobalCommands />
             {/* Cada tela aparece em fade ao trocar de rota (src/styles/motion.css). */}
@@ -216,6 +218,7 @@ function App() {
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
             </div>
+          </MfaGate>
           </BrowserRouter>
         </AppProvider>
       </AuthProvider>

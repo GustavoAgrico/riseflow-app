@@ -32,6 +32,8 @@ const logout = async () => {
 
 /* ─── Interceptors ───────────────────────────────────────────────────── */
 // Request: injeta o Bearer token em toda requisição.
+// Sem a 2ª etapa (2FA) o token não sai: a requisição falha com code MFA_REQUIRED
+// e a tela de verificação (MfaGate) aparece — sem logout.
 api.interceptors.request.use(async (config) => {
   const token = await getProxyToken()
   config.headers = config.headers ?? {}
@@ -44,13 +46,15 @@ api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const { config, response } = error
+    if (error?.code === 'MFA_REQUIRED') return Promise.reject(error)
     if (response?.status === 401 && config && !config._retry) {
       config._retry = true
       try {
         const token = await getProxyToken({ force: true })
         config.headers.Authorization = `Bearer ${token}`
         return api(config)
-      } catch {
+      } catch (e) {
+        if (e?.code === 'MFA_REQUIRED') return Promise.reject(e)
         // cai para o logout abaixo
       }
     }
