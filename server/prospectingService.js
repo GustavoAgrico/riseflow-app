@@ -72,7 +72,7 @@ async function importLeads(userId, leadsIn, { call = false, source = 'google_map
 
     const str = (v, n = 300) => (v == null || v === '' ? null : String(v).slice(0, n))
     const tier = ['A', 'B', 'C'].includes(l.tier) ? l.tier : null
-    const tags = [source === 'lista' ? 'Prospect Lista' : 'Prospect Maps', ...(tier ? [`Tier ${tier}`] : [])]
+    const tags = [source === 'lista' ? 'Prospect Lista' : source === 'cnpj' ? 'Prospect CNPJ' : 'Prospect Maps', ...(tier ? [`Tier ${tier}`] : [])]
     const email = str(l.email, 120) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(l.email) ? String(l.email).toLowerCase() : null
     const client = await insertClient(
       { user_id: userId, name, company: name, phone: phone.slice(1), stage: 'lead', status: 'active', tags, value: 0, ...(email ? { email } : {}) },
@@ -84,6 +84,7 @@ async function importLeads(userId, leadsIn, { call = false, source = 'google_map
           maps_url: str(l.mapsUrl, 500), place_id: str(l.placeId, 200),
           instagram: str(l.instagram), facebook: str(l.facebook), linkedin: str(l.linkedin), whatsapp: str(l.whatsapp, 20),
           cnpj: str(l.cnpj, 20), razao_social: str(l.company?.razao_social, 200), porte: str(l.company?.porte, 60),
+          abertura: str(l.company?.abertura, 10), capital: Number.isFinite(l.company?.capital) ? l.company.capital : null, phone2: str(l.phone2, 20),
           atividade: str(l.company?.atividade, 200), situacao: str(l.company?.situacao, 40),
           socios: Array.isArray(l.company?.socios) ? l.company.socios.slice(0, 5).map(s => ({ nome: str(s?.nome, 120), cargo: str(s?.cargo, 80) })) : null,
           icp_score: Number.isFinite(l.icpScore) ? l.icpScore : null, tier, icp_reasons: Array.isArray(l.icpReasons) ? l.icpReasons.slice(0, 6).map(r => str(r, 80)) : null,

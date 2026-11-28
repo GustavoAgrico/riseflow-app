@@ -11,6 +11,7 @@ import api from '@services/api'
 import { useAuth } from '@context/AuthContext'
 import { DEFAULT_PROFILE, scoreLead, TIER_COLORS } from '@lib/icp'
 import { parseLeadList } from '@lib/leadList'
+import { CnpjSearch } from '@components/Prospecting/CnpjSearch'
 
 // Aquisição de leads:
 //   - busca de empresas por segmento e cidade no Google Maps (servidor → Apify, só crédito grátis);
@@ -29,6 +30,7 @@ const errMsg = e => e?.response?.data?.error || (e?.code === 'ECONNABORTED' ? 'A
 const usd = v => 'US$ ' + v.toFixed(2).replace('.', ',')
 const when = t => new Date(t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 const day = t => new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+const fmtNum = n => Number(n || 0).toLocaleString('pt-BR')
 // Situação do lead em relação à conta (servidor): novo | no_crm | excluido | repetido.
 const SCREEN = {
   no_crm: ['Já no CRM', '#10B981'],
@@ -73,7 +75,7 @@ const StatusChip = ({ p }) => {
 
 export const Prospecting = () => {
   const { isDemoMode } = useAuth()
-  const [source, setSource] = useState('maps') // maps | lista
+  const [source, setSource] = useState('cnpj') // cnpj | maps | lista
   const [query, setQuery] = useState('')
   const [location, setLocation] = useState('São Paulo, Brasil')
   const [max, setMax] = useState(20)
@@ -103,6 +105,8 @@ export const Prospecting = () => {
   const [logTab, setLogTab] = useState('searches')
   const [searchLog, setSearchLog] = useState(null)
   const [exclusions, setExclusions] = useState(null)
+  const [cnpjQuery, setCnpjQuery] = useState(null) // { params, meta, nextOffset, total, capped }
+  const [loadingMore, setLoadingMore] = useState(false)
   const fileRef = useRef(null)
   const profileLoaded = useRef(false)
 
@@ -152,7 +156,7 @@ export const Prospecting = () => {
       hasWhatsapp: wa[p.key] ?? undefined,
       email: p.email || e.emails?.[0] || '',
       instagram: p.instagram || e.instagram || '', facebook: e.facebook || '', linkedin: e.linkedin || '',
-      whatsapp: p.whatsapp || e.whatsapp || '', cnpj: p.cnpj || e.cnpj || '', company: e.company || null,
+      whatsapp: p.whatsapp || e.whatsapp || '', cnpj: p.cnpj || e.cnpj || '', company: e.company ? { ...(p.company || {}), ...e.company } : p.company || null,
       enrichedAt: enriched[p.key] ? true : false, enrichError: e.error || null,
     }
     const icp = scoreLead(lead, profile)
@@ -199,6 +203,31 @@ export const Prospecting = () => {
       if (e2?.response?.data?.credit) setCredit(e2.response.data.credit)
     }
     setSearching(false)
+  }
+
+  // Base do CNPJ (Receita, na VM): grátis, paginada. append = "Carregar mais".
+  const searchCnpj = async (params, meta, append = false) => {
+    if (isDemoMode) { setNotice('Modo demo: a busca roda na sua conta.'); return }
+    const offset = append ? cnpjQuery?.nextOffset || 0 : 0
+    if (append) setLoadingMore(true); else { setSearching(true); setResults(null) }
+    setErr(''); if (!append) setNotice('')
+    try {
+      const { data } = await api.post('/prospecting/cnpj/search', { ...params, offset, label: meta.label, locationLabel: meta.locationLabel }, { timeout: 60000 })
+      const list = (data.results || []).map(l => ({ ...l, sourceLabel: 'cnpj' }))
+      if (append) {
+        setResults(prev => { const have = new Set((prev || []).map(x => x.key)); return [...(prev || []), ...list.filter(x => !have.has(x.key))] })
+        setSel(s => new Set([...s, ...list.filter(selectable).map(x => x.key)]))
+      } else {
+        resetResults(list, 'cnpj')
+        const sm = data.summary
+        setNotice(data.total
+          ? `${fmtNum(data.total)}${data.totalCapped ? '+' : ''} empresa${data.total !== 1 ? 's' : ''} no filtro · mostrando ${list.length}${sm?.in_crm ? ` · ${sm.in_crm} já no CRM` : ''}${sm?.excluded ? ` · ${sm.excluded} na lista de exclusão` : ''}.`
+          : 'Nenhuma empresa ativa com esses filtros. Tente outra cidade, outro porte ou "Com telefone".')
+        if (showLog && logTab === 'searches') loadLog('searches')
+      }
+      setCnpjQuery({ params, meta, nextOffset: offset + list.length, total: data.total, capped: data.totalCapped })
+    } catch (e2) { setErr(errMsg(e2)) }
+    if (append) setLoadingMore(false); else setSearching(false)
   }
 
   const loadList = (text) => {
@@ -315,7 +344,8 @@ export const Prospecting = () => {
     try {
       const payload = chosen.map(p => ({ ...p, phone: p.phone || p.whatsapp, icpReasons: p.icpReasons.map(r => r.text) }))
       const record = resultSource === 'lista' ? { name: listName, found: rows.length } : undefined
-      const { data } = await api.post('/prospecting/import', { leads: payload, call, source: resultSource === 'lista' ? 'lista' : 'google_maps', record }, { timeout: 60000 })
+      const src = resultSource === 'lista' ? 'lista' : resultSource === 'cnpj' ? 'cnpj' : 'google_maps'
+      const { data } = await api.post('/prospecting/import', { leads: payload, call, source: src, record }, { timeout: 60000 })
       const parts = [`${data.imported} importado${data.imported !== 1 ? 's' : ''} para o CRM`]
       if (data.excluded) parts.push(`${data.excluded} na lista de exclusão`)
       if (data.skipped) parts.push(`${data.skipped} já existia${data.skipped !== 1 ? 'm' : ''} ou sem telefone`)
@@ -361,11 +391,13 @@ export const Prospecting = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
           <h3 className="rf-section-title">Encontrar leads</h3>
           <span style={{ marginLeft: 'auto' }}>
-            <Segmented label="De onde vêm os leads" size="sm" accent="#FF6B35" options={[['maps', 'Google Maps'], ['lista', 'Importar lista']]} value={source} onChange={setSource} />
+            <Segmented label="De onde vêm os leads" size="sm" accent="#FF6B35" options={[['cnpj', 'Base CNPJ'], ['maps', 'Google Maps'], ['lista', 'Importar lista']]} value={source} onChange={setSource} />
           </span>
         </div>
 
-        {source === 'maps' ? (
+        {source === 'cnpj' ? (
+          <CnpjSearch onSearch={(params, meta) => searchCnpj(params, meta)} searching={searching} disabled={isDemoMode} />
+        ) : source === 'maps' ? (
           <form onSubmit={search}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 12, alignItems: 'end' }}>
               <div>
@@ -492,7 +524,7 @@ export const Prospecting = () => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-            <h3 className="rf-section-title">{resultSource === 'lista' ? 'Leads da lista' : 'Empresas encontradas'}</h3>
+            <h3 className="rf-section-title">{resultSource === 'lista' ? 'Leads da lista' : resultSource === 'cnpj' ? 'Empresas da base CNPJ' : 'Empresas encontradas'}</h3>
             <Segmented label="Filtrar por Tier" size="sm" accent="#22C55E" options={[['all', 'Todos'], ['A', `Tier A`], ['B', 'Tier B'], ['C', 'Tier C']]} value={tierFilter} onChange={setTierFilter} />
             <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button type="button" onClick={enrichAll} disabled={!!enriching || !canEnrich}
@@ -559,6 +591,11 @@ export const Prospecting = () => {
                               {p.mapsUrl && <a href={p.mapsUrl} target="_blank" rel="noreferrer" title="Abrir no Google Maps" style={{ color: 'var(--ink-4)', display: 'flex' }}><ExternalLink size={13} /></a>}
                             </span>
                             <div style={{ fontSize: 11.5, color: 'var(--ink-4)' }}>{p.category || p.company?.atividade || '—'}</div>
+                            {p.sourceLabel === 'cnpj' && p.company && (
+                              <div style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>
+                                {[p.company.porte, p.company.abertura ? `desde ${p.company.abertura.slice(0, 4)}` : null, p.company.matriz ? null : 'filial', p.company.capital ? `capital R$ ${fmtNum(Math.round(p.company.capital))}` : null].filter(Boolean).join(' · ')}
+                              </div>
+                            )}
                             {p.company?.socios?.length > 0 && <div style={{ fontSize: 11.5, color: '#A78BFA', marginTop: 2 }}>Dono: {p.company.socios[0].nome}{p.company.socios.length > 1 ? ` +${p.company.socios.length - 1}` : ''}</div>}
                             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
                               {plus.map(r => <span key={r.text} style={{ fontSize: 10.5, color: '#22C55E' }}>+ {r.text}</span>)}
@@ -599,6 +636,16 @@ export const Prospecting = () => {
                   </tbody>
                 </table>
               </div>
+
+              {resultSource === 'cnpj' && cnpjQuery && cnpjQuery.nextOffset < cnpjQuery.total && (
+                <div style={{ textAlign: 'center', marginTop: 12 }}>
+                  <button type="button" onClick={() => searchCnpj(cnpjQuery.params, cnpjQuery.meta, true)} disabled={loadingMore}
+                    style={{ ...btn('transparent', 'var(--ink-1)'), border: '1px solid var(--border)' }}>
+                    {loadingMore ? <Loader2 size={14} className="animate-spin" /> : <ChevronDown size={14} />}
+                    Carregar mais ({fmtNum(cnpjQuery.nextOffset)} de {fmtNum(cnpjQuery.total)}{cnpjQuery.capped ? '+' : ''})
+                  </button>
+                </div>
+              )}
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
                 <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>{chosen.length} selecionado{chosen.length !== 1 ? 's' : ''}</span>
@@ -666,7 +713,7 @@ export const Prospecting = () => {
                   <div style={{ display: 'grid', gap: 6 }}>
                     {searchLog.map(s => (
                       <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 12px', borderRadius: 10, background: 'var(--surface-1)', border: '1px solid var(--border)', fontSize: 13 }}>
-                        <span style={chip(s.source === 'lista' ? '#A78BFA' : '#FF6B35')}>{s.source === 'lista' ? 'Lista' : 'Maps'}</span>
+                        <span style={chip(s.source === 'lista' ? '#A78BFA' : s.source === 'cnpj' ? '#38BDF8' : '#FF6B35')}>{s.source === 'lista' ? 'Lista' : s.source === 'cnpj' ? 'CNPJ' : 'Maps'}</span>
                         <b style={{ color: 'var(--ink-1)' }}>{s.query || '—'}</b>
                         {s.location && <span style={{ color: 'var(--ink-3)' }}>em {s.location}</span>}
                         <span style={{ marginLeft: 'auto', color: 'var(--ink-3)', fontVariantNumeric: 'tabular-nums' }}>

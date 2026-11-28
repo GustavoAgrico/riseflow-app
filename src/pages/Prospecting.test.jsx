@@ -91,3 +91,52 @@ describe('Prospecção — qualidade dos leads', () => {
     expect(screen.getByText('0 selecionados')).toBeInTheDocument()
   })
 })
+
+describe('Prospecção — base do CNPJ', () => {
+  const lead = (n, extra = {}) => ({
+    key: `cnpj-${n}`, name: `Clínica ${n}`, phone: `+55119876543${n}`, phoneDisplay: `(11) 98765-43${n}`, mobile: true, email: '', city: 'Sao Paulo', state: 'SP',
+    category: 'Atividade odontológica', cnpj: `1122233300018${n}`, screen: { status: 'novo' },
+    company: { cnpj: `1122233300018${n}`, porte: 'Microempresa', situacao: 'ATIVA', abertura: '2019-05-01', matriz: true, capital: 20000 }, ...extra,
+  })
+
+  it('escolhe o setor, busca, mostra porte/idade e carrega mais', async () => {
+    routes['GET /prospecting/cnpj/status'] = { ready: true, competencia: '2026-11', estabelecimentos: 25000000 }
+    routes['GET /prospecting/cnpj/cnaes'] = [{ code: 8630504, name: 'Atividade odontológica', total: 120000 }]
+    let page = 0
+    routes['POST /prospecting/cnpj/search'] = (b) => {
+      page++
+      return b.offset ? { results: [lead(3)], total: 3, offset: 2, summary: { found: 1, new_count: 1, in_crm: 0, excluded: 0 } }
+        : { results: [lead(1), lead(2, { screen: { status: 'no_crm' }, inCrm: true })], total: 3, summary: { found: 2, new_count: 1, in_crm: 1, excluded: 0 } }
+    }
+    renderPage()
+    expect(await screen.findByText(/competência/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Buscar na base/ })).toBeDisabled() // precisa de setor ou cidade
+
+    fireEvent.change(screen.getByLabelText('Setor (CNAE)'), { target: { value: 'odonto' } })
+    fireEvent.mouseDown(await screen.findByRole('option', { name: /Atividade odontológica/ }))
+    expect(screen.getByRole('button', { name: 'Remover setor Atividade odontológica' })).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Estado'), { target: { value: 'SP' } })
+    fireEvent.click(screen.getByRole('button', { name: /Buscar na base/ }))
+    expect(await screen.findByText('Empresas da base CNPJ')).toBeInTheDocument()
+    const body = calls.find(c => c.url === '/prospecting/cnpj/search').body
+    expect(body).toMatchObject({ cnaes: [8630504], uf: 'SP', phone: 'mobile', mei: 'exclude', matriz: true, offset: 0, label: 'Atividade odontológica', locationLabel: 'SP' })
+    expect(screen.getByText(/3 empresas no filtro · mostrando 2 · 1 já no CRM/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Microempresa · desde 2019/).length).toBe(2)
+    expect(screen.getByText('1 selecionado')).toBeInTheDocument() // a que já está no CRM fica fora
+
+    fireEvent.click(screen.getByRole('button', { name: /Carregar mais \(2 de 3\)/ }))
+    expect(await screen.findByText('Clínica 3')).toBeInTheDocument()
+    expect(calls.filter(c => c.url === '/prospecting/cnpj/search').at(-1).body.offset).toBe(2)
+    expect(screen.getByText('2 selecionados')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Carregar mais/ })).toBeNull()
+    expect(page).toBe(2)
+  })
+
+  it('base ainda importando: avisa e não deixa buscar', async () => {
+    routes['GET /prospecting/cnpj/status'] = { ready: false }
+    renderPage()
+    expect(await screen.findByText(/ainda está sendo importada/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Setor (CNAE)')).toBeDisabled()
+  })
+})

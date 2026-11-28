@@ -11,6 +11,8 @@
 //   GET  /api/prospecting/exclusions | POST /exclusions { leads, reason } | DELETE /exclusions/:id
 //   GET|PUT /api/prospecting/profile                               → perfil de cliente ideal da conta
 //   GET  /api/prospecting/searches                                 → histórico de buscas
+//   GET  /api/prospecting/cnpj/status | cnaes?q= | cidades?q=&uf=  → base local da Receita (Fase 2)
+//   POST /api/prospecting/cnpj/search       { cnaes, uf, cidade, portes, mei, phone, … }
 // As regras de busca e importação ficam em server/prospectingService.js (também usadas pelos agentes).
 const { Router } = require('express')
 const { supabase, isConfigured } = require('../supabaseClient')
@@ -19,6 +21,7 @@ const prospecting = require('../prospectingService')
 const enrich = require('../prospecting/enrich')
 const quality = require('../prospecting/quality')
 const { baileys } = require('../baileysClient')
+const cnpj = require('../cnpj')
 
 const router = Router()
 
@@ -87,7 +90,7 @@ router.post('/enrich', guard, async (req, res) => {
 
 router.post('/import', guard, async (req, res) => {
   try {
-    const source = req.body?.source === 'lista' ? 'lista' : 'google_maps'
+    const source = ['lista', 'cnpj'].includes(req.body?.source) ? req.body.source : 'google_maps'
     const { clientIds, ...out } = await prospecting.importLeads(req.user?.sub, req.body?.leads, { call: Boolean(req.body?.call), source })
     if (source === 'lista' && req.body?.record) {
       quality.recordSearch(req.user?.sub, { source: 'lista', query: req.body.record.name, found: req.body.record.found, new_count: out.imported, excluded: out.excluded })
@@ -180,6 +183,38 @@ router.get('/profile', guard, async (req, res) => {
 
 router.put('/profile', guard, async (req, res) => {
   try { res.json({ profile: await quality.saveProfile(req.user.sub, req.body?.profile || {}) }) } catch (e) { fail(res, e, 'Erro ao salvar o perfil.') }
+})
+
+// ── Base do CNPJ (Receita Federal, importada na VM) ────────────────────────
+const MAX_CNPJ_SEARCHES_PER_HOUR = 120
+const recentCnpj = new Map()
+router.get('/cnpj/status', guard, async (req, res) => {
+  try { res.json(await cnpj.status()) } catch (e) { res.json({ ready: false, error: e.message }) }
+})
+router.get('/cnpj/cnaes', guard, async (req, res) => {
+  try { res.json(await cnpj.cnaes(String(req.query.q || '').slice(0, 80))) } catch (e) { fail(res, e, 'Erro ao buscar setores.') }
+})
+router.get('/cnpj/cidades', guard, async (req, res) => {
+  try { res.json(await cnpj.cidades(String(req.query.q || '').slice(0, 80), String(req.query.uf || '').toUpperCase().slice(0, 2))) } catch (e) { fail(res, e, 'Erro ao buscar cidades.') }
+})
+router.post('/cnpj/search', guard, async (req, res) => {
+  const userId = req.user.sub
+  const now = Date.now()
+  const used = (recentCnpj.get(userId) || []).filter(t => now - t < 3600_000)
+  if (used.length >= MAX_CNPJ_SEARCHES_PER_HOUR) return res.status(429).json({ error: `Limite de ${MAX_CNPJ_SEARCHES_PER_HOUR} buscas por hora na base de CNPJ.` })
+  recentCnpj.set(userId, [...used, now])
+  try {
+    const out = await cnpj.search(req.body || {})
+    if (out?.error) return res.status(out.notReady ? 503 : 400).json({ error: out.error })
+    const screen = await quality.screenFor(userId, out.results)
+    const results = out.results.map((l, i) => ({ ...l, inCrm: screen[i].status === 'no_crm', screen: screen[i] }))
+    const summary = quality.summarize(screen)
+    if (!out.filters.offset) {
+      const label = String(req.body?.label || '').slice(0, 200)
+      quality.recordSearch(userId, { source: 'cnpj', query: label || `CNAE ${out.filters.cnaes.join(', ')}`, location: String(req.body?.locationLabel || out.filters.uf || 'Brasil').slice(0, 200), requested: out.filters.limit, ...summary, found: out.total })
+    }
+    res.json({ results, total: out.total, totalCapped: out.totalCapped, summary, offset: out.filters.offset, limit: out.filters.limit })
+  } catch (e) { fail(res, e, 'Erro na busca da base de CNPJ.') }
 })
 
 router.get('/searches', guard, async (req, res) => {
