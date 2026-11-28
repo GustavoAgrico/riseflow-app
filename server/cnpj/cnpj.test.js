@@ -34,6 +34,11 @@ describe('layout da Receita', () => {
 
   it('telefone: DDD com zero, número repetido ou curto é descartado', () => {
     expect(L.phoneOf('011', '33334444')).toBe('1133334444')
+    // celular no formato antigo (8 dígitos) ganha o 9
+    expect(L.phoneOf('43', '99123456')).toBe('43999123456')
+    expect(L.phoneOf('43', '88123456')).toBe('43988123456')
+    expect(L.isMobile(L.phoneOf('43', '99123456'))).toBe(true)
+    expect(L.phoneOf('43', '512345678')).toBeNull() // 9 dígitos sem começar com 9 não existe
     expect(L.phoneOf('11', '00000000')).toBeNull()
     expect(L.phoneOf('11', '1234')).toBeNull()
     expect(L.isMobile('11987654321')).toBe(true)
@@ -96,7 +101,8 @@ describe('importação + busca (ponta a ponta)', () => {
 
   it('busca por setor e estado: celular primeiro, porte e Simples', () => {
     const r = S.search(db, { cnaes: [8630504], uf: 'SP' })
-    expect(r.total).toBe(2)
+    expect(r.results).toHaveLength(2)
+    expect(r).toMatchObject({ baseTotal: 2, hasMore: false })
     const matriz = r.results.find(x => x.company.matriz)
     expect(matriz).toMatchObject({
       name: 'Sorriso Odontologia', phone: '+5511987654321', phoneDisplay: '(11) 98765-4321', phone2: '+551133334444', mobile: true,
@@ -107,13 +113,13 @@ describe('importação + busca (ponta a ponta)', () => {
   })
 
   it('filtros: só matriz, só celular, MEI, sem nome fantasia usa a razão social', () => {
-    expect(S.search(db, { cnaes: [8630504], uf: 'SP', matriz: true }).total).toBe(1)
+    expect(S.search(db, { cnaes: [8630504], uf: 'SP', matriz: true }).results).toHaveLength(1)
     expect(S.search(db, { cnaes: [8630504], uf: 'SP', phone: 'mobile' }).results.map(x => x.name)).toEqual(['Sorriso Odontologia'])
     const mei = S.search(db, { cnaes: [8630504], mei: 'only' })
     expect(mei.results).toHaveLength(1)
     expect(mei.results[0]).toMatchObject({ name: 'Ana Paula Dentista', state: 'RJ', company: { porte: 'MEI' } })
-    expect(S.search(db, { cnaes: [8630504], mei: 'exclude' }).total).toBe(2)
-    expect(S.search(db, { cnaes: [8630504], portes: [3] }).total).toBe(2)
+    expect(S.search(db, { cnaes: [8630504], mei: 'exclude' }).results).toHaveLength(2)
+    expect(S.search(db, { cnaes: [8630504], portes: [3] }).results).toHaveLength(2)
     expect(S.search(db, { cnaes: [8630504], minYears: 8 }).results.map(x => x.name)).toEqual(['Sorriso Odontologia']) // aberta em 2015
     expect(S.search(db, { cnaes: [8630504], maxYears: 4 }).results.map(x => x.name)).toEqual(['Ana Paula Dentista'])  // aberta em jan/2023 (< 4 anos)
   })
@@ -121,9 +127,21 @@ describe('importação + busca (ponta a ponta)', () => {
   it('cidade: por código, com ou sem setor; sem setor e sem cidade é recusado', () => {
     const [sp] = S.findCidades(db, 'são pau', 'SP')
     expect(sp).toMatchObject({ uf: 'SP', name: 'Sao Paulo', total: 3 })
-    expect(S.search(db, { uf: 'SP', cidade: sp.code }).total).toBe(3)
-    expect(S.search(db, { uf: 'SP', cidade: sp.code, phone: 'has' }).total).toBe(2)
+    expect(S.search(db, { uf: 'SP', cidade: sp.code }).results).toHaveLength(3)
+    const withPhone = S.search(db, { uf: 'SP', cidade: sp.code, phone: 'has' })
+    expect(withPhone.results).toHaveLength(2)
+    expect(withPhone.baseTotal).toBe(3) // total da cidade não depende do filtro de contato
     expect(S.search(db, { uf: 'SP' }).error).toMatch(/setor/)
+  })
+
+  it('paginação: limit+1 diz se há mais, offset continua de onde parou', () => {
+    const p1 = S.search(db, { cnaes: [8630504], limit: 2 })
+    expect(p1.results).toHaveLength(2)
+    expect(p1.hasMore).toBe(true)
+    const p2 = S.search(db, { cnaes: [8630504], limit: 2, offset: 2 })
+    expect(p2.results).toHaveLength(1)
+    expect(p2.hasMore).toBe(false)
+    expect(new Set([...p1.results, ...p2.results].map(x => x.cnpj)).size).toBe(3)
   })
 
   it('setores por palavra (sem acento) ou pelo código', () => {

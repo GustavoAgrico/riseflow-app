@@ -105,8 +105,8 @@ describe('Prospecção — base do CNPJ', () => {
     let page = 0
     routes['POST /prospecting/cnpj/search'] = (b) => {
       page++
-      return b.offset ? { results: [lead(3)], total: 3, offset: 2, summary: { found: 1, new_count: 1, in_crm: 0, excluded: 0 } }
-        : { results: [lead(1), lead(2, { screen: { status: 'no_crm' }, inCrm: true })], total: 3, summary: { found: 2, new_count: 1, in_crm: 1, excluded: 0 } }
+      return b.offset ? { results: [lead(3)], hasMore: false, baseTotal: 610, offset: 2, summary: { found: 1, new_count: 1, in_crm: 0, excluded: 0 } }
+        : { results: [lead(1), lead(2, { screen: { status: 'no_crm' }, inCrm: true })], hasMore: true, baseTotal: 610, summary: { found: 2, new_count: 1, in_crm: 1, excluded: 0 } }
     }
     renderPage()
     expect(await screen.findByText(/competência/)).toBeInTheDocument()
@@ -121,11 +121,11 @@ describe('Prospecção — base do CNPJ', () => {
     expect(await screen.findByText('Empresas da base CNPJ')).toBeInTheDocument()
     const body = calls.find(c => c.url === '/prospecting/cnpj/search').body
     expect(body).toMatchObject({ cnaes: [8630504], uf: 'SP', phone: 'mobile', mei: 'exclude', matriz: true, offset: 0, label: 'Atividade odontológica', locationLabel: 'SP' })
-    expect(screen.getByText(/3 empresas no filtro · mostrando 2 · 1 já no CRM/)).toBeInTheDocument()
+    expect(screen.getByText(/610 empresas ativas no setor e região · mostrando 2 \(tem mais\) · 1 já no CRM/)).toBeInTheDocument()
     expect(screen.getAllByText(/Microempresa · desde 2019/).length).toBe(2)
     expect(screen.getByText('1 selecionado')).toBeInTheDocument() // a que já está no CRM fica fora
 
-    fireEvent.click(screen.getByRole('button', { name: /Carregar mais \(2 de 3\)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Carregar mais \(mostrando 2\)/ }))
     expect(await screen.findByText('Clínica 3')).toBeInTheDocument()
     expect(calls.filter(c => c.url === '/prospecting/cnpj/search').at(-1).body.offset).toBe(2)
     expect(screen.getByText('2 selecionados')).toBeInTheDocument()

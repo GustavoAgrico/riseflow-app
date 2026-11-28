@@ -57,16 +57,33 @@ function buildQuery(params) {
   if (f.capitalMin > 0) { where.push('p.capital >= ?'); args.push(f.capitalMin) }
   const join = `${needCompany ? 'join' : 'left join'} empresas p on p.basico = e.basico`
   const w = where.length ? `where ${where.join(' and ')}` : ''
-  const order = f.order === 'antigas' ? 'e.abertura asc' : 'e.abertura desc'
+  // rowid desempata sem atrapalhar os índices (cnae, uf, municipio, abertura) já ordenados.
+  const order = f.order === 'antigas' ? 'e.abertura asc, e.rowid asc' : 'e.abertura desc, e.rowid desc'
   const sql = `select e.cnpj, e.matriz, e.fantasia, e.abertura, e.cnae, e.uf, e.municipio, e.bairro, e.cep, e.endereco,
       e.tel1, e.tel2, e.email, e.celular, p.razao, p.capital, p.porte, p.simples, p.mei, c.name as cnae_name, m.name as cidade
     from estab e ${join}
     left join cnaes c on c.code = e.cnae
     left join cidades m on m.uf = e.uf and m.code = e.municipio
-    ${w} order by ${order}, e.cnpj limit ? offset ?`
-  const countSql = `select count(*) as n from (select 1 from estab e ${join} ${w} limit ${COUNT_CAP + 1})`
-  return { sql, args: [...args, f.limit, f.offset], countArgs: args, countSql, filters: f }
+    ${w} order by ${order} limit ? offset ?`
+  // Total "no setor/região/idade": só colunas do índice → barato. Os demais filtros
+  // (celular, e-mail, porte…) não entram na conta; quem diz se há mais é limit+1.
+  const baseWhere = []
+  const baseArgs = []
+  if (f.cnaes.length) { baseWhere.push(`cnae in (${f.cnaes.map(() => '?').join(',')})`); baseArgs.push(...f.cnaes) }
+  if (f.uf) { baseWhere.push('uf = ?'); baseArgs.push(f.uf) }
+  if (f.cidade) { baseWhere.push('municipio = ?'); baseArgs.push(f.cidade) }
+  if (f.minYears) { baseWhere.push('abertura <= ?'); baseArgs.push(ymd(f.minYears)) }
+  if (f.maxYears) { baseWhere.push('abertura >= ?'); baseArgs.push(ymd(f.maxYears)) }
+  const countSql = `select count(*) as n from (select 1 from estab where ${baseWhere.join(' and ')} limit ${COUNT_CAP + 1})`
+  return { sql, args: [...args, f.limit + 1, f.offset], countArgs: baseArgs, countSql, filters: f }
 }
+
+// Índices que a busca usa (criados pelo importer.js).
+const INDEXES = [
+  'create index if not exists estab_cnae_loc on estab (cnae, uf, municipio, abertura)',
+  'create index if not exists estab_cnae_age on estab (cnae, abertura)',
+  'create index if not exists estab_loc_age on estab (uf, municipio, abertura)',
+]
 
 const fmtPhone = (p) => (p ? (p.length === 11 ? `(${p.slice(0, 2)}) ${p.slice(2, 7)}-${p.slice(7)}` : `(${p.slice(0, 2)}) ${p.slice(2, 6)}-${p.slice(6)}`) : '')
 const fmtCnpj = (c) => c.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
@@ -105,8 +122,14 @@ function search(db, params) {
   const q = buildQuery(params)
   if (q.error) return { error: q.error }
   const rows = db.prepare(q.sql).all(...q.args)
+  const hasMore = rows.length > q.filters.limit
   const n = db.prepare(q.countSql).get(...q.countArgs).n
-  return { results: rows.map(toLead), total: Math.min(n, COUNT_CAP), totalCapped: n > COUNT_CAP, filters: q.filters }
+  return {
+    results: rows.slice(0, q.filters.limit).map(toLead),
+    hasMore,
+    baseTotal: Math.min(n, COUNT_CAP), baseCapped: n > COUNT_CAP, // empresas ativas no setor/região/idade (antes dos filtros de contato/porte)
+    filters: q.filters,
+  }
 }
 
 function findCnaes(db, text, limit = 15) {
@@ -135,4 +158,4 @@ function status(db) {
   return { ready: true, competencia: get('competencia'), importedAt: get('imported_at'), estabelecimentos: Number(get('estabelecimentos')) || null }
 }
 
-module.exports = { normalize, buildQuery, toLead, search, findCnaes, findCidades, status, fmtPhone, MAX_LIMIT, COUNT_CAP }
+module.exports = { normalize, buildQuery, toLead, search, findCnaes, findCidades, status, fmtPhone, INDEXES, MAX_LIMIT, COUNT_CAP }

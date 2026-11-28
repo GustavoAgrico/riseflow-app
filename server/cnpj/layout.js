@@ -33,10 +33,14 @@ const titleCase = (v) => {
 }
 
 // DDD + número → "11987654321" (só dígitos). Inválido → null.
+// A Receita guarda muitos celulares no formato antigo (8 dígitos, sem o 9 da frente):
+// número local de 8 dígitos começando com 6–9 é celular → ganha o 9 (fixo começa com 2–5).
 function phoneOf(ddd, num) {
   const d = String(ddd || '').replace(/\D/g, '').replace(/^0+/, '')
-  const n = String(num || '').replace(/\D/g, '')
+  let n = String(num || '').replace(/\D/g, '')
   if (d.length !== 2 || n.length < 8 || n.length > 9 || /^0+$/.test(n) || /^(\d)\1+$/.test(n)) return null
+  if (n.length === 8 && /^[6-9]/.test(n)) n = '9' + n
+  if (n.length === 9 && n[0] !== '9') return null
   return d + n
 }
 const isMobile = (p) => Boolean(p && p.length === 11 && p[2] === '9')

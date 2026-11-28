@@ -211,9 +211,9 @@ router.post('/cnpj/search', guard, async (req, res) => {
     const summary = quality.summarize(screen)
     if (!out.filters.offset) {
       const label = String(req.body?.label || '').slice(0, 200)
-      quality.recordSearch(userId, { source: 'cnpj', query: label || `CNAE ${out.filters.cnaes.join(', ')}`, location: String(req.body?.locationLabel || out.filters.uf || 'Brasil').slice(0, 200), requested: out.filters.limit, ...summary, found: out.total })
+      quality.recordSearch(userId, { source: 'cnpj', query: label || `CNAE ${out.filters.cnaes.join(', ')}`, location: String(req.body?.locationLabel || out.filters.uf || 'Brasil').slice(0, 200), requested: out.filters.limit, ...summary, found: out.results.length })
     }
-    res.json({ results, total: out.total, totalCapped: out.totalCapped, summary, offset: out.filters.offset, limit: out.filters.limit })
+    res.json({ results, hasMore: out.hasMore, baseTotal: out.baseTotal, baseCapped: out.baseCapped, summary, offset: out.filters.offset, limit: out.filters.limit })
   } catch (e) { fail(res, e, 'Erro na busca da base de CNPJ.') }
 })
 

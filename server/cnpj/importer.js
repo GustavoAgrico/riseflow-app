@@ -228,8 +228,9 @@ function finish(d) {
   if (!stepDone(d, 'indexes')) {
     log('índices de busca (demora)…')
     d.exec('drop index if exists estab_basico')
-    d.exec('create index if not exists estab_cnae_uf on estab (cnae, uf, municipio)')
-    d.exec('create index if not exists estab_uf_mun on estab (uf, municipio, cnae)')
+    d.exec('drop index if exists estab_cnae_uf')
+    d.exec('drop index if exists estab_uf_mun')
+    for (const sql of require('./search').INDEXES) d.exec(sql)
     markStep(d, 'indexes')
   }
   log('resumos de CNAE e cidades…')

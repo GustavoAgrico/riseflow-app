@@ -220,12 +220,13 @@ export const Prospecting = () => {
       } else {
         resetResults(list, 'cnpj')
         const sm = data.summary
-        setNotice(data.total
-          ? `${fmtNum(data.total)}${data.totalCapped ? '+' : ''} empresa${data.total !== 1 ? 's' : ''} no filtro · mostrando ${list.length}${sm?.in_crm ? ` · ${sm.in_crm} já no CRM` : ''}${sm?.excluded ? ` · ${sm.excluded} na lista de exclusão` : ''}.`
-          : 'Nenhuma empresa ativa com esses filtros. Tente outra cidade, outro porte ou "Com telefone".')
+        const base = data.baseTotal ? `${fmtNum(data.baseTotal)}${data.baseCapped ? '+' : ''} empresas ativas no setor e região` : ''
+        setNotice(list.length
+          ? `${base ? `${base} · ` : ''}mostrando ${list.length}${data.hasMore ? ' (tem mais)' : ''}${sm?.in_crm ? ` · ${sm.in_crm} já no CRM` : ''}${sm?.excluded ? ` · ${sm.excluded} na lista de exclusão` : ''}.`
+          : `Nenhuma empresa com esses filtros${base ? ` (${base}, mas nenhuma passou nos filtros de contato/porte)` : ''}. Tente "Com telefone" em vez de "Só com celular", outro porte ou uma região maior.`)
         if (showLog && logTab === 'searches') loadLog('searches')
       }
-      setCnpjQuery({ params, meta, nextOffset: offset + list.length, total: data.total, capped: data.totalCapped })
+      setCnpjQuery({ params, meta, nextOffset: offset + list.length, hasMore: Boolean(data.hasMore), baseTotal: data.baseTotal, capped: data.baseCapped })
     } catch (e2) { setErr(errMsg(e2)) }
     if (append) setLoadingMore(false); else setSearching(false)
   }
@@ -637,12 +638,12 @@ export const Prospecting = () => {
                 </table>
               </div>
 
-              {resultSource === 'cnpj' && cnpjQuery && cnpjQuery.nextOffset < cnpjQuery.total && (
+              {resultSource === 'cnpj' && cnpjQuery?.hasMore && (
                 <div style={{ textAlign: 'center', marginTop: 12 }}>
                   <button type="button" onClick={() => searchCnpj(cnpjQuery.params, cnpjQuery.meta, true)} disabled={loadingMore}
                     style={{ ...btn('transparent', 'var(--ink-1)'), border: '1px solid var(--border)' }}>
                     {loadingMore ? <Loader2 size={14} className="animate-spin" /> : <ChevronDown size={14} />}
-                    Carregar mais ({fmtNum(cnpjQuery.nextOffset)} de {fmtNum(cnpjQuery.total)}{cnpjQuery.capped ? '+' : ''})
+                    Carregar mais (mostrando {fmtNum(cnpjQuery.nextOffset)})
                   </button>
                 </div>
               )}
