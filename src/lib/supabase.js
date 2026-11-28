@@ -37,7 +37,15 @@ export const getProxyToken = async ({ force = false } = {}) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      if (!res.ok) throw new Error(`login do proxy falhou (${res.status})`)
+      if (!res.ok) {
+        // 2FA ativo e esta sessão ainda não passou pela 2ª etapa: a tela de verificação assume.
+        const body = await res.json().catch(() => ({}))
+        if (body?.mfa_required) {
+          try { window.dispatchEvent(new CustomEvent('rf:mfa-required')) } catch { /* sem window */ }
+          throw Object.assign(new Error('Verificação em duas etapas necessária.'), { code: 'MFA_REQUIRED' })
+        }
+        throw new Error(`login do proxy falhou (${res.status})`)
+      }
       const { token } = await res.json()
       localStorage.setItem(TOKEN_KEY, token)
       localStorage.setItem(TOKEN_UID_KEY, uid)

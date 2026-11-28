@@ -40,6 +40,9 @@ async function saveIncomingMessage({ userId, phone, name, text, channel = 'chat'
   if (text) {
     require('./sales/pilot').onInbound({ userId, phone, name, text, channel: channel === 'chat' ? 'whatsapp' : channel })
       .catch((err) => console.warn('[piloto-vendas]', err?.message ?? err))
+    // "SAIR"/"PARAR": o número entra na lista de exclusão da prospecção.
+    require('./prospecting/quality').maybeOptOut({ userId, phone, text })
+      .catch((err) => console.warn('[prospecção] opt-out', err?.message ?? err))
   }
 }
 

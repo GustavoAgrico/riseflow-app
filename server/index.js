@@ -40,6 +40,10 @@ const teamRoutes = require('./routes/team')
 const agentsWorker = require('./agents/worker')
 const { userRoom } = require('./realtime')
 const restProxy = require('./routes/restProxy')
+const orgRoutes = require('./routes/org')
+const mfaRoutes = require('./routes/mfa')
+const mfa = require('./mfa')
+const orgs = require('./orgs')
 const accessRequestsRoutes = require('./routes/accessRequests')
 const telegram = require('./telegramClient')
 const metaClient = require('./metaClient')
@@ -212,6 +216,12 @@ app.post('/api/auth/login', async (req, res) => {
         return res.status(401).json({ error: 'Sessão do Supabase inválida ou expirada.' })
       }
 
+      // Verificação em duas etapas: sem ela, nada de token do proxy (a API fica fechada).
+      const second = await mfa.evaluate(data.user, supabaseToken)
+      if (!second.satisfied) {
+        return res.status(401).json({ error: 'Verificação em duas etapas necessária.', mfa_required: true })
+      }
+
       // Verifica se o usuário é membro de equipe (não o dono da conta).
       // Se for, o JWT carrega sub = user_id do dono para que todas as rotas
       // continuem funcionando com o mesmo escopo de dados.
@@ -229,6 +239,11 @@ app.post('/api/auth/login', async (req, res) => {
           extraClaims = { member_id: memberRow.id, member_email: data.user.email }
         }
       }
+
+      // Organização (E2): garante a do dono e o papel de quem entra. Sem a
+      // migração rodada, devolve null e o login segue igual.
+      const org = await orgs.resolveLogin({ sub, memberId: extraClaims.member_id || null, authUserId: data.user.id })
+      if (org) extraClaims = { ...extraClaims, org: org.orgId, org_role: org.role }
 
       const proxyToken = jwt.sign(
         { sub, email: data.user.email, ...extraClaims },
@@ -331,6 +346,8 @@ app.use('/api/approvals', auth, approvalsRoutes)
 app.use('/api/sales-pilot', auth, salesPilotRoutes)
 app.use('/api/team', auth, teamRoutes)
 app.use('/api/rest/v1', auth, restProxy)
+app.use('/api/org', auth, orgRoutes)
+app.use('/api/mfa', mfaRoutes) // autentica pelo token do Supabase (ver routes/mfa.js)
 app.use('/api/access-requests', auth, accessRequestsRoutes)
 
 // Páginas legais públicas (Política de Privacidade / Exclusão de dados) — exigidas

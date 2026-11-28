@@ -120,7 +120,8 @@ async function handleWebhookUpdate(userId, secretHeader, update) {
    do chat, pelo userId explícito, ou — fallback single-tenant — o único bot ativo. */
 async function sendTextTo(number, text, userId = null) {
   if (!isTelegramNumber(number)) throw new Error(`Número Telegram inválido: ${number}`)
-  const owner = userId || chatOwner.get(String(number)) || (bots.size === 1 ? [...bots.keys()][0] : null)
+  // Com dono informado, só o bot DESSE dono (nada de cair no bot de outra conta).
+  const owner = userId != null ? String(userId) : (chatOwner.get(String(number)) || (bots.size === 1 ? [...bots.keys()][0] : null))
   const entry = owner ? bots.get(owner) : null
   if (!entry) throw new Error('Nenhum bot do Telegram conectado para este contato.')
   const sent = await entry.bot.api.sendMessage(toChatId(number), text)

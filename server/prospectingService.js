@@ -5,6 +5,7 @@ const { emitSalesUpdate } = require('./realtime')
 const el = require('./elevenlabs')
 const leadSearch = require('./leadSearch')
 const { getConfig } = require('./aiCallSettings')
+const quality = require('./prospecting/quality')
 
 const MAX_RESULTS = 50
 const ACTIVE_CALL = ['queued', 'dialing', 'initiated', 'in-progress', 'processing']
@@ -33,42 +34,60 @@ async function searchFreeLeads(userId, { query, location, max }) {
   const credit = await leadSearch.getCredit()
   const allowed = Math.min(max, credit.maxPlaces)
   if (allowed < 5 || credit.remainingUsd < leadSearch.APIFY_MIN_CAP_USD) throw httpError(402, 'O crédito grátis do mês acabou. A busca volta quando o crédito renovar.', { credit })
-  const [places, have] = await Promise.all([
-    leadSearch.searchGoogleMaps({ query, location, max: allowed, capUsd: credit.remainingUsd }),
-    crmPhones(userId),
-  ])
-  console.log(`[prospecting] busca "${query}" em "${location}": ${places.length} empresas (limite ${allowed})`)
+  const places = await leadSearch.searchGoogleMaps({ query, location, max: allowed, capUsd: credit.remainingUsd })
+  // Triagem: já no CRM (telefone, CNPJ raiz ou domínio), na lista de exclusão ou repetido.
+  const screen = await quality.screenFor(userId, places)
+  const after = await leadSearch.getCredit().catch(() => credit)
+  const summary = quality.summarize(screen)
+  const costUsd = Math.max(0, (credit.remainingUsd ?? 0) - (after.remainingUsd ?? credit.remainingUsd ?? 0))
+  quality.recordSearch(userId, { source: 'google_maps', query, location, requested: max, ...summary, cost_usd: costUsd })
+  console.log(`[prospecting] busca "${query}" em "${location}": ${places.length} empresas (limite ${allowed}, novas ${summary.new_count})`)
   return {
-    results: places.map(p => ({ ...p, inCrm: Boolean(p.phone && have.has(p.phone)) })),
+    results: places.map((p, i) => ({ ...p, inCrm: screen[i].status === 'no_crm', screen: screen[i] })),
     requested: max,
     allowed,
-    credit: await leadSearch.getCredit().catch(() => credit),
+    summary,
+    costUsd,
+    credit: after,
   }
 }
 
 // Importa leads para Clientes (sem duplicar telefone) e, com call, põe na fila de ligação por IA.
-async function importLeads(userId, leadsIn, { call = false } = {}) {
+async function importLeads(userId, leadsIn, { call = false, source = 'google_maps' } = {}) {
   const leads = Array.isArray(leadsIn) ? leadsIn.slice(0, MAX_RESULTS) : []
   if (!leads.length) throw httpError(400, 'Nenhum lead selecionado.')
   const cfg = await getConfig(userId)
   if (call && !el.isConfigured(cfg)) throw httpError(503, 'Ligações não configuradas. Abra Configurações → Ligações com IA.')
   const have = await crmPhones(userId)
   const allowed = el.testNumbers(cfg)
-  const out = { imported: 0, skipped: 0, queued: 0, notQueued: 0, testMode: allowed.length > 0, clientIds: [] }
+  const out = { imported: 0, skipped: 0, excluded: 0, queued: 0, notQueued: 0, testMode: allowed.length > 0, clientIds: [] }
+  // A lista de exclusão vale também aqui (tela, agentes e importação de lista).
+  const excluded = await quality.exclusionMap(userId)
 
   for (const l of leads) {
     const phone = el.toE164(l?.phone)
     const name = String(l?.name || '').trim().slice(0, 200)
+    if (quality.leadKeys({ ...l, phone: l?.phone }).some(k => excluded.has(k))) { out.excluded++; continue }
     if (!phone || !name || have.has(phone)) { out.skipped++; continue }
 
+    const str = (v, n = 300) => (v == null || v === '' ? null : String(v).slice(0, n))
+    const tier = ['A', 'B', 'C'].includes(l.tier) ? l.tier : null
+    const tags = [source === 'lista' ? 'Prospect Lista' : source === 'cnpj' ? 'Prospect CNPJ' : 'Prospect Maps', ...(tier ? [`Tier ${tier}`] : [])]
+    const email = str(l.email, 120) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(l.email) ? String(l.email).toLowerCase() : null
     const client = await insertClient(
-      { user_id: userId, name, company: name, phone: phone.slice(1), stage: 'lead', status: 'active', tags: ['Prospect Maps'], value: 0 },
+      { user_id: userId, name, company: name, phone: phone.slice(1), stage: 'lead', status: 'active', tags, value: 0, ...(email ? { email } : {}) },
       {
-        source: 'google_maps',
+        source,
         source_meta: {
-          category: l.category || null, address: l.address || null, city: l.city || null, state: l.state || null,
-          website: l.website || null, rating: l.rating ?? null, reviews: l.reviews ?? null,
-          maps_url: l.mapsUrl || null, place_id: l.placeId || null,
+          category: str(l.category, 120), address: str(l.address), city: str(l.city, 120), state: str(l.state, 60),
+          website: str(l.website), rating: l.rating ?? null, reviews: l.reviews ?? null,
+          maps_url: str(l.mapsUrl, 500), place_id: str(l.placeId, 200),
+          instagram: str(l.instagram), facebook: str(l.facebook), linkedin: str(l.linkedin), whatsapp: str(l.whatsapp, 20),
+          cnpj: str(l.cnpj, 20), razao_social: str(l.company?.razao_social, 200), porte: str(l.company?.porte, 60),
+          abertura: str(l.company?.abertura, 10), capital: Number.isFinite(l.company?.capital) ? l.company.capital : null, phone2: str(l.phone2, 20),
+          atividade: str(l.company?.atividade, 200), situacao: str(l.company?.situacao, 40),
+          socios: Array.isArray(l.company?.socios) ? l.company.socios.slice(0, 5).map(s => ({ nome: str(s?.nome, 120), cargo: str(s?.cargo, 80) })) : null,
+          icp_score: Number.isFinite(l.icpScore) ? l.icpScore : null, tier, icp_reasons: Array.isArray(l.icpReasons) ? l.icpReasons.slice(0, 6).map(r => str(r, 80)) : null,
         },
       },
     )

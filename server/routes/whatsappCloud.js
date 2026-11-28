@@ -128,7 +128,7 @@ router.get('/status', (req, res) => {
 // POST /send — envio direto (diagnóstico). Body: { number, text }.
 router.post('/send', async (req, res) => {
   const { number, text } = req.body || {}
-  const userId = req.user?.sub || (process.env.NODE_ENV !== 'production' ? req.body?.userId : null)
+  const userId = req.user.sub
   if (!number || !text) return res.status(400).json({ error: 'number e text são obrigatórios.' })
   try {
     res.json(await waCloud.sendTextTo(number, text, userId))

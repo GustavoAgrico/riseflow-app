@@ -6,6 +6,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@context/AuthContext'
 import { NicheSetup } from '@components/NicheSetup'
 import { AiCallSettings } from '@components/Settings/AiCallSettings'
+import { OrganizationCard } from '@components/Settings/OrganizationCard'
+import { TwoFactorSettings } from '@components/Settings/TwoFactorSettings'
 import { usePlan } from '@hooks/usePlan'
 import { downloadInvoicePDF } from '@utils/exportUtils'
 import { logger } from '@services/activityLogger'
@@ -231,7 +233,6 @@ export const Settings = () => {
   const [showConf, setShowConf]     = useState(false)
   const [pwdMsg, setPwdMsg]         = useState({ type: '', text: '' })
   const [pwdSaving, setPwdSaving]   = useState(false)
-  const [twoFA, setTwoFA]           = useState(false)
   const [sessions, setSessions]     = useState(mockSessions)
 
   const [geminiKey, setGeminiKey]       = useState('')
@@ -497,6 +498,8 @@ export const Settings = () => {
             <div style={{ fontFamily: FONT, color: C.text }}>
               <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 24 }}>Perfil</h2>
 
+              <OrganizationCard disabled={isDemoMode} />
+
               {isDemoMode && (
                 <div style={{ marginBottom: 24, padding: '12px 16px', borderRadius: 10,
                   background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.25)',
@@ -638,27 +641,8 @@ export const Settings = () => {
                 </button>
               </div>
 
-              {/* 2FA */}
-              <div style={{ ...cardStyle, marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-                <div>
-                  <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 4 }}>Autenticação de 2 fatores</h3>
-                  <p style={{ fontSize: 13, color: C.muted, maxWidth: 520 }}>
-                    Adicione uma camada extra de segurança exigindo um código do seu app autenticador
-                    além da senha ao fazer login.
-                  </p>
-                </div>
-                <button onClick={() => setTwoFA(v => !v)}
-                  style={{
-                    width: 48, height: 26, borderRadius: 13, border: 'none', cursor: 'pointer',
-                    background: twoFA ? C.green : C.border, position: 'relative', flexShrink: 0,
-                    transition: 'background 0.2s',
-                  }}>
-                  <span style={{
-                    position: 'absolute', top: 3, left: twoFA ? 25 : 3, width: 20, height: 20,
-                    borderRadius: '50%', background: '#fff', transition: 'left 0.2s',
-                  }} />
-                </button>
-              </div>
+              {/* 2FA — app autenticador + códigos de recuperação (sem SMS) */}
+              <TwoFactorSettings disabled={isDemoMode} />
 
               {/* Sessões ativas */}
               <div style={cardStyle}>
