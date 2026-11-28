@@ -12,17 +12,21 @@ export const TEXT_ANIMS_IN = {
   'letras-desfoque-subir': 'Letras subindo do desfoque', 'letras-mola': 'Letras com mola (passa do ponto)',
   'letras-queda': 'Letras caindo e quicando', 'letras-escala': 'Letras assentando (zoom suave)',
   'letras-empurrao': 'Letras empurradas (quase sem inércia)',
+  'letras-deslizar': 'Letras deslizando da esquerda', 'letras-impacto': 'Letras de impacto (caem da tela)',
+  'letras-elastico': 'Letras elásticas (sobem e passam do ponto)',
   'palavras-subir': 'Palavras subindo', 'palavras-pop': 'Palavras pulando', 'palavras-desfoque': 'Palavras do desfoque',
   'palavras-desfoque-subir': 'Palavras subindo do desfoque', 'palavras-mola': 'Palavras com mola',
   'palavras-queda': 'Palavras caindo', 'palavras-escala': 'Palavras assentando',
   'palavras-empurrao': 'Palavras empurradas',
+  'palavras-deslizar': 'Palavras deslizando da esquerda', 'palavras-impacto': 'Palavras de impacto',
+  'palavras-elastico': 'Palavras elásticas',
 };
 /** Animações por letra: cada letra entra no seu tempo (escalonado), como os motion de agência. */
 /** Animações por letra que são amostradas em passos no render (curva com overshoot ou desfoque). */
-export const LETTER_SAMPLED = ['letras-desfoque-subir', 'letras-mola', 'letras-queda', 'letras-escala', 'letras-empurrao'];
+export const LETTER_SAMPLED = ['letras-desfoque-subir', 'letras-mola', 'letras-queda', 'letras-escala', 'letras-empurrao', 'letras-deslizar', 'letras-impacto', 'letras-elastico'];
 export const LETTER_ANIMS = ['letras-subir', 'letras-pop', 'letras-desfoque', ...LETTER_SAMPLED];
 /** Animações por palavra: cada palavra entra no seu tempo, mesmas curvas que as letras. */
-export const WORD_SAMPLED = ['palavras-desfoque-subir', 'palavras-mola', 'palavras-queda', 'palavras-escala', 'palavras-empurrao'];
+export const WORD_SAMPLED = ['palavras-desfoque-subir', 'palavras-mola', 'palavras-queda', 'palavras-escala', 'palavras-empurrao', 'palavras-deslizar', 'palavras-impacto', 'palavras-elastico'];
 export const WORD_ANIMS = ['palavras-subir', 'palavras-pop', 'palavras-desfoque', ...WORD_SAMPLED];
 const wordToLetterAnim = (a) => a.replace('palavras-', 'letras-');
 /** Duração de cada letra (s) e o espaçamento entre as letras, pela duração do texto. */
@@ -63,6 +67,12 @@ export function letterFrame(anim, p, l = {}) {
   if (anim === 'letras-escala') return { dy: 0, scale: 1.35 - 0.35 * e, blur: 0, alpha: e };
   // empurrão lateral curto, quase sem inércia: chega da direita com desaceleração forte (dx em fração da largura)
   if (anim === 'letras-empurrao') return { dx: (1 - p) ** 5 * dist(0.05), dy: 0, scale: 1, blur: 0, alpha: Math.min(1, p * 4) };
+  // desliza da esquerda (o contrário do empurrão), com desaceleração suave
+  if (anim === 'letras-deslizar') return { dx: -(1 - e) * dist(0.08), dy: 0, scale: 1, blur: 0, alpha: e };
+  // impacto: a letra cai "da tela" (bem grande e desfocada) e bate no lugar
+  if (anim === 'letras-impacto') return { dy: 0, scale: 1 + (1 - e) * 1.6, blur: (1 - e) * 0.01, alpha: Math.min(1, p * 2.5) };
+  // elástica: sobe de baixo, passa da linha (overshoot) e volta
+  if (anim === 'letras-elastico') return { dy: (1 - easeBack(p, over)) * dist(0.08), scale: 1, blur: 0, alpha: Math.min(1, p * 2.5) };
   if (anim === 'letras-pop') {
     // 0 → 115% → 100%, em dois trechos lineares (como os \t do libass)
     const s = p < 0.6 ? (p / 0.6) * 1.15 : 1.15 - ((p - 0.6) / 0.4) * 0.15;
@@ -452,9 +462,14 @@ export function expandCounterLayers(layers, steps = 12) {
       const t0 = Math.min(dur, (d * k) / steps);
       const t1 = k < steps ? Math.min(dur, (d * (k + 1)) / steps) : dur;
       if (t1 - t0 < 0.02) continue;
-      out.push({ ...l, count: false, text: countText(l, t0), start: +(l.start + t0).toFixed(3), end: +(l.start + t1).toFixed(3) });
+      // só o 1º passo faz a entrada e só o último faz a saída (senão cada número novo
+      // entraria de novo com a animação e o contador piscaria no vídeo final)
+      const first = !out.some((x) => x.countOf === l);
+      const last = t1 >= dur - 1e-6;
+      out.push({ ...l, count: false, countOf: l, text: countText(l, t0), start: +(l.start + t0).toFixed(3), end: +(l.start + t1).toFixed(3), ...(first ? {} : { animIn: 'none' }), ...(last ? {} : { animOut: 'none' }) });
     }
   }
+  for (const x of out) delete x.countOf;
   return out;
 }
 export function textShown(l) {
@@ -467,6 +482,29 @@ const pickOf = (obj, v, def) => (Object.hasOwn(obj, v) ? v : def);
 /** Normaliza as camadas de texto (vindas do cliente). `fonts` = ids de fonte válidos. */
 /** Formas (como as do Premiere): retângulo e elipse. */
 export const SHAPES = { rect: 'Retângulo', ellipse: 'Elipse' };
+/** Entrada de forma que estica a partir de um lado (como uma barra se abrindo). */
+export const SHAPE_REVEALS = { left: 'Esticar da esquerda', right: 'Esticar da direita', up: 'Subir de baixo', center: 'Abrir do centro' };
+/** Duração das entradas/saídas das formas e dos textos (ms) — a mesma do render (texts.js). */
+export const SHAPE_ANIM_MS = 350;
+/**
+ * Quadro da forma no instante `t` (segundos desde o começo dela), para a prévia — as mesmas
+ * contas do render: esmaece na entrada/saída (\fad) e estica pelo lado escolhido (\fscx/\fscy).
+ * → { alpha, sx, sy, origin } (origin = ponto fixo do CSS transform-origin). Puro.
+ */
+export function shapeFrame(l, t) {
+  const len = Math.max(0, (Number(l.end) || 0) - (Number(l.start) || 0));
+  const a = Math.min(SHAPE_ANIM_MS, Math.floor((len * 1000) / 3)) / 1000;
+  const f = { alpha: 1, sx: 1, sy: 1, origin: 'center' };
+  if (!(a > 0)) return f;
+  const pin = Math.max(0, Math.min(1, t / a));
+  const pout = Math.max(0, Math.min(1, (len - t) / a));
+  const cam = (Number(l.camFrom) || 1) !== 1 || (Number(l.camTo) || 1) !== 1;
+  const rv = !cam && Object.hasOwn(SHAPE_REVEALS, l.reveal) ? l.reveal : null;
+  if (!rv && ['fade', 'slide-up', 'slide-left', 'zoom'].includes(l.animIn)) f.alpha *= pin;
+  if (TEXT_OUT_FADES.has(l.animOut)) f.alpha *= pout;
+  if (rv === 'up') { f.sy = pin; f.origin = 'center bottom'; } else if (rv) { f.sx = pin; f.origin = rv === 'left' ? 'left center' : rv === 'right' ? 'right center' : 'center'; }
+  return f;
+}
 /**
  * Forma na faixa de textos/gráficos: centro x/y e tamanho w/h em fração da tela (w da
  * largura, h da altura); cantos 0–1 (retângulo); o resto da aparência é a do texto.
@@ -489,6 +527,8 @@ function cleanShape(l) {
     radius: num(l.radius, 0, 1, 0),
     animIn: pickOf(TEXT_ANIMS_IN, l.animIn, 'fade'),
     animOut: pickOf(TEXT_ANIMS_OUT, l.animOut, 'fade'),
+    // forma que "estica" a partir de um lado (barras de nome, sublinhados, caixas que se abrem)
+    ...(Object.hasOwn(SHAPE_REVEALS, l.reveal) ? { reveal: l.reveal } : {}),
     // câmera da forma: escala de camFrom a camTo na duração (1 = parada)
     ...(l.camFrom != null || l.camTo != null ? { camFrom: num(l.camFrom, 0.5, 2, 1), camTo: num(l.camTo, 0.5, 2, 1) } : {}),
     ...pickLook({ ...l, bg: undefined }),

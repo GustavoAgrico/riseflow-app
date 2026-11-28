@@ -28,7 +28,7 @@ import MotionRefsPanel from './MotionRefsPanel.jsx';
 import { promptMotionSfx } from '../../../shared/promptMotion.js';
 import { keyAt, cleanKeys, keysChangeAnything, NEUTRAL_KEY, MOMENT_EFFECTS, defaultMomentEffect } from '../../../shared/transform.js';
 import { AUDIOGRAM_STYLES, AUDIOGRAM_POSITIONS, cleanAudiogram } from '../../../shared/audiogram.js';
-import { textOutFrame, textInFrame, VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, wordPlan, wordFrame, WORD_ANIMS, countText, countTarget } from '../../../shared/textLayers.js';
+import { textOutFrame, textInFrame, VIDEO_FX, VIDEO_FX_CSS, TEXT_TEMPLATES, TEXT_ANIMS_IN, TEXT_ANIMS_OUT, TEXT_BOXES, TEXT_LINE_H, TEXT_PAD_DEFAULT, textBoxMetrics, textLook, textEm, textShown, lineAlign, SHAPES, revealPlan, letterPlan, letterTiming, letterFrame, LETTER_ANIMS, wordPlan, wordFrame, WORD_ANIMS, countText, countTarget, shapeFrame, SHAPE_REVEALS } from '../../../shared/textLayers.js';
 import { mergeExtraCaptions } from '../../../shared/extraCaptions.js';
 import EditorTour, { tourSeen } from './EditorTour.jsx';
 import ProjectPanel, { MediaThumb } from './ProjectPanel.jsx';
@@ -42,6 +42,7 @@ import { splitPersonCrop, splitFaceInWindow, fullFaceCrop } from '../../../share
 import { layoutCaption } from '../../../shared/captionKeyword.js';
 import { captionCues, toSrt, toVtt, toTxt, skipMapper } from '../../../shared/captionExport.js';
 import { layerAt, upsertKey, shiftKf, KF_INTERPS, kfInterpOf, withInterp, cleanVolKeys, volDbAt, VOL_DB_MIN, VOL_DB_MAX } from '../../../shared/layerKeys.js';
+import { PACK_ITEMS, buildPackLayers, fontPackLook, textWidth } from '../../../shared/libraryPacks.js';
 import { ELEMENT_ANIMS, ELEMENT_MOTIONS, elemAnimFrame, elemMotionAt, DECORATIVE_STICKERS, STICKER_CATEGORIES, ELEMENT_PRESETS } from '../../../shared/elementMotion.js';
 
 // Tempo no formato do player: 00:12
@@ -5227,7 +5228,11 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
   // no ponto onde soltar) ou para o vídeo (entra no playhead). Clique duplo = no playhead.
   const FX_CATS = [
     { id: 'fav', label: 'Favoritos', icon: '★' },
+    { id: 'titulos', label: 'Títulos', icon: 'T' },
     { id: 'trans', label: 'Transições', icon: '⧓' },
+    { id: 'componentes', label: 'Componentes gráficos', icon: '▭' },
+    { id: 'fontes', label: 'Fontes animadas', icon: 'Aa' },
+    { id: 'som', label: 'Sons', icon: '♪' },
     { id: 'camera', label: 'Câmera', icon: '⤢' },
     // efeitos de vídeo nas categorias do Premiere (como o painel do Film Impact)
     { id: 'nitidez', label: 'Desfoque e nitidez', icon: '◌' },
@@ -5243,11 +5248,12 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     { id: 'utilitario', label: 'Utilitário', icon: '⚙' },
     { id: 'texto', label: 'Texto', icon: 'T' },
     { id: 'tempo', label: 'Tempo', icon: '⏱' },
-    { id: 'som', label: 'Sons', icon: '♪' },
   ];
   const VFX_GROUP = { bw: 'cor', nostalgic: 'cor', cold: 'cor', warm: 'cor', saturated: 'cor', negative: 'imagem', retro: 'estilo', vhs: 'distorcao', glitch: 'distorcao', shake: 'transformar', pixel: 'distorcao', mirror: 'distorcao', strobe: 'luz', glow: 'luz', grain: 'ruido', vignette: 'gerar', film: 'gerar', blur: 'nitidez', blursoft: 'nitidez', bokeh: 'nitidez', chblur: 'nitidez', motionblur: 'nitidez', sharpen: 'nitidez', faded: 'cor', contrast: 'cor', tealorange: 'cor', cinematic: 'cor', desat: 'cor', tint: 'cor', brighten: 'imagem', darken: 'imagem', exposure: 'imagem', vflip: 'distorcao', fisheye: 'distorcao', tilt: 'perspectiva', posterize: 'estilo', edges: 'estilo', sketch: 'estilo', emboss: 'estilo', noisehard: 'ruido', goldlight: 'luz', zoomfix: 'transformar', zoomfix2: 'transformar', sway: 'transformar', handheld: 'transformar', shakehard: 'transformar', persp3d: 'perspectiva', tiltr: 'perspectiva', wideangle: 'distorcao', rgbsplit: 'distorcao', pixelbig: 'distorcao', grid3: 'gerar', frame: 'gerar', black: 'utilitario', white: 'utilitario', letterbox: 'utilitario', pillarbox: 'utilitario', pulse: 'luz', coolglow: 'luz', scanlines: 'ruido', static: 'ruido', summer: 'cor', winter: 'cor', matrix: 'cor', noir: 'estilo', popart: 'estilo', echo: 'tempo', trails: 'tempo', ghost: 'tempo', motionpop: 'tempo' };
   const shortLabel = (l) => String(l).replace(/\s*\(.*\)\s*$/, '');
   const fxLibrary = [
+    // modelos prontos (títulos, componentes gráficos, fontes animadas): várias camadas de texto/forma
+    ...PACK_ITEMS.map((p) => ({ cat: p.cat, kind: 'pack', id: p.id, label: p.label, anim: 'pack' })),
     ...transOpts.map((o) => ({ cat: 'trans', kind: 'trans', id: o.id, label: shortLabel(o.label), anim: `tr-${o.id}` })),
     ...Object.entries(MOMENT_EFFECTS).map(([id, label]) => ({ cat: 'camera', kind: 'zoom', id, label: shortLabel(label), anim: `cam-${id}` })),
     ...Object.entries(VIDEO_FX).map(([id, label]) => ({ cat: VFX_GROUP[id] || 'luz', kind: 'vfx', id, label: shortLabel(label), anim: `fx-${id}` })),
@@ -5746,6 +5752,22 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         setSelText(nt.key);
         setSelKind('text');
       }
+    } else if (item.kind === 'pack') {
+      const look = item.cat === 'fontes' ? fontPackLook(item.id) : null;
+      if (look && selTextItem && selTextItem.kind !== 'shape') {
+        // fonte animada com um texto selecionado: troca a fonte, a animação e o visual dele
+        updateText(selTextItem.key, look);
+      } else {
+        const now = Date.now();
+        const add = buildPackLayers(item.id, { t, ar: FW / FH, maxEnd: dur }).map((l, i) => ({ key: `t${now}_${i}`, ...l }));
+        if (!add.length) return;
+        // ordem estável: a forma de fundo fica atrás do texto que entra junto
+        setTextLayers((l) => [...l, ...add].sort((a, b) => a.start - b.start));
+        const first = add.find((l) => l.kind !== 'shape') || add[0];
+        setSelText(first.key);
+        setSelKind('text');
+        if (laneHide.txt) setLaneHide((h) => ({ ...h, txt: false }));
+      }
     } else if (item.kind === 'mysound') {
       addMediaItem(item.lib, { start: t }); // som importado: camada de áudio (dá para cortar, volume, fade)
     } else if (item.kind === 'sfx') {
@@ -6093,12 +6115,14 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
     if (v1Busy || !list.length) return;
     let total = 0;
     let failed = '';
+    let noAudio = false;
     try {
       for (let i = 0; i < list.length; i++) {
         const [a, b] = list[i];
         setV1Busy(list.length > 1 ? `Transcrevendo ${i + 1} de ${list.length}…` : 'Transcrevendo…');
         try {
           const r = await transcribeRange(sourceId, +a.toFixed(2), +b.toFixed(2), language);
+          if (r.noAudio) noAudio = true;
           const fresh = (r.segments || []).map((sg) => ({ ...sg, words: (sg.words || []).map((w) => ({ ...w, removed: !!w.removed })) })).filter((sg) => sg.words.length);
           setSegments((prev) => [
             ...prev.map((sg) => ({ ...sg, words: sg.words.filter((w) => !(w.start >= a - 0.05 && w.end <= b + 0.05)) })).filter((sg) => sg.words.length),
@@ -6114,6 +6138,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if (captions && total) setCap((c) => (c.captions === false ? { ...c, captions: true } : c));
       flashNote(failed && !total ? `Não deu para transcrever: ${failed}`
         : total ? `Transcrição pronta: ${total} palavras${failed ? ` (um trecho falhou: ${failed})` : ''}. ${captions ? 'A legenda já aparece na faixa C1' : 'A legenda está desligada (aba Legenda)'}; ${pausesAutoCut ? 'as pausas e respirações saem do vídeo' : 'o vídeo continua original (para tirar silêncios e erros: Edição automática)'} e dá para clicar nas palavras para cortar erros.`
+          : noAudio ? 'Esse trecho do vídeo não tem áudio — não há fala para transcrever. Coloque um clipe com som na V1 (ou um áudio) e tente de novo.'
           : 'Não achei fala para transcrever.');
     } finally {
       setV1Busy('');
@@ -6226,11 +6251,13 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
       if (regions.length) {
         let words = 0;
         let failed = '';
+        let noAudio = false;
         for (let i = 0; i < regions.length; i++) {
           const [a, b] = regions[i];
           step('transcribe', i / regions.length, regions.length > 1 ? `Transcrevendo a fala (${i + 1} de ${regions.length})` : null);
           try {
             const r = await transcribeRange(sourceId, +a.toFixed(2), +b.toFixed(2), txLang);
+            if (r.noAudio) noAudio = true;
             const fresh = (r.segments || []).map((sg) => ({ ...sg, words: (sg.words || []).map((w) => ({ ...w, removed: !!w.removed })) })).filter((sg) => sg.words.length);
             segs = [
               ...segs.map((sg) => ({ ...sg, words: sg.words.filter((w) => !(w.start >= a - 0.05 && w.end <= b + 0.05)) })).filter((sg) => sg.words.length),
@@ -6243,7 +6270,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
         }
         setSegments(segs);
         if (!words && failed) throw new Error(`não deu para transcrever: ${failed}`);
-        notes.push(words ? `${words} palavras transcritas` : 'nenhuma fala encontrada');
+        notes.push(words ? `${words} palavras transcritas` : noAudio ? 'o vídeo não tem áudio, então não há fala para transcrever' : 'nenhuma fala encontrada');
       }
       const hasWords = segs.some((sg) => sg.words.length);
       if (cfg.clean && hasWords) {
@@ -6793,7 +6820,7 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
             </div>
           )}
           {fxShown.length === 0 && !(sfxOnline && (sfxOn.busy || sfxOn.err)) && <div style={{ fontSize: 11.5, color: C.faint, padding: 16, textAlign: 'center' }}>{fxCat === 'fav' && !fxQ ? 'Clique na ★ de um efeito para guardar aqui.' : sfxOnline ? 'Nenhum som encontrado — tente outra palavra (em inglês acha mais).' : sfxMine ? (library == null ? 'Carregando…' : 'Você ainda não importou sons. Clique em “+ Importar sons”.') : 'Nenhum efeito encontrado.'}</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${['trans', 'camera', 'tempo', 'som', 'fav'].includes(fxCat) || fxQ ? 104 : 132}px, 1fr))`, gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${['titulos', 'componentes', 'fontes'].includes(fxCat) && !fxQ ? 150 : ['trans', 'camera', 'tempo', 'som', 'fav'].includes(fxCat) || fxQ ? 104 : 132}px, 1fr))`, gap: 8 }}>
             {fxShown.map((x) => {
               const fav = fxFavs.includes(x.uid);
               return (
@@ -6810,6 +6837,8 @@ export default function TimelineEditor({ transcript, durationSec, sourceId, cata
                           style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center' }}><Icon name="play" size={14} strokeWidth={2.2} /></button>
                         <span style={{ position: 'absolute', right: 4, bottom: 3, fontSize: 10, fontWeight: 800, color: '#fff', textShadow: '0 1px 3px #000' }}>{x.sdur.toFixed(1).replace('.', ',')}s</span>
                       </div>
+                    ) : x.kind === 'pack' ? (
+                      <PackThumb id={x.id} />
                     ) : (
                       <>
                         <div className={`rf-fxi a-${x.anim}`} style={{ position: 'absolute', inset: 0, ...thumbFrame, filter: x.kind === 'vfx' ? VIDEO_FX_CSS[x.id] || undefined : undefined, transform: FX_THUMB_TF[x.id] }} />
@@ -10841,12 +10870,15 @@ function StageLayers({ videoRef, box, cur, media, texts, editable, selMedia, sel
           const camT = Number(l.camTo) || 1;
           const camP = Math.max(0, Math.min(1, (cur - l.start) / Math.max(0.01, l.end - l.start)));
           const camS = camF + (camT - camF) * camP;
+          // entrada/saída da forma (esmaecer, esticar por um lado): as mesmas contas do render
+          const sf = shapeFrame(l, cur - l.start);
+          const rv = sf.sx < 1 || sf.sy < 1;
           const shadows = [];
           if (sw) shadows.push(`0 0 0 ${sw}px ${L.strokeColor}`); // contorno por fora
           if (L.shadow) shadows.push(`${-Math.cos((L.shadowAngle * Math.PI) / 180) * L.shadowDist * box.h}px ${Math.sin((L.shadowAngle * Math.PI) / 180) * L.shadowDist * box.h}px ${L.shadowBlur * box.h * 2}px ${rgba(L.shadowColor, L.shadowOpacity)}`);
           return (
             <div key={l.key} onPointerDown={(e) => start(e, { kind: 'text', key: l.key, ox: l.x, oy: l.y })}
-              style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, width: bw, height: bh, transform: `translate(-50%, -50%)${camS !== 1 ? ` scale(${camS})` : ''}${L.rot ? ` rotate(${L.rot}deg)` : ''}`, opacity: L.opacity,
+              style={{ position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, width: bw, height: bh, transform: `translate(-50%, -50%)${camS !== 1 ? ` scale(${camS})` : ''}${L.rot ? ` rotate(${L.rot}deg)` : ''}${rv ? ` scale(${sf.sx}, ${sf.sy})` : ''}`, transformOrigin: rv ? sf.origin : undefined, opacity: L.opacity * sf.alpha,
                 background: L.fill ? L.fillColor : 'transparent', borderRadius: l.shape === 'ellipse' ? '50%' : (Number(l.radius) || 0) * Math.min(bw, bh) / 2, boxShadow: shadows.join(', ') || undefined,
                 pointerEvents: editable ? 'auto' : 'none', cursor: editable ? 'move' : 'default', outline: on ? '2px dashed #E8A020' : 'none', outlineOffset: 4 + sw }}>
               {on && (
@@ -11036,6 +11068,20 @@ const FX_ANIM_CSS = `
 .o-tr-dip { background: #000; opacity: 0; animation-name: rfFlash; }
 .o-tr-whiteout { background: #fff; opacity: 0; animation-name: rfFlash; }
 .rf-txs { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.rf-pk .rh { visibility: hidden; }
+.rf-fxc:hover .rf-pk .rh { visibility: visible; }
+.rf-fxc:hover .rf-pk .ex { animation: rfPkHide 0.01s linear var(--ed) forwards; }
+@keyframes rfPkHide { to { visibility: hidden; } }
+.rf-fxc:hover .rf-pk .pa { animation: var(--k) var(--du, 0.45s) cubic-bezier(0.2, 0.9, 0.3, 1.15) var(--dl, 0s) both; }
+@keyframes rfPkF { from { opacity: 0; } }
+@keyframes rfPkU { from { opacity: 0; transform: translateY(45%); } }
+@keyframes rfPkL { from { opacity: 0; transform: translateX(-60%); } }
+@keyframes rfPkZ { from { opacity: 0; transform: scale(2.2); filter: blur(2px); } }
+@keyframes rfPkP { 0% { opacity: 0; transform: scale(0); } 60% { opacity: 1; transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes rfPkB { from { opacity: 0; filter: blur(3px); } }
+@keyframes rfPkT { 0%, 99% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes rfPkSX { from { transform: scaleX(0); } }
+@keyframes rfPkSY { from { transform: scaleY(0); } }
 .rf-txs span { font: 800 13px/1.1 Poppins, sans-serif; color: #fff; background: rgba(10,14,40,0.85); padding: 3px 7px; border-radius: 5px; white-space: nowrap; overflow: hidden; display: inline-block; }
 .rf-txs i { font-style: normal; }
 .rf-fxc:hover .t-typewriter span { animation: rfType 1.6s steps(9) infinite; } @keyframes rfType { 0% { max-width: 0; } 80%, 100% { max-width: 120px; } }
@@ -11788,6 +11834,80 @@ function PrIcon({ kind, title }) {
   );
 }
 /** Propriedades de uma forma (retângulo/elipse), como no Premiere. */
+// ── Miniatura dos modelos da biblioteca (títulos, componentes, fontes animadas): as camadas
+// do modelo num quadro 16:9, em unidades do próprio quadro (cqh/cqw); ao passar o mouse, cada
+// camada (ou letra/palavra) entra no seu tempo. Sem o mouse, mostra o quadro final.
+const packKf = (anim) => {
+  const a = String(anim || '');
+  if (a === 'none') return null;
+  if (a === 'typewriter') return 'rfPkT';
+  if (/deslizar|empurrao|slide-left|slide-right/.test(a)) return 'rfPkL';
+  if (/impacto|zoom|escala|grow/.test(a)) return 'rfPkZ';
+  if (/pop|mola|elastico|queda|spin/.test(a)) return 'rfPkP';
+  if (/desfoque|blur/.test(a)) return 'rfPkB';
+  if (/subir|slide-up|slide-down|words/.test(a)) return 'rfPkU';
+  return 'rfPkF';
+};
+function PackThumb({ id }) {
+  const layers = useMemo(() => buildPackLayers(id, { t: 0, ar: 16 / 9 }), [id]);
+  // amplia o conteúdo para preencher o cartão (o quadro de verdade tem muito espaço vazio)
+  const fitTf = useMemo(() => {
+    let x0 = 1; let x1 = 0; let y0 = 1; let y1 = 0;
+    for (const l of layers) {
+      const w = l.kind === 'shape' ? l.w : textWidth(l.text, l.size, l.font, 16 / 9, l.tracking || 0);
+      const h = l.kind === 'shape' ? l.h : l.size * 1.2 * String(l.text).split('\n').length;
+      // barra de lado a lado (faixa de notícia) não conta na largura: o zoom vai no conteúdo
+      if (!(l.kind === 'shape' && w >= 0.95)) { x0 = Math.min(x0, l.x - w / 2); x1 = Math.max(x1, l.x + w / 2); }
+      y0 = Math.min(y0, l.y - h / 2); y1 = Math.max(y1, l.y + h / 2);
+    }
+    if (!(x1 > x0 && y1 > y0)) return undefined;
+    const k = Math.max(1, Math.min(2.6, 0.84 / (x1 - x0), 0.7 / (y1 - y0)));
+    return `scale(${k.toFixed(3)}) translate(${((0.5 - (x0 + x1) / 2) * 100).toFixed(2)}%, ${((0.5 - (y0 + y1) / 2) * 100).toFixed(2)}%)`;
+  }, [layers]);
+  const cq = (v) => `${+(v * 100).toFixed(3)}cqh`;
+  const total = Math.max(...layers.map((l) => l.end));
+  // em repouso: o quadro em ~1 s (o que entra depois fica escondido); com o mouse: tudo no seu tempo
+  const life = (l) => ({ className: `${l.start > 1 ? 'rh' : ''} ${l.end < total - 0.01 ? 'ex' : ''}`.trim() || undefined, style: { '--ed': `${l.end}s` } });
+  return (
+    <div className="rf-pk" style={{ position: 'absolute', inset: 0, overflow: 'hidden', containerType: 'size', background: 'linear-gradient(135deg, #2a2d36, #121318)' }}>
+      <div style={{ position: 'absolute', inset: 0, transform: fitTf }}>
+      {layers.map((l, i) => {
+        if (l.kind === 'shape') {
+          const kf = l.reveal ? (l.reveal === 'up' ? 'rfPkSY' : 'rfPkSX') : packKf(l.animIn);
+          const origin = l.reveal === 'left' ? 'left center' : l.reveal === 'right' ? 'right center' : l.reveal === 'up' ? 'center bottom' : 'center';
+          const radius = l.shape === 'ellipse' ? '50%' : `calc(${(Number(l.radius) || 0) / 2} * min(${l.w * 100}cqw, ${l.h * 100}cqh))`;
+          const lf = life(l);
+          return (
+            <div key={i} className={lf.className} style={{ ...lf.style, position: 'absolute', left: `${(l.x - l.w / 2) * 100}%`, top: `${(l.y - l.h / 2) * 100}%`, width: `${l.w * 100}%`, height: `${l.h * 100}%`, transform: l.rot ? `rotate(${l.rot}deg)` : undefined, opacity: l.opacity ?? 1 }}>
+              <div className="pa" style={{ width: '100%', height: '100%', borderRadius: radius, background: l.fill === false ? 'transparent' : l.color, border: l.stroke ? `${cq(l.strokeW || 0.003)} solid ${l.strokeColor || '#000'}` : undefined, boxSizing: 'border-box', transformOrigin: origin, '--k': kf || 'none', '--dl': `${l.start}s` }} />
+            </div>
+          );
+        }
+        const f = fontById(l.font);
+        const glow = l.shadow && !(Number(l.shadowDist) > 0) && l.shadowDist != null;
+        const shadow = l.shadow ? (glow ? `0 0 ${cq((l.shadowBlur || 0.01) * 2)} ${l.shadowColor || '#000'}` : `0 ${cq(0.004)} ${cq(0.008)} rgba(0,0,0,${l.shadowOpacity ?? 0.75})`) : undefined;
+        const a = String(l.animIn || '');
+        const units = /^letras-|typewriter/.test(a) ? [...String(l.text)] : /^palavras-|^words$/.test(a) ? String(l.text).split(/(\s+)/) : null;
+        const kf = packKf(a);
+        const step = a === 'typewriter' ? 0.06 : /^palavras-/.test(a) ? 0.12 : 0.045;
+        let k = 0;
+        const lf = life(l);
+        return (
+          <div key={i} className={lf.className} style={{ ...lf.style, position: 'absolute', left: `${l.x * 100}%`, top: `${l.y * 100}%`, transform: `translate(-50%, -50%)${l.rot ? ` rotate(${l.rot}deg)` : ''}`, whiteSpace: 'pre', textAlign: l.align === 'left' ? 'left' : 'center', lineHeight: l.leading ? 1.15 + l.leading / l.size : 1.15,
+            fontFamily: `'${f.family}'`, fontWeight: f.bold === false ? 400 : f.weight || 800, fontStyle: l.italic ? 'italic' : undefined, opacity: l.opacity ?? 1, fontSize: cq(l.size), letterSpacing: l.tracking ? `${l.tracking / 1000}em` : undefined,
+            color: l.fill === false ? 'transparent' : l.color, WebkitTextStroke: l.stroke ? `${cq(Math.max(0.0015, l.strokeW || 0.003))} ${l.strokeColor || '#000'}` : undefined, textShadow: shadow,
+            ...(l.bg ? { background: l.bgColor, opacity: undefined, padding: `${cq(l.size * (l.pad ?? 0.28) * 0.6)} ${cq(l.size * (l.pad ?? 0.28))}`, borderRadius: cq(l.size * (l.radius ?? 0) * 0.5) } : null) }}>
+            {units ? units.map((u, j) => (u.trim()
+              ? <span key={j} className="pa" style={{ display: 'inline-block', whiteSpace: 'pre', '--k': kf, '--dl': `${(l.start + (k++) * step).toFixed(3)}s`, '--du': a === 'typewriter' ? '0.02s' : '0.45s' }}>{u}</span>
+              : <span key={j}>{u}</span>))
+              : <span className="pa" style={{ display: 'inline-block', whiteSpace: 'pre', '--k': kf || 'none', '--dl': `${l.start}s` }}>{l.text}</span>}
+          </div>
+        );
+      })}
+      </div>
+    </div>
+  );
+}
 function ShapeProps({ l, FW, FH, head, up, hidden, onEye, order = null }) {
   const L = textLook(l);
   const px = (frac) => frac * FH;
@@ -11826,6 +11946,9 @@ function ShapeProps({ l, FW, FH, head, up, hidden, onEye, order = null }) {
         </PropRow>
         <PropRow label="Rotação"><ScrubNum value={L.rot} step={0.5} min={-3600} max={3600} decimals={1} suffix=" °" onChange={(v) => up({ rot: +v.toFixed(2) })} /></PropRow>
         <PropRow label="Opacidade"><ScrubNum value={L.opacity * 100} step={0.5} min={0} max={100} decimals={1} suffix=" %" onChange={(v) => up({ opacity: +(v / 100).toFixed(4) })} /></PropRow>
+        <PropRow label="Entrada">
+          <Sel value={l.reveal || ''} opts={[{ id: '', label: 'Esmaecer (fade)' }, ...Object.entries(SHAPE_REVEALS).map(([id, label]) => ({ id, label }))]} onChange={(v) => up({ reveal: v || undefined })} />
+        </PropRow>
       </PropSection>
       <PropSection title="Aparência" onReset={() => up({ fill: true, stroke: false, shadow: false, radius: 0 })}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><b style={{ fontSize: 12, width: 92 }}>Preenchimento</b>{check(L.fill, (v) => up({ fill: v }))}<ColorField value={L.fillColor} title="Cor da forma" size={20} onChange={(h) => up({ color: h })} /></div>
